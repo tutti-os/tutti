@@ -12,6 +12,7 @@ import {
   validateManifest
 } from "./build-nextop-app-release.mjs";
 import { buildNextopAppCatalog } from "./build-nextop-app-catalog.mjs";
+import { bumpNextopAppVersion } from "../../packages/workspace/app-release-tools/bin/bump-nextop-app-version.mjs";
 import { verifyNextopAppReleaseArtifacts } from "../../packages/workspace/app-release-tools/bin/verify-nextop-app-release-artifacts.mjs";
 
 const reusableWorkflowPath = new URL(
@@ -147,6 +148,39 @@ test("buildNextopAppCatalog rejects duplicate app ids", async () => {
   );
 });
 
+test("bumpNextopAppVersion applies a stable semver patch bump", async () => {
+  const packageDir = await createPackageForTest("bumped-app");
+  const manifestPath = path.join(packageDir, "nextop.app.json");
+
+  const result = await bumpNextopAppVersion({
+    appId: "bumped-app",
+    manifestPath,
+    bump: "patch"
+  });
+
+  assert.equal(result.previousVersion, "0.1.0");
+  assert.equal(result.version, "0.1.1");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  assert.equal(manifest.version, "0.1.1");
+});
+
+test("bumpNextopAppVersion rejects prerelease versions for automatic bumps", async () => {
+  const packageDir = await createPackageForTest("bumped-app");
+  const manifestPath = path.join(packageDir, "nextop.app.json");
+  const manifest = manifestForTest("bumped-app", "0.1.0-beta.1");
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  await assert.rejects(
+    () =>
+      bumpNextopAppVersion({
+        appId: "bumped-app",
+        manifestPath,
+        bump: "patch"
+      }),
+    /stable semver x\.y\.z/
+  );
+});
+
 test("verifyNextopAppReleaseArtifacts validates release artifact hash and size", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "nextop-release-verify-"));
   const artifactPath = path.join(tempDir, "app.zip");
@@ -270,8 +304,44 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   const workflow = await readFile(reusableWorkflowPath, "utf8");
 
   assert.match(workflow, /workflow_call:/);
+  assert.match(workflow, /contents: write/);
+  assert.match(workflow, /auto_bump_version:/);
+  assert.match(workflow, /version_bump:/);
+  assert.match(workflow, /default: patch/);
+  assert.match(workflow, /version_manifest_path:/);
+  assert.match(workflow, /publish_catalog:/);
+  assert.match(workflow, /catalog_only:/);
+  assert.match(workflow, /catalog_cloudfront_distribution_id:/);
+  assert.match(workflow, /Validate release inputs/);
+  assert.match(
+    workflow,
+    /package_command is required unless catalog_only is true/
+  );
+  assert.match(
+    workflow,
+    /release_assets_base_url is required unless catalog_only is true/
+  );
+  assert.match(workflow, /concurrency:/);
+  assert.match(workflow, /nextop-app-catalog-\{0\}-\{1\}/);
+  assert.match(workflow, /nextop-app-release-\{0\}-\{1\}/);
+  assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /\[skip release\]/);
   assert.match(workflow, /release_tools_package:/);
   assert.match(workflow, /default:\s+"@tutti-os\/app-release-tools@latest"/);
+  assert.match(workflow, /Prepare release branch/);
+  assert.match(
+    workflow,
+    /git checkout -B "\$\{REF_NAME\}" "origin\/\$\{REF_NAME\}"/
+  );
+  assert.match(workflow, /Bump app version/);
+  assert.match(workflow, /bump-nextop-app-version/);
+  assert.match(workflow, /Commit app version bump/);
+  assert.match(workflow, /git push origin "HEAD:\$\{GITHUB_REF_NAME\}"/);
+  assert.match(workflow, /release_version="\$\{manifest_version\}"/);
+  assert.match(
+    workflow,
+    /release_version="\$\{manifest_version\}\+\$\{git_sha:0:12\}"/
+  );
   assert.match(
     workflow,
     /pnpm --package "\$\{RELEASE_TOOLS_PACKAGE\}" dlx build-nextop-app-release/
@@ -285,12 +355,30 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
     workflow,
     /aws s3 cp "nextop-app-release\/apps\/\$\{APP_ID\}\/latest\.json"/
   );
+  assert.match(workflow, /aws s3api head-object/);
+  assert.match(workflow, /matching immutable metadata/);
+  assert.match(workflow, /different immutable metadata/);
+  assert.match(workflow, /Repairing mutable latest\/catalog state/);
+  assert.match(workflow, /const comparedKeys = \[/);
   assert.match(workflow, /Verify published app release artifact/);
   assert.match(workflow, /verify-nextop-app-release-artifacts/);
   assert.match(
     workflow,
     /--release-file "nextop-app-release\/apps\/\$\{APP_ID\}\/latest\.json"/
   );
+  assert.match(workflow, /Publish app catalog/);
+  assert.match(workflow, /build-nextop-app-catalog/);
+  assert.match(workflow, /CATALOG_ONLY:/);
+  assert.match(workflow, /nextop-app-catalog\/releases\/\$\{APP_ID\}\.json/);
+  assert.match(workflow, /apps\/\$\{APP_ID\}\/latest\.json/);
+  assert.match(
+    workflow,
+    /--existing-catalog nextop-app-catalog\/existing-catalog\.json/
+  );
+  assert.match(workflow, /--release-file "\$\{release_file\}"/);
+  assert.match(workflow, /aws s3 cp nextop-app-catalog\/catalog\.json/);
+  assert.match(workflow, /Invalidate app catalog/);
+  assert.match(workflow, /cloudfront create-invalidation/);
 });
 
 test("Tutti app catalog workflow aggregates latest release metadata", async () => {

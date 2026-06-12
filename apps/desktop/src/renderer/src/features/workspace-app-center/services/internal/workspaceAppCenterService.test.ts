@@ -146,6 +146,124 @@ test("WorkspaceAppCenterService tracks app install when the success snapshot omi
   ]);
 });
 
+test("WorkspaceAppCenterService merges catalog refresh fields without regressing runtime state", async () => {
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      listWorkspaceApps: async () =>
+        createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              availableVersion: null,
+              runtimeStatus: "running",
+              source: "builtin",
+              stateRevision: 3,
+              updateAvailable: false,
+              version: "1.0.0"
+            })
+          ]
+        }),
+      refreshWorkspaceAppCatalog: async () =>
+        createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              availableVersion: "1.1.0",
+              runtimeStatus: "idle",
+              source: "builtin",
+              stateRevision: 3,
+              updateAvailable: true,
+              version: "1.0.0"
+            })
+          ]
+        })
+    }),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi()
+  });
+
+  await service.refresh("workspace-1");
+  await service.refreshCatalog("workspace-1");
+
+  assert.equal(service.store.apps[0]?.availableVersion, "1.1.0");
+  assert.equal(service.store.apps[0]?.updateAvailable, true);
+  assert.equal(service.store.apps[0]?.runtimeStatus, "running");
+});
+
+test("WorkspaceAppCenterService keeps update disabled while update install is pending", async () => {
+  let installCalls = 0;
+  let listCalls = 0;
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      installWorkspaceApp: async () => {
+        installCalls += 1;
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              availableVersion: "1.1.0",
+              installed: true,
+              runtimeStatus: "running",
+              source: "builtin",
+              stateRevision: 3,
+              updateAvailable: true,
+              version: "1.0.0"
+            })
+          ]
+        });
+      },
+      listWorkspaceApps: async () => {
+        listCalls += 1;
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              availableVersion: listCalls > 1 ? null : "1.1.0",
+              installed: true,
+              runtimeStatus: listCalls > 1 ? "running" : "idle",
+              source: "builtin",
+              stateRevision: listCalls > 1 ? 4 : 3,
+              updateAvailable: listCalls <= 1,
+              version: listCalls > 1 ? "1.1.0" : "1.0.0"
+            })
+          ]
+        });
+      }
+    }),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi()
+  });
+
+  await service.refresh("workspace-1");
+  const firstUpdate = service.updateApp({
+    appId: "app-1",
+    trigger: "primary_action",
+    workspaceId: "workspace-1"
+  });
+  await waitFor(() => service.store.apps[0]?.runtimeStatus === "installing");
+  await service.updateApp({
+    appId: "app-1",
+    trigger: "primary_action",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(installCalls, 1);
+  assert.equal(service.store.apps[0]?.availableVersion, "1.1.0");
+  assert.equal(service.store.apps[0]?.runtimeStatus, "installing");
+  assert.equal(service.store.apps[0]?.updateAvailable, true);
+  assert.equal(service.store.apps[0]?.version, "1.0.0");
+
+  await firstUpdate;
+  await service.refresh("workspace-1");
+
+  assert.equal(installCalls, 1);
+  assert.equal(service.store.apps[0]?.runtimeStatus, "running");
+  assert.equal(service.store.apps[0]?.updateAvailable, false);
+  assert.equal(service.store.apps[0]?.version, "1.1.0");
+});
+
 test("WorkspaceAppCenterService waits for async install completion before tracking app install", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   let listCalls = 0;

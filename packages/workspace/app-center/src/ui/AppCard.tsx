@@ -85,6 +85,7 @@ export interface AppCenterHostActions {
   ) => Promise<void> | void;
   readonly publishFactoryJob?: (jobId: string) => Promise<void> | void;
   readonly replaceAppIcon?: (appId: string) => Promise<void> | void;
+  readonly refreshCatalog?: () => Promise<void> | void;
   readonly retryFactoryValidation?: (jobId: string) => Promise<void> | void;
   readonly retryApp?: (appId: string) => Promise<void> | void;
   readonly updateApp?: (

@@ -6,11 +6,13 @@
   "bin": {
     "build-nextop-app-release": "./bin/build-nextop-app-release.mjs",
     "build-nextop-app-catalog": "./bin/build-nextop-app-catalog.mjs",
+    "bump-nextop-app-version": "./bin/bump-nextop-app-version.mjs",
     "verify-nextop-app-release-artifacts": "./bin/verify-nextop-app-release-artifacts.mjs"
   },
   "exports": {
     "./build-nextop-app-release": "./bin/build-nextop-app-release.mjs",
     "./build-nextop-app-catalog": "./bin/build-nextop-app-catalog.mjs",
+    "./bump-nextop-app-version": "./bin/bump-nextop-app-version.mjs",
     "./verify-nextop-app-release-artifacts": "./bin/verify-nextop-app-release-artifacts.mjs"
   },
   "files": [

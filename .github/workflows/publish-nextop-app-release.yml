@@ -7,11 +7,13 @@ on:
         required: true
         type: string
       package_command:
-        required: true
+        required: false
         type: string
+        default: ""
       package_dir:
-        required: true
+        required: false
         type: string
+        default: ""
       icon_path:
         required: false
         type: string
@@ -20,6 +22,18 @@ on:
         required: false
         type: string
         default: ""
+      auto_bump_version:
+        required: false
+        type: boolean
+        default: true
+      version_bump:
+        required: false
+        type: string
+        default: patch
+      version_manifest_path:
+        required: false
+        type: string
+        default: nextop.app.json
       runner:
         required: false
         type: string
@@ -50,11 +64,24 @@ on:
         type: string
         default: ""
       release_assets_base_url:
-        required: true
+        required: false
         type: string
+        default: ""
+      publish_catalog:
+        required: false
+        type: boolean
+        default: false
+      catalog_only:
+        required: false
+        type: boolean
+        default: false
+      catalog_cloudfront_distribution_id:
+        required: false
+        type: string
+        default: ""
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 env:
@@ -62,11 +89,50 @@ env:
 
 jobs:
   publish:
+    if: ${{ inputs.catalog_only || !contains(github.event.head_commit.message || '', '[skip release]') }}
     runs-on: ${{ inputs.runner }}
+    concurrency:
+      group: ${{ (inputs.publish_catalog || inputs.catalog_only) && format('nextop-app-catalog-{0}-{1}', inputs.s3_bucket, inputs.s3_prefix) || format('nextop-app-release-{0}-{1}', inputs.app_id, github.ref_name) }}
+      cancel-in-progress: false
 
     steps:
       - name: Checkout app repository
         uses: actions/checkout@v6
+
+      - name: Validate release inputs
+        if: ${{ !inputs.catalog_only }}
+        shell: bash
+        env:
+          PACKAGE_COMMAND: ${{ inputs.package_command }}
+          PACKAGE_DIR: ${{ inputs.package_dir }}
+          RELEASE_ASSETS_BASE_URL: ${{ inputs.release_assets_base_url }}
+        run: |
+          if [ -z "${PACKAGE_COMMAND}" ]; then
+            echo "package_command is required unless catalog_only is true." >&2
+            exit 1
+          fi
+          if [ -z "${PACKAGE_DIR}" ]; then
+            echo "package_dir is required unless catalog_only is true." >&2
+            exit 1
+          fi
+          if [ -z "${RELEASE_ASSETS_BASE_URL}" ]; then
+            echo "release_assets_base_url is required unless catalog_only is true." >&2
+            exit 1
+          fi
+
+      - name: Prepare release branch
+        if: ${{ !inputs.catalog_only && inputs.auto_bump_version && inputs.release_version == '' }}
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "${REF_TYPE}" != "branch" ]; then
+            echo "Automatic version bumps require a branch ref, got ${REF_TYPE}." >&2
+            exit 1
+          fi
+          git fetch origin "${REF_NAME}"
+          git checkout -B "${REF_NAME}" "origin/${REF_NAME}"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -79,28 +145,75 @@ jobs:
           node-version: ${{ inputs.node_version }}
           cache: pnpm
 
+      - name: Bump app version
+        if: ${{ !inputs.catalog_only && inputs.auto_bump_version && inputs.release_version == '' }}
+        id: bump
+        shell: bash
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          RELEASE_TOOLS_PACKAGE: ${{ inputs.release_tools_package }}
+          VERSION_BUMP: ${{ inputs.version_bump }}
+          VERSION_MANIFEST_PATH: ${{ inputs.version_manifest_path }}
+        run: |
+          pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx bump-nextop-app-version \
+            --app-id "${APP_ID}" \
+            --manifest "${VERSION_MANIFEST_PATH}" \
+            --bump "${VERSION_BUMP}" \
+            > nextop-app-version-bump.json
+          version="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).version)" nextop-app-version-bump.json)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit app version bump
+        if: ${{ !inputs.catalog_only && inputs.auto_bump_version && inputs.release_version == '' }}
+        shell: bash
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          VERSION_MANIFEST_PATH: ${{ inputs.version_manifest_path }}
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add "${VERSION_MANIFEST_PATH}"
+          if git diff --cached --quiet; then
+            echo "No version bump changes were produced." >&2
+            exit 1
+          fi
+          git commit -m "chore(release): bump ${APP_ID} to ${VERSION} [skip release]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
       - name: Install app dependencies
+        if: ${{ !inputs.catalog_only }}
         run: pnpm install --frozen-lockfile
 
       - name: Build app package
+        if: ${{ !inputs.catalog_only }}
         run: ${{ inputs.package_command }}
 
       - name: Resolve release version
+        if: ${{ !inputs.catalog_only }}
         id: release
         shell: bash
         env:
           INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
+          AUTO_BUMP_VERSION: ${{ inputs.auto_bump_version }}
           PACKAGE_DIR: ${{ inputs.package_dir }}
         run: |
+          git_sha="$(git rev-parse HEAD)"
           if [ -n "${INPUT_RELEASE_VERSION}" ]; then
             release_version="${INPUT_RELEASE_VERSION}"
           else
             manifest_version="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).version)" "${PACKAGE_DIR}/nextop.app.json")"
-            release_version="${manifest_version}+${GITHUB_SHA:0:12}"
+            if [ "${AUTO_BUMP_VERSION}" = "true" ]; then
+              release_version="${manifest_version}"
+            else
+              release_version="${manifest_version}+${git_sha:0:12}"
+            fi
           fi
           echo "version=${release_version}" >> "$GITHUB_OUTPUT"
+          echo "git_sha=${git_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Build release metadata
+        if: ${{ !inputs.catalog_only }}
         shell: bash
         env:
           APP_ID: ${{ inputs.app_id }}
@@ -116,7 +229,7 @@ jobs:
             --output-dir nextop-app-release
             --base-url "${RELEASE_ASSETS_BASE_URL}"
             --version "${RELEASE_VERSION}"
-            --git-sha "${GITHUB_SHA}"
+            --git-sha "${{ steps.release.outputs.git_sha }}"
           )
           if [ -n "${ICON_PATH}" ]; then
             args+=(--icon-path "${ICON_PATH}")
@@ -130,6 +243,7 @@ jobs:
           role-to-assume: ${{ inputs.aws_role_arn }}
 
       - name: Upload app release to S3
+        if: ${{ !inputs.catalog_only }}
         shell: bash
         env:
           APP_ID: ${{ inputs.app_id }}
@@ -137,20 +251,59 @@ jobs:
           S3_BUCKET: ${{ inputs.s3_bucket }}
           S3_PREFIX: ${{ inputs.s3_prefix }}
         run: |
+          local_release_file="nextop-app-release/apps/${APP_ID}/${RELEASE_VERSION}/release.json"
+
           prefix="${S3_PREFIX%/}"
           if [ -n "${prefix}" ]; then
             s3_root="s3://${S3_BUCKET}/${prefix}"
+            release_key="${prefix}/apps/${APP_ID}/${RELEASE_VERSION}/release.json"
           else
             s3_root="s3://${S3_BUCKET}"
+            release_key="apps/${APP_ID}/${RELEASE_VERSION}/release.json"
           fi
 
-          aws s3 sync "nextop-app-release/apps/${APP_ID}/${RELEASE_VERSION}/" "${s3_root}/apps/${APP_ID}/${RELEASE_VERSION}/" \
-            --cache-control "public, max-age=31536000, immutable"
+          if aws s3api head-object --bucket "${S3_BUCKET}" --key "${release_key}" >/dev/null 2>nextop-app-release-head-error.txt; then
+            mkdir -p nextop-app-release/existing
+            aws s3 cp "${s3_root}/apps/${APP_ID}/${RELEASE_VERSION}/release.json" nextop-app-release/existing/release.json
+            node -e '
+              const fs = require("fs");
+              const localRelease = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              const existingRelease = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+              const comparedKeys = [
+                "appId",
+                "version",
+                "artifactUrl",
+                "artifactSha256",
+                "artifactSizeBytes",
+                "iconUrl",
+                "gitSha"
+              ];
+              const mismatches = comparedKeys.filter(
+                (key) => localRelease[key] !== existingRelease[key]
+              );
+              if (mismatches.length > 0) {
+                console.error(
+                  `Release ${localRelease.version} already exists for ${localRelease.appId} with different immutable metadata: ${mismatches.join(", ")}`
+                );
+                process.exit(1);
+              }
+            ' "${local_release_file}" nextop-app-release/existing/release.json
+            echo "Release ${RELEASE_VERSION} already exists for ${APP_ID} with matching immutable metadata. Repairing mutable latest/catalog state."
+          elif grep -Eq "(404|Not Found|NotFound|NoSuchKey)" nextop-app-release-head-error.txt; then
+            aws s3 sync "nextop-app-release/apps/${APP_ID}/${RELEASE_VERSION}/" "${s3_root}/apps/${APP_ID}/${RELEASE_VERSION}/" \
+              --cache-control "public, max-age=31536000, immutable"
+          else
+            echo "Failed to check existing release ${release_key}." >&2
+            cat nextop-app-release-head-error.txt >&2
+            exit 1
+          fi
+
           aws s3 cp "nextop-app-release/apps/${APP_ID}/latest.json" "${s3_root}/apps/${APP_ID}/latest.json" \
             --content-type "application/json" \
             --cache-control "public, max-age=60"
 
       - name: Verify published app release artifact
+        if: ${{ !inputs.catalog_only }}
         shell: bash
         env:
           APP_ID: ${{ inputs.app_id }}
@@ -158,3 +311,71 @@ jobs:
         run: |
           pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx verify-nextop-app-release-artifacts \
             --release-file "nextop-app-release/apps/${APP_ID}/latest.json"
+
+      - name: Publish app catalog
+        if: ${{ inputs.publish_catalog || inputs.catalog_only }}
+        shell: bash
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          CATALOG_ONLY: ${{ inputs.catalog_only }}
+          RELEASE_TOOLS_PACKAGE: ${{ inputs.release_tools_package }}
+          S3_BUCKET: ${{ inputs.s3_bucket }}
+          S3_PREFIX: ${{ inputs.s3_prefix }}
+        run: |
+          mkdir -p nextop-app-catalog/releases
+
+          prefix="${S3_PREFIX%/}"
+          catalog_key="catalog.json"
+          if [ -n "${prefix}" ]; then
+            s3_root="s3://${S3_BUCKET}/${prefix}"
+            catalog_key="${prefix}/catalog.json"
+          else
+            s3_root="s3://${S3_BUCKET}"
+          fi
+
+          catalog_args=()
+          if aws s3api head-object --bucket "${S3_BUCKET}" --key "${catalog_key}" >/dev/null 2>nextop-app-catalog/head-error.txt; then
+            aws s3 cp "${s3_root}/catalog.json" nextop-app-catalog/existing-catalog.json
+            catalog_args+=(--existing-catalog nextop-app-catalog/existing-catalog.json)
+          elif grep -Eq "(404|Not Found|NotFound|NoSuchKey)" nextop-app-catalog/head-error.txt; then
+            echo "No existing catalog found. Publishing a catalog with ${APP_ID}." >&2
+          else
+            echo "Failed to check existing catalog. Refusing to publish a partial merge catalog." >&2
+            cat nextop-app-catalog/head-error.txt >&2
+            exit 1
+          fi
+
+          if [ "${CATALOG_ONLY}" = "true" ]; then
+            release_file="nextop-app-catalog/releases/${APP_ID}.json"
+            aws s3 cp "${s3_root}/apps/${APP_ID}/latest.json" "${release_file}"
+          else
+            release_file="nextop-app-release/apps/${APP_ID}/latest.json"
+          fi
+
+          pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx build-nextop-app-catalog \
+            "${catalog_args[@]}" \
+            --release-file "${release_file}" \
+            --output nextop-app-catalog/catalog.json
+          pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx verify-nextop-app-release-artifacts \
+            --catalog-file nextop-app-catalog/catalog.json \
+            --release-file "${release_file}"
+          aws s3 cp nextop-app-catalog/catalog.json "${s3_root}/catalog.json" \
+            --content-type "application/json" \
+            --cache-control "public, max-age=60"
+
+      - name: Invalidate app catalog
+        if: ${{ (inputs.publish_catalog || inputs.catalog_only) && inputs.catalog_cloudfront_distribution_id != '' }}
+        shell: bash
+        env:
+          CATALOG_CLOUDFRONT_DISTRIBUTION_ID: ${{ inputs.catalog_cloudfront_distribution_id }}
+          S3_PREFIX: ${{ inputs.s3_prefix }}
+        run: |
+          prefix="${S3_PREFIX%/}"
+          if [ -n "${prefix}" ]; then
+            path_to_invalidate="/${prefix}/catalog.json"
+          else
+            path_to_invalidate="/catalog.json"
+          fi
+          aws cloudfront create-invalidation \
+            --distribution-id "${CATALOG_CLOUDFRONT_DISTRIBUTION_ID}" \
+            --paths "${path_to_invalidate}"

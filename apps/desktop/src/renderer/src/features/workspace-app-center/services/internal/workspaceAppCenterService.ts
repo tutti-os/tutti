@@ -116,10 +116,13 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     appId: string;
     workspaceId: string;
   }): Promise<void> {
+    const installKey = appRuntimeKey(input.workspaceId, input.appId);
+    if (this.pendingInstallKeys.has(installKey)) {
+      return;
+    }
     const previousApps = this.store.apps;
     const appBeforeInstall =
       previousApps.find((app) => app.appId === input.appId) ?? null;
-    const installKey = appRuntimeKey(input.workspaceId, input.appId);
     this.pendingInstallKeys.add(installKey);
     this.pendingInstallReportKeys.add(installKey);
     this.markAppInstalling(input.appId);
@@ -775,13 +778,16 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     trigger: "badge_button" | "primary_action";
     workspaceId: string;
   }): Promise<void> {
+    const installKey = appRuntimeKey(input.workspaceId, input.appId);
+    if (this.pendingInstallKeys.has(installKey)) {
+      return;
+    }
     const app = this.store.apps.find(
       (candidate) => candidate.appId === input.appId
     );
     const previousApps = this.store.apps;
-    const installKey = appRuntimeKey(input.workspaceId, input.appId);
     this.pendingInstallKeys.add(installKey);
-    this.markAppInstalling(input.appId);
+    this.markAppInstalling(input.appId, { preserveInstalled: true });
     try {
       const snapshot = await this.dependencies.gateway.installWorkspaceApp(
         input.workspaceId,
@@ -887,16 +893,20 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
       if (!currentApp || currentApp.stateRevision < snapshotApp.stateRevision) {
         return snapshotApp;
       }
-      if (
-        this.pendingInstallKeys.has(
-          appRuntimeKey(workspaceId, snapshotApp.appId)
-        ) &&
-        (snapshotApp.installed || snapshotApp.runtimeStatus === "failed") &&
-        currentApp.stateRevision <= snapshotApp.stateRevision
-      ) {
-        return snapshotApp;
+      const installKey = appRuntimeKey(workspaceId, snapshotApp.appId);
+      if (this.pendingInstallKeys.has(installKey)) {
+        const pendingSettled = this.isPendingInstallSettled(
+          installKey,
+          snapshotApp
+        );
+        if (
+          pendingSettled &&
+          currentApp.stateRevision <= snapshotApp.stateRevision
+        ) {
+          return snapshotApp;
+        }
       }
-      return currentApp;
+      return mergeWorkspaceAppCatalogFields(currentApp, snapshotApp);
     });
   }
 
@@ -937,13 +947,15 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
       if (!this.pendingInstallKeys.has(installKey)) {
         return app;
       }
-      if (app.installed || app.runtimeStatus === "failed") {
+      if (this.isPendingInstallSettled(installKey, app)) {
         return app;
       }
       return {
         ...app,
         enabled: true,
-        installed: false,
+        installed: this.pendingInstallReportKeys.has(installKey)
+          ? false
+          : app.installed,
         runtimeStatus: "installing"
       };
     });
@@ -1339,14 +1351,20 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
       : null;
   }
 
-  private markAppInstalling(appId: string): void {
+  private markAppInstalling(
+    appId: string,
+    options: { preserveInstalled?: boolean } = {}
+  ): void {
     this.store.apps = this.store.apps.map((app) =>
       app.appId === appId
         ? {
             ...app,
+            availableVersion: null,
             enabled: true,
-            installed: false,
-            runtimeStatus: "installing"
+            installed:
+              options.preserveInstalled === true ? app.installed : false,
+            runtimeStatus: "installing",
+            updateAvailable: false
           }
         : app
     );
@@ -1427,7 +1445,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     if (!this.pendingInstallKeys.has(installKey)) {
       return;
     }
-    if (!input.app.installed && input.app.runtimeStatus !== "failed") {
+    if (!this.isPendingInstallSettled(installKey, input.app)) {
       return;
     }
 
@@ -1449,6 +1467,19 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
         input.app.lastError ??
         null
     });
+  }
+
+  private isPendingInstallSettled(
+    installKey: string,
+    app: WorkspaceAppCenterApp
+  ): boolean {
+    if (app.runtimeStatus === "failed") {
+      return true;
+    }
+    if (this.pendingInstallReportKeys.has(installKey)) {
+      return app.installed;
+    }
+    return app.installed && !app.updateAvailable && !app.availableVersion;
   }
 
   private reportAppInstalled(app: WorkspaceAppCenterApp | null): void {
@@ -1651,6 +1682,25 @@ function sortWorkspaceAppCenterApps(
   return [...apps].sort((left, right) =>
     left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
   );
+}
+
+function mergeWorkspaceAppCatalogFields(
+  currentApp: WorkspaceAppCenterApp,
+  snapshotApp: WorkspaceAppCenterApp
+): WorkspaceAppCenterApp {
+  return {
+    ...currentApp,
+    availableIconUrl: snapshotApp.availableIconUrl,
+    availableVersion: snapshotApp.availableVersion,
+    description: snapshotApp.description,
+    iconUrl: snapshotApp.iconUrl,
+    localizations: snapshotApp.localizations,
+    minimizeBehavior: snapshotApp.minimizeBehavior,
+    name: snapshotApp.name,
+    source: snapshotApp.source,
+    tags: snapshotApp.tags,
+    updateAvailable: snapshotApp.updateAvailable
+  };
 }
 
 function areWorkspaceAppCenterAppsEqual(

@@ -250,6 +250,39 @@ describe("createAppCenterViewModel", () => {
     assert.equal(viewModel.apps[0]?.statusLabelKey, "actions.updateApp");
   });
 
+  it("disables update actions while an app is busy", () => {
+    const viewModel = createAppCenterViewModel({
+      apps: [
+        {
+          availableVersion: "0.2.0",
+          install: { appId: "hello" },
+          manifest: {
+            appId: "hello",
+            description: "Hello app",
+            runtime: {
+              bootstrap: "bootstrap.sh",
+              healthcheckPath: "/"
+            },
+            schemaVersion: workspaceAppManifestSchemaVersion,
+            name: "Hello",
+            version: "0.1.0"
+          },
+          updateAvailable: true
+        }
+      ],
+      runtimeStates: [
+        {
+          appId: "hello",
+          status: "installing"
+        }
+      ]
+    });
+
+    assert.equal(viewModel.apps[0]?.canUpdate, false);
+    assert.equal(viewModel.apps[0]?.primaryAction, "none");
+    assert.equal(viewModel.apps[0]?.statusLabelKey, "status.installing");
+  });
+
   it("shows installing apps as busy before they become installed", () => {
     const apps: WorkspaceAppRecord[] = [
       {

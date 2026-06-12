@@ -34,6 +34,7 @@ export const appCenterEn = {
     openAppPackageFolder: "Open app folder",
     modifyAppWithAgent: "Edit with agent",
     publishAppUpdate: "Republish",
+    refreshCatalog: "Refresh catalog",
     replaceIcon: "Replace icon",
     retryApp: "Retry",
     updateApp: "Update",
@@ -176,8 +177,7 @@ export const appCenterEn = {
     },
     groupChat: {
       category: "Productivity",
-      description:
-        "Bring workspace conversations, team updates, and collaboration context into one place.",
+      description: "Get work done with your agents in group chat.",
       name: "Group Chat"
     },
     aiPpt: {
@@ -322,6 +322,7 @@ export const appCenterZhCN = {
     openAppPackageFolder: "打开应用目录",
     modifyAppWithAgent: "用智能体编辑",
     publishAppUpdate: "重新发布",
+    refreshCatalog: "刷新目录",
     replaceIcon: "替换图标",
     retryApp: "重试",
     updateApp: "更新",
@@ -460,7 +461,7 @@ export const appCenterZhCN = {
     },
     groupChat: {
       category: "工具",
-      description: "聚合工作区会话、团队同步和协作上下文。",
+      description: "在群里跟你的 Agents 一起干活",
       name: "群聊"
     },
     aiPpt: {
@@ -506,9 +507,9 @@ export const appCenterZhCN = {
       tertiary: "评审"
     },
     groupChat: {
-      primary: "会话",
-      secondary: "团队",
-      tertiary: "同步"
+      primary: "团队",
+      secondary: "协同",
+      tertiary: "工作"
     },
     aiPpt: {
       primary: "幻灯片",

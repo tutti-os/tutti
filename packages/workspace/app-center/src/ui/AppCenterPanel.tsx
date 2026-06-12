@@ -15,6 +15,7 @@ import {
   FileCreateIcon,
   Input,
   OpenSessionsIcon as OpenSessionsFilledIcon,
+  RefreshIcon,
   Select,
   SelectContent,
   SelectItem,
@@ -409,6 +410,7 @@ export function AppCenterPanel({
   };
   const loadingMessage =
     catalogStatus === "loading" ? copy.t("messages.catalogLoading") : null;
+  const catalogLoading = catalogStatus === "loading";
   const failedMessage =
     catalogStatus === "failed" ? copy.t("messages.catalogFailed") : null;
   const statusToast =
@@ -665,7 +667,13 @@ export function AppCenterPanel({
                   }}
                 />
               ) : (
-                <div aria-hidden="true" className="h-8 w-[172px]" />
+                <AppCenterRecommendedHeaderActions
+                  copy={copy}
+                  loading={catalogLoading}
+                  onRefreshCatalog={() => {
+                    void actions.refreshCatalog?.();
+                  }}
+                />
               )}
             </div>
           </div>
@@ -1489,6 +1497,37 @@ function AppCenterHeaderActions({
         {copy.t("factory.actions.create")}
       </Button>
     </>
+  );
+}
+
+function AppCenterRecommendedHeaderActions({
+  copy,
+  loading,
+  onRefreshCatalog
+}: {
+  readonly copy: AppCenterI18nRuntime;
+  readonly loading: boolean;
+  readonly onRefreshCatalog: () => void;
+}): ReactElement {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={copy.t("actions.refreshCatalog")}
+          disabled={loading}
+          size="icon-sm"
+          title={copy.t("actions.refreshCatalog")}
+          type="button"
+          variant="ghost"
+          onClick={onRefreshCatalog}
+        >
+          <RefreshIcon className={loading ? "animate-spin" : undefined} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {copy.t("actions.refreshCatalog")}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

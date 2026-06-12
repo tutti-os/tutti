@@ -76,7 +76,9 @@ export function createAppCenterViewModel({
       const comingSoon =
         isComingSoonApp(metadata.tags) ||
         isComingSoonApp(app.manifest.tags ?? []);
-      const canUpdate = installed && (app.updateAvailable ?? false);
+      const busy = isBusyRuntimeStatus(status);
+      const canUpdate =
+        !comingSoon && !busy && installed && (app.updateAvailable ?? false);
       const canOpen = !comingSoon && installed && canOpenInstalledApp(status);
       const canRetry = installed && status === "failed";
       const primaryAction = resolvePrimaryAction({
