@@ -2791,6 +2791,7 @@ function AgentGUIProjectRailHeader({
             />
           )}
           selectedProjectPath={null}
+          service={agentHostApi.userProjects?.service ?? null}
           shouldApplyPreparedSelection={false}
           showCreateProjectAction
           showKnownProjectOptions={false}

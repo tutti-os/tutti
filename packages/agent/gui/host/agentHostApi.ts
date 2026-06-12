@@ -12,6 +12,7 @@ import type {
   AgentHostWorkspaceAgentSnapshot,
   ReadWorkspaceFileResult as AgentHostReadWorkspaceFileResult
 } from "../shared/contracts/dto";
+import type { WorkspaceUserProjectService } from "@tutti-os/workspace-user-project/contracts";
 
 type AgentHostAsyncResult<T = any> = Promise<T>;
 type AgentHostRecord = Record<string, unknown>;
@@ -140,6 +141,7 @@ export interface AgentHostUserProject {
 }
 
 export type AgentHostUserProjectsApi = AgentHostRecord & {
+  service?: WorkspaceUserProjectService;
   checkPath?: (input: { path: string }) => AgentHostAsyncResult<{
     exists: boolean;
     isDirectory: boolean;

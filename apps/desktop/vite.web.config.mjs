@@ -33,8 +33,16 @@ const aliases = {
   "@shared": resolve("src/shared")
 };
 
+const devServer = {
+  host: "127.0.0.1",
+  hmr: {
+    host: "127.0.0.1"
+  }
+};
+
 export default defineConfig({
   root: rendererRoot,
+  server: devServer,
   plugins: [
     react({
       babel: {

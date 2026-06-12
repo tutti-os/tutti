@@ -151,6 +151,7 @@ export function createDesktopAgentHostApi({
         })
     },
     userProjects: {
+      service: userProjectService,
       checkPath: (payload: { path: string }) =>
         userProjectService.checkProjectPath(payload.path),
       create: async (payload: { name: string }) =>

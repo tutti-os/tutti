@@ -83,12 +83,6 @@ export function createDesktopIssueManagerFeature(input: {
       ? createDesktopIssueManagerEventSource(input.eventStreamClient)
       : undefined,
     executionDirectoryPicker: {
-      list: async () => {
-        await input.workspaceUserProjectService.ensureLoaded();
-        return {
-          projects: [...input.workspaceUserProjectService.store.projects]
-        };
-      },
       selectDirectory: () =>
         input.workspaceUserProjectService.selectDirectory(),
       service: input.workspaceUserProjectService,

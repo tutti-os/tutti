@@ -1,8 +1,16 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from "@testing-library/react";
 import { TooltipProvider } from "@tutti-os/ui-system";
+import type { WorkspaceUserProjectService } from "@tutti-os/workspace-user-project/contracts";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
+import { proxy } from "valtio/vanilla";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentModelReasoningDropdown,
@@ -26,6 +34,8 @@ const { mockAgentHostApi } = vi.hoisted(() => ({
           isNoProjectPath?: ReturnType<typeof vi.fn>;
           list: ReturnType<typeof vi.fn>;
           rememberDefaultSelection?: ReturnType<typeof vi.fn>;
+          service?: WorkspaceUserProjectService;
+          subscribe?: ReturnType<typeof vi.fn>;
           use: ReturnType<typeof vi.fn>;
         };
     workspace: {
@@ -128,7 +138,11 @@ describe("AgentProjectDropdown", () => {
       "data-[side=top]:!translate-y-0"
     );
     expect(projectOption).toBeVisible();
-    expect(projectOption.querySelector(".truncate")).not.toBeNull();
+    expect(
+      projectOption.querySelector(
+        '[data-workspace-user-project-overflow-label="true"]'
+      )
+    ).not.toBeNull();
     expect(projectOption).toHaveTextContent("nextop");
     expect(projectOption).not.toHaveTextContent("/workspace/nextop");
     expect(
@@ -577,6 +591,89 @@ describe("AgentProjectDropdown", () => {
     expect(screen.getByRole("combobox", { name: "Project" })).toHaveTextContent(
       "No project"
     );
+  });
+
+  it("reacts to Valtio service project updates", async () => {
+    const store = proxy({
+      error: null,
+      initialized: true,
+      isLoading: false,
+      projects: [
+        {
+          id: "dir-old",
+          path: "/workspace/old",
+          label: "Old"
+        }
+      ],
+      revision: 1
+    }) as WorkspaceUserProjectService["store"];
+    const service: WorkspaceUserProjectService = {
+      store,
+      async prepareSelection() {
+        return {
+          isSelectedPathMissing: false,
+          projects: [...store.projects],
+          selection: { kind: "none" }
+        };
+      },
+      async refresh() {}
+    };
+    const listProjects = vi.fn(async () => ({
+      projects: [
+        {
+          id: "dir-api",
+          path: "/workspace/api",
+          label: "Api"
+        }
+      ]
+    }));
+    mockAgentHostApi.userProjects = {
+      list: listProjects,
+      service,
+      use: vi.fn()
+    };
+
+    render(
+      <AgentProjectDropdown
+        composerSettings={{
+          selectedProjectPath: "/workspace/old",
+          projectLocked: false
+        }}
+        labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
+        onProjectPathChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Project" })
+      ).toHaveTextContent("Old")
+    );
+    expect(listProjects).not.toHaveBeenCalled();
+
+    act(() => {
+      store.projects = [
+        ...store.projects,
+        {
+          id: "dir-new",
+          path: "/workspace/new",
+          label: "New"
+        }
+      ];
+      store.revision += 1;
+    });
+
+    ensurePointerCaptureApi();
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Project" }), {
+      button: 0,
+      ctrlKey: false,
+      pointerId: 1,
+      pointerType: "mouse"
+    });
+
+    expect(await screen.findByRole("option", { name: "New" })).toBeVisible();
+    expect(screen.queryByRole("option", { name: "Api" })).toBeNull();
   });
 
   it("clears an unlocked selected project when it disappears from recents", async () => {

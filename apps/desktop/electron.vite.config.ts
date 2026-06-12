@@ -52,6 +52,13 @@ const bundledWsDefines = {
   "process.env.WS_NO_UTF_8_VALIDATE": '"true"'
 };
 
+const devServer = {
+  host: "127.0.0.1",
+  hmr: {
+    host: "127.0.0.1"
+  }
+};
+
 const webkitBackdropFilterPattern =
   /^([ \t]*)-webkit-backdrop-filter:\s*([^;]+);(?!\n[ \t]*backdrop-filter:)/gm;
 
@@ -143,6 +150,7 @@ export default defineConfig({
     }
   },
   renderer: {
+    server: devServer,
     plugins: [
       react({
         babel: {

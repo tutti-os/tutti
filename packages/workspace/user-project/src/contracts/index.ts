@@ -74,7 +74,7 @@ export type WorkspaceUserProjectValtioStore =
     readonly [workspaceUserProjectValtioStoreBrand]: true;
   };
 
-export interface WorkspaceUserProjectServiceLike {
+export interface WorkspaceUserProjectService {
   checkProjectPath?(path: string): Promise<WorkspaceUserProjectPathCheck>;
   createProject?(name: string): Promise<WorkspaceUserProject>;
   ensureLoaded?(): Promise<void>;
