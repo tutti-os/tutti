@@ -834,6 +834,7 @@ export function AgentGUINodeView({
             labels={labels}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
             uiLanguage={uiLanguage}
+            showProjectSelector={showProjectSelector}
             createConversationDisabled={createConversationDisabled}
             openclawGateway={openclawGateway}
             isCollapsed={conversationRailCollapsed}
@@ -2116,6 +2117,7 @@ interface AgentGUIConversationRailPaneProps {
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
+  showProjectSelector: boolean;
   createConversationDisabled: boolean;
   openclawGateway: OpenclawGatewayViewModel | null;
   isCollapsed: boolean;
@@ -2172,6 +2174,7 @@ const AgentGUIConversationRailPane = memo(
     labels,
     workspaceUserProjectI18n,
     uiLanguage,
+    showProjectSelector,
     createConversationDisabled,
     openclawGateway,
     isCollapsed,
@@ -2341,6 +2344,7 @@ const AgentGUIConversationRailPane = memo(
                 section.kind === "project" ? section.label : "";
               const isProjectSection = section.kind === "project";
               const showProjectRailHeader =
+                showProjectSelector &&
                 !conversationQuery.trim() &&
                 section.kind !== "pinned" &&
                 (sectionIndex === 0 ||

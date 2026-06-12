@@ -246,6 +246,31 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
 
+  it("hides the project rail header when the project selector is disabled", () => {
+    const { container } = renderAgentGUINodeView({
+      showProjectSelector: false,
+      viewModel: {
+        ...createViewModel(),
+        conversations: [
+          {
+            ...createConversationSummary("session-1"),
+            cwd: "/workspace/app",
+            project: {
+              id: "project-app",
+              path: "/workspace/app",
+              label: "App"
+            }
+          }
+        ]
+      }
+    });
+
+    expect(
+      container.querySelector(".agent-gui-node__project-rail-header")
+    ).toBeNull();
+    expect(screen.getByText("App")).toBeInTheDocument();
+  });
+
   it("shows empty project sections when projects have no conversations", () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -700,7 +725,8 @@ function renderAgentGUINodeView({
   onConversationRailWidthChanged = vi.fn(),
   viewModel = createViewModel(),
   actions = createActions(),
-  labels = createLabels()
+  labels = createLabels(),
+  showProjectSelector = true
 }: {
   conversationRailCollapsed?: boolean;
   conversationRailWidthPx?: number;
@@ -708,6 +734,7 @@ function renderAgentGUINodeView({
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
   labels?: AgentGUIViewLabels;
+  showProjectSelector?: boolean;
 } = {}) {
   return render(
     <AgentGUINodeView
@@ -721,6 +748,7 @@ function renderAgentGUINodeView({
       conversationRailMaxWidthPx={420}
       detailMinWidthPx={220}
       uiLanguage="en"
+      showProjectSelector={showProjectSelector}
       onConversationRailWidthChanged={onConversationRailWidthChanged}
       labels={labels}
     />

@@ -1335,6 +1335,9 @@ describe("AgentGUINode", () => {
     expect(resolveAgentGUIHeroIconUrl("codex")).toContain(
       "manage-agent-codex.png"
     );
+    expect(resolveAgentGUIHeroIconUrl("codex")).not.toMatch(
+      /^\.\/manage-agent-codex-[\w-]+\.png$/
+    );
     expect(resolveAgentGUIHeroIconUrl("claude")).toContain(
       "manage-agent-claude-code.png"
     );
