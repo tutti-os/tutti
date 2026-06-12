@@ -49,9 +49,33 @@ test("dock hover panels survive pointer travel from slot to panel", () => {
     /dockMeasureRef\.current\?\.contains\(relatedTarget\)[\s\S]*?scheduleHoverPanelAtPointAfterRest\(\s*event\.clientX,\s*event\.clientY\s*\);[\s\S]*?return;/
   );
   assert.match(source, /beginDockIconInteraction\(anchorKey\)/);
+  const beginDockIconInteractionSource =
+    source.match(
+      /const beginDockIconInteraction = useCallback\(\s*\(anchorKey: string\) => \{([\s\S]*?)\n {4}\},/
+    )?.[1] ?? "";
+  assert.notEqual(beginDockIconInteractionSource, "");
+  assert.match(
+    beginDockIconInteractionSource,
+    /triggerDockBounce\(anchorKey\);/
+  );
+  assert.doesNotMatch(beginDockIconInteractionSource, /pauseDockMagnification/);
+  assert.doesNotMatch(beginDockIconInteractionSource, /resetDockMagnification/);
   assert.match(source, /const beginDockMinimizedInteraction = useCallback/);
   assert.match(source, /beginDockMinimizedInteraction\(\);/);
   assert.match(source, /beginDockMinimizedInteraction\(slot\.anchorKey\);/);
+  assert.match(
+    source,
+    /const beginDockMinimizedInteraction = useCallback\([\s\S]*?pauseDockMagnification\(\);[\s\S]*?clearSlotMagnification\(anchorKey\);/
+  );
+  assert.match(
+    source,
+    /function isDockVisualMutationActive[\s\S]*?data-stack-dispatching="true"[\s\S]*?data-promoted-from-stack="true"/
+  );
+  assert.match(source, /function resolveNextDockItemPresence/);
+  assert.match(source, /shouldAnimateMinimizedDockEnter/);
+  assert.match(source, /useMinimizedDockStackPromotion\(minimizedDockSlots\)/);
+  assert.match(source, /data-stack-dispatching=\{/);
+  assert.match(source, /data-promoted-from-stack=\{/);
   assert.match(source, /--desktop-dock-collapse-inline-size/);
   assert.match(source, /--desktop-dock-collapse-block-size/);
   assert.match(source, /slotElement\.dataset\.collapsing = "true";/);
@@ -59,11 +83,13 @@ test("dock hover panels survive pointer travel from slot to panel", () => {
     source,
     /const runDockMinimizedLaunchAfterCollapse = useCallback/
   );
-  assert.match(source, /const dockMinimizedSlotCollapseLaunchDelayMs = 260;/);
   assert.match(
     source,
-    /runDockMinimizedLaunchAfterCollapse\([\s\S]*?slot\.anchorKey[\s\S]*?context\.genie\.launchNodeFromAnchor/
+    /const runDockMinimizedLaunchAfterCollapse = useCallback\([\s\S]*?beginDockMinimizedInteraction\(anchorKey\);[\s\S]*?scheduleCollapsingMinimizedLaunchClear\(anchorKey\);[\s\S]*?launch\(\);/
   );
+  assert.match(source, /collapsingMinimizedLaunchAnchorKeys/);
+  assert.match(source, /minimizedDockSlotLayoutAnimationMs = 720;/);
+  assert.doesNotMatch(source, /dockMinimizedSlotCollapseLaunchDelayMs/);
   assert.doesNotMatch(
     source,
     /desktop-dock__minimized-btn[\s\S]{0,260}?beginDockIconInteraction/

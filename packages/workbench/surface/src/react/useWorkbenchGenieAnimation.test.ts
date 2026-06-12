@@ -24,4 +24,6 @@ test("genie anchors keep usable rects while minimized dock slots animate", () =>
     /width: rect\.width >= minimumUsableSize \? rect\.width : fallbackSize/
   );
   assert.match(source, /resolveDockAnchorViewportRect\(element\)/);
+  assert.match(source, /shouldAnimateMinimizedDockEnter/);
+  assert.match(source, /registerMinimizedDockEnterAnimation\(nodeID\)/);
 });

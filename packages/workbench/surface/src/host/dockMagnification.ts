@@ -11,6 +11,8 @@ const MAGNIFICATION_SETTLE_EPSILON = 0.2;
 const MAGNIFICATION_SIZE_EPSILON = 0.2;
 const MAX_MAGNIFICATION_STEP_SECONDS = 1 / 30;
 const MAGNIFICATION_INFLUENCE_PADDING = 8;
+const DOCK_MAGNIFICATION_ENTRY_RAMP_MS = 90;
+const DOCK_MAGNIFICATION_CROSS_AXIS_PADDING = 8;
 
 interface DockMagnificationSpring {
   value: number;
@@ -19,6 +21,20 @@ interface DockMagnificationSpring {
 
 interface DockMagnificationAppliedStyle {
   size: number;
+}
+
+export interface DockMagnificationSlotRect {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+}
+
+interface DockMagnificationHitBounds {
+  crossEnd: number;
+  crossStart: number;
+  mainEnd: number;
+  mainStart: number;
 }
 
 const dockMagnificationShellBySlot = new WeakMap<
@@ -39,6 +55,86 @@ export function mapDistanceToTargetSize(
 
   const influence = 1 - absoluteDistance / halfRange;
   return baseSize + (peakSize - baseSize) * influence;
+}
+
+export function applyDockMagnificationEntryRamp(
+  targetSize: number,
+  baseSize: number,
+  progress: number
+): number {
+  const clampedProgress = Math.min(1, Math.max(0, progress));
+  return baseSize + (targetSize - baseSize) * clampedProgress;
+}
+
+export function resolveDockMagnificationHitBounds(
+  slotRects: readonly DockMagnificationSlotRect[],
+  dockPlacement: "bottom" | "left",
+  crossAxisPadding = DOCK_MAGNIFICATION_CROSS_AXIS_PADDING
+): DockMagnificationHitBounds | null {
+  if (slotRects.length === 0) {
+    return null;
+  }
+
+  let mainStart = Number.POSITIVE_INFINITY;
+  let mainEnd = Number.NEGATIVE_INFINITY;
+  let crossStart = Number.POSITIVE_INFINITY;
+  let crossEnd = Number.NEGATIVE_INFINITY;
+
+  for (const rect of slotRects) {
+    if (dockPlacement === "left") {
+      mainStart = Math.min(mainStart, rect.top);
+      mainEnd = Math.max(mainEnd, rect.bottom);
+      crossStart = Math.min(crossStart, rect.left);
+      crossEnd = Math.max(crossEnd, rect.right);
+    } else {
+      mainStart = Math.min(mainStart, rect.left);
+      mainEnd = Math.max(mainEnd, rect.right);
+      crossStart = Math.min(crossStart, rect.top);
+      crossEnd = Math.max(crossEnd, rect.bottom);
+    }
+  }
+
+  return {
+    crossEnd: crossEnd + crossAxisPadding,
+    crossStart: crossStart - crossAxisPadding,
+    mainEnd,
+    mainStart
+  };
+}
+
+function isDockMagnificationPointInsideHitBounds({
+  clientX,
+  clientY,
+  dockPlacement,
+  hitBounds
+}: {
+  clientX: number;
+  clientY: number;
+  dockPlacement: "bottom" | "left";
+  hitBounds: DockMagnificationHitBounds | null;
+}): boolean {
+  if (!hitBounds) {
+    return false;
+  }
+
+  const mainAxis = dockPlacement === "left" ? clientY : clientX;
+  const crossAxis = dockPlacement === "left" ? clientX : clientY;
+  return (
+    mainAxis >= hitBounds.mainStart &&
+    mainAxis <= hitBounds.mainEnd &&
+    crossAxis >= hitBounds.crossStart &&
+    crossAxis <= hitBounds.crossEnd
+  );
+}
+
+export function resolveDockMagnificationSlotCenter(
+  rect: DockMagnificationSlotRect,
+  dockPlacement: "bottom" | "left",
+  baseSize = DOCK_ICON_BASE_SIZE
+): number {
+  return dockPlacement === "left"
+    ? rect.top + baseSize / 2
+    : rect.left + baseSize / 2;
 }
 
 const DOCK_MAGNIFICATION_SPRING_SUBSTEPS = 8;
@@ -86,6 +182,16 @@ function hasAppliedSizeChanged(
   }
 
   return Math.abs(previous.size - next.size) > MAGNIFICATION_SIZE_EPSILON;
+}
+
+export function isDockMagnificationSlotLayoutLocked(
+  slotElement: HTMLElement
+): boolean {
+  return (
+    slotElement.dataset.collapsing === "true" ||
+    slotElement.dataset.presence === "entering" ||
+    slotElement.dataset.presence === "exiting"
+  );
 }
 
 function resolveDockMagnificationShell(
@@ -181,7 +287,9 @@ export function useDockMagnification({
   );
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number | null>(null);
+  const entryRampStartedAtRef = useRef<number | null>(null);
   const restCentersRef = useRef<Map<string, number> | null>(null);
+  const hitBoundsRef = useRef<DockMagnificationHitBounds | null>(null);
   const slotOrderRef = useRef<string[]>([]);
   const magnifyActiveRef = useRef(false);
 
@@ -211,17 +319,25 @@ export function useDockMagnification({
   const captureRestCenters = useCallback(() => {
     const slots = slotRefs.current;
     const centers = new Map<string, number>();
+    const slotRects: DockMagnificationSlotRect[] = [];
     const order: string[] = [];
     for (const [anchorKey, slotElement] of slots) {
       order.push(anchorKey);
       const rect = slotElement.getBoundingClientRect();
-      const center =
-        dockPlacement === "left"
-          ? rect.top + rect.height / 2
-          : rect.left + rect.width / 2;
+      slotRects.push({
+        bottom: rect.bottom,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top
+      });
+      const center = resolveDockMagnificationSlotCenter(rect, dockPlacement);
       centers.set(anchorKey, center);
     }
     slotOrderRef.current = order;
+    hitBoundsRef.current = resolveDockMagnificationHitBounds(
+      slotRects,
+      dockPlacement
+    );
     restCentersRef.current = centers;
   }, [dockPlacement, slotRefs]);
 
@@ -233,7 +349,7 @@ export function useDockMagnification({
 
       const pointerAxis = pointerAxisRef.current;
       if (pointerAxis !== null) {
-        captureRestCenters();
+        entryRampStartedAtRef.current ??= frameTime;
       }
       const slots = slotRefs.current;
       const order = slotOrderRef.current;
@@ -251,6 +367,11 @@ export function useDockMagnification({
       let allSettled = true;
       const influenceRadius =
         DOCK_MAGNIFICATION_HALF_RANGE + MAGNIFICATION_INFLUENCE_PADDING;
+      const entryRampProgress =
+        pointerAxis === null || entryRampStartedAtRef.current === null
+          ? 1
+          : (frameTime - entryRampStartedAtRef.current) /
+            DOCK_MAGNIFICATION_ENTRY_RAMP_MS;
 
       for (let index = 0; index < order.length; index += 1) {
         const anchorKey = order[index];
@@ -270,7 +391,11 @@ export function useDockMagnification({
         const absoluteDistance = Math.abs(distance);
         const inRange = absoluteDistance < influenceRadius;
         const targetSize = inRange
-          ? mapDistanceToTargetSize(distance)
+          ? applyDockMagnificationEntryRamp(
+              mapDistanceToTargetSize(distance),
+              DOCK_ICON_BASE_SIZE,
+              entryRampProgress
+            )
           : DOCK_ICON_BASE_SIZE;
 
         const currentSpring = springsRef.current.get(anchorKey) ?? {
@@ -319,6 +444,12 @@ export function useDockMagnification({
           continue;
         }
 
+        if (isDockMagnificationSlotLayoutLocked(slotElement)) {
+          springsRef.current.delete(anchorKey);
+          clearDockSlotMagnification(slotElement, appliedStylesRef.current);
+          continue;
+        }
+
         if (
           pointerAxis === null &&
           isDockMagnificationSpringSettled(nextSpring, DOCK_ICON_BASE_SIZE)
@@ -343,7 +474,9 @@ export function useDockMagnification({
       }
 
       if (pointerAxis === null && allSettled) {
+        entryRampStartedAtRef.current = null;
         restCentersRef.current = null;
+        hitBoundsRef.current = null;
         slotOrderRef.current = [];
         setMagnifyActive(false);
       }
@@ -368,10 +501,28 @@ export function useDockMagnification({
 
   const handlePointerMove = useCallback(
     (clientX: number, clientY: number) => {
-      pendingPointerAxisRef.current =
-        dockPlacement === "left" ? clientY : clientX;
       if (restCentersRef.current === null) {
         captureRestCenters();
+      }
+
+      if (
+        !isDockMagnificationPointInsideHitBounds({
+          clientX,
+          clientY,
+          dockPlacement,
+          hitBounds: hitBoundsRef.current
+        })
+      ) {
+        pendingPointerAxisRef.current = null;
+        pointerAxisRef.current = null;
+        entryRampStartedAtRef.current = null;
+        scheduleAnimation();
+        return;
+      }
+
+      pendingPointerAxisRef.current =
+        dockPlacement === "left" ? clientY : clientX;
+      if (!magnifyActiveRef.current) {
         setMagnifyActive(true);
       }
       scheduleAnimation();
@@ -390,6 +541,7 @@ export function useDockMagnification({
       springsRef.current.delete(anchorKey);
       restCentersRef.current?.delete(anchorKey);
       appliedStylesRef.current.delete(anchorKey);
+      hitBoundsRef.current = null;
       slotOrderRef.current = slotOrderRef.current.filter(
         (key) => key !== anchorKey
       );
@@ -405,6 +557,7 @@ export function useDockMagnification({
     stopAnimation();
     pendingPointerAxisRef.current = null;
     pointerAxisRef.current = null;
+    entryRampStartedAtRef.current = null;
     lastFrameTimeRef.current = null;
   }, [stopAnimation]);
 
@@ -416,9 +569,11 @@ export function useDockMagnification({
     springsRef.current.clear();
     appliedStylesRef.current.clear();
     restCentersRef.current = null;
+    hitBoundsRef.current = null;
     slotOrderRef.current = [];
     pointerAxisRef.current = null;
     pendingPointerAxisRef.current = null;
+    entryRampStartedAtRef.current = null;
     setMagnifyActive(false);
   }, [setMagnifyActive, slotRefs, stopAnimation]);
 

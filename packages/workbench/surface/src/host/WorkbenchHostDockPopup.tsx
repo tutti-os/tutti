@@ -39,7 +39,7 @@ const dockPopupGridGapPx = 8;
 const dockPopupPanelPaddingInlinePx = 12;
 const dockPopupPanelBorderInlinePx = 2;
 const dockPopupPlacementGapPx = 14;
-const dockPopupMinimizedStackLaunchDisappearMs = 120;
+const dockPopupMinimizedStackLaunchDisappearMs = 0;
 const dockPopupMinimizedStackPopupZIndex = 100300;
 export interface WorkbenchHostDockPopupAnchorRect {
   dockRight?: number;

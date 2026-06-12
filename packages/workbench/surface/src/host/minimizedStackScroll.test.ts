@@ -115,7 +115,7 @@ test("left minimized stack popup shifts left when extra gutter is required", () 
       anchorWidth: 40,
       leftGutterPx: 4
     }),
-    50
+    70
   );
   assert.equal(
     resolveMinimizedStackPopupLeftPx({
@@ -123,7 +123,7 @@ test("left minimized stack popup shifts left when extra gutter is required", () 
       anchorWidth: 40,
       leftGutterPx: 28
     }),
-    26
+    46
   );
 });
 
@@ -133,7 +133,7 @@ test("left minimized stack popup clears the dock viewport", () => {
       anchorLeft: 24,
       anchorWidth: 40
     }),
-    50
+    70
   );
   assert.equal(
     resolveMinimizedStackPopupLeftPx({

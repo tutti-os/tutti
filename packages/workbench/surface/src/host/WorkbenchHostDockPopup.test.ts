@@ -9,7 +9,7 @@ const source = readFileSync(
 );
 
 test("minimized stack popup cards disappear before restoring", () => {
-  assert.match(source, /const dockPopupMinimizedStackLaunchDisappearMs = 120;/);
+  assert.match(source, /const dockPopupMinimizedStackLaunchDisappearMs = 0;/);
   assert.match(
     source,
     /const \[isLaunching, setIsLaunching\] = useState\(false\);/

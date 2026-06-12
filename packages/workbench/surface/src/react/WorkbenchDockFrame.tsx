@@ -81,6 +81,9 @@ export function WorkbenchDockFrame<TData>({
                 },
                 registerDockAnchor: (anchorKey, element) => {
                   genie.registerDockAnchor(anchorKey, element);
+                },
+                shouldAnimateMinimizedDockEnter: (nodeID) => {
+                  return genie.shouldAnimateMinimizedDockEnter(nodeID);
                 }
               },
               minimizedNodes,

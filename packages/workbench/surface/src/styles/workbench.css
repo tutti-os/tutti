@@ -660,7 +660,7 @@
       2
   );
   --desktop-dock-indicator-offset: -5.4px;
-  --desktop-dock-left-viewport-size: 104px;
+  --desktop-dock-left-viewport-size: 124px;
   --desktop-dock-safe-inline: 64px;
   --desktop-dock-viewport-size: 88px;
   position: relative;
@@ -1074,14 +1074,51 @@
 
 .desktop-dock__slot[data-presence="entering"],
 .desktop-dock__separator[data-presence="entering"] {
-  animation: desktop-dock-presence-enter 300ms cubic-bezier(0.16, 1, 0.3, 1)
+  animation: desktop-dock-presence-enter 600ms cubic-bezier(0.16, 1, 0.3, 1)
     both;
 }
 
 .desktop-dock__slot--minimized[data-presence="entering"] {
   min-width: 0;
-  animation: desktop-dock-minimized-slot-expand 360ms
+  animation: desktop-dock-minimized-slot-expand 720ms
     cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.desktop-dock__slot--minimized[data-promoted-from-stack="true"][data-presence="entering"] {
+  animation: none;
+}
+
+.desktop-dock__slot--minimized[data-promoted-from-stack="true"][data-presence="entering"]
+  .desktop-dock__minimized-preview {
+  animation: none;
+}
+
+.desktop-dock[data-dock-placement="left"]
+  .desktop-dock__slot--minimized[data-promoted-from-stack="true"][data-presence="entering"] {
+  animation: none;
+}
+
+.desktop-dock[data-dock-placement="left"]
+  .desktop-dock__slot--minimized[data-promoted-from-stack="true"][data-presence="entering"]
+  .desktop-dock__minimized-preview {
+  animation: none;
+}
+
+.desktop-dock__slot--minimized[data-stack-dispatching="true"]
+  .desktop-dock__minimized-stack-icon
+  .desktop-dock__minimized-stack-layer--0:not(
+    .desktop-dock__minimized-stack-layer-back
+  ) {
+  animation: none;
+}
+
+.desktop-dock[data-dock-placement="left"]
+  .desktop-dock__slot--minimized[data-stack-dispatching="true"]
+  .desktop-dock__minimized-stack-icon
+  .desktop-dock__minimized-stack-layer--0:not(
+    .desktop-dock__minimized-stack-layer-back
+  ) {
+  animation: none;
 }
 
 .desktop-dock[data-dock-placement="left"]
@@ -1094,7 +1131,7 @@
   .desktop-dock__minimized-preview,
 .desktop-dock__slot--minimized[data-presence="entering"]
   .desktop-dock__minimized-stack-icon {
-  animation: desktop-dock-minimized-icon-appear 320ms
+  animation: desktop-dock-minimized-icon-appear 640ms
     cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -1109,14 +1146,14 @@
 
 .desktop-dock__slot[data-presence="exiting"],
 .desktop-dock__separator[data-presence="exiting"] {
-  animation: desktop-dock-presence-exit 300ms cubic-bezier(0.7, 0, 0.84, 0) both;
+  animation: desktop-dock-presence-exit 600ms cubic-bezier(0.7, 0, 0.84, 0) both;
   pointer-events: none;
 }
 
 .desktop-dock__slot--minimized[data-collapsing="true"],
 .desktop-dock__slot--minimized[data-presence="exiting"] {
   min-width: 0;
-  animation: desktop-dock-minimized-slot-collapse 360ms
+  animation: desktop-dock-minimized-slot-collapse 720ms
     cubic-bezier(0.4, 0, 0.2, 1) both;
   pointer-events: none;
 }
@@ -1142,7 +1179,7 @@
   .desktop-dock__minimized-preview,
 .desktop-dock__slot--minimized[data-presence="exiting"]
   .desktop-dock__minimized-stack-icon {
-  animation: desktop-dock-minimized-icon-disappear 320ms
+  animation: desktop-dock-minimized-icon-disappear 640ms
     cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
@@ -1402,19 +1439,22 @@
   background: var(--workbench-foreground);
 }
 
-.desktop-dock__slot[data-attention-active="true"] .desktop-dock__icon-shell {
+.desktop-dock__slot[data-attention-active="true"] .desktop-dock__icon-content {
   animation: desktop-dock-bounce-translate 0.6s ease;
 }
 
-.desktop-dock__slot[data-bouncing="true"] .desktop-dock__icon-shell,
+.desktop-dock__slot[data-bouncing="true"] .desktop-dock__icon-content,
 .desktop-dock__slot[data-bouncing="true"] .desktop-dock__minimized-preview,
 .desktop-dock__slot[data-bouncing="true"] .desktop-dock__minimized-stack-icon {
   animation: desktop-dock-bounce-translate 0.6s ease;
 }
 
 .desktop-dock[data-dock-placement="left"]
+  .desktop-dock__slot[data-attention-active="true"]
+  .desktop-dock__icon-content,
+.desktop-dock[data-dock-placement="left"]
   .desktop-dock__slot[data-bouncing="true"]
-  .desktop-dock__icon-shell,
+  .desktop-dock__icon-content,
 .desktop-dock[data-dock-placement="left"]
   .desktop-dock__slot[data-bouncing="true"]
   .desktop-dock__minimized-preview,
@@ -1513,6 +1553,13 @@
     rotate(var(--desktop-dock-stack-layer-rotate, 0deg));
   transform-origin: center bottom;
   z-index: var(--desktop-dock-stack-layer-z, 1);
+}
+
+.desktop-dock:not([data-dock-pointer-active="true"])
+  .desktop-dock__minimized-stack-layer {
+  transition:
+    transform 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 320ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .desktop-dock[data-dock-placement="left"] .desktop-dock__minimized-stack-layer {
@@ -2081,6 +2128,90 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
     height: 0;
     margin-block: calc(var(--desktop-dock-gap) / -2);
     opacity: 0;
+  }
+}
+
+@keyframes desktop-dock-minimized-slot-promote {
+  from {
+    width: 0;
+    height: var(--desktop-dock-size);
+    margin-inline: calc(var(--desktop-dock-gap) / -2);
+    opacity: 0;
+  }
+
+  to {
+    width: var(--desktop-dock-size);
+    height: var(--desktop-dock-size);
+    margin-inline: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes desktop-dock-minimized-slot-promote-left {
+  from {
+    width: var(--desktop-dock-size);
+    height: 0;
+    margin-block: calc(var(--desktop-dock-gap) / -2);
+    opacity: 0;
+  }
+
+  to {
+    width: var(--desktop-dock-size);
+    height: var(--desktop-dock-size);
+    margin-block: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes desktop-dock-minimized-preview-promote {
+  from {
+    opacity: 0;
+    translate: 28px 10px;
+    scale: 0.88;
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+@keyframes desktop-dock-minimized-preview-promote-left {
+  from {
+    opacity: 0;
+    translate: 8px 28px;
+    scale: 0.88;
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+@keyframes desktop-dock-stack-layer-reveal {
+  from {
+    transform: translate(18px, 10px) scale(0.9);
+    opacity: 0;
+  }
+
+  to {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes desktop-dock-stack-layer-reveal-left {
+  from {
+    transform: translate(8px, 18px) scale(0.9);
+    opacity: 0;
+  }
+
+  to {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
   }
 }
 

@@ -26,6 +26,7 @@ import {
 const genieDurationMs = 400;
 const genieMaxDevicePixelRatio = 2;
 const genieSnapshotScale = 1;
+const minimizedDockSlotEnterAnimationMs = 720;
 const dockPreviewMaxWidth = 260;
 const dockPreviewMaxHeight = 170;
 const dockPreviewImageCacheMaxEntries = 96;
@@ -67,6 +68,7 @@ export interface WorkbenchGenieController {
   ) => void;
   minimizeNodeToAnchor: (nodeID: string, minimize?: () => void) => void;
   registerDockAnchor: (anchorKey: string, element: HTMLElement | null) => void;
+  shouldAnimateMinimizedDockEnter: (nodeID: string) => boolean;
 }
 
 export type WorkbenchNodePreviewImageCapture<TData = unknown> = (
@@ -436,6 +438,10 @@ export function useWorkbenchGenieAnimation<TData>({
   const rafRef = useRef<number | null>(null);
   const animationGenerationRef = useRef(0);
   const animationCleanupRef = useRef<(() => void) | null>(null);
+  const minimizedDockEnterAnimationNodeIdsRef = useRef(new Set<string>());
+  const minimizedDockEnterAnimationTimersRef = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>()
+  );
   const [isCanvasActive, setIsCanvasActive] = useState(false);
   const [genieHiddenNodeIDs, setGenieHiddenNodeIDs] = useState(
     () => new Set<string>()
@@ -470,6 +476,44 @@ export function useWorkbenchGenieAnimation<TData>({
     (node: WorkbenchNode<TData>) => resolveDockAnchorKey?.(node) ?? node.id,
     [resolveDockAnchorKey]
   );
+
+  const releaseMinimizedDockEnterAnimation = useCallback((nodeID: string) => {
+    const timer = minimizedDockEnterAnimationTimersRef.current.get(nodeID);
+    if (timer) {
+      clearTimeout(timer);
+      minimizedDockEnterAnimationTimersRef.current.delete(nodeID);
+    }
+    minimizedDockEnterAnimationNodeIdsRef.current.delete(nodeID);
+  }, []);
+
+  const registerMinimizedDockEnterAnimation = useCallback(
+    (nodeID: string) => {
+      releaseMinimizedDockEnterAnimation(nodeID);
+      minimizedDockEnterAnimationNodeIdsRef.current.add(nodeID);
+    },
+    [releaseMinimizedDockEnterAnimation]
+  );
+
+  const scheduleReleaseMinimizedDockEnterAnimation = useCallback(
+    (nodeID: string, delayMs = minimizedDockSlotEnterAnimationMs) => {
+      const existing = minimizedDockEnterAnimationTimersRef.current.get(nodeID);
+      if (existing) {
+        clearTimeout(existing);
+      }
+      minimizedDockEnterAnimationTimersRef.current.set(
+        nodeID,
+        setTimeout(() => {
+          minimizedDockEnterAnimationTimersRef.current.delete(nodeID);
+          minimizedDockEnterAnimationNodeIdsRef.current.delete(nodeID);
+        }, delayMs)
+      );
+    },
+    []
+  );
+
+  const shouldAnimateMinimizedDockEnter = useCallback((nodeID: string) => {
+    return minimizedDockEnterAnimationNodeIdsRef.current.has(nodeID);
+  }, []);
 
   const hideNodeForGenie = useCallback((nodeID: string) => {
     setGenieHiddenNodeIDs((current) => {
@@ -825,6 +869,8 @@ export function useWorkbenchGenieAnimation<TData>({
         };
         animationCleanupRef.current = cleanupHiddenNode;
 
+        registerMinimizedDockEnterAnimation(nodeID);
+
         flushSync(() => {
           hideNodeForGenie(nodeID);
           runMinimize();
@@ -834,6 +880,7 @@ export function useWorkbenchGenieAnimation<TData>({
           window.requestAnimationFrame(() => resolve());
         });
         if (generation !== animationGenerationRef.current) {
+          releaseMinimizedDockEnterAnimation(nodeID);
           return;
         }
 
@@ -843,6 +890,7 @@ export function useWorkbenchGenieAnimation<TData>({
         const anchorKey = resolveAnchorKeyForNode(minimizedTarget);
         const dockRect = resolveDockAnchorRect(anchorKey);
         if (!dockRect || !isUsableGenieRect(dockRect)) {
+          releaseMinimizedDockEnterAnimation(nodeID);
           animationCleanupRef.current = null;
           cleanupHiddenNode();
           return;
@@ -852,12 +900,14 @@ export function useWorkbenchGenieAnimation<TData>({
           direction: "minimize",
           dockRect,
           onCancel: () => {
+            releaseMinimizedDockEnterAnimation(nodeID);
             flushSync(() => {
               showNodeForGenie(nodeID);
             });
             clearCanvas();
           },
           onComplete: () => {
+            scheduleReleaseMinimizedDockEnterAnimation(nodeID);
             flushSync(() => {
               showNodeForGenie(nodeID);
             });
@@ -874,15 +924,29 @@ export function useWorkbenchGenieAnimation<TData>({
       captureNodePreviewImage,
       dockPreviewCache,
       hideNodeForGenie,
+      registerMinimizedDockEnterAnimation,
+      releaseMinimizedDockEnterAnimation,
       resolveAnchorKeyForNode,
       resolveDockPreviewCacheKey,
       resolveDockAnchorRect,
       resolveNodeElement,
       runGenieAnimation,
+      scheduleReleaseMinimizedDockEnterAnimation,
       setupCanvas,
       showNodeForGenie,
       stopAnimation
     ]
+  );
+
+  useEffect(
+    () => () => {
+      for (const timer of minimizedDockEnterAnimationTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+      minimizedDockEnterAnimationTimersRef.current.clear();
+      minimizedDockEnterAnimationNodeIdsRef.current.clear();
+    },
+    []
   );
 
   return {
@@ -906,6 +970,7 @@ export function useWorkbenchGenieAnimation<TData>({
     ),
     launchNodeFromAnchor,
     minimizeNodeToAnchor,
-    registerDockAnchor
+    registerDockAnchor,
+    shouldAnimateMinimizedDockEnter
   };
 }
