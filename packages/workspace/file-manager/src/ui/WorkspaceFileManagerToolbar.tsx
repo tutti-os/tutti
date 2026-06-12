@@ -2,10 +2,10 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   Button,
-  GridHorizontalLinedIcon,
-  LayoutMenuIcon,
   LoadingIcon,
   RefreshIcon,
+  ViewGridLinedIcon,
+  ViewListLinedIcon,
   cn
 } from "@tutti-os/ui-system";
 import { useState, type ReactElement } from "react";
@@ -139,7 +139,7 @@ function LayoutModeToggle({
           onLayoutModeChange("icon");
         }}
       >
-        <LayoutMenuIcon className="size-3.5" />
+        <ViewGridLinedIcon className="size-4" />
       </LayoutModeButton>
       <LayoutModeButton
         active={layoutMode === "list"}
@@ -148,7 +148,7 @@ function LayoutModeToggle({
           onLayoutModeChange("list");
         }}
       >
-        <GridHorizontalLinedIcon className="size-3.5" />
+        <ViewListLinedIcon className="size-4" />
       </LayoutModeButton>
     </div>
   );
@@ -170,9 +170,9 @@ function LayoutModeButton({
       aria-label={ariaLabel}
       aria-pressed={active}
       className={cn(
-        "size-6 min-w-6 rounded-[4px] p-0 text-[var(--text-secondary)]",
+        "size-6 min-w-6 rounded-[4px] p-0 text-text-secondary",
         active &&
-          "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-sm"
+          "!bg-background-fronted text-foreground hover:!bg-background-fronted"
       )}
       size="icon-sm"
       title={ariaLabel}

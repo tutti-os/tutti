@@ -164,7 +164,7 @@ test("Chinese language contexts use the CJK font stack and medium weights", () =
   );
   assert.match(
     themeSource,
-    /--rich-text-mention-issue:\s*rgb\(109, 127, 245\)/
+    /--rich-text-mention-issue:\s*var\(--tutti-purple\)/
   );
   assert.match(themeSource, /--accent-claude:\s*rgb\(251 111 62\)/);
   assert.match(themeSource, /--folder:\s*rgb\(80, 175, 238\)/);

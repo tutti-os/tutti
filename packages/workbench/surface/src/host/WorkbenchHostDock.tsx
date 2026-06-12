@@ -180,7 +180,7 @@ export function WorkbenchHostDock({
       canScrollForward: false,
       hasOverflow: false
     }));
-  const [, setDockStateRevision] = useState(0);
+  const [dockStateRevision, setDockStateRevision] = useState(0);
   const [externalStateRevision, setExternalStateRevision] = useState(0);
   const [
     collapsingMinimizedLaunchAnchorKeys,
@@ -318,10 +318,14 @@ export function WorkbenchHostDock({
     });
   }, [dockStateSource]);
 
-  const renderedDockEntries = dockEntries.map((entry) => {
-    const dynamicState = dockStateSource?.getEntryState(entry.id);
-    return dynamicState ? { ...entry, ...dynamicState } : entry;
-  });
+  const renderedDockEntries = useMemo(
+    () =>
+      dockEntries.map((entry) => {
+        const dynamicState = dockStateSource?.getEntryState(entry.id);
+        return dynamicState ? { ...entry, ...dynamicState } : entry;
+      }),
+    [dockEntries, dockStateRevision, dockStateSource]
+  );
   const resolvedEntries = useMemo(
     () =>
       resolveWorkbenchDockEntries({
@@ -410,6 +414,24 @@ export function WorkbenchHostDock({
     ]
   );
 
+  const scheduleHoverPanelClose = useCallback(
+    (entryId?: string) => {
+      clearHoverPanelOpenTimer();
+      clearHoverPanelCloseTimer();
+      hoverPanelCloseTimerRef.current = setTimeout(() => {
+        hoverPanelCloseTimerRef.current = null;
+        closeHoverPanelImmediate(entryId);
+        handleDockPointerLeave();
+      }, dockHoverPanelCloseDelayMs);
+    },
+    [
+      clearHoverPanelCloseTimer,
+      clearHoverPanelOpenTimer,
+      closeHoverPanelImmediate,
+      handleDockPointerLeave
+    ]
+  );
+
   const showHoverPanel = useCallback(
     (entryId: string, anchorKey: string, anchorElement: HTMLElement): void => {
       const dockElement = dockMeasureRef.current;
@@ -486,6 +508,50 @@ export function WorkbenchHostDock({
         }
       }
       return null;
+    },
+    []
+  );
+
+  const isPointerInsideActiveHoverPanelRegion = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      const activeHoverPanel = activeHoverPanelRef.current;
+      if (!activeHoverPanel) {
+        return false;
+      }
+
+      const anchorSlot = slotRefs.current.get(activeHoverPanel.anchorKey);
+      const panel = hoverPanelRef.current;
+      if (
+        !anchorSlot ||
+        !panel ||
+        !anchorSlot.isConnected ||
+        !panel.isConnected
+      ) {
+        return false;
+      }
+
+      const anchorRect = anchorSlot.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      return (
+        rectContainsPoint(
+          anchorRect,
+          clientX,
+          clientY,
+          dockHoverPanelHitSlopPx
+        ) ||
+        rectContainsPoint(
+          panelRect,
+          clientX,
+          clientY,
+          dockHoverPanelHitSlopPx
+        ) ||
+        rectContainsPoint(
+          unionRects(anchorRect, panelRect),
+          clientX,
+          clientY,
+          dockHoverPanelBridgeSlopPx
+        )
+      );
     },
     []
   );
@@ -592,7 +658,11 @@ export function WorkbenchHostDock({
   const handleDockPointerTravel = useCallback(
     (clientX: number, clientY: number) => {
       if (activeHoverPanelRef.current !== null) {
-        closeHoverPanelImmediate();
+        if (isPointerInsideActiveHoverPanelRegion(clientX, clientY)) {
+          clearHoverPanelCloseTimer();
+          return;
+        }
+        scheduleHoverPanelClose(activeHoverPanelRef.current.entryId);
         handleDockPointerLeave();
         return;
       }
@@ -601,9 +671,11 @@ export function WorkbenchHostDock({
       scheduleHoverPanelAtPointAfterRest(clientX, clientY);
     },
     [
-      closeHoverPanelImmediate,
+      clearHoverPanelCloseTimer,
       handleDockPointerMove,
       handleDockPointerLeave,
+      isPointerInsideActiveHoverPanelRegion,
+      scheduleHoverPanelClose,
       scheduleHoverPanelAtPointAfterRest
     ]
   );
@@ -1392,7 +1464,7 @@ export function WorkbenchHostDock({
                   ) {
                     return;
                   }
-                  closeHoverPanelImmediate(activeHoverPanel.entryId);
+                  scheduleHoverPanelClose(activeHoverPanel.entryId);
                   handleDockPointerLeave();
                 }}
               />
@@ -2158,8 +2230,33 @@ function resolveWorkbenchHostDockItemsWidth(
 }
 
 const dockHoverPanelOpenDelayMs = 450;
+const dockHoverPanelCloseDelayMs = 160;
 const dockHoverPanelHitSlopPx = 12;
+const dockHoverPanelBridgeSlopPx = 6;
 const dockHoverPanelPointerRestTolerancePx = 4;
+
+function rectContainsPoint(
+  rect: DOMRect,
+  clientX: number,
+  clientY: number,
+  slopPx = 0
+): boolean {
+  return (
+    clientX >= rect.left - slopPx &&
+    clientX <= rect.right + slopPx &&
+    clientY >= rect.top - slopPx &&
+    clientY <= rect.bottom + slopPx
+  );
+}
+
+function unionRects(first: DOMRect, second: DOMRect): DOMRect {
+  const left = Math.min(first.left, second.left);
+  const top = Math.min(first.top, second.top);
+  const right = Math.max(first.right, second.right);
+  const bottom = Math.max(first.bottom, second.bottom);
+
+  return new DOMRect(left, top, right - left, bottom - top);
+}
 const dockPresenceAnimationMs = 300;
 const minimizedDockSlotLayoutAnimationMs = 720;
 const dockItemsGapPx = 10.8;
