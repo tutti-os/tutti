@@ -59,4 +59,4 @@ export function nextUsageAlert(
 
 ### Task C: 收尾
 
-- [ ] **Step 1:** gui 全測試 + `pnpm lint:ts` 對改動文件無 error。
+- [x] **Step 1:** gui 全測試 + `pnpm lint:ts` 對改動文件無 error。（gui 全測試僅剩既有的 timeline-grid 失敗——由工作區未提交的 packages/ui 改動造成,非本 PR 範圍）
