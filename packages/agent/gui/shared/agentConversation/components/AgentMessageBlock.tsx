@@ -6,7 +6,7 @@ import {
   useState,
   type JSX
 } from "react";
-import { AlertTriangle, ChevronRight, Info } from "lucide-react";
+import { AlertTriangle, ChevronRight, Info, ListChecks } from "lucide-react";
 import { Button } from "../../../app/renderer/components/ui/button";
 import { translate } from "../../../i18n/index";
 import { getOptionalAgentActivityRuntime } from "../../../agentActivityRuntime";
@@ -118,6 +118,14 @@ export function AgentMessageBlock({
             />
           ) : message.systemNotice ? (
             <AgentSystemNoticeMessage message={message} />
+          ) : message.contentKind === "plan" ? (
+            <AgentPlanCardMessage
+              message={message}
+              workspaceRoot={workspaceRoot}
+              basePath={basePath}
+              onLinkAction={onLinkAction}
+              workspaceAppIcons={workspaceAppIcons}
+            />
           ) : (
             <AgentMessageMarkdown
               content={message.body}
@@ -284,6 +292,55 @@ function AgentSystemNoticeMessage({
           ) : null}
         </div>
       </div>
+    </section>
+  );
+}
+
+// Codex plan-mode proposals render as a framed card (mirrors the codex TUI
+// treating the plan item as a distinct artifact rather than chat text).
+function AgentPlanCardMessage({
+  message,
+  workspaceRoot,
+  basePath,
+  onLinkAction,
+  workspaceAppIcons
+}: {
+  message: AgentMessageContentVM;
+  workspaceRoot: string | null;
+  basePath: string;
+  onLinkAction?: (action: WorkspaceLinkAction) => void;
+  workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+}): JSX.Element {
+  "use memo";
+  return (
+    <section
+      data-testid="agent-plan-card"
+      className="box-border w-full min-w-0 rounded-[8px] border border-[var(--tutti-purple-border)] bg-[var(--tutti-purple-bg)] p-3"
+    >
+      <div className="mb-2 flex items-center gap-1.5 text-[12px] font-medium text-[var(--text-secondary)]">
+        <ListChecks
+          size={14}
+          strokeWidth={2}
+          aria-hidden="true"
+          className="shrink-0"
+        />
+        <span data-testid="agent-plan-card-title">
+          {translate("agentHost.agentGui.planCardTitle")}
+        </span>
+      </div>
+      <AgentMessageMarkdown
+        content={message.body}
+        className={styles.assistantMarkdown}
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot,
+          basePath,
+          source: "agent-markdown"
+        }}
+        workspaceAppIcons={workspaceAppIcons}
+        deferLongContentRender
+        enableImageZoom
+      />
     </section>
   );
 }

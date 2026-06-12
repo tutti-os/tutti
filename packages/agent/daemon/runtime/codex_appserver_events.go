@@ -165,8 +165,26 @@ func (a *CodexAppServerAdapter) appServerItemEvents(
 			return nil
 		}
 		a.markSessionPlanItem(session.AgentSessionID)
-		events := normalizer.AppendAssistantChunk(session, turnID, asStringRaw(item["text"]))
-		events = append(events, normalizer.Finish(session, turnID, messageStreamStateCompleted)...)
+		// Render the proposed plan as a dedicated card instead of merging it
+		// into the assistant bubble: close any streaming text first, then
+		// emit a standalone message tagged messageKind=plan for the GUI.
+		events := normalizer.Finish(session, turnID, messageStreamStateCompleted)
+		planMessageID := "plan:" + firstNonEmpty(asString(item["id"]), newID())
+		events = append(events, newTurnActivityEventWithID(
+			session,
+			planMessageID,
+			EventMessage,
+			turnID,
+			messageStreamStateCompleted,
+			RoleAssistant,
+			asStringRaw(item["text"]),
+			map[string]any{
+				"messageId":   planMessageID,
+				"contentMode": messageContentModeSnapshot,
+				"streamState": messageStreamStateCompleted,
+				"messageKind": "plan",
+			},
+		))
 		return events
 	case "reasoning", "userMessage", "hookPrompt":
 		return nil

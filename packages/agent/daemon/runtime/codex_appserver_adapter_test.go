@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1501,14 +1502,27 @@ func TestCodexAppServerAdapterTracksPlanItemPerTurn(t *testing.T) {
 	transport.conn.emitPlanItem = true
 	transport.conn.mu.Unlock()
 	session.Settings = &SessionSettings{PlanMode: true}
-	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+	adapterTurnEvents, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
 		Type: "text", Text: "plan it",
-	}}, "", "turn-plan-track-1", nil, nil); err != nil {
+	}}, "", "turn-plan-track-1", nil, nil)
+	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
 	state := adapter.SessionState(session)
 	if state.RuntimeContext["lastTurnProducedPlan"] != true {
 		t.Fatalf("runtimeContext lastTurnProducedPlan = %#v, want true after plan item", state.RuntimeContext["lastTurnProducedPlan"])
+	}
+	planMessages := 0
+	for _, event := range eventsOfType(adapterTurnEvents, activityshared.EventMessageAppended) {
+		if event.Payload.Metadata["messageKind"] == "plan" {
+			planMessages++
+			if !strings.Contains(event.Payload.Content, "# Plan") {
+				t.Fatalf("plan message content = %q, want plan text", event.Payload.Content)
+			}
+		}
+	}
+	if planMessages != 1 {
+		t.Fatalf("plan-tagged messages = %d, want exactly 1", planMessages)
 	}
 
 	transport.conn.mu.Lock()

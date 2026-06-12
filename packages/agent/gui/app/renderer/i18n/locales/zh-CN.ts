@@ -474,6 +474,7 @@ export const zhCN = {
       usageAlertCriticalMessage:
         "上下文已使用 {{percent}}%，请立即压缩以继续会话。",
       usageAlertDismiss: "关闭提醒",
+      planCardTitle: "计划",
       planImplementationLead: "计划已就绪，是否实施？",
       planImplementationConfirm: "实施此计划",
       planImplementationDismiss: "留在计划模式",

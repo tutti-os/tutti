@@ -304,6 +304,32 @@ describe("AgentTranscriptItemView render stability", () => {
       queryByText("Codex connection interrupted. Reconnecting...")
     ).toBeNull();
   });
+
+  it("renders plan-tagged assistant messages as a dedicated plan card", () => {
+    const { getByTestId } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-plan-1",
+          turnId: "turn-1",
+          body: "# Repo health plan\n1. inspect\n2. fix",
+          contentKind: "plan",
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    expect(getByTestId("agent-plan-card")).toBeTruthy();
+    expect(getByTestId("agent-plan-card-title").textContent).toBe(
+      "agentHost.agentGui.planCardTitle"
+    );
+    expect(getByTestId("agent-plan-card").textContent).toContain(
+      "Repo health plan"
+    );
+  });
 });
 
 function transcriptLabels() {

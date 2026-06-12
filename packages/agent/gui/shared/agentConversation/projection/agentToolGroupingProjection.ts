@@ -230,6 +230,15 @@ function projectMessage(
   };
   if (message.sourceTimelineItems) {
     projected.sourceTimelineItems = message.sourceTimelineItems;
+    // Codex plan-mode proposals arrive tagged by the daemon and render as a
+    // dedicated plan card instead of a regular assistant bubble.
+    if (
+      message.sourceTimelineItems.some(
+        (item) => item.payload?.messageKind === "plan"
+      )
+    ) {
+      projected.contentKind = "plan";
+    }
   }
   return projected;
 }
