@@ -28,6 +28,26 @@ test("terminal workbench body lets the mounted surface retain its session", () =
   assert.equal(props.sessionId, "session-1");
 });
 
+test("terminal workbench body forwards preview changes to the host", () => {
+  const onPreviewChange = () => undefined;
+  const props = resolveTerminalWorkbenchBodyProps({
+    context: createTerminalWorkbenchBodyTestContext({
+      externalNodeState: null,
+      sessionId: "session-1"
+    }),
+    feature: {
+      i18n: {
+        t(key: string) {
+          return key;
+        }
+      }
+    } as TerminalNodeFeature,
+    onPreviewChange
+  });
+
+  assert.equal(props.onPreviewChange, onPreviewChange);
+});
+
 function createTerminalWorkbenchBodyTestContext({
   externalNodeState,
   isFocused = true,

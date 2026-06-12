@@ -22,6 +22,7 @@ import type {
   DesktopWorkspaceAppFolderKind,
   DesktopManagedModelGrantRequest,
   DesktopManagedModelGrantResult,
+  DesktopHostWindowCapturePreviewInput,
   DesktopRendererDiagnosticPayload,
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest,
@@ -90,6 +91,9 @@ export interface DesktopWorkspaceAppWorkspaceApi {
 
 export interface DesktopHostWindowApi {
   approveClose(): Promise<void>;
+  capturePreview(
+    input: DesktopHostWindowCapturePreviewInput
+  ): Promise<string | null>;
   onCloseRequest(listener: () => void): () => void;
 }
 

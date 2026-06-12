@@ -294,6 +294,7 @@ interface AgentGUINodeViewProps {
   isAgentProviderReady: boolean;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
+  previewMode?: boolean;
   showProjectSelector?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   actions: {
@@ -628,6 +629,7 @@ export function AgentGUINodeView({
   isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
+  previewMode = false,
   showProjectSelector = true,
   onAgentProviderLogin,
   actions,
@@ -663,6 +665,9 @@ export function AgentGUINodeView({
     ((refs: WorkspaceFileReference[]) => void) | null
   >(null);
   const requestWorkspaceReferences = useCallback(async () => {
+    if (previewMode) {
+      return [];
+    }
     if (!workspaceFileReferenceAdapter || !workspaceFileReferenceCopy) {
       return [];
     }
@@ -670,7 +675,7 @@ export function AgentGUINodeView({
     return await new Promise<WorkspaceFileReference[]>((resolve) => {
       workspaceReferencePickerResolverRef.current = resolve;
     });
-  }, [workspaceFileReferenceAdapter, workspaceFileReferenceCopy]);
+  }, [previewMode, workspaceFileReferenceAdapter, workspaceFileReferenceCopy]);
   const closeWorkspaceReferencePicker = useCallback(() => {
     workspaceReferencePickerResolverRef.current?.([]);
     workspaceReferencePickerResolverRef.current = null;
@@ -702,6 +707,9 @@ export function AgentGUINodeView({
       : (composerFocusRequestSequence ?? 0) + localComposerFocusRequestSequence;
   const requestCreateConversation = useCallback(
     (options?: { projectPath?: string | null }) => {
+      if (previewMode) {
+        return;
+      }
       if (options) {
         actions.createConversation(options);
       } else {
@@ -709,7 +717,7 @@ export function AgentGUINodeView({
       }
       setLocalComposerFocusRequestSequence((current) => current + 1);
     },
-    [actions]
+    [actions, previewMode]
   );
   const effectiveWorkspaceAppIcons = useMemo(
     () =>
@@ -732,6 +740,9 @@ export function AgentGUINodeView({
 
   const handleConversationRailResizePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>): void => {
+      if (previewMode) {
+        return;
+      }
       if (conversationRailCollapsed || event.button !== 0) {
         return;
       }
@@ -745,11 +756,14 @@ export function AgentGUINodeView({
       };
       setIsRailResizing(true);
     },
-    [conversationRailCollapsed, conversationRailWidthPx]
+    [conversationRailCollapsed, conversationRailWidthPx, previewMode]
   );
 
   const handleConversationRailResizePointerMove = useCallback(
     (event: PointerEvent<HTMLDivElement>): void => {
+      if (previewMode) {
+        return;
+      }
       const resizeState = railResizeInteractionRef.current;
       if (!resizeState || resizeState.pointerId !== event.pointerId) {
         return;
@@ -760,7 +774,7 @@ export function AgentGUINodeView({
       );
       onConversationRailWidthChanged(nextWidthPx);
     },
-    [clampConversationRailWidth, onConversationRailWidthChanged]
+    [clampConversationRailWidth, onConversationRailWidthChanged, previewMode]
   );
 
   const endConversationRailResize = useCallback(
@@ -780,6 +794,9 @@ export function AgentGUINodeView({
 
   const handleConversationRailResizeKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>): void => {
+      if (previewMode) {
+        return;
+      }
       if (conversationRailCollapsed) {
         return;
       }
@@ -800,7 +817,8 @@ export function AgentGUINodeView({
       clampConversationRailWidth,
       conversationRailCollapsed,
       conversationRailWidthPx,
-      onConversationRailWidthChanged
+      onConversationRailWidthChanged,
+      previewMode
     ]
   );
 
@@ -814,7 +832,12 @@ export function AgentGUINodeView({
 
   return (
     <TooltipProvider>
-      <div className={styles.layout} style={layoutStyle}>
+      <div
+        className={styles.layout}
+        data-agent-gui-preview={previewMode ? "true" : undefined}
+        inert={previewMode ? true : undefined}
+        style={layoutStyle}
+      >
         <aside
           id="agent-gui-conversation-rail"
           className={`${styles.railPanel}${

@@ -137,6 +137,7 @@ function createAppCenterDockEntry(
   i18n: I18nRuntime<string>,
   iconUrl = workspaceDockApplicationsIconUrl
 ): WorkbenchHostDockEntry {
+  const title = i18n.t("workspace.appCenter.dockLabel");
   return {
     icon: createElement("img", {
       alt: "",
@@ -145,10 +146,14 @@ function createAppCenterDockEntry(
       src: iconUrl
     }),
     id: workspaceAppCenterNodeID,
-    label: i18n.t("workspace.appCenter.dockLabel"),
+    label: title,
     launchBehavior: "enabled",
     matchNode: (node) => node.data.typeId === workspaceAppCenterNodeID,
     order: workspaceAppCenterDockOrder,
+    resolvePopupItem: ({ node }) => ({
+      revision: node.title,
+      title: node.title || title
+    }),
     sectionId: "apps",
     typeId: workspaceAppCenterNodeID,
     visibility: "always"
@@ -187,10 +192,15 @@ function createWorkspaceAppDockEntry(input: {
       readWorkspaceAppIdFromInstanceId(node.data.instanceId) ===
         input.app.appId,
     order: workspaceAppDockOrderStart + input.index,
-    resolvePopupItem: ({ node }) => ({
-      subtitle: input.app.url ?? node.data.instanceId,
-      title: node.title || appTitle
-    }),
+    resolvePopupItem: ({ node }) => {
+      const title = node.title || appTitle;
+      const subtitle = input.app.url ?? node.data.instanceId;
+      return {
+        revision: `${title}\n${subtitle}`,
+        subtitle,
+        title
+      };
+    },
     sectionId: "apps",
     state: input.state,
     typeId: workspaceAppWebviewTypeID,

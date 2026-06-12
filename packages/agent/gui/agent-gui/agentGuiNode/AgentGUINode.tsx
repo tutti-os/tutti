@@ -132,6 +132,7 @@ export interface AgentGUINodeProps {
   richTextAtProviders?: readonly AgentRichTextAtProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   embedded?: boolean;
+  previewMode?: boolean;
 }
 
 function slashStatusQuotaLabel(quota: AgentUsageQuota, t: TranslateFn): string {
@@ -422,6 +423,7 @@ function areAgentGUINodePropsEqual(
     previous.richTextAtProviders === next.richTextAtProviders &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
     previous.embedded === next.embedded &&
+    previous.previewMode === next.previewMode &&
     previous.isActive === next.isActive &&
     previous.showProjectSelector === next.showProjectSelector &&
     previous.composerFocusRequestSequence === next.composerFocusRequestSequence
@@ -460,7 +462,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   managedAgentsState,
   richTextAtProviders,
   workspaceAppIcons,
-  embedded = false
+  embedded = false,
+  previewMode = false
 }: AgentGUINodeProps): React.JSX.Element {
   "use memo";
   const { i18n, locale, t } = useTranslation();
@@ -498,12 +501,18 @@ export const AgentGUINode = memo(function AgentGUINode({
   );
   const handleDataChange = useCallback(
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => {
+      if (previewMode) {
+        return;
+      }
       onUpdateNode(updater);
     },
-    [onUpdateNode]
+    [onUpdateNode, previewMode]
   );
   const handleConversationRailWidthChanged = useCallback(
     (widthPx: number) => {
+      if (previewMode) {
+        return;
+      }
       onUpdateNode((current) => {
         const nextWidthPx = resolveNextAgentGUIConversationRailWidthPx({
           currentWidthPx: current.conversationRailWidthPx,
@@ -520,7 +529,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         };
       });
     },
-    [onUpdateNode, width]
+    [onUpdateNode, previewMode, width]
   );
   const isConversationRailManuallyCollapsed =
     state.conversationRailCollapsed === true;
@@ -536,12 +545,18 @@ export const AgentGUINode = memo(function AgentGUINode({
     []
   );
   const toggleConversationRailCollapsed = useCallback(() => {
+    if (previewMode) {
+      return;
+    }
     onUpdateNode((current) => ({
       ...current,
       conversationRailCollapsed: current.conversationRailCollapsed !== true
     }));
-  }, [onUpdateNode]);
+  }, [onUpdateNode, previewMode]);
   const handleConversationRailToggle = useCallback(() => {
+    if (previewMode) {
+      return;
+    }
     if (!isConversationRailAutoCollapsed) {
       toggleConversationRailCollapsed();
       return;
@@ -572,6 +587,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     onResize,
     onUpdateNode,
     position,
+    previewMode,
     state.conversationRailWidthPx,
     toggleConversationRailCollapsed,
     width
@@ -583,6 +599,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     workspacePath,
     avoidGroupingEdits: agentSettings.avoidGroupingEdits,
     data: state,
+    previewMode,
     onDataChange: handleDataChange,
     onShowMessage
   });
@@ -961,7 +978,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   ]);
 
   useEffect(() => {
-    if (!onAgentProbeDemandChange) {
+    if (previewMode || !onAgentProbeDemandChange) {
       return;
     }
     const probeSourceId = `agent-gui:${nodeId}`;
@@ -969,7 +986,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     return () => {
       onAgentProbeDemandChange(null, probeSourceId);
     };
-  }, [activeProbeProvider, nodeId, onAgentProbeDemandChange]);
+  }, [activeProbeProvider, nodeId, onAgentProbeDemandChange, previewMode]);
 
   return (
     <WorkspaceNodeWindow
@@ -1048,6 +1065,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             slashStatusLimitsLoading={
               workspaceAgentProbes?.isLoadingUsage ?? false
             }
+            previewMode={previewMode}
             showProjectSelector={showProjectSelector}
             onLinkAction={handleLinkAction}
             onAgentProviderLogin={

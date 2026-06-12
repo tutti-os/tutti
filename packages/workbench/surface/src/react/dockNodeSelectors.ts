@@ -36,6 +36,8 @@ function areWorkbenchDockNodesEqual<TData>(
       previousNode.displayMode === nextNode.displayMode &&
       previousNode.isMinimized === nextNode.isMinimized &&
       previousNode.minimizedAtUnixMs === nextNode.minimizedAtUnixMs &&
+      previousNode.frame.width === nextNode.frame.width &&
+      previousNode.frame.height === nextNode.frame.height &&
       previousNode.data === nextNode.data
     );
   });

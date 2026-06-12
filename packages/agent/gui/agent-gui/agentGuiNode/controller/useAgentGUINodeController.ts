@@ -1990,6 +1990,7 @@ interface UseAgentGUINodeControllerInput {
   workspacePath: string;
   avoidGroupingEdits: boolean;
   data: AgentGUINodeData;
+  previewMode?: boolean;
   onDataChange: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
   ) => void;
@@ -2006,6 +2007,7 @@ export function useAgentGUINodeController({
   workspacePath,
   avoidGroupingEdits,
   data,
+  previewMode = false,
   onDataChange,
   onShowMessage
 }: UseAgentGUINodeControllerInput) {
@@ -2271,6 +2273,9 @@ export function useAgentGUINodeController({
     setRetainedBackgroundConversationIds
   ] = useState<string[]>([]);
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     setRetainedBackgroundConversationIds((current) => {
       const next = new Set(current);
       for (const conversationId of backgroundBusyConversationIds) {
@@ -2294,16 +2299,27 @@ export function useAgentGUINodeController({
         ? current
         : nextIds;
     });
-  }, [activeConversationId, backgroundBusyConversationIds, conversations]);
+  }, [
+    activeConversationId,
+    backgroundBusyConversationIds,
+    conversations,
+    previewMode
+  ]);
   const backgroundWatchedConversationIds = useMemo(
     () =>
-      [
-        ...new Set([
-          ...backgroundBusyConversationIds,
-          ...retainedBackgroundConversationIds
-        ])
-      ].sort(),
-    [backgroundBusyConversationIds, retainedBackgroundConversationIds]
+      previewMode
+        ? []
+        : [
+            ...new Set([
+              ...backgroundBusyConversationIds,
+              ...retainedBackgroundConversationIds
+            ])
+          ].sort(),
+    [
+      backgroundBusyConversationIds,
+      previewMode,
+      retainedBackgroundConversationIds
+    ]
   );
   const accountProfilesByUserId = useAccountStore(
     (state) => state.profilesByUserId
@@ -2435,6 +2451,9 @@ export function useAgentGUINodeController({
   );
 
   useEffect(() => {
+    if (previewMode) {
+      return undefined;
+    }
     const api = agentHostApi.userProjects;
     let disposed = false;
     const loadUserProjects = async () => {
@@ -2464,9 +2483,12 @@ export function useAgentGUINodeController({
       disposed = true;
       unsubscribe?.();
     };
-  }, [agentHostApi.userProjects, setUserProjectsSnapshot]);
+  }, [agentHostApi.userProjects, previewMode, setUserProjectsSnapshot]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     if (!conversationListQuery || agentActivitySnapshot.sessions.length === 0) {
       return;
     }
@@ -2560,6 +2582,7 @@ export function useAgentGUINodeController({
     agentActivitySnapshot,
     conversationListQuery,
     data.provider,
+    previewMode,
     updateConversationList,
     userProjects
   ]);
@@ -2591,6 +2614,9 @@ export function useAgentGUINodeController({
   );
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     updateConversationList((current) =>
       applyAgentGUIConversationProjects(current, userProjects)
     );
@@ -2602,6 +2628,7 @@ export function useAgentGUINodeController({
     );
   }, [
     conversations,
+    previewMode,
     setTransientConversation,
     updateConversationList,
     userProjects
@@ -2677,6 +2704,9 @@ export function useAgentGUINodeController({
   }, [isCreatingConversation]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     setPendingCreateConversationId(resolvePendingCreateConversationId());
     if (!conversationListQuery || !pendingCreateOwnerKey) {
       return;
@@ -2687,10 +2717,14 @@ export function useAgentGUINodeController({
   }, [
     conversationListQuery,
     pendingCreateOwnerKey,
+    previewMode,
     resolvePendingCreateConversationId
   ]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     setIsPendingSubmit(resolvePendingSubmit());
     if (!conversationListQuery || activeConversationId === null) {
       return;
@@ -2698,11 +2732,19 @@ export function useAgentGUINodeController({
     return subscribeAgentGUIConversationListStore(() => {
       setIsPendingSubmit(resolvePendingSubmit());
     });
-  }, [activeConversationId, conversationListQuery, resolvePendingSubmit]);
+  }, [
+    activeConversationId,
+    conversationListQuery,
+    previewMode,
+    resolvePendingSubmit
+  ]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     ensureOpenclawGateway();
-  }, [data.provider, ensureOpenclawGateway]);
+  }, [data.provider, ensureOpenclawGateway, previewMode]);
 
   useEffect(() => {
     onDataChangeRef.current = onDataChange;
@@ -2743,6 +2785,9 @@ export function useAgentGUINodeController({
   }, [conversations]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     const previousSnapshot = previousConversationListSnapshotRef.current;
     const previousQuery = previousSnapshot.query;
     const previousQueryKey = previousQuery
@@ -2771,7 +2816,7 @@ export function useAgentGUINodeController({
       query: conversationListQuery,
       conversations
     };
-  }, [conversationListQuery, conversations]);
+  }, [conversationListQuery, conversations, previewMode]);
   const persistActiveConversation = useCallback(
     (agentSessionId: string | null) => {
       if (persistedActiveConversationIdRef.current === agentSessionId) {
@@ -2811,6 +2856,9 @@ export function useAgentGUINodeController({
   );
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     if (!hasLoadedConversations) {
       return;
     }
@@ -2823,7 +2871,12 @@ export function useAgentGUINodeController({
         ? current
         : { ...current, conversationCount: nextConversationCount }
     );
-  }, [conversations.length, hasLoadedConversations, transientConversation]);
+  }, [
+    conversations.length,
+    hasLoadedConversations,
+    previewMode,
+    transientConversation
+  ]);
 
   const isCurrentConversation = useCallback((agentSessionId: string) => {
     return (
@@ -3482,6 +3535,9 @@ export function useAgentGUINodeController({
   );
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     if (!supports.model && !supports.reasoning && !supports.permission) {
       return;
     }
@@ -3495,6 +3551,7 @@ export function useAgentGUINodeController({
   }, [
     data.provider,
     loadDraftComposerOptions,
+    previewMode,
     selectedProjectPath,
     supports.model,
     supports.permission,
@@ -3502,6 +3559,9 @@ export function useAgentGUINodeController({
   ]);
 
   useEffect(() => {
+    if (previewMode) {
+      return undefined;
+    }
     if (!supports.model && !supports.reasoning && !supports.permission) {
       return undefined;
     }
@@ -3534,6 +3594,7 @@ export function useAgentGUINodeController({
   }, [
     loadDraftComposerOptions,
     loadSessionState,
+    previewMode,
     workspaceId,
     supports.model,
     supports.permission,
@@ -3541,12 +3602,16 @@ export function useAgentGUINodeController({
   ]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     loadDraftComposerOptions();
   }, [
     activeConversationId,
     data.provider,
     isComposerHome,
-    loadDraftComposerOptions
+    loadDraftComposerOptions,
+    previewMode
   ]);
 
   const clearPendingSessionStateReload = useCallback(() => {
@@ -3966,12 +4031,23 @@ export function useAgentGUINodeController({
   );
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     void syncConversationListProjection(
       dataRef.current.lastActiveAgentSessionId
     );
-  }, [currentUserId, data.provider, syncConversationListProjection]);
+  }, [
+    currentUserId,
+    data.provider,
+    previewMode,
+    syncConversationListProjection
+  ]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     if (!activeConversationId) {
       setDetailError(null);
       return;
@@ -3986,12 +4062,13 @@ export function useAgentGUINodeController({
       reloadConversations: false,
       reloadDetail: true
     });
-  }, [activeConversationId, reloadSelectedConversation]);
+  }, [activeConversationId, previewMode, reloadSelectedConversation]);
 
   useAgentSessionDurableRefresh({
     agentSessionId: activeConversationId,
     sessionView: activeSessionView,
     blockControlStateRefresh:
+      previewMode ||
       activeConversationId === null ||
       blockedActivityStreamStateReloadSessionIdsRef.current.has(
         activeConversationId
@@ -4012,7 +4089,7 @@ export function useAgentGUINodeController({
   useWatchAgentSession({
     workspaceId,
     agentSessionId: activeConversationId,
-    enabled: activeConversationId !== null,
+    enabled: !previewMode && activeConversationId !== null,
     onSubscribe: () => {
       if (!activeConversationId) {
         return;
@@ -5421,6 +5498,9 @@ export function useAgentGUINodeController({
   );
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     if (!activeConversationId) {
       return;
     }
@@ -5472,11 +5552,15 @@ export function useAgentGUINodeController({
     isRespondingApproval,
     isSubmitting,
     failedQueuedPromptIdBySessionId,
+    previewMode,
     queuedPromptRetryBlockBySessionId,
     queuedPromptsBySessionId
   ]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     if (!activeConversationId) {
       return;
     }
@@ -5584,6 +5668,7 @@ export function useAgentGUINodeController({
     syncConversationListProjection,
     loadSessionState,
     refreshMessagesFromSnapshot,
+    previewMode,
     queuedPromptsBySessionId,
     runtimeSessionsBySessionId,
     workspaceId,

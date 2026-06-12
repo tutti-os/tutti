@@ -4,6 +4,7 @@ import {
   type WorkbenchContribution,
   type WorkbenchFrame,
   type WorkbenchHostDockEntry,
+  type WorkbenchHostDockPopupItemInput,
   type WorkbenchHostLaunchRequest,
   type WorkbenchHostNodeBodyContext
 } from "@tutti-os/workbench-surface";
@@ -90,6 +91,13 @@ export interface CreateAgentGuiWorkbenchContributionInput {
     >,
     helpers: AgentGuiWorkbenchRenderBodyHelpers
   ): ReactNode;
+  renderPreview?(
+    context: WorkbenchHostNodeBodyContext<
+      AgentGuiWorkbenchState | null,
+      unknown
+    >,
+    helpers: AgentGuiWorkbenchRenderBodyHelpers
+  ): ReactNode;
   resolveDockEntryVisibility?: (
     provider: AgentGuiWorkbenchProvider
   ) => WorkbenchHostDockEntry["visibility"];
@@ -113,6 +121,7 @@ export function createAgentGuiWorkbenchContribution(
           input.dockIconUrls?.[provider] ?? agentGuiDockIconUrls[provider],
         order: index,
         provider,
+        renderPreview: input.renderPreview,
         sectionId: input.dockSectionId ?? "agents",
         visibility:
           input.resolveDockEntryVisibility?.(provider) ??
@@ -362,6 +371,7 @@ function createAgentGuiWorkbenchDockEntry(input: {
   label: string;
   order: number;
   provider: AgentGuiWorkbenchProvider;
+  renderPreview?: CreateAgentGuiWorkbenchContributionInput["renderPreview"];
   sectionId: string;
   visibility: WorkbenchHostDockEntry["visibility"];
 }): WorkbenchHostDockEntry {
@@ -381,9 +391,44 @@ function createAgentGuiWorkbenchDockEntry(input: {
       agentGuiWorkbenchProviderFromIdentifier(node.data.instanceId) ===
         input.provider,
     order: input.order,
-    resolvePopupItem: ({ externalNodeState }) => ({
-      title: resolveAgentGuiWorkbenchDockPopupTitle(externalNodeState)
-    }),
+    providePopupItemPreview: (item) => {
+      if (!input.renderPreview) {
+        return null;
+      }
+      const { externalNodeState, node } = item;
+      const state =
+        (externalNodeState as
+          | Partial<
+              AgentGuiWorkbenchState & { conversationCount?: number | null }
+            >
+          | null
+          | undefined) ?? {};
+      const title =
+        resolveAgentGuiWorkbenchDockPopupTitle(externalNodeState) ?? node.title;
+      const lines = [input.label, state.lastActiveAgentSessionId].filter(
+        (line): line is string => Boolean(line?.trim())
+      );
+      const revision = `${input.provider}\n${title}\n${lines.join("\n")}`;
+      return {
+        element: input.renderPreview(
+          createAgentGuiWorkbenchPreviewBodyContext(item),
+          {
+            nodeTypeId: agentGuiWorkbenchTypeId,
+            onStateChange: () => undefined,
+            provider: input.provider
+          }
+        ),
+        kind: "component",
+        revision
+      };
+    },
+    resolvePopupItem: ({ externalNodeState }) => {
+      const title = resolveAgentGuiWorkbenchDockPopupTitle(externalNodeState);
+      return {
+        revision: `${input.provider}\n${title ?? ""}`,
+        title
+      };
+    },
     sectionId: input.sectionId,
     typeId: agentGuiWorkbenchTypeId,
     visibility: input.visibility
@@ -394,4 +439,23 @@ function resolveAgentGuiWorkbenchDockPopupTitle(state: unknown): string | null {
   const title = (state as Partial<AgentGuiWorkbenchState> | null)
     ?.lastActiveConversationTitle;
   return typeof title === "string" && title.trim() ? title.trim() : null;
+}
+
+function createAgentGuiWorkbenchPreviewBodyContext(
+  input: WorkbenchHostDockPopupItemInput
+): WorkbenchHostNodeBodyContext<AgentGuiWorkbenchState | null, unknown> {
+  return {
+    activation: null,
+    displayMode: input.node.displayMode,
+    externalNodeState: input.externalNodeState as AgentGuiWorkbenchState | null,
+    externalWorkspaceState: input.externalWorkspaceState,
+    focus: () => undefined,
+    host: input.host,
+    instanceId: input.node.data.instanceId,
+    instanceKey: input.node.data.instanceKey ?? null,
+    isFocused: false,
+    node: input.node,
+    setNodeRuntimeState: () => undefined,
+    setSnapshotNodeState: () => undefined
+  };
 }

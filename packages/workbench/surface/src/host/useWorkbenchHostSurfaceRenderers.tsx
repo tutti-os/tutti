@@ -34,7 +34,9 @@ import type {
 import type { WorkbenchHostI18nRuntime } from "./workbenchHostI18n.ts";
 
 export function useWorkbenchHostSurfaceRenderers(input: {
+  captureNodePreviewImage?: WorkbenchHostProps["captureNodePreviewImage"];
   chromeContext: WorkbenchHostChromeRenderContext;
+  debugDiagnostics?: WorkbenchHostProps["debugDiagnostics"];
   dockPreviewCache?: WorkbenchDockPreviewCache;
   dockPlacement?: WorkbenchHostProps["dockPlacement"];
   dockEntries: readonly WorkbenchHostDockEntry[];
@@ -64,10 +66,47 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     [input.chromeContext, input.renderTopChrome]
   );
 
+  const captureNodePreviewImage = useCallback(
+    async (node: WorkbenchNode<WorkbenchHostNodeData>) => {
+      const definition = input.nodeDefinitionByType.get(node.data.typeId);
+      const capturePreview = definition?.window?.minimizedDock?.capturePreview;
+      const snapshot = input.hostSession.getSnapshot();
+      const externalState = readWorkbenchHostExternalState({
+        externalStateSource: input.externalStateSource,
+        node,
+        workspaceId: input.workspaceId
+      });
+      const nodePreview =
+        (await Promise.resolve(
+          capturePreview?.({
+            externalNodeState: externalState.externalNodeState,
+            externalWorkspaceState: externalState.externalWorkspaceState,
+            host: input.hostSession,
+            isFocused: snapshot.nodeStack.at(-1) === node.id,
+            isMinimized: node.isMinimized,
+            node
+          }) ?? null
+        ).catch(() => null)) ??
+        (await Promise.resolve(
+          input.captureNodePreviewImage?.(node) ?? null
+        ).catch(() => null));
+      return nodePreview;
+    },
+    [
+      input.captureNodePreviewImage,
+      input.externalStateSource,
+      input.hostSession,
+      input.nodeDefinitionByType,
+      input.workspaceId
+    ]
+  );
+
   const renderDock = useCallback(
     (context: Parameters<typeof WorkbenchHostDock>[0]["context"]) => (
       <WorkbenchHostDock
+        captureNodePreviewImage={captureNodePreviewImage}
         context={context}
+        debugDiagnostics={input.debugDiagnostics}
         dockEntries={input.dockEntries}
         dockPlacement={input.dockPlacement}
         dockPreviewCache={input.dockPreviewCache}
@@ -82,6 +121,8 @@ export function useWorkbenchHostSurfaceRenderers(input: {
       />
     ),
     [
+      captureNodePreviewImage,
+      input.debugDiagnostics,
       input.dockEntries,
       input.dockPlacement,
       input.dockPreviewCache,
@@ -92,34 +133,6 @@ export function useWorkbenchHostSurfaceRenderers(input: {
       input.nodeDefinitionByType,
       input.onDockEntryAction,
       input.onDockEntryClick,
-      input.workspaceId
-    ]
-  );
-
-  const captureNodePreviewImage = useCallback(
-    (node: WorkbenchNode<WorkbenchHostNodeData>) => {
-      const definition = input.nodeDefinitionByType.get(node.data.typeId);
-      const capturePreview = definition?.window?.minimizedDock?.capturePreview;
-      if (!capturePreview) {
-        return null;
-      }
-
-      const snapshot = input.hostSession.getSnapshot();
-      return capturePreview({
-        externalNodeState: readWorkbenchHostExternalState({
-          externalStateSource: input.externalStateSource,
-          node,
-          workspaceId: input.workspaceId
-        }).externalNodeState,
-        isFocused: snapshot.nodeStack.at(-1) === node.id,
-        isMinimized: node.isMinimized,
-        node
-      });
-    },
-    [
-      input.externalStateSource,
-      input.hostSession,
-      input.nodeDefinitionByType,
       input.workspaceId
     ]
   );

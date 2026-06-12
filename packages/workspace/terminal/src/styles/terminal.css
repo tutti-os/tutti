@@ -301,3 +301,51 @@
     "Courier New", monospace;
   font-weight: 700;
 }
+
+.workspace-terminal__dock-preview-frame {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  place-items: center;
+}
+
+.workspace-terminal__dock-preview-viewport {
+  display: block;
+  width: var(--workspace-terminal-dock-preview-width, 100%);
+  height: var(--workspace-terminal-dock-preview-height, 100%);
+  overflow: hidden;
+  background: var(--workspace-terminal-dock-preview-background, #111);
+}
+
+.workspace-terminal__dock-preview {
+  display: block;
+  width: var(--workspace-terminal-dock-preview-source-width, 100%);
+  height: var(--workspace-terminal-dock-preview-source-height, 100%);
+  overflow: hidden;
+  background: var(--workspace-terminal-dock-preview-background, #111);
+  color: var(--workspace-terminal-dock-preview-foreground, #f4f4f5);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 8px;
+  pointer-events: none;
+  transform: scale(var(--workspace-terminal-dock-preview-scale, 1));
+  transform-origin: top left;
+  user-select: none;
+}
+
+.workspace-terminal__dock-preview-line {
+  display: block;
+  min-height: 1.35em;
+  overflow: hidden;
+  white-space: pre;
+}
+
+.workspace-terminal__dock-preview-segment {
+  white-space: pre;
+}

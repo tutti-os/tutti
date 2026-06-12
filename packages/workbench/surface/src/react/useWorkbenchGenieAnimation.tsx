@@ -64,7 +64,7 @@ export interface WorkbenchGenieController {
   launchNodeFromAnchor: (
     anchorKey: string,
     nodeID: string,
-    launch: () => void
+    launch: () => Promise<string | null | void> | string | null | void
   ) => void;
   minimizeNodeToAnchor: (nodeID: string, minimize?: () => void) => void;
   registerDockAnchor: (anchorKey: string, element: HTMLElement | null) => void;
@@ -745,13 +745,21 @@ export function useWorkbenchGenieAnimation<TData>({
   );
 
   const launchNodeFromAnchor = useCallback(
-    (anchorKey: string, nodeID: string, launch: () => void) => {
+    (
+      anchorKey: string,
+      nodeID: string,
+      launch: () => Promise<string | null | void> | string | null | void
+    ) => {
       const target = controller
         .getSnapshot()
         .nodes.find((node) => node.id === nodeID);
-      const shouldAnimate = target?.isMinimized === true || !target;
-      if (!shouldAnimate) {
-        launch();
+      if (!target) {
+        void Promise.resolve(launch()).catch(() => {});
+        return;
+      }
+
+      if (target.isMinimized !== true) {
+        void Promise.resolve(launch()).catch(() => {});
         return;
       }
 
@@ -766,7 +774,7 @@ export function useWorkbenchGenieAnimation<TData>({
       };
       const generation = animationGenerationRef.current;
       flushSync(() => {
-        launch();
+        void launch();
       });
       void startOpenOrRestoreAnimation(
         nodeID,

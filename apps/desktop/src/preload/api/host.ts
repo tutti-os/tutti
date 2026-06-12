@@ -166,6 +166,12 @@ export function createHostDesktopApi(): DesktopHostApi {
       approveClose(): Promise<void> {
         return invokeDesktopApi(desktopIpcChannels.host.window.approveClose);
       },
+      capturePreview(input): Promise<string | null> {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.window.capturePreview,
+          input
+        );
+      },
       onCloseRequest(listener): () => void {
         const handler = () => listener();
         ipcRenderer.on(desktopIpcChannels.host.window.closeRequest, handler);

@@ -855,10 +855,11 @@ describe("AgentComposer", () => {
     );
     expect(inputShell?.nextElementSibling).toBeNull();
 
-    const nativeOption = container.querySelector(
-      'option[value="__nextop_workspace_reference_add__"]'
-    );
-    expect(nativeOption).toHaveTextContent("引用空间文件");
+    expect(
+      container.querySelector(
+        '[data-slot="select-content"] [data-value="__nextop_workspace_reference_add__"]'
+      )
+    ).toBeNull();
   });
 
   it("hides the project row for locked dock composers in existing conversations", () => {

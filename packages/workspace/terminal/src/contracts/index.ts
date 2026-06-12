@@ -214,6 +214,46 @@ export interface TerminalTheme {
   selectionBackground?: string;
 }
 
+export interface TerminalPreviewSegmentStyle {
+  background?: string;
+  bold?: boolean;
+  color?: string;
+  dim?: boolean;
+  italic?: boolean;
+  overline?: boolean;
+  strikethrough?: boolean;
+  underline?: boolean;
+}
+
+export interface TerminalPreviewSegment {
+  style?: TerminalPreviewSegmentStyle;
+  text: string;
+}
+
+export interface TerminalPreviewLine {
+  segments: readonly TerminalPreviewSegment[];
+}
+
+export interface TerminalPreviewSnapshot {
+  cols: number;
+  cursorX: number;
+  cursorY: number;
+  lines: readonly TerminalPreviewLine[];
+  revision: string;
+  rows: number;
+  updatedAtUnixMs: number;
+}
+
+export interface TerminalPreviewChange {
+  nodeId: string;
+  sessionId: string;
+  snapshot: TerminalPreviewSnapshot | null;
+}
+
+export type TerminalPreviewChangeHandler = (
+  change: TerminalPreviewChange
+) => void;
+
 export type TerminalThemeResolver = (input: {
   runtimeKind: TerminalRuntimeKind;
   sessionId: string | null;

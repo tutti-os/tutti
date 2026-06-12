@@ -17,6 +17,7 @@ import { useWorkbenchHostSurfaceRenderers } from "./useWorkbenchHostSurfaceRende
 const noop = () => {};
 
 export function WorkbenchHost({
+  captureNodePreviewImage,
   className,
   contributions,
   debugDiagnostics,
@@ -96,7 +97,9 @@ export function WorkbenchHost({
     workspaceId
   });
   const surfaceRenderers = useWorkbenchHostSurfaceRenderers({
+    captureNodePreviewImage,
     chromeContext,
+    debugDiagnostics,
     dockPreviewCache,
     dockPlacement,
     dockStateSource,

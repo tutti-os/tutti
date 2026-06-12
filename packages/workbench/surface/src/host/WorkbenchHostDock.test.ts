@@ -65,7 +65,7 @@ test("dock hover panels survive pointer travel from slot to panel", () => {
   );
   assert.match(
     source,
-    /dockMeasureRef\.current\?\.contains\(relatedTarget\)[\s\S]*?scheduleHoverPanelAtPointAfterRest\(\s*event\.clientX,\s*event\.clientY\s*\);[\s\S]*?return;/
+    /dockMeasureRef\.current\?\.contains\(relatedTarget\)[\s\S]*?scheduleHoverPanelAtPointAfterRest\(\s*event\.clientX,\s*event\.clientY,?\s*\);[\s\S]*?return;/
   );
   assert.match(source, /beginDockIconInteraction\(anchorKey\)/);
   const beginDockIconInteractionSource =
@@ -144,5 +144,57 @@ test("dock hover panels survive pointer travel from slot to panel", () => {
   assert.doesNotMatch(
     source,
     /addEventListener\("pointermove", handleWindowPointerMove/
+  );
+});
+
+test("dock slot refs are stable across renders", () => {
+  assert.match(source, /const dockSlotRefCallbacksRef = useRef/);
+  assert.match(source, /dockSlotRefCallbacksRef\.current\.get\(anchorKey\)/);
+  assert.match(
+    source,
+    /dockSlotRefCallbacksRef\.current\.set\(anchorKey, callback\)/
+  );
+  assert.match(source, /clearSlotMagnificationRef\.current\(anchorKey\)/);
+  assert.match(source, /registerDockAnchorRef\.current\(anchorKey, element\)/);
+  assert.doesNotMatch(
+    source,
+    /const registerDockSlot =\s*\(anchorKey: string\) => \(element: HTMLElement \| null\) =>/
+  );
+});
+
+test("multi-window popup only uses explicit preview providers", () => {
+  assert.match(source, /providePopupItemPreview/);
+  assert.match(source, /popupEntry\.entry\.capturePopupItemPreview/);
+  assert.doesNotMatch(source, /captureNodePreviewImage\?\.\(item\.node\)/);
+  assert.match(source, /descriptor\.revision/);
+});
+
+test("multi-window popup remains visible while preview capture is pending", () => {
+  assert.doesNotMatch(source, /hideDuringPreviewCapture/);
+  assert.doesNotMatch(source, /captureDockPopupVisibleWindowPreview/);
+});
+
+test("dock presence animation callback does not retrigger the presence effect", () => {
+  assert.match(source, /const shouldAnimateMinimizedDockEnterRef = useRef/);
+  assert.match(
+    source,
+    /shouldAnimateMinimizedDockEnterRef\.current = shouldAnimateMinimizedDockEnter/
+  );
+  assert.match(source, /shouldAnimateMinimizedDockEnterRef\.current/);
+  assert.match(source, /\}, \[itemKeys\]\);/);
+  assert.doesNotMatch(
+    source,
+    /\}, \[itemKeys, shouldAnimateMinimizedDockEnter\]\);/
+  );
+});
+
+test("dock new window launch returns the created node id to the genie boundary", () => {
+  assert.match(
+    source,
+    /context\.genie\.launchNodeFromAnchor\(\s*anchorKey,\s*entry\.id,\s*\(\) =>\s*host\.launchNode\(\{/
+  );
+  assert.match(
+    source,
+    /context\.genie\.launchNodeFromAnchor\(\s*anchorKeyFromPopupEntry\(popupEntry\),\s*popupEntry\.entry\.id,\s*\(\) =>\s*host\.launchNode\(\{/
   );
 });

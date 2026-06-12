@@ -43,6 +43,7 @@ import type {
 
 const initializedMetadataKey = "workbenchHostInitialized";
 const snapshotSaveDelayMs = 400;
+const launchDiagnosticTextMaxLength = 800;
 
 export function createWorkbenchHostSession(input: {
   debugDiagnostics?: WorkbenchDebugDiagnostics;
@@ -351,12 +352,18 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
       request.launchSource = launchSource;
     }
 
-    const result = this.input.onLaunchRequest
-      ? await this.input.onLaunchRequest(request)
-      : createDefaultLaunchResult(definition, {
-          dockEntryId: input.dockEntryId,
-          launchSource
-        });
+    let result: WorkbenchHostLaunchResult | null | void;
+    try {
+      result = this.input.onLaunchRequest
+        ? await this.input.onLaunchRequest(request)
+        : createDefaultLaunchResult(definition, {
+            dockEntryId: input.dockEntryId,
+            launchSource
+          });
+    } catch (error) {
+      this.logLaunchFailure(request, error);
+      return null;
+    }
     if (this.isDisposed || !result || generation !== this.loadGeneration) {
       return null;
     }
@@ -365,6 +372,28 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
       ...result,
       launchSource: result.launchSource ?? launchSource
     });
+  }
+
+  private logLaunchFailure(
+    request: WorkbenchHostLaunchRequest,
+    error: unknown
+  ): void {
+    void Promise.resolve(
+      this.input.debugDiagnostics?.log?.({
+        details: {
+          dockEntryId: request.dockEntryId ?? null,
+          error: diagnosticErrorDetails(error),
+          launchSource: request.launchSource ?? null,
+          payload: diagnosticValueSummary(request.payload),
+          reason: request.reason,
+          typeId: request.typeId
+        },
+        event: "host.launch.failed",
+        level: "error",
+        source: "workbench-host",
+        workspaceId: request.workspaceId
+      })
+    ).catch(() => undefined);
   }
 
   async load(): Promise<void> {
@@ -1076,6 +1105,51 @@ function resolveWorkbenchHostLaunchSource(
     case "host":
       return null;
   }
+}
+
+function diagnosticErrorDetails(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      message: limitLaunchDiagnosticText(error.message),
+      name: error.name,
+      stack: limitLaunchDiagnosticText(error.stack)
+    };
+  }
+  return {
+    message: diagnosticValueSummary(error),
+    name: typeof error
+  };
+}
+
+function diagnosticValueSummary(value: unknown): string | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return limitLaunchDiagnosticText(value) ?? "";
+  }
+  if (
+    value === null ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+  try {
+    return limitLaunchDiagnosticText(JSON.stringify(value)) ?? null;
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
+function limitLaunchDiagnosticText(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.length > launchDiagnosticTextMaxLength
+    ? `${trimmed.slice(0, launchDiagnosticTextMaxLength)}...`
+    : trimmed;
 }
 
 function noop(): void {}

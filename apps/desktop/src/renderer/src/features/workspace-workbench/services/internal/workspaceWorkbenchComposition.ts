@@ -60,6 +60,18 @@ export function createWorkspaceFilesDockEntry(input: {
     launchBehavior: "enabled",
     matchNode: (node) => node.data.typeId === workspaceFilesNodeID,
     order: 10,
+    resolvePopupItem: ({ externalNodeState, node }) => {
+      const state =
+        (externalNodeState as {
+          currentDirectoryPath?: string | null;
+        } | null) ?? {};
+      const subtitle = state.currentDirectoryPath ?? node.data.instanceId;
+      return {
+        revision: `${node.title}\n${subtitle}`,
+        subtitle,
+        title: node.title
+      };
+    },
     sectionId: "apps",
     typeId: workspaceFilesNodeID,
     visibility: "always"

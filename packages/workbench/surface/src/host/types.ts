@@ -190,6 +190,8 @@ export interface WorkbenchHostDockEntryAction {
 
 export interface WorkbenchHostDockPopupItemInput {
   externalNodeState?: unknown;
+  externalWorkspaceState?: unknown;
+  host: WorkbenchHostHandle;
   isFocused: boolean;
   isMinimized: boolean;
   node: WorkbenchNode<WorkbenchHostNodeData>;
@@ -199,8 +201,29 @@ export type WorkbenchHostNodePreviewCapture = (
   input: WorkbenchHostDockPopupItemInput
 ) => Promise<string | null> | string | null;
 
+export type WorkbenchDockPreviewContent =
+  | {
+      element: ReactNode;
+      kind: "component";
+      revision?: string | null;
+    }
+  | {
+      kind: "image";
+      revision?: string | null;
+      src: string;
+    };
+
+export type WorkbenchHostDockPopupPreviewProvider = (
+  input: WorkbenchHostDockPopupItemInput
+) => WorkbenchDockPreviewContent | null;
+
 export interface WorkbenchHostDockPopupItemDescriptor {
+  /**
+   * @deprecated Use preview with kind: "image".
+   */
   previewImageUrl?: string | null;
+  preview?: WorkbenchDockPreviewContent | null;
+  revision?: string | null;
   subtitle?: string | null;
   title?: string | null;
 }
@@ -224,6 +247,7 @@ export interface WorkbenchHostDockEntry {
   matchNode?: (node: WorkbenchNode<WorkbenchHostNodeData>) => boolean;
   order?: number;
   popupCardLabelMode?: WorkbenchHostDockPopupCardLabelMode;
+  providePopupItemPreview?: WorkbenchHostDockPopupPreviewProvider;
   resolvePopupItem?: (
     input: WorkbenchHostDockPopupItemInput
   ) => WorkbenchHostDockPopupItemDescriptor;
@@ -513,6 +537,9 @@ export interface WorkbenchContribution {
 }
 
 export interface WorkbenchHostProps {
+  captureNodePreviewImage?: (
+    node: WorkbenchNode<WorkbenchHostNodeData>
+  ) => Promise<string | null> | string | null;
   className?: string;
   contributions?: readonly WorkbenchContribution[];
   debugDiagnostics?: WorkbenchDebugDiagnostics;

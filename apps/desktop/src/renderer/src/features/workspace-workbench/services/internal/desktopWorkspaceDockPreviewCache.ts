@@ -40,6 +40,7 @@ function desktopDockPreviewCacheKey(key: WorkbenchDockPreviewCacheKey) {
     instanceId: key.instanceId,
     instanceKey: key.instanceKey ?? null,
     nodeId: key.nodeId,
+    revision: key.revision ?? null,
     typeId: key.typeId,
     workspaceId: key.workspaceId
   };

@@ -7,7 +7,10 @@ import {
   resolveAgentGuiWorkbenchDefaultLaunchFrame,
   resolveAgentGuiWorkbenchContributionCopy
 } from "./contribution.ts";
-import { agentGuiWorkbenchDockEntryId } from "./launch.ts";
+import {
+  agentGuiWorkbenchDockEntryId,
+  agentGuiWorkbenchTypeId
+} from "./launch.ts";
 
 function readDockEntryIconSrc(icon: unknown): string | undefined {
   if (!isValidElement(icon)) {
@@ -179,5 +182,81 @@ describe("agent GUI workbench contribution copy", () => {
       },
       framePolicy: "absolute"
     });
+  });
+
+  it("matches codex panel nodes and only renders popup previews through the host renderer", async () => {
+    const contribution = createAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const dockEntry = contribution.dockEntries?.find(
+      (entry) => entry.id === agentGuiWorkbenchTypeId
+    );
+    expect(dockEntry).toBeDefined();
+
+    const node = {
+      data: {
+        dockEntryId: agentGuiWorkbenchTypeId,
+        instanceId: "agent-gui:codex:panel:test-1",
+        typeId: agentGuiWorkbenchTypeId
+      },
+      id: "agent-gui:agent-gui:codex:panel:test-1",
+      title: "Codex"
+    };
+
+    expect(dockEntry?.matchNode?.(node as never)).toBe(true);
+    expect(
+      dockEntry?.providePopupItemPreview?.({
+        externalNodeState: {
+          lastActiveAgentSessionId: "session-1",
+          lastActiveConversationTitle: "Implement dock previews"
+        },
+        externalWorkspaceState: null,
+        host: {} as never,
+        isFocused: false,
+        isMinimized: false,
+        node: node as never
+      }) ?? null
+    ).toBeNull();
+  });
+
+  it("uses the host preview renderer for agent GUI dock popup previews", async () => {
+    const contribution = createAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      renderPreview: () => "preview",
+      workspaceId: "workspace-1"
+    });
+    const dockEntry = contribution.dockEntries?.find(
+      (entry) => entry.id === agentGuiWorkbenchTypeId
+    );
+    expect(dockEntry).toBeDefined();
+
+    const node = {
+      data: {
+        dockEntryId: agentGuiWorkbenchTypeId,
+        instanceId: "agent-gui:codex:panel:test-1",
+        typeId: agentGuiWorkbenchTypeId
+      },
+      displayMode: "floating",
+      frame: { height: 560, width: 1040, x: 0, y: 0 },
+      id: "agent-gui:agent-gui:codex:panel:test-1",
+      isMinimized: false,
+      restoreFrame: null,
+      title: "Codex"
+    };
+
+    const preview =
+      dockEntry?.providePopupItemPreview?.({
+        externalNodeState: {
+          lastActiveAgentSessionId: "session-1",
+          lastActiveConversationTitle: "Implement dock previews"
+        },
+        externalWorkspaceState: null,
+        host: {} as never,
+        isFocused: false,
+        isMinimized: false,
+        node: node as never
+      }) ?? null;
+    expect(preview?.kind).toBe("component");
   });
 });
