@@ -16,6 +16,14 @@ export type AgentConversationPromptVM =
       kind: "exit-plan";
       requestId: string;
       title: string;
+    }
+  | {
+      // Codex plan-mode "implement this plan?" decision. Unlike exit-plan it
+      // has no server request; requestId carries the plan turn id so the
+      // surface and dismissal can key off it. Actions: implement/feedback/skip.
+      kind: "plan-implementation";
+      requestId: string;
+      title: string;
     };
 
 export type AgentConversationPendingInteractivePromptVM = Exclude<

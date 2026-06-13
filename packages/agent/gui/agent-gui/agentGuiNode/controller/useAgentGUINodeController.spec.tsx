@@ -8425,7 +8425,11 @@ describe("useAgentGUINodeController", () => {
     });
 
     act(() => {
-      result.current.actions.submitPlanFeedback("focus on failing tests");
+      result.current.actions.submitInteractivePrompt({
+        requestId: "turn-plan",
+        action: "feedback",
+        payload: { text: "focus on failing tests" }
+      });
     });
 
     await waitFor(() => {
@@ -8474,7 +8478,11 @@ describe("useAgentGUINodeController", () => {
     });
 
     act(() => {
-      result.current.actions.submitPlanFeedback("   ");
+      result.current.actions.submitInteractivePrompt({
+        requestId: "turn-plan",
+        action: "feedback",
+        payload: { text: "   " }
+      });
     });
 
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -8532,15 +8540,23 @@ describe("useAgentGUINodeController", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.viewModel.planImplementationPrompt).toBe(true);
+      expect(result.current.viewModel.pendingInteractivePrompt).toEqual(
+        expect.objectContaining({
+          kind: "plan-implementation",
+          requestId: "turn-plan"
+        })
+      );
     });
 
-    // Dismiss suppresses the offer for that plan turn.
+    // Skip suppresses the offer for that plan turn.
     act(() => {
-      result.current.actions.submitPlanFeedback("");
+      result.current.actions.submitInteractivePrompt({
+        requestId: "turn-plan",
+        action: "skip"
+      });
     });
     await waitFor(() => {
-      expect(result.current.viewModel.planImplementationPrompt).toBe(false);
+      expect(result.current.viewModel.pendingInteractivePrompt).toBeNull();
     });
   });
 
@@ -8580,7 +8596,10 @@ describe("useAgentGUINodeController", () => {
     });
 
     act(() => {
-      result.current.actions.implementPlan();
+      result.current.actions.submitInteractivePrompt({
+        requestId: "turn-plan",
+        action: "implement"
+      });
     });
 
     await waitFor(() => {

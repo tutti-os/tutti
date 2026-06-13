@@ -482,7 +482,7 @@ export const zhCN = {
       planImplementationConfirm: "是的，实作此方案",
       planImplementationFeedbackPlaceholder: "否，请告知应如何调整执行方式",
       planImplementationSend: "送出",
-      planImplementationDismiss: "留在计划模式",
+      planImplementationSkip: "留在计划模式",
       noRunningResponse: "当前没有正在运行的回复。",
       promptTipsPrefix: "Tips：",
       promptTips: {

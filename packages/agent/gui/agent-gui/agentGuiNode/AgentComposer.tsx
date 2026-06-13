@@ -211,6 +211,11 @@ interface AgentComposerProps {
     submitAnswers: string;
     answerPlaceholder: string;
     waitingForAnswer: string;
+    planImplementationLead: string;
+    planImplementationConfirm: string;
+    planImplementationFeedbackPlaceholder: string;
+    planImplementationSend: string;
+    planImplementationSkip: string;
     fileMentionPalette: string;
     fileMentionLoading: string;
     fileMentionEmpty: string;
@@ -1865,7 +1870,13 @@ export function AgentComposer({
               nextQuestion: labels.nextQuestion,
               submitAnswers: labels.submitAnswers,
               answerPlaceholder: labels.answerPlaceholder,
-              waitingForAnswer: labels.waitingForAnswer
+              waitingForAnswer: labels.waitingForAnswer,
+              planImplementationLead: labels.planImplementationLead,
+              planImplementationConfirm: labels.planImplementationConfirm,
+              planImplementationFeedbackPlaceholder:
+                labels.planImplementationFeedbackPlaceholder,
+              planImplementationSend: labels.planImplementationSend,
+              planImplementationSkip: labels.planImplementationSkip
             }}
           />
         </div>

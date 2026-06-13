@@ -388,6 +388,64 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
       agentAvatarUrl: "https://cdn.example.com/codex.png"
     });
   });
+
+  it("offers a plan-implementation decision for a settled codex plan turn", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "plan-1",
+            kind: "message.assistant",
+            status: "completed",
+            turnId: "turn-plan",
+            payload: { messageKind: "plan", text: "# Plan\n1. inspect" },
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessions: [
+          session({
+            agentSessionId: "session-1",
+            provider: "codex",
+            status: "completed"
+          })
+        ]
+      })
+    );
+
+    expect(model.items[0]?.pendingPrompt).toMatchObject({
+      kind: "plan-implementation",
+      requestId: "turn-plan"
+    });
+    expect(model.waitingCount).toBe(1);
+  });
+
+  it("does not offer a plan decision while the codex session is still working", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "plan-1",
+            kind: "message.assistant",
+            status: "running",
+            turnId: "turn-plan",
+            payload: { messageKind: "plan", text: "# Plan" },
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessions: [
+          session({
+            agentSessionId: "session-1",
+            provider: "codex",
+            status: "working"
+          })
+        ]
+      })
+    );
+
+    expect(model.items[0]?.pendingPrompt).toBeNull();
+  });
 });
 
 function snapshot(input: {

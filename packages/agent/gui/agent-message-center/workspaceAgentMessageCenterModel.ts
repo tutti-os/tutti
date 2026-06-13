@@ -8,6 +8,10 @@ import {
 } from "@tutti-os/agent-activity-core";
 import type { AgentConversationPromptVM } from "../shared/agentConversation/contracts/agentConversationVM";
 import type { WorkspaceAgentActivityStatus } from "../shared/workspaceAgentActivityListViewModel";
+import {
+  latestPlanTurnId,
+  planImplementationPromptFromPlanTurn
+} from "../agent-gui/agentGuiNode/model/planImplementation";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../shared/workspaceAgentSessionSortTime";
 
 export interface WorkspaceAgentMessageCenterModel {
@@ -83,15 +87,21 @@ export function buildWorkspaceAgentMessageCenterModel(
       const messages = resolveSessionMessages(snapshot, session);
       const needsAttention =
         needsAttentionBySessionId.get(session.agentSessionId) ?? null;
+      const status = displayStatuses.get(session.agentSessionId) ?? "idle";
+      const lastAgentMessage = latestAgentMessage(messages);
+      const title = resolveSessionTitle(session, messages);
       const pendingPrompt =
         pendingPromptFromMessages(messages) ??
+        planImplementationPromptFromMessages(
+          messages,
+          session.provider,
+          status,
+          title
+        ) ??
         fallbackPromptFromNeedsAttention(
           needsAttention,
           options.promptFallbackLabels
         );
-      const status = displayStatuses.get(session.agentSessionId) ?? "idle";
-      const lastAgentMessage = latestAgentMessage(messages);
-      const title = resolveSessionTitle(session, messages);
       const sortTimeUnixMs = resolveWorkspaceAgentSessionSortTimeUnixMs(
         session,
         {
@@ -243,6 +253,26 @@ function pendingPromptFromMessages(
     }
   }
   return null;
+}
+
+// Codex has no provider-driven exit-plan approval, so the "implement this plan?"
+// decision is derived from the timeline: the latest turn produced a plan item
+// and the session has settled (no longer working). Mirrors the in-conversation
+// controller derivation so the same card renders in the message center.
+function planImplementationPromptFromMessages(
+  messages: readonly AgentActivityMessage[],
+  provider: AgentActivitySession["provider"],
+  status: WorkspaceAgentActivityStatus,
+  title: string
+): AgentConversationPromptVM | null {
+  if (provider !== "codex" || status === "working") {
+    return null;
+  }
+  const planTurnId = latestPlanTurnId(messages);
+  if (!planTurnId) {
+    return null;
+  }
+  return planImplementationPromptFromPlanTurn(planTurnId, title);
 }
 
 function approvalPromptFromMessage(

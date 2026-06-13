@@ -27,6 +27,11 @@ import {
 } from "../approvalOptionPresentation";
 import type { AgentConversationPromptVM } from "../contracts/agentConversationVM";
 import {
+  PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
+  PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
+  PLAN_IMPLEMENTATION_ACTION_SKIP
+} from "../../../agent-gui/agentGuiNode/model/planImplementation";
+import {
   getPromptToolDetails,
   isPromptRequestIdTitle,
   type PromptToolDetail
@@ -58,6 +63,11 @@ interface AgentInteractivePromptSurfaceProps {
     submitAnswers: string;
     answerPlaceholder: string;
     waitingForAnswer: string;
+    planImplementationLead: string;
+    planImplementationConfirm: string;
+    planImplementationFeedbackPlaceholder: string;
+    planImplementationSend: string;
+    planImplementationSkip: string;
   };
 }
 
@@ -90,6 +100,18 @@ export function AgentInteractivePromptSurface({
   if (prompt.kind === "exit-plan") {
     return (
       <ExitPlanPromptSurface
+        prompt={prompt}
+        embedded={embedded}
+        edgeGlow={edgeGlow}
+        isSubmitting={isSubmitting}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+  }
+  if (prompt.kind === "plan-implementation") {
+    return (
+      <PlanImplementationSurface
         prompt={prompt}
         embedded={embedded}
         edgeGlow={edgeGlow}
@@ -464,6 +486,86 @@ function ExitPlanPromptSurface({
                   requestId: prompt.requestId,
                   action: "deny",
                   payload: trimmed ? { denyMessage: trimmed } : undefined
+                })
+              }
+            >
+              {continueLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Codex plan-mode "implement this plan?" decision. No server request; actions
+// are routed by the consumer (controller inline, desktop chrome in the message
+// center) keyed on the action id rather than a server submitInteractive.
+function PlanImplementationSurface({
+  prompt,
+  embedded = false,
+  edgeGlow = false,
+  isSubmitting,
+  onSubmit,
+  labels
+}: AgentInteractivePromptSurfaceProps & {
+  prompt: Extract<AgentConversationPromptVM, { kind: "plan-implementation" }>;
+  embedded?: boolean;
+}) {
+  "use memo";
+  const [feedback, setFeedback] = useState("");
+  const trimmed = feedback.trim();
+  const continueLabel =
+    trimmed === ""
+      ? labels.planImplementationSkip
+      : labels.planImplementationSend;
+
+  return (
+    <section className={interactivePromptClassName(embedded)}>
+      <div className={interactivePromptCardClassName(edgeGlow)}>
+        <div className={styles.interactivePromptLead}>
+          {stripPromptTitlePunctuation(labels.planImplementationLead)}
+        </div>
+        <div className={styles.interactivePromptOptions}>
+          <button
+            type="button"
+            className={styles.interactiveOptionButton}
+            data-testid="agent-plan-implementation-implement"
+            disabled={isSubmitting}
+            onClick={() =>
+              onSubmit({
+                requestId: prompt.requestId,
+                action: PLAN_IMPLEMENTATION_ACTION_IMPLEMENT
+              })
+            }
+          >
+            <span className={styles.interactiveOptionTitle}>
+              {labels.planImplementationConfirm}
+            </span>
+          </button>
+        </div>
+        <div className={styles.interactivePromptFooter}>
+          <textarea
+            value={feedback}
+            placeholder={labels.planImplementationFeedbackPlaceholder}
+            disabled={isSubmitting}
+            className={styles.interactivePromptTextarea}
+            data-testid="agent-plan-implementation-feedback"
+            onChange={(event) => setFeedback(event.currentTarget.value)}
+          />
+          <div className={styles.interactivePromptActions}>
+            <button
+              type="button"
+              data-testid="agent-plan-implementation-continue"
+              disabled={isSubmitting}
+              onClick={() =>
+                onSubmit({
+                  requestId: prompt.requestId,
+                  action:
+                    trimmed === ""
+                      ? PLAN_IMPLEMENTATION_ACTION_SKIP
+                      : PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
+                  payload: trimmed ? { text: trimmed } : undefined
                 })
               }
             >

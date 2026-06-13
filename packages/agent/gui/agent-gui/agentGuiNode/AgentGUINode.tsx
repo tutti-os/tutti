@@ -725,9 +725,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         "agentHost.agentGui.planImplementationFeedbackPlaceholder"
       ),
       planImplementationSend: t("agentHost.agentGui.planImplementationSend"),
-      planImplementationDismiss: t(
-        "agentHost.agentGui.planImplementationDismiss"
-      ),
+      planImplementationSkip: t("agentHost.agentGui.planImplementationSkip"),
       noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
       empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
       emptyProvider: displayProviderLabel,

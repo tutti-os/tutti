@@ -119,8 +119,12 @@ import {
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
+  PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
+  PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
+  PLAN_IMPLEMENTATION_ACTION_SKIP,
   PLAN_IMPLEMENTATION_PROMPT,
-  latestPlanTurnId
+  latestPlanTurnId,
+  planImplementationPromptFromPlanTurn
 } from "../model/planImplementation";
 import {
   INITIAL_USAGE_ALERT_STATE,
@@ -1932,6 +1936,13 @@ export function useAgentGUINodeController({
   const updateComposerSettingsRef = useRef<
     (nextSettings: Partial<AgentSessionComposerSettings>) => void
   >(() => {});
+  // Bridges submitInteractivePrompt (defined earlier) to the client-side plan
+  // decision handlers (defined later); assigned after those callbacks.
+  const planActionsRef = useRef<{
+    implement: () => void;
+    feedback: (text: string) => void;
+    skip: () => void;
+  }>({ implement: () => {}, feedback: () => {}, skip: () => {} });
   const [isRespondingApproval, setIsRespondingApproval] = useState(false);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [isDeletingProjectConversations, setIsDeletingProjectConversations] =
@@ -4825,6 +4836,22 @@ export function useAgentGUINodeController({
       optionId?: string;
       payload?: Record<string, unknown>;
     }) => {
+      // Codex plan-implementation actions are client-orchestrated (no server
+      // submitInteractive); route them to the plan decision handlers.
+      if (input.action === PLAN_IMPLEMENTATION_ACTION_IMPLEMENT) {
+        planActionsRef.current.implement();
+        return;
+      }
+      if (input.action === PLAN_IMPLEMENTATION_ACTION_FEEDBACK) {
+        planActionsRef.current.feedback(
+          typeof input.payload?.text === "string" ? input.payload.text : ""
+        );
+        return;
+      }
+      if (input.action === PLAN_IMPLEMENTATION_ACTION_SKIP) {
+        planActionsRef.current.skip();
+        return;
+      }
       const agentSessionId = activeConversationIdRef.current;
       const normalizedRequestId = input.requestId.trim();
       const normalizedOptionId = input.optionId?.trim() ?? "";
@@ -5355,6 +5382,11 @@ export function useAgentGUINodeController({
     },
     [dismissPlanImplementation, submitPrompt]
   );
+  planActionsRef.current = {
+    implement: implementPlan,
+    feedback: submitPlanFeedback,
+    skip: dismissPlanImplementation
+  };
 
   useEffect(() => {
     if (!activeConversationId) {
@@ -6343,7 +6375,7 @@ export function useAgentGUINodeController({
     hasProviderSessionNotFoundError || isActivePromptSuppressed
       ? null
       : rawPendingApproval;
-  const pendingInteractivePrompt =
+  const serverInteractivePrompt =
     hasProviderSessionNotFoundError || isActivePromptSuppressed
       ? null
       : rawPendingInteractivePrompt;
@@ -6404,11 +6436,21 @@ export function useAgentGUINodeController({
       ? latestPlanTurnId(activeTimelineItems)
       : null;
   planImplementationTurnIdRef.current = planImplementationTurnId;
-  const planImplementationPrompt =
+  // Fold the codex plan decision into the unified interactive-prompt machinery
+  // (server exit-plan wins if both somehow apply). Suppressed once skipped for
+  // that plan turn; a fresh plan turn re-arms it.
+  const planImplementationPromptVM =
     planImplementationTurnId !== null &&
     activeConversationId !== null &&
     dismissedPlanTurnIdBySessionId[activeConversationId] !==
-      planImplementationTurnId;
+      planImplementationTurnId
+      ? planImplementationPromptFromPlanTurn(
+          planImplementationTurnId,
+          activeConversation?.title ?? ""
+        )
+      : null;
+  const pendingInteractivePrompt =
+    serverInteractivePrompt ?? planImplementationPromptVM;
   const activeRuntimeSession =
     runtimeSessionsBySessionId.get(activeConversationId ?? "") ?? null;
   const activeConversationBusy =
@@ -6653,7 +6695,6 @@ export function useAgentGUINodeController({
         compactSupported,
         usage,
         usageAlert,
-        planImplementationPrompt,
         listError,
         isDeletingConversation,
         isDeletingProjectConversations,
@@ -6690,9 +6731,6 @@ export function useAgentGUINodeController({
         submitPrompt,
         submitCompact,
         dismissUsageAlert,
-        implementPlan,
-        submitPlanFeedback,
-        dismissPlanImplementation,
         showPromptImagesUnsupported,
         submitApprovalOption,
         submitInteractivePrompt,
@@ -6741,10 +6779,6 @@ export function useAgentGUINodeController({
       compactSupported,
       usage,
       usageAlert,
-      planImplementationPrompt,
-      implementPlan,
-      submitPlanFeedback,
-      dismissPlanImplementation,
       dismissUsageAlert,
       isInterrupting,
       isLoadingConversations,

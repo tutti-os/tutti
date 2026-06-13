@@ -92,7 +92,6 @@ import {
 } from "./agentGuiNodeViewConversation";
 import PixelCard from "./PixelCard";
 import styles from "./AgentGUINode.styles";
-import conversationStyles from "./AgentGUIConversation.styles";
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
 
 const AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX = 24;
@@ -291,7 +290,7 @@ export interface AgentGUIViewLabels {
   planImplementationConfirm: string;
   planImplementationFeedbackPlaceholder: string;
   planImplementationSend: string;
-  planImplementationDismiss: string;
+  planImplementationSkip: string;
   fileMentionPalette: string;
   fileMentionLoading: string;
   fileMentionEmpty: string;
@@ -350,9 +349,6 @@ interface AgentGUINodeViewProps {
     selectConversation: (agentSessionId: string) => void;
     submitPrompt: (content: AgentPromptContentBlock[]) => void;
     submitCompact: () => void;
-    implementPlan: () => void;
-    submitPlanFeedback: (feedback: string) => void;
-    dismissPlanImplementation: () => void;
     dismissUsageAlert: () => void;
     showPromptImagesUnsupported: () => void;
     submitApprovalOption: (requestId: string, optionId: string) => void;
@@ -1133,13 +1129,32 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       rawState: null
     };
   }, [displayedInlineNotice]);
+  // Plan decisions (claude-code exit-plan + codex plan-implementation) replace
+  // the composer in the bottom dock: the decision card takes the input box slot
+  // and the composer hides until it is acted on (optimistically cleared via
+  // bottomDockDismissedPromptRequestId) or otherwise resolves.
+  const activePromptIsPlanDecision =
+    activePrompt?.kind === "exit-plan" ||
+    activePrompt?.kind === "plan-implementation";
+  const activePromptIsVisible =
+    activePrompt !== null &&
+    bottomDockDismissedPromptRequestId !== activePromptRequestId;
+  const bottomDockReplacementPrompt =
+    activePromptIsPlanDecision && activePromptIsVisible ? activePrompt : null;
+  // Approval / ask-user prompts keep the original layout: they lift above the
+  // inline notice when one is present, otherwise they embed in the composer
+  // (which stays visible). Only plan decisions replace the composer.
   const shouldLiftActivePromptAboveInlineNotice = inlineNoticeChrome !== null;
-  const bottomDockActivePrompt =
+  const bottomDockLiftedPrompt =
+    !activePromptIsPlanDecision &&
     shouldLiftActivePromptAboveInlineNotice &&
-    activePrompt &&
-    bottomDockDismissedPromptRequestId !== activePromptRequestId
+    activePromptIsVisible
       ? activePrompt
       : null;
+  const composerActivePrompt =
+    activePromptIsPlanDecision || shouldLiftActivePromptAboveInlineNotice
+      ? null
+      : activePrompt;
   const showTimelineSkeleton =
     viewModel.isLoadingMessages &&
     (!conversation || conversation.rows.length === 0);
@@ -1263,7 +1278,13 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       nextQuestion: labels.nextQuestion,
       submitAnswers: labels.submitAnswers,
       answerPlaceholder: labels.answerPlaceholder,
-      waitingForAnswer: labels.waitingForAnswer
+      waitingForAnswer: labels.waitingForAnswer,
+      planImplementationLead: labels.planImplementationLead,
+      planImplementationConfirm: labels.planImplementationConfirm,
+      planImplementationFeedbackPlaceholder:
+        labels.planImplementationFeedbackPlaceholder,
+      planImplementationSend: labels.planImplementationSend,
+      planImplementationSkip: labels.planImplementationSkip
     }),
     [
       labels.answerPlaceholder,
@@ -1276,7 +1297,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.sendFeedback,
       labels.stayInPlan,
       labels.submitAnswers,
-      labels.waitingForAnswer
+      labels.waitingForAnswer,
+      labels.planImplementationLead,
+      labels.planImplementationConfirm,
+      labels.planImplementationFeedbackPlaceholder,
+      labels.planImplementationSend,
+      labels.planImplementationSkip
     ]
   );
   const composerLabels = useMemo(
@@ -1641,7 +1667,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                 ? labels.followupPlaceholder
                 : labels.initialPlaceholder,
               showStopButton,
-              activePrompt,
+              activePrompt: composerActivePrompt,
               activePromptKeyboardShortcutsEnabled: isActive,
               composerFocusRequestSequence,
               isActive,
@@ -1683,8 +1709,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       {hasActiveConversation ? (
         <AgentGUIBottomDockPane
           bottomDockRef={bottomDockRef}
-          activePrompt={activePrompt}
-          bottomDockActivePrompt={bottomDockActivePrompt}
+          bottomDockLiftedPrompt={bottomDockLiftedPrompt}
+          bottomDockReplacementPrompt={bottomDockReplacementPrompt}
           keyboardShortcutsEnabled={isActive}
           inlineNoticeChrome={inlineNoticeChrome}
           sessionChrome={sessionChrome}
@@ -1695,10 +1721,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           usageAlertLabels={labels}
           onUsageAlertCompact={handleUsageAlertCompact}
           onUsageAlertDismiss={actions.dismissUsageAlert}
-          planImplementationPrompt={viewModel.planImplementationPrompt}
-          planImplementationLabels={labels}
-          onPlanImplement={actions.implementPlan}
-          onPlanImplementationFeedback={actions.submitPlanFeedback}
           composerProps={{
             workspaceId: viewModel.workspaceId,
             workspacePath: viewModel.workspacePath,
@@ -1722,9 +1744,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               ? labels.followupPlaceholder
               : labels.initialPlaceholder,
             showStopButton,
-            activePrompt: shouldLiftActivePromptAboveInlineNotice
-              ? null
-              : activePrompt,
+            // Plan decisions replace the composer via bottomDockReplacementPrompt;
+            // approval / ask-user prompts still embed here as a floating prompt.
+            activePrompt: composerActivePrompt,
             activePromptKeyboardShortcutsEnabled: isActive,
             composerFocusRequestSequence,
             isActive,
@@ -2061,6 +2083,11 @@ type InteractivePromptLabels = {
   submitAnswers: string;
   answerPlaceholder: string;
   waitingForAnswer: string;
+  planImplementationLead: string;
+  planImplementationConfirm: string;
+  planImplementationFeedbackPlaceholder: string;
+  planImplementationSend: string;
+  planImplementationSkip: string;
 };
 
 type AgentComposerProps = React.ComponentProps<typeof AgentComposer>;
@@ -2222,82 +2249,17 @@ function AgentUsageAlertBanner({
   );
 }
 
-type AgentPlanImplementationLabels = Pick<
-  AgentGUIViewLabels,
-  | "planImplementationLead"
-  | "planImplementationConfirm"
-  | "planImplementationFeedbackPlaceholder"
-  | "planImplementationSend"
-  | "planImplementationDismiss"
->;
-
-// Codex has no provider-driven exit-plan approval; this mirrors the codex
-// TUI's local "implement this plan?" prompt after a plan-mode turn.
-function AgentPlanImplementationBanner({
-  labels,
-  onImplement,
-  onFeedback
-}: {
-  labels: AgentPlanImplementationLabels;
-  onImplement: () => void;
-  onFeedback: (feedback: string) => void;
-}): React.JSX.Element {
-  "use memo";
-
-  const [feedback, setFeedback] = useState("");
-  const trimmed = feedback.trim();
-
-  return (
-    <div
-      className={conversationStyles.interactivePromptCard}
-      data-testid="agent-gui-plan-implementation"
-      role="status"
-    >
-      <div className={conversationStyles.interactivePromptLead}>
-        {labels.planImplementationLead}
-      </div>
-      <div className={conversationStyles.interactivePromptOptions}>
-        <button
-          type="button"
-          className={conversationStyles.interactiveOptionButton}
-          data-testid="agent-gui-plan-implementation-confirm"
-          onClick={onImplement}
-        >
-          <span className={conversationStyles.interactiveOptionTitle}>
-            {labels.planImplementationConfirm}
-          </span>
-        </button>
-      </div>
-      <div className={conversationStyles.interactivePromptFooter}>
-        <textarea
-          value={feedback}
-          placeholder={labels.planImplementationFeedbackPlaceholder}
-          className={conversationStyles.interactivePromptTextarea}
-          data-testid="agent-gui-plan-implementation-feedback"
-          onChange={(event) => setFeedback(event.currentTarget.value)}
-        />
-        <div className={conversationStyles.interactivePromptActions}>
-          <button
-            type="button"
-            data-testid="agent-gui-plan-implementation-dismiss"
-            onClick={() => onFeedback(feedback)}
-          >
-            {trimmed === ""
-              ? labels.planImplementationDismiss
-              : labels.planImplementationSend}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 interface AgentGUIBottomDockPaneProps {
   bottomDockRef: React.RefObject<HTMLDivElement | null>;
-  activePrompt:
+  // Approval / ask-user prompts lifted above the inline notice (composer stays
+  // visible below). Mutually exclusive with bottomDockReplacementPrompt.
+  bottomDockLiftedPrompt:
     | AgentGUIDetailPaneProps["viewModel"]["pendingApproval"]
     | AgentGUIDetailPaneProps["viewModel"]["pendingInteractivePrompt"];
-  bottomDockActivePrompt:
+  // When set, this interactive prompt takes the composer's slot in the bottom
+  // dock (the composer is hidden) for both claude-code exit-plan and codex
+  // plan-implementation decisions. Closing the prompt returns the composer.
+  bottomDockReplacementPrompt:
     | AgentGUIDetailPaneProps["viewModel"]["pendingApproval"]
     | AgentGUIDetailPaneProps["viewModel"]["pendingInteractivePrompt"];
   keyboardShortcutsEnabled: boolean;
@@ -2310,10 +2272,6 @@ interface AgentGUIBottomDockPaneProps {
   usageAlertLabels: AgentUsageAlertBannerLabels;
   onUsageAlertCompact: () => void;
   onUsageAlertDismiss: () => void;
-  planImplementationPrompt: boolean;
-  planImplementationLabels: AgentPlanImplementationLabels;
-  onPlanImplement: () => void;
-  onPlanImplementationFeedback: (feedback: string) => void;
   composerProps: AgentComposerProps;
   chromeLabels: ChromeLabels;
   promptLabels: InteractivePromptLabels;
@@ -2326,7 +2284,8 @@ interface AgentGUIBottomDockPaneProps {
 
 const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   bottomDockRef,
-  bottomDockActivePrompt,
+  bottomDockLiftedPrompt,
+  bottomDockReplacementPrompt,
   keyboardShortcutsEnabled,
   inlineNoticeChrome,
   sessionChrome,
@@ -2337,10 +2296,6 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   usageAlertLabels,
   onUsageAlertCompact,
   onUsageAlertDismiss,
-  planImplementationPrompt,
-  planImplementationLabels,
-  onPlanImplement,
-  onPlanImplementationFeedback,
   composerProps,
   chromeLabels,
   promptLabels,
@@ -2358,13 +2313,13 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
       className={styles.bottomDock}
       data-testid="agent-gui-bottom-dock"
     >
-      {bottomDockActivePrompt ? (
+      {bottomDockLiftedPrompt ? (
         <div
           className={styles.bottomDockPrompt}
           data-testid="agent-gui-bottom-dock-active-prompt"
         >
           <AgentInteractivePromptSurface
-            prompt={bottomDockActivePrompt}
+            prompt={bottomDockLiftedPrompt}
             embedded={true}
             edgeGlow={true}
             keyboardShortcuts={keyboardShortcutsEnabled}
@@ -2382,13 +2337,6 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           labels={usageAlertLabels}
           onCompact={onUsageAlertCompact}
           onDismiss={onUsageAlertDismiss}
-        />
-      ) : null}
-      {planImplementationPrompt ? (
-        <AgentPlanImplementationBanner
-          labels={planImplementationLabels}
-          onImplement={onPlanImplement}
-          onFeedback={onPlanImplementationFeedback}
         />
       ) : null}
       {inlineNoticeChrome ? (
@@ -2411,7 +2359,24 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
         onContinueInNewConversation={onContinueInNewConversation}
         labels={chromeLabels}
       />
-      <AgentComposer {...composerProps} />
+      {bottomDockReplacementPrompt ? (
+        <div
+          className={styles.bottomDockPrompt}
+          data-testid="agent-gui-bottom-dock-active-prompt"
+        >
+          <AgentInteractivePromptSurface
+            prompt={bottomDockReplacementPrompt}
+            embedded={true}
+            edgeGlow={true}
+            keyboardShortcuts={keyboardShortcutsEnabled}
+            isSubmitting={isRespondingApproval}
+            onSubmit={onSubmitBottomDockInteractivePrompt}
+            labels={promptLabels}
+          />
+        </div>
+      ) : (
+        <AgentComposer {...composerProps} />
+      )}
     </div>
   );
 });

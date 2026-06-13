@@ -127,7 +127,6 @@ export interface AgentGUINodeViewModel {
   usage: AgentActivityUsage | null;
   usageAlert: UsageAlertTier | null;
   /** Codex plan turn finished: offer the TUI-equivalent implement prompt. */
-  planImplementationPrompt: boolean;
   listError: string | null;
   isDeletingConversation: boolean;
   isDeletingProjectConversations: boolean;

@@ -30,7 +30,12 @@ const labels = {
   nextQuestion: "Next",
   submitAnswers: "Submit answers",
   answerPlaceholder: "Add details for the agent...",
-  waitingForAnswer: "Waiting for your answer..."
+  waitingForAnswer: "Waiting for your answer...",
+  planImplementationLead: "Implement this plan?",
+  planImplementationConfirm: "Implement plan",
+  planImplementationFeedbackPlaceholder: "Adjust the plan instead...",
+  planImplementationSend: "Send adjustments",
+  planImplementationSkip: "Stay in Plan Mode"
 };
 
 describe("AgentInteractivePromptSurface", () => {
@@ -1021,5 +1026,48 @@ describe("AgentInteractivePromptSurface", () => {
       }
     });
     expect(screen.queryByText("Questions for you")).toBeNull();
+  });
+
+  it("dispatches implement / skip / feedback for a plan-implementation prompt", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "plan-implementation",
+          requestId: "plan-turn-1",
+          title: "Session 1"
+        }}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    expect(screen.getByText(labels.planImplementationLead)).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("agent-plan-implementation-implement"));
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "plan-turn-1",
+      action: "implement"
+    });
+
+    // Empty continue button skips (stays in plan mode).
+    fireEvent.click(screen.getByTestId("agent-plan-implementation-continue"));
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "plan-turn-1",
+      action: "skip",
+      payload: undefined
+    });
+
+    // Typing then continuing sends the adjustment back as feedback.
+    fireEvent.change(screen.getByTestId("agent-plan-implementation-feedback"), {
+      target: { value: "focus on tests first" }
+    });
+    fireEvent.click(screen.getByTestId("agent-plan-implementation-continue"));
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "plan-turn-1",
+      action: "feedback",
+      payload: { text: "focus on tests first" }
+    });
   });
 });

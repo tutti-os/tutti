@@ -1,3 +1,5 @@
+import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
+
 /**
  * Codex has no provider-driven exit-plan approval flow (unlike claude-code's
  * ExitPlanMode tool): the official TUI offers a local "implement this plan?"
@@ -6,6 +8,27 @@
  * See codex-rs/tui/src/chatwidget/plan_implementation.rs.
  */
 export const PLAN_IMPLEMENTATION_PROMPT = "Implement the plan.";
+
+/** Action ids carried by the plan-implementation interactive prompt. */
+export const PLAN_IMPLEMENTATION_ACTION_IMPLEMENT = "implement";
+export const PLAN_IMPLEMENTATION_ACTION_FEEDBACK = "feedback";
+export const PLAN_IMPLEMENTATION_ACTION_SKIP = "skip";
+
+/**
+ * Builds the plan-implementation interactive prompt VM for a plan turn so the
+ * controller and the message center surface the codex plan decision through
+ * the same `pendingInteractivePrompt` machinery as claude-code exit-plan.
+ */
+export function planImplementationPromptFromPlanTurn(
+  planTurnId: string,
+  title: string
+): Extract<AgentConversationPromptVM, { kind: "plan-implementation" }> {
+  return {
+    kind: "plan-implementation",
+    requestId: planTurnId,
+    title
+  };
+}
 
 interface PlanTimelineItem {
   turnId?: string | null;

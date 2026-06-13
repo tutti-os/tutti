@@ -32,9 +32,6 @@ const mockSubmitInteractivePrompt = vi.fn();
 const mockInterruptCurrentTurn = vi.fn();
 const mockUpdateDraftPrompt = vi.fn();
 const mockUpdateComposerSettings = vi.fn();
-const mockImplementPlan = vi.fn();
-const mockDismissPlanImplementation = vi.fn();
-const mockSubmitPlanFeedback = vi.fn();
 const mockSendQueuedPromptNext = vi.fn();
 const mockRemoveQueuedPrompt = vi.fn();
 const mockEditQueuedPrompt = vi.fn();
@@ -589,9 +586,6 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       submitPrompt: mockSubmitPrompt,
       submitCompact: mockSubmitCompact,
       dismissUsageAlert: mockDismissUsageAlert,
-      implementPlan: mockImplementPlan,
-      dismissPlanImplementation: mockDismissPlanImplementation,
-      submitPlanFeedback: mockSubmitPlanFeedback,
       showPromptImagesUnsupported: mockShowPromptImagesUnsupported,
       submitApprovalOption: mockSubmitApprovalOption,
       submitInteractivePrompt: mockSubmitInteractivePrompt,
@@ -631,9 +625,6 @@ describe("AgentGUINode", () => {
     mockInterruptCurrentTurn.mockClear();
     mockUpdateDraftPrompt.mockClear();
     mockUpdateComposerSettings.mockClear();
-    mockImplementPlan.mockClear();
-    mockDismissPlanImplementation.mockClear();
-    mockSubmitPlanFeedback.mockClear();
     mockSendQueuedPromptNext.mockClear();
     mockRemoveQueuedPrompt.mockClear();
     mockEditQueuedPrompt.mockClear();
@@ -2401,47 +2392,44 @@ describe("AgentGUINode", () => {
     });
   });
 
-  it("offers the codex plan implementation banner and wires its actions", () => {
+  it("renders the codex plan decision in the composer slot and wires its actions", () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
-      planImplementationPrompt: true
+      pendingInteractivePrompt: {
+        kind: "plan-implementation",
+        requestId: "plan-turn-1",
+        title: "Session 1"
+      }
+    });
+    renderAgentGUINode();
+
+    // The decision card replaces the composer: it lives in the bottom dock and
+    // the composer's editor is hidden while the decision is pending.
+    expect(
+      screen.getByTestId("agent-gui-bottom-dock-active-prompt")
+    ).toBeInTheDocument();
+    expect(queryComposerEditor()).toBeNull();
+
+    // Action routing goes through the unified interactive-prompt submit path.
+    // (implement / skip / feedback dispatch is covered in the surface spec.)
+    fireEvent.click(screen.getByTestId("agent-plan-implementation-implement"));
+    expect(mockSubmitInteractivePrompt).toHaveBeenCalledWith({
+      requestId: "plan-turn-1",
+      action: "implement"
+    });
+  });
+
+  it("keeps the composer when no plan decision is pending", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      pendingInteractivePrompt: null
     });
     renderAgentGUINode();
 
     expect(
-      screen.getByTestId("agent-gui-plan-implementation")
-    ).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByTestId("agent-gui-plan-implementation-confirm")
-    );
-    expect(mockImplementPlan).toHaveBeenCalledTimes(1);
-
-    // Empty feedback button stays in plan mode; typing then submitting sends
-    // the adjustment back to the agent.
-    fireEvent.click(
-      screen.getByTestId("agent-gui-plan-implementation-dismiss")
-    );
-    expect(mockSubmitPlanFeedback).toHaveBeenCalledWith("");
-
-    fireEvent.change(
-      screen.getByTestId("agent-gui-plan-implementation-feedback"),
-      { target: { value: "focus on tests first" } }
-    );
-    fireEvent.click(
-      screen.getByTestId("agent-gui-plan-implementation-dismiss")
-    );
-    expect(mockSubmitPlanFeedback).toHaveBeenCalledWith("focus on tests first");
-  });
-
-  it("hides the plan implementation banner when not offered", () => {
-    mockViewModel = createViewModel({
-      activeConversationId: "session-1",
-      planImplementationPrompt: false
-    });
-    renderAgentGUINode();
-
-    expect(screen.queryByTestId("agent-gui-plan-implementation")).toBeNull();
+      screen.queryByTestId("agent-plan-implementation-implement")
+    ).toBeNull();
+    expect(getComposerEditor()).toBeInTheDocument();
   });
 
   it("omits the plan mode option when the provider lacks the capability", async () => {
@@ -6511,7 +6499,6 @@ function createViewModel(
     compactSupported: null,
     usage: null,
     usageAlert: null,
-    planImplementationPrompt: false,
     isDeletingConversation: false,
     isDeletingProjectConversations: false,
     pendingDeleteConversation: null,

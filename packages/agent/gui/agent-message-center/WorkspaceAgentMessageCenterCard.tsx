@@ -476,7 +476,16 @@ export function buildWorkspaceAgentInteractivePromptLabels(
     nextQuestion: t("agentHost.agentGui.nextQuestion"),
     submitAnswers: t("agentHost.agentGui.submitAnswers"),
     answerPlaceholder: t("agentHost.agentGui.answerPlaceholder"),
-    waitingForAnswer: t("agentHost.agentGui.waitingForAnswer")
+    waitingForAnswer: t("agentHost.agentGui.waitingForAnswer"),
+    planImplementationLead: t("agentHost.agentGui.planImplementationLead"),
+    planImplementationConfirm: t(
+      "agentHost.agentGui.planImplementationConfirm"
+    ),
+    planImplementationFeedbackPlaceholder: t(
+      "agentHost.agentGui.planImplementationFeedbackPlaceholder"
+    ),
+    planImplementationSend: t("agentHost.agentGui.planImplementationSend"),
+    planImplementationSkip: t("agentHost.agentGui.planImplementationSkip")
   };
 }
 

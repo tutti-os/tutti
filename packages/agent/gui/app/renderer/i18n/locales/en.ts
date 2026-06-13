@@ -526,7 +526,7 @@ export const en = {
       planImplementationFeedbackPlaceholder:
         "No — tell the agent how to adjust the approach",
       planImplementationSend: "Send",
-      planImplementationDismiss: "Stay in Plan Mode",
+      planImplementationSkip: "Stay in Plan Mode",
       noRunningResponse: "No running response to stop.",
       promptTipsPrefix: "Tips: ",
       promptTips: {
