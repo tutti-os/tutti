@@ -18,7 +18,10 @@ import {
   Button,
   ChevronDownIcon,
   ChevronUpIcon,
-  TooltipProvider
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
 } from "@tutti-os/ui-system";
 import type { WorkbenchDockContext } from "../react/types.ts";
 import {
@@ -57,6 +60,7 @@ import type {
   WorkbenchDockPreviewCacheKey
 } from "../react/dockPreviewCache.ts";
 import type {
+  WorkbenchDockPreviewContent,
   WorkbenchHostDockEntry,
   WorkbenchHostDockEntryStateSource,
   WorkbenchHostExternalStateSource,
@@ -91,7 +95,9 @@ function isDockVisualMutationActive(element: HTMLElement | null): boolean {
 }
 
 export function WorkbenchHostDock({
+  captureNodePreviewImage,
   context,
+  debugDiagnostics,
   dockEntries,
   dockPlacement = "bottom",
   dockPreviewCache,
@@ -104,7 +110,9 @@ export function WorkbenchHostDock({
   onDockEntryClick,
   workspaceId
 }: {
+  captureNodePreviewImage?: WorkbenchHostProps["captureNodePreviewImage"];
   context: WorkbenchDockContext<WorkbenchHostNodeData>;
+  debugDiagnostics?: WorkbenchHostProps["debugDiagnostics"];
   dockEntries: readonly WorkbenchHostDockEntry[];
   dockPlacement?: WorkbenchHostProps["dockPlacement"];
   dockPreviewCache?: WorkbenchDockPreviewCache;
@@ -151,6 +159,9 @@ export function WorkbenchHostDock({
   );
   const pendingDockStateRefreshRef = useRef(false);
   const slotRefs = useRef(new Map<string, HTMLElement>());
+  const dockSlotRefCallbacksRef = useRef(
+    new Map<string, (element: HTMLElement | null) => void>()
+  );
   const previousAttentionTokenByEntryId = useRef(new Map<string, unknown>());
   const attentionTimeouts = useRef(
     new Map<string, ReturnType<typeof setTimeout>>()
@@ -366,6 +377,20 @@ export function WorkbenchHostDock({
     dockRootRef: dockMeasureRef,
     slotRefs
   });
+  const clearSlotMagnificationRef = useRef<(anchorKey: string) => void>(() => {
+    return;
+  });
+  const registerDockAnchorRef = useRef(
+    (anchorKey: string, element: HTMLElement | null) => {
+      context.genie.registerDockAnchor(anchorKey, element);
+    }
+  );
+  clearSlotMagnificationRef.current = (anchorKey) => {
+    clearSlotMagnification(anchorKey);
+  };
+  registerDockAnchorRef.current = (anchorKey, element) => {
+    context.genie.registerDockAnchor(anchorKey, element);
+  };
 
   const setDockHoverPanelOpen = useCallback((open: boolean) => {
     if (open) {
@@ -406,6 +431,24 @@ export function WorkbenchHostDock({
       clearHoverPanelOpenTimer,
       flushPendingDockStateRefresh,
       setDockHoverPanelOpen
+    ]
+  );
+
+  const scheduleHoverPanelClose = useCallback(
+    (entryId?: string) => {
+      clearHoverPanelOpenTimer();
+      clearHoverPanelCloseTimer();
+      hoverPanelCloseTimerRef.current = setTimeout(() => {
+        hoverPanelCloseTimerRef.current = null;
+        closeHoverPanelImmediate(entryId);
+        handleDockPointerLeave();
+      }, dockHoverPanelCloseDelayMs);
+    },
+    [
+      clearHoverPanelCloseTimer,
+      clearHoverPanelOpenTimer,
+      closeHoverPanelImmediate,
+      handleDockPointerLeave
     ]
   );
 
@@ -485,6 +528,50 @@ export function WorkbenchHostDock({
         }
       }
       return null;
+    },
+    []
+  );
+
+  const isPointerInsideActiveHoverPanelRegion = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      const activeHoverPanel = activeHoverPanelRef.current;
+      if (!activeHoverPanel) {
+        return false;
+      }
+
+      const anchorSlot = slotRefs.current.get(activeHoverPanel.anchorKey);
+      const panel = hoverPanelRef.current;
+      if (
+        !anchorSlot ||
+        !panel ||
+        !anchorSlot.isConnected ||
+        !panel.isConnected
+      ) {
+        return false;
+      }
+
+      const anchorRect = anchorSlot.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      return (
+        rectContainsPoint(
+          anchorRect,
+          clientX,
+          clientY,
+          dockHoverPanelHitSlopPx
+        ) ||
+        rectContainsPoint(
+          panelRect,
+          clientX,
+          clientY,
+          dockHoverPanelHitSlopPx
+        ) ||
+        rectContainsPoint(
+          createHoverPanelBridgeRect(anchorRect, panelRect),
+          clientX,
+          clientY,
+          dockHoverPanelBridgeSlopPx
+        )
+      );
     },
     []
   );
@@ -591,7 +678,11 @@ export function WorkbenchHostDock({
   const handleDockPointerTravel = useCallback(
     (clientX: number, clientY: number) => {
       if (activeHoverPanelRef.current !== null) {
-        closeHoverPanelImmediate();
+        if (isPointerInsideActiveHoverPanelRegion(clientX, clientY)) {
+          clearHoverPanelCloseTimer();
+          return;
+        }
+        scheduleHoverPanelClose(activeHoverPanelRef.current.entryId);
         handleDockPointerLeave();
         return;
       }
@@ -600,9 +691,11 @@ export function WorkbenchHostDock({
       scheduleHoverPanelAtPointAfterRest(clientX, clientY);
     },
     [
-      closeHoverPanelImmediate,
+      clearHoverPanelCloseTimer,
       handleDockPointerMove,
       handleDockPointerLeave,
+      isPointerInsideActiveHoverPanelRegion,
+      scheduleHoverPanelClose,
       scheduleHoverPanelAtPointAfterRest
     ]
   );
@@ -768,25 +861,32 @@ export function WorkbenchHostDock({
   );
 
   const captureMinimizedNodePreview = useCallback(
-    (node: WorkbenchMinimizedDockNode) => {
+    async (node: WorkbenchMinimizedDockNode) => {
       const capturePreview = nodeDefinitions.get(node.data.typeId)?.window
         ?.minimizedDock?.capturePreview;
-      if (!capturePreview) {
-        return null;
-      }
-
-      return capturePreview({
-        externalNodeState: readWorkbenchHostExternalState({
-          externalStateSource,
-          node,
-          workspaceId
-        }).externalNodeState,
-        isFocused: context.focusedNodeId === node.id,
-        isMinimized: node.isMinimized,
-        node
+      const externalState = readWorkbenchHostExternalState({
+        externalStateSource,
+        node,
+        workspaceId
       });
+      return (
+        (await Promise.resolve(
+          capturePreview?.({
+            externalNodeState: externalState.externalNodeState,
+            externalWorkspaceState: externalState.externalWorkspaceState,
+            host,
+            isFocused: context.focusedNodeId === node.id,
+            isMinimized: node.isMinimized,
+            node
+          }) ?? null
+        ).catch(() => null)) ??
+        (await Promise.resolve(captureNodePreviewImage?.(node) ?? null).catch(
+          () => null
+        ))
+      );
     },
     [
+      captureNodePreviewImage,
       context.focusedNodeId,
       externalStateRevision,
       externalStateSource,
@@ -834,18 +934,26 @@ export function WorkbenchHostDock({
     });
   };
 
-  const registerDockSlot =
-    (anchorKey: string) => (element: HTMLElement | null) => {
+  const registerDockSlot = useCallback((anchorKey: string) => {
+    const existing = dockSlotRefCallbacksRef.current.get(anchorKey);
+    if (existing) {
+      return existing;
+    }
+
+    const callback = (element: HTMLElement | null) => {
       if (element) {
         slotRefs.current.set(anchorKey, element);
       } else {
         slotRefs.current.delete(anchorKey);
         if (!dockMeasureRef.current?.hasAttribute("data-dock-pointer-active")) {
-          clearSlotMagnification(anchorKey);
+          clearSlotMagnificationRef.current(anchorKey);
         }
       }
-      context.genie.registerDockAnchor(anchorKey, element);
+      registerDockAnchorRef.current(anchorKey, element);
     };
+    dockSlotRefCallbacksRef.current.set(anchorKey, callback);
+    return callback;
+  }, []);
 
   const popupEntry =
     activePopup === null
@@ -992,6 +1100,19 @@ export function WorkbenchHostDock({
                         beginDockIconInteraction(anchorKey);
                       }}
                       onClick={(event) => {
+                        logWorkbenchDockDebug("dock.click", debugDiagnostics, {
+                          anchorKey,
+                          clickResolution,
+                          dockNodeState: resolvedEntry.dockNodeState,
+                          entryId: entry.id,
+                          instanceMode: instanceMode ?? null,
+                          matchedNodeCount: resolvedEntry.matchedNodes.length,
+                          matchedNodeIds: resolvedEntry.matchedNodes.map(
+                            (node) => node.id
+                          ),
+                          typeId: entry.typeId,
+                          workspaceId
+                        });
                         switch (clickResolution.kind) {
                           case "focus-node":
                             closePopup();
@@ -1013,6 +1134,19 @@ export function WorkbenchHostDock({
                           case "open-popup": {
                             const rect =
                               event.currentTarget.getBoundingClientRect();
+                            logWorkbenchDockDebug(
+                              "dock.popup.toggle",
+                              debugDiagnostics,
+                              {
+                                anchorKey,
+                                entryId: entry.id,
+                                matchedNodeCount:
+                                  resolvedEntry.matchedNodes.length,
+                                nextOpen: currentPopup === null,
+                                typeId: entry.typeId,
+                                workspaceId
+                              }
+                            );
                             setActivePopup((current) =>
                               current?.entryId === entry.id
                                 ? null
@@ -1043,14 +1177,13 @@ export function WorkbenchHostDock({
                             context.genie.launchNodeFromAnchor(
                               anchorKey,
                               entry.id,
-                              () => {
-                                void host.launchNode({
+                              () =>
+                                host.launchNode({
                                   dockEntryId: entry.id,
                                   payload: entry.launchPayload,
                                   reason: "dock",
                                   typeId: entry.typeId
-                                });
-                              }
+                                })
                             );
                             return;
                           case "blocked":
@@ -1150,7 +1283,19 @@ export function WorkbenchHostDock({
                         handleDockPointerLeave();
                       }}
                     >
-                      {dockButton}
+                      {hasHoverPanel ? (
+                        dockButton
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger asChild>{dockButton}</TooltipTrigger>
+                          <TooltipContent
+                            side={dockPlacement === "left" ? "right" : "top"}
+                            sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
+                          >
+                            {entry.label}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </span>
                   );
                 }
@@ -1253,7 +1398,15 @@ export function WorkbenchHostDock({
                         stackDispatching ? "true" : undefined
                       }
                     >
-                      {stackButton}
+                      <Tooltip>
+                        <TooltipTrigger asChild>{stackButton}</TooltipTrigger>
+                        <TooltipContent
+                          side={dockPlacement === "left" ? "right" : "top"}
+                          sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
+                        >
+                          {i18n.t("minimizedWindows")}
+                        </TooltipContent>
+                      </Tooltip>
                     </span>
                   );
                 }
@@ -1313,7 +1466,15 @@ export function WorkbenchHostDock({
                     }
                     data-section-id="minimized"
                   >
-                    {dockButton}
+                    <Tooltip>
+                      <TooltipTrigger asChild>{dockButton}</TooltipTrigger>
+                      <TooltipContent
+                        side={dockPlacement === "left" ? "right" : "top"}
+                        sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
+                      >
+                        {node.title}
+                      </TooltipContent>
+                    </Tooltip>
                   </span>
                 );
               })}
@@ -1366,7 +1527,7 @@ export function WorkbenchHostDock({
                   ) {
                     return;
                   }
-                  closeHoverPanelImmediate(activeHoverPanel.entryId);
+                  scheduleHoverPanelClose(activeHoverPanel.entryId);
                   handleDockPointerLeave();
                 }}
               />
@@ -1378,25 +1539,59 @@ export function WorkbenchHostDock({
         <WorkbenchHostDockPopup
           anchorRect={activePopup.anchorRect}
           placement={dockPlacement}
-          capturePreview={popupEntry.entry.capturePopupItemPreview}
+          debugDiagnostics={debugDiagnostics}
+          capturePreview={
+            popupEntry.entry.capturePopupItemPreview
+              ? async (item) => {
+                  const previewImageUrl = await Promise.resolve(
+                    popupEntry.entry.capturePopupItemPreview?.(item) ?? null
+                  ).catch(() => null);
+                  return previewImageUrl
+                    ? {
+                        kind: "image",
+                        revision: item.previewRevision ?? undefined,
+                        src: previewImageUrl
+                      }
+                    : null;
+                }
+              : undefined
+          }
           dockPreviewCache={dockPreviewCache}
           items={popupEntry.matchedNodes
             .map((node) => {
+              const externalState = readWorkbenchHostExternalState({
+                externalStateSource,
+                node,
+                workspaceId
+              });
               const item = {
-                externalNodeState: readWorkbenchHostExternalState({
-                  externalStateSource,
-                  node,
-                  workspaceId
-                }).externalNodeState,
+                externalNodeState: externalState.externalNodeState,
+                externalWorkspaceState: externalState.externalWorkspaceState,
+                host,
                 isFocused: context.focusedNodeId === node.id,
                 isMinimized: minimizedNodeIDs.has(node.id),
                 node
               };
               const descriptor =
                 popupEntry.entry.resolvePopupItem?.(item) ?? {};
+              const descriptorPreviewImageUrl =
+                descriptor.previewImageUrl ?? null;
+              const descriptorPreview =
+                descriptor.preview ??
+                (descriptorPreviewImageUrl
+                  ? ({
+                      kind: "image",
+                      revision: descriptor.revision ?? null,
+                      src: descriptorPreviewImageUrl
+                    } as const)
+                  : (popupEntry.entry.providePopupItemPreview?.(item) ?? null));
               return {
                 ...item,
-                previewImageUrl: descriptor.previewImageUrl ?? null,
+                preview: descriptorPreview,
+                previewRevision:
+                  previewRevision(descriptorPreview) ??
+                  descriptor.revision ??
+                  null,
                 subtitle:
                   descriptor.subtitle === undefined
                     ? (node.data.instanceKey ?? node.data.instanceId)
@@ -1417,7 +1612,18 @@ export function WorkbenchHostDock({
           labelMode={popupEntry.entry.popupCardLabelMode}
           newWindowLabel={i18n.t("newWindow")}
           closeWindowLabel={(title) => i18n.t("closeWindow", { title })}
-          onClose={closePopup}
+          onClose={() => {
+            logWorkbenchDockDebug(
+              "dock.popup.close_requested",
+              debugDiagnostics,
+              {
+                entryId: popupEntry.entry.id,
+                itemCount: popupEntry.matchedNodes.length,
+                workspaceId
+              }
+            );
+            closePopup();
+          }}
           onCloseNode={(nodeId) => {
             host.requestNodeClose(nodeId);
             const hasRemainingItems = popupEntry.matchedNodes.some(
@@ -1432,14 +1638,13 @@ export function WorkbenchHostDock({
             context.genie.launchNodeFromAnchor(
               anchorKeyFromPopupEntry(popupEntry),
               popupEntry.entry.id,
-              () => {
-                void host.launchNode({
+              () =>
+                host.launchNode({
                   dockEntryId: popupEntry.entry.id,
                   payload: popupEntry.entry.launchPayload,
                   reason: "dock",
                   typeId: popupEntry.entry.typeId
-                });
-              }
+                })
             );
           }}
           onSelectNode={(nodeId) => {
@@ -1472,23 +1677,56 @@ export function WorkbenchHostDock({
         <WorkbenchHostDockPopup
           anchorRect={activeMinimizedStackPopup}
           placement={dockPlacement}
-          capturePreview={(item) => captureMinimizedNodePreview(item.node)}
+          debugDiagnostics={debugDiagnostics}
+          capturePreview={async (item) => {
+            const src = await captureMinimizedNodePreview(item.node);
+            return src ? { kind: "image", src } : null;
+          }}
           dockPreviewCache={dockPreviewCache}
-          items={activeMinimizedStackSlot.nodes.map((node) => ({
-            isFocused: context.focusedNodeId === node.id,
-            isMinimized: true,
-            node,
-            previewImageUrl: nodeDefinitions.get(node.data.typeId)?.window
-              ?.minimizedDock?.capturePreview
-              ? null
-              : readCachedWorkbenchNodePreviewImage(node.id),
-            subtitle: node.data.instanceKey ?? node.data.instanceId,
-            title: node.title
-          }))}
+          items={activeMinimizedStackSlot.nodes.map((node) => {
+            const externalState = readWorkbenchHostExternalState({
+              externalStateSource,
+              node,
+              workspaceId
+            });
+            return {
+              externalNodeState: externalState.externalNodeState,
+              externalWorkspaceState: externalState.externalWorkspaceState,
+              host,
+              isFocused: context.focusedNodeId === node.id,
+              isMinimized: true,
+              node,
+              preview: nodeDefinitions.get(node.data.typeId)?.window
+                ?.minimizedDock?.capturePreview
+                ? null
+                : (() => {
+                    const previewImageUrl = readCachedWorkbenchNodePreviewImage(
+                      node.id
+                    );
+                    return previewImageUrl
+                      ? ({ kind: "image", src: previewImageUrl } as const)
+                      : null;
+                  })(),
+              previewRevision: null,
+              subtitle: node.data.instanceKey ?? node.data.instanceId,
+              title: node.title
+            };
+          })}
           label={i18n.t("minimizedWindows")}
           newWindowLabel={i18n.t("newWindow")}
           closeWindowLabel={(title) => i18n.t("closeWindow", { title })}
-          onClose={closePopup}
+          onClose={() => {
+            logWorkbenchDockDebug(
+              "dock.popup.close_requested",
+              debugDiagnostics,
+              {
+                entryId: "minimized-stack",
+                itemCount: activeMinimizedStackSlot.nodes.length,
+                workspaceId
+              }
+            );
+            closePopup();
+          }}
           onCloseNode={(nodeId) => {
             host.requestNodeClose(nodeId);
             const hasRemainingItems = activeMinimizedStackSlot.nodes.some(
@@ -1818,6 +2056,32 @@ function anchorKeyFromPopupEntry(
   return entry.anchorKey;
 }
 
+function previewRevision(
+  preview: WorkbenchDockPreviewContent | null | undefined
+): string | null {
+  return preview?.revision ?? null;
+}
+
+function logWorkbenchDockDebug(
+  event: string,
+  debugDiagnostics: WorkbenchHostProps["debugDiagnostics"],
+  details: Record<string, unknown>
+): void {
+  if (!debugDiagnostics?.log) {
+    return;
+  }
+  void Promise.resolve(
+    debugDiagnostics.log({
+      details,
+      event,
+      level: "info",
+      source: "workbench-dock",
+      workspaceId:
+        typeof details.workspaceId === "string" ? details.workspaceId : null
+    })
+  ).catch(() => undefined);
+}
+
 function minimizedDockSlotNodes(
   slot: WorkbenchMinimizedDockSlot
 ): readonly WorkbenchMinimizedDockNode[] {
@@ -1934,7 +2198,11 @@ function useDockPresenceItems(
   shouldAnimateMinimizedDockEnter: (nodeId: string) => boolean
 ): WorkbenchHostPresentDockItem[] {
   const latestItemsByKey = useRef(new Map<string, WorkbenchHostDockItem>());
+  const shouldAnimateMinimizedDockEnterRef = useRef(
+    shouldAnimateMinimizedDockEnter
+  );
   latestItemsByKey.current = new Map(items.map((item) => [item.key, item]));
+  shouldAnimateMinimizedDockEnterRef.current = shouldAnimateMinimizedDockEnter;
   const itemKeys = items.map((item) => item.key).join("\u0000");
   const [presentItems, setPresentItems] = useState<
     WorkbenchHostPresentDockItem[]
@@ -2002,7 +2270,7 @@ function useDockPresenceItems(
             item,
             initialized.current,
             currentByKey.get(item.key)?.presence,
-            shouldAnimateMinimizedDockEnter
+            shouldAnimateMinimizedDockEnterRef.current
           )
         });
       }
@@ -2049,7 +2317,7 @@ function useDockPresenceItems(
     }, nextSettleMs);
 
     return () => globalThis.clearTimeout(timeout);
-  }, [itemKeys, shouldAnimateMinimizedDockEnter]);
+  }, [itemKeys]);
 
   return presentItems.map((presentItem) => {
     const latestItem = latestItemsByKey.current.get(presentItem.key);
@@ -2132,8 +2400,41 @@ function resolveWorkbenchHostDockItemsWidth(
 }
 
 const dockHoverPanelOpenDelayMs = 450;
+const dockHoverPanelCloseDelayMs = 160;
 const dockHoverPanelHitSlopPx = 12;
+const dockHoverPanelBridgeSlopPx = 6;
 const dockHoverPanelPointerRestTolerancePx = 4;
+const DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET = 40;
+
+function rectContainsPoint(
+  rect: DOMRect,
+  clientX: number,
+  clientY: number,
+  slopPx = 0
+): boolean {
+  return (
+    clientX >= rect.left - slopPx &&
+    clientX <= rect.right + slopPx &&
+    clientY >= rect.top - slopPx &&
+    clientY <= rect.bottom + slopPx
+  );
+}
+
+function createHoverPanelBridgeRect(anchor: DOMRect, panel: DOMRect): DOMRect {
+  if (anchor.right <= panel.left || panel.right <= anchor.left) {
+    const left = Math.min(anchor.right, panel.right);
+    const right = Math.max(anchor.left, panel.left);
+    const top = Math.max(anchor.top, panel.top);
+    const bottom = Math.min(anchor.bottom, panel.bottom);
+    return new DOMRect(left, top, right - left, Math.max(0, bottom - top));
+  }
+
+  const left = Math.max(anchor.left, panel.left);
+  const right = Math.min(anchor.right, panel.right);
+  const top = Math.min(anchor.bottom, panel.bottom);
+  const bottom = Math.max(anchor.top, panel.top);
+  return new DOMRect(left, top, Math.max(0, right - left), bottom - top);
+}
 const dockPresenceAnimationMs = 300;
 const minimizedDockSlotLayoutAnimationMs = 720;
 const dockItemsGapPx = 10.8;

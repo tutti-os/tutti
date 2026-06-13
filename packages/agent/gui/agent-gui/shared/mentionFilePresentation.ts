@@ -1,6 +1,7 @@
 import { resolveAgentWorkspaceFileVisualKind } from "../../shared/workspaceFileVisualKind.ts";
 
 export type AgentMentionFileVisualKind =
+  | "back"
   | "document"
   | "code"
   | "markdown"
@@ -11,9 +12,13 @@ export type AgentMentionFileVisualKind =
 export function resolveAgentMentionFileVisualKind(input: {
   entryKind?: string | null;
   href?: string | null;
+  mentionNavigation?: string | null;
   name?: string | null;
   path?: string | null;
 }): AgentMentionFileVisualKind {
+  if (input.mentionNavigation === "agent-generated-folder-back") {
+    return "back";
+  }
   if (input.entryKind === "directory") {
     return "folder";
   }

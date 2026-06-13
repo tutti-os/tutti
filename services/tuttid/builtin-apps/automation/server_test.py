@@ -129,6 +129,68 @@ class RunnerOptionsPayloadTest(unittest.TestCase):
             )
 
 
+class AgentSessionLaunchTest(unittest.TestCase):
+    def test_manual_run_requests_agent_gui_activation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module = load_server_module(Path(temp_dir))
+            calls = []
+
+            def fake_run_tutti_cli(args, timeout=30, log_file=None):
+                calls.append(args)
+                return {"session": {"id": "agent-session-1", "provider": "codex"}}
+
+            automation = {
+                "name": "Review",
+                "prompt": "Review the workspace.",
+                "runnerSettings": {"provider": "codex"},
+                "runnerArgs": [],
+            }
+            run = {
+                "id": "run_123",
+                "trigger": "manual",
+                "prompt": "Review the workspace.",
+                "cwd": str(Path.cwd()),
+                "artifactDir": str(Path(temp_dir) / "artifacts"),
+            }
+
+            with mock.patch.object(module, "run_tutti_cli", fake_run_tutti_cli):
+                session = module.start_agent_session(automation, run, log_file=None)
+
+            self.assertEqual(session["id"], "agent-session-1")
+            self.assertIn("--show", calls[0])
+            self.assertNotIn("--visible", calls[0])
+
+    def test_scheduled_run_stays_visible_without_activating_agent_gui(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module = load_server_module(Path(temp_dir))
+            calls = []
+
+            def fake_run_tutti_cli(args, timeout=30, log_file=None):
+                calls.append(args)
+                return {"session": {"id": "agent-session-1", "provider": "codex"}}
+
+            automation = {
+                "name": "Review",
+                "prompt": "Review the workspace.",
+                "runnerSettings": {"provider": "codex"},
+                "runnerArgs": [],
+            }
+            run = {
+                "id": "run_123",
+                "trigger": "schedule",
+                "prompt": "Review the workspace.",
+                "cwd": str(Path.cwd()),
+                "artifactDir": str(Path(temp_dir) / "artifacts"),
+            }
+
+            with mock.patch.object(module, "run_tutti_cli", fake_run_tutti_cli):
+                session = module.start_agent_session(automation, run, log_file=None)
+
+            self.assertEqual(session["id"], "agent-session-1")
+            self.assertIn("--visible", calls[0])
+            self.assertNotIn("--show", calls[0])
+
+
 class SchedulerTest(unittest.TestCase):
     def test_scheduler_waits_until_next_scheduled_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:

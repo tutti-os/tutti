@@ -12,6 +12,7 @@ import type { AgentToolGroupRowVM } from "../contracts/agentToolGroupRowVM";
 
 const mockState = vi.hoisted(() => ({
   markdownOnLinkClicks: [] as Array<((href: string) => void) | undefined>,
+  markdownStreamingFlags: [] as Array<boolean | undefined>,
   toolGroupOnLinkClicks: [] as Array<((href: string) => void) | undefined>
 }));
 
@@ -25,12 +26,15 @@ vi.mock("../../../i18n/index", () => ({
 vi.mock("../../AgentMessageMarkdown", () => ({
   AgentMessageMarkdown: ({
     content,
-    onLinkClick
+    onLinkClick,
+    streaming
   }: {
     content: string;
     onLinkClick?: (href: string) => void;
+    streaming?: boolean;
   }) => {
     mockState.markdownOnLinkClicks.push(onLinkClick);
+    mockState.markdownStreamingFlags.push(streaming);
     return <div>{content}</div>;
   }
 }));
@@ -117,6 +121,43 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(mockState.markdownOnLinkClicks[1]).toBe(
       mockState.markdownOnLinkClicks[0]
     );
+  });
+
+  it("enables streaming markdown only for working assistant messages", () => {
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-working-1",
+          turnId: "turn-1",
+          body: "Streaming answer",
+          statusKind: "working",
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-completed-1",
+          turnId: "turn-1",
+          body: "Completed answer",
+          statusKind: "completed",
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    expect(mockState.markdownStreamingFlags.at(-2)).toBe(true);
+    expect(mockState.markdownStreamingFlags.at(-1)).toBe(false);
   });
 
   it("renders plain user messages as direct flow children without an extra group", () => {

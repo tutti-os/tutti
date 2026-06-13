@@ -112,11 +112,18 @@ export function createDesktopAgentActivityAdapter({
       return agentActivitySessionFromTuttidSession(input.workspaceId, session);
     },
     async cancelSession(input) {
-      const session = await tuttidClient.cancelWorkspaceAgentSession(
+      const result = await tuttidClient.cancelWorkspaceAgentSessionWithResult(
         input.workspaceId,
         input.agentSessionId
       );
-      return agentActivitySessionFromTuttidSession(input.workspaceId, session);
+      return {
+        canceled: result.cancel.canceled,
+        reason: result.cancel.reason,
+        session: agentActivitySessionFromTuttidSession(
+          input.workspaceId,
+          result.session
+        )
+      };
     },
     async submitInteractive(input) {
       return await tuttidClient.submitWorkspaceAgentInteractive(

@@ -26,14 +26,15 @@ import {
   SelectContent,
   SelectItem,
   SelectSeparator,
-  SelectTrigger
+  SelectTrigger,
+  cn
 } from "@tutti-os/ui-system";
 import type {
   WorkspaceUserProject,
   WorkspaceUserProjectApi,
   WorkspaceUserProjectSelectionPreparation,
   WorkspaceUserProjectSelectionPreparationInput,
-  WorkspaceUserProjectServiceLike
+  WorkspaceUserProjectService
 } from "../../../contracts/index.ts";
 import {
   basenameWorkspaceUserProjectPath,
@@ -101,7 +102,7 @@ export interface WorkspaceUserProjectSelectProps {
   renderAddProjectIcon?: () => ReactNode;
   shouldApplyPreparedSelection?: boolean;
   showKnownProjectOptions?: boolean;
-  service?: WorkspaceUserProjectServiceLike | null;
+  service?: WorkspaceUserProjectService | null;
   selectedProjectPath?: string | null;
   showCreateProjectAction?: boolean;
   showNoProjectAction?: boolean;
@@ -111,6 +112,58 @@ export interface WorkspaceUserProjectSelectProps {
 const noProjectOptionValue = "__tutti_no_project__";
 const addProjectOptionValue = "__tutti_add_project__";
 const linkExistingProjectOptionValue = "__tutti_link_existing_project__";
+const workspaceUserProjectOverflowLabelStyle = `
+@keyframes workspace-user-project-label-marquee {
+  0% {
+    transform: translateX(0);
+  }
+
+  44%,
+  56% {
+    transform: translateX(min(0px, calc(100cqw - 100%)));
+  }
+
+  88%,
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.workspace-user-project-overflow-label {
+  container-type: inline-size;
+  display: block;
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.workspace-user-project-overflow-label__content {
+  display: block;
+  max-width: 100%;
+  min-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateX(0);
+  white-space: nowrap;
+  width: max-content;
+}
+
+.workspace-user-project-overflow-label:hover
+  .workspace-user-project-overflow-label__content {
+  animation: workspace-user-project-label-marquee 14s linear infinite;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-user-project-overflow-label:hover
+    .workspace-user-project-overflow-label__content {
+    animation: none;
+  }
+}
+`;
 const defaultWorkspaceUserProjectSelectI18n =
   createDefaultWorkspaceUserProjectI18nRuntime();
 const emptyWorkspaceUserProjectServiceSnapshot = proxy({
@@ -441,6 +494,7 @@ export function WorkspaceUserProjectSelect({
 
   return (
     <>
+      <style>{workspaceUserProjectOverflowLabelStyle}</style>
       <Select
         disabled={disabled}
         value={selectValue}
@@ -467,7 +521,7 @@ export function WorkspaceUserProjectSelect({
                 size={15}
               />
             )}
-            <span className="truncate">{triggerLabel}</span>
+            <WorkspaceUserProjectOverflowLabel label={triggerLabel} />
           </span>
         </SelectTrigger>
         <SelectContent
@@ -488,9 +542,7 @@ export function WorkspaceUserProjectSelect({
               >
                 <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
                   <FolderIcon aria-hidden size={15} />
-                  <span className="min-w-0 flex-1 truncate">
-                    <span>{projectLabel}</span>
-                  </span>
+                  <WorkspaceUserProjectOverflowLabel label={projectLabel} />
                 </span>
               </SelectItem>
             );
@@ -613,9 +665,28 @@ export function WorkspaceUserProjectSelect({
   );
 }
 
+function WorkspaceUserProjectOverflowLabel({
+  className,
+  label
+}: {
+  className?: string;
+  label: string;
+}): React.JSX.Element {
+  return (
+    <span
+      className={cn("workspace-user-project-overflow-label", className)}
+      data-workspace-user-project-overflow-label="true"
+    >
+      <span className="workspace-user-project-overflow-label__content">
+        {label}
+      </span>
+    </span>
+  );
+}
+
 function createWorkspaceUserProjectApiAdapter(
   api: WorkspaceUserProjectApi | null | undefined,
-  service: WorkspaceUserProjectServiceLike | null | undefined
+  service: WorkspaceUserProjectService | null | undefined
 ): WorkspaceUserProjectApi | null {
   if (!service) {
     return api ?? null;
@@ -698,7 +769,7 @@ function hasWorkspaceUserProjectMethod(
 
 function setApiUnavailableUnlessService(
   setIsApiUnavailable: (value: boolean) => void,
-  service: WorkspaceUserProjectServiceLike | null | undefined,
+  service: WorkspaceUserProjectService | null | undefined,
   value = true
 ): void {
   if (!service) {

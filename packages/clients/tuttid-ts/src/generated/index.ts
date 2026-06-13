@@ -766,6 +766,8 @@ export type {
   WorkspaceAgentProvider,
   WorkspaceAgentSession,
   WorkspaceAgentSessionAttachmentResponse,
+  WorkspaceAgentSessionCancelResponse,
+  WorkspaceAgentSessionCancelResult,
   WorkspaceAgentSessionEventEnvelope,
   WorkspaceAgentSessionListResponse,
   WorkspaceAgentSessionMessage,

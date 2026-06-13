@@ -89,7 +89,7 @@ func (l *keyedOperationLocks) Lock(key string) func() {
 type FactoryAgentSessionService interface {
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.Session, error)
-	Cancel(context.Context, string, string) (agentservice.Session, error)
+	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
 }
 
 type FactoryAgentSessionStateReporter interface {
@@ -316,7 +316,8 @@ func (s *AppFactoryService) Fix(ctx context.Context, workspaceID string, jobID s
 		return workspacebiz.AppFactoryJob{}, errors.New("app factory job does not have an agent session")
 	}
 	if _, err := s.AgentSessionService.SendInput(ctx, workspaceID, job.AgentSessionID, agentservice.SendInput{
-		Content: agentservice.TextPromptContent(buildFactoryFixPrompt(prompt)),
+		Content:       agentservice.TextPromptContent(buildFactoryFixPrompt(prompt, job.FailureReason)),
+		DisplayPrompt: prompt,
 	}); err != nil {
 		return workspacebiz.AppFactoryJob{}, err
 	}

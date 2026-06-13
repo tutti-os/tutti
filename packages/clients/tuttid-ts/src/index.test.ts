@@ -571,6 +571,91 @@ test("shared tuttid client deletes workspace agent sessions", async () => {
   assert.deepEqual(result, { removed: true });
 });
 
+test("shared tuttid client keeps cancel session compatibility", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+
+      return new Response(
+        JSON.stringify({
+          cancel: {
+            canceled: false,
+            reason: "no_active_turn"
+          },
+          session: {
+            id: "agent-session-1",
+            provider: "codex",
+            cwd: "/repo",
+            status: "ready",
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 1
+          }
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  const result = await client.cancelWorkspaceAgentSession(
+    "ws-1",
+    "agent-session-1"
+  );
+
+  assert.equal(requestMethod, "POST");
+  assert.equal(
+    requestPath,
+    "/v1/workspaces/ws-1/agent-sessions/agent-session-1/cancel"
+  );
+  assert.equal(result.id, "agent-session-1");
+  assert.equal(result.status, "ready");
+});
+
+test("shared tuttid client exposes cancel session result metadata", async () => {
+  const client = createTuttidClient({
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          cancel: {
+            canceled: false,
+            reason: "no_active_turn"
+          },
+          session: {
+            id: "agent-session-1",
+            provider: "codex",
+            cwd: "/repo",
+            status: "ready",
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 1
+          }
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      )
+  });
+
+  const result = await client.cancelWorkspaceAgentSessionWithResult(
+    "ws-1",
+    "agent-session-1"
+  );
+
+  assert.equal(result.session.id, "agent-session-1");
+  assert.deepEqual(result.cancel, {
+    canceled: false,
+    reason: "no_active_turn"
+  });
+});
+
 test("shared tuttid client submits workspace agent interactive responses", async () => {
   let requestBody: unknown = null;
   let requestMethod = "";

@@ -10,7 +10,6 @@ import type {
   AgentGuiWorkbenchComposerOverrides,
   AgentGuiWorkbenchComposerOverridesByProvider,
   AgentGuiWorkbenchNodeState,
-  AgentGuiWorkbenchPendingHandoff,
   AgentGuiWorkbenchProvider,
   AgentGuiWorkbenchState,
   AgentGuiWorkbenchWorkspaceState
@@ -27,7 +26,6 @@ export function createDefaultAgentGuiWorkbenchNodeState(
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: null,
     lastActiveConversationTitle: null,
-    pendingHandoff: null,
     provider
   };
 }
@@ -57,10 +55,7 @@ export function normalizeAgentGuiWorkbenchState(
     lastActiveConversationTitle:
       typeof state.lastActiveConversationTitle === "string"
         ? state.lastActiveConversationTitle
-        : null,
-    pendingHandoff: normalizeAgentGuiWorkbenchPendingHandoff(
-      state.pendingHandoff
-    )
+        : null
   };
 }
 
@@ -80,10 +75,7 @@ export function projectAgentGuiWorkbenchState(
       state.conversationRailWidthPx
     ),
     lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null,
-    lastActiveConversationTitle: state.lastActiveConversationTitle ?? null,
-    pendingHandoff: normalizeAgentGuiWorkbenchPendingHandoff(
-      state.pendingHandoff
-    )
+    lastActiveConversationTitle: state.lastActiveConversationTitle ?? null
   };
 }
 
@@ -100,8 +92,7 @@ export function areAgentGuiWorkbenchStatesEqual(
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
-    left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
-    pendingHandoffEquals(left.pendingHandoff, right.pendingHandoff)
+    left.lastActiveConversationTitle === right.lastActiveConversationTitle
   );
 }
 
@@ -137,9 +128,6 @@ export function normalizeAgentGuiWorkbenchNodeState(
       typeof state?.lastActiveConversationTitle === "string"
         ? state.lastActiveConversationTitle
         : null,
-    pendingHandoff: normalizeAgentGuiWorkbenchPendingHandoff(
-      state?.pendingHandoff
-    ),
     provider
   };
 }
@@ -159,8 +147,7 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
     left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
-    left.provider === right.provider &&
-    pendingHandoffEquals(left.pendingHandoff, right.pendingHandoff)
+    left.provider === right.provider
   );
 }
 
@@ -260,8 +247,7 @@ function createDefaultAgentGuiWorkbenchState(): AgentGuiWorkbenchState {
     conversationRailCollapsed: false,
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: null,
-    lastActiveConversationTitle: null,
-    pendingHandoff: null
+    lastActiveConversationTitle: null
   };
 }
 
@@ -311,40 +297,6 @@ function normalizeAgentGuiWorkbenchComposerOverridesByProvider(
   return Object.keys(result).length > 0 ? result : null;
 }
 
-function normalizeAgentGuiWorkbenchPendingHandoff(
-  value: unknown
-): AgentGuiWorkbenchPendingHandoff | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  const requestId = typeof value.requestId === "string" ? value.requestId : "";
-  const prompt = typeof value.prompt === "string" ? value.prompt : "";
-  const title = typeof value.title === "string" ? value.title : "";
-  const taskTitle =
-    typeof value.taskTitle === "string" ? value.taskTitle : title;
-  if (!requestId.trim() || !prompt.trim() || !title.trim()) {
-    return null;
-  }
-  return {
-    issueId:
-      typeof value.issueId === "string" && value.issueId.trim()
-        ? value.issueId
-        : null,
-    issueTitle:
-      typeof value.issueTitle === "string" && value.issueTitle.trim()
-        ? value.issueTitle
-        : null,
-    prompt,
-    requestId,
-    taskId:
-      typeof value.taskId === "string" && value.taskId.trim()
-        ? value.taskId
-        : null,
-    taskTitle,
-    title
-  };
-}
-
 function normalizeOptionalPositiveNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.round(value)
@@ -379,27 +331,6 @@ function composerOverridesByProviderEqual(
     }
   }
   return true;
-}
-
-function pendingHandoffEquals(
-  left: AgentGuiWorkbenchPendingHandoff | null | undefined,
-  right: AgentGuiWorkbenchPendingHandoff | null | undefined
-): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (!left || !right) {
-    return false;
-  }
-  return (
-    left.requestId === right.requestId &&
-    left.title === right.title &&
-    left.prompt === right.prompt &&
-    left.taskId === right.taskId &&
-    left.issueId === right.issueId &&
-    left.taskTitle === right.taskTitle &&
-    left.issueTitle === right.issueTitle
-  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

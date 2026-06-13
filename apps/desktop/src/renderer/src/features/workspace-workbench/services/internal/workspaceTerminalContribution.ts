@@ -1,9 +1,14 @@
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { getTuttidProtocolErrorCode } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { createTerminalNodeFeature } from "@tutti-os/workspace-terminal";
-import type { TerminalNodeExternalState } from "@tutti-os/workspace-terminal/contracts";
+import { TerminalDockPreview } from "@tutti-os/workspace-terminal/react";
+import type {
+  TerminalNodeExternalState,
+  TerminalPreviewChange,
+  TerminalPreviewSnapshot
+} from "@tutti-os/workspace-terminal/contracts";
 import {
   createTerminalWorkbenchContribution,
   type TerminalWorkbenchIntent
@@ -55,6 +60,7 @@ export function createWorkspaceTerminalContribution(input: {
   runtimeApi: DesktopRuntimeApi;
   workspaceId: string;
 }): WorkbenchContribution {
+  const previewStore = createWorkspaceTerminalPreviewStore();
   const terminalAnalytics = createTerminalSurfaceAnalytics({
     reporterService: input.reporterService
   });
@@ -94,7 +100,8 @@ export function createWorkspaceTerminalContribution(input: {
       sectionId: "apps"
     },
     externalStateSource: createWorkspaceTerminalNodeExternalStateSource({
-      adapter: terminalAdapter
+      adapter: terminalAdapter,
+      previewStore
     }),
     feature,
     getTerminalState: (sessionId) =>
@@ -120,6 +127,9 @@ export function createWorkspaceTerminalContribution(input: {
       ),
     resolveLaunchInput: (request) =>
       readTerminalWorkbenchIntent(request.payload),
+    node: {
+      onPreviewChange: (change) => previewStore.update(change)
+    },
     shouldCloseAfterCloseFailure: ({ error, status }) =>
       shouldCloseTerminalNodeAfterCloseFailure({
         error,
@@ -130,6 +140,35 @@ export function createWorkspaceTerminalContribution(input: {
 
   return {
     ...contribution,
+    dockEntries: contribution.dockEntries?.map((entry) =>
+      entry.id === defaultWorkspaceTerminalWorkbenchTypeId
+        ? {
+            ...entry,
+            providePopupItemPreview: (item) => {
+              const snapshot = previewStore.get(item.node.id);
+              if (!snapshot) {
+                return null;
+              }
+              const externalState =
+                (item.externalNodeState as TerminalNodeExternalState | null) ??
+                null;
+              return {
+                element: createElement(TerminalDockPreview, {
+                  frame: item.node.frame,
+                  snapshot,
+                  theme: feature.resolveTheme({
+                    runtimeKind: externalState?.runtimeKind ?? "local",
+                    sessionId: externalState?.sessionId ?? null,
+                    status: externalState?.status ?? "created"
+                  })
+                }),
+                kind: "component",
+                revision: snapshot.revision
+              };
+            }
+          }
+        : entry
+    ),
     nodes: contribution.nodes?.map((node) =>
       node.typeId === defaultWorkspaceTerminalWorkbenchTypeId
         ? {
@@ -184,6 +223,7 @@ function readTerminalWorkbenchIntent(
 
 function createWorkspaceTerminalNodeExternalStateSource(input: {
   adapter: ReturnType<typeof createDesktopWorkspaceTerminalAdapter>;
+  previewStore: WorkspaceTerminalPreviewStore;
 }): WorkbenchHostExternalStateSource<TerminalNodeExternalState | null, null> {
   return {
     getNodeState(request) {
@@ -198,7 +238,58 @@ function createWorkspaceTerminalNodeExternalStateSource(input: {
       return null;
     },
     subscribe(listener) {
-      return input.adapter.externalStateSource.subscribe(listener);
+      const unsubscribeAdapter =
+        input.adapter.externalStateSource.subscribe(listener);
+      const unsubscribePreview = input.previewStore.subscribe(listener);
+      return () => {
+        unsubscribeAdapter();
+        unsubscribePreview();
+      };
+    }
+  };
+}
+
+interface WorkspaceTerminalPreviewStore {
+  get(nodeId: string): TerminalPreviewSnapshot | null;
+  subscribe(listener: () => void): () => void;
+  update(change: TerminalPreviewChange): void;
+}
+
+function createWorkspaceTerminalPreviewStore(): WorkspaceTerminalPreviewStore {
+  const previewsByNodeId = new Map<string, TerminalPreviewSnapshot>();
+  const listeners = new Set<() => void>();
+
+  const notify = () => {
+    for (const listener of listeners) {
+      listener();
+    }
+  };
+
+  return {
+    get(nodeId) {
+      return previewsByNodeId.get(nodeId) ?? null;
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    update(change) {
+      const current = previewsByNodeId.get(change.nodeId) ?? null;
+      if (!change.snapshot) {
+        if (!current) {
+          return;
+        }
+        previewsByNodeId.delete(change.nodeId);
+        notify();
+        return;
+      }
+      if (current?.revision === change.snapshot.revision) {
+        return;
+      }
+      previewsByNodeId.set(change.nodeId, change.snapshot);
+      notify();
     }
   };
 }

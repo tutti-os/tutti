@@ -51,6 +51,7 @@ export interface WorkspaceWorkbenchBodyRendererContext {
 }
 
 export interface WorkspaceWorkbenchHostInput {
+  readonly captureNodePreviewImage?: WorkbenchHostProps["captureNodePreviewImage"];
   readonly contributions?: readonly WorkbenchContribution[];
   readonly debugDiagnostics?: WorkbenchDebugDiagnostics;
   readonly dockPreviewCache?: WorkbenchDockPreviewCache;

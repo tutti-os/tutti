@@ -223,16 +223,20 @@ export function createDesktopWorkspaceFileManagerAdapter(
 }
 
 function fileEntryFromDesktop(entry: {
+  createdTimeMs: number | null;
   hasChildren: boolean;
   kind: WorkspaceFileEntry["kind"];
+  lastOpenedMs: number | null;
   mtimeMs: number | null;
   name: string;
   path: string;
   sizeBytes: number | null;
 }): WorkspaceFileEntry {
   return {
+    createdTimeMs: entry.createdTimeMs,
     hasChildren: entry.hasChildren,
     kind: entry.kind,
+    lastOpenedMs: entry.lastOpenedMs,
     mtimeMs: entry.mtimeMs,
     name: entry.name,
     path: entry.path,

@@ -1684,6 +1684,93 @@ test("launchNode asks host to create backing instance before opening shell", asy
   session.dispose();
 });
 
+test("launchNode logs host launch failures without opening a shell", async () => {
+  const diagnostics: unknown[] = [];
+  const session = createWorkbenchHostSession({
+    debugDiagnostics: {
+      isEnabled: () => false,
+      log(input) {
+        diagnostics.push(input);
+      }
+    },
+    nodes: [terminalNodeDefinition],
+    async onLaunchRequest() {
+      throw new Error("launch exploded");
+    },
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          {
+            nodeStack: [],
+            nodes: []
+          },
+          {
+            metadata: {
+              workbenchHostInitialized: true
+            }
+          }
+        );
+      },
+      async save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  const nodeId = await session.launchNode({
+    dockEntryId: "dock:terminal",
+    payload: {
+      provider: "codex"
+    },
+    reason: "dock",
+    typeId: "terminal"
+  });
+
+  assert.equal(nodeId, null);
+  assert.equal(session.controller.getSnapshot().nodes.length, 0);
+  assert.equal(diagnostics.length, 1);
+  assert.deepEqual(
+    {
+      ...(diagnostics[0] as Record<string, unknown>),
+      details: {
+        ...(diagnostics[0] as { details: Record<string, unknown> }).details,
+        error: {
+          message: "launch exploded",
+          name: "Error",
+          stack: Boolean(
+            (
+              (diagnostics[0] as { details: { error: { stack?: unknown } } })
+                .details.error.stack as string | undefined
+            )?.includes("launch exploded")
+          )
+        }
+      }
+    },
+    {
+      details: {
+        dockEntryId: "dock:terminal",
+        error: {
+          message: "launch exploded",
+          name: "Error",
+          stack: true
+        },
+        launchSource: "dock",
+        payload: '{"provider":"codex"}',
+        reason: "dock",
+        typeId: "terminal"
+      },
+      event: "host.launch.failed",
+      level: "error",
+      source: "workbench-host",
+      workspaceId: "workspace-1"
+    }
+  );
+
+  session.dispose();
+});
+
 test("launchNode applies host node size constraints", async () => {
   const session = createWorkbenchHostSession({
     nodes: [terminalNodeDefinition],

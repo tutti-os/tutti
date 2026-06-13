@@ -1,6 +1,9 @@
 import { resolveWorkspaceFileVisualKind } from "@tutti-os/workspace-file-preview";
 import { stat } from "node:fs/promises";
-import { readApplicationIconDataUrl } from "./openWithApplications.ts";
+import {
+  readApplicationIconDataUrl,
+  readDefaultApplicationIconDataUrl
+} from "./openWithApplications.ts";
 
 const entryIconMaxBytes = 5 * 1024 * 1024;
 const entryIconPixelSize = 128;
@@ -33,6 +36,13 @@ export async function resolveWorkspaceFileEntryIconDataUrl(
   });
   if (visualKind === "image" && entry.kind === "file") {
     return readImageThumbnailDataUrl(targetPath);
+  }
+
+  if (entry.kind === "file") {
+    if (process.platform === "darwin") {
+      return readDefaultApplicationIconDataUrl(targetPath);
+    }
+    return readNativeFileIconDataUrl(targetPath);
   }
 
   return null;

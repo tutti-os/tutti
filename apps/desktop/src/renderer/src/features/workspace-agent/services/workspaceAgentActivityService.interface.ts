@@ -2,6 +2,7 @@ import { createDecorator } from "@zk-tech/bedrock/di";
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type {
   AgentActivityCancelSessionInput,
+  AgentActivityCancelSessionResult,
   AgentActivityCreateSessionInput,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
@@ -52,7 +53,7 @@ export interface IWorkspaceAgentActivityService {
   activateSession: AgentActivityRuntime["activateSession"];
   cancelSession(
     input: AgentActivityCancelSessionInput
-  ): Promise<AgentActivitySession>;
+  ): Promise<AgentActivityCancelSessionResult>;
   createSession(
     input: AgentActivityCreateSessionInput
   ): Promise<AgentActivitySession>;

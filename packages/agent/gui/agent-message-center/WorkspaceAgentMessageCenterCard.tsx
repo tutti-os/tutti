@@ -281,14 +281,10 @@ export function WorkspaceAgentMessageCenterStack({
           >
             <div className="flex min-w-0 items-center justify-between gap-2 px-0.5 pb-1.5">
               <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-4 text-[var(--text-tertiary)]">
-                <img
-                  src={managedAgentRoundedIconUrl(items[0]?.provider ?? "")}
-                  alt=""
-                  className="size-4 shrink-0 rounded-full"
-                  decoding="async"
-                  loading="lazy"
-                  draggable={false}
-                  aria-hidden="true"
+                <MessageCenterIdentityAvatarMark
+                  identity={items[0]?.identity ?? null}
+                  provider={items[0]?.provider ?? ""}
+                  userId={items[0]?.userId ?? null}
                 />
                 <span className="min-w-0 truncate">
                   {t("agentHost.workspaceAgentMessageCenterStackSummaryCount", {
@@ -355,6 +351,7 @@ function MessageCenterStackSummary({
       )}
       data-stack-summary-count={items.length}
       data-stack-provider={firstItem.provider}
+      data-stack-user-id={firstItem.userId ?? ""}
       data-testid={`workspace-agent-message-stack-summary-${groupId}`}
       onClick={onExpand}
     >
@@ -370,14 +367,10 @@ function MessageCenterStackSummary({
       >
         <span className="flex min-w-0 items-center justify-between gap-2.5">
           <span className="flex min-w-0 items-center gap-2">
-            <img
-              src={managedAgentRoundedIconUrl(firstItem.provider)}
-              alt=""
-              className="size-5 shrink-0 rounded-full"
-              decoding="async"
-              loading="lazy"
-              draggable={false}
-              aria-hidden="true"
+            <MessageCenterIdentityAvatarMark
+              identity={firstItem.identity}
+              provider={firstItem.provider}
+              userId={firstItem.userId}
             />
             <span className="min-w-0 truncate text-[13px] font-bold leading-5 text-[var(--text-secondary)]">
               {t("agentHost.workspaceAgentMessageCenterStackSummaryCount", {
@@ -626,7 +619,7 @@ function MessageCenterOpenChatButton({
   );
 }
 
-function MessageCenterIdentityLabel({
+export function MessageCenterIdentityLabel({
   identity,
   provider
 }: {
@@ -662,7 +655,44 @@ function MessageCenterIdentityLabel({
   );
 }
 
-function MessageCenterIdentityAvatarStack({
+export function MessageCenterIdentityAvatarMark({
+  identity,
+  provider,
+  userId
+}: {
+  identity: WorkspaceAgentMessageCenterIdentity | null;
+  provider: string;
+  userId?: string | null;
+}): JSX.Element {
+  "use memo";
+
+  const userName = identity?.userName.trim() || userId?.trim() || "";
+  if (!userName) {
+    return (
+      <img
+        src={managedAgentRoundedIconUrl(provider)}
+        alt=""
+        className="size-5 shrink-0 rounded-full"
+        decoding="async"
+        loading="lazy"
+        draggable={false}
+        aria-hidden="true"
+      />
+    );
+  }
+
+  return (
+    <MessageCenterIdentityAvatarStack
+      userAvatarUrl={identity?.userAvatarUrl}
+      userName={userName}
+      agentAvatarUrl={
+        identity?.agentAvatarUrl?.trim() || managedAgentRoundedIconUrl(provider)
+      }
+    />
+  );
+}
+
+export function MessageCenterIdentityAvatarStack({
   agentAvatarUrl,
   userAvatarUrl: rawUserAvatarUrl,
   userName

@@ -28,7 +28,7 @@ func TestProjectSessionStateMergesExistingSnapshot(t *testing.T) {
 		AgentSessionID:   "session-1",
 		Title:            "Updated",
 		Status:           "completed",
-		OccurredAtUnixMS: 110,
+		OccurredAtUnixMS: 125,
 		StartedAtUnixMS:  95,
 		EndedAtUnixMS:    130,
 	}, 140)
@@ -43,8 +43,8 @@ func TestProjectSessionStateMergesExistingSnapshot(t *testing.T) {
 	if session.Title != "Updated" || session.Status != "completed" {
 		t.Fatalf("updated fields = %q/%q, want incoming values", session.Title, session.Status)
 	}
-	if session.LastEventUnixMS != 120 {
-		t.Fatalf("LastEventUnixMS = %d, want existing max 120", session.LastEventUnixMS)
+	if session.LastEventUnixMS != 125 {
+		t.Fatalf("LastEventUnixMS = %d, want incoming 125", session.LastEventUnixMS)
 	}
 	if session.StartedAtUnixMS != 90 || session.EndedAtUnixMS != 130 {
 		t.Fatalf("times = started %d ended %d, want 90/130", session.StartedAtUnixMS, session.EndedAtUnixMS)
@@ -76,6 +76,131 @@ func TestProjectSessionStateRejectsDeletedSnapshot(t *testing.T) {
 	}
 	if projected.LastEventUnixMS != 120 {
 		t.Fatalf("LastEventUnixMS = %d, want 120", projected.LastEventUnixMS)
+	}
+}
+
+func TestProjectSessionStateKeepsCompletedStateAfterLateWorkingPatch(t *testing.T) {
+	existing := SessionSnapshot{
+		WorkspaceID:     "ws-1",
+		AgentSessionID:  "session-1",
+		Status:          "completed",
+		CurrentPhase:    "idle",
+		LastEventUnixMS: 200,
+		StartedAtUnixMS: 100,
+		EndedAtUnixMS:   200,
+		CreatedAtUnixMS: 90,
+		UpdatedAtUnixMS: 200,
+	}
+
+	projected := ProjectSessionState(existing, true, SessionStateReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   "session-1",
+		Status:           "active",
+		CurrentPhase:     "working",
+		OccurredAtUnixMS: 150,
+		StartedAtUnixMS:  100,
+	}, 250)
+
+	if !projected.Accepted {
+		t.Fatal("Accepted = false, want true")
+	}
+	session := projected.Session
+	if session.Status != "completed" || session.CurrentPhase != "idle" {
+		t.Fatalf("runtime state = %q/%q, want completed/idle", session.Status, session.CurrentPhase)
+	}
+	if session.LastEventUnixMS != 200 || session.EndedAtUnixMS != 200 {
+		t.Fatalf("times = last event %d ended %d, want 200/200", session.LastEventUnixMS, session.EndedAtUnixMS)
+	}
+}
+
+func TestProjectSessionStateKeepsRuntimeFieldsFromNewerState(t *testing.T) {
+	existing := SessionSnapshot{
+		WorkspaceID:     "ws-1",
+		AgentSessionID:  "session-1",
+		Title:           "Existing",
+		Status:          "active",
+		CurrentPhase:    "waiting_input",
+		LastEventUnixMS: 200,
+		CreatedAtUnixMS: 90,
+		UpdatedAtUnixMS: 200,
+	}
+
+	projected := ProjectSessionState(existing, true, SessionStateReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   "session-1",
+		Title:            "Updated title",
+		Status:           "active",
+		CurrentPhase:     "working",
+		OccurredAtUnixMS: 150,
+	}, 250)
+
+	session := projected.Session
+	if session.Status != "active" || session.CurrentPhase != "waiting_input" {
+		t.Fatalf("runtime state = %q/%q, want active/waiting_input", session.Status, session.CurrentPhase)
+	}
+	if session.Title != "Updated title" {
+		t.Fatalf("Title = %q, want metadata from incoming patch", session.Title)
+	}
+	if session.LastEventUnixMS != 200 {
+		t.Fatalf("LastEventUnixMS = %d, want existing max 200", session.LastEventUnixMS)
+	}
+}
+
+func TestProjectSessionStateKeepsTerminalStateAfterLaterNonTerminalPatch(t *testing.T) {
+	existing := SessionSnapshot{
+		WorkspaceID:     "ws-1",
+		AgentSessionID:  "session-1",
+		Status:          "canceled",
+		CurrentPhase:    "idle",
+		LastEventUnixMS: 100,
+		EndedAtUnixMS:   100,
+		CreatedAtUnixMS: 90,
+		UpdatedAtUnixMS: 100,
+	}
+
+	projected := ProjectSessionState(existing, true, SessionStateReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   "session-1",
+		Status:           "active",
+		CurrentPhase:     "working",
+		OccurredAtUnixMS: 150,
+	}, 200)
+
+	session := projected.Session
+	if session.Status != "canceled" || session.CurrentPhase != "idle" {
+		t.Fatalf("runtime state = %q/%q, want canceled/idle", session.Status, session.CurrentPhase)
+	}
+	if session.LastEventUnixMS != 150 {
+		t.Fatalf("LastEventUnixMS = %d, want newer event 150", session.LastEventUnixMS)
+	}
+}
+
+func TestProjectSessionStateKeepsFirstTerminalStateAfterLaterTerminalPatch(t *testing.T) {
+	existing := SessionSnapshot{
+		WorkspaceID:     "ws-1",
+		AgentSessionID:  "session-1",
+		Status:          "failed",
+		CurrentPhase:    "failed",
+		LastEventUnixMS: 100,
+		EndedAtUnixMS:   100,
+		CreatedAtUnixMS: 90,
+		UpdatedAtUnixMS: 100,
+	}
+
+	projected := ProjectSessionState(existing, true, SessionStateReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   "session-1",
+		Status:           "canceled",
+		CurrentPhase:     "idle",
+		OccurredAtUnixMS: 150,
+	}, 200)
+
+	session := projected.Session
+	if session.Status != "failed" || session.CurrentPhase != "failed" {
+		t.Fatalf("runtime state = %q/%q, want failed/failed", session.Status, session.CurrentPhase)
+	}
+	if session.LastEventUnixMS != 150 {
+		t.Fatalf("LastEventUnixMS = %d, want newer event 150", session.LastEventUnixMS)
 	}
 }
 

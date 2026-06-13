@@ -779,12 +779,16 @@ function fakeAdapter(
       status: "working"
     }),
     cancelSession: async (input) => ({
-      workspaceId: input.workspaceId,
-      agentSessionId: input.agentSessionId,
-      provider: "codex",
-      cwd: "",
-      title: "",
-      status: "canceled"
+      canceled: true,
+      reason: "active_turn_canceled",
+      session: {
+        workspaceId: input.workspaceId,
+        agentSessionId: input.agentSessionId,
+        provider: "codex",
+        cwd: "",
+        title: "",
+        status: "canceled"
+      }
     }),
     submitInteractive: async () => ({}),
     deleteSession: async () => ({ removed: true })

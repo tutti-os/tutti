@@ -196,6 +196,12 @@ export interface AgentHostCancelAgentSessionInput {
 export interface AgentHostCancelAgentSessionResult {
   agentSessionId: string;
   canceled: boolean;
+  reason?:
+    | "active_turn_canceled"
+    | "no_active_turn"
+    | "stale_turn_reconciled"
+    | (string & {});
+  sessionStatus?: AgentHostAgentSession["status"];
 }
 
 export interface AgentHostRespondAgentSessionPermissionInput {

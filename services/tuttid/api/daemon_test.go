@@ -121,8 +121,8 @@ func (s stubAgentSessionService) Delete(ctx context.Context, workspaceID string,
 	return s.deleteFn(ctx, workspaceID, agentSessionID)
 }
 
-func (stubAgentSessionService) Cancel(context.Context, string, string) (agentservice.Session, error) {
-	return agentservice.Session{}, nil
+func (stubAgentSessionService) Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error) {
+	return agentservice.CancelSessionResult{}, nil
 }
 
 func (stubAgentSessionService) SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.Session, error) {

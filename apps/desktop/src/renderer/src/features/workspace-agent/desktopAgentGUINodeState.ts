@@ -3,7 +3,6 @@ export {
   type AgentGuiWorkbenchComposerOverridesByProvider as DesktopAgentGUIComposerOverridesByProvider,
   type AgentGuiWorkbenchComposerOverrides as DesktopAgentGUIComposerOverrides,
   type AgentGuiWorkbenchNodeState as DesktopAgentGUINodeState,
-  type AgentGuiWorkbenchPendingHandoff as DesktopAgentGUIPendingHandoff,
   type AgentGuiWorkbenchProvider as DesktopAgentGUIProvider,
   type AgentGuiWorkbenchState as DesktopAgentGUIWorkbenchState,
   type AgentGuiWorkbenchWorkspaceState as DesktopAgentGUIWorkspaceState

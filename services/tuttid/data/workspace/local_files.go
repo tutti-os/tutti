@@ -387,13 +387,16 @@ func localFileEntry(
 	}
 
 	mtimeMs := info.ModTime().UnixMilli()
+	createdTimeMs, lastOpenedMs := localFileTimeMetadata(info)
 	return workspacefiles.FileEntry{
-		Path:        logicalPath,
-		Name:        workspacefiles.LogicalPathBase(logicalPath),
-		Kind:        kind,
-		HasChildren: hasChildren,
-		SizeBytes:   sizeBytes,
-		MtimeMs:     &mtimeMs,
+		Path:          logicalPath,
+		Name:          workspacefiles.LogicalPathBase(logicalPath),
+		Kind:          kind,
+		HasChildren:   hasChildren,
+		SizeBytes:     sizeBytes,
+		MtimeMs:       &mtimeMs,
+		CreatedTimeMs: createdTimeMs,
+		LastOpenedMs:  lastOpenedMs,
 	}, nil
 }
 

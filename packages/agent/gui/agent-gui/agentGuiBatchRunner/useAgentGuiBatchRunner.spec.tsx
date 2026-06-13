@@ -216,12 +216,16 @@ function installAgentActivityRuntime(
       )(input)
     ),
     cancelSession: async (input) => ({
-      workspaceId: input.workspaceId,
-      agentSessionId: input.agentSessionId,
-      provider: "codex",
-      cwd: "",
-      title: "Codex",
-      status: "canceled"
+      canceled: true,
+      reason: "active_turn_canceled",
+      session: {
+        workspaceId: input.workspaceId,
+        agentSessionId: input.agentSessionId,
+        provider: "codex",
+        cwd: "",
+        title: "Codex",
+        status: "canceled"
+      }
     }),
     createSession: async (input) => ({
       workspaceId: input.workspaceId,

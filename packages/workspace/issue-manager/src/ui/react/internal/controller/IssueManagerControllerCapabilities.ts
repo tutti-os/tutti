@@ -49,8 +49,9 @@ export function resolveIssueManagerControllerCapabilities(
   return {
     canOpenAgentSessions:
       typeof feature.agentSessionOpener?.openSession === "function",
-    canSelectExecutionDirectory:
-      typeof feature.executionDirectoryPicker?.selectDirectory === "function",
+    canSelectExecutionDirectory: Boolean(
+      feature.executionDirectoryPicker?.service
+    ),
     canInviteCollaborators:
       feature.ui.showInviteCollaborator === true &&
       typeof feature.shareAdapter?.createIssueLink === "function",

@@ -6,6 +6,7 @@ export interface AgentMessageContentVM {
   id: string;
   turnId: string;
   body: string;
+  statusKind?: ToolCallStatusKind | null;
   contentKind?: "text" | "image-grid";
   images?: AgentMessageImageVM[];
   occurredAtUnixMs: number | null;

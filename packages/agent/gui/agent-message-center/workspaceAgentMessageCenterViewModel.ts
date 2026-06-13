@@ -2,6 +2,7 @@ import type { TranslateFn } from "../i18n/index";
 import { workspaceAgentProviderLabel } from "../shared/workspaceAgentProviderLabel";
 import {
   isWaitingMessageCenterItem,
+  type WorkspaceAgentMessageCenterIdentity,
   type WorkspaceAgentMessageCenterItem,
   type WorkspaceAgentMessageCenterModel
 } from "./workspaceAgentMessageCenterModel";
@@ -29,28 +30,47 @@ export interface MessageCenterProviderOption {
 
 export interface MessageCenterGroup {
   id: string;
+  identity?: WorkspaceAgentMessageCenterIdentity | null;
   label: string;
   items: WorkspaceAgentMessageCenterItem[];
+  provider?: string;
+  userId?: string | null;
 }
 
-export interface MessageCenterProviderStack {
+export interface MessageCenterAgentUserStack {
+  id: string;
   provider: string;
+  userId: string | null;
   items: WorkspaceAgentMessageCenterItem[];
 }
 
-export function partitionMessageCenterItemsByProvider(
+export function partitionMessageCenterItemsByAgentUser(
   items: readonly WorkspaceAgentMessageCenterItem[]
-): MessageCenterProviderStack[] {
-  const stacks = new Map<string, MessageCenterProviderStack>();
+): MessageCenterAgentUserStack[] {
+  const stacks = new Map<string, MessageCenterAgentUserStack>();
   for (const item of items) {
-    const stack = stacks.get(item.provider);
+    const stackId = messageCenterAgentUserStackId(item);
+    const stack = stacks.get(stackId);
     if (stack) {
       stack.items.push(item);
     } else {
-      stacks.set(item.provider, { provider: item.provider, items: [item] });
+      stacks.set(stackId, {
+        id: stackId,
+        provider: item.provider,
+        userId: item.userId,
+        items: [item]
+      });
     }
   }
   return [...stacks.values()];
+}
+
+export function messageCenterAgentUserStackId(
+  item: Pick<WorkspaceAgentMessageCenterItem, "provider" | "userId">
+): string {
+  const provider = item.provider.trim().toLowerCase() || "unknown-agent";
+  const userId = item.userId?.trim() || "unknown-user";
+  return `agent-user:${provider}:${userId}`;
 }
 
 export function buildMessageCenterStatusOptions(
@@ -164,8 +184,11 @@ export function groupMessageCenterItems(
       ]);
     case "agent":
       return groupByDynamicKey(items, (item) => ({
-        id: `agent:${item.provider}`,
-        label: workspaceAgentProviderLabel(item.provider)
+        id: messageCenterAgentUserStackId(item),
+        identity: item.identity,
+        label: messageCenterAgentUserGroupLabel(item),
+        provider: item.provider,
+        userId: item.userId
       }));
     case "time":
       return groupByFixedDefinitions(items, [
@@ -226,6 +249,15 @@ export function groupMessageCenterItems(
       ]);
     }
   }
+}
+
+function messageCenterAgentUserGroupLabel(
+  item: WorkspaceAgentMessageCenterItem
+): string {
+  if (item.identity) {
+    return `${item.identity.userName} & ${item.identity.agentName}`;
+  }
+  return workspaceAgentProviderLabel(item.provider);
 }
 
 const RECENTLY_COMPLETED_WINDOW_MS = 10 * 60 * 1000;
@@ -296,7 +328,10 @@ function groupByDynamicKey(
   items: readonly WorkspaceAgentMessageCenterItem[],
   keyForItem: (item: WorkspaceAgentMessageCenterItem) => {
     id: string;
+    identity?: WorkspaceAgentMessageCenterIdentity | null;
     label: string;
+    provider?: string;
+    userId?: string | null;
   }
 ): MessageCenterGroup[] {
   const groups = new Map<string, MessageCenterGroup>();
@@ -305,6 +340,10 @@ function groupByDynamicKey(
     const group = groups.get(key.id);
     if (group) {
       group.items.push(item);
+      if (!group.identity && key.identity) {
+        group.identity = key.identity;
+        group.label = key.label;
+      }
     } else {
       groups.set(key.id, { ...key, items: [item] });
     }

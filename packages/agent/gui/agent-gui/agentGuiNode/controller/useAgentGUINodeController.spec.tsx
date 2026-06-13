@@ -4833,31 +4833,51 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.canSubmit).toBe(false);
   });
 
-  it("hides the active approval prompt when the current turn is interrupted", async () => {
-    const cancel = vi.fn(async () => ({ canceled: false }));
+  it("hides busy UI and reports diagnostics when cancel finds no active turn", async () => {
+    let sessionStatus: "ready" | "waiting" = "waiting";
+    const cancel = vi.fn(async () => {
+      sessionStatus = "ready";
+      return {
+        agentSessionId: "session-1",
+        canceled: false,
+        reason: "no_active_turn",
+        sessionStatus: "ready"
+      };
+    });
+    const getState = vi.fn(async () =>
+      sessionStatus === "waiting"
+        ? agentSessionState("session-1", {
+            status: "waiting",
+            pendingInteractive: {
+              kind: "approval",
+              requestId: "request-1",
+              toolName: "Run command",
+              status: "waiting",
+              input: {
+                callId: "call-1",
+                options: [
+                  {
+                    id: "allow_once",
+                    label: "Allow once",
+                    kind: "allow_once"
+                  }
+                ]
+              }
+            }
+          })
+        : agentSessionState("session-1", { status: "ready" })
+    );
+    const reportDiagnostic = vi.fn();
     installAgentHostApi({
       list: vi.fn(async () => snapshotWithSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
       cancel,
-      getState: vi.fn(async () =>
-        agentSessionState("session-1", {
-          status: "waiting",
-          pendingInteractive: {
-            kind: "approval",
-            requestId: "request-1",
-            toolName: "Run command",
-            status: "waiting",
-            input: {
-              callId: "call-1",
-              options: [
-                { id: "allow_once", label: "Allow once", kind: "allow_once" }
-              ]
-            }
-          }
-        })
-      )
+      getState
     });
+    (
+      window as unknown as { agentActivityRuntime: AgentActivityRuntime }
+    ).agentActivityRuntime.reportDiagnostic = reportDiagnostic;
 
     const { result } = renderHook(() =>
       useAgentGUINodeController({
@@ -4875,6 +4895,7 @@ describe("useAgentGUINodeController", () => {
         "request-1"
       );
     });
+    expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
 
     act(() => {
       result.current.actions.interruptCurrentTurn("No running response");
@@ -4889,8 +4910,29 @@ describe("useAgentGUINodeController", () => {
         reason: "user_interrupt"
       });
     });
+    await waitFor(() => {
+      expect(result.current.viewModel.canQueueWhileBusy).toBe(false);
+    });
     expect(result.current.viewModel.pendingApproval).toBeNull();
     expect(result.current.viewModel.detailError).toBeNull();
+    const diagnosticPayload = reportDiagnostic.mock.calls.find(
+      ([payload]) => payload?.event === "agent.gui.cancel.noop"
+    )?.[0];
+    expect(diagnosticPayload).toEqual({
+      details: expect.objectContaining({
+        agentSessionId: "session-1",
+        busySource: "interactive_prompt",
+        canceled: false,
+        cancelReason: "no_active_turn",
+        currentSessionStatus: "waiting",
+        returnedSessionNonBusy: true,
+        returnedSessionStatus: "ready"
+      }),
+      event: "agent.gui.cancel.noop",
+      level: "info",
+      source: "agent-gui",
+      workspaceId: "room-1"
+    });
   });
 
   it("promotes provider-session-not-found from getState into the live recovery state", async () => {
@@ -10162,15 +10204,24 @@ function installAgentActivityRuntimeForHostMocks({
       return result;
     },
     async cancelSession(input) {
-      await cancel({
+      const result = await cancel({
         workspaceId: input.workspaceId,
         agentSessionId: input.agentSessionId,
         reason: "user_interrupt"
       });
-      return upsertRuntimeSession(setSnapshot, input.workspaceId, {
+      const canceled = result?.canceled ?? false;
+      const reason =
+        result?.reason ??
+        (canceled ? "active_turn_canceled" : "no_active_turn");
+      const session = upsertRuntimeSession(setSnapshot, input.workspaceId, {
         agentSessionId: input.agentSessionId,
-        status: "canceled"
+        status: result?.sessionStatus ?? (canceled ? "canceled" : "ready")
       });
+      return {
+        canceled,
+        reason,
+        session
+      };
     },
     async createSession(input) {
       const result = await activate({
@@ -10443,12 +10494,15 @@ function installNoopAgentActivityRuntimeForTests(): void {
         session: agentSession(input.agentSessionId),
         activation: { mode: input.mode, status: "attached" as const }
       }),
-      cancelSession: async (input) =>
-        upsertRuntimeSession(
+      cancelSession: async (input) => ({
+        canceled: true,
+        reason: "active_turn_canceled",
+        session: upsertRuntimeSession(
           (workspaceId, updater) => updater(getSnapshot(workspaceId)),
           input.workspaceId,
           { agentSessionId: input.agentSessionId, status: "canceled" }
-        ),
+        )
+      }),
       createSession: async (input) =>
         upsertRuntimeSession(
           (workspaceId, updater) => updater(getSnapshot(workspaceId)),

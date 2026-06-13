@@ -83,12 +83,14 @@ export function createDesktopAgentActivityRuntime(
       return activation;
     },
     async cancelSession(input) {
-      const session = await workspaceAgentActivityService.cancelSession(input);
-      await messageStoppedTracker.track({
-        agentSessionId: session.agentSessionId,
-        provider: session.provider
-      });
-      return session;
+      const result = await workspaceAgentActivityService.cancelSession(input);
+      if (result.canceled) {
+        await messageStoppedTracker.track({
+          agentSessionId: result.session.agentSessionId,
+          provider: result.session.provider
+        });
+      }
+      return result;
     },
     createSession: (input) =>
       workspaceAgentActivityService.createSession(input),

@@ -306,7 +306,7 @@ const issueManagerZhCN = {
     scrollStatusTabsRight: "向右滚动状态标签",
     status: "状态",
     subtasks: "子事项",
-    taskAcceptance: "子任务待验收",
+    taskAcceptance: "任务待验收",
     topic: "主题",
     topicDefault: "默认",
     topicSummary: "主题概要",

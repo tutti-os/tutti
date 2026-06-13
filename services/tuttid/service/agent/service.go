@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -378,22 +379,95 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 	})
 }
 
-func (s *Service) Cancel(ctx context.Context, workspaceID string, agentSessionID string) (Session, error) {
+func (s *Service) Cancel(ctx context.Context, workspaceID string, agentSessionID string) (CancelSessionResult, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	slog.Info("workspace agent session cancel requested",
+		"event", "workspace_agent_session.cancel.requested",
+		"workspaceId", workspaceID,
+		"agentSessionId", agentSessionID,
+	)
 	ensured, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
 	if err != nil {
-		return Session{}, err
+		slog.Warn("workspace agent session cancel prepare failed",
+			"event", "workspace_agent_session.cancel.prepare_failed",
+			"workspaceId", workspaceID,
+			"agentSessionId", agentSessionID,
+			"error", err.Error(),
+		)
+		return CancelSessionResult{}, err
 	}
 	if ensured.StaleTurnReconciled {
-		return s.get(ctx, workspaceID, agentSessionID, false)
+		session, getErr := s.get(ctx, workspaceID, agentSessionID, false)
+		if getErr != nil {
+			slog.Warn("workspace agent session cancel stale turn refresh failed",
+				"event", "workspace_agent_session.cancel.stale_turn_refresh_failed",
+				"workspaceId", workspaceID,
+				"agentSessionId", agentSessionID,
+				"error", getErr.Error(),
+			)
+			return CancelSessionResult{}, getErr
+		}
+		slog.Info("workspace agent session cancel skipped after stale turn reconciliation",
+			"event", "workspace_agent_session.cancel.stale_turn_reconciled",
+			"workspaceId", workspaceID,
+			"agentSessionId", agentSessionID,
+			"cancelReason", string(CancelReasonStaleTurnReconciled),
+			"returnedStatus", session.Status,
+		)
+		return CancelSessionResult{
+			Session:  session,
+			Canceled: false,
+			Reason:   CancelReasonStaleTurnReconciled,
+		}, nil
 	}
-	if err := s.controller().Cancel(ctx, RuntimeCancelInput{
+	cancelResult, err := s.controller().Cancel(ctx, RuntimeCancelInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 		Reason:         "user requested cancellation",
-	}); err != nil {
-		return Session{}, normalizeRuntimeError(err)
+	})
+	if err != nil {
+		normalizedErr := normalizeRuntimeError(err)
+		slog.Warn("workspace agent session cancel runtime request failed",
+			"event", "workspace_agent_session.cancel.runtime_failed",
+			"workspaceId", workspaceID,
+			"agentSessionId", agentSessionID,
+			"error", normalizedErr.Error(),
+		)
+		return CancelSessionResult{}, normalizedErr
 	}
-	return s.Get(ctx, workspaceID, agentSessionID)
+	session, err := s.Get(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		slog.Warn("workspace agent session cancel refresh failed",
+			"event", "workspace_agent_session.cancel.refresh_failed",
+			"workspaceId", workspaceID,
+			"agentSessionId", agentSessionID,
+			"error", err.Error(),
+		)
+		return CancelSessionResult{}, err
+	}
+	cancelReason := cancelReasonFromRuntimeResult(cancelResult)
+	slog.Info("workspace agent session cancel completed",
+		"event", "workspace_agent_session.cancel.completed",
+		"workspaceId", workspaceID,
+		"agentSessionId", agentSessionID,
+		"runtimeAgentSessionId", cancelResult.AgentSessionID,
+		"runtimeCanceled", cancelResult.Canceled,
+		"cancelReason", string(cancelReason),
+		"returnedStatus", session.Status,
+	)
+	return CancelSessionResult{
+		Session:  session,
+		Canceled: cancelResult.Canceled,
+		Reason:   cancelReason,
+	}, nil
+}
+
+func cancelReasonFromRuntimeResult(result RuntimeCancelResult) CancelReason {
+	if result.Canceled {
+		return CancelReasonActiveTurnCanceled
+	}
+	return CancelReasonNoActiveTurn
 }
 
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (Session, error) {
@@ -410,6 +484,9 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	content, displayPrompt, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, displayPrompt)
 	if err != nil {
 		return Session{}, err
+	}
+	if strings.TrimSpace(input.DisplayPrompt) != "" {
+		displayPrompt = input.DisplayPrompt
 	}
 	result, err := s.controller().Exec(ctx, RuntimeExecInput{
 		WorkspaceID:    workspaceID,

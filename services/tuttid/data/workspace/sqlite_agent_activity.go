@@ -33,13 +33,15 @@ func (s *SQLiteStore) ReportSessionState(
 	if input.OccurredAtUnixMS <= 0 {
 		input.OccurredAtUnixMS = now
 	}
-	accepted, err := s.upsertAgentSession(ctx, input, now)
+	accepted, stateApplied, lastEventUnixMS, session, err := s.upsertAgentSession(ctx, input, now)
 	if err != nil {
 		return agentactivitybiz.StateReportResult{}, err
 	}
 	return agentactivitybiz.StateReportResult{
 		Accepted:        accepted,
-		LastEventUnixMS: input.OccurredAtUnixMS,
+		StateApplied:    stateApplied,
+		LastEventUnixMS: lastEventUnixMS,
+		Session:         session,
 	}, nil
 }
 
@@ -71,7 +73,7 @@ func (s *SQLiteStore) ReportSessionMessages(
 	}()
 
 	now := unixMs(time.Now().UTC())
-	accepted, err := upsertAgentSessionTx(ctx, tx, agentactivitybiz.SessionStateReport{
+	accepted, _, _, _, err := upsertAgentSessionTx(ctx, tx, agentactivitybiz.SessionStateReport{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 		Origin:         input.Origin,
@@ -393,10 +395,10 @@ func (s *SQLiteStore) upsertAgentSession(
 	ctx context.Context,
 	input agentactivitybiz.SessionStateReport,
 	now int64,
-) (bool, error) {
+) (bool, bool, int64, agentactivitybiz.Session, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("begin workspace agent session state report: %w", err)
+		return false, false, 0, agentactivitybiz.Session{}, fmt.Errorf("begin workspace agent session state report: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -404,15 +406,15 @@ func (s *SQLiteStore) upsertAgentSession(
 			_ = tx.Rollback()
 		}
 	}()
-	accepted, err := upsertAgentSessionTx(ctx, tx, input, now)
+	accepted, stateApplied, lastEventUnixMS, session, err := upsertAgentSessionTx(ctx, tx, input, now)
 	if err != nil {
-		return false, err
+		return false, false, 0, agentactivitybiz.Session{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("commit workspace agent session state report: %w", err)
+		return false, false, 0, agentactivitybiz.Session{}, fmt.Errorf("commit workspace agent session state report: %w", err)
 	}
 	committed = true
-	return accepted, nil
+	return accepted, stateApplied, lastEventUnixMS, session, nil
 }
 
 func upsertAgentSessionTx(
@@ -420,15 +422,15 @@ func upsertAgentSessionTx(
 	tx *sql.Tx,
 	input agentactivitybiz.SessionStateReport,
 	now int64,
-) (bool, error) {
+) (bool, bool, int64, agentactivitybiz.Session, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
-		return false, nil
+		return false, false, 0, agentactivitybiz.Session{}, nil
 	}
 	existing, hasExisting, err := getAgentSessionForUpdate(ctx, tx, workspaceID, agentSessionID)
 	if err != nil {
-		return false, err
+		return false, false, 0, agentactivitybiz.Session{}, err
 	}
 	projected := agentactivityprojection.ProjectSessionState(
 		existing,
@@ -454,16 +456,16 @@ func upsertAgentSessionTx(
 		now,
 	)
 	if !projected.Accepted {
-		return false, nil
+		return false, false, projected.LastEventUnixMS, projectionSessionToBiz(projected.Session), nil
 	}
 	session := projected.Session
 	settingsJSON, err := marshalJSONMap(session.Settings)
 	if err != nil {
-		return false, err
+		return false, false, 0, agentactivitybiz.Session{}, err
 	}
 	runtimeContextJSON, err := marshalJSONMap(session.RuntimeContext)
 	if err != nil {
-		return false, err
+		return false, false, 0, agentactivitybiz.Session{}, err
 	}
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_sessions (
@@ -490,20 +492,20 @@ ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
   deleted_at_unix_ms = 0,
   updated_at_unix_ms = excluded.updated_at_unix_ms
 WHERE workspace_agent_sessions.deleted_at_unix_ms = 0
-`, session.WorkspaceID, session.AgentSessionID, session.Origin, session.Provider,
+	`, session.WorkspaceID, session.AgentSessionID, session.Origin, session.Provider,
 		session.ProviderSessionID, session.Model, settingsJSON, runtimeContextJSON,
 		session.CWD, session.Title,
 		session.Status, session.CurrentPhase, session.LastError, session.LastEventUnixMS,
 		session.StartedAtUnixMS, session.EndedAtUnixMS, session.CreatedAtUnixMS,
 		session.UpdatedAtUnixMS)
 	if err != nil {
-		return false, fmt.Errorf("upsert workspace agent session: %w", err)
+		return false, false, 0, agentactivitybiz.Session{}, fmt.Errorf("upsert workspace agent session: %w", err)
 	}
 	accepted, err := rowsWereAffected(result, "upsert workspace agent session")
 	if err != nil {
-		return false, err
+		return false, false, 0, agentactivitybiz.Session{}, err
 	}
-	return accepted, nil
+	return accepted, sessionStateReportApplied(input, projected.Session), projected.LastEventUnixMS, projectionSessionToBiz(projected.Session), nil
 }
 
 func getAgentSessionForUpdate(

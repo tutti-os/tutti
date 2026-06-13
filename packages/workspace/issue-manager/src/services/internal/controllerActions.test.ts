@@ -1235,6 +1235,7 @@ test("controller actions open agent task breakdown with a provider override", as
       issueSearchQuery: "",
       issueStatusFilter: "all",
       selectedAgentProvider: "codex",
+      selectedExecutionDirectory: "/Users/example/project/tutti",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }
@@ -1244,6 +1245,7 @@ test("controller actions open agent task breakdown with a provider override", as
 
   assert.deepEqual(breakdownCalls, [
     {
+      executionDirectory: "/Users/example/project/tutti",
       issueDetail: {
         contextRefs: [createIssueContextRef({ path: "/workspace/spec.md" })],
         issue,
@@ -1265,7 +1267,7 @@ test("controller actions open agent task breakdown with a provider override", as
     }
   ]);
   assert.equal(harness.nodeState.current.selectedAgentProvider, "gemini");
-  assert.deepEqual(harness.isRunningTaskState.history, []);
+  assert.deepEqual(harness.isRunningTaskState.history, [true, false]);
   assert.deepEqual(harness.notificationState.history, []);
 });
 
@@ -1295,6 +1297,60 @@ test("controller actions report unavailable agent task breakdown", async () => {
   assert.deepEqual(harness.notificationState.history, [
     "messages.breakdownUnavailable"
   ]);
+});
+
+test("controller actions report run result error messages", async () => {
+  const harness = createControllerActionsHarness({
+    agentRunner: {
+      async runTask() {
+        return {
+          errorMessage: "issue_manager.agent_gui_launch_unavailable",
+          status: "failed"
+        };
+      }
+    },
+    issueDetail: {
+      contextRefs: [],
+      issue: createIssueSummary({
+        issueId: "issue-1",
+        title: "Plan migration"
+      }),
+      latestOutputs: [],
+      recentRuns: [],
+      tasks: [
+        createTaskSummary({
+          issueId: "issue-1",
+          taskId: "task-1",
+          title: "Port renderer"
+        })
+      ]
+    },
+    nodeState: {
+      issueSearchQuery: "",
+      issueStatusFilter: "all",
+      selectedAgentProvider: "codex",
+      selectedIssueId: "issue-1",
+      selectedTaskId: "task-1"
+    },
+    taskDetail: {
+      contextRefs: [],
+      latestOutputs: [],
+      recentRuns: [],
+      task: createTaskSummary({
+        issueId: "issue-1",
+        taskId: "task-1",
+        title: "Port renderer"
+      })
+    }
+  });
+
+  await harness.actions.runTask();
+
+  assert.deepEqual(harness.notificationState.history, [
+    "issue_manager.agent_gui_launch_unavailable"
+  ]);
+  assert.deepEqual(harness.isRunningTaskState.history, [true, false]);
+  assert.equal(harness.refreshDetailsCount, 1);
 });
 
 test("controller actions report run failures when the runner throws", async () => {

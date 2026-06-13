@@ -329,7 +329,8 @@ function createIssueManagerFallbackMessageCenterItem({
     provider,
     sortTimeUnixMs,
     status: issueManagerRunStatusToMessageCenterStatus(latestRun.status),
-    title: input.title || agentSessionId
+    title: input.title || agentSessionId,
+    userId: null
   };
 }
 

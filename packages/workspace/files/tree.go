@@ -114,12 +114,14 @@ func buildDirectoryTreeDirectory(listing DirectoryListing) DirectoryTreeDirector
 	entries := make([]DirectoryTreeEntry, 0, len(listing.Entries))
 	for _, entry := range listing.Entries {
 		entries = append(entries, DirectoryTreeEntry{
-			Path:        entry.Path,
-			Name:        entry.Name,
-			Kind:        entry.Kind,
-			HasChildren: entry.HasChildren,
-			SizeBytes:   entry.SizeBytes,
-			MtimeMs:     entry.MtimeMs,
+			Path:          entry.Path,
+			Name:          entry.Name,
+			Kind:          entry.Kind,
+			HasChildren:   entry.HasChildren,
+			SizeBytes:     entry.SizeBytes,
+			MtimeMs:       entry.MtimeMs,
+			CreatedTimeMs: entry.CreatedTimeMs,
+			LastOpenedMs:  entry.LastOpenedMs,
 		})
 	}
 

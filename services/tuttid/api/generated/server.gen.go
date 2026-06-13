@@ -7313,7 +7313,7 @@ type CancelWorkspaceAgentSessionResponseObject interface {
 	VisitCancelWorkspaceAgentSessionResponse(w http.ResponseWriter) error
 }
 
-type CancelWorkspaceAgentSession200JSONResponse WorkspaceAgentSessionResponse
+type CancelWorkspaceAgentSession200JSONResponse WorkspaceAgentSessionCancelResponse
 
 func (response CancelWorkspaceAgentSession200JSONResponse) VisitCancelWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
 

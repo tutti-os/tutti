@@ -28,11 +28,11 @@ import type { IReporterService } from "../../../analytics/services/reporterServi
 import {
   requestWorkspaceAgentGuiLaunch,
   type AgentProviderStatusService,
-  type IWorkspaceAgentActivityService
+  type IWorkspaceAgentActivityService,
+  type WorkspaceAgentPromptSessionService
 } from "@renderer/features/workspace-agent";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
-import { createDesktopAgentHostApi } from "@renderer/features/workspace-agent/services/createDesktopAgentHostApi";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import { requestWorkspaceBrowserLaunch } from "../workspaceBrowserLaunchCoordinator.ts";
@@ -61,21 +61,11 @@ export function createWorkspaceIssueManagerContribution(input: {
   runtimeApi: DesktopRuntimeApi;
   reporterService?: Pick<IReporterService, "trackEvents">;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
+  workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceId: string;
 }): WorkbenchContribution {
-  const agentHostApi = createDesktopAgentHostApi({
-    hostFilesApi: input.hostFilesApi,
-    tuttidClient: input.tuttidClient,
-    platformApi: input.platformApi,
-    reporterService: input.reporterService,
-    runtimeApi: input.runtimeApi,
-    workspaceAgentActivityService: input.workspaceAgentActivityService,
-    workspaceUserProjectService: input.workspaceUserProjectService,
-    workspaceId: input.workspaceId
-  }) as Parameters<typeof createDesktopIssueManagerFeature>[0]["agentHostApi"];
   const feature = createDesktopIssueManagerFeature({
-    agentHostApi,
     agentProviderOptions: {
       getOptions: () =>
         resolveIssueManagerReadyAgentProviderOptions(
@@ -85,15 +75,19 @@ export function createWorkspaceIssueManagerContribution(input: {
       subscribe: (listener) =>
         input.agentProviderStatusService.subscribe(listener)
     },
+    agentSessionCreator: input.workspaceAgentPromptSessionService,
     eventStreamClient: input.eventStreamClient,
     hostFilesApi: input.hostFilesApi,
     i18n: input.i18n,
     launchAgentGui: async (request) => {
-      await requestWorkspaceAgentGuiLaunch({
-        ...request,
-        pendingHandoff: request.pendingHandoff,
-        provider: normalizeDesktopAgentGUIProvider(request.provider)
+      const launched = await requestWorkspaceAgentGuiLaunch({
+        agentSessionId: request.agentSessionId,
+        provider: normalizeDesktopAgentGUIProvider(request.provider),
+        workspaceId: request.workspaceId
       });
+      if (!launched) {
+        throw new Error("issue_manager.agent_gui_launch_unavailable");
+      }
     },
     tuttidClient: input.tuttidClient,
     openWorkspaceFileManager: async (reference) =>

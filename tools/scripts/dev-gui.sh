@@ -67,7 +67,7 @@ resolve_dev_gui_process_group_id() {
 restore_terminal_foreground() {
   local pgid
 
-  [[ -r /dev/tty ]] || return
+  [[ -t 0 && -e /dev/tty ]] || return
 
   pgid="$(resolve_dev_gui_process_group_id)"
   [[ "${pgid}" =~ ^[0-9]+$ ]] || return
@@ -117,7 +117,10 @@ stop_process_tree() {
     return
   fi
 
-  mapfile -t pids < <(
+  while IFS= read -r child_pid; do
+    [[ -n "${child_pid}" ]] || continue
+    pids+=("${child_pid}")
+  done < <(
     {
       collect_child_processes "${pid}"
       printf '%s\n' "${pid}"
@@ -465,8 +468,10 @@ start_desktop_dev() {
   ) &
   DEV_GUI_CHILD_PID="$!"
 
+  set +e
   wait_for_desktop_dev_exit "${DEV_GUI_CHILD_PID}"
   status="$?"
+  set -e
   DEV_GUI_CHILD_PID=""
   return "${status}"
 }

@@ -88,7 +88,10 @@ export function IssueManagerIssuePane({
   if (isCreatingIssue || isEditingIssue) {
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
-        <ScrollArea className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
+        <ScrollArea
+          scrollbarMode="native"
+          className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100 [&_[data-slot=scroll-area-viewport]]:overscroll-contain"
+        >
           <div className="flex min-h-full flex-col gap-[14px] px-7 py-8">
             <div className="flex w-full min-w-0 flex-col gap-3">
               <div
@@ -160,7 +163,10 @@ export function IssueManagerIssuePane({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <ScrollArea className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
+      <ScrollArea
+        scrollbarMode="native"
+        className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100 [&_[data-slot=scroll-area-viewport]]:overscroll-contain"
+      >
         <div className="px-8 py-7">
           {controller.issueDetail.isLoading &&
           controller.issueDetail.value === null ? (

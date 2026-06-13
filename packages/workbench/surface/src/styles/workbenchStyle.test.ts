@@ -178,7 +178,7 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
     css,
     /\.desktop-dock\[data-dock-pointer-active="true"\]\s+\.desktop-dock__items\s*{[^}]*mask-image:\s*none;/s
   );
-  assert.match(
+  assert.doesNotMatch(
     css,
     /\.desktop-dock\[data-dock-pointer-active="true"\]\s+\[data-radix-popper-content-wrapper\]\s*{[^}]*display:\s*none !important;/s
   );

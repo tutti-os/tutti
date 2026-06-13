@@ -2,15 +2,6 @@ import type { DesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
 
 export interface WorkspaceAgentGuiLaunchRequest {
   agentSessionId?: string;
-  pendingHandoff?: {
-    issueId?: string | null;
-    issueTitle?: string | null;
-    prompt: string;
-    requestId: string;
-    taskId?: string | null;
-    taskTitle: string;
-    title: string;
-  };
   provider: DesktopAgentGUIProvider;
   workspaceId: string;
 }

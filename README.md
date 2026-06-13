@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/tutti-logo.png" alt="Tutti logo" width="120" />
+
 # Tutti
 
 **Where people and agents build in tune.**

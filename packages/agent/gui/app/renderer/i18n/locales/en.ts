@@ -355,6 +355,8 @@ export const en = {
       followupPlaceholder: "Request follow-up changes from {{provider}}",
       installRequiredPlaceholder:
         "Install {{provider}} from the dock to send messages",
+      collaboratorSessionReadOnlyPlaceholder:
+        "This session belongs to another user and cannot be replied to directly",
       send: "Send",
       modelLabel: "Model",
       modelSelectionLabel: "Model selection",
@@ -653,6 +655,7 @@ export const en = {
       approvalUnavailable: "No choices are available.",
       approvalOptions: {
         allowOnce: "Yes, proceed",
+        allowForSession: "Yes, for this session",
         allowAlways: "Yes, and don't ask again",
         allowAlwaysForCommandPrefix:
           "Yes, and don't ask again for commands that start with `{{command}}`",

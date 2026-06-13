@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   TerminalNodeExternalState,
+  TerminalPreviewChangeHandler,
   TerminalSessionStatus
 } from "../contracts/index.ts";
 import type { TerminalNodeFeature } from "../core/feature.ts";
@@ -15,6 +16,7 @@ export interface TerminalSurfaceProps {
   externalState: TerminalNodeExternalState | null;
   feature: TerminalNodeFeature;
   nodeId: string;
+  onPreviewChange?: TerminalPreviewChangeHandler;
   sessionId: string;
   status: TerminalSessionStatus;
 }
@@ -24,6 +26,7 @@ export function TerminalSurface({
   externalState,
   feature,
   nodeId,
+  onPreviewChange,
   sessionId,
   status
 }: TerminalSurfaceProps) {
@@ -103,6 +106,7 @@ export function TerminalSurface({
         surfaceDiagnostics.resize({ cols, rows });
         void controller.resize({ cols, rows });
       },
+      onPreviewChange,
       onUserInput: (data, encoding) => {
         controller.write(data, encoding);
       },

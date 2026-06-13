@@ -14,7 +14,8 @@ import type {
   TerminalCloseGuardResult,
   TerminalHeaderAccessoryRenderer,
   TerminalLaunchInput,
-  TerminalNodeExternalState
+  TerminalNodeExternalState,
+  TerminalPreviewChangeHandler
 } from "../contracts/index.ts";
 import { closeTerminalSession } from "../core/index.ts";
 import type { TerminalNodeFeature } from "../core/feature.ts";
@@ -34,6 +35,7 @@ export interface CreateTerminalWorkbenchNodeDefinitionInput {
   feature: TerminalNodeFeature;
   frame?: WorkbenchFrame;
   headerAccessory?: TerminalHeaderAccessoryRenderer;
+  onPreviewChange?: TerminalPreviewChangeHandler;
   title?: string;
   typeId?: string;
 }
@@ -100,6 +102,7 @@ export function createTerminalWorkbenchNodeDefinition({
   feature,
   frame = defaultTerminalNodeFrame,
   headerAccessory,
+  onPreviewChange,
   title,
   typeId = defaultTerminalWorkbenchTypeId
 }: CreateTerminalWorkbenchNodeDefinitionInput): WorkbenchHostNodeDefinition<TerminalNodeExternalState> {
@@ -111,7 +114,7 @@ export function createTerminalWorkbenchNodeDefinition({
     renderBody: (context) =>
       createElement(
         TerminalNode,
-        resolveTerminalWorkbenchBodyProps({ context, feature })
+        resolveTerminalWorkbenchBodyProps({ context, feature, onPreviewChange })
       ),
     createLease: ({ node }) => {
       const sessionId = node.data.instanceKey ?? null;
@@ -192,10 +195,14 @@ export function createTerminalDockEntry({
     launchBehavior: "enabled",
     matchNode: (node) => node.data.typeId === typeId,
     order,
-    resolvePopupItem: ({ node }) => ({
-      subtitle: node.data.instanceKey ?? node.data.instanceId,
-      title: node.title
-    }),
+    resolvePopupItem: ({ node }) => {
+      const subtitle = node.data.instanceKey ?? node.data.instanceId;
+      return {
+        revision: `${node.title}\n${subtitle}`,
+        subtitle,
+        title: node.title
+      };
+    },
     sectionId,
     typeId,
     visibility: "always"

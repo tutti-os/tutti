@@ -11,6 +11,7 @@ import {
   useRef,
   useState
 } from "react";
+import { useSnapshot } from "valtio";
 import { ChevronRight, Info } from "lucide-react";
 import type {
   WorkspaceFileReference,
@@ -74,10 +75,17 @@ import { CanvasNodeTrashLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { AgentSessionChrome } from "./AgentSessionChrome";
 import {
   AgentComposer,
+  type AgentComposerProps,
   type AgentComposerPromptTip,
   type AgentComposerSlashStatusLimit,
   type AgentComposerSlashStatus
 } from "./AgentComposer";
+import {
+  createAgentGUIBottomDockStore,
+  syncAgentGUIBottomDockStore,
+  type AgentGUIBottomDockStore,
+  type AgentGUIBottomDockStoreSnapshot
+} from "./AgentGUIBottomDockStore";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import { AgentInteractivePromptSurface } from "./AgentInteractivePromptSurface";
 import { AgentConversationListSkeleton } from "./AgentConversationListSkeleton";
@@ -92,8 +100,12 @@ import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
 const AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX = 24;
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
+  width: "100%",
   minWidth: "100%",
   display: "grid",
+  gridTemplateColumns:
+    "minmax(0, min(100%, var(--agent-gui-detail-flow-max-width)))",
+  justifyContent: "center",
   gap: "24px"
 };
 
@@ -128,10 +140,28 @@ function roundAgentGuiPerfMs(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function isDifferentKnownConversationOwner(input: {
+  conversationUserId?: string | null;
+  currentUserId?: string | null;
+}): boolean {
+  const conversationUserId = input.conversationUserId?.trim() ?? "";
+  const currentUserId = input.currentUserId?.trim() ?? "";
+  if (
+    !conversationUserId ||
+    !currentUserId ||
+    conversationUserId === "local" ||
+    currentUserId === "local"
+  ) {
+    return false;
+  }
+  return conversationUserId !== currentUserId;
+}
+
 export interface AgentGUIViewLabels {
   initialPlaceholder: string;
   followupPlaceholder: string;
   installRequiredPlaceholder: string;
+  collaboratorSessionReadOnlyPlaceholder: string;
   send: string;
   modelLabel: string;
   modelSelectionLabel: string;
@@ -282,6 +312,7 @@ interface AgentGUINodeViewProps {
   isAgentProviderReady: boolean;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
+  previewMode?: boolean;
   showProjectSelector?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   actions: {
@@ -554,6 +585,15 @@ function conversationHasActiveWork(
   );
 }
 
+function isSettledConversationStatus(
+  status:
+    | AgentGUINodeViewModel["conversations"][number]["status"]
+    | null
+    | undefined
+): boolean {
+  return status === "completed" || status === "failed" || status === "canceled";
+}
+
 function resolveActiveConversationBusyStatus(input: {
   conversationStatus:
     | AgentGUINodeViewModel["conversations"][number]["status"]
@@ -572,6 +612,12 @@ function resolveActiveConversationBusyStatus(input: {
     input.detailStatus === "working"
   ) {
     return "working";
+  }
+  if (
+    isSettledConversationStatus(input.conversationStatus) ||
+    isSettledConversationStatus(input.detailStatus)
+  ) {
+    return null;
   }
   if (conversationHasActiveWork(input.conversation)) {
     return "working";
@@ -616,6 +662,7 @@ export function AgentGUINodeView({
   isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
+  previewMode = false,
   showProjectSelector = true,
   onAgentProviderLogin,
   actions,
@@ -651,6 +698,9 @@ export function AgentGUINodeView({
     ((refs: WorkspaceFileReference[]) => void) | null
   >(null);
   const requestWorkspaceReferences = useCallback(async () => {
+    if (previewMode) {
+      return [];
+    }
     if (!workspaceFileReferenceAdapter || !workspaceFileReferenceCopy) {
       return [];
     }
@@ -658,7 +708,7 @@ export function AgentGUINodeView({
     return await new Promise<WorkspaceFileReference[]>((resolve) => {
       workspaceReferencePickerResolverRef.current = resolve;
     });
-  }, [workspaceFileReferenceAdapter, workspaceFileReferenceCopy]);
+  }, [previewMode, workspaceFileReferenceAdapter, workspaceFileReferenceCopy]);
   const closeWorkspaceReferencePicker = useCallback(() => {
     workspaceReferencePickerResolverRef.current?.([]);
     workspaceReferencePickerResolverRef.current = null;
@@ -690,6 +740,9 @@ export function AgentGUINodeView({
       : (composerFocusRequestSequence ?? 0) + localComposerFocusRequestSequence;
   const requestCreateConversation = useCallback(
     (options?: { projectPath?: string | null }) => {
+      if (previewMode) {
+        return;
+      }
       if (options) {
         actions.createConversation(options);
       } else {
@@ -697,7 +750,7 @@ export function AgentGUINodeView({
       }
       setLocalComposerFocusRequestSequence((current) => current + 1);
     },
-    [actions]
+    [actions, previewMode]
   );
   const effectiveWorkspaceAppIcons = useMemo(
     () =>
@@ -720,6 +773,9 @@ export function AgentGUINodeView({
 
   const handleConversationRailResizePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>): void => {
+      if (previewMode) {
+        return;
+      }
       if (conversationRailCollapsed || event.button !== 0) {
         return;
       }
@@ -733,11 +789,14 @@ export function AgentGUINodeView({
       };
       setIsRailResizing(true);
     },
-    [conversationRailCollapsed, conversationRailWidthPx]
+    [conversationRailCollapsed, conversationRailWidthPx, previewMode]
   );
 
   const handleConversationRailResizePointerMove = useCallback(
     (event: PointerEvent<HTMLDivElement>): void => {
+      if (previewMode) {
+        return;
+      }
       const resizeState = railResizeInteractionRef.current;
       if (!resizeState || resizeState.pointerId !== event.pointerId) {
         return;
@@ -748,7 +807,7 @@ export function AgentGUINodeView({
       );
       onConversationRailWidthChanged(nextWidthPx);
     },
-    [clampConversationRailWidth, onConversationRailWidthChanged]
+    [clampConversationRailWidth, onConversationRailWidthChanged, previewMode]
   );
 
   const endConversationRailResize = useCallback(
@@ -768,6 +827,9 @@ export function AgentGUINodeView({
 
   const handleConversationRailResizeKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>): void => {
+      if (previewMode) {
+        return;
+      }
       if (conversationRailCollapsed) {
         return;
       }
@@ -788,7 +850,8 @@ export function AgentGUINodeView({
       clampConversationRailWidth,
       conversationRailCollapsed,
       conversationRailWidthPx,
-      onConversationRailWidthChanged
+      onConversationRailWidthChanged,
+      previewMode
     ]
   );
 
@@ -802,7 +865,12 @@ export function AgentGUINodeView({
 
   return (
     <TooltipProvider>
-      <div className={styles.layout} style={layoutStyle}>
+      <div
+        className={styles.layout}
+        data-agent-gui-preview={previewMode ? "true" : undefined}
+        inert={previewMode ? true : undefined}
+        style={layoutStyle}
+      >
         <aside
           id="agent-gui-conversation-rail"
           className={`${styles.railPanel}${
@@ -826,6 +894,7 @@ export function AgentGUINodeView({
             labels={labels}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
             uiLanguage={uiLanguage}
+            showProjectSelector={showProjectSelector}
             createConversationDisabled={createConversationDisabled}
             openclawGateway={openclawGateway}
             isCollapsed={conversationRailCollapsed}
@@ -1031,7 +1100,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const activePrompt =
     viewModel.pendingInteractivePrompt ?? viewModel.pendingApproval;
   const activePromptRequestId = activePrompt?.requestId ?? null;
-  const sessionChrome = useMemo(
+  const sessionChrome = useMemo<AgentGUISessionChrome>(
     () => ({ ...viewModel.sessionChrome, approval: null }),
     [viewModel.sessionChrome]
   );
@@ -1127,11 +1196,21 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     viewModel.isSubmitting ||
     activeConversationTurnBusy ||
     (!hasActiveConversation && viewModel.isCreatingConversation);
-  const canQueueWhileBusy = viewModel.canQueueWhileBusy && isAgentProviderReady;
-  const composerDisabledReason = isAgentProviderReady
-    ? null
-    : labels.installRequiredPlaceholder;
+  const isCollaboratorConversation = isDifferentKnownConversationOwner({
+    conversationUserId: viewModel.activeConversation?.userId,
+    currentUserId: viewModel.currentUserId
+  });
+  const canQueueWhileBusy =
+    viewModel.canQueueWhileBusy &&
+    isAgentProviderReady &&
+    !isCollaboratorConversation;
+  const composerDisabledReason = isCollaboratorConversation
+    ? labels.collaboratorSessionReadOnlyPlaceholder
+    : isAgentProviderReady
+      ? null
+      : labels.installRequiredPlaceholder;
   const submitDisabled =
+    isCollaboratorConversation ||
     !isAgentProviderReady ||
     (!viewModel.canSubmit && !canQueueWhileBusy) ||
     viewModel.draftPrompt.trim() === "";
@@ -1140,6 +1219,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     sessionChrome.recovery.canRetry === false;
   const composerDisabled =
     hasNonRetryableRecoveryFailure ||
+    isCollaboratorConversation ||
     !isAgentProviderReady ||
     (!canQueueWhileBusy &&
       (viewModel.pendingApproval !== null ||
@@ -1353,7 +1433,38 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   );
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
-  }, [actions, labels.noRunningResponse]);
+  }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
+  const submitApprovalOption = useStableEventCallback(
+    actions.submitApprovalOption
+  );
+  const retryActivation = useStableEventCallback(actions.retryActivation);
+  const continueInNewConversation = useStableEventCallback(
+    actions.continueInNewConversation
+  );
+  const updateDraftPrompt = useStableEventCallback(actions.updateDraftPrompt);
+  const updateSelectedProjectPath = useOptionalStableEventCallback(
+    actions.updateSelectedProjectPath
+  );
+  const updateComposerSettings = useStableEventCallback(
+    actions.updateComposerSettings
+  );
+  const submitPrompt = useStableEventCallback(actions.submitPrompt);
+  const showPromptImagesUnsupported = useStableEventCallback(
+    actions.showPromptImagesUnsupported
+  );
+  const sendQueuedPromptNext = useStableEventCallback(
+    actions.sendQueuedPromptNext
+  );
+  const removeQueuedPrompt = useStableEventCallback(actions.removeQueuedPrompt);
+  const editQueuedPrompt = useStableEventCallback(actions.editQueuedPrompt);
+  const submitInteractivePrompt = useStableEventCallback(
+    actions.submitInteractivePrompt
+  );
+  const stableLinkAction = useOptionalStableEventCallback(onLinkAction);
+  const stableRequestWorkspaceReferences = useOptionalStableEventCallback(
+    onRequestWorkspaceReferences
+  );
+  const authLogin = useOptionalStableEventCallback(onAgentProviderLogin);
   const submitBottomDockInteractivePrompt = useCallback(
     (input: {
       requestId: string;
@@ -1361,11 +1472,141 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       optionId?: string;
       payload?: Record<string, unknown>;
     }) => {
-      actions.submitInteractivePrompt(input);
+      submitInteractivePrompt(input);
       setBottomDockDismissedPromptRequestId(input.requestId);
     },
-    [actions]
+    [submitInteractivePrompt]
   );
+  const bottomDockComposerProps = useMemo<AgentComposerProps>(
+    () => ({
+      workspaceId: viewModel.workspaceId,
+      workspacePath: viewModel.workspacePath,
+      currentUserId: viewModel.currentUserId,
+      provider: viewModel.data.provider,
+      slashStatus,
+      draftPrompt: viewModel.draftPrompt,
+      availableCommands: viewModel.availableCommands,
+      hasCompactableContext: viewModel.hasSentUserMessage,
+      availableSkills: viewModel.availableSkills,
+      disabled: composerDisabled,
+      disabledReason: composerDisabledReason,
+      submitDisabled,
+      composerSettings: viewModel.composerSettings,
+      queuedPrompts: viewModel.queuedPrompts,
+      drainingQueuedPromptId: viewModel.drainingQueuedPromptId,
+      workspaceAppIcons,
+      canQueueWhileBusy,
+      placeholder: viewModel.hasSentUserMessage
+        ? labels.followupPlaceholder
+        : labels.initialPlaceholder,
+      showStopButton,
+      activePrompt: shouldLiftActivePromptAboveInlineNotice
+        ? null
+        : activePrompt,
+      activePromptKeyboardShortcutsEnabled: isActive,
+      promptTips: labels.promptTips,
+      composerFocusRequestSequence,
+      isActive,
+      promptImagesSupported: viewModel.promptImagesSupported,
+      showProjectSelector,
+      isInterrupting: viewModel.isInterrupting,
+      isSendingTurn: isComposerSending,
+      isSubmittingPrompt: viewModel.isRespondingApproval,
+      labels: composerLabels,
+      workspaceUserProjectI18n,
+      onDraftChange: updateDraftPrompt,
+      onProjectPathChange: updateSelectedProjectPath,
+      onSettingsChange: updateComposerSettings,
+      onSubmit: submitPrompt,
+      onPromptImagesUnsupported: showPromptImagesUnsupported,
+      onSendQueuedPromptNext: sendQueuedPromptNext,
+      onRemoveQueuedPrompt: removeQueuedPrompt,
+      onEditQueuedPrompt: editQueuedPrompt,
+      onInterruptCurrentTurn: handleInterruptCurrentTurn,
+      onSubmitInteractivePrompt: submitInteractivePrompt,
+      onLinkAction: stableLinkAction,
+      onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
+      richTextAtProviders
+    }),
+    [
+      activePrompt,
+      canQueueWhileBusy,
+      composerDisabled,
+      composerDisabledReason,
+      composerFocusRequestSequence,
+      composerLabels,
+      handleInterruptCurrentTurn,
+      isActive,
+      isComposerSending,
+      labels.followupPlaceholder,
+      labels.initialPlaceholder,
+      labels.promptTips,
+      editQueuedPrompt,
+      richTextAtProviders,
+      removeQueuedPrompt,
+      sendQueuedPromptNext,
+      shouldLiftActivePromptAboveInlineNotice,
+      showPromptImagesUnsupported,
+      showProjectSelector,
+      showStopButton,
+      slashStatus,
+      submitDisabled,
+      submitInteractivePrompt,
+      submitPrompt,
+      stableLinkAction,
+      stableRequestWorkspaceReferences,
+      updateComposerSettings,
+      updateDraftPrompt,
+      updateSelectedProjectPath,
+      viewModel.availableCommands,
+      viewModel.availableSkills,
+      viewModel.composerSettings,
+      viewModel.currentUserId,
+      viewModel.data.provider,
+      viewModel.draftPrompt,
+      viewModel.drainingQueuedPromptId,
+      viewModel.hasSentUserMessage,
+      viewModel.isInterrupting,
+      viewModel.isRespondingApproval,
+      viewModel.promptImagesSupported,
+      viewModel.queuedPrompts,
+      viewModel.workspaceId,
+      viewModel.workspacePath,
+      workspaceUserProjectI18n,
+      workspaceAppIcons
+    ]
+  );
+  const bottomDockStoreState = useMemo<AgentGUIBottomDockStoreSnapshot>(
+    () => ({
+      bottomDockActivePrompt,
+      composerProps: bottomDockComposerProps,
+      inlineNoticeChrome,
+      isRespondingApproval: viewModel.isRespondingApproval,
+      sessionChrome
+    }),
+    [
+      bottomDockActivePrompt,
+      bottomDockComposerProps,
+      inlineNoticeChrome,
+      sessionChrome,
+      viewModel.isRespondingApproval
+    ]
+  );
+  const bottomDockStoreRef = useRef<AgentGUIBottomDockStore | null>(null);
+  if (bottomDockStoreRef.current === null) {
+    bottomDockStoreRef.current =
+      createAgentGUIBottomDockStore(bottomDockStoreState);
+  }
+  const bottomDockStore = bottomDockStoreRef.current;
+  syncAgentGUIBottomDockStore(bottomDockStore, bottomDockStoreState);
+  const bottomDockStoreRevision = [
+    bottomDockActivePrompt?.requestId ?? "",
+    inlineNoticeChrome?.recovery?.message ?? "",
+    sessionChrome.auth?.message ?? "",
+    sessionChrome.recovery?.kind ?? "",
+    sessionChrome.recovery?.message ?? "",
+    viewModel.isRespondingApproval ? "1" : "0"
+  ].join("|");
 
   useEffect(() => {
     setBottomDockDismissedPromptRequestId(null);
@@ -1510,6 +1751,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         showFailedSyncLabel={showFailedSyncLabel}
       />
       <ScrollArea
+        scrollbarMode="native"
         className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
         viewportRef={timelineRef}
         viewportTestId="agent-gui-timeline"
@@ -1527,10 +1769,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             emptyProvider={labels.emptyProvider ?? ""}
             inlineNoticeChrome={inlineNoticeChrome}
             isRespondingApproval={viewModel.isRespondingApproval}
-            onSubmitApprovalOption={actions.submitApprovalOption}
-            onRetryActivation={actions.retryActivation}
-            onAuthLogin={onAgentProviderLogin}
-            onContinueInNewConversation={actions.continueInNewConversation}
+            onSubmitApprovalOption={submitApprovalOption}
+            onRetryActivation={retryActivation}
+            onAuthLogin={authLogin}
+            onContinueInNewConversation={continueInNewConversation}
             chromeLabels={chromeLabels}
             composerProps={{
               workspaceId: viewModel.workspaceId,
@@ -1566,18 +1808,18 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               isSubmittingPrompt: viewModel.isRespondingApproval,
               labels: composerLabels,
               workspaceUserProjectI18n,
-              onDraftChange: actions.updateDraftPrompt,
-              onProjectPathChange: actions.updateSelectedProjectPath,
-              onSettingsChange: actions.updateComposerSettings,
-              onSubmit: actions.submitPrompt,
-              onPromptImagesUnsupported: actions.showPromptImagesUnsupported,
-              onSendQueuedPromptNext: actions.sendQueuedPromptNext,
-              onRemoveQueuedPrompt: actions.removeQueuedPrompt,
-              onEditQueuedPrompt: actions.editQueuedPrompt,
+              onDraftChange: updateDraftPrompt,
+              onProjectPathChange: updateSelectedProjectPath,
+              onSettingsChange: updateComposerSettings,
+              onSubmit: submitPrompt,
+              onPromptImagesUnsupported: showPromptImagesUnsupported,
+              onSendQueuedPromptNext: sendQueuedPromptNext,
+              onRemoveQueuedPrompt: removeQueuedPrompt,
+              onEditQueuedPrompt: editQueuedPrompt,
               onInterruptCurrentTurn: handleInterruptCurrentTurn,
-              onSubmitInteractivePrompt: actions.submitInteractivePrompt,
-              onLinkAction,
-              onRequestWorkspaceReferences,
+              onSubmitInteractivePrompt: submitInteractivePrompt,
+              onLinkAction: stableLinkAction,
+              onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
               richTextAtProviders
             }}
           />
@@ -1587,8 +1829,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             isLoading={showTimelineSkeleton}
             loadingLabel={labels.loadingConversation}
             empty={conversationFlowEmpty}
-            onLinkAction={onLinkAction}
-            onAuthLogin={onAgentProviderLogin}
+            onLinkAction={stableLinkAction}
+            onAuthLogin={authLogin}
             availableSkills={viewModel.availableSkills}
             workspaceAppIcons={workspaceAppIcons}
             labels={conversationFlowLabels}
@@ -1598,67 +1840,15 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       {hasActiveConversation ? (
         <AgentGUIBottomDockPane
           bottomDockRef={bottomDockRef}
-          activePrompt={activePrompt}
-          bottomDockActivePrompt={bottomDockActivePrompt}
+          store={bottomDockStore}
+          storeRevision={bottomDockStoreRevision}
           keyboardShortcutsEnabled={isActive}
-          inlineNoticeChrome={inlineNoticeChrome}
-          sessionChrome={sessionChrome}
-          isRespondingApproval={viewModel.isRespondingApproval}
-          composerProps={{
-            workspaceId: viewModel.workspaceId,
-            workspacePath: viewModel.workspacePath,
-            currentUserId: viewModel.currentUserId,
-            provider: viewModel.data.provider,
-            slashStatus,
-            draftPrompt: viewModel.draftPrompt,
-            availableCommands: viewModel.availableCommands,
-            hasCompactableContext: viewModel.hasSentUserMessage,
-            availableSkills: viewModel.availableSkills,
-            disabled: composerDisabled,
-            disabledReason: composerDisabledReason,
-            submitDisabled,
-            composerSettings: viewModel.composerSettings,
-            queuedPrompts: viewModel.queuedPrompts,
-            drainingQueuedPromptId: viewModel.drainingQueuedPromptId,
-            workspaceAppIcons,
-            canQueueWhileBusy,
-            placeholder: viewModel.hasSentUserMessage
-              ? labels.followupPlaceholder
-              : labels.initialPlaceholder,
-            showStopButton,
-            activePrompt: shouldLiftActivePromptAboveInlineNotice
-              ? null
-              : activePrompt,
-            activePromptKeyboardShortcutsEnabled: isActive,
-            composerFocusRequestSequence,
-            isActive,
-            promptImagesSupported: viewModel.promptImagesSupported,
-            showProjectSelector,
-            isInterrupting: viewModel.isInterrupting,
-            isSendingTurn: isComposerSending,
-            isSubmittingPrompt: viewModel.isRespondingApproval,
-            labels: composerLabels,
-            workspaceUserProjectI18n,
-            onDraftChange: actions.updateDraftPrompt,
-            onProjectPathChange: actions.updateSelectedProjectPath,
-            onSettingsChange: actions.updateComposerSettings,
-            onSubmit: actions.submitPrompt,
-            onPromptImagesUnsupported: actions.showPromptImagesUnsupported,
-            onSendQueuedPromptNext: actions.sendQueuedPromptNext,
-            onRemoveQueuedPrompt: actions.removeQueuedPrompt,
-            onEditQueuedPrompt: actions.editQueuedPrompt,
-            onInterruptCurrentTurn: handleInterruptCurrentTurn,
-            onSubmitInteractivePrompt: actions.submitInteractivePrompt,
-            onLinkAction,
-            onRequestWorkspaceReferences,
-            richTextAtProviders
-          }}
           chromeLabels={chromeLabels}
           promptLabels={interactivePromptLabels}
-          onSubmitApprovalOption={actions.submitApprovalOption}
-          onRetryActivation={actions.retryActivation}
-          onAuthLogin={onAgentProviderLogin}
-          onContinueInNewConversation={actions.continueInNewConversation}
+          onSubmitApprovalOption={submitApprovalOption}
+          onRetryActivation={retryActivation}
+          onAuthLogin={authLogin}
+          onContinueInNewConversation={continueInNewConversation}
           onSubmitBottomDockInteractivePrompt={
             submitBottomDockInteractivePrompt
           }
@@ -1791,7 +1981,30 @@ type InteractivePromptLabels = {
   waitingForAnswer: string;
 };
 
-type AgentComposerProps = React.ComponentProps<typeof AgentComposer>;
+function useStableEventCallback<Args extends unknown[], Result>(
+  callback: (...args: Args) => Result
+): (...args: Args) => Result {
+  const callbackRef = useRef(callback);
+  useLayoutEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+  return useCallback((...args: Args) => callbackRef.current(...args), []);
+}
+
+function useOptionalStableEventCallback<Args extends unknown[], Result>(
+  callback: ((...args: Args) => Result) | null | undefined
+): ((...args: Args) => Result) | undefined {
+  const callbackRef = useRef(callback);
+  useLayoutEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+  return useMemo(() => {
+    if (callback == null) {
+      return undefined;
+    }
+    return (...args: Args) => callbackRef.current?.(...args) as Result;
+  }, [callback != null]);
+}
 
 interface AgentGUIEmptyHeroPaneProps {
   provider: AgentGUINodeViewModel["data"]["provider"];
@@ -1882,17 +2095,9 @@ function EmptyHeroTitle({
 
 interface AgentGUIBottomDockPaneProps {
   bottomDockRef: React.RefObject<HTMLDivElement | null>;
-  activePrompt:
-    | AgentGUIDetailPaneProps["viewModel"]["pendingApproval"]
-    | AgentGUIDetailPaneProps["viewModel"]["pendingInteractivePrompt"];
-  bottomDockActivePrompt:
-    | AgentGUIDetailPaneProps["viewModel"]["pendingApproval"]
-    | AgentGUIDetailPaneProps["viewModel"]["pendingInteractivePrompt"];
+  store: AgentGUIBottomDockStore;
+  storeRevision: string;
   keyboardShortcutsEnabled: boolean;
-  inlineNoticeChrome: AgentGUISessionChrome | null;
-  sessionChrome: AgentGUISessionChrome;
-  isRespondingApproval: boolean;
-  composerProps: AgentComposerProps;
   chromeLabels: ChromeLabels;
   promptLabels: InteractivePromptLabels;
   onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
@@ -1904,12 +2109,9 @@ interface AgentGUIBottomDockPaneProps {
 
 const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   bottomDockRef,
-  bottomDockActivePrompt,
+  store,
+  storeRevision: _storeRevision,
   keyboardShortcutsEnabled,
-  inlineNoticeChrome,
-  sessionChrome,
-  isRespondingApproval,
-  composerProps,
   chromeLabels,
   promptLabels,
   onSubmitApprovalOption,
@@ -1919,6 +2121,14 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   onSubmitBottomDockInteractivePrompt
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
+  const state = useSnapshot(store) as AgentGUIBottomDockStoreSnapshot;
+  const {
+    bottomDockActivePrompt,
+    composerProps,
+    inlineNoticeChrome,
+    isRespondingApproval,
+    sessionChrome
+  } = state;
 
   return (
     <div
@@ -1978,6 +2188,7 @@ interface AgentGUIConversationRailPaneProps {
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
+  showProjectSelector: boolean;
   createConversationDisabled: boolean;
   openclawGateway: OpenclawGatewayViewModel | null;
   isCollapsed: boolean;
@@ -2034,6 +2245,7 @@ const AgentGUIConversationRailPane = memo(
     labels,
     workspaceUserProjectI18n,
     uiLanguage,
+    showProjectSelector,
     createConversationDisabled,
     openclawGateway,
     isCollapsed,
@@ -2176,6 +2388,7 @@ const AgentGUIConversationRailPane = memo(
           </div>
         ) : null}
         <ScrollArea
+          scrollbarMode="native"
           className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
           viewportRef={conversationListRef}
           viewportClassName={styles.conversationList}
@@ -2202,6 +2415,7 @@ const AgentGUIConversationRailPane = memo(
                 section.kind === "project" ? section.label : "";
               const isProjectSection = section.kind === "project";
               const showProjectRailHeader =
+                showProjectSelector &&
                 !conversationQuery.trim() &&
                 section.kind !== "pinned" &&
                 (sectionIndex === 0 ||
@@ -2592,6 +2806,7 @@ function AgentGUIProjectRailHeader({
             />
           )}
           selectedProjectPath={null}
+          service={agentHostApi.userProjects?.service ?? null}
           shouldApplyPreparedSelection={false}
           showCreateProjectAction
           showKnownProjectOptions={false}

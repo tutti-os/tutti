@@ -18,7 +18,8 @@ import type {
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type {
   AgentProviderStatusService,
-  IWorkspaceAgentActivityService
+  IWorkspaceAgentActivityService,
+  WorkspaceAgentPromptSessionService
 } from "@renderer/features/workspace-agent";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
@@ -53,6 +54,7 @@ export interface DesktopWorkbenchContributionContext {
   workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
+  workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService;
   eventStreamClient?: TuttidEventStreamClient;
   tuttidClient: TuttidClient;
   platformApi: Pick<

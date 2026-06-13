@@ -33,25 +33,26 @@ type BareIconButtonProps = Omit<
   size?: BareIconButtonSize;
 };
 
-function BareIconButton({
-  className,
-  size = "md",
-  asChild = false,
-  type = "button",
-  ...props
-}: BareIconButtonProps) {
-  const Comp = asChild ? Slot.Root : "button";
+const BareIconButton = React.forwardRef<HTMLButtonElement, BareIconButtonProps>(
+  (
+    { className, size = "md", asChild = false, type = "button", ...props },
+    ref
+  ) => {
+    const Comp = asChild ? Slot.Root : "button";
 
-  return (
-    <Comp
-      data-slot="bare-icon-button"
-      data-size={size}
-      type={type}
-      className={cn(bareIconButtonVariants({ size, className }))}
-      {...props}
-    />
-  );
-}
+    return (
+      <Comp
+        ref={ref}
+        data-slot="bare-icon-button"
+        data-size={size}
+        type={type}
+        className={cn(bareIconButtonVariants({ size, className }))}
+        {...props}
+      />
+    );
+  }
+);
+BareIconButton.displayName = "BareIconButton";
 
 export { BareIconButton };
 export type { BareIconButtonProps };

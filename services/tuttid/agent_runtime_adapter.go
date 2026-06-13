@@ -16,15 +16,19 @@ func newAgentRuntimeAdapter(controller *agentruntime.Controller) agentRuntimeAda
 	return agentRuntimeAdapter{controller: controller}
 }
 
-func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.RuntimeCancelInput) error {
-	if _, err := a.controller.Cancel(ctx, agentruntime.CancelInput{
+func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.RuntimeCancelInput) (agentservice.RuntimeCancelResult, error) {
+	result, err := a.controller.Cancel(ctx, agentruntime.CancelInput{
 		RoomID:         input.WorkspaceID,
 		AgentSessionID: input.AgentSessionID,
 		Reason:         input.Reason,
-	}); err != nil {
-		return mapAgentRuntimeError(err)
+	})
+	if err != nil {
+		return agentservice.RuntimeCancelResult{}, mapAgentRuntimeError(err)
 	}
-	return nil
+	return agentservice.RuntimeCancelResult{
+		AgentSessionID: result.AgentSessionID,
+		Canceled:       result.Canceled,
+	}, nil
 }
 
 func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bool {

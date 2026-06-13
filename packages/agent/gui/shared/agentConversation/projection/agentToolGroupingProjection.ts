@@ -40,6 +40,7 @@ export interface AgentComputedToolGroupVM {
 export interface AgentComputedToolGroupInfoVM {
   groups: Map<number, AgentComputedToolGroupVM>;
   groupedIndices: Set<number>;
+  suppressedIndices: Set<number>;
 }
 
 export function buildAgentTurnSequenceItems(
@@ -94,6 +95,9 @@ export function computeAgentToolGroups(
 ): AgentComputedToolGroupInfoVM {
   const groups = new Map<number, AgentComputedToolGroupVM>();
   const groupedIndices = new Set<number>();
+  const suppressedIndices = allowTrailingFinalization
+    ? new Set<number>()
+    : findActiveTailSuppressedToolIndices(sequence);
 
   let currentCalls: AgentToolCallVM[] = [];
   let currentEntries: AgentToolGroupEntryVM[] = [];
@@ -128,6 +132,9 @@ export function computeAgentToolGroups(
   for (let index = 0; index < sequence.length; index += 1) {
     const item = sequence[index];
     if (!item) {
+      continue;
+    }
+    if (suppressedIndices.has(index)) {
       continue;
     }
     if (item.kind === "tool-call" && isGroupableToolCall(item.call)) {
@@ -174,7 +181,8 @@ export function computeAgentToolGroups(
 
   return {
     groups,
-    groupedIndices
+    groupedIndices,
+    suppressedIndices
   };
 }
 
@@ -200,13 +208,14 @@ export function projectAgentToolGroupRowFromGroup(
 }
 
 export function projectAgentSingleToolRow(
-  call: AgentToolCallVM
+  call: AgentToolCallVM,
+  turnId = call.turnId
 ): AgentToolGroupRowVM {
   return {
     kind: "tool-group",
     id: `tool-row:${call.id}`,
-    expansionKey: `tool-row:${call.id}`,
-    turnId: call.turnId,
+    expansionKey: `tool-group:${turnId}:${call.id}`,
+    turnId,
     grouped: false,
     calls: [call],
     summary: null,
@@ -224,6 +233,7 @@ function projectMessage(
     id: message.id,
     turnId: message.turnId ?? turnId,
     body: message.body,
+    statusKind: message.statusKind ?? null,
     occurredAtUnixMs: message.occurredAtUnixMs ?? null,
     visibleError: message.visibleError ?? null,
     systemNotice: message.systemNotice ?? null
@@ -256,6 +266,57 @@ function isGroupableToolCall(call: AgentToolCallVM): boolean {
   if (call.statusKind === "working" || call.statusKind === "waiting") {
     return false;
   }
+  switch (call.rendererKind) {
+    case "approval":
+    case "ask-user":
+    case "plan-enter":
+    case "plan-exit":
+    case "task":
+      return false;
+    default:
+      return true;
+  }
+}
+
+function findActiveTailSuppressedToolIndices(
+  sequence: readonly AgentTurnSequenceItemVM[]
+): Set<number> {
+  const suppressedIndices = new Set<number>();
+  let latestTailToolIndex = -1;
+  for (let index = sequence.length - 1; index >= 0; index -= 1) {
+    const item = sequence[index];
+    if (!item) {
+      continue;
+    }
+    if (item.kind !== "tool-call") {
+      break;
+    }
+    latestTailToolIndex = Math.max(latestTailToolIndex, index);
+  }
+  if (latestTailToolIndex < 0) {
+    return suppressedIndices;
+  }
+  const latestTailTool = sequence[latestTailToolIndex];
+  if (
+    latestTailTool?.kind !== "tool-call" ||
+    !isSuppressingActiveTailTool(latestTailTool.call)
+  ) {
+    return suppressedIndices;
+  }
+  for (let index = latestTailToolIndex - 1; index >= 0; index -= 1) {
+    const item = sequence[index];
+    if (!item) {
+      continue;
+    }
+    if (item.kind !== "tool-call") {
+      break;
+    }
+    suppressedIndices.add(index);
+  }
+  return suppressedIndices;
+}
+
+function isSuppressingActiveTailTool(call: AgentToolCallVM): boolean {
   switch (call.rendererKind) {
     case "approval":
     case "ask-user":

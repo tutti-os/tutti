@@ -13,7 +13,7 @@ import (
 const appID = "agent-context"
 
 type AgentSessions interface {
-	Cancel(context.Context, string, string) (agentservice.Session, error)
+	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)

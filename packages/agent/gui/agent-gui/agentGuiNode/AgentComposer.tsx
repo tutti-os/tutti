@@ -111,7 +111,7 @@ import {
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
 import { hasWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
 
-interface AgentComposerProps {
+export interface AgentComposerProps {
   workspaceId: string;
   workspacePath?: string | null;
   currentUserId?: string | null;
@@ -1861,6 +1861,9 @@ export function AgentComposer({
           ref={inputShellRef}
           className={cn(inputShellClassName, "relative")}
           data-input-disabled={inputDisabled ? "true" : undefined}
+          title={
+            inputDisabled && disabledReasonText ? disabledReasonText : undefined
+          }
           style={inputShellStyle}
         >
           <Popover

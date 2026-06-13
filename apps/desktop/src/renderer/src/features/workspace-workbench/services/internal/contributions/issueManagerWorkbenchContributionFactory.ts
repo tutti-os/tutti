@@ -19,6 +19,8 @@ export const issueManagerWorkbenchContributionFactory: DesktopWorkbenchContribut
         richTextAtService: context.richTextAtService,
         runtimeApi: context.runtimeApi,
         workspaceAgentActivityService: context.workspaceAgentActivityService,
+        workspaceAgentPromptSessionService:
+          context.workspaceAgentPromptSessionService,
         workspaceUserProjectService: context.workspaceUserProjectService,
         workspaceId: context.workspaceId
       });

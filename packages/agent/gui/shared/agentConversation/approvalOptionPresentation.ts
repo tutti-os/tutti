@@ -18,7 +18,8 @@ export function approvalOptionDisplayLabel(
   const label = option.label.trim();
   const specificTranslationKey = approvalOptionSpecificTranslationKey(
     idToken,
-    label
+    label,
+    intent
   );
   if (specificTranslationKey) {
     return translate(specificTranslationKey);
@@ -38,7 +39,9 @@ export function approvalOptionDisplayLabel(
     return translate("agentHost.agentGui.approvalOptions.allowOnce");
   }
   if (
-    (idToken === "allowalways" || idToken === "allowall") &&
+    (idToken === "allowalways" ||
+      idToken === "allowall" ||
+      kindToken === "allowalways") &&
     isGenericApprovalLabel(label)
   ) {
     return translate("agentHost.agentGui.approvalOptions.allowAlways");
@@ -92,10 +95,23 @@ export function normalizeApprovalOptionToken(value: string): string {
 
 function approvalOptionSpecificTranslationKey(
   token: string,
-  label: string
+  label: string,
+  intent: { feedback?: boolean } = {}
 ): string | null {
   const labelToken = normalizeApprovalOptionToken(label);
   switch (token) {
+    case "approved":
+      return isGenericAllowOnceLabel(label)
+        ? "agentHost.agentGui.approvalOptions.allowOnce"
+        : null;
+    case "approvedforsession":
+      return labelToken === "allowforthissession"
+        ? "agentHost.agentGui.approvalOptions.allowForSession"
+        : null;
+    case "approvedalways":
+      return isGenericApprovalLabel(label)
+        ? "agentHost.agentGui.approvalOptions.allowAlways"
+        : null;
     case "bypasspermissions":
       return "agentHost.agentGui.approvalOptions.bypassPermissions";
     case "auto":
@@ -107,6 +123,10 @@ function approvalOptionSpecificTranslationKey(
     case "default":
       return labelToken === "yesandmanuallyapproveedits"
         ? "agentHost.agentGui.approvalOptions.manualApproval"
+        : null;
+    case "cancel":
+      return !intent.feedback && labelToken === "cancel"
+        ? "common.cancel"
         : null;
     default:
       return null;
@@ -157,6 +177,7 @@ function isGenericApprovalLabel(label: string): boolean {
     token === "allowalways" ||
     token === "allowall" ||
     token === "alwaysallow" ||
+    token === "allowanddontaskagain" ||
     token === "yesanddontaskagain"
   );
 }

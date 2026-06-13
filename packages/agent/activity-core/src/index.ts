@@ -23,7 +23,9 @@ export {
 } from "./selectors.ts";
 export type {
   AgentActivityDisplayStatus,
+  AgentActivityCancelReason,
   AgentActivityCancelSessionInput,
+  AgentActivityCancelSessionResult,
   AgentActivityComposerOptions,
   AgentActivityComposerPermissionConfig,
   AgentActivityComposerPermissionModeOption,

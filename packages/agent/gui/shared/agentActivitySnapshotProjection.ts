@@ -131,7 +131,7 @@ function agentHostSessionFromCore(
     title: session.title || undefined,
     turnPhase: agentHostTurnPhaseFromCore(session.status),
     updatedAtUnixMs: session.updatedAtUnixMs ?? session.lastEventUnixMs,
-    userId: "local",
+    userId: session.userId?.trim() || "local",
     workspaceId: session.workspaceId
   };
 }

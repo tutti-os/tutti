@@ -172,11 +172,10 @@ function ReadyWorkspaceWorkbench({
       unregisterAgentGuiLaunchRef.current =
         registerWorkspaceAgentGuiLaunchHandler(
           state.workspace.id,
-          async ({ agentSessionId, pendingHandoff, provider }) => {
+          async ({ agentSessionId, provider }) => {
             await host.launchNode(
               createWorkspaceAgentGuiSessionLaunchRequest({
                 agentSessionId,
-                pendingHandoff,
                 provider
               })
             );
@@ -270,6 +269,7 @@ function ReadyWorkspaceWorkbench({
     >
       <WorkspaceAppCenterIntegration workspaceId={state.workspace.id} />
       <WorkbenchHost
+        captureNodePreviewImage={hostInput.captureNodePreviewImage}
         className="h-full"
         contributions={hostInput.contributions}
         debugDiagnostics={hostInput.debugDiagnostics}

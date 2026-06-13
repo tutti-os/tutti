@@ -160,9 +160,12 @@ export function createBrowserDockEntry(
     order: input.order,
     resolvePopupItem: ({ node }) => {
       const runtime = input.feature.runtimeStore.getNodeState(node.id);
+      const title = runtime.title?.trim() || node.title;
+      const url = runtime.url?.trim() || node.data.instanceId;
       return {
-        subtitle: runtime.url?.trim() || node.data.instanceId,
-        title: runtime.title?.trim() || node.title
+        revision: `${title}\n${url}`,
+        subtitle: url,
+        title
       };
     },
     sectionId: input.sectionId,

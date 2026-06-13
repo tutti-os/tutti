@@ -663,6 +663,13 @@ export function createTuttidClient(
       return unwrapData(response, "Cancel workspace agent session failed.")
         .session;
     },
+    async cancelWorkspaceAgentSessionWithResult(workspaceID, agentSessionID) {
+      const response = await cancelWorkspaceAgentSession({
+        client,
+        path: { agentSessionID, workspaceID }
+      });
+      return unwrapData(response, "Cancel workspace agent session failed.");
+    },
     async sendWorkspaceAgentSessionInput(workspaceID, agentSessionID, request) {
       const response = await sendWorkspaceAgentSessionInput({
         client,

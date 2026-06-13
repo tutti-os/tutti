@@ -55,7 +55,6 @@ export {
   agentGuiWorkbenchOpenSessionActivationType,
   type AgentGuiWorkbenchComposerOverrides,
   type AgentGuiWorkbenchNodeState,
-  type AgentGuiWorkbenchPendingHandoff,
   type AgentGuiWorkbenchProvider,
   type AgentGuiWorkbenchState,
   type AgentGuiWorkbenchWorkspaceState

@@ -19,6 +19,14 @@ export const tuttiI18nModule = createScopedLocaleObjectsI18nModuleManifest({
 
 const workspaceFileManagerEn = {
   backLabel: "Back",
+  arrangeApplicationLabel: "Application",
+  arrangeCreatedLabel: "Created",
+  arrangeDateAddedLabel: "Date Added",
+  arrangeKindLabel: "Kind",
+  arrangeLastOpenedLabel: "Last Opened",
+  arrangeMenuLabel: "Arrange",
+  arrangeNoneLabel: "None",
+  arrangeTagsLabel: "Tags",
   breadcrumbRootLabel: "workspace",
   cancelLabel: "Cancel",
   closeLabel: "Close",
@@ -111,6 +119,14 @@ const workspaceFileManagerEn = {
 
 const workspaceFileManagerZhCN = {
   backLabel: "后退",
+  arrangeApplicationLabel: "应用程序",
+  arrangeCreatedLabel: "创建日期",
+  arrangeDateAddedLabel: "添加日期",
+  arrangeKindLabel: "种类",
+  arrangeLastOpenedLabel: "上次打开日期",
+  arrangeMenuLabel: "排列方式",
+  arrangeNoneLabel: "无",
+  arrangeTagsLabel: "标签",
   breadcrumbRootLabel: "工作区",
   cancelLabel: "取消",
   closeLabel: "关闭",

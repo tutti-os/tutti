@@ -5,7 +5,7 @@ import type {
   ReactElement,
   RefObject
 } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@tutti-os/ui-system";
 import type { TuttiDateLocale } from "@tutti-os/ui-system/date-format";
 import type { WorkspaceFileManagerSession } from "../services/workspaceFileManagerService.interface.ts";
@@ -31,6 +31,11 @@ import {
   WorkspaceFileManagerPanels
 } from "./WorkspaceFileManagerPanels.tsx";
 import { WorkspaceFileManagerToolbar } from "./WorkspaceFileManagerToolbar.tsx";
+import {
+  sortWorkspaceFileEntriesForArrangeMode,
+  type WorkspaceFileManagerArrangeMode
+} from "./workspaceFileManagerArrangeMode.ts";
+import { useWorkspaceFileManagerArrangeMode } from "./useWorkspaceFileManagerArrangeMode.ts";
 import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
 import { useWorkspaceFileManagerLayoutMode } from "./useWorkspaceFileManagerLayoutMode.ts";
 import { useWorkspaceFileEntryIconUrls } from "./useWorkspaceFileEntryIconUrls.ts";
@@ -84,6 +89,7 @@ export function WorkspaceFileManager({
   surface = "card"
 }: WorkspaceFileManagerProps): ReactElement {
   const rootRef = useRef<HTMLElement | null>(null);
+  const { arrangeMode, setArrangeMode } = useWorkspaceFileManagerArrangeMode();
   const { layoutMode, setLayoutMode } = useWorkspaceFileManagerLayoutMode();
   const rootView = useWorkspaceFileManagerRootView(session);
   const { state: panelsState, view: panelsView } =
@@ -309,7 +315,9 @@ export function WorkspaceFileManager({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <WorkspaceFileManagerToolbarContainer
           i18n={i18n}
+          arrangeMode={arrangeMode}
           layoutMode={layoutMode}
+          onArrangeModeChange={setArrangeMode}
           onDirectoryExpanded={onDirectoryExpanded}
           onLayoutModeChange={setLayoutMode}
           session={session}
@@ -325,6 +333,7 @@ export function WorkspaceFileManager({
           <WorkspaceFileManagerPanelsContainer
             dateLocale={dateLocale}
             entryDragMode={entryDragMode}
+            arrangeMode={arrangeMode}
             i18n={i18n}
             layoutMode={layoutMode}
             onDirectoryExpanded={onDirectoryExpanded}
@@ -350,14 +359,18 @@ export function WorkspaceFileManager({
 }
 
 function WorkspaceFileManagerToolbarContainer({
+  arrangeMode,
   i18n,
   layoutMode,
+  onArrangeModeChange,
   onDirectoryExpanded,
   onLayoutModeChange,
   session
 }: {
+  arrangeMode: WorkspaceFileManagerArrangeMode;
   i18n: WorkspaceFileManagerI18nRuntime;
   layoutMode: WorkspaceFileManagerLayoutMode;
+  onArrangeModeChange: (arrangeMode: WorkspaceFileManagerArrangeMode) => void;
   onDirectoryExpanded?: (path: string) => void;
   onLayoutModeChange: (layoutMode: WorkspaceFileManagerLayoutMode) => void;
   session: WorkspaceFileManagerSession;
@@ -374,7 +387,9 @@ function WorkspaceFileManagerToolbarContainer({
       isBusy={view.isBusy}
       isLoading={view.isLoading}
       isMutating={view.isMutating}
+      arrangeMode={arrangeMode}
       layoutMode={layoutMode}
+      onArrangeModeChange={onArrangeModeChange}
       onGoBack={() => {
         void session.goBack();
       }}
@@ -401,6 +416,7 @@ function WorkspaceFileManagerToolbarContainer({
 }
 
 function WorkspaceFileManagerPanelsContainer({
+  arrangeMode,
   dateLocale,
   entryDragMode,
   i18n,
@@ -411,6 +427,7 @@ function WorkspaceFileManagerPanelsContainer({
   resolveEntryIconUrl,
   session
 }: {
+  arrangeMode: WorkspaceFileManagerArrangeMode;
   dateLocale?: TuttiDateLocale;
   entryDragMode?: WorkspaceFileManagerEntryDragMode;
   i18n: WorkspaceFileManagerI18nRuntime;
@@ -430,13 +447,18 @@ function WorkspaceFileManagerPanelsContainer({
   session: WorkspaceFileManagerSession;
 }): ReactElement {
   const { state, view } = useWorkspaceFileManagerPanelsView(session);
+  const arrangedEntries = useMemo(
+    () => sortWorkspaceFileEntriesForArrangeMode(state.entries, arrangeMode),
+    [arrangeMode, state.entries]
+  );
   const iconUrlByCacheKey = useWorkspaceFileEntryIconUrls({
-    entries: state.entries,
+    entries: arrangedEntries,
     resolveEntryIconUrl
   });
 
   return (
     <WorkspaceFileManagerPanels
+      arrangeMode={arrangeMode}
       canMove={view.canMove}
       contextMenuEntryPath={view.contextMenuEntryPath}
       copy={i18n}
@@ -453,7 +475,7 @@ function WorkspaceFileManagerPanelsContainer({
       selectedPath={view.selectedPath}
       showDropOverlay={view.showDropOverlay}
       state={{
-        entries: state.entries,
+        entries: arrangedEntries,
         error: state.error,
         isLoading: state.isLoading
       }}

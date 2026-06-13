@@ -131,6 +131,7 @@ export function AgentMessageBlock({
               workspaceAppIcons={workspaceAppIcons}
               deferLongContentRender
               enableImageZoom
+              streaming={message.statusKind === "working"}
             />
           );
 

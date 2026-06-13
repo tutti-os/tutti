@@ -76,6 +76,8 @@ test("promoted base primitives register stable ui-system metadata ids", () => {
 test("promoted base primitive sources stay on the shared workbench contract", () => {
   const buttonSource = readComponentSource("button.tsx");
   assert.match(buttonSource, /data-slot="button"/);
+  assert.match(buttonSource, /React\.forwardRef<HTMLButtonElement/);
+  assert.match(buttonSource, /ref=\{ref\}/);
   assert.match(buttonSource, /cursor-pointer/);
   assert.match(buttonSource, /h-8 gap-\[6px\]/);
   assert.match(
@@ -91,6 +93,11 @@ test("promoted base primitive sources stay on the shared workbench contract", ()
     /\[&_svg\[data-icon=inline-start\]:not\(\[class\*='size-'\]\)\]:size-2\.5/
   );
   assert.doesNotMatch(buttonSource, /h-8 gap-2/);
+
+  const bareIconButtonSource = readComponentSource("bare-icon-button.tsx");
+  assert.match(bareIconButtonSource, /data-slot="bare-icon-button"/);
+  assert.match(bareIconButtonSource, /React\.forwardRef<HTMLButtonElement/);
+  assert.match(bareIconButtonSource, /ref=\{ref\}/);
 
   const checkboxSource = readComponentSource("checkbox.tsx");
   assert.match(checkboxSource, /data-slot="checkbox"/);

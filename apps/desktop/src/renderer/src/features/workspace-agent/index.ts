@@ -4,6 +4,7 @@ export { createDesktopAgentGUIWorkbenchHostInput } from "./services/createDeskto
 export { createDesktopAgentActivityRuntime } from "./services/createDesktopAgentActivityRuntime";
 export { createDesktopAgentHostApi } from "./services/createDesktopAgentHostApi";
 export { IWorkspaceAgentActivityService } from "./services/workspaceAgentActivityService.interface";
+export { IWorkspaceAgentPromptSessionService } from "./services/workspaceAgentPromptSessionService.interface";
 export {
   registerWorkspaceAgentGuiLaunchHandler,
   requestWorkspaceAgentGuiLaunch
@@ -24,5 +25,10 @@ export type {
   IAgentProviderStatusService as AgentProviderStatusService
 } from "./services/agentProviderStatusService.interface";
 export type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "./services/workspaceAgentActivityService.interface";
+export type {
+  IWorkspaceAgentPromptSessionService as WorkspaceAgentPromptSessionService,
+  WorkspaceAgentPromptSessionCreateInput,
+  WorkspaceAgentPromptSessionCreateResult
+} from "./services/workspaceAgentPromptSessionService.interface";
 export type { DesktopAgentGUIWorkbenchHostInput } from "./services/createDesktopAgentGUIWorkbenchHostInput";
 export type { DesktopAgentGUIProvider } from "./desktopAgentGUINodeState";

@@ -69,7 +69,10 @@ export function IssueManagerTaskDrawer({
           />
         )}
 
-        <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
+        <ScrollArea
+          scrollbarMode="native"
+          className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:overscroll-contain"
+        >
           <div
             className={cn(
               "flex flex-col",

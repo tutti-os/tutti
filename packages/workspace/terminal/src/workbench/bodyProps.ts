@@ -1,5 +1,8 @@
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
-import type { TerminalNodeExternalState } from "../contracts/index.ts";
+import type {
+  TerminalNodeExternalState,
+  TerminalPreviewChangeHandler
+} from "../contracts/index.ts";
 import type { TerminalNodeFeature } from "../core/feature.ts";
 
 export interface TerminalWorkbenchBodyProps {
@@ -7,19 +10,22 @@ export interface TerminalWorkbenchBodyProps {
   feature: TerminalNodeFeature;
   nodeId: string;
   onFocusRequest?: () => void;
+  onPreviewChange?: TerminalPreviewChangeHandler;
   sessionId: string | null;
   showHeader: boolean;
 }
 
 export function resolveTerminalWorkbenchBodyProps({
   context,
-  feature
+  feature,
+  onPreviewChange
 }: {
   context: WorkbenchHostNodeBodyContext<
     TerminalNodeExternalState | null,
     unknown
   >;
   feature: TerminalNodeFeature;
+  onPreviewChange?: TerminalPreviewChangeHandler;
 }): TerminalWorkbenchBodyProps {
   // Keep this resolver narrower than TerminalNodeProps on purpose. The workbench
   // lease keeps the session alive while the node exists, but the mounted surface
@@ -31,6 +37,7 @@ export function resolveTerminalWorkbenchBodyProps({
     feature,
     nodeId: context.node.id,
     onFocusRequest: context.isFocused ? undefined : () => context.focus(),
+    onPreviewChange,
     sessionId: context.node.data.instanceKey ?? null,
     showHeader: false
   };

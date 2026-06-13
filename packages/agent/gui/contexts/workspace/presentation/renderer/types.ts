@@ -45,15 +45,6 @@ export interface AgentNodeData {
 export interface AgentGUINodeData {
   provider: AgentGUIProvider;
   lastActiveAgentSessionId: string | null;
-  pendingHandoff?: {
-    requestId: string;
-    title: string;
-    prompt: string;
-    taskId?: string | null;
-    issueId?: string | null;
-    taskTitle: string;
-    issueTitle?: string | null;
-  } | null;
   lastActiveConversationTitle?: string | null;
   conversationCount?: number | null;
   conversationRailWidthPx?: number | null;

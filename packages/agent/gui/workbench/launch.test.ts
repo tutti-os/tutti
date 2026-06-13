@@ -24,19 +24,13 @@ describe("agent gui workbench launch contract", () => {
     );
   });
 
-  it("creates stable session and handoff instance ids", () => {
+  it("creates stable session instance ids", () => {
     expect(
       createAgentGuiWorkbenchInstanceId({
         agentSessionId: "session:1",
         provider: "gemini"
       })
     ).toBe("agent-gui:gemini:session:session%3A1");
-    expect(
-      createAgentGuiWorkbenchInstanceId({
-        pendingHandoff: { requestId: "handoff/1" },
-        provider: "openclaw"
-      })
-    ).toBe("agent-gui:openclaw:handoff:handoff%2F1");
   });
 
   it("prefers payload providers before dock identifiers", () => {
@@ -81,7 +75,6 @@ describe("agent gui workbench launch contract", () => {
       },
       dockEntryId: "agent-gui",
       instanceId: "agent-gui:codex:session:session-2",
-      pendingHandoff: null,
       provider: "codex",
       reuseDockEntryNode: true,
       targetAgentSessionId: "session-2"

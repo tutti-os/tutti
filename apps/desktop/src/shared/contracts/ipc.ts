@@ -112,6 +112,7 @@ export const desktopIpcChannels = {
     },
     window: {
       approveClose: "host:window:approveClose",
+      capturePreview: "host:window:capturePreview",
       closeRequest: "host:window:closeRequest",
       layout: "host:window:layout"
     },
@@ -129,6 +130,17 @@ export interface DesktopHostWindowLayoutPayload {
   compactTitlebar: boolean;
 }
 
+export interface DesktopHostWindowCapturePreviewInput {
+  maxHeight?: number;
+  maxWidth?: number;
+  rect: {
+    height: number;
+    width: number;
+    x: number;
+    y: number;
+  };
+}
+
 export interface DesktopWorkspaceFilePathPayload {
   path: string;
   workspaceID: string;
@@ -136,6 +148,7 @@ export interface DesktopWorkspaceFilePathPayload {
 
 export interface DesktopOpenWithApplication {
   applicationPath: string;
+  bundleIdentifier: string | null;
   iconDataUrl: string | null;
   name: string;
 }
@@ -521,6 +534,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.files.selectUploadFiles]: undefined;
   [desktopIpcChannels.host.files.copyFilesToClipboard]: string[];
   [desktopIpcChannels.host.window.approveClose]: undefined;
+  [desktopIpcChannels.host.window
+    .capturePreview]: DesktopHostWindowCapturePreviewInput;
   [desktopIpcChannels.host.workspace
     .openWorkspaceAppFolder]: DesktopWorkspaceAppPayload;
   [desktopIpcChannels.host.workspace.showWorkspace]: string;
@@ -590,6 +605,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.selectUploadFiles]: string[];
   [desktopIpcChannels.host.files.copyFilesToClipboard]: void;
   [desktopIpcChannels.host.window.approveClose]: void;
+  [desktopIpcChannels.host.window.capturePreview]: string | null;
   [desktopIpcChannels.host.workspace.openWorkspaceAppFolder]: void;
   [desktopIpcChannels.host.workspace.showWorkspace]: void;
   [desktopIpcChannels.host.notifications.show]: DesktopHostNotificationResult;

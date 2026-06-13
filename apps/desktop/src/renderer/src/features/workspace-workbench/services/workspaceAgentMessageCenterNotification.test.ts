@@ -215,6 +215,7 @@ function item(
     sortTimeUnixMs: 100,
     status: "working",
     title: "Build feature",
+    userId: null,
     ...overrides
   };
 }

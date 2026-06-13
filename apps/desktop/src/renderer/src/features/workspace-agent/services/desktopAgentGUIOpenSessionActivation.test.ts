@@ -95,8 +95,7 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
       conversationRailCollapsed: false,
       conversationRailWidthPx: null,
       lastActiveAgentSessionId: "session-2",
-      lastActiveConversationTitle: null,
-      pendingHandoff: null
+      lastActiveConversationTitle: null
     }
   ]);
 

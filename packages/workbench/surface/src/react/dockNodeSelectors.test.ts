@@ -3,7 +3,7 @@ import test from "node:test";
 import { createWorkbenchDockNodesSelector } from "./dockNodeSelectors.ts";
 import type { WorkbenchNode, WorkbenchState } from "../core/types.ts";
 
-test("dock nodes selector preserves identity across frame-only changes", () => {
+test("dock nodes selector preserves identity across position-only changes", () => {
   const selectDockNodes = createWorkbenchDockNodesSelector();
   const firstState = createState([
     createNode("first", { x: 10, y: 10 }),
@@ -15,6 +15,30 @@ test("dock nodes selector preserves identity across frame-only changes", () => {
   );
 
   assert.equal(secondSelection, firstSelection);
+});
+
+test("dock nodes selector changes identity across size changes", () => {
+  const selectDockNodes = createWorkbenchDockNodesSelector();
+  const firstState = createState([
+    createNode("first", { x: 10, y: 10 }),
+    createNode("second", { x: 40, y: 40 })
+  ]);
+  const firstSelection = selectDockNodes(firstState);
+  const secondSelection = selectDockNodes(
+    createState([
+      {
+        ...firstState.nodes[0]!,
+        frame: {
+          ...firstState.nodes[0]!.frame,
+          height: 300,
+          width: 420
+        }
+      },
+      firstState.nodes[1]!
+    ])
+  );
+
+  assert.notEqual(secondSelection, firstSelection);
 });
 
 test("dock nodes selector changes identity when dock-visible node state changes", () => {

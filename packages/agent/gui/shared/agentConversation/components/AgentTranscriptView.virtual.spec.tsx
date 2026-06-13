@@ -32,6 +32,30 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { AgentTranscriptView } from "./AgentTranscriptView";
 
 describe("AgentTranscriptView virtual rendering", () => {
+  it("does not virtualize normal short conversations", () => {
+    virtualizerMockState.virtualIndexes = [0];
+
+    render(
+      <div style={{ height: "480px", overflow: "auto" }}>
+        <AgentTranscriptView
+          conversation={conversationWithRows(12)}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files"
+          }}
+        />
+      </div>
+    );
+
+    expect(
+      document.querySelector("[data-agent-transcript-virtualized='true']")
+    ).toBeNull();
+    expect(screen.getByText("virtual transcript row 0")).toBeTruthy();
+    expect(screen.getByText("virtual transcript row 11")).toBeTruthy();
+  });
+
   it("virtualizes by turn and keeps all rows from the visible turn mounted together", () => {
     virtualizerMockState.virtualIndexes = [10];
 
@@ -58,7 +82,7 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(screen.queryByText("turn 11 assistant row")).toBeNull();
   });
 
-  it("enables virtualization once the transcript reaches 30 rows", () => {
+  it("enables virtualization once the transcript reaches 30 turns", () => {
     virtualizerMockState.virtualIndexes = [29];
 
     render(
@@ -76,6 +100,46 @@ describe("AgentTranscriptView virtual rendering", () => {
     );
 
     expect(useVirtualizer).toHaveBeenCalled();
+  });
+
+  it("enables virtualization for one complex turn", () => {
+    virtualizerMockState.virtualIndexes = [0];
+
+    render(
+      <div style={{ height: "480px", overflow: "auto" }}>
+        <AgentTranscriptView
+          conversation={conversationWithRows(1, {
+            body: [
+              "Complex turn intro.",
+              "x".repeat(9000),
+              "```ts",
+              "const result = runLargeExample();",
+              "```",
+              "```json",
+              '{"ok":true}',
+              "```",
+              "| File | Status |",
+              "| --- | --- |",
+              "| app.tsx | updated |",
+              "![Preview](preview.png)"
+            ].join("\n")
+          })}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files"
+          }}
+        />
+      </div>
+    );
+
+    expect(
+      document.querySelector("[data-agent-transcript-virtualized='true']")
+    ).toBeTruthy();
+    expect(
+      document.querySelector("[data-agent-transcript-row='row-0']")
+    ).toBeTruthy();
   });
 
   it("renders only the virtualized transcript window for long conversations", () => {
@@ -103,9 +167,12 @@ describe("AgentTranscriptView virtual rendering", () => {
   });
 });
 
-function conversationWithRows(rowCount: number): AgentConversationVM {
+function conversationWithRows(
+  rowCount: number,
+  options: { body?: string } = {}
+): AgentConversationVM {
   const rows = Array.from({ length: rowCount }, (_, index) =>
-    messageRow(index)
+    messageRow(index, options.body ? { body: options.body } : {})
   );
   return {
     activity: {

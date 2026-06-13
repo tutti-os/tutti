@@ -68,7 +68,7 @@ export function IssueManagerDescriptionSection({
           {label}
         </span>
         {displayContent ? (
-          <div className="max-w-3xl text-[13px] font-normal leading-5 text-[var(--text-secondary)]">
+          <div className="min-w-0 max-w-full text-[13px] font-normal leading-5 text-[var(--text-secondary)] sm:max-w-3xl">
             <IssueManagerDescriptionContent
               content={displayContent}
               onOpen={onOpen}
@@ -96,7 +96,7 @@ export function IssueManagerDescriptionSection({
       >
         <div
           className={cn(
-            "max-h-[18rem] overflow-y-auto pr-2 text-[13px] font-normal leading-5 text-[var(--text-secondary)]",
+            "min-w-0 max-w-full overflow-x-hidden max-h-[18rem] overflow-y-auto pr-2 text-[13px] font-normal leading-5 text-[var(--text-secondary)]",
             isOverflowing && "pb-8"
           )}
           ref={contentRef}
@@ -135,6 +135,8 @@ function IssueManagerDescriptionContent({
 }): JSX.Element {
   return (
     <RichTextReadonlyContent
+      className="min-w-0 max-w-full [overflow-wrap:anywhere]"
+      paragraphClassName="break-words [overflow-wrap:anywhere]"
       value={content}
       onOpenWorkspaceReference={
         onOpen

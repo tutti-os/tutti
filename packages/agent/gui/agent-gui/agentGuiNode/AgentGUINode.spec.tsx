@@ -13,6 +13,7 @@ import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspac
 import type { AgentHostManagedAgentsState } from "../../shared/contracts/dto";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
+import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
 import { AgentGUINode } from "./AgentGUINode";
 import { resolveAgentGUIHeroIconUrl } from "./AgentGUINodeView";
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
@@ -67,13 +68,13 @@ function promptBlocks(text: string) {
 
 function getComposerEditor(): HTMLElement {
   return screen.getByRole("textbox", {
-    name: /agentHost\.agentGui\.(initial|followup|installRequired)Placeholder/
+    name: /agentHost\.agentGui\.(initial|followup|installRequired|collaboratorSessionReadOnly)Placeholder/
   });
 }
 
 function queryComposerEditor(): HTMLElement | null {
   return screen.queryByRole("textbox", {
-    name: /agentHost\.agentGui\.(initial|followup|installRequired)Placeholder/
+    name: /agentHost\.agentGui\.(initial|followup|installRequired|collaboratorSessionReadOnly)Placeholder/
   });
 }
 
@@ -524,6 +525,8 @@ vi.mock("../../i18n/index", () => ({
           "Context usage unavailable",
         "agentHost.agentGui.slashStatusLimitsUnavailable":
           "Rate limits unavailable",
+        "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder":
+          "非当前用户会话，不可直接对话",
         "agentHost.agentGui.promptTipsPrefix": "Tips：",
         "agentHost.agentGui.promptTips.setWorkspace.label": "指定工作区",
         "agentHost.agentGui.promptTips.setWorkspace.prompt":
@@ -697,39 +700,6 @@ describe("AgentGUINode", () => {
         }
       }
     });
-  });
-
-  it("creates a new session handoff by prefilling without auto-submitting the pending prompt", () => {
-    const onUpdateNode = vi.fn();
-    const state: AgentGUINodeData = {
-      provider: "codex",
-      lastActiveAgentSessionId: null,
-      conversationRailWidthPx: null,
-      pendingHandoff: {
-        requestId: "handoff-1",
-        title: "登录改版 / 修复验证码异常",
-        prompt:
-          "请执行这个任务引用：\n\n[@登录改版 / 修复验证码异常](mention://workspace-issue?workspaceId=room-1&id=issue-1)",
-        taskId: "task-1",
-        issueId: "issue-1",
-        taskTitle: "登录改版",
-        issueTitle: "修复验证码异常"
-      }
-    };
-
-    renderAgentGUINode({ state, onUpdateNode });
-
-    expect(mockCreateConversation).toHaveBeenCalledTimes(1);
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith(
-      "请执行这个任务引用：\n\n[@登录改版 / 修复验证码异常](mention://workspace-issue?workspaceId=room-1&id=issue-1)"
-    );
-    expect(mockSubmitPrompt).not.toHaveBeenCalled();
-    expect(onUpdateNode).toHaveBeenCalledWith(expect.any(Function));
-
-    const clearPendingHandoff = onUpdateNode.mock.calls[0]?.[0] as
-      | ((current: AgentGUINodeData) => AgentGUINodeData)
-      | undefined;
-    expect(clearPendingHandoff?.(state).pendingHandoff).toBeNull();
   });
 
   it("keeps the conversations section visible when there are no sessions", () => {
@@ -1321,10 +1291,7 @@ describe("AgentGUINode", () => {
     ).toBeTruthy();
     expect(screen.queryByTestId("agent-gui-bottom-dock")).toBeNull();
     expect(emptyHeading).toBeTruthy();
-    expect(iconEffect).toHaveAttribute(
-      "src",
-      expect.stringContaining("manage-agent-codex.png")
-    );
+    expect(iconEffect).toHaveAttribute("src", MANAGED_AGENT_ICON_URLS.codex);
     expect(iconEffect?.querySelector("canvas")).toBeNull();
     expect(
       document.querySelector(".agent-gui-node__timeline-centered")
@@ -1332,14 +1299,18 @@ describe("AgentGUINode", () => {
   });
 
   it("resolves provider-specific hero icon artwork", () => {
-    expect(resolveAgentGUIHeroIconUrl("codex")).toContain(
-      "manage-agent-codex.png"
+    expect(resolveAgentGUIHeroIconUrl("codex")).toBe(
+      MANAGED_AGENT_ICON_URLS.codex
     );
-    expect(resolveAgentGUIHeroIconUrl("claude")).toContain(
-      "manage-agent-claude-code.png"
+    expect(resolveAgentGUIHeroIconUrl("codex")).not.toContain("undefined");
+    expect(resolveAgentGUIHeroIconUrl("codex")).not.toContain(
+      "/node_modules/.vite/deps/"
     );
-    expect(resolveAgentGUIHeroIconUrl("hermes")).toContain(
-      "manage-agent-hermes.png"
+    expect(resolveAgentGUIHeroIconUrl("claude")).toBe(
+      MANAGED_AGENT_ICON_URLS["claude-code"]
+    );
+    expect(resolveAgentGUIHeroIconUrl("hermes")).toBe(
+      MANAGED_AGENT_ICON_URLS.hermes
     );
   });
 
@@ -2050,6 +2021,75 @@ describe("AgentGUINode", () => {
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("hello world"));
   });
 
+  it("disables direct replies for another user's conversation", () => {
+    const conversation = {
+      id: "session-1",
+      userId: "user-2",
+      provider: "codex" as const,
+      title: "Session 1",
+      status: "ready" as const,
+      cwd: "/workspace",
+      updatedAtUnixMs: 1
+    };
+    mockViewModel = createViewModel({
+      currentUserId: "user-1",
+      activeConversation: conversation,
+      activeConversationId: conversation.id,
+      conversations: [conversation],
+      draftPrompt: "hello",
+      canQueueWhileBusy: true
+    });
+    renderAgentGUINode();
+
+    const editor = screen.getByRole("textbox", {
+      name: "非当前用户会话，不可直接对话"
+    });
+    expect(editor).toHaveAttribute("aria-disabled", "true");
+    expect(
+      editor.closest(".agent-gui-node__composer-input-shell")
+    ).toHaveAttribute("data-input-disabled", "true");
+    expect(
+      editor.closest(".agent-gui-node__composer-input-shell")
+    ).toHaveAttribute("title", "非当前用户会话，不可直接对话");
+    const sendButton = screen.getByRole("button", {
+      name: "agentHost.agentGui.send"
+    });
+    expect(sendButton).toBeDisabled();
+    expect(sendButton).toHaveAttribute("data-state", "send");
+  });
+
+  it("keeps the composer enabled for the current user's conversation", () => {
+    const conversation = {
+      id: "session-1",
+      userId: "user-1",
+      provider: "codex" as const,
+      title: "Session 1",
+      status: "ready" as const,
+      cwd: "/workspace",
+      updatedAtUnixMs: 1
+    };
+    mockViewModel = createViewModel({
+      currentUserId: "user-1",
+      activeConversation: conversation,
+      activeConversationId: conversation.id,
+      conversations: [conversation],
+      draftPrompt: "hello"
+    });
+    renderAgentGUINode();
+
+    const editor = getComposerEditor();
+    expect(editor).not.toHaveAttribute("aria-disabled", "true");
+    expect(
+      editor.closest(".agent-gui-node__composer-input-shell")
+    ).not.toHaveAttribute("data-input-disabled");
+    expect(
+      editor.closest(".agent-gui-node__composer-input-shell")
+    ).not.toHaveAttribute("title");
+    expect(
+      screen.getByRole("button", { name: "agentHost.agentGui.send" })
+    ).not.toBeDisabled();
+  });
+
   it("disables the composer when the current user has not installed the active Agent GUI provider", () => {
     mockViewModel = createViewModel({
       data: {
@@ -2743,6 +2783,90 @@ describe("AgentGUINode", () => {
       "agentHost.agentGui.noRunningResponse"
     );
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
+  });
+
+  it("does not keep completed conversations busy when old transcript rows still contain running calls", () => {
+    const completedConversation = {
+      id: "session-1",
+      provider: "codex" as const,
+      title: "Session 1",
+      status: "completed" as const,
+      cwd: "/workspace",
+      updatedAtUnixMs: 1
+    };
+    const completedDetail = detailViewModel({
+      activity: {
+        ...detailViewModel().activity,
+        status: "completed" as const
+      },
+      session: {
+        ...detailViewModel().session,
+        lifecycleStatus: "ended",
+        turnPhase: "idle",
+        effectiveStatus: "completed"
+      }
+    });
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      activeConversation: completedConversation,
+      conversations: [completedConversation],
+      conversationDetail: completedDetail,
+      conversation: {
+        activity: completedDetail.activity,
+        workspaceRoot: "/workspace",
+        sourceDetail: completedDetail,
+        rows: [
+          {
+            kind: "tool-group",
+            id: "tools-running",
+            turnId: "turn-1",
+            grouped: true,
+            calls: [
+              {
+                kind: "tool-call",
+                id: "call-running",
+                turnId: "turn-1",
+                name: "Read file",
+                toolName: "read_file",
+                callType: "tool",
+                status: "Running",
+                statusKind: "working",
+                summary: "/workspace/README.md",
+                compactSummary: null,
+                payload: null,
+                toolState: null,
+                input: null,
+                output: null,
+                error: null,
+                metadata: null,
+                content: null,
+                locations: null,
+                rendererKind: "default",
+                approval: null,
+                planMode: null,
+                askUserQuestion: null,
+                task: null,
+                occurredAtUnixMs: 1
+              }
+            ],
+            entries: [],
+            occurredAtUnixMs: 1
+          }
+        ],
+        pendingApproval: null,
+        pendingInteractivePrompt: null
+      },
+      canSubmit: false,
+      draftPrompt: "hello"
+    });
+    renderAgentGUINode();
+
+    expect(
+      screen.getAllByText("agentHost.workspaceAgentStatusCompleted").length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", { name: "agentHost.agentGui.stop" })
+    ).toBeNull();
   });
 
   it("keeps the send button in a loading state before switching to Stop", () => {

@@ -1,10 +1,12 @@
 import {
+  Component,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
+  type ErrorInfo,
   type JSX
 } from "react";
 import { useSnapshot } from "valtio";
@@ -81,6 +83,7 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   dockPreviewCache: WorkbenchDockPreviewCache;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
+  previewMode?: boolean;
   richTextAtProviders: NonNullable<AgentGUIProps["richTextAtProviders"]>;
   resolveAppIconUrl?: (appId: string) => string | null;
   runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
@@ -99,10 +102,68 @@ const EMPTY_AGENT_PROVIDER_STATUS_SNAPSHOT: AgentProviderStatusSnapshot = {
   pendingActions: [],
   statuses: []
 };
+const DESKTOP_AGENT_GUI_AGENT_SETTINGS = {
+  avoidGroupingEdits: false
+} satisfies NonNullable<AgentGUIProps["agentSettings"]>;
+const DESKTOP_AGENT_GUI_NOOP = (): void => {};
+const DESKTOP_AGENT_GUI_POSITION = { x: 0, y: 0 };
 
 type DesktopAgentProbeState = NonNullable<
   AgentGUIProps["workspaceAgentProbes"]
 >;
+
+interface DesktopAgentGUIErrorBoundaryProps {
+  children: JSX.Element;
+  nodeId: string;
+  provider: DesktopAgentGUIProvider;
+  runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  workspaceId: string;
+}
+
+interface DesktopAgentGUIErrorBoundaryState {
+  hasError: boolean;
+}
+
+class DesktopAgentGUIErrorBoundary extends Component<
+  DesktopAgentGUIErrorBoundaryProps,
+  DesktopAgentGUIErrorBoundaryState
+> {
+  state: DesktopAgentGUIErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): DesktopAgentGUIErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  override componentDidCatch(error: unknown, info: ErrorInfo): void {
+    void this.props.runtimeApi
+      ?.logTerminalDiagnostic({
+        details: {
+          componentStack: info.componentStack ?? null,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : typeof error,
+          errorStack: error instanceof Error ? (error.stack ?? null) : null,
+          nodeId: this.props.nodeId,
+          provider: this.props.provider
+        },
+        event: "agent.gui.workbench_body.render_error",
+        level: "error",
+        workspaceId: this.props.workspaceId
+      })
+      .catch(() => undefined);
+  }
+
+  override render(): JSX.Element {
+    if (this.state.hasError) {
+      return (
+        <div
+          className="h-full w-full bg-background"
+          data-agent-gui-workbench-render-error="true"
+        />
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function withDesktopAgentGUIProviderComposerDefaults(
   state: DesktopAgentGUINodeState,
@@ -204,6 +265,7 @@ export function DesktopAgentGUIWorkbenchBody({
   dockPreviewCache,
   onLinkAction,
   onStateChange,
+  previewMode = false,
   richTextAtProviders,
   resolveAppIconUrl,
   runtimeApi,
@@ -291,7 +353,7 @@ export function DesktopAgentGUIWorkbenchBody({
     ]
   );
   const managedAgentsState = useDesktopManagedAgentsState(
-    agentProviderStatusService
+    previewMode ? undefined : agentProviderStatusService
   );
   const provider = desktopAgentGUIProviderFromInstanceId(context.instanceId);
   const handleAgentProviderLogin = useCallback(
@@ -369,6 +431,9 @@ export function DesktopAgentGUIWorkbenchBody({
   }, []);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     if (agentProbeProviders.length === 0) {
       setWorkspaceAgentProbes(null);
       return;
@@ -427,6 +492,7 @@ export function DesktopAgentGUIWorkbenchBody({
     agentProbeProviders,
     agentProbeProvidersKey,
     runtimeApi,
+    previewMode,
     workspaceId
   ]);
 
@@ -540,6 +606,9 @@ export function DesktopAgentGUIWorkbenchBody({
   );
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     const settings =
       state.composerOverridesByProvider?.[state.provider] ??
       state.composerOverrides ??
@@ -593,10 +662,14 @@ export function DesktopAgentGUIWorkbenchBody({
     state.composerOverrides,
     state.composerOverridesByProvider,
     state.provider,
+    previewMode,
     workspaceId
   ]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     const nextWorkbenchState = projectDesktopAgentGUIWorkbenchState(state);
     if (
       areDesktopAgentGUIWorkbenchStatesEqual(workbenchState, nextWorkbenchState)
@@ -615,54 +688,70 @@ export function DesktopAgentGUIWorkbenchBody({
     }
     lastRequestedWorkbenchStateRef.current = nextWorkbenchState;
     onStateChange(nextWorkbenchState);
-  }, [onStateChange, state, workbenchState]);
+  }, [onStateChange, previewMode, state, workbenchState]);
 
   const frame = context.node.frame;
+  const desktopSize = useMemo(
+    () => ({
+      height: Math.max(frame.height, frame.y + frame.height),
+      width: Math.max(frame.width, frame.x + frame.width)
+    }),
+    [frame.height, frame.width, frame.x, frame.y]
+  );
   const composerFocusRequestSequence =
     context.activation?.type === workbenchFocusInputActivationType
       ? context.activation.sequence
       : null;
 
   return (
-    <AgentGUI
-      agentActivityRuntime={agentActivityRuntime}
-      agentHostApi={agentHostApi}
-      i18n={i18n}
-      locale={locale}
-      agentSettings={{ avoidGroupingEdits: false }}
-      currentUserId="local"
-      desktopSize={{
-        height: Math.max(frame.height, frame.y + frame.height),
-        width: Math.max(frame.width, frame.x + frame.width)
-      }}
-      embedded
-      height={frame.height}
-      isMaximized={context.displayMode === "fullscreen"}
-      isActive={context.isFocused}
-      composerFocusRequestSequence={composerFocusRequestSequence}
-      managedAgentsState={managedAgentsState}
+    <DesktopAgentGUIErrorBoundary
       nodeId={context.node.id}
-      workspaceAgentProbes={workspaceAgentProbes}
-      onAgentProbeDemandChange={handleAgentProbeDemandChange}
-      onAgentProviderLogin={
-        agentProviderStatusService ? handleAgentProviderLogin : undefined
-      }
-      onClose={() => {}}
-      onLinkAction={onLinkAction}
-      onResize={() => {}}
-      onShowMessage={() => {}}
-      onUpdateNode={handleUpdateNode}
-      onWorkspaceFileReferencesAdded={trackWorkspaceFileReferences}
-      position={{ x: 0, y: 0 }}
-      richTextAtProviders={effectiveRichTextAtProviders}
-      state={state}
-      title={context.node.title}
-      width={frame.width}
-      workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
-      workspaceAppIcons={workspaceAppIcons}
+      provider={state.provider}
+      runtimeApi={runtimeApi}
       workspaceId={workspaceId}
-      workspacePath="/"
-    />
+    >
+      <AgentGUI
+        agentActivityRuntime={agentActivityRuntime}
+        agentHostApi={agentHostApi}
+        i18n={i18n}
+        locale={locale}
+        agentSettings={DESKTOP_AGENT_GUI_AGENT_SETTINGS}
+        currentUserId="local"
+        desktopSize={desktopSize}
+        embedded
+        height={frame.height}
+        isMaximized={context.displayMode === "fullscreen"}
+        isActive={context.isFocused}
+        composerFocusRequestSequence={composerFocusRequestSequence}
+        managedAgentsState={managedAgentsState}
+        nodeId={context.node.id}
+        workspaceAgentProbes={workspaceAgentProbes}
+        onAgentProbeDemandChange={
+          previewMode ? undefined : handleAgentProbeDemandChange
+        }
+        onAgentProviderLogin={
+          !previewMode && agentProviderStatusService
+            ? handleAgentProviderLogin
+            : undefined
+        }
+        onClose={DESKTOP_AGENT_GUI_NOOP}
+        onLinkAction={onLinkAction}
+        onResize={DESKTOP_AGENT_GUI_NOOP}
+        onShowMessage={DESKTOP_AGENT_GUI_NOOP}
+        onUpdateNode={handleUpdateNode}
+        onWorkspaceFileReferencesAdded={trackWorkspaceFileReferences}
+        position={DESKTOP_AGENT_GUI_POSITION}
+        previewMode={previewMode}
+        richTextAtProviders={effectiveRichTextAtProviders}
+        state={state}
+        title={context.node.title}
+        width={frame.width}
+        workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
+        workspaceAppIcons={workspaceAppIcons}
+        workspaceId={workspaceId}
+        workspacePath="/"
+      />
+    </DesktopAgentGUIErrorBoundary>
   );
 }
 

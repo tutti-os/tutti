@@ -72,8 +72,10 @@ type SessionStateReport struct {
 
 type StateReportResult struct {
 	Accepted         bool
+	StateApplied     bool
 	LastEventUnixMS  int64
 	RequestBodyBytes int
+	Session          Session
 }
 
 type SessionMessageReport struct {

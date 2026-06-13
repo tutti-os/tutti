@@ -45,11 +45,15 @@ type fakeAgentSessions struct {
 	sendInput       agentservice.SendInput
 }
 
-func (f *fakeAgentSessions) Cancel(_ context.Context, workspaceID string, sessionID string) (agentservice.Session, error) {
+func (f *fakeAgentSessions) Cancel(_ context.Context, workspaceID string, sessionID string) (agentservice.CancelSessionResult, error) {
 	f.workspaceID = workspaceID
 	f.sessionID = sessionID
 	f.cancelCallCount++
-	return agentservice.Session{ID: sessionID, Provider: "codex", Status: "canceled", Visible: true}, nil
+	return agentservice.CancelSessionResult{
+		Session:  agentservice.Session{ID: sessionID, Provider: "codex", Status: "canceled", Visible: true},
+		Canceled: true,
+		Reason:   agentservice.CancelReasonActiveTurnCanceled,
+	}, nil
 }
 
 func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.Session, error) {

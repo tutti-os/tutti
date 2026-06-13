@@ -35,6 +35,7 @@ export type {
 } from "./store/types.ts";
 export type {
   WorkbenchContribution,
+  WorkbenchDockPreviewContent,
   WorkbenchHostActivation,
   WorkbenchHostActivationTarget,
   WorkbenchHostChromeRenderContext,

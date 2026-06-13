@@ -53,7 +53,7 @@ type workspaceRootResolverStub struct {
 
 func (s *factoryAgentSessionStateReporterStub) ReportSessionState(_ context.Context, input agentsessionstore.ReportSessionStateInput) (agentsessionstore.ReportSessionStateReply, error) {
 	s.reports = append(s.reports, input)
-	return agentsessionstore.ReportSessionStateReply{Accepted: true}, nil
+	return agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true}, nil
 }
 
 func (s factoryAgentSessionReaderStub) GetSession(workspaceID string, agentSessionID string) (agentservice.PersistedSession, bool) {
@@ -134,9 +134,13 @@ func (s *factoryAgentSessionServiceStub) SendInput(_ context.Context, _ string, 
 	return agentservice.Session{}, nil
 }
 
-func (s *factoryAgentSessionServiceStub) Cancel(_ context.Context, _ string, sessionID string) (agentservice.Session, error) {
+func (s *factoryAgentSessionServiceStub) Cancel(_ context.Context, _ string, sessionID string) (agentservice.CancelSessionResult, error) {
 	s.canceledSessionID = sessionID
-	return agentservice.Session{ID: sessionID}, nil
+	return agentservice.CancelSessionResult{
+		Session:  agentservice.Session{ID: sessionID},
+		Canceled: true,
+		Reason:   agentservice.CancelReasonActiveTurnCanceled,
+	}, nil
 }
 
 func (s workspaceRootResolverStub) ResolveWorkspaceRoot(context.Context, string) (workspacefiles.WorkspaceRoot, error) {
@@ -708,6 +712,75 @@ func TestAppFactoryValidationRejectsAgentsFileWithOnlyRuntimeManagedBlock(t *tes
 	}
 }
 
+func TestAppFactoryServicePublishMarksMissingAgentsFileAsValidationFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	draftDir := t.TempDir()
+	packageDir := filepath.Join(draftDir, appFactoryPackageRootRelativePath)
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("create package dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "nextop.app.json"), []byte(`{
+  "schemaVersion": "nextop.app.manifest.v1",
+  "appId": "app_missing-agents",
+  "version": "0.1.0",
+  "name": "Missing Agents",
+  "description": "Missing agents test app",
+  "runtime": {
+    "bootstrap": "bootstrap.sh",
+    "healthcheckPath": "/healthz"
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "bootstrap.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write bootstrap: %v", err)
+	}
+	store := newAppFactoryStoreStub()
+	if err := store.PutAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AppID:       "app_missing-agents",
+		DisplayName: "Missing Agents",
+		DraftDir:    draftDir,
+		JobID:       "job-1",
+		Status:      workspacebiz.AppFactoryJobStatusReady,
+		WorkspaceID: "ws-1",
+	}); err != nil {
+		t.Fatalf("PutAppFactoryJob() error = %v", err)
+	}
+	publisher := &workspaceAppFactoryPublisherStub{}
+	service := AppFactoryService{
+		Store:          store,
+		AppStore:       newAppStoreStub(),
+		Publisher:      publisher,
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+	}
+
+	if _, _, err := service.Publish(ctx, "ws-1", "job-1"); err == nil || !strings.Contains(err.Error(), "read AGENTS.md") {
+		t.Fatalf("Publish() error = %v, want read AGENTS.md error", err)
+	}
+	job, err := store.GetAppFactoryJob(ctx, "ws-1", "job-1")
+	if err != nil {
+		t.Fatalf("GetAppFactoryJob() error = %v", err)
+	}
+	if job.Status != workspacebiz.AppFactoryJobStatusFailed {
+		t.Fatalf("status = %q, want failed", job.Status)
+	}
+	if !strings.Contains(job.FailureReason, "read AGENTS.md") {
+		t.Fatalf("failure reason = %q, want AGENTS.md error", job.FailureReason)
+	}
+	var result workspacebiz.AppFactoryValidationResult
+	if err := json.Unmarshal([]byte(job.ValidationResultJSON), &result); err != nil {
+		t.Fatalf("unmarshal validation result: %v", err)
+	}
+	if result.OK || len(result.Errors) != 1 || !strings.Contains(result.Errors[0], "read AGENTS.md") {
+		t.Fatalf("validation result = %#v, want one AGENTS.md error", result)
+	}
+	if len(publisher.published) != 1 {
+		t.Fatalf("published updates = %d, want failure update", len(publisher.published))
+	}
+}
+
 func TestCopyDirectoryCopiesManyFilesWithoutAccumulatingDescriptors(t *testing.T) {
 	t.Parallel()
 
@@ -1210,6 +1283,45 @@ func TestAppFactoryServiceFailedAgentSessionFailsGeneratingJob(t *testing.T) {
 	}
 }
 
+func TestAppFactoryServiceIgnoresStaleTerminalAgentSessionState(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppFactoryStoreStub()
+	if err := store.PutAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AgentSessionID: "session-1",
+		AppID:          "app_1",
+		JobID:          "job-1",
+		Status:         workspacebiz.AppFactoryJobStatusGenerating,
+		WorkspaceID:    "ws-1",
+	}); err != nil {
+		t.Fatalf("PutAppFactoryJob() error = %v", err)
+	}
+	service := AppFactoryService{Store: store}
+
+	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus:  "failed",
+			LastError:        "stale failure",
+			OccurredAtUnixMS: 150,
+		},
+	}, agentsessionstore.ReportSessionStateReply{
+		Accepted:          true,
+		StateApplied:      false,
+		LastEventAtUnixMS: 200,
+	})
+
+	job, err := store.GetAppFactoryJob(ctx, "ws-1", "job-1")
+	if err != nil {
+		t.Fatalf("GetAppFactoryJob() error = %v", err)
+	}
+	if job.Status != workspacebiz.AppFactoryJobStatusGenerating || job.FailureReason != "" {
+		t.Fatalf("job = status %q reason %q, want unchanged generating job", job.Status, job.FailureReason)
+	}
+}
+
 func TestFactoryAgentTerminalStatusUsesTurnOutcomeWhenSessionStaysActive(t *testing.T) {
 	t.Parallel()
 
@@ -1318,6 +1430,53 @@ func TestAppFactoryServiceRejectsFixAndValidationRetryAfterInterruptedFailure(t 
 	}
 	if _, err := service.Fix(ctx, "ws-1", "job-1", FixAppFactoryJobInput{Prompt: "fix it"}); err == nil {
 		t.Fatal("Fix() error = nil, want error")
+	}
+}
+
+func TestAppFactoryServiceFixIncludesFailureReasonInAgentPrompt(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppFactoryStoreStub()
+	validationResult, err := json.Marshal(workspacebiz.AppFactoryValidationResult{
+		CheckedAt: 1,
+		Errors:    []string{"read AGENTS.md: no such file or directory"},
+	})
+	if err != nil {
+		t.Fatalf("marshal validation result: %v", err)
+	}
+	if err := store.PutAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AgentSessionID:       "session-1",
+		WorkspaceID:          "ws-1",
+		JobID:                "job-1",
+		Status:               workspacebiz.AppFactoryJobStatusFailed,
+		FailureReason:        "read AGENTS.md: no such file or directory",
+		ValidationResultJSON: string(validationResult),
+	}); err != nil {
+		t.Fatalf("PutAppFactoryJob() error = %v", err)
+	}
+	sessions := &factoryAgentSessionServiceStub{}
+	service := AppFactoryService{
+		Store:               store,
+		AgentSessionService: sessions,
+		WorkspaceStore:      &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+	}
+
+	if _, err := service.Fix(ctx, "ws-1", "job-1", FixAppFactoryJobInput{Prompt: "fix it"}); err != nil {
+		t.Fatalf("Fix() error = %v", err)
+	}
+	if len(sessions.sendInput.Content) != 1 {
+		t.Fatalf("send input blocks = %d, want 1", len(sessions.sendInput.Content))
+	}
+	text := sessions.sendInput.Content[0].Text
+	if !strings.Contains(text, "Current failure reason:\nread AGENTS.md: no such file or directory") {
+		t.Fatalf("fix prompt missing failure reason: %q", text)
+	}
+	if !strings.Contains(text, "User request:\nfix it") {
+		t.Fatalf("fix prompt missing user request: %q", text)
+	}
+	if sessions.sendInput.DisplayPrompt != "fix it" {
+		t.Fatalf("fix display prompt = %q", sessions.sendInput.DisplayPrompt)
 	}
 }
 

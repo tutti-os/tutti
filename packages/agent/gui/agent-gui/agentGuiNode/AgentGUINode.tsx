@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { useTranslation, type TranslateFn } from "../../i18n/index";
 import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
@@ -132,6 +132,7 @@ export interface AgentGUINodeProps {
   richTextAtProviders?: readonly AgentRichTextAtProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   embedded?: boolean;
+  previewMode?: boolean;
 }
 
 function slashStatusQuotaLabel(quota: AgentUsageQuota, t: TranslateFn): string {
@@ -333,12 +334,6 @@ function agentGuiStateEquals(
     left === right ||
     (left.provider === right.provider &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
-      (left.pendingHandoff?.requestId ?? null) ===
-        (right.pendingHandoff?.requestId ?? null) &&
-      (left.pendingHandoff?.prompt ?? null) ===
-        (right.pendingHandoff?.prompt ?? null) &&
-      (left.pendingHandoff?.title ?? null) ===
-        (right.pendingHandoff?.title ?? null) &&
       left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
       left.conversationRailWidthPx === right.conversationRailWidthPx &&
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
@@ -428,6 +423,7 @@ function areAgentGUINodePropsEqual(
     previous.richTextAtProviders === next.richTextAtProviders &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
     previous.embedded === next.embedded &&
+    previous.previewMode === next.previewMode &&
     previous.isActive === next.isActive &&
     previous.showProjectSelector === next.showProjectSelector &&
     previous.composerFocusRequestSequence === next.composerFocusRequestSequence
@@ -466,7 +462,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   managedAgentsState,
   richTextAtProviders,
   workspaceAppIcons,
-  embedded = false
+  embedded = false,
+  previewMode = false
 }: AgentGUINodeProps): React.JSX.Element {
   "use memo";
   const { i18n, locale, t } = useTranslation();
@@ -474,7 +471,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     () => createWorkspaceUserProjectI18nRuntime(i18n),
     [i18n]
   );
-  const handledHandoffRequestIdRef = useRef<string | null>(null);
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction) => {
       onLinkAction?.(
@@ -494,14 +490,29 @@ export const AgentGUINode = memo(function AgentGUINode({
     },
     [onAgentProviderLogin, state.provider]
   );
+  const handleWorkspaceFileReferencesAdded = useCallback(
+    (references: readonly WorkspaceFileReference[]) => {
+      onWorkspaceFileReferencesAdded?.({
+        provider: state.provider,
+        references
+      });
+    },
+    [onWorkspaceFileReferencesAdded, state.provider]
+  );
   const handleDataChange = useCallback(
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => {
+      if (previewMode) {
+        return;
+      }
       onUpdateNode(updater);
     },
-    [onUpdateNode]
+    [onUpdateNode, previewMode]
   );
   const handleConversationRailWidthChanged = useCallback(
     (widthPx: number) => {
+      if (previewMode) {
+        return;
+      }
       onUpdateNode((current) => {
         const nextWidthPx = resolveNextAgentGUIConversationRailWidthPx({
           currentWidthPx: current.conversationRailWidthPx,
@@ -518,7 +529,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         };
       });
     },
-    [onUpdateNode, width]
+    [onUpdateNode, previewMode, width]
   );
   const isConversationRailManuallyCollapsed =
     state.conversationRailCollapsed === true;
@@ -534,12 +545,18 @@ export const AgentGUINode = memo(function AgentGUINode({
     []
   );
   const toggleConversationRailCollapsed = useCallback(() => {
+    if (previewMode) {
+      return;
+    }
     onUpdateNode((current) => ({
       ...current,
       conversationRailCollapsed: current.conversationRailCollapsed !== true
     }));
-  }, [onUpdateNode]);
+  }, [onUpdateNode, previewMode]);
   const handleConversationRailToggle = useCallback(() => {
+    if (previewMode) {
+      return;
+    }
     if (!isConversationRailAutoCollapsed) {
       toggleConversationRailCollapsed();
       return;
@@ -570,6 +587,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     onResize,
     onUpdateNode,
     position,
+    previewMode,
     state.conversationRailWidthPx,
     toggleConversationRailCollapsed,
     width
@@ -581,35 +599,10 @@ export const AgentGUINode = memo(function AgentGUINode({
     workspacePath,
     avoidGroupingEdits: agentSettings.avoidGroupingEdits,
     data: state,
+    previewMode,
     onDataChange: handleDataChange,
     onShowMessage
   });
-
-  useEffect(() => {
-    const pendingHandoff = state.pendingHandoff;
-    const requestId = pendingHandoff?.requestId?.trim() ?? "";
-    const prompt = pendingHandoff?.prompt?.trim() ?? "";
-    if (
-      !requestId ||
-      !prompt ||
-      handledHandoffRequestIdRef.current === requestId
-    ) {
-      return;
-    }
-    handledHandoffRequestIdRef.current = requestId;
-    actions.createConversation();
-    actions.updateDraftPrompt(prompt);
-    onUpdateNode((current) =>
-      current.pendingHandoff?.requestId === requestId
-        ? { ...current, pendingHandoff: null }
-        : current
-    );
-  }, [
-    actions.createConversation,
-    actions.updateDraftPrompt,
-    onUpdateNode,
-    state.pendingHandoff
-  ]);
 
   const fallbackAgentTitle = t("sidebar.fallbackAgentLabel");
   const activeProvider =
@@ -637,6 +630,9 @@ export const AgentGUINode = memo(function AgentGUINode({
         {
           provider: displayProviderLabel
         }
+      ),
+      collaboratorSessionReadOnlyPlaceholder: t(
+        "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder"
       ),
       send: t("agentHost.agentGui.send"),
       modelLabel: t("agentHost.agentGui.modelLabel"),
@@ -985,7 +981,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   ]);
 
   useEffect(() => {
-    if (!onAgentProbeDemandChange) {
+    if (previewMode || !onAgentProbeDemandChange) {
       return;
     }
     const probeSourceId = `agent-gui:${nodeId}`;
@@ -993,7 +989,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     return () => {
       onAgentProbeDemandChange(null, probeSourceId);
     };
-  }, [activeProbeProvider, nodeId, onAgentProbeDemandChange]);
+  }, [activeProbeProvider, nodeId, onAgentProbeDemandChange, previewMode]);
 
   return (
     <WorkspaceNodeWindow
@@ -1072,6 +1068,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             slashStatusLimitsLoading={
               workspaceAgentProbes?.isLoadingUsage ?? false
             }
+            previewMode={previewMode}
             showProjectSelector={showProjectSelector}
             onLinkAction={handleLinkAction}
             onAgentProviderLogin={
@@ -1092,11 +1089,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             uiLanguage={locale}
             onWorkspaceFileReferencesAdded={
               onWorkspaceFileReferencesAdded
-                ? (references) =>
-                    onWorkspaceFileReferencesAdded({
-                      provider: state.provider,
-                      references
-                    })
+                ? handleWorkspaceFileReferencesAdded
                 : undefined
             }
             onConversationRailWidthChanged={handleConversationRailWidthChanged}

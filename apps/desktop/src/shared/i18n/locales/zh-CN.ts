@@ -448,6 +448,8 @@ export const zhCN = {
     transport_connect_failed: "暂时无法连接到本地运行时。",
     transport_request_failed: "非预期内服务报错，请重试",
     transport_timeout: "这个桌面请求已超时。",
+    workspace_app_factory_publish_failed:
+      "发布应用前检查失败，请先修复 App Center 里的生成草稿。",
     workspace_file_not_found: "找不到这个工作区里的文件或文件夹。",
     workspace_not_found: "找不到这个工作区。",
     workspace_operation_failed: "暂时无法完成这个工作区操作。"

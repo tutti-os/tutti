@@ -131,6 +131,10 @@ func quoteFactoryPromptContextValue(value string) string {
 	return strconv.Quote(strings.TrimSpace(value))
 }
 
-func buildFactoryFixPrompt(prompt string) string {
-	return "Fix the current Tutti workspace app draft. The current working directory is the factory job workspace. Read context.json if it is present, then update only the app package under package/. Keep the generated appId unchanged. Reread and follow the App Factory skill, update package/AGENTS.md if behavior changes, and make the package pass validation.\n\nUser request:\n" + prompt
+func buildFactoryFixPrompt(prompt string, failureReason string) string {
+	prefix := "Fix the current Tutti workspace app draft. The current working directory is the factory job workspace. Read context.json if it is present, then update only the app package under package/. Keep the generated appId unchanged. Reread and follow the App Factory skill, update package/AGENTS.md if behavior changes, and make the package pass validation."
+	if strings.TrimSpace(failureReason) != "" {
+		prefix += "\n\nCurrent failure reason:\n" + strings.TrimSpace(failureReason)
+	}
+	return prefix + "\n\nUser request:\n" + prompt
 }

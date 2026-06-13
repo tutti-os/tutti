@@ -749,11 +749,6 @@
   mask-image: none;
 }
 
-.desktop-dock[data-dock-pointer-active="true"]
-  [data-radix-popper-content-wrapper] {
-  display: none !important;
-}
-
 .desktop-dock[data-dock-pointer-active="true"]:not(
     [data-dock-hover-panel-open="true"]
   )

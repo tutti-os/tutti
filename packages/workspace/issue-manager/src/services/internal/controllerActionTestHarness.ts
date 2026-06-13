@@ -206,9 +206,6 @@ export function createControllerActionsHarness(input?: {
     },
     executionDirectoryPicker: input?.executionDirectoryPicker
       ? {
-          list() {
-            return resolved({ projects: [] });
-          },
           ...input.executionDirectoryPicker
         }
       : undefined,

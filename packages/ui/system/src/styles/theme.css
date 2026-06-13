@@ -48,7 +48,7 @@
   --text-secondary: rgb(60 60 60 / 70%);
   --text-disabled: rgb(60 60 60 / 30%);
   --rich-text-mention-app: rgb(191, 90, 242);
-  --rich-text-mention-issue: rgb(109, 127, 245);
+  --rich-text-mention-issue: var(--tutti-purple);
   --rich-text-mention-session: rgb(34, 197, 94);
   --folder: rgb(80, 175, 238);
   --rich-text-folder: rgb(80, 175, 238);
@@ -234,7 +234,7 @@
   --text-secondary: rgb(255 255 255 / 70%);
   --text-disabled: rgb(255 255 255 / 30%);
   --rich-text-mention-app: rgb(191, 90, 242);
-  --rich-text-mention-issue: rgb(109, 127, 245);
+  --rich-text-mention-issue: var(--tutti-purple);
   --rich-text-mention-session: rgb(74, 222, 128);
   --folder: rgb(80, 175, 238);
   --rich-text-folder: rgb(80, 175, 238);

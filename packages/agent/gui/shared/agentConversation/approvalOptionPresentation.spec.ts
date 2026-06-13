@@ -27,6 +27,47 @@ describe("approvalOptionDisplayLabel", () => {
     ).toBe("允许，并手动确认编辑");
   });
 
+  it("localizes Codex ACP permission option labels", () => {
+    expect(
+      approvalOptionDisplayLabel({
+        id: "approved",
+        kind: "allow_once",
+        label: "Allow"
+      })
+    ).toBe("允许执行");
+    expect(
+      approvalOptionDisplayLabel({
+        id: "approved-for-session",
+        kind: "allow_always",
+        label: "Allow for this session"
+      })
+    ).toBe("本次会话允许");
+    expect(
+      approvalOptionDisplayLabel({
+        id: "approved-always",
+        kind: "allow_always",
+        label: "Allow and don't ask again"
+      })
+    ).toBe("允许，并且不再询问");
+    expect(
+      approvalOptionDisplayLabel({
+        id: "cancel",
+        kind: "reject_once",
+        label: "Cancel"
+      })
+    ).toBe("取消");
+    expect(
+      approvalOptionDisplayLabel(
+        {
+          id: "cancel",
+          kind: "reject_once",
+          label: "Cancel"
+        },
+        { feedback: true }
+      )
+    ).toBe("拒绝，然后发送新的指令");
+  });
+
   it("falls back to provider labels for ambiguous option ids", () => {
     expect(
       approvalOptionDisplayLabel({

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type { DesktopRendererDiagnosticPayload } from "@shared/contracts/ipc";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
 import type {
   WorkspaceAppCenterApp,
@@ -189,6 +190,94 @@ test("WorkspaceAppCenterService merges catalog refresh fields without regressing
   assert.equal(service.store.apps[0]?.availableVersion, "1.1.0");
   assert.equal(service.store.apps[0]?.updateAvailable, true);
   assert.equal(service.store.apps[0]?.runtimeStatus, "running");
+});
+
+test("WorkspaceAppCenterService keeps factory jobs when catalog refresh supersedes app refresh", async () => {
+  const diagnostics: DesktopRendererDiagnosticPayload[] = [];
+  const appRefresh = createDeferred<WorkspaceAppCenterSnapshot>();
+  const factoryRefresh = createDeferred<WorkspaceAppFactorySnapshot>();
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      listWorkspaceAppFactoryJobs: async () => factoryRefresh.promise,
+      listWorkspaceApps: async () => appRefresh.promise,
+      refreshWorkspaceAppCatalog: async () =>
+        createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-from-catalog",
+              name: "Catalog App",
+              stateRevision: 2
+            })
+          ]
+        })
+    }),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi(),
+    runtimeApi: {
+      async logRendererDiagnostic(payload) {
+        diagnostics.push(payload);
+      }
+    }
+  });
+
+  const refreshPromise = service.refresh("workspace-1");
+  await service.refreshCatalog("workspace-1");
+
+  appRefresh.resolve(
+    createSnapshot({
+      apps: [
+        createApp({
+          appId: "app-from-refresh",
+          name: "Refresh App",
+          stateRevision: 1
+        })
+      ]
+    })
+  );
+  factoryRefresh.resolve(
+    createFactorySnapshot({
+      jobs: [
+        createFactoryJob({
+          jobId: "job-visible",
+          status: "generating"
+        })
+      ]
+    })
+  );
+  await refreshPromise;
+
+  assert.equal(service.store.apps[0]?.appId, "app-from-catalog");
+  assert.equal(service.store.factoryJobs[0]?.jobId, "job-visible");
+  assert.equal(service.store.factoryJobs[0]?.status, "generating");
+
+  const discardDiagnostic = diagnostics.find(
+    (diagnostic) =>
+      diagnostic.event === "workspace_app_center_refresh_snapshot_discarded"
+  );
+  assert.deepEqual(discardDiagnostic?.details, {
+    currentSequence: 2,
+    itemCount: 1,
+    operation: "app_center.refresh",
+    sequence: 1,
+    snapshotKind: "apps"
+  });
+  const factoryDiagnostic = diagnostics.find(
+    (diagnostic) =>
+      diagnostic.event === "workspace_app_center_factory_snapshot_applied"
+  );
+  assert.deepEqual(factoryDiagnostic?.details, {
+    afterCount: 1,
+    beforeCount: 0,
+    jobs: [
+      {
+        jobId: "job-visible",
+        status: "generating",
+        updatedAtUnixMs: 1749124800000
+      }
+    ],
+    truncated: false
+  });
 });
 
 test("WorkspaceAppCenterService keeps update disabled while update install is pending", async () => {
@@ -657,6 +746,48 @@ test("WorkspaceAppCenterService consumes operation errors once", async () => {
   assert.equal(service.consumeError(), secondError);
 });
 
+test("WorkspaceAppCenterService uses publish-specific workspace operation error copy", async () => {
+  const diagnostics: unknown[] = [];
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      publishWorkspaceAppFactoryJob: async () => {
+        throw Object.assign(new Error("workspace operation failed"), {
+          code: "workspace_operation_failed",
+          developerMessage: "read AGENTS.md: no such file or directory",
+          reason: "workspace_operation_failed"
+        });
+      }
+    }),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi(),
+    runtimeApi: {
+      async logRendererDiagnostic(input) {
+        diagnostics.push(input);
+      }
+    }
+  });
+
+  await service.publishFactoryJob({
+    jobId: "job-1",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(
+    service.store.error,
+    "The app draft did not pass its pre-publish check. Fix it from App Center before publishing."
+  );
+  assert.deepEqual(
+    diagnostics.map(
+      (entry) =>
+        (entry as { details: { toastMessage: string } }).details.toastMessage
+    ),
+    [
+      "The app draft did not pass its pre-publish check. Fix it from App Center before publishing."
+    ]
+  );
+});
+
 test("WorkspaceAppCenterService tracks import failure and catalog refresh result", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const service = new WorkspaceAppCenterService({
@@ -991,6 +1122,20 @@ function createFactorySnapshot(
     jobs: [],
     ...overrides
   };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  reject: (reason?: unknown) => void;
+  resolve: (value: T) => void;
+} {
+  let reject!: (reason?: unknown) => void;
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, reject, resolve };
 }
 
 function createGateway(

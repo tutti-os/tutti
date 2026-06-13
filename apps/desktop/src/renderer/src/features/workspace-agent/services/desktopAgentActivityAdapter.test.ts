@@ -138,6 +138,50 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
   });
 });
 
+test("desktop agent activity adapter returns cancel result metadata", async () => {
+  const calls: Array<{ method: string; args: unknown[] }> = [];
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async cancelWorkspaceAgentSessionWithResult(
+        requestWorkspaceId: string,
+        agentSessionId: string
+      ) {
+        calls.push({
+          args: [requestWorkspaceId, agentSessionId],
+          method: "cancelWithResult"
+        });
+        return {
+          cancel: {
+            canceled: false,
+            reason: "no_active_turn"
+          },
+          session: createSession({
+            id: agentSessionId,
+            status: "created"
+          })
+        };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const result = await adapter.cancelSession({
+    workspaceId,
+    agentSessionId: "agent-session-1"
+  });
+
+  assert.deepEqual(calls, [
+    {
+      args: [workspaceId, "agent-session-1"],
+      method: "cancelWithResult"
+    }
+  ]);
+  assert.equal(result.canceled, false);
+  assert.equal(result.reason, "no_active_turn");
+  assert.equal(result.session.agentSessionId, "agent-session-1");
+  assert.equal(result.session.status, "created");
+});
+
 test("desktop agent activity adapter requires an injected session event subscription", async () => {
   const diagnostics: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
@@ -427,6 +471,15 @@ function createTuttidClient(
   return {
     async cancelWorkspaceAgentSession() {
       return createSession({ status: "canceled" });
+    },
+    async cancelWorkspaceAgentSessionWithResult() {
+      return {
+        cancel: {
+          canceled: true,
+          reason: "active_turn_canceled"
+        },
+        session: createSession({ status: "canceled" })
+      };
     },
     async createWorkspaceAgentSession() {
       return createSession();

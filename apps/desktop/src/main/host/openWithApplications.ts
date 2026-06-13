@@ -20,9 +20,14 @@ const openWithApplicationsByCacheKey = new Map<
   DesktopOpenWithApplication[]
 >();
 const applicationIconDataUrlByPath = new Map<string, string | null>();
+const defaultApplicationIconDataUrlByCacheKey = new Map<
+  string,
+  string | null
+>();
 let cachedListOpenWithApplicationsSwiftScriptPath: string | null = null;
 let cachedOpenFileWithDefaultBrowserSwiftScriptPath: string | null = null;
 let cachedReadApplicationIconSwiftScriptPath: string | null = null;
+let cachedResolveDefaultApplicationSwiftScriptPath: string | null = null;
 
 const videoPlayerApplicationPathPattern =
   /\/(QuickTime Player|QuickTime|TV|IINA|VLC|Elmedia Player|Movist|MPV|Fig Player|5KPlayer|NicePlayer)\.app$/i;
@@ -53,8 +58,9 @@ let appURLs = workspace.urlsForApplications(toOpen: targetURL)
 for appURL in appURLs {
     let bundlePath = appURL.path
     let name = FileManager.default.displayName(atPath: bundlePath)
+    let bundleIdentifier = Bundle(url: appURL)?.bundleIdentifier ?? ""
     let iconBase64 = encodeApplicationIconBase64(for: bundlePath)
-    print("\\(name)\\t\\(bundlePath)\\t\\(iconBase64)")
+    print("\\(name)\\t\\(bundlePath)\\t\\(bundleIdentifier)\\t\\(iconBase64)")
 }
 `;
 
@@ -72,6 +78,21 @@ guard let tiff = icon.tiffRepresentation,
     exit(1)
 }
 print(png.base64EncodedString())
+`;
+
+const resolveDefaultApplicationSwiftSource = `
+import AppKit
+import Foundation
+
+let targetPath = CommandLine.arguments[1]
+let targetURL = URL(fileURLWithPath: targetPath)
+let workspace = NSWorkspace.shared
+guard let appURL = workspace.urlForApplication(toOpen: targetURL) else {
+    exit(1)
+}
+let bundlePath = appURL.path
+let name = FileManager.default.displayName(atPath: bundlePath)
+print("\\(name)\\t\\(bundlePath)")
 `;
 
 const openFileWithDefaultBrowserSwiftSource = `
@@ -118,42 +139,61 @@ export async function listOpenWithApplications(
 
   const { stdout } = await runListOpenWithApplicationsSwift(normalizedPath);
 
-  const seen = new Set<string>();
-  const applications: DesktopOpenWithApplication[] = [];
+  const parsedApplications: DesktopOpenWithApplication[] = [];
   for (const line of stdout.split("\n")) {
     const parsedLine = parseListOpenWithApplicationsLine(line);
-    if (!parsedLine || seen.has(parsedLine.applicationPath)) {
+    if (!parsedLine) {
       continue;
     }
-    seen.add(parsedLine.applicationPath);
-    applications.push({
-      applicationPath: parsedLine.applicationPath,
-      iconDataUrl:
-        parsedLine.iconDataUrl ??
-        (await readApplicationIconDataUrl(
-          parsedLine.applicationPath,
-          parsedLine.name
-        )),
-      name: parsedLine.name
-    });
+    parsedApplications.push(parsedLine);
   }
-  const filteredApplications = filterOpenWithApplications(
-    applications,
+
+  const filteredParsedApplications = filterOpenWithApplications(
+    parsedApplications,
     normalizedPath
   );
-  openWithApplicationsByCacheKey.set(cacheKey, filteredApplications);
-  return filteredApplications;
+  const applications: DesktopOpenWithApplication[] = [];
+  for (const application of filteredParsedApplications) {
+    applications.push({
+      applicationPath: application.applicationPath,
+      bundleIdentifier: application.bundleIdentifier,
+      iconDataUrl:
+        application.iconDataUrl ??
+        (await readApplicationIconDataUrl(
+          application.applicationPath,
+          application.name
+        )),
+      name: application.name
+    });
+  }
+  openWithApplicationsByCacheKey.set(cacheKey, applications);
+  return applications;
 }
 
 export function filterOpenWithApplications(
   applications: readonly DesktopOpenWithApplication[],
   targetPath: string
 ): DesktopOpenWithApplication[] {
-  if (!shouldFilterVideoPlayersForTarget(targetPath)) {
-    return [...applications];
+  const seen = new Set<string>();
+  const accessibleApplications: DesktopOpenWithApplication[] = [];
+  for (const application of applications) {
+    if (!canAccessApplication(application.applicationPath)) {
+      continue;
+    }
+
+    const dedupeKey = resolveOpenWithApplicationDedupeKey(application);
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+    accessibleApplications.push(application);
   }
 
-  return applications.filter(
+  if (!shouldFilterVideoPlayersForTarget(targetPath)) {
+    return accessibleApplications;
+  }
+
+  return accessibleApplications.filter(
     (application) => !isVideoPlayerApplication(application)
   );
 }
@@ -182,22 +222,24 @@ export async function openFileWithDefaultBrowser(
 export function resetOpenWithApplicationsCacheForTests(): void {
   openWithApplicationsByCacheKey.clear();
   applicationIconDataUrlByPath.clear();
+  defaultApplicationIconDataUrlByCacheKey.clear();
   cachedListOpenWithApplicationsSwiftScriptPath = null;
   cachedOpenFileWithDefaultBrowserSwiftScriptPath = null;
   cachedReadApplicationIconSwiftScriptPath = null;
+  cachedResolveDefaultApplicationSwiftScriptPath = null;
 }
 
 export function parseListOpenWithApplicationsLine(line: string): {
   applicationPath: string;
+  bundleIdentifier: string | null;
   iconDataUrl: string | null;
   name: string;
 } | null {
-  const trimmed = line.trim();
-  if (!trimmed) {
+  if (!line.trim()) {
     return null;
   }
 
-  const parts = trimmed.split("\t");
+  const parts = line.replace(/\r$/, "").split("\t");
   if (parts.length < 2) {
     return null;
   }
@@ -208,9 +250,14 @@ export function parseListOpenWithApplicationsLine(line: string): {
     return null;
   }
 
-  const iconBase64 = parts[2]?.trim() ?? "";
+  const hasBundleIdentifierColumn = parts.length >= 4;
+  const bundleIdentifier = hasBundleIdentifierColumn
+    ? parts[2]?.trim() || null
+    : null;
+  const iconBase64 = parts[hasBundleIdentifierColumn ? 3 : 2]?.trim() ?? "";
   return {
     applicationPath,
+    bundleIdentifier,
     iconDataUrl: iconBase64 ? `data:image/png;base64,${iconBase64}` : null,
     name
   };
@@ -231,6 +278,24 @@ function isVideoPlayerApplication(
     videoPlayerApplicationPathPattern.test(application.applicationPath) ||
     videoPlayerApplicationNamePattern.test(application.name)
   );
+}
+
+function resolveOpenWithApplicationDedupeKey(
+  application: Pick<
+    DesktopOpenWithApplication,
+    "applicationPath" | "bundleIdentifier"
+  >
+): string {
+  return application.bundleIdentifier ?? application.applicationPath;
+}
+
+function canAccessApplication(applicationPath: string): boolean {
+  try {
+    accessSync(applicationPath, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function resolveOpenWithApplicationsCacheKey(targetPath: string): string {
@@ -379,6 +444,57 @@ export async function readApplicationIconDataUrl(
   return workspaceIconDataUrl;
 }
 
+export async function readDefaultApplicationIconDataUrl(
+  targetPath: string
+): Promise<string | null> {
+  if (process.platform !== "darwin") {
+    return null;
+  }
+
+  const normalizedTargetPath = path.resolve(targetPath);
+  const cacheKey = resolveOpenWithApplicationsCacheKey(normalizedTargetPath);
+  if (defaultApplicationIconDataUrlByCacheKey.has(cacheKey)) {
+    return defaultApplicationIconDataUrlByCacheKey.get(cacheKey) ?? null;
+  }
+
+  try {
+    const scriptPath = await resolveDefaultApplicationSwiftScriptPath();
+    const { stdout } = await execFileAsync(
+      "swift",
+      [scriptPath, normalizedTargetPath],
+      {
+        maxBuffer: openWithSwiftMaxBufferBytes
+      }
+    );
+    const application = parseDefaultApplicationLine(stdout);
+    const iconDataUrl = application
+      ? await readApplicationIconDataUrl(
+          application.applicationPath,
+          application.name
+        )
+      : null;
+    defaultApplicationIconDataUrlByCacheKey.set(cacheKey, iconDataUrl);
+    return iconDataUrl;
+  } catch {
+    defaultApplicationIconDataUrlByCacheKey.set(cacheKey, null);
+    return null;
+  }
+}
+
+function parseDefaultApplicationLine(line: string): {
+  applicationPath: string;
+  name: string;
+} | null {
+  const parsedLine = parseListOpenWithApplicationsLine(line);
+  if (!parsedLine) {
+    return null;
+  }
+  return {
+    applicationPath: parsedLine.applicationPath,
+    name: parsedLine.name
+  };
+}
+
 async function readApplicationIconDataUrlFromWorkspace(
   applicationPath: string
 ): Promise<string | null> {
@@ -416,6 +532,23 @@ async function resolveReadApplicationIconSwiftScriptPath(): Promise<string> {
   const scriptPath = path.join(tempDirectory, "readApplicationIcon.swift");
   await writeFile(scriptPath, readApplicationIconSwiftSource, "utf8");
   cachedReadApplicationIconSwiftScriptPath = scriptPath;
+  return scriptPath;
+}
+
+async function resolveDefaultApplicationSwiftScriptPath(): Promise<string> {
+  if (cachedResolveDefaultApplicationSwiftScriptPath) {
+    return cachedResolveDefaultApplicationSwiftScriptPath;
+  }
+
+  const tempDirectory = await mkdtemp(
+    path.join(tmpdir(), "tutti-default-app-swift-")
+  );
+  const scriptPath = path.join(
+    tempDirectory,
+    "resolveDefaultApplication.swift"
+  );
+  await writeFile(scriptPath, resolveDefaultApplicationSwiftSource, "utf8");
+  cachedResolveDefaultApplicationSwiftScriptPath = scriptPath;
   return scriptPath;
 }
 

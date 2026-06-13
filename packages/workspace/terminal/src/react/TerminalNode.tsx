@@ -5,6 +5,7 @@ import type {
   TerminalCloseGuardResult,
   TerminalHeaderAccessoryRenderer,
   TerminalNodeExternalState,
+  TerminalPreviewChangeHandler,
   TerminalSessionStatus
 } from "../contracts/index.ts";
 import type { TerminalNodeFeature } from "../core/feature.ts";
@@ -21,6 +22,7 @@ export interface TerminalNodeProps {
   headerAccessory?: TerminalHeaderAccessoryRenderer;
   nodeId: string;
   onFocusRequest?: () => void;
+  onPreviewChange?: TerminalPreviewChangeHandler;
   sessionId?: string | null;
   showHeader?: boolean;
 }
@@ -51,6 +53,7 @@ export function TerminalNode({
   headerAccessory,
   nodeId,
   onFocusRequest,
+  onPreviewChange,
   sessionId,
   showHeader = true
 }: TerminalNodeProps) {
@@ -82,6 +85,7 @@ export function TerminalNode({
               externalState={externalState}
               feature={feature}
               nodeId={nodeId}
+              onPreviewChange={onPreviewChange}
               sessionId={resolvedSessionId}
               status={status}
             />

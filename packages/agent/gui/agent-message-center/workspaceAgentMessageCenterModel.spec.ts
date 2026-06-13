@@ -113,6 +113,25 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     expect(model.items[0]?.lastAgentMessageSummary).toBe("Agent summary wins");
   });
 
+  it("preserves the session user id for message-center stacking", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [],
+        sessions: [
+          session({ agentSessionId: "session-1", userId: " user-a " }),
+          session({ agentSessionId: "session-2", userId: "user-b" })
+        ]
+      })
+    );
+
+    expect(
+      model.items.find((item) => item.agentSessionId === "session-1")?.userId
+    ).toBe("user-a");
+    expect(
+      model.items.find((item) => item.agentSessionId === "session-2")?.userId
+    ).toBe("user-b");
+  });
+
   it("orders sessions by session start instead of newer agent messages", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({

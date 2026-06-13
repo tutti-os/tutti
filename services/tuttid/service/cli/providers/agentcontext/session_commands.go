@@ -280,11 +280,11 @@ func (p Provider) newCancelCommand() cliservice.Command {
 			if err != nil {
 				return cliservice.CommandOutput{}, err
 			}
-			session, err := p.sessions.Cancel(ctx, workspaceID, sessionID)
+			result, err := p.sessions.Cancel(ctx, workspaceID, sessionID)
 			if err != nil {
 				return cliservice.CommandOutput{}, err
 			}
-			return sessionActionOutput(request, session, false), nil
+			return sessionActionOutput(request, result.Session, false), nil
 		},
 	}
 }

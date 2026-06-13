@@ -13,7 +13,7 @@ import {
   createDesktopIssueManagerAgentBreakdownLauncher,
   createDesktopIssueManagerAgentRunner,
   type DesktopIssueManagerAgentGuiLaunchInput,
-  type DesktopIssueManagerAgentHostApi
+  type DesktopIssueManagerAgentSessionCreator
 } from "./internal/adapters/desktopIssueManagerAgentRunner.ts";
 import { createDesktopIssueManagerAnalytics } from "./internal/desktopIssueManagerAnalytics.ts";
 import { createDesktopIssueManagerBackend } from "./internal/adapters/desktopIssueManagerBackend.ts";
@@ -26,8 +26,8 @@ import type { IWorkspaceUserProjectService } from "../workspace-user-project";
 export { createDesktopIssueManagerNodeStateSource } from "./internal/desktopIssueManagerNodeState.ts";
 
 export function createDesktopIssueManagerFeature(input: {
-  agentHostApi: DesktopIssueManagerAgentHostApi;
   agentProviderOptions?: IssueManagerAgentProviderOptionsAdapter;
+  agentSessionCreator?: DesktopIssueManagerAgentSessionCreator;
   hostFilesApi: DesktopHostFilesApi;
   i18n: I18nRuntime<string>;
   eventStreamClient?: TuttidEventStreamClient;
@@ -52,6 +52,7 @@ export function createDesktopIssueManagerFeature(input: {
 
   return createIssueManagerFeature({
     agentBreakdownLauncher: createDesktopIssueManagerAgentBreakdownLauncher({
+      agentSessionCreator: input.agentSessionCreator,
       i18n: input.i18n,
       launchAgentGui: input.launchAgentGui,
       workspaceId: input.workspaceId
@@ -62,7 +63,7 @@ export function createDesktopIssueManagerFeature(input: {
     }),
     agentProviderOptions: input.agentProviderOptions,
     agentRunner: createDesktopIssueManagerAgentRunner({
-      agentHostApi: input.agentHostApi,
+      agentSessionCreator: input.agentSessionCreator,
       i18n: input.i18n,
       launchAgentGui: input.launchAgentGui,
       workspaceId: input.workspaceId
@@ -82,12 +83,6 @@ export function createDesktopIssueManagerFeature(input: {
       ? createDesktopIssueManagerEventSource(input.eventStreamClient)
       : undefined,
     executionDirectoryPicker: {
-      list: async () => {
-        await input.workspaceUserProjectService.ensureLoaded();
-        return {
-          projects: [...input.workspaceUserProjectService.store.projects]
-        };
-      },
       selectDirectory: () =>
         input.workspaceUserProjectService.selectDirectory(),
       service: input.workspaceUserProjectService,

@@ -9,7 +9,8 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentMessageMarkdown,
-  resetCachedMarkdownImagesForTests
+  resetCachedMarkdownImagesForTests,
+  splitStreamingMarkdownBlocks
 } from "./AgentMessageMarkdown";
 
 describe("AgentMessageMarkdown", () => {
@@ -973,5 +974,29 @@ describe("AgentMessageMarkdown", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("splitStreamingMarkdownBlocks", () => {
+  it("splits stable markdown blocks without splitting fenced code", () => {
+    expect(
+      splitStreamingMarkdownBlocks(
+        [
+          "Intro paragraph.",
+          "",
+          "```ts",
+          "const value = 1;",
+          "",
+          "console.log(value);",
+          "```",
+          "",
+          "- Tail item"
+        ].join("\n")
+      ).map((block) => block.content)
+    ).toEqual([
+      "Intro paragraph.\n",
+      "```ts\nconst value = 1;\n\nconsole.log(value);\n```\n",
+      "- Tail item"
+    ]);
   });
 });

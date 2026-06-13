@@ -5,15 +5,30 @@ import path from "node:path";
 import test from "node:test";
 import { resolveWorkspaceFileEntryIconDataUrl } from "./workspaceFileEntryIcon.ts";
 
-test("resolveWorkspaceFileEntryIconDataUrl returns null for non-image files", async () => {
-  assert.equal(
-    await resolveWorkspaceFileEntryIconDataUrl("/tmp/example.txt", {
-      kind: "file",
-      name: "example.txt",
-      path: "/workspace/example.txt"
-    }),
-    null
+test("resolveWorkspaceFileEntryIconDataUrl falls back to native icons for non-image files", async (t) => {
+  if (process.platform !== "darwin" && process.platform !== "win32") {
+    t.skip("native file icons are only supported on macOS and Windows");
+    return;
+  }
+
+  const workspaceRoot = await mkdtemp(
+    path.join(tmpdir(), "tutti-entry-icon-file-")
   );
+  const targetPath = path.join(workspaceRoot, "example.txt");
+  await writeFile(targetPath, "hello", "utf8");
+
+  const iconDataUrl = await resolveWorkspaceFileEntryIconDataUrl(targetPath, {
+    kind: "file",
+    name: "example.txt",
+    path: "/workspace/example.txt"
+  });
+
+  if (!iconDataUrl) {
+    t.skip("native file icon unavailable in this test environment");
+    return;
+  }
+
+  assert.match(iconDataUrl, /^data:image\/png;base64,/);
 });
 
 test("resolveWorkspaceFileEntryIconDataUrl returns png data url for image files on macOS", async (t) => {

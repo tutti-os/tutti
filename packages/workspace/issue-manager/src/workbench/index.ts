@@ -274,6 +274,7 @@ export function createIssueManagerDockEntry({
     matchNode: (node) => node.data.typeId === typeId,
     order,
     resolvePopupItem: ({ node }) => ({
+      revision: node.title,
       title: node.title
     }),
     separatorAfter,

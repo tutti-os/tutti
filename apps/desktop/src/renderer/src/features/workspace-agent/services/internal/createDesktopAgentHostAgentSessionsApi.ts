@@ -163,17 +163,21 @@ export function createDesktopAgentHostAgentSessionsApi({
     },
     async cancel(payload: { agentSessionId: string }) {
       const tuttidSessionId = resolveTuttidSessionId(payload.agentSessionId);
-      const session = await agentActivityService.cancelSession({
+      const result = await agentActivityService.cancelSession({
         workspaceId,
         agentSessionId: tuttidSessionId
       });
-      await messageStoppedTracker.track({
-        agentSessionId: session.agentSessionId,
-        provider: session.provider
-      });
+      if (result.canceled) {
+        await messageStoppedTracker.track({
+          agentSessionId: result.session.agentSessionId,
+          provider: result.session.provider
+        });
+      }
       return {
-        agentSessionId: session.agentSessionId,
-        canceled: true
+        agentSessionId: result.session.agentSessionId,
+        canceled: result.canceled,
+        reason: result.reason,
+        sessionStatus: toAgentHostAgentSessionStatus(result.session.status)
       };
     },
     async updateSettings(payload: {

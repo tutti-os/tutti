@@ -23,7 +23,7 @@ type StaleTurnResumeReconciler interface {
 }
 
 type RuntimeController interface {
-	Cancel(context.Context, RuntimeCancelInput) error
+	Cancel(context.Context, RuntimeCancelInput) (RuntimeCancelResult, error)
 	CanResume(RuntimeResumeInput) bool
 	Close(context.Context, RuntimeCloseInput) error
 	Exec(context.Context, RuntimeExecInput) (RuntimeExecResult, error)
@@ -58,6 +58,20 @@ type Session struct {
 	UpdatedAt         *time.Time
 	EndedAt           *time.Time
 	LastError         *string
+}
+
+type CancelReason string
+
+const (
+	CancelReasonActiveTurnCanceled  CancelReason = "active_turn_canceled"
+	CancelReasonNoActiveTurn        CancelReason = "no_active_turn"
+	CancelReasonStaleTurnReconciled CancelReason = "stale_turn_reconciled"
+)
+
+type CancelSessionResult struct {
+	Session  Session
+	Canceled bool
+	Reason   CancelReason
 }
 
 type ListSessionsInput struct {
@@ -182,6 +196,11 @@ type RuntimeCancelInput struct {
 	Reason         string
 }
 
+type RuntimeCancelResult struct {
+	AgentSessionID string
+	Canceled       bool
+}
+
 type RuntimeCloseInput struct {
 	WorkspaceID    string
 	AgentSessionID string
@@ -235,7 +254,8 @@ type SessionSkillBundle struct {
 }
 
 type SendInput struct {
-	Content []PromptContentBlock
+	Content       []PromptContentBlock
+	DisplayPrompt string
 }
 
 type PromptContentBlock struct {

@@ -8,6 +8,10 @@ import {
   type MutableRefObject,
   type RefObject
 } from "react";
+import {
+  normalizeAgentActivityDisplayStatus,
+  type AgentActivityDisplayStatus
+} from "@tutti-os/agent-activity-core";
 import { FolderFailedFilledIcon } from "../../app/renderer/components/icons/FolderFailedFilledIcon";
 import { KeyboardFilledIcon } from "../../app/renderer/components/icons/KeyboardFilledIcon";
 import { Spinner } from "../../app/renderer/components/ui/spinner";
@@ -16,17 +20,13 @@ import userAvatarPlaceholderUrl from "../../app/renderer/assets/icons/user-avata
 import { translate } from "../../i18n/index";
 import { cn } from "../../app/renderer/lib/utils";
 import { managedAgentRoundedIconUrl } from "../../shared/managedAgentIcons";
-import { workspaceAgentActivityStatusClassName } from "../../shared/workspaceAgentActivityStatusClassName";
-import {
-  normalizeWorkspaceAgentActivityDisplayStatus,
-  workspaceAgentActivityStatusLabel
-} from "../../shared/workspaceAgentActivityStatusLabel";
+import { workspaceAgentActivityStatusLabel } from "../../shared/workspaceAgentActivityStatusLabel";
 import { roomIssueStatusLabel } from "../../shared/roomIssueStatusLabel";
 import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../shared/mentionFilePresentation";
-import { Badge, menuItemClassName } from "@tutti-os/ui-system";
+import { Badge, StatusDot, menuItemClassName } from "@tutti-os/ui-system";
 import {
   agentMentionEmptyGroupLabel,
   agentMentionFilterLabel,
@@ -955,7 +955,13 @@ function shouldRenderMentionGroupLabel(input: {
 
 function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
   if (item.kind === "file") {
-    const visualKind = resolveAgentMentionFileVisualKind(item);
+    const visualKind = resolveAgentMentionFileVisualKind({
+      entryKind: item.entryKind,
+      href: item.href,
+      mentionNavigation: item.mentionNavigation,
+      name: item.name,
+      path: item.path
+    });
     const childCountLabel =
       item.mentionNavigation === "agent-generated-folder" &&
       typeof item.childCount === "number" &&
@@ -971,6 +977,9 @@ function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
         data-agent-mention-kind="file"
         data-agent-file-entry-kind={item.entryKind}
         data-agent-file-visual-kind={visualKind}
+        {...(item.mentionNavigation
+          ? { "data-agent-mention-navigation": item.mentionNavigation }
+          : {})}
       >
         <MentionFileIcon item={item} visualKind={visualKind} />
         <span className="flex min-w-0 items-baseline gap-1 overflow-hidden">
@@ -990,8 +999,8 @@ function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
   if (item.kind === "session") {
     const statusTag = renderSessionMentionStatusTag(item.status);
     return (
-      <span className="flex min-w-0 items-center justify-between gap-3">
-        <span className="flex min-w-0 items-center gap-2">
+      <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+        <span className="flex min-w-0 items-center gap-2 overflow-hidden">
           <MentionSessionAvatarStack item={item} />
           <span className="min-w-0 truncate text-[13px] font-semibold leading-[16px] text-[var(--text-primary)]">
             <MentionSessionTitle item={item} />
@@ -1205,19 +1214,28 @@ function MentionSessionTitle({
 
 function MentionStatusTag({ status }: { status: string }): React.JSX.Element {
   "use memo";
-  const activityStatus = normalizeWorkspaceAgentActivityDisplayStatus(status);
-  const statusClass = workspaceAgentActivityStatusClassName(activityStatus);
+  const activityStatus = normalizeAgentActivityDisplayStatus(status);
+  const statusTone = mentionStatusTone(activityStatus);
+  const statusLabel = workspaceAgentActivityStatusLabel(activityStatus);
   return (
     <Badge
       variant="secondary"
       className={cn(
-        "shrink-0 text-[13px]",
-        mentionStatusBadgeClassName(statusClass)
+        "inline-flex h-5 shrink-0 items-center gap-1.5 rounded-[4px] px-2 text-[11px] font-semibold leading-none",
+        mentionStatusBadgeClassName(activityStatus)
       )}
       data-agent-mention-status-tag="true"
       data-status={activityStatus}
+      data-tone={statusTone}
+      title={statusLabel}
     >
-      {workspaceAgentActivityStatusLabel(activityStatus)}
+      <StatusDot
+        tone={statusTone}
+        pulse={activityStatus === "working" || activityStatus === "waiting"}
+        size="xs"
+        title={statusLabel}
+      />
+      <span>{statusLabel}</span>
     </Badge>
   );
 }
@@ -1228,15 +1246,7 @@ function renderSessionMentionStatusTag(
   if (!status) {
     return null;
   }
-  const activityStatus = normalizeWorkspaceAgentActivityDisplayStatus(status);
-  if (
-    activityStatus !== "working" &&
-    activityStatus !== "waiting" &&
-    activityStatus !== "canceled" &&
-    activityStatus !== "failed"
-  ) {
-    return null;
-  }
+  const activityStatus = normalizeAgentActivityDisplayStatus(status);
   return <MentionStatusTag status={activityStatus} />;
 }
 
@@ -1262,11 +1272,37 @@ function IssueMentionStatusTag({
   );
 }
 
-function mentionStatusBadgeClassName(statusClass: string): string {
-  if (statusClass === "working" || statusClass === "done") {
-    return "bg-[color:color-mix(in_srgb,var(--state-success)_12%,transparent)] text-[var(--state-success)]";
+function mentionStatusTone(
+  status: AgentActivityDisplayStatus
+): "amber" | "blue" | "green" | "neutral" | "red" {
+  if (status === "working") {
+    return "blue";
   }
-  if (statusClass === "failed") {
+  if (status === "waiting" || status === "canceled") {
+    return "amber";
+  }
+  if (status === "completed" || status === "idle") {
+    return "green";
+  }
+  if (status === "failed") {
+    return "red";
+  }
+  return "neutral";
+}
+
+function mentionStatusBadgeClassName(
+  status: AgentActivityDisplayStatus
+): string {
+  if (status === "working") {
+    return "bg-sky-500/10 text-sky-700";
+  }
+  if (status === "waiting" || status === "canceled") {
+    return "bg-[color:color-mix(in_srgb,var(--color-amber-500)_12%,transparent)] text-[var(--color-amber-500)]";
+  }
+  if (status === "completed" || status === "idle") {
+    return "bg-[var(--tsh-ui-pill-success-bg)] text-[var(--tsh-ui-pill-success-fg)]";
+  }
+  if (status === "failed") {
     return "bg-[var(--on-danger)] text-[var(--state-danger)]";
   }
   return "bg-[var(--transparency-block)] text-[var(--text-secondary)]";

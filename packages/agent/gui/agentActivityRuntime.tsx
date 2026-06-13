@@ -7,6 +7,7 @@ import {
 } from "react";
 import type {
   AgentActivityCancelSessionInput,
+  AgentActivityCancelSessionResult,
   AgentActivityCreateSessionInput,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
@@ -132,7 +133,7 @@ export interface AgentActivityRuntimeSessionAttachment {
 export interface AgentActivityRuntime {
   cancelSession(
     input: AgentActivityCancelSessionInput
-  ): Promise<AgentActivitySession>;
+  ): Promise<AgentActivityCancelSessionResult>;
   createSession(
     input: AgentActivityCreateSessionInput
   ): Promise<AgentActivitySession>;

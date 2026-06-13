@@ -102,11 +102,28 @@ func (p *ActivityProjection) ReportSessionState(
 	}
 	reply := agentsessionstore.ReportSessionStateReply{
 		Accepted:          result.Accepted,
+		StateApplied:      result.StateApplied,
 		LastEventAtUnixMS: result.LastEventUnixMS,
 		RequestBodyBytes:  result.RequestBodyBytes,
 	}
 	if result.Accepted {
-		p.publishActivityUpdated(ctx, input.WorkspaceID, input.AgentSessionID, "state_patch", activityStatePatchEventPayload(input, result.LastEventUnixMS))
+		if result.StateApplied {
+			p.publishActivityUpdated(
+				ctx,
+				input.WorkspaceID,
+				input.AgentSessionID,
+				"state_patch",
+				activityStatePatchEventPayload(input, result.LastEventUnixMS),
+			)
+		} else {
+			p.publishActivityUpdated(
+				ctx,
+				input.WorkspaceID,
+				input.AgentSessionID,
+				"session_update",
+				activitySessionUpdateEventPayload(input.WorkspaceID, input.AgentSessionID, result.LastEventUnixMS),
+			)
+		}
 	}
 	p.observeSessionState(ctx, input, reply)
 	return reply, nil

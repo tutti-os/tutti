@@ -20,16 +20,6 @@ export type AgentGuiWorkbenchComposerOverridesByProvider = Partial<
   Record<AgentGuiWorkbenchProvider, AgentGuiWorkbenchComposerOverrides | null>
 >;
 
-export interface AgentGuiWorkbenchPendingHandoff {
-  issueId?: string | null;
-  issueTitle?: string | null;
-  prompt: string;
-  requestId: string;
-  taskId?: string | null;
-  taskTitle: string;
-  title: string;
-}
-
 export interface AgentGuiWorkbenchNodeState {
   composerOverrides?: AgentGuiWorkbenchComposerOverrides | null;
   composerOverridesByProvider?: AgentGuiWorkbenchComposerOverridesByProvider | null;
@@ -38,7 +28,6 @@ export interface AgentGuiWorkbenchNodeState {
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
   lastActiveConversationTitle?: string | null;
-  pendingHandoff?: AgentGuiWorkbenchPendingHandoff | null;
   provider: AgentGuiWorkbenchProvider;
 }
 
@@ -49,7 +38,6 @@ export interface AgentGuiWorkbenchState {
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
   lastActiveConversationTitle?: string | null;
-  pendingHandoff?: AgentGuiWorkbenchPendingHandoff | null;
 }
 
 export interface AgentGuiWorkbenchWorkspaceState {

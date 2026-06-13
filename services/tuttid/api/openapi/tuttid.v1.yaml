@@ -1467,7 +1467,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkspaceAgentSessionResponse"
+                $ref: "#/components/schemas/WorkspaceAgentSessionCancelResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -4170,6 +4170,32 @@ components:
       properties:
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
+    WorkspaceAgentSessionCancelResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+        - cancel
+      properties:
+        session:
+          $ref: "#/components/schemas/WorkspaceAgentSession"
+        cancel:
+          $ref: "#/components/schemas/WorkspaceAgentSessionCancelResult"
+    WorkspaceAgentSessionCancelResult:
+      type: object
+      additionalProperties: false
+      required:
+        - canceled
+        - reason
+      properties:
+        canceled:
+          type: boolean
+        reason:
+          type: string
+          enum:
+            - active_turn_canceled
+            - no_active_turn
+            - stale_turn_reconciled
     WorkspaceAgentSessionMessage:
       type: object
       additionalProperties: false
@@ -4524,6 +4550,8 @@ components:
         - hasChildren
         - sizeBytes
         - mtimeMs
+        - createdTimeMs
+        - lastOpenedMs
       properties:
         path:
           type: string
@@ -4540,6 +4568,16 @@ components:
           minimum: 0
           nullable: true
         mtimeMs:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        createdTimeMs:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        lastOpenedMs:
           type: integer
           format: int64
           minimum: 0
@@ -4630,6 +4668,8 @@ components:
         - hasChildren
         - sizeBytes
         - mtimeMs
+        - createdTimeMs
+        - lastOpenedMs
       properties:
         path:
           type: string
@@ -4646,6 +4686,16 @@ components:
           minimum: 0
           nullable: true
         mtimeMs:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        createdTimeMs:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        lastOpenedMs:
           type: integer
           format: int64
           minimum: 0

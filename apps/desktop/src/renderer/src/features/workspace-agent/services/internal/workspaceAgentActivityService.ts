@@ -1,6 +1,7 @@
 import {
   createAgentActivityController,
   type AgentActivityAdapter,
+  type AgentActivityCancelSessionResult,
   type AgentActivityController,
   type AgentActivityMessage,
   type AgentActivityMessagePage,
@@ -66,9 +67,20 @@ interface ActiveReconcileEntry {
   promise: Promise<void>;
 }
 
+interface PendingActivityUpdateBatch {
+  agentSessionId: string;
+  dataMessages: unknown[];
+  hasInlineMessages: boolean;
+  hasNonInlineUpdate: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+  workspaceId: string;
+}
+
 interface DeletedSessionTombstone {
   deletedAtUnixMs: number;
 }
+
+const ACTIVITY_UPDATE_BATCH_DELAY_MS = 33;
 
 export class WorkspaceAgentActivityService implements IWorkspaceAgentActivityService {
   readonly _serviceBrand = undefined;
@@ -83,6 +95,10 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     Set<(event: unknown) => void>
   >();
   private readonly activeReconciles = new Map<string, ActiveReconcileEntry>();
+  private readonly pendingActivityUpdateBatches = new Map<
+    string,
+    PendingActivityUpdateBatch
+  >();
   private readonly deletedSessionTombstones = new Map<
     string,
     DeletedSessionTombstone
@@ -284,11 +300,11 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
 
   async cancelSession(
     input: Parameters<AgentActivityAdapter["cancelSession"]>[0]
-  ): Promise<AgentActivitySession> {
+  ): Promise<AgentActivityCancelSessionResult> {
     const entry = this.controllerEntry(input.workspaceId);
-    const session = await entry.adapter.cancelSession(input);
-    this.upsertAuthoritativeSession(session);
-    return session;
+    const result = await entry.adapter.cancelSession(input);
+    this.upsertAuthoritativeSession(result.session);
+    return result;
   }
 
   async submitInteractive(
@@ -531,7 +547,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         if (payload.workspaceId.trim() !== workspaceId) {
           return;
         }
-        void this.reconcileAgentActivityUpdate({
+        this.scheduleAgentActivityUpdate({
           agentSessionId: payload.agentSessionId,
           data: payload.data,
           eventType: payload.eventType,
@@ -724,6 +740,91 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     await reconcile;
   }
 
+  private scheduleAgentActivityUpdate(input: {
+    data?: unknown;
+    agentSessionId: string;
+    eventType: string;
+    workspaceId: string;
+  }): void {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const agentSessionId = input.agentSessionId.trim();
+    if (!agentSessionId) {
+      return;
+    }
+    if (
+      input.eventType !== "message_update" ||
+      isTerminalActivityMessageUpdate(input.data)
+    ) {
+      this.flushPendingActivityUpdateBatch(workspaceId, agentSessionId);
+      void this.reconcileAgentActivityUpdate({
+        ...input,
+        agentSessionId,
+        workspaceId
+      });
+      return;
+    }
+    const key = sessionKey(workspaceId, agentSessionId);
+    let batch = this.pendingActivityUpdateBatches.get(key);
+    if (!batch) {
+      batch = {
+        agentSessionId,
+        dataMessages: [],
+        hasInlineMessages: false,
+        hasNonInlineUpdate: false,
+        timer: null,
+        workspaceId
+      };
+      this.pendingActivityUpdateBatches.set(key, batch);
+    }
+    const inlineMessages = inlineMessagesFromActivityUpdateData(input.data);
+    if (inlineMessages.length > 0) {
+      batch.hasInlineMessages = true;
+      for (const message of inlineMessages) {
+        upsertCoalescedInlineMessage(batch.dataMessages, message);
+      }
+    } else {
+      batch.hasNonInlineUpdate = true;
+    }
+    if (batch.timer !== null) {
+      return;
+    }
+    batch.timer = setTimeout(() => {
+      batch.timer = null;
+      this.flushPendingActivityUpdateBatch(workspaceId, agentSessionId);
+    }, ACTIVITY_UPDATE_BATCH_DELAY_MS);
+  }
+
+  private flushPendingActivityUpdateBatch(
+    workspaceId: string,
+    agentSessionId: string
+  ): void {
+    const key = sessionKey(workspaceId, agentSessionId);
+    const batch = this.pendingActivityUpdateBatches.get(key);
+    if (!batch) {
+      return;
+    }
+    this.pendingActivityUpdateBatches.delete(key);
+    if (batch.timer !== null) {
+      clearTimeout(batch.timer);
+      batch.timer = null;
+    }
+    if (batch.hasInlineMessages) {
+      void this.reconcileAgentActivityUpdate({
+        agentSessionId: batch.agentSessionId,
+        data: { messages: batch.dataMessages },
+        eventType: "message_update",
+        workspaceId: batch.workspaceId
+      });
+    }
+    if (batch.hasNonInlineUpdate) {
+      void this.reconcileAgentActivityUpdate({
+        agentSessionId: batch.agentSessionId,
+        eventType: "message_update",
+        workspaceId: batch.workspaceId
+      });
+    }
+  }
+
   private hasCachedSession(
     workspaceId: string,
     agentSessionId: string
@@ -909,6 +1010,55 @@ function hasInlineMessagesData(data: unknown): boolean {
     data !== null &&
     Array.isArray((data as { messages?: unknown }).messages)
   );
+}
+
+function inlineMessagesFromActivityUpdateData(data: unknown): unknown[] {
+  const source = recordValue(data);
+  return Array.isArray(source?.messages) ? source.messages : [];
+}
+
+function upsertCoalescedInlineMessage(
+  messages: unknown[],
+  message: unknown
+): void {
+  const messageId = recordValue(message)?.messageId;
+  if (typeof messageId !== "string" || !messageId.trim()) {
+    messages.push(message);
+    return;
+  }
+  const existingIndex = messages.findIndex(
+    (candidate) => recordValue(candidate)?.messageId === messageId
+  );
+  if (existingIndex >= 0) {
+    messages.splice(existingIndex, 1);
+    messages.push(message);
+    return;
+  }
+  messages.push(message);
+}
+
+function isTerminalActivityMessageUpdate(data: unknown): boolean {
+  return inlineMessagesFromActivityUpdateData(data).some((message) => {
+    const record = recordValue(message);
+    if (!record) {
+      return false;
+    }
+    if (typeof record.completedAtUnixMs === "number") {
+      return true;
+    }
+    const status =
+      typeof record.status === "string"
+        ? record.status.trim().toLowerCase()
+        : "";
+    return (
+      status === "completed" ||
+      status === "failed" ||
+      status === "canceled" ||
+      status === "cancelled" ||
+      status === "error" ||
+      status === "waiting"
+    );
+  });
 }
 
 function hasUserMessage(messages: readonly AgentActivityMessage[]): boolean {

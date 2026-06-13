@@ -12,6 +12,7 @@ import {
   useCallback,
   useEffect,
   useContext,
+  memo,
   useMemo,
   useState
 } from "react";
@@ -39,12 +40,18 @@ import {
   type WorkspaceLinkActionSource
 } from "../actions/workspaceLinkActions";
 import { resolveAgentWorkspaceFileVisualKind } from "./workspaceFileVisualKind";
+import { stabilizeStreamingMarkdownTail } from "./streamingMarkdownTailStabilizer";
+import { useStreamingVisibleText } from "./useStreamingVisibleText";
 
 const COLLAPSED_LINE_LIMIT = 8;
 const APPROX_CHARS_PER_LINE = 34;
 const DEFERRED_LONG_MARKDOWN_CHAR_THRESHOLD = 4096;
+const STREAMING_MARKDOWN_EMERGENCY_PLAIN_CHAR_THRESHOLD = 96_000;
 const DEFERRED_LONG_MARKDOWN_FALLBACK_DELAY_MS = 80;
 const DEFERRED_LONG_MARKDOWN_IDLE_TIMEOUT_MS = 700;
+const STREAMING_MARKDOWN_FRAME_MS = 24;
+const STREAMING_MARKDOWN_MAX_CHARS_PER_SECOND = 6_000;
+const STREAMING_MARKDOWN_TAIL_FLUSH_CHARS = 0;
 const PLAIN_SESSION_MENTION_AGENT_LABELS = [
   "Claude Code",
   "Nexight",
@@ -80,6 +87,7 @@ interface AgentMessageMarkdownProps {
   normalizePlainIssueMentionTitle?: boolean;
   deferLongContentRender?: boolean;
   enableImageZoom?: boolean;
+  streaming?: boolean;
 }
 
 export interface AgentMessageMarkdownWorkspaceAppIcon {
@@ -98,6 +106,10 @@ type MarkdownDomProps<Tag extends keyof JSX.IntrinsicElements> =
 
 const MarkdownLinkContext = createContext(false);
 
+type ReactMarkdownComponents = ComponentPropsWithoutRef<
+  typeof ReactMarkdown
+>["components"];
+
 export function AgentMessageMarkdown({
   content,
   onLinkClick,
@@ -110,22 +122,37 @@ export function AgentMessageMarkdown({
   inline = false,
   normalizePlainIssueMentionTitle = false,
   deferLongContentRender = false,
-  enableImageZoom = false
+  enableImageZoom = false,
+  streaming = false
 }: AgentMessageMarkdownProps): JSX.Element {
   "use memo";
   const { t } = useTranslation();
+  const visibleContent = useStreamingVisibleText(content, {
+    enabled: streaming,
+    frameMs: STREAMING_MARKDOWN_FRAME_MS,
+    maxCharsPerSecond: STREAMING_MARKDOWN_MAX_CHARS_PER_SECOND,
+    trailingFlushChars: STREAMING_MARKDOWN_TAIL_FLUSH_CHARS
+  });
+  const stabilizedContent = useMemo(
+    () =>
+      stabilizeStreamingMarkdownTail(visibleContent, {
+        streaming
+      }).content,
+    [streaming, visibleContent]
+  );
   const workspaceRoot = workspaceLinkContext?.workspaceRoot ?? null;
   const basePath = workspaceLinkContext?.basePath ?? null;
   const workspaceLinkSource = workspaceLinkContext?.source ?? null;
   const [isExpanded, setIsExpanded] = useState(false);
   const resolvedExpandLabel =
     expandLabel ?? t("agentHost.workspaceAgentMessageExpand");
-  const shouldCollapse = collapsible && isLikelyLongerThanLineLimit(content);
+  const shouldCollapse =
+    collapsible && isLikelyLongerThanLineLimit(stabilizedContent);
   const isCollapsed = shouldCollapse && !isExpanded;
   const ContainerTag = inline ? "span" : "div";
   const contentSignature = useMemo(
-    () => hashMarkdownProfilerContent(content),
-    [content]
+    () => hashMarkdownProfilerContent(stabilizedContent),
+    [stabilizedContent]
   );
   const normalizedContent = useMemo(
     () =>
@@ -133,18 +160,21 @@ export function AgentMessageMarkdown({
         normalizeMentionMarkdownLinks(
           normalizePlainIssueMentionTitle
             ? normalizePlainIssueMentionTitleContent(
-                normalizePlainSessionMentionTitle(content)
+                normalizePlainSessionMentionTitle(stabilizedContent)
               )
-            : normalizePlainSessionMentionTitle(content)
+            : normalizePlainSessionMentionTitle(stabilizedContent)
         )
       ),
-    [content, normalizePlainIssueMentionTitle]
+    [normalizePlainIssueMentionTitle, stabilizedContent]
   );
   const isMentionOnly = isMentionOnlyMarkdownContent(normalizedContent);
   const shouldDeferMarkdownRender =
     deferLongContentRender &&
     !inline &&
-    content.length >= DEFERRED_LONG_MARKDOWN_CHAR_THRESHOLD &&
+    content.length >=
+      (streaming
+        ? STREAMING_MARKDOWN_EMERGENCY_PLAIN_CHAR_THRESHOLD
+        : DEFERRED_LONG_MARKDOWN_CHAR_THRESHOLD) &&
     !isExpanded;
   const markdownRenderReady = useDeferredMarkdownRenderReady(
     contentSignature,
@@ -244,14 +274,21 @@ export function AgentMessageMarkdown({
         onClickCapture={handleAnchorClickCapture}
       >
         {markdownRenderReady ? (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
-            urlTransform={markdownUrlTransform}
-            components={markdownComponents}
-          >
-            {normalizedContent}
-          </ReactMarkdown>
+          streaming ? (
+            <StreamingMarkdownBlocks
+              content={normalizedContent}
+              components={markdownComponents}
+            />
+          ) : (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+              urlTransform={markdownUrlTransform}
+              components={markdownComponents}
+            >
+              {normalizedContent}
+            </ReactMarkdown>
+          )
         ) : (
           <div
             className="whitespace-pre-wrap [overflow-wrap:anywhere]"
@@ -272,6 +309,125 @@ export function AgentMessageMarkdown({
       ) : null}
     </ContainerTag>
   );
+}
+
+function StreamingMarkdownBlocks({
+  content,
+  components
+}: {
+  content: string;
+  components: ReactMarkdownComponents;
+}): JSX.Element {
+  const blocks = useMemo(
+    () => splitStreamingMarkdownBlocks(content),
+    [content]
+  );
+  return (
+    <>
+      {blocks.map((block, index) => (
+        <MemoizedMarkdownBlock
+          key={`${index}:${hashMarkdownProfilerContent(block.initialKeyContent)}`}
+          content={block.content}
+          components={components}
+        />
+      ))}
+    </>
+  );
+}
+
+const MemoizedMarkdownBlock = memo(function MemoizedMarkdownBlock({
+  content,
+  components
+}: {
+  content: string;
+  components: ReactMarkdownComponents;
+}): JSX.Element {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+      urlTransform={markdownUrlTransform}
+      components={components}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+});
+
+export interface StreamingMarkdownBlock {
+  content: string;
+  initialKeyContent: string;
+}
+
+export function splitStreamingMarkdownBlocks(
+  content: string
+): StreamingMarkdownBlock[] {
+  const normalized = content.replace(/\r\n?/g, "\n");
+  if (!normalized) {
+    return [{ content: "", initialKeyContent: "" }];
+  }
+
+  const lines = normalized.split("\n");
+  const blocks: StreamingMarkdownBlock[] = [];
+  const current: string[] = [];
+  let fence: { marker: string; length: number } | null = null;
+
+  for (const line of lines) {
+    current.push(line);
+    const lineFence = parseStreamingFence(line);
+    if (lineFence) {
+      if (!fence) {
+        fence = lineFence;
+      } else if (
+        lineFence.marker === fence.marker &&
+        lineFence.length >= fence.length
+      ) {
+        fence = null;
+      }
+      continue;
+    }
+    if (!fence && line.trim() === "") {
+      pushStreamingMarkdownBlock(blocks, current);
+    }
+  }
+  pushStreamingMarkdownBlock(blocks, current);
+  return blocks.length > 0
+    ? blocks
+    : [{ content: normalized, initialKeyContent: normalized }];
+}
+
+function pushStreamingMarkdownBlock(
+  blocks: StreamingMarkdownBlock[],
+  lines: string[]
+): void {
+  if (lines.length === 0) {
+    return;
+  }
+  const content = lines.join("\n");
+  if (!content) {
+    lines.length = 0;
+    return;
+  }
+  blocks.push({
+    content,
+    initialKeyContent: content
+  });
+  lines.length = 0;
+}
+
+function parseStreamingFence(
+  line: string
+): { marker: string; length: number } | null {
+  const trimmed = line.trimStart();
+  const marker = trimmed[0];
+  if (marker !== "`" && marker !== "~") {
+    return null;
+  }
+  let length = 0;
+  while (trimmed[length] === marker) {
+    length += 1;
+  }
+  return length >= 3 ? { marker, length } : null;
 }
 
 function resolveMarkdownAnchorHref(target: EventTarget | null): string | null {

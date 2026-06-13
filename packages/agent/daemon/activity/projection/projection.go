@@ -123,6 +123,14 @@ func ProjectSessionState(
 		if session.CurrentPhase == "" {
 			session.CurrentPhase = existing.CurrentPhase
 		}
+		session.Status, session.CurrentPhase = mergeSessionRuntimeState(
+			existing.Status,
+			existing.CurrentPhase,
+			session.Status,
+			session.CurrentPhase,
+			lastEvent,
+			existing.LastEventUnixMS,
+		)
 		if existing.LastEventUnixMS > session.LastEventUnixMS {
 			session.LastEventUnixMS = existing.LastEventUnixMS
 		}
@@ -137,7 +145,7 @@ func ProjectSessionState(
 	}
 	return SessionProjection{
 		Accepted:        session.WorkspaceID != "" && session.AgentSessionID != "",
-		LastEventUnixMS: lastEvent,
+		LastEventUnixMS: session.LastEventUnixMS,
 		Session:         session,
 	}
 }
@@ -250,6 +258,45 @@ func MergeMessageStatus(existing string, incoming string) string {
 		return existing
 	}
 	return incoming
+}
+
+func mergeSessionRuntimeState(
+	existingStatus string,
+	existingCurrentPhase string,
+	incomingStatus string,
+	incomingCurrentPhase string,
+	incomingEventUnixMS int64,
+	existingLastEventUnixMS int64,
+) (string, string) {
+	existingStatus = strings.TrimSpace(existingStatus)
+	existingCurrentPhase = strings.TrimSpace(existingCurrentPhase)
+	incomingStatus = strings.TrimSpace(incomingStatus)
+	incomingCurrentPhase = strings.TrimSpace(incomingCurrentPhase)
+	if incomingStatus == "" {
+		incomingStatus = existingStatus
+	}
+	if incomingCurrentPhase == "" {
+		incomingCurrentPhase = existingCurrentPhase
+	}
+	if existingLastEventUnixMS > 0 &&
+		incomingEventUnixMS > 0 &&
+		incomingEventUnixMS < existingLastEventUnixMS {
+		return existingStatus, existingCurrentPhase
+	}
+	existingCanonical := CanonicalSessionStatus(existingStatus, existingCurrentPhase)
+	if isTerminalSessionStatus(existingCanonical) {
+		return existingStatus, existingCurrentPhase
+	}
+	return incomingStatus, incomingCurrentPhase
+}
+
+func isTerminalSessionStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "completed", "failed", "canceled", "errored":
+		return true
+	default:
+		return false
+	}
 }
 
 func IsTerminalMessageStatus(status string) bool {

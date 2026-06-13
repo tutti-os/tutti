@@ -5,6 +5,15 @@ import {
 } from "./mentionFilePresentation";
 
 describe("mentionFilePresentation", () => {
+  it("resolves agent generated folder back rows as back visual kind", () => {
+    expect(
+      resolveAgentMentionFileVisualKind({
+        name: "返回",
+        mentionNavigation: "agent-generated-folder-back"
+      })
+    ).toBe("back");
+  });
+
   it("resolves image files as image visual kind", () => {
     expect(
       resolveAgentMentionFileVisualKind({

@@ -471,6 +471,8 @@ export const en = {
     transport_request_failed:
       "An unexpected service error occurred. Please try again.",
     transport_timeout: "That desktop request timed out.",
+    workspace_app_factory_publish_failed:
+      "The app draft did not pass its pre-publish check. Fix it from App Center before publishing.",
     workspace_file_not_found:
       "That file or folder could not be found in the workspace.",
     workspace_not_found: "That workspace could not be found.",

@@ -96,8 +96,10 @@ function createTransportClient(
     async createWorkspaceFile(_workspaceID, path) {
       return {
         entry: {
+          createdTimeMs: null,
           hasChildren: false,
           kind: "file",
+          lastOpenedMs: null,
           mtimeMs: null,
           name: path.split("/").at(-1) ?? path,
           path,
@@ -120,8 +122,10 @@ function createTransportClient(
     async writeWorkspaceFileText(_workspaceID, request) {
       return {
         entry: {
+          createdTimeMs: null,
           hasChildren: false,
           kind: "file",
+          lastOpenedMs: null,
           mtimeMs: null,
           name: request.path.split("/").at(-1) ?? request.path,
           path: request.path,
@@ -134,8 +138,10 @@ function createTransportClient(
     async createWorkspaceFileDirectory(_workspaceID, path) {
       return {
         entry: {
+          createdTimeMs: null,
           hasChildren: false,
           kind: "directory",
+          lastOpenedMs: null,
           mtimeMs: null,
           name: path.split("/").at(-1) ?? path,
           path,
@@ -172,8 +178,10 @@ function createTransportClient(
     async moveWorkspaceFileEntry(workspaceID, request) {
       return {
         entry: {
+          createdTimeMs: null,
           hasChildren: false,
           kind: "file",
+          lastOpenedMs: null,
           mtimeMs: null,
           name: request.path.split("/").at(-1) ?? request.path,
           path: `${request.targetDirectoryPath}/${request.path.split("/").at(-1) ?? request.path}`,
@@ -186,8 +194,10 @@ function createTransportClient(
     async renameWorkspaceFileEntry(workspaceID, request) {
       return {
         entry: {
+          createdTimeMs: null,
           hasChildren: false,
           kind: "file",
+          lastOpenedMs: null,
           mtimeMs: null,
           name: request.newName,
           path: `${request.path.split("/").slice(0, -1).join("/")}/${request.newName}`,
@@ -201,8 +211,10 @@ function createTransportClient(
       const baseName = request.path.split("/").at(-1) ?? request.path;
       return {
         entry: {
+          createdTimeMs: null,
           hasChildren: false,
           kind: "file",
+          lastOpenedMs: null,
           mtimeMs: null,
           name: `${baseName} copy`,
           path: `${request.path.split("/").slice(0, -1).join("/")}/${baseName} copy`,
@@ -370,6 +382,9 @@ function createTransportClient(
     async cancelWorkspaceAgentSession() {
       throw new Error("not used");
     },
+    async cancelWorkspaceAgentSessionWithResult() {
+      throw new Error("not used");
+    },
     async sendWorkspaceAgentSessionInput() {
       throw new Error("not used");
     },
@@ -441,8 +456,10 @@ function createTransportClient(
     async uploadWorkspaceFiles(workspaceID, request) {
       return {
         entries: request.sourcePaths.map((sourcePath) => ({
+          createdTimeMs: null,
           hasChildren: false,
           kind: "file",
+          lastOpenedMs: null,
           mtimeMs: null,
           name: sourcePath.split("/").at(-1) ?? sourcePath,
           path: `${request.targetDirectoryPath}/${sourcePath.split("/").at(-1) ?? sourcePath}`,

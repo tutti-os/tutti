@@ -19,6 +19,7 @@ const allowedFiles = new Set([
   "services/tuttid/service/cli/appcli/registry_test.go",
   "services/tuttid/service/workspace/app_archives.go",
   "services/tuttid/service/workspace/app_archives_test.go",
+  "services/tuttid/service/workspace/app_factory_test.go",
   "services/tuttid/types/defaults.go",
   "services/tuttid/types/defaults_test.go"
 ]);

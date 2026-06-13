@@ -61,8 +61,7 @@ describe("agent gui workbench state", () => {
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title",
-      pendingHandoff: null
+      lastActiveConversationTitle: "A title"
     });
   });
 
@@ -137,8 +136,7 @@ describe("agent gui workbench state", () => {
         conversationRailCollapsed: true,
         conversationRailWidthPx: 360,
         lastActiveAgentSessionId: "session-1",
-        lastActiveConversationTitle: "A title",
-        pendingHandoff: null
+        lastActiveConversationTitle: "A title"
       },
       typeId: "agent-gui"
     });
@@ -160,8 +158,7 @@ describe("agent gui workbench state", () => {
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title",
-      pendingHandoff: null
+      lastActiveConversationTitle: "A title"
     });
   });
 });

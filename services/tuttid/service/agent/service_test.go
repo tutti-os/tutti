@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 )
@@ -252,6 +253,36 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 		t.Fatalf("runtime content = %#v", call.Content)
 	}
 	if call.DisplayPrompt != "Run Automation" {
+		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
+	}
+}
+
+func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		Visible:     true,
+	}
+
+	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+		Content:       TextPromptContent("real repair prompt"),
+		DisplayPrompt: "Fix the app",
+	})
+	if err != nil {
+		t.Fatalf("SendInput error = %v", err)
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+	call := runtime.execCalls[0]
+	if len(call.Content) != 1 || call.Content[0].Text != "real repair prompt" {
+		t.Fatalf("runtime content = %#v", call.Content)
+	}
+	if call.DisplayPrompt != "Fix the app" {
 		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
 	}
 }
@@ -800,6 +831,58 @@ func TestActivityProjectionMapsLifecycleAndPhaseToServiceStatus(t *testing.T) {
 				t.Fatalf("agentActivitySessionStatus() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestActivityProjectionPublishesSessionUpdateForUnappliedStatePatch(t *testing.T) {
+	repo := &activityProjectionRepoStub{
+		stateResult: agentactivitybiz.StateReportResult{
+			Accepted:        true,
+			StateApplied:    false,
+			LastEventUnixMS: 200,
+			Session: agentactivitybiz.Session{
+				ID:              "session-1",
+				WorkspaceID:     "ws-1",
+				Status:          "completed",
+				CurrentPhase:    "idle",
+				LastEventUnixMS: 200,
+			},
+		},
+	}
+	publisher := &activityUpdatePublisherStub{}
+	projection := NewActivityProjection(repo)
+	projection.SetPublisher(publisher)
+
+	reply, err := projection.ReportSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus:  "active",
+			CurrentPhase:     "working",
+			OccurredAtUnixMS: 150,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	if !reply.Accepted || reply.StateApplied {
+		t.Fatalf("reply = %#v, want accepted unapplied state", reply)
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want 1", len(publisher.events))
+	}
+	event := publisher.events[0]
+	if event.eventType != "session_update" {
+		t.Fatalf("published event type = %q, want session_update", event.eventType)
+	}
+	if got := event.payload["eventType"]; got != "session_update" {
+		t.Fatalf("payload eventType = %#v, want session_update", got)
+	}
+	if got := event.payload["lastEventUnixMs"]; got != int64(200) {
+		t.Fatalf("payload lastEventUnixMs = %#v, want 200", got)
+	}
+	if _, ok := event.payload["lifecycleStatus"]; ok {
+		t.Fatalf("payload contains stale lifecycleStatus: %#v", event.payload)
 	}
 }
 
@@ -1376,14 +1459,68 @@ func TestServiceReconcilesStalePersistedTurnBeforeCanceling(t *testing.T) {
 		},
 	}
 
-	if _, err := service.Cancel(context.Background(), "ws-1", "session-1"); err != nil {
+	result, err := service.Cancel(context.Background(), "ws-1", "session-1")
+	if err != nil {
 		t.Fatalf("Cancel returned error: %v", err)
+	}
+	if result.Canceled || result.Reason != CancelReasonStaleTurnReconciled {
+		t.Fatalf("cancel result = %#v, want stale turn reconciled without cancel", result)
 	}
 	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
 		t.Fatalf("reconciled = %#v, want stale persisted session", reconciled)
 	}
 	if len(runtime.cancelCalls) != 0 {
 		t.Fatalf("cancel calls = %#v, want skipped stale runtime cancel", runtime.cancelCalls)
+	}
+}
+
+func TestServiceCancelReportsActiveTurnCanceled(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:              "session-1",
+		WorkspaceID:     "ws-1",
+		Provider:        "codex",
+		Status:          "working",
+		CreatedAtUnixMS: 100,
+		UpdatedAtUnixMS: 200,
+	}
+	service := NewService(runtime)
+
+	result, err := service.Cancel(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Cancel returned error: %v", err)
+	}
+	if !result.Canceled || result.Reason != CancelReasonActiveTurnCanceled {
+		t.Fatalf("cancel result = %#v, want active turn canceled", result)
+	}
+	if result.Session.ID != "session-1" || result.Session.Status != "running" {
+		t.Fatalf("session = %#v, want running session-1", result.Session)
+	}
+}
+
+func TestServiceCancelReportsNoActiveTurn(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.cancelResult = RuntimeCancelResult{AgentSessionID: "session-1", Canceled: false}
+	runtime.cancelResultSet = true
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:              "session-1",
+		WorkspaceID:     "ws-1",
+		Provider:        "codex",
+		Status:          "ready",
+		CreatedAtUnixMS: 100,
+		UpdatedAtUnixMS: 200,
+	}
+	service := NewService(runtime)
+
+	result, err := service.Cancel(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Cancel returned error: %v", err)
+	}
+	if result.Canceled || result.Reason != CancelReasonNoActiveTurn {
+		t.Fatalf("cancel result = %#v, want no active turn", result)
+	}
+	if result.Session.ID != "session-1" || result.Session.Status != "created" {
+		t.Fatalf("session = %#v, want created session-1", result.Session)
 	}
 }
 
@@ -1513,6 +1650,8 @@ func TestServiceListMessagesValidatesInputs(t *testing.T) {
 type fakeRuntime struct {
 	nextID                 int
 	cancelCalls            []RuntimeCancelInput
+	cancelResult           RuntimeCancelResult
+	cancelResultSet        bool
 	closeErr               error
 	closeCalls             []RuntimeCloseInput
 	execErr                error
@@ -1584,9 +1723,15 @@ func newFakeRuntime() *fakeRuntime {
 	}
 }
 
-func (f *fakeRuntime) Cancel(_ context.Context, input RuntimeCancelInput) error {
+func (f *fakeRuntime) Cancel(_ context.Context, input RuntimeCancelInput) (RuntimeCancelResult, error) {
 	f.cancelCalls = append(f.cancelCalls, input)
-	return nil
+	if f.cancelResultSet {
+		if f.cancelResult.AgentSessionID == "" {
+			f.cancelResult.AgentSessionID = input.AgentSessionID
+		}
+		return f.cancelResult, nil
+	}
+	return RuntimeCancelResult{AgentSessionID: input.AgentSessionID, Canceled: true}, nil
 }
 
 func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
@@ -1765,6 +1910,59 @@ func (*fakeRuntime) Subscribe(string, string) (<-chan RuntimeStreamEvent, func()
 	events := make(chan RuntimeStreamEvent)
 	close(events)
 	return events, func() {}, true
+}
+
+type activityProjectionRepoStub struct {
+	stateResult agentactivitybiz.StateReportResult
+}
+
+func (*activityProjectionRepoStub) DeleteSession(context.Context, string, string) (bool, error) {
+	return false, nil
+}
+
+func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error) {
+	return agentactivitybiz.Session{}, false, nil
+}
+
+func (*activityProjectionRepoStub) ListSessions(context.Context, string) ([]agentactivitybiz.Session, bool, error) {
+	return nil, false, nil
+}
+
+func (*activityProjectionRepoStub) ListSessionMessages(context.Context, agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {
+	return agentactivitybiz.MessagePage{}, false, nil
+}
+
+func (*activityProjectionRepoStub) ReportSessionMessages(context.Context, agentactivitybiz.SessionMessageReport) (agentactivitybiz.MessageReportResult, error) {
+	return agentactivitybiz.MessageReportResult{}, nil
+}
+
+func (r *activityProjectionRepoStub) ReportSessionState(context.Context, agentactivitybiz.SessionStateReport) (agentactivitybiz.StateReportResult, error) {
+	return r.stateResult, nil
+}
+
+func (*activityProjectionRepoStub) UpdateSessionPinned(context.Context, string, string, bool) (agentactivitybiz.Session, bool, error) {
+	return agentactivitybiz.Session{}, false, nil
+}
+
+type publishedActivityUpdate struct {
+	workspaceID    string
+	agentSessionID string
+	eventType      string
+	payload        map[string]any
+}
+
+type activityUpdatePublisherStub struct {
+	events []publishedActivityUpdate
+}
+
+func (p *activityUpdatePublisherStub) PublishAgentActivityUpdated(_ context.Context, workspaceID string, agentSessionID string, eventType string, payload map[string]any) error {
+	p.events = append(p.events, publishedActivityUpdate{
+		workspaceID:    workspaceID,
+		agentSessionID: agentSessionID,
+		eventType:      eventType,
+		payload:        payload,
+	})
+	return nil
 }
 
 func stringRef(value string) *string {

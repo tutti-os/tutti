@@ -256,6 +256,45 @@ test("desktop agent GUI workbench host input tracks runtime message stops", asyn
   ]);
 });
 
+test("desktop agent GUI workbench host input skips stopped tracking for no-op cancel", async () => {
+  const reporterCalls: ReporterEventInput[][] = [];
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    agentHostApi: {
+      meta: { workspaceId }
+    } as unknown as AgentHostInputApi,
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    reporterNow: () => 1749124800000,
+    reporterService: {
+      async trackEvents(events) {
+        reporterCalls.push(events);
+      }
+    },
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: createWorkspaceAgentActivityService([], {
+      cancelSessionResult: {
+        canceled: false,
+        reason: "no_active_turn",
+        session: {
+          ...emptySession(),
+          agentSessionId: "session-runtime-stop-1",
+          status: "ready"
+        }
+      }
+    }),
+    workspaceId
+  });
+
+  await hostInput.agentActivityRuntime.cancelSession({
+    workspaceId,
+    agentSessionId: "session-runtime-stop-1"
+  });
+
+  assert.deepEqual(reporterCalls, []);
+});
+
 test("desktop agent GUI workbench host input tracks runtime new session activation", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
@@ -957,6 +996,9 @@ function createRuntimeApi(
 function createWorkspaceAgentActivityService(
   calls: string[],
   options: {
+    cancelSessionResult?: Awaited<
+      ReturnType<IWorkspaceAgentActivityService["cancelSession"]>
+    >;
     controlStateSettings?: {
       model?: string | null;
       permissionModeId?: string | null;
@@ -995,10 +1037,23 @@ function createWorkspaceAgentActivityService(
       };
     },
     async cancelSession(input) {
+      if (options.cancelSessionResult) {
+        return {
+          ...options.cancelSessionResult,
+          session: {
+            ...options.cancelSessionResult.session,
+            agentSessionId: input.agentSessionId
+          }
+        };
+      }
       return {
-        ...emptySession(),
-        agentSessionId: input.agentSessionId,
-        status: "canceled"
+        canceled: true,
+        reason: "active_turn_canceled",
+        session: {
+          ...emptySession(),
+          agentSessionId: input.agentSessionId,
+          status: "canceled"
+        }
       };
     },
     async createSession(input) {

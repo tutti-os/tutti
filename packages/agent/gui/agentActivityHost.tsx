@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useMemo,
   type JSX,
   type PropsWithChildren
 } from "react";
@@ -30,9 +31,10 @@ export function AgentActivityHostProvider({
   agentHostApi,
   children
 }: AgentActivityHostProviderProps): JSX.Element {
-  const resolvedAgentHostApi = agentHostApi
-    ? toAgentHostRuntimeApi(agentHostApi)
-    : null;
+  const resolvedAgentHostApi = useMemo(
+    () => (agentHostApi ? toAgentHostRuntimeApi(agentHostApi) : null),
+    [agentHostApi]
+  );
   currentAgentHostApi = resolvedAgentHostApi;
   return (
     <AgentActivityRuntimeProvider runtime={agentActivityRuntime}>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
-import type { WorkspaceUserProjectServiceLike } from "@tutti-os/workspace-user-project/contracts";
+import type { WorkspaceUserProjectService } from "@tutti-os/workspace-user-project/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type {
   IssueManagerAgentProviderOption,
@@ -8,7 +8,6 @@ import type {
   IssueManagerFileReference,
   IssueManagerIssueDetail,
   IssueManagerIssueSummary,
-  IssueManagerExecutionDirectoryProject,
   IssueManagerNodeState,
   IssueManagerOpenSource,
   IssueManagerPriority,
@@ -84,10 +83,7 @@ export interface IssueManagerController {
   openAgentSession: (run: IssueManagerRun) => Promise<void>;
   openReference: (reference: IssueManagerFileReference) => Promise<void>;
   providerOptions: readonly IssueManagerAgentProviderOption[];
-  executionDirectoryProjectService: WorkspaceUserProjectServiceLike | null;
-  listExecutionDirectoryProjects: () => Promise<{
-    projects: IssueManagerExecutionDirectoryProject[];
-  }>;
+  executionDirectoryProjectService: WorkspaceUserProjectService | null;
   reportIssueSearchUsage: (query: string) => void;
   refreshAll: () => void;
   referenceTarget: IssueManagerReferenceTarget | null;
@@ -290,9 +286,6 @@ export function useIssueManagerController({
     executionDirectoryProjectService:
       feature.executionDirectoryPicker?.service ?? null,
     workspaceUserProjectI18n: feature.workspaceUserProjectI18n,
-    listExecutionDirectoryProjects: () =>
-      feature.executionDirectoryPicker?.list() ??
-      Promise.resolve({ projects: [] }),
     referenceTarget,
     selectTopic(topicId: string) {
       const trimmedTopicId = topicId.trim();

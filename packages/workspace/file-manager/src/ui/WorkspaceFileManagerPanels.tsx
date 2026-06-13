@@ -40,6 +40,10 @@ import type {
 } from "../services/workspaceFileManagerTypes.ts";
 import { WorkspaceFileManagerIconGrid } from "./WorkspaceFileManagerIconGrid.tsx";
 import { WorkspaceFileEntryIcon } from "./WorkspaceFileEntryIcon.tsx";
+import {
+  resolveWorkspaceFileEntryArrangeDateMs,
+  type WorkspaceFileManagerArrangeMode
+} from "./workspaceFileManagerArrangeMode.ts";
 import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
 
 const workspaceFileManagerTableGridClassName =
@@ -68,6 +72,7 @@ const workspaceFileManagerEntryOpenClickIntervalMs = 500;
 export type WorkspaceFileManagerEntryDragMode = "external" | "internal-move";
 
 export function WorkspaceFileManagerPanels({
+  arrangeMode,
   canMove,
   contextMenuEntryPath,
   dateLocale,
@@ -95,6 +100,7 @@ export function WorkspaceFileManagerPanels({
   onOpenEntry,
   onSelect
 }: {
+  arrangeMode: WorkspaceFileManagerArrangeMode;
   canMove: boolean;
   contextMenuEntryPath: string | null;
   dateLocale?: TuttiDateLocale;
@@ -158,6 +164,10 @@ export function WorkspaceFileManagerPanels({
     onEntryDragStart !== undefined &&
     (entryDragMode === "external" || (entryDragMode === undefined && !canMove));
   const internalMoveEnabled = canMove && !nativeEntryDragEnabled;
+  const dateColumnLabel = resolveWorkspaceFileManagerDateColumnLabel(
+    copy,
+    arrangeMode
+  );
   const stopMoveDragAutoScroll = useCallback((): void => {
     const autoScroll = moveDragAutoScrollRef.current;
     if (autoScroll?.frameId !== null && autoScroll?.frameId !== undefined) {
@@ -379,7 +389,7 @@ export function WorkspaceFileManagerPanels({
     stopMoveDragAutoScroll,
     updateMoveDragAutoScroll
   ]);
-  const showPreviewPanel = false;
+  const showPreviewPanel = layoutMode === "list";
   const useStackedPreview = false;
   const previewPaneClassName = useStackedPreview
     ? "min-w-0 border-t border-[var(--border-1)]"
@@ -547,7 +557,7 @@ export function WorkspaceFileManagerPanels({
                 <span
                   className={cn("whitespace-nowrap", tableCellPaddingClassName)}
                 >
-                  {copy.t("modifiedLabel")}
+                  {dateColumnLabel}
                 </span>
                 <span
                   className={cn("whitespace-nowrap", tableCellPaddingClassName)}
@@ -560,6 +570,7 @@ export function WorkspaceFileManagerPanels({
                   key={entry.path}
                   contextMenuActive={contextMenuEntryPath === entry.path}
                   copy={copy}
+                  arrangeMode={arrangeMode}
                   dateLocale={dateLocale}
                   entry={entry}
                   iconUrlByCacheKey={iconUrlByCacheKey}
@@ -711,7 +722,25 @@ function useWorkspaceFileManagerStackedLayout(breakpoint: number): {
   return { isStacked, rootRef };
 }
 
+function resolveWorkspaceFileManagerDateColumnLabel(
+  copy: WorkspaceFileManagerI18nRuntime,
+  arrangeMode: WorkspaceFileManagerArrangeMode
+): string {
+  switch (arrangeMode) {
+    case "lastOpened":
+      return copy.t("arrangeLastOpenedLabel");
+    case "dateAdded":
+      return copy.t("arrangeDateAddedLabel");
+    case "created":
+      return copy.t("arrangeCreatedLabel");
+    case "modified":
+    default:
+      return copy.t("modifiedLabel");
+  }
+}
+
 function EntryRow({
+  arrangeMode,
   canMove,
   contextMenuActive,
   copy,
@@ -738,6 +767,7 @@ function EntryRow({
   onClick,
   onPointerDown
 }: {
+  arrangeMode: WorkspaceFileManagerArrangeMode;
   canMove: boolean;
   contextMenuActive: boolean;
   copy: WorkspaceFileManagerI18nRuntime;
@@ -831,7 +861,10 @@ function EntryRow({
         tableCellPaddingClassName
       )}
     >
-      {formatWorkspaceFileModifiedTime(entry.mtimeMs, dateLocale)}
+      {formatWorkspaceFileModifiedTime(
+        resolveWorkspaceFileEntryArrangeDateMs(entry, arrangeMode),
+        dateLocale
+      )}
     </span>
   );
   const sizeCell = (

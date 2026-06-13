@@ -11,7 +11,7 @@ export async function executeIssueManagerRunTask(input: {
   provider: string;
   task?: IssueManagerTaskDetail["task"];
   workspaceId: string;
-}): Promise<{ status: string }> {
+}): Promise<{ errorMessage?: string; status: string }> {
   const agentSessionId = createIssueManagerAgentSessionId();
   const result = await input.feature.agentRunner.runTask({
     agentSessionId,
@@ -25,6 +25,9 @@ export async function executeIssueManagerRunTask(input: {
   });
 
   return {
+    ...(result.errorMessage?.trim()
+      ? { errorMessage: result.errorMessage.trim() }
+      : {}),
     status: result.status
   };
 }

@@ -11,133 +11,115 @@ import type {
   IssueManagerAgentRunResult
 } from "@tutti-os/workspace-issue-manager/contracts";
 
-export interface DesktopIssueManagerAgentHostApi {
-  agentSessions: {
-    activate(input: {
-      agentSessionId: string;
-      cwd?: string;
-      mode: "new";
-      provider: string;
-      settings: Record<string, never>;
-      title: string;
-      workspaceId: string;
-    }): Promise<{
-      activation: { status: string };
-      error?: { code?: string; message?: string };
-      session: { agentSessionId: string; cwd?: string; status?: string };
-    }>;
-    exec(input: {
-      agentSessionId: string;
-      prompt: string;
-      workspaceId: string;
-    }): Promise<{
-      accepted: boolean;
-      agentSessionId: string;
-      sessionStatus?: string;
-      status?: string;
-      turnId?: string;
-    }>;
-    getState?(input: {
-      agentSessionId: string;
-      workspaceId: string;
-    }): Promise<DesktopIssueManagerAgentSessionState>;
-  };
-}
-
-interface DesktopIssueManagerAgentSessionState {
-  lastError?: string | null;
-  status?: string | null;
-}
-
-export interface DesktopIssueManagerAgentGuiHandoff {
-  issueId?: string | null;
-  issueTitle?: string | null;
-  prompt: string;
-  requestId: string;
-  taskId?: string | null;
-  taskTitle: string;
-  title: string;
+export interface DesktopIssueManagerAgentSessionCreator {
+  createSession(input: {
+    agentSessionId: string;
+    cwd?: string | null;
+    prompt: string;
+    provider: string;
+    source?: string | null;
+    title: string;
+    userProjectPath?: string | null;
+    workspaceId: string;
+  }): Promise<{
+    agentSessionId: string;
+    provider?: string | null;
+    status?: string | null;
+  }>;
 }
 
 export interface DesktopIssueManagerAgentGuiLaunchInput {
   agentSessionId?: string;
-  pendingHandoff?: DesktopIssueManagerAgentGuiHandoff;
   provider: string;
   workspaceId: string;
 }
 
 export function createDesktopIssueManagerAgentRunner(input: {
-  agentHostApi: DesktopIssueManagerAgentHostApi;
+  agentSessionCreator?: DesktopIssueManagerAgentSessionCreator;
   i18n?: I18nRuntime<string>;
   launchAgentGui?: (
     input: DesktopIssueManagerAgentGuiLaunchInput
   ) => Promise<void> | void;
   workspaceId: string;
 }): IssueManagerAgentRunner {
-  const { agentHostApi, launchAgentGui, workspaceId } = input;
-
   return {
     async runTask(request): Promise<IssueManagerAgentRunResult> {
-      const activation = await agentHostApi.agentSessions.activate({
-        agentSessionId: request.agentSessionId,
-        ...(request.executionDirectory?.trim()
-          ? { cwd: request.executionDirectory.trim() }
-          : {}),
-        mode: "new",
-        provider: request.provider,
-        settings: {},
-        title: request.task?.title || request.issue.title,
-        workspaceId
-      });
-      if (activation.activation.status === "failed") {
-        return {
-          errorMessage:
-            activation.error?.message ??
-            activation.error?.code ??
-            "issue_manager.agent_activation_failed",
-          status: "failed"
-        };
-      }
-      const executionDirectory = activation.session.cwd?.trim() || ".";
       const prompt = buildIssueManagerRunPrompt({
         copy: createIssueManagerI18nRuntime(input.i18n),
         issue: request.issue,
         task: request.task,
-        workspaceRoot: executionDirectory
+        workspaceRoot: "."
       });
+      const issueTitle = request.issue.title;
+      const taskTitle = request.task?.title || issueTitle;
 
-      try {
-        await launchAgentGui?.({
-          agentSessionId: request.agentSessionId,
-          provider: request.provider,
-          workspaceId
-        });
-      } catch {
-        // The run can continue even if the workbench window is not available.
-      }
-
-      const exec = await agentHostApi.agentSessions.exec({
+      return createAndOpenIssueManagerAgentSession({
+        agentSessionCreator: input.agentSessionCreator,
         agentSessionId: request.agentSessionId,
+        cwd: request.executionDirectory,
+        launchAgentGui: input.launchAgentGui,
         prompt,
-        workspaceId
+        provider: request.provider,
+        source: "issue_manager",
+        title: taskTitle,
+        userProjectPath: request.executionDirectory,
+        workspaceId: input.workspaceId
       });
-      if (!exec.accepted) {
-        return {
-          errorMessage: "issue_manager.agent_exec_rejected",
-          sessionId: request.agentSessionId,
-          status: "failed"
-        };
-      }
-
-      return {
-        sessionId: request.agentSessionId,
-        status: "opened"
-      };
     }
   };
 }
 
+function createAndOpenIssueManagerAgentSession(input: {
+  agentSessionCreator?: DesktopIssueManagerAgentSessionCreator;
+  agentSessionId: string;
+  cwd?: string | null;
+  launchAgentGui?: (
+    input: DesktopIssueManagerAgentGuiLaunchInput
+  ) => Promise<void> | void;
+  prompt: string;
+  provider: string;
+  source?: string | null;
+  title: string;
+  userProjectPath?: string | null;
+  workspaceId: string;
+}): Promise<{
+  errorMessage?: string;
+  sessionId?: string;
+  status: "opened" | "failed";
+}> {
+  if (!input.agentSessionCreator || !input.launchAgentGui) {
+    return Promise.resolve({
+      errorMessage: "issue_manager.agent_gui_launch_unavailable",
+      status: "failed"
+    });
+  }
+
+  return input.agentSessionCreator
+    .createSession({
+      agentSessionId: input.agentSessionId,
+      cwd: input.cwd,
+      prompt: input.prompt,
+      provider: input.provider,
+      source: input.source,
+      title: input.title,
+      userProjectPath: input.userProjectPath,
+      workspaceId: input.workspaceId
+    })
+    .then(async (session) => {
+      await input.launchAgentGui?.({
+        agentSessionId: session.agentSessionId,
+        provider: session.provider?.trim() || input.provider,
+        workspaceId: input.workspaceId
+      });
+      return {
+        sessionId: session.agentSessionId,
+        status: "opened" as const
+      };
+    });
+}
+
 export function createDesktopIssueManagerAgentBreakdownLauncher(input: {
+  agentSessionCreator?: DesktopIssueManagerAgentSessionCreator;
   i18n?: I18nRuntime<string>;
   launchAgentGui?: (
     input: DesktopIssueManagerAgentGuiLaunchInput
@@ -146,13 +128,6 @@ export function createDesktopIssueManagerAgentBreakdownLauncher(input: {
 }): IssueManagerAgentBreakdownLauncher {
   return {
     async startBreakdown(request): Promise<IssueManagerAgentBreakdownResult> {
-      if (!input.launchAgentGui) {
-        return {
-          errorMessage: "issue_manager.agent_gui_launch_unavailable",
-          status: "failed"
-        };
-      }
-
       const prompt = buildIssueManagerTaskBreakdownPrompt({
         copy: createIssueManagerI18nRuntime(input.i18n),
         issueDetail: {
@@ -164,29 +139,29 @@ export function createDesktopIssueManagerAgentBreakdownLauncher(input: {
       });
       const issueTitle = request.issueDetail.issue.title;
 
-      await input.launchAgentGui({
-        pendingHandoff: {
-          issueId: request.issueDetail.issue.issueId,
-          issueTitle,
-          prompt,
-          requestId: createIssueManagerAgentHandoffId(),
-          taskId: null,
-          taskTitle: issueTitle,
-          title: issueTitle
-        },
+      const session = await createAndOpenIssueManagerAgentSession({
+        agentSessionCreator: input.agentSessionCreator,
+        agentSessionId: createIssueManagerAgentSessionId(),
+        cwd: request.executionDirectory,
+        launchAgentGui: input.launchAgentGui,
+        prompt,
         provider: request.provider,
+        source: "issue_manager_breakdown",
+        title: issueTitle,
+        userProjectPath: request.executionDirectory,
         workspaceId: input.workspaceId
       });
-
-      return { status: "opened" };
+      return session.errorMessage
+        ? { errorMessage: session.errorMessage, status: session.status }
+        : { status: session.status };
     }
   };
 }
 
-function createIssueManagerAgentHandoffId(): string {
+function createIssueManagerAgentSessionId(): string {
   const randomUUID = globalThis.crypto?.randomUUID?.();
   if (randomUUID) {
-    return `issue-breakdown-${randomUUID}`;
+    return randomUUID;
   }
-  return `issue-breakdown-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `issue-session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }

@@ -62,6 +62,7 @@ type ReportSessionStateInput struct {
 
 type ReportSessionStateReply struct {
 	Accepted          bool  `json:"accepted"`
+	StateApplied      bool  `json:"stateApplied"`
 	LastEventAtUnixMS int64 `json:"lastEventAtUnixMs"`
 	RequestBodyBytes  int   `json:"-"`
 }
@@ -69,6 +70,8 @@ type ReportSessionStateReply struct {
 func (r *ReportSessionStateReply) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Accepted                 bool          `json:"accepted"`
+		StateApplied             *bool         `json:"stateApplied"`
+		StateAppliedSnake        *bool         `json:"state_applied"`
 		LastEventAtUnixMS        flexibleInt64 `json:"lastEventAtUnixMs"`
 		LastEventAtUnixMSSnake   flexibleInt64 `json:"last_event_at_unix_ms"`
 		RequestBodyBytesIgnored  int           `json:"requestBodyBytes"`
@@ -77,8 +80,15 @@ func (r *ReportSessionStateReply) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
+	stateApplied := raw.Accepted
+	if raw.StateApplied != nil {
+		stateApplied = *raw.StateApplied
+	} else if raw.StateAppliedSnake != nil {
+		stateApplied = *raw.StateAppliedSnake
+	}
 	*r = ReportSessionStateReply{
 		Accepted:          raw.Accepted,
+		StateApplied:      stateApplied,
 		LastEventAtUnixMS: int64(firstNonZeroFlexibleInt64(raw.LastEventAtUnixMS, raw.LastEventAtUnixMSSnake)),
 	}
 	return nil

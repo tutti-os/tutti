@@ -328,6 +328,7 @@ export const zhCN = {
       followupPlaceholder: "要求 {{provider}} 继续后续变更",
       installRequiredPlaceholder:
         "请先从 Dock 安装 {{provider}}，然后再发送消息",
+      collaboratorSessionReadOnlyPlaceholder: "非当前用户会话，不可直接对话",
       send: "发送",
       modelLabel: "模型",
       modelSelectionLabel: "模型选择",
@@ -598,6 +599,7 @@ export const zhCN = {
       approvalUnavailable: "没有可用选项。",
       approvalOptions: {
         allowOnce: "允许执行",
+        allowForSession: "本次会话允许",
         allowAlways: "允许，并且不再询问",
         allowAlwaysForCommandPrefix:
           "允许，并且不再询问以 `{{command}}` 开头的命令",

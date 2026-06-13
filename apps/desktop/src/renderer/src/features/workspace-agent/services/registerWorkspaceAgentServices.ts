@@ -10,7 +10,9 @@ import { IAgentProviderStatusService } from "./agentProviderStatusService.interf
 import type { AgentProviderTerminalCommandRunner } from "./agentProviderStatusService.interface";
 import { DesktopAgentProviderStatusService } from "./internal/desktopAgentProviderStatusService";
 import { WorkspaceAgentActivityService } from "./internal/workspaceAgentActivityService";
+import { WorkspaceAgentPromptSessionService } from "./internal/workspaceAgentPromptSessionService";
 import { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
+import { IWorkspaceAgentPromptSessionService } from "./workspaceAgentPromptSessionService.interface";
 
 export interface WorkspaceAgentServiceRegistrationInput {
   eventStreamClient?: TuttidEventStreamClient;
@@ -35,6 +37,14 @@ export function registerWorkspaceAgentServices(
   registry.registerInstance(
     IWorkspaceAgentActivityService,
     workspaceAgentActivityService
+  );
+  registry.registerInstance(
+    IWorkspaceAgentPromptSessionService,
+    new WorkspaceAgentPromptSessionService({
+      reporterService: input.reporterService,
+      workspaceAgentActivityService,
+      workspaceUserProjectService: input.workspaceUserProjectService
+    })
   );
 
   registry.register(

@@ -113,6 +113,7 @@ export function IssueManagerSidebarBody({
 }): JSX.Element {
   return (
     <ScrollArea
+      scrollbarMode="native"
       className={cn("min-h-0", isNarrowLayout ? "flex-none" : "h-full flex-1")}
     >
       <div

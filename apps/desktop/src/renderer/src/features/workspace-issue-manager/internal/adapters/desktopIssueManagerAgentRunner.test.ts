@@ -3,56 +3,19 @@ import test from "node:test";
 import {
   createDesktopIssueManagerAgentBreakdownLauncher,
   createDesktopIssueManagerAgentRunner,
-  type DesktopIssueManagerAgentGuiLaunchInput
+  type DesktopIssueManagerAgentGuiLaunchInput,
+  type DesktopIssueManagerAgentSessionCreator
 } from "./desktopIssueManagerAgentRunner.ts";
 import { createI18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { issueManagerI18nResources } from "@tutti-os/workspace-issue-manager";
 
-test("desktop issue-manager agent runner sends execute handoff without run context", async () => {
-  let capturedActivation:
-    | {
-        agentSessionId?: string | null;
-        mode?: string | null;
-        provider?: string | null;
-        settings?: Record<string, never>;
-        title?: string | null;
-        workspaceId?: string | null;
-      }
-    | undefined;
-  let capturedExec:
-    | {
-        agentSessionId?: string | null;
-        prompt?: string | null;
-      }
-    | undefined;
+test("desktop issue-manager agent runner creates execute session and opens it", async () => {
+  let capturedCreate: AgentSessionCreateInput | undefined;
   let capturedLaunch: DesktopIssueManagerAgentGuiLaunchInput | undefined;
   const runner = createDesktopIssueManagerAgentRunner({
-    agentHostApi: {
-      agentSessions: {
-        async activate(input) {
-          capturedActivation = input;
-          return {
-            activation: { status: "attached" },
-            session: {
-              agentSessionId: input.agentSessionId,
-              cwd: "/Users/example/.tutti-dev/sessions/2026-06-03-001",
-              status: "ready"
-            }
-          };
-        },
-        async exec(input) {
-          capturedExec = input;
-          return {
-            accepted: true,
-            agentSessionId: input.agentSessionId,
-            sessionStatus: "working",
-            status: "started",
-            turnId: "turn-1"
-          };
-        },
-        getState: undefined
-      }
-    },
+    agentSessionCreator: createAgentSessionCreator((input) => {
+      capturedCreate = input;
+    }),
     launchAgentGui(input) {
       capturedLaunch = input;
     },
@@ -61,84 +24,50 @@ test("desktop issue-manager agent runner sends execute handoff without run conte
 
   const result = await runner.runTask(createRunRequest());
 
-  assert.equal(capturedActivation?.provider, "codex");
-  assert.equal(capturedActivation?.title, "Port renderer");
-  assert.equal(capturedActivation?.workspaceId, "workspace-1");
-  assert.equal(capturedActivation?.mode, "new");
-  assert.deepEqual(capturedActivation?.settings, {});
-  assert.equal(capturedActivation?.agentSessionId, "agent-session-1");
-  assert.deepEqual(capturedLaunch, {
-    agentSessionId: "agent-session-1",
-    provider: "codex",
-    workspaceId: "workspace-1"
-  });
-  assert.equal(capturedExec?.agentSessionId, "agent-session-1");
-  assert.match(capturedExec?.prompt ?? "", /Handle this issue reference/);
+  const capturedPrompt = capturedCreate?.prompt ?? "";
+  assert.equal(capturedCreate?.agentSessionId, "agent-session-1");
+  assert.equal(capturedCreate?.cwd, undefined);
+  assert.equal(capturedCreate?.provider, "codex");
+  assert.equal(capturedCreate?.source, "issue_manager");
+  assert.equal(capturedCreate?.title, "Port renderer");
+  assert.equal(capturedCreate?.workspaceId, "workspace-1");
+  assert.equal(capturedLaunch?.agentSessionId, "agent-session-1");
+  assert.equal(capturedLaunch?.provider, "codex");
+  assert.equal(capturedLaunch?.workspaceId, "workspace-1");
+  assert.match(capturedPrompt, /Handle this issue reference/);
   assert.match(
-    capturedExec?.prompt ?? "",
+    capturedPrompt,
     /\[@Plan migration \/ Port renderer\]\(mention:\/\/workspace-issue\?workspaceId=workspace-1&id=issue-1&mode=execute&topicId=topic-1&taskId=task-1\)/
   );
-  assert.doesNotMatch(capturedExec?.prompt ?? "", /runId=/);
-  assert.doesNotMatch(capturedExec?.prompt ?? "", /outputDir=/);
-  assert.doesNotMatch(capturedExec?.prompt ?? "", /Task 标题：Port renderer/);
+  assert.doesNotMatch(capturedPrompt, /runId=/);
+  assert.doesNotMatch(capturedPrompt, /outputDir=/);
+  assert.doesNotMatch(capturedPrompt, /Task 标题：Port renderer/);
   assert.doesNotMatch(
-    capturedExec?.prompt ?? "",
+    capturedPrompt,
     /工作目录：\/Users\/liying\/\.tutti-dev\/sessions\/2026-06-03-001/
   );
-  assert.doesNotMatch(capturedExec?.prompt ?? "", /建议输出目录：/);
-  assert.doesNotMatch(capturedExec?.prompt ?? "", /docs\/spec\.md/);
-  assert.doesNotMatch(capturedExec?.prompt ?? "", /docs\/design\.md/);
-  assert.doesNotMatch(capturedExec?.prompt ?? "", /Tutti Issue Run Context/);
-  assert.doesNotMatch(capturedExec?.prompt ?? "", /Agent Provider：codex/);
-  assert.doesNotMatch(
-    capturedExec?.prompt ?? "",
-    /Agent Session ID：agent-session-1/
-  );
+  assert.doesNotMatch(capturedPrompt, /建议输出目录：/);
+  assert.doesNotMatch(capturedPrompt, /docs\/spec\.md/);
+  assert.doesNotMatch(capturedPrompt, /docs\/design\.md/);
+  assert.doesNotMatch(capturedPrompt, /Tutti Issue Run Context/);
+  assert.doesNotMatch(capturedPrompt, /Agent Provider：codex/);
+  assert.doesNotMatch(capturedPrompt, /Agent Session ID：agent-session-1/);
   assert.deepEqual(result, {
     sessionId: "agent-session-1",
     status: "opened"
   });
 });
 
-test("desktop issue-manager agent runner reports exec rejection", async () => {
-  let capturedActivation:
-    | {
-        agentSessionId?: string | null;
-      }
-    | undefined;
+test("desktop issue-manager agent runner reports unavailable session creator", async () => {
   const runner = createDesktopIssueManagerAgentRunner({
-    agentHostApi: {
-      agentSessions: {
-        async activate(input) {
-          capturedActivation = input;
-          return {
-            activation: { status: "attached" },
-            session: {
-              agentSessionId: input.agentSessionId,
-              cwd: "/Users/example/.tutti-dev/sessions/2026-06-03-002",
-              status: "ready"
-            }
-          };
-        },
-        async exec(input) {
-          return {
-            accepted: false,
-            agentSessionId: input.agentSessionId,
-            sessionStatus: "working",
-            status: "started"
-          };
-        }
-      }
-    },
+    launchAgentGui() {},
     workspaceId: "workspace-1"
   });
 
   const result = await runner.runTask(createRunRequest());
 
-  assert.equal(capturedActivation?.agentSessionId, "agent-session-1");
   assert.deepEqual(result, {
-    errorMessage: "issue_manager.agent_exec_rejected",
-    sessionId: "agent-session-1",
+    errorMessage: "issue_manager.agent_gui_launch_unavailable",
     status: "failed"
   });
 });
@@ -146,32 +75,13 @@ test("desktop issue-manager agent runner reports exec rejection", async () => {
 test("desktop issue-manager agent runner sends localized execute prompt", async () => {
   let capturedPrompt = "";
   const runner = createDesktopIssueManagerAgentRunner({
-    agentHostApi: {
-      agentSessions: {
-        async activate(input) {
-          return {
-            activation: { status: "attached" },
-            session: {
-              agentSessionId: input.agentSessionId,
-              cwd: "/Users/example/.tutti-dev/sessions/2026-06-03-001",
-              status: "ready"
-            }
-          };
-        },
-        async exec(input) {
-          capturedPrompt = input.prompt;
-          return {
-            accepted: true,
-            agentSessionId: input.agentSessionId,
-            sessionStatus: "working",
-            status: "started"
-          };
-        }
-      }
-    },
+    agentSessionCreator: createAgentSessionCreator((input) => {
+      capturedPrompt = input.prompt;
+    }),
     i18n: createI18nRuntime({
       dictionaries: [issueManagerI18nResources["zh-CN"]]
     }),
+    launchAgentGui() {},
     workspaceId: "workspace-1"
   });
 
@@ -181,53 +91,35 @@ test("desktop issue-manager agent runner sends localized execute prompt", async 
   assert.doesNotMatch(capturedPrompt, /Handle this issue reference/);
 });
 
-test("desktop issue-manager agent runner passes selected execution directory", async () => {
-  let capturedActivation:
-    | {
-        cwd?: string;
-      }
-    | undefined;
+test("desktop issue-manager agent runner passes selected execution directory to session creator", async () => {
+  let capturedCreate: AgentSessionCreateInput | undefined;
   const runner = createDesktopIssueManagerAgentRunner({
-    agentHostApi: {
-      agentSessions: {
-        async activate(input) {
-          capturedActivation = input;
-          return {
-            activation: { status: "attached" },
-            session: {
-              agentSessionId: input.agentSessionId,
-              cwd: input.cwd,
-              status: "ready"
-            }
-          };
-        },
-        async exec(input) {
-          assert.doesNotMatch(input.prompt, /\/Users\/liying\/project\/tutti/);
-          assert.match(input.prompt, /mention:\/\/workspace-issue/);
-          return {
-            accepted: true,
-            agentSessionId: input.agentSessionId,
-            sessionStatus: "working",
-            status: "started"
-          };
-        },
-        getState: undefined
-      }
-    },
+    agentSessionCreator: createAgentSessionCreator((input) => {
+      capturedCreate = input;
+    }),
+    launchAgentGui() {},
     workspaceId: "workspace-1"
   });
 
   const result = await runner.runTask(
     createRunRequest({ executionDirectory: "/Users/example/project/tutti" })
   );
+  const prompt = capturedCreate?.prompt ?? "";
 
-  assert.equal(capturedActivation?.cwd, "/Users/example/project/tutti");
+  assert.equal(capturedCreate?.cwd, "/Users/example/project/tutti");
+  assert.equal(capturedCreate?.userProjectPath, "/Users/example/project/tutti");
+  assert.doesNotMatch(prompt, /\/Users\/example\/project\/tutti/);
+  assert.match(prompt, /mention:\/\/workspace-issue/);
   assert.equal(result.status, "opened");
 });
 
-test("desktop issue-manager agent breakdown launcher opens agent gui handoff", async () => {
+test("desktop issue-manager agent breakdown launcher creates session and opens it", async () => {
+  let capturedCreate: AgentSessionCreateInput | undefined;
   let capturedLaunch: DesktopIssueManagerAgentGuiLaunchInput | undefined;
   const launcher = createDesktopIssueManagerAgentBreakdownLauncher({
+    agentSessionCreator: createAgentSessionCreator((input) => {
+      capturedCreate = input;
+    }, "breakdown-session-1"),
     launchAgentGui(input) {
       capturedLaunch = input;
     },
@@ -258,43 +150,43 @@ test("desktop issue-manager agent breakdown launcher opens agent gui handoff", a
       },
       tasks: []
     },
+    executionDirectory: "/Users/example/project/tutti",
     provider: "gemini",
     workspaceId: "workspace-1"
   });
 
   assert.deepEqual(result, { status: "opened" });
-  assert.equal(capturedLaunch?.agentSessionId, undefined);
+  assert.ok(capturedCreate?.agentSessionId);
+  assert.equal(capturedCreate?.cwd, "/Users/example/project/tutti");
+  assert.equal(capturedCreate?.provider, "gemini");
+  assert.equal(capturedCreate?.source, "issue_manager_breakdown");
+  assert.equal(capturedCreate?.title, "Plan migration");
+  assert.equal(capturedCreate?.userProjectPath, "/Users/example/project/tutti");
+  assert.equal(capturedCreate?.workspaceId, "workspace-1");
+  assert.equal(capturedLaunch?.agentSessionId, "breakdown-session-1");
   assert.equal(capturedLaunch?.provider, "gemini");
   assert.equal(capturedLaunch?.workspaceId, "workspace-1");
-  assert.equal(capturedLaunch?.pendingHandoff?.issueId, "issue-1");
-  assert.equal(capturedLaunch?.pendingHandoff?.taskId, null);
   assert.match(
-    capturedLaunch?.pendingHandoff?.requestId ?? "",
-    /^issue-breakdown-/
-  );
-  assert.match(
-    capturedLaunch?.pendingHandoff?.prompt ?? "",
+    capturedCreate?.prompt ?? "",
     /Break this issue reference down into executable tasks/
   );
   assert.match(
-    capturedLaunch?.pendingHandoff?.prompt ?? "",
+    capturedCreate?.prompt ?? "",
     /mention:\/\/workspace-issue\?workspaceId=workspace-1&id=issue-1&mode=breakdown&topicId=topic-1/
   );
-  assert.doesNotMatch(
-    capturedLaunch?.pendingHandoff?.prompt ?? "",
-    /引用资料数：1/
-  );
+  assert.doesNotMatch(capturedCreate?.prompt ?? "", /引用资料数：1/);
 });
 
 test("desktop issue-manager agent breakdown launcher sends localized prompt", async () => {
-  let capturedLaunch: DesktopIssueManagerAgentGuiLaunchInput | undefined;
+  let capturedPrompt = "";
   const launcher = createDesktopIssueManagerAgentBreakdownLauncher({
+    agentSessionCreator: createAgentSessionCreator((input) => {
+      capturedPrompt = input.prompt;
+    }),
     i18n: createI18nRuntime({
       dictionaries: [issueManagerI18nResources["zh-CN"]]
     }),
-    launchAgentGui(input) {
-      capturedLaunch = input;
-    },
+    launchAgentGui() {},
     workspaceId: "workspace-1"
   });
 
@@ -316,15 +208,32 @@ test("desktop issue-manager agent breakdown launcher sends localized prompt", as
     workspaceId: "workspace-1"
   });
 
-  assert.match(
-    capturedLaunch?.pendingHandoff?.prompt ?? "",
-    /请基于这个 Issue 引用做任务拆解/
-  );
+  assert.match(capturedPrompt, /请基于这个 Issue 引用做任务拆解/);
   assert.doesNotMatch(
-    capturedLaunch?.pendingHandoff?.prompt ?? "",
+    capturedPrompt,
     /Break this issue reference down into executable tasks/
   );
 });
+
+type AgentSessionCreateInput = Parameters<
+  DesktopIssueManagerAgentSessionCreator["createSession"]
+>[0];
+
+function createAgentSessionCreator(
+  capture: (input: AgentSessionCreateInput) => void,
+  resultAgentSessionId?: string
+): DesktopIssueManagerAgentSessionCreator {
+  return {
+    async createSession(input) {
+      capture(input);
+      return {
+        agentSessionId: resultAgentSessionId ?? input.agentSessionId,
+        provider: input.provider,
+        status: "running"
+      };
+    }
+  };
+}
 
 function createRunRequest(input?: { executionDirectory?: string | null }) {
   return {

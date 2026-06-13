@@ -396,7 +396,7 @@ export function IssueManagerTaskSection({
         </Button>
       </div>
 
-      <ScrollArea className="h-[16rem]">
+      <ScrollArea scrollbarMode="native" className="h-[16rem]">
         <div className="px-8 py-5">
           {controller.issueDetail.isLoading &&
           controller.issueDetail.value === null ? (

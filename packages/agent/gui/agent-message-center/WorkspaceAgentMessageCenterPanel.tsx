@@ -29,6 +29,8 @@ import type {
 } from "./workspaceAgentMessageCenterModel";
 import { MessageCenterViewMenu } from "./WorkspaceAgentMessageCenterViewControls";
 import {
+  MessageCenterIdentityAvatarMark,
+  MessageCenterIdentityLabel,
   resolveMessageCenterNotificationAction,
   WorkspaceAgentMessageCenterStack,
   WorkspaceAgentMessageCenterCard
@@ -38,7 +40,7 @@ import {
   buildMessageCenterStatusOptions,
   groupMessageCenterItems,
   itemMatchesViewFilters,
-  partitionMessageCenterItemsByProvider,
+  partitionMessageCenterItemsByAgentUser,
   statusFilterSummary,
   type MessageCenterGroupBy,
   type MessageCenterStatusFilter
@@ -334,12 +336,12 @@ function WorkspaceAgentMessageCenterPanelContent({
       return;
     }
     for (const group of itemGroups) {
-      for (const stack of partitionMessageCenterItemsByProvider(group.items)) {
+      for (const stack of partitionMessageCenterItemsByAgentUser(group.items)) {
         if (
           stack.items.length > 1 &&
           stack.items.some((item) => item.id === highlightedItemId)
         ) {
-          expandStack(`${group.id}:${stack.provider}`);
+          expandStack(`${group.id}:${stack.id}`);
           return;
         }
       }
@@ -455,9 +457,7 @@ function WorkspaceAgentMessageCenterPanelContent({
                     aria-label={`${group.label} ${group.items.length}`}
                   >
                     <div className="flex min-w-0 items-center justify-between gap-3 px-0.5">
-                      <h3 className="truncate text-[11px] font-normal leading-4 text-[var(--text-tertiary)]">
-                        {group.label} · {group.items.length}
-                      </h3>
+                      <MessageCenterGroupHeading group={group} />
                     </div>
                     {(() => {
                       const renderCard = (
@@ -500,7 +500,7 @@ function WorkspaceAgentMessageCenterPanelContent({
                         );
                       };
 
-                      return partitionMessageCenterItemsByProvider(
+                      return partitionMessageCenterItemsByAgentUser(
                         group.items
                       ).map((stack) => {
                         const firstItem = stack.items[0];
@@ -510,7 +510,10 @@ function WorkspaceAgentMessageCenterPanelContent({
                         if (stack.items.length === 1) {
                           return renderCard(firstItem);
                         }
-                        const stackId = `${group.id}:${stack.provider}`;
+                        const stackId =
+                          group.id === stack.id
+                            ? stack.id
+                            : `${group.id}:${stack.id}`;
                         return (
                           <MessageCenterStack
                             key={stackId}
@@ -556,3 +559,44 @@ function WorkspaceAgentMessageCenterPanelContent({
 
 const MessageCenterCard = WorkspaceAgentMessageCenterCard;
 const MessageCenterStack = WorkspaceAgentMessageCenterStack;
+
+function MessageCenterGroupHeading({
+  group
+}: {
+  group: ReturnType<typeof groupMessageCenterItems>[number];
+}): JSX.Element {
+  "use memo";
+
+  if (group.provider) {
+    return (
+      <h3
+        aria-label={`${group.label} · ${group.items.length}`}
+        className="flex min-w-0 items-center gap-1.5 text-[11px] font-normal leading-4 text-[var(--text-tertiary)]"
+        title={`${group.label} · ${group.items.length}`}
+      >
+        {group.identity ? (
+          <MessageCenterIdentityLabel
+            identity={group.identity}
+            provider={group.provider}
+          />
+        ) : (
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <MessageCenterIdentityAvatarMark
+              identity={null}
+              provider={group.provider}
+              userId={group.userId ?? null}
+            />
+            <span className="min-w-0 truncate">{group.label}</span>
+          </span>
+        )}
+        <span className="shrink-0">· {group.items.length}</span>
+      </h3>
+    );
+  }
+
+  return (
+    <h3 className="truncate text-[11px] font-normal leading-4 text-[var(--text-tertiary)]">
+      {group.label} · {group.items.length}
+    </h3>
+  );
+}

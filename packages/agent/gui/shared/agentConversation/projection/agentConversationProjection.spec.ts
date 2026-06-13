@@ -45,6 +45,78 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("only projects the latest tool from an unfinalized tail tool chain", () => {
+    const calls = [
+      {
+        id: "call:1",
+        name: "Read web page",
+        toolName: "web_fetch",
+        callType: "tool",
+        status: "Completed",
+        statusKind: "completed" as const,
+        summary: "https://example.com/a",
+        payload: null
+      },
+      {
+        id: "call:2",
+        name: "Read web page",
+        toolName: "web_fetch",
+        callType: "tool",
+        status: "Completed",
+        statusKind: "completed" as const,
+        summary: "https://example.com/b",
+        payload: null
+      },
+      {
+        id: "call:3",
+        name: "Read web page",
+        toolName: "web_fetch",
+        callType: "tool",
+        status: "Completed",
+        statusKind: "completed" as const,
+        summary: "https://example.com/c",
+        payload: null
+      }
+    ];
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Read pages" },
+            userMessages: [{ id: "user-1", body: "Read pages" }],
+            agentMessages: [],
+            toolCalls: calls,
+            toolCallCount: calls.length,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "tool-calls",
+                id: "tools-1",
+                toolCalls: calls,
+                toolCallCount: calls.length,
+                hasFailedToolCall: false
+              }
+            ]
+          }
+        ]
+      })
+    );
+
+    const toolRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "tool-group" }
+      > => row.kind === "tool-group"
+    );
+
+    expect(toolRows).toHaveLength(1);
+    expect(toolRows[0]?.grouped).toBe(false);
+    expect(toolRows[0]?.calls[0]?.id).toBe("call:3");
+  });
+
   it("keeps Codex transport retry notices out of the working processing label", () => {
     const base = detailViewModel();
     const conversation = projectAgentConversationVM(

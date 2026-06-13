@@ -13,7 +13,7 @@ import type {
 import type {
   WorkspaceUserProject,
   WorkspaceUserProjectApi,
-  WorkspaceUserProjectServiceLike
+  WorkspaceUserProjectService
 } from "@tutti-os/workspace-user-project/contracts";
 import type {
   IssueManagerCompleteRunOutputInput,
@@ -191,12 +191,13 @@ export type IssueManagerExecutionDirectoryProject = WorkspaceUserProject;
 
 export type IssueManagerExecutionDirectoryPicker = Pick<
   WorkspaceUserProjectApi,
-  "list" | "selectDirectory" | "use"
+  "selectDirectory" | "use"
 > & {
-  service?: WorkspaceUserProjectServiceLike | null;
+  service?: WorkspaceUserProjectService | null;
 };
 
 export interface IssueManagerAgentBreakdownRequest extends IssueManagerScope {
+  executionDirectory?: string | null;
   issueDetail: {
     contextRefs: readonly IssueManagerContextRef[];
     issue: IssueManagerIssueSummary;

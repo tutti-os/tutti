@@ -41,6 +41,11 @@ import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../../../shared/work
 
 export const AGENT_GUI_RUNTIME_SESSION_ORIGIN =
   WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN;
+const AGENT_GUI_CONVERSATION_PROJECT_SUMMARY_CACHE_LIMIT = 512;
+const agentGUIConversationProjectSummaryCache = new Map<
+  string,
+  AgentGUIConversationProjectSummary
+>();
 
 export interface AgentGUIConversationSummary {
   id: string;
@@ -423,7 +428,7 @@ export function resolveAgentGUIConversationProject(
   if (matchedProject.lastUsedAtUnixMs !== undefined) {
     summary.lastUsedAtUnixMs = matchedProject.lastUsedAtUnixMs;
   }
-  return summary;
+  return cachedAgentGUIConversationProjectSummary(summary);
 }
 
 export function applyAgentGUIConversationProjects(
@@ -564,6 +569,36 @@ function normalizeAgentGUIProjectPath(path: string | null | undefined): string {
     return "";
   }
   return normalized.replace(/\/+$/, "") || "/";
+}
+
+function cachedAgentGUIConversationProjectSummary(
+  summary: AgentGUIConversationProjectSummary
+): AgentGUIConversationProjectSummary {
+  const key = [
+    summary.id,
+    summary.path,
+    summary.label,
+    summary.createdAtUnixMs ?? "",
+    summary.updatedAtUnixMs ?? "",
+    summary.lastUsedAtUnixMs ?? ""
+  ].join("\u001f");
+  const cached = agentGUIConversationProjectSummaryCache.get(key);
+  if (cached) {
+    return cached;
+  }
+  if (
+    agentGUIConversationProjectSummaryCache.size >=
+    AGENT_GUI_CONVERSATION_PROJECT_SUMMARY_CACHE_LIMIT
+  ) {
+    const oldestKey = agentGUIConversationProjectSummaryCache
+      .keys()
+      .next().value;
+    if (oldestKey) {
+      agentGUIConversationProjectSummaryCache.delete(oldestKey);
+    }
+  }
+  agentGUIConversationProjectSummaryCache.set(key, summary);
+  return summary;
 }
 
 function isSameAgentGUIConversationProject(

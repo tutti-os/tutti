@@ -34,6 +34,19 @@ func (s *AppFactoryService) Publish(ctx context.Context, workspaceID string, job
 	}
 	if _, err := readCleanAppFactoryAgentsFile(job); err != nil {
 		logAppFactoryPublishFailed(workspaceID, job, workspacebiz.AppManifest{}, "agents_check", false, startedAt, err)
+		result := workspacebiz.AppFactoryValidationResult{
+			CheckedAt: unixMsNow(),
+			Errors:    []string{err.Error()},
+		}
+		if _, markErr := s.failValidation(ctx, job, result); markErr != nil {
+			slog.Warn(
+				"app factory publish validation failure state update failed",
+				"workspaceId", workspaceID,
+				"jobId", job.JobID,
+				"error", markErr,
+			)
+			return workspacebiz.AppFactoryJob{}, workspacebiz.WorkspaceApp{}, errors.Join(err, markErr)
+		}
 		return workspacebiz.AppFactoryJob{}, workspacebiz.WorkspaceApp{}, err
 	}
 

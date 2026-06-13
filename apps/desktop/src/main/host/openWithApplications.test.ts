@@ -10,6 +10,7 @@ import {
   openFileWithDefaultBrowser,
   parseListOpenWithApplicationsLine,
   pickOpenWithApplication,
+  readDefaultApplicationIconDataUrl,
   resetOpenWithApplicationsCacheForTests
 } from "./openWithApplications.ts";
 import { resolveOpenWithApplicationIconOverrideDataUrl } from "../../shared/openWithApplicationIconOverrides.ts";
@@ -23,17 +24,27 @@ test("pickOpenWithApplication returns null on non-macOS", async (t) => {
   assert.equal(await pickOpenWithApplication(), null);
 });
 
-test("filterOpenWithApplications removes video players from text file handlers", () => {
+test("filterOpenWithApplications removes video players from text file handlers", async () => {
+  const workspaceRoot = await mkdtemp(
+    path.join(tmpdir(), "tutti-open-with-filter-")
+  );
+  const quickTimePath = path.join(workspaceRoot, "QuickTime Player.app");
+  const codePath = path.join(workspaceRoot, "Visual Studio Code.app");
+  await mkdir(quickTimePath);
+  await mkdir(codePath);
+
   assert.deepEqual(
     filterOpenWithApplications(
       [
         {
-          applicationPath: "/System/Applications/QuickTime Player.app",
+          applicationPath: quickTimePath,
+          bundleIdentifier: "com.apple.QuickTimePlayerX",
           iconDataUrl: null,
           name: "QuickTime Player"
         },
         {
-          applicationPath: "/Applications/Visual Studio Code.app",
+          applicationPath: codePath,
+          bundleIdentifier: "com.microsoft.VSCode",
           iconDataUrl: null,
           name: "Visual Studio Code"
         }
@@ -42,9 +53,69 @@ test("filterOpenWithApplications removes video players from text file handlers",
     ),
     [
       {
-        applicationPath: "/Applications/Visual Studio Code.app",
+        applicationPath: codePath,
+        bundleIdentifier: "com.microsoft.VSCode",
         iconDataUrl: null,
         name: "Visual Studio Code"
+      }
+    ]
+  );
+});
+
+test("filterOpenWithApplications deduplicates by bundle id and skips inaccessible application paths", async () => {
+  const workspaceRoot = await mkdtemp(
+    path.join(tmpdir(), "tutti-open-with-dedupe-")
+  );
+  const firstQuarkPath = path.join(workspaceRoot, "Quark.app");
+  const duplicateQuarkPath = path.join(workspaceRoot, "Quark Copy.app");
+  const textEditPath = path.join(workspaceRoot, "TextEdit.app");
+  const missingPath = path.join(workspaceRoot, "Missing.app");
+  await mkdir(firstQuarkPath);
+  await mkdir(duplicateQuarkPath);
+  await mkdir(textEditPath);
+
+  assert.deepEqual(
+    filterOpenWithApplications(
+      [
+        {
+          applicationPath: firstQuarkPath,
+          bundleIdentifier: "com.quark.browser",
+          iconDataUrl: null,
+          name: "Quark"
+        },
+        {
+          applicationPath: duplicateQuarkPath,
+          bundleIdentifier: "com.quark.browser",
+          iconDataUrl: null,
+          name: "Quark"
+        },
+        {
+          applicationPath: missingPath,
+          bundleIdentifier: "com.example.Missing",
+          iconDataUrl: null,
+          name: "Missing"
+        },
+        {
+          applicationPath: textEditPath,
+          bundleIdentifier: null,
+          iconDataUrl: null,
+          name: "TextEdit"
+        }
+      ],
+      "/tmp/example.pdf"
+    ),
+    [
+      {
+        applicationPath: firstQuarkPath,
+        bundleIdentifier: "com.quark.browser",
+        iconDataUrl: null,
+        name: "Quark"
+      },
+      {
+        applicationPath: textEditPath,
+        bundleIdentifier: null,
+        iconDataUrl: null,
+        name: "TextEdit"
       }
     ]
   );
@@ -77,10 +148,33 @@ test("open with application icons override Cursor and Antigravity", () => {
 test("parseListOpenWithApplicationsLine decodes workspace icon payloads", () => {
   assert.deepEqual(
     parseListOpenWithApplicationsLine(
+      "Preview\t/System/Applications/Preview.app\tcom.apple.Preview\tYWJj"
+    ),
+    {
+      applicationPath: "/System/Applications/Preview.app",
+      bundleIdentifier: "com.apple.Preview",
+      iconDataUrl: "data:image/png;base64,YWJj",
+      name: "Preview"
+    }
+  );
+  assert.deepEqual(
+    parseListOpenWithApplicationsLine(
+      "Preview\t/System/Applications/Preview.app\tcom.apple.Preview\t"
+    ),
+    {
+      applicationPath: "/System/Applications/Preview.app",
+      bundleIdentifier: "com.apple.Preview",
+      iconDataUrl: null,
+      name: "Preview"
+    }
+  );
+  assert.deepEqual(
+    parseListOpenWithApplicationsLine(
       "Preview\t/System/Applications/Preview.app\tYWJj"
     ),
     {
       applicationPath: "/System/Applications/Preview.app",
+      bundleIdentifier: null,
       iconDataUrl: "data:image/png;base64,YWJj",
       name: "Preview"
     }
@@ -89,6 +183,7 @@ test("parseListOpenWithApplicationsLine decodes workspace icon payloads", () => 
     parseListOpenWithApplicationsLine("Safari\t/Applications/Safari.app\t"),
     {
       applicationPath: "/Applications/Safari.app",
+      bundleIdentifier: null,
       iconDataUrl: null,
       name: "Safari"
     }
@@ -128,6 +223,28 @@ test("listOpenWithApplications returns installed handlers on macOS", async (t) =
         application.iconDataUrl.startsWith("data:image/png;base64,")
     )
   );
+});
+
+test("readDefaultApplicationIconDataUrl returns default handler icon on macOS", async (t) => {
+  if (process.platform !== "darwin") {
+    t.skip("macOS only");
+    return;
+  }
+
+  const workspaceRoot = await mkdtemp(
+    path.join(tmpdir(), "tutti-default-app-icon-")
+  );
+  const targetPath = path.join(workspaceRoot, "notes.txt");
+  await writeFile(targetPath, "hello", "utf8");
+
+  resetOpenWithApplicationsCacheForTests();
+  const iconDataUrl = await readDefaultApplicationIconDataUrl(targetPath);
+  if (!iconDataUrl) {
+    t.skip("default application icon unavailable in this test environment");
+    return;
+  }
+
+  assert.match(iconDataUrl, /^data:image\/png;base64,/);
 });
 
 test("openFileWithDefaultBrowser delegates to the macOS browser opener without launching it in tests", async (t) => {

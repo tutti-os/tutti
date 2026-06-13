@@ -14,8 +14,8 @@ import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMar
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
+import { assessAgentTranscriptComplexity } from "./agentTranscriptComplexity";
 
-const AGENT_TRANSCRIPT_VIRTUALIZATION_TURN_THRESHOLD = 30;
 const AGENT_TRANSCRIPT_VIRTUALIZATION_OVERSCAN = 6;
 const AGENT_TRANSCRIPT_ESTIMATED_TURN_HEIGHT_PX = 280;
 const AGENT_TRANSCRIPT_TURN_GAP_PX = 12;
@@ -157,8 +157,10 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   );
   const basePath = conversation.sourceDetail.cwd;
   const workspaceRoot = conversation.workspaceRoot;
-  const shouldVirtualize =
-    turnGroups.length >= AGENT_TRANSCRIPT_VIRTUALIZATION_TURN_THRESHOLD;
+  const shouldVirtualize = useMemo(
+    () => assessAgentTranscriptComplexity(turnGroups).shouldVirtualize,
+    [turnGroups]
+  );
   const rowVirtualizer = useVirtualizer({
     count: turnGroups.length,
     estimateSize: () => AGENT_TRANSCRIPT_ESTIMATED_TURN_HEIGHT_PX,

@@ -32,15 +32,6 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
     conversationRailCollapsed: true,
     lastActiveAgentSessionId: "session-1",
     lastActiveConversationTitle: "A title",
-    pendingHandoff: {
-      issueId: "issue-1",
-      issueTitle: "Issue",
-      prompt: "Do it",
-      requestId: "handoff-1",
-      taskId: "task-1",
-      taskTitle: "Task",
-      title: "Handoff"
-    },
     provider: "gemini"
   });
 
@@ -50,16 +41,7 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
     conversationRailCollapsed: true,
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: "session-1",
-    lastActiveConversationTitle: "A title",
-    pendingHandoff: {
-      issueId: "issue-1",
-      issueTitle: "Issue",
-      prompt: "Do it",
-      requestId: "handoff-1",
-      taskId: "task-1",
-      taskTitle: "Task",
-      title: "Handoff"
-    }
+    lastActiveConversationTitle: "A title"
   });
 });
 
@@ -72,16 +54,7 @@ test("desktop agent gui workbench projection preserves rail state and permission
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360.4,
       lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title",
-      pendingHandoff: {
-        issueId: "issue-1",
-        issueTitle: "Issue",
-        prompt: "Do it",
-        requestId: "handoff-1",
-        taskId: "task-1",
-        taskTitle: "Task",
-        title: "Handoff"
-      }
+      lastActiveConversationTitle: "A title"
     }),
     {
       composerOverrides: { permissionModeId: "read-only" },
@@ -89,16 +62,7 @@ test("desktop agent gui workbench projection preserves rail state and permission
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title",
-      pendingHandoff: {
-        issueId: "issue-1",
-        issueTitle: "Issue",
-        prompt: "Do it",
-        requestId: "handoff-1",
-        taskId: "task-1",
-        taskTitle: "Task",
-        title: "Handoff"
-      }
+      lastActiveConversationTitle: "A title"
     }
   );
 });
@@ -246,16 +210,7 @@ test("desktop agent gui node state source keeps workbench rail state in memory",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title",
-      pendingHandoff: {
-        issueId: "issue-1",
-        issueTitle: "Issue",
-        prompt: "Do it",
-        requestId: "handoff-1",
-        taskId: null,
-        taskTitle: "Task",
-        title: "Handoff"
-      }
+      lastActiveConversationTitle: "A title"
     },
     typeId: "agent-gui"
   });
@@ -274,16 +229,7 @@ test("desktop agent gui node state source keeps workbench rail state in memory",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title",
-      pendingHandoff: {
-        issueId: "issue-1",
-        issueTitle: "Issue",
-        prompt: "Do it",
-        requestId: "handoff-1",
-        taskId: null,
-        taskTitle: "Task",
-        title: "Handoff"
-      }
+      lastActiveConversationTitle: "A title"
     }
   );
   assert.equal(

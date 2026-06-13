@@ -14,6 +14,8 @@ export const workspaceFileManagerPersistedStateSchemaVersion = 2 as const;
 export interface WorkspaceFileEntry {
   hasChildren: boolean;
   kind: WorkspaceFileEntryKind;
+  createdTimeMs?: number | null;
+  lastOpenedMs?: number | null;
   mtimeMs: number | null;
   name: string;
   path: string;

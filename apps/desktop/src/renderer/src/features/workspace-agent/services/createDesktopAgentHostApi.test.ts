@@ -110,7 +110,12 @@ interface DesktopAgentHostApiUnderTest {
         status?: string;
       };
     }>;
-    cancel(input: { agentSessionId: string }): Promise<{ canceled: boolean }>;
+    cancel(input: { agentSessionId: string }): Promise<{
+      agentSessionId?: string;
+      canceled: boolean;
+      reason?: string;
+      sessionStatus?: string;
+    }>;
     exec(input: {
       agentSessionId: string;
       content: AgentPromptContentBlock[];
@@ -230,7 +235,7 @@ test("desktop agent host api routes session commands through injected tuttid cli
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const api = createAgentHostApi({
     tuttidClient: createTuttidClient({
-      async cancelWorkspaceAgentSession(
+      async cancelWorkspaceAgentSessionWithResult(
         requestWorkspaceId: string,
         agentSessionId: string
       ) {
@@ -238,7 +243,13 @@ test("desktop agent host api routes session commands through injected tuttid cli
           args: [requestWorkspaceId, agentSessionId],
           method: "cancel"
         });
-        return createSession({ id: agentSessionId, status: "canceled" });
+        return {
+          cancel: {
+            canceled: true,
+            reason: "active_turn_canceled"
+          },
+          session: createSession({ id: agentSessionId, status: "canceled" })
+        };
       },
       async createWorkspaceAgentSession(
         requestWorkspaceId: string,
@@ -354,6 +365,8 @@ test("desktop agent host api routes session commands through injected tuttid cli
   assert.equal(interactive.accepted, true);
   assert.equal(abortInteractive.accepted, true);
   assert.equal(canceled.canceled, true);
+  assert.equal(canceled.reason, "active_turn_canceled");
+  assert.equal(canceled.sessionStatus, "canceled");
   assert.deepEqual(calls, [
     {
       args: [
@@ -442,6 +455,46 @@ test("desktop agent host api routes session commands through injected tuttid cli
       method: "cancel"
     }
   ]);
+});
+
+test("desktop agent host api returns no-active-turn cancel metadata", async () => {
+  const reporterCalls: ReporterEventInput[][] = [];
+  const api = createAgentHostApi({
+    tuttidClient: createTuttidClient({
+      async cancelWorkspaceAgentSessionWithResult(
+        _requestWorkspaceId: string,
+        agentSessionId: string
+      ) {
+        return {
+          cancel: {
+            canceled: false,
+            reason: "no_active_turn"
+          },
+          session: createSession({
+            id: agentSessionId,
+            status: "created"
+          })
+        };
+      }
+    }),
+    reporterService: {
+      async trackEvents(events) {
+        reporterCalls.push(events);
+      }
+    }
+  });
+
+  const result = await api.agentSessions.cancel({
+    agentSessionId: "agent-session-1"
+  });
+
+  assert.deepEqual(result, {
+    agentSessionId: "agent-session-1",
+    canceled: false,
+    reason: "no_active_turn",
+    sessionStatus: "ready"
+  });
+  assert.deepEqual(reporterCalls, []);
 });
 
 test("desktop agent host api pins sessions through the canonical pinSession host method", async () => {
@@ -1597,6 +1650,135 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
   assert.deepEqual(messageRequests, [0, 0]);
 });
 
+test("desktop agent host api batches inline streaming message updates", async () => {
+  type AgentActivityDirtySignalListener = (event: {
+    payload: {
+      agentSessionId: string;
+      data?: unknown;
+      eventType: string;
+      workspaceId: string;
+    };
+  }) => void;
+  const eventHubListenerRef: {
+    current: AgentActivityDirtySignalListener | null;
+  } = { current: null };
+  const eventStreamClient: TuttidEventStreamClient = {
+    async connect() {},
+    dispose() {},
+    async publishIntent() {},
+    subscribe(topic, listener) {
+      if (topic === "agent.activity.updated") {
+        eventHubListenerRef.current =
+          listener as AgentActivityDirtySignalListener;
+      }
+      return () => {};
+    },
+    subscribeConnectionState() {
+      return () => {};
+    }
+  };
+  let messageRequestCount = 0;
+  const tuttidClient = createTuttidClient({
+    async listWorkspaceAgentSessionMessages(_workspaceId, agentSessionId) {
+      messageRequestCount += 1;
+      return {
+        agentSessionId,
+        hasMore: false,
+        latestVersion: 0,
+        messages: []
+      };
+    },
+    async listWorkspaceAgentSessions() {
+      return {
+        sessions: [createSession({ id: "agent-session-1" })],
+        workspaceId
+      };
+    }
+  });
+  const api = createAgentHostApi({
+    tuttidClient,
+    workspaceAgentActivityService: new WorkspaceAgentActivityService({
+      eventStreamClient,
+      tuttidClient,
+      runtimeApi: createRuntimeApi()
+    })
+  });
+  const receivedEvents: unknown[] = [];
+  const unsubscribe = api.agentSessions.onEvent((event) =>
+    receivedEvents.push(event)
+  );
+
+  await api.workspaceAgents.list();
+  await waitFor(() => eventHubListenerRef.current !== null);
+  const publishDirtySignal = eventHubListenerRef.current;
+  if (!publishDirtySignal) {
+    throw new Error("Event hub listener was not registered.");
+  }
+  publishDirtySignal({
+    payload: {
+      agentSessionId: "agent-session-1",
+      data: {
+        messages: [
+          inlineActivityMessage({
+            messageId: "message-1",
+            text: "Hel",
+            version: 1
+          })
+        ]
+      },
+      eventType: "message_update",
+      workspaceId
+    }
+  });
+  publishDirtySignal({
+    payload: {
+      agentSessionId: "agent-session-1",
+      data: {
+        messages: [
+          inlineActivityMessage({
+            messageId: "message-1",
+            text: "Hello",
+            version: 2
+          })
+        ]
+      },
+      eventType: "message_update",
+      workspaceId
+    }
+  });
+
+  assert.equal(receivedEvents.length, 0);
+  await waitFor(() =>
+    receivedEvents.some((event) => {
+      const data = (event as { data?: { payload?: { text?: string } } }).data;
+      return data?.payload?.text === "Hello";
+    })
+  );
+  unsubscribe();
+
+  const messageEvents = receivedEvents.filter(
+    (event) => (event as { eventType?: string }).eventType === "message_update"
+  );
+  assert.equal(messageEvents.length, 1);
+  assert.equal(
+    (
+      messageEvents[0] as {
+        data?: { payload?: { text?: string }; seq?: number };
+      }
+    ).data?.payload?.text,
+    "Hello"
+  );
+  assert.equal(
+    (
+      messageEvents[0] as {
+        data?: { payload?: { text?: string }; seq?: number };
+      }
+    ).data?.seq,
+    2
+  );
+  assert.equal(messageRequestCount, 0);
+});
+
 test("desktop agent host api preserves working state for user-only reconciled turns", async () => {
   type AgentActivityDirtySignalListener = (event: {
     payload: {
@@ -2260,8 +2442,10 @@ test("desktop agent host api reuses desktop host file operations", async () => {
         });
         return {
           entry: {
+            createdTimeMs: null,
             hasChildren: false,
             kind: "file",
+            lastOpenedMs: null,
             mtimeMs: null,
             name: request.path.split("/").filter(Boolean).at(-1) ?? "",
             path: request.path,
@@ -2497,6 +2681,15 @@ function createTuttidClient(
     async cancelWorkspaceAgentSession() {
       return createSession({ status: "canceled" });
     },
+    async cancelWorkspaceAgentSessionWithResult() {
+      return {
+        cancel: {
+          canceled: true,
+          reason: "active_turn_canceled"
+        },
+        session: createSession({ status: "canceled" })
+      };
+    },
     async createWorkspaceAgentSession() {
       return createSession();
     },
@@ -2672,6 +2865,26 @@ function createTuttidClient(
     },
     ...overrides
   } as unknown as TuttidClient;
+}
+
+function inlineActivityMessage(input: {
+  messageId: string;
+  text: string;
+  version: number;
+}): Record<string, unknown> {
+  return {
+    agentSessionId: "agent-session-1",
+    kind: "text",
+    messageId: input.messageId,
+    occurredAtUnixMs: 1717200000000 + input.version,
+    payload: {
+      text: input.text
+    },
+    role: "assistant",
+    status: "streaming",
+    version: input.version,
+    workspaceId
+  };
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

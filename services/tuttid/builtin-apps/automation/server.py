@@ -779,8 +779,8 @@ def start_agent_session(automation, run, log_file):
         build_run_prompt(run["prompt"], run),
         "--display-prompt",
         build_run_display_prompt(automation, run),
-        "--visible",
     ]
+    args.append("--show" if run.get("trigger") == "manual" else "--visible")
     if settings.get("model"):
         args.extend(["--model", settings["model"]])
     if settings.get("reasoningEffort"):

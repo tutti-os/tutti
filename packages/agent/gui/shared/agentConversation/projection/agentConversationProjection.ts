@@ -229,6 +229,8 @@ function mergeAdjacentAssistantMessageRows(
       const nextMessage = row.messages[0];
       if (lastMessage && nextMessage) {
         lastMessage.body += nextMessage.body;
+        lastMessage.statusKind =
+          nextMessage.statusKind ?? lastMessage.statusKind ?? null;
         lastMessage.occurredAtUnixMs =
           nextMessage.occurredAtUnixMs ?? lastMessage.occurredAtUnixMs;
       }
@@ -508,7 +510,11 @@ function projectTurnAgentRows(
   }
 ): AgentTranscriptRowVM[] {
   const sequence = buildAgentTurnSequenceItems(turn);
-  const { groups, groupedIndices } = computeAgentToolGroups(sequence, options);
+  const { groups, groupedIndices, suppressedIndices } = computeAgentToolGroups(
+    sequence,
+    options
+  );
+  const skippedIndices = new Set([...groupedIndices, ...suppressedIndices]);
   const rows: AgentTranscriptRowVM[] = [];
   let pendingThinking: AgentThinkingContentVM[] = [];
 
@@ -543,13 +549,13 @@ function projectTurnAgentRows(
       index = group.endIndex;
       continue;
     }
-    if (groupedIndices.has(index)) {
+    if (skippedIndices.has(index)) {
       continue;
     }
     if (item.kind === "thinking") {
       const next = nextUngroupedSequenceItem(
         sequence,
-        groupedIndices,
+        skippedIndices,
         index + 1
       );
       if (next?.kind === "assistant-message") {
@@ -574,7 +580,7 @@ function projectTurnAgentRows(
       continue;
     }
     flushThinking();
-    rows.push(projectAgentSingleToolRow(item.call));
+    rows.push(projectAgentSingleToolRow(item.call, turn.id));
   }
 
   flushThinking();

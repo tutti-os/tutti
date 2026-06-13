@@ -134,6 +134,40 @@ describe("AgentTranscriptView", () => {
     );
   });
 
+  it("does not replay the enter animation when a single tool row becomes a group", () => {
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const { rerender } = render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({
+            showProcessingIndicator: false
+          })
+        )}
+        labels={labels}
+      />
+    );
+
+    rerender(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          groupedToolDetail(["call:1", "call:2"])
+        )}
+        labels={labels}
+      />
+    );
+
+    const toolGroupRow = screen
+      .getByRole("button", { name: "Tool calls (2)" })
+      .closest("[data-agent-transcript-row]");
+    expect(toolGroupRow).toBeInstanceOf(HTMLElement);
+    expect(toolGroupRow).not.toHaveAttribute("data-agent-transcript-row-enter");
+  });
+
   it("separates transcript turns with the line-2 divider", () => {
     const base = detailViewModel();
     render(
@@ -534,7 +568,7 @@ describe("AgentTranscriptView", () => {
     expect(screen.getByText("http://0.0.0.0:4173")).toBeTruthy();
   });
 
-  it("keeps trailing tool calls split while the session is still active and shows the processing row", async () => {
+  it("keeps only the latest trailing tool while the session is still active and shows the processing row", async () => {
     render(
       <AgentTranscriptView
         conversation={projectAgentConversationVM(
@@ -618,9 +652,87 @@ describe("AgentTranscriptView", () => {
       />
     );
 
-    expect(screen.getByText("Edit file")).toBeTruthy();
+    expect(screen.queryByText("Edit file")).toBeNull();
     expect(screen.getByText("Write file")).toBeTruthy();
     expect(screen.getByText("Planning next moves")).toBeTruthy();
+  });
+
+  it("shows only the latest tool from an unfinalized tail tool chain", () => {
+    const calls = [
+      {
+        id: "call:1",
+        name: "Read page A",
+        toolName: "web_fetch",
+        callType: "tool",
+        status: "Completed" as const,
+        statusKind: "completed" as const,
+        summary: "https://example.com/a",
+        payload: null
+      },
+      {
+        id: "call:2",
+        name: "Read page B",
+        toolName: "web_fetch",
+        callType: "tool",
+        status: "Completed" as const,
+        statusKind: "completed" as const,
+        summary: "https://example.com/b",
+        payload: null
+      },
+      {
+        id: "call:3",
+        name: "Read page C",
+        toolName: "web_fetch",
+        callType: "tool",
+        status: "Completed" as const,
+        statusKind: "completed" as const,
+        summary: "https://example.com/c",
+        payload: null
+      }
+    ];
+    render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({
+            showProcessingIndicator: true,
+            session: {
+              ...detailViewModel().session,
+              status: "working"
+            },
+            turns: [
+              {
+                id: "turn-1",
+                userMessage: { id: "user-1", body: "Read pages" },
+                userMessages: [{ id: "user-1", body: "Read pages" }],
+                agentMessages: [],
+                toolCalls: calls,
+                toolCallCount: calls.length,
+                hasFailedToolCall: false,
+                agentItems: [
+                  {
+                    kind: "tool-calls",
+                    id: "tools-1",
+                    toolCalls: calls,
+                    toolCallCount: calls.length,
+                    hasFailedToolCall: false
+                  }
+                ]
+              }
+            ]
+          })
+        )}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+      />
+    );
+
+    expect(screen.queryByText("Read page A")).toBeNull();
+    expect(screen.queryByText("Read page B")).toBeNull();
+    expect(screen.getByText("Read page C")).toBeTruthy();
   });
 
   it("preserves expanded tool groups when incremental timeline updates add calls to the same group", async () => {

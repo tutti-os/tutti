@@ -33,7 +33,7 @@ func (s *AppFactoryService) ObserveAgentSessionMessages(_ context.Context, input
 }
 
 func (s *AppFactoryService) ObserveAgentSessionState(_ context.Context, input agentsessionstore.ReportSessionStateInput, reply agentsessionstore.ReportSessionStateReply) {
-	if !reply.Accepted {
+	if !reply.Accepted || !reply.StateApplied {
 		return
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)

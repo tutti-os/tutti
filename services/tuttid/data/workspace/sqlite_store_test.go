@@ -442,6 +442,64 @@ func TestSQLiteStorePersistsLargeAgentActivityMessagePayload(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreReportSessionStateReturnsCurrentLastEventForStalePatch(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-agent-state-order",
+		Name: "Workspace Agent State Order",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:      "ws-agent-state-order",
+		AgentSessionID:   "session-1",
+		Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:         "codex",
+		Status:           "completed",
+		CurrentPhase:     "idle",
+		OccurredAtUnixMS: 200,
+		EndedAtUnixMS:    200,
+	}); err != nil {
+		t.Fatalf("ReportSessionState(completed) error = %v", err)
+	}
+
+	state, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:      "ws-agent-state-order",
+		AgentSessionID:   "session-1",
+		Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:         "codex",
+		Status:           "active",
+		CurrentPhase:     "working",
+		OccurredAtUnixMS: 150,
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState(stale) error = %v", err)
+	}
+	if !state.Accepted || state.LastEventUnixMS != 200 {
+		t.Fatalf("stale state result = %#v, want accepted with current last event 200", state)
+	}
+	if state.StateApplied {
+		t.Fatalf("stale state applied = true, want false")
+	}
+	if state.Session.Status != "completed" || state.Session.CurrentPhase != "idle" || state.Session.LastEventUnixMS != 200 {
+		t.Fatalf("projected session runtime state = %q/%q last=%d, want completed/idle last=200", state.Session.Status, state.Session.CurrentPhase, state.Session.LastEventUnixMS)
+	}
+	session, ok, err := store.GetSession(ctx, "ws-agent-state-order", "session-1")
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetSession() ok = false, want true")
+	}
+	if session.Status != "completed" || session.CurrentPhase != "idle" || session.LastEventUnixMS != 200 {
+		t.Fatalf("session runtime state = %q/%q last=%d, want completed/idle last=200", session.Status, session.CurrentPhase, session.LastEventUnixMS)
+	}
+}
+
 func TestSQLiteStoreListAgentSessionsByUpdatedAtDescending(t *testing.T) {
 	t.Parallel()
 

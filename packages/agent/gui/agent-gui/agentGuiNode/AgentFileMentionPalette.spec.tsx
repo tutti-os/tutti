@@ -27,6 +27,7 @@ vi.mock("../../i18n/index", async () => {
       "继续输入文件名可搜索更多本机文件",
     "agentHost.agentGui.mentionGroupOpenedFiles": "我打开的文件",
     "agentHost.agentGui.mentionGroupAgentGeneratedFiles": "Agent 生成的文件",
+    "agentHost.agentGui.mentionAgentGeneratedFolderBack": "返回",
     "agentHost.agentGui.mentionNoMatchingFiles": "没有匹配到文件",
     "agentHost.roomIssueNode.issueStatusNotStarted": "未启动",
     "agentHost.roomIssueNode.issueStatusRunning": "执行中",
@@ -182,7 +183,7 @@ describe("AgentFileMentionPalette", () => {
     expect(screen.queryByText("已退出")).toBeNull();
   });
 
-  it("hides completed status tags from session mentions", () => {
+  it("renders session mention status tags with activity-core display statuses", () => {
     const state: AgentMentionSearchState = {
       status: "ready",
       query: "",
@@ -203,7 +204,7 @@ describe("AgentFileMentionPalette", () => {
               scope: "my_sessions",
               initiatorName: "Alice",
               agentName: "Codex",
-              status: "working"
+              status: "running"
             },
             {
               kind: "session",
@@ -333,16 +334,71 @@ describe("AgentFileMentionPalette", () => {
     expect(screen.getByText("运行中")).toBeVisible();
     expect(screen.getByText("等待中")).toBeVisible();
     expect(screen.getAllByText("错误")).toHaveLength(1);
-    expect(
-      Array.from(
-        document.querySelectorAll('[data-agent-mention-status-tag="true"]')
-      ).map((tag) => tag.textContent)
-    ).toEqual(["运行中", "等待中", "错误"]);
+    const statusTags = Array.from(
+      document.querySelectorAll('[data-agent-mention-status-tag="true"]')
+    );
+    expect(statusTags.map((tag) => tag.textContent)).toEqual([
+      "运行中",
+      "等待中",
+      "已完成",
+      "已完成",
+      "已完成",
+      "已完成",
+      "已完成",
+      "已完成",
+      "错误"
+    ]);
+    expect(statusTags.map((tag) => tag.getAttribute("data-status"))).toEqual([
+      "working",
+      "waiting",
+      "idle",
+      "completed",
+      "idle",
+      "idle",
+      "completed",
+      "idle",
+      "failed"
+    ]);
+    expect(statusTags.map((tag) => tag.getAttribute("data-tone"))).toEqual([
+      "blue",
+      "amber",
+      "green",
+      "green",
+      "green",
+      "green",
+      "green",
+      "green",
+      "red"
+    ]);
+    expect(statusTags[0]).toHaveClass("bg-sky-500/10", "text-sky-700");
+    expect(statusTags[1]).toHaveClass(
+      "bg-[color:color-mix(in_srgb,var(--color-amber-500)_12%,transparent)]",
+      "text-[var(--color-amber-500)]"
+    );
+    expect(statusTags[2]).toHaveClass(
+      "bg-[var(--tsh-ui-pill-success-bg)]",
+      "text-[var(--tsh-ui-pill-success-fg)]"
+    );
+    expect(statusTags[8]).toHaveClass(
+      "bg-[var(--on-danger)]",
+      "text-[var(--state-danger)]"
+    );
     const selectedOption = screen.getByRole("option", { selected: true });
     expect(selectedOption).toHaveClass(
       "rounded-[6px]",
       "bg-[var(--transparency-block)]"
     );
+    const sessionRow = selectedOption.querySelector(
+      ".grid-cols-\\[minmax\\(0\\,1fr\\)_auto\\]"
+    );
+    expect(sessionRow).toHaveClass(
+      "grid",
+      "w-full",
+      "min-w-0",
+      "items-center",
+      "gap-3"
+    );
+    expect(statusTags[0]).toHaveClass("shrink-0");
     const userAvatarImage = selectedOption.querySelector(
       '[data-agent-mention-user-avatar="true"] img'
     );
@@ -941,6 +997,69 @@ describe("AgentFileMentionPalette", () => {
     expect(
       fileRow?.querySelector('[data-agent-mention-file-thumb="true"]')
     ).toBeNull();
+  });
+
+  it("renders agent generated folder back rows with a back navigation marker", () => {
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "file",
+      categories: [],
+      groups: [
+        {
+          id: "agent_generated_files",
+          items: [
+            {
+              kind: "file",
+              href: "",
+              path: "/workspace/demo/static",
+              name: "返回",
+              entryKind: "unknown",
+              directoryPath: "/workspace/demo",
+              mentionNavigation: "agent-generated-folder-back"
+            }
+          ],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey="agent_generated_files:agent-generated-folder-back:/workspace/demo/static"
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+        onCycleFilter={vi.fn()}
+        onMoveSelection={vi.fn()}
+      />
+    );
+
+    const backRow = screen
+      .getByText("返回")
+      .closest('[data-agent-file-mention="true"]');
+
+    expect(backRow).toHaveAttribute(
+      "data-agent-mention-navigation",
+      "agent-generated-folder-back"
+    );
+    expect(backRow).toHaveAttribute("data-agent-file-visual-kind", "back");
+    expect(
+      backRow?.querySelector(".agent-gui-node__mention-file-icon")
+    ).not.toBeNull();
   });
 
   it("renders image mention rows with thumbnails instead of default file icons", () => {
@@ -1879,6 +1998,10 @@ describe("AgentFileMentionPalette", () => {
       )?.[0] ?? "";
     const paletteFileIconRule =
       css.match(/\.agent-gui-node__mention-file-icon\s*{[^}]*}/s)?.[0] ?? "";
+    const backNavigationIconRule =
+      css.match(
+        /\[data-agent-file-mention="true"\]\[data-agent-mention-kind="file"\]\[data-agent-file-visual-kind="back"\]\s+\.agent-gui-node__mention-file-icon\s*{[^}]*}/s
+      )?.[0] ?? "";
 
     expect(shellRule).toMatch(/--agent-mention-file-icon-size:\s*16px/);
     expect(paletteRule).toMatch(/--agent-mention-file-icon-size:\s*16px/);
@@ -1891,6 +2014,10 @@ describe("AgentFileMentionPalette", () => {
     expect(fileTokenRule).not.toMatch(/height:\s*24px/);
     expect(fileTokenRule).not.toMatch(/min-height:\s*24px/);
     expect(paletteFileIconRule).toMatch(/background-color:\s*var\(--folder\)/);
+    expect(backNavigationIconRule).toMatch(/arrow-left-filled\.svg/);
+    expect(backNavigationIconRule).toMatch(
+      /background-color:\s*var\(--text-secondary\)/
+    );
     expect(fileIconRule).toMatch(
       /width:\s*var\(--agent-mention-file-icon-size,\s*16px\)/
     );

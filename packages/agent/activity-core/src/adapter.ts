@@ -1,5 +1,6 @@
 import type {
   AgentActivityCancelSessionInput,
+  AgentActivityCancelSessionResult,
   AgentActivityCreateSessionInput,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
@@ -49,7 +50,7 @@ export interface AgentActivityAdapter {
   sendInput(input: AgentActivitySendInput): Promise<AgentActivitySession>;
   cancelSession(
     input: AgentActivityCancelSessionInput
-  ): Promise<AgentActivitySession>;
+  ): Promise<AgentActivityCancelSessionResult>;
   submitInteractive(
     input: AgentActivitySubmitInteractiveInput
   ): Promise<unknown>;

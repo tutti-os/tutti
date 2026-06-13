@@ -2,9 +2,11 @@ import {
   forwardRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
 import { Button, CloseIcon, FileCreateIcon, cn } from "@tutti-os/ui-system";
@@ -14,8 +16,11 @@ import {
   writeCachedWorkbenchNodePreviewImage
 } from "../react/useWorkbenchGenieAnimation.tsx";
 import type {
+  WorkbenchDockPreviewContent,
   WorkbenchHostDockPopupCardLabelMode,
-  WorkbenchHostNodeData
+  WorkbenchHostHandle,
+  WorkbenchHostNodeData,
+  WorkbenchHostProps
 } from "./types.ts";
 import type { WorkbenchDockPlacement } from "../react/types.ts";
 import {
@@ -41,6 +46,27 @@ const dockPopupPanelBorderInlinePx = 2;
 const dockPopupPlacementGapPx = 14;
 const dockPopupMinimizedStackLaunchDisappearMs = 0;
 const dockPopupMinimizedStackPopupZIndex = 100300;
+const dockPopupPreviewCacheMaxEntries = 64;
+const dockPopupPreviewByMemoryKey = new Map<
+  string,
+  WorkbenchHostDockPopupCapturedPreview
+>();
+const pendingDockPopupPreviewMemoryKeys = new Set<string>();
+
+type WorkbenchHostDockPopupCapturedPreview = {
+  preview: WorkbenchDockPreviewContent | null;
+  revision: string | null;
+};
+
+type WorkbenchHostDockPopupPreviewState =
+  | {
+      preview: WorkbenchDockPreviewContent;
+      status: "ready";
+    }
+  | {
+      status: "loading" | "fallback";
+    };
+
 export interface WorkbenchHostDockPopupAnchorRect {
   dockRight?: number;
   height: number;
@@ -55,10 +81,14 @@ export interface WorkbenchHostDockPopupState {
 }
 
 export interface WorkbenchHostDockPopupItem {
+  externalNodeState?: unknown;
+  externalWorkspaceState?: unknown;
+  host: WorkbenchHostHandle;
   isFocused: boolean;
   isMinimized: boolean;
   node: WorkbenchNode<WorkbenchHostNodeData>;
-  previewImageUrl: string | null;
+  preview: WorkbenchDockPreviewContent | null;
+  previewRevision: string | null;
   subtitle: string | null;
   title: string | null;
 }
@@ -132,9 +162,32 @@ function resolvePopupFanCardStyle(
   };
 }
 
+function readDockPopupPreviewImage(
+  memoryKey: string
+): WorkbenchHostDockPopupCapturedPreview | undefined {
+  return dockPopupPreviewByMemoryKey.get(memoryKey);
+}
+
+function writeDockPopupPreviewImage(
+  memoryKey: string,
+  preview: WorkbenchDockPreviewContent | null,
+  revision: string | null
+): void {
+  dockPopupPreviewByMemoryKey.delete(memoryKey);
+  dockPopupPreviewByMemoryKey.set(memoryKey, { preview, revision });
+  while (dockPopupPreviewByMemoryKey.size > dockPopupPreviewCacheMaxEntries) {
+    const oldestMemoryKey = dockPopupPreviewByMemoryKey.keys().next().value;
+    if (typeof oldestMemoryKey !== "string") {
+      break;
+    }
+    dockPopupPreviewByMemoryKey.delete(oldestMemoryKey);
+  }
+}
+
 export function WorkbenchHostDockPopup({
   anchorRect,
   capturePreview,
+  debugDiagnostics,
   dockPreviewCache,
   items,
   label,
@@ -153,7 +206,12 @@ export function WorkbenchHostDockPopup({
   anchorRect: WorkbenchHostDockPopupState["anchorRect"];
   capturePreview?: (
     item: WorkbenchHostDockPopupItem
-  ) => Promise<string | null> | string | null;
+  ) =>
+    | Promise<WorkbenchDockPreviewContent | string | null>
+    | WorkbenchDockPreviewContent
+    | string
+    | null;
+  debugDiagnostics?: WorkbenchHostProps["debugDiagnostics"];
   dockPreviewCache?: WorkbenchDockPreviewCache;
   items: WorkbenchHostDockPopupItem[];
   label: string;
@@ -174,12 +232,16 @@ export function WorkbenchHostDockPopup({
   const isMinimizedStack = resolvedVariant === "minimized-stack";
   const createCardCount = showCreateNew === false ? 0 : 1;
   const cardElementsRef = useRef(new Map<string, HTMLElement>());
+  const cardRefCallbacksRef = useRef(
+    new Map<string, (element: HTMLElement | null) => void>()
+  );
+  const popupRootRef = useRef<HTMLDivElement | null>(null);
   const minimizedStackViewportRef = useRef<HTMLDivElement | null>(null);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [minimizedStackScrollOffset, setMinimizedStackScrollOffset] =
     useState(0);
-  const [capturedPreviewByNodeId, setCapturedPreviewByNodeId] = useState<
-    Record<string, string | undefined>
+  const [capturedPreviewByMemoryKey, setCapturedPreviewByMemoryKey] = useState<
+    Record<string, WorkbenchHostDockPopupCapturedPreview | undefined>
   >({});
   const columnCount = Math.min(Math.max(items.length + createCardCount, 1), 3);
   const popupWidthPx =
@@ -280,17 +342,55 @@ export function WorkbenchHostDockPopup({
         }
       : {})
   } as CSSProperties;
+  const popupDiagnosticKey = items.map((item) => item.node.id).join("|");
 
-  const registerCard = useCallback(
-    (nodeId: string) => (element: HTMLElement | null) => {
+  useEffect(() => {
+    logWorkbenchDockPopupDebug("dock.popup.rendered", debugDiagnostics, {
+      hasCapturePreview: Boolean(capturePreview),
+      itemCount: popupDiagnosticKey ? popupDiagnosticKey.split("|").length : 0,
+      nodeIds: popupDiagnosticKey ? popupDiagnosticKey.split("|") : [],
+      placement,
+      variant: resolvedVariant
+    });
+  }, [
+    capturePreview,
+    debugDiagnostics,
+    placement,
+    popupDiagnosticKey,
+    resolvedVariant
+  ]);
+
+  useLayoutEffect(() => {
+    const rootElement = popupRootRef.current;
+    const panelElement =
+      rootElement?.querySelector<HTMLElement>(
+        "[data-desktop-dock-popup-panel]"
+      ) ?? null;
+    logWorkbenchDockPopupDebug("dock.popup.layout", debugDiagnostics, {
+      panelRect: panelElement ? rectToDiagnostic(panelElement) : null,
+      rootRect: rootElement ? rectToDiagnostic(rootElement) : null,
+      rootStyle: rootElement ? styleToDiagnostic(rootElement) : null,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth
+    });
+  }, [debugDiagnostics, popupDiagnosticKey]);
+
+  const registerCard = useCallback((nodeId: string) => {
+    const existing = cardRefCallbacksRef.current.get(nodeId);
+    if (existing) {
+      return existing;
+    }
+
+    const callback = (element: HTMLElement | null) => {
       if (element) {
         cardElementsRef.current.set(nodeId, element);
       } else {
         cardElementsRef.current.delete(nodeId);
       }
-    },
-    []
-  );
+    };
+    cardRefCallbacksRef.current.set(nodeId, callback);
+    return callback;
+  }, []);
 
   useEffect(() => {
     if (!isLeftMinimizedStack) {
@@ -337,7 +437,10 @@ export function WorkbenchHostDockPopup({
   }, [onClose]);
 
   const previewCaptureKey = items
-    .map((item) => `${item.node.id}:${item.previewImageUrl ?? ""}`)
+    .map(
+      (item) =>
+        `${item.node.id}:${previewCacheToken(item.preview)}:${item.previewRevision ?? ""}`
+    )
     .join("|");
 
   useEffect(() => {
@@ -370,92 +473,240 @@ export function WorkbenchHostDockPopup({
   }, [isMinimizedStack, minimizedStackMaxScrollOffset]);
 
   useEffect(() => {
+    if (!capturePreview) {
+      return;
+    }
     let cancelled = false;
-    const missingItems = items.filter(
-      (item) => !item.previewImageUrl && !capturedPreviewByNodeId[item.node.id]
-    );
+    const missingItems = items.filter((item) => {
+      const revision = item.previewRevision;
+      const previewMemoryKey = resolveDockPopupPreviewMemoryKey(
+        item.node,
+        resolveDockPreviewCacheKey?.(item.node) ?? null
+      );
+      const capturedPreview =
+        capturedPreviewByMemoryKey[previewMemoryKey] ??
+        readDockPopupPreviewImage(previewMemoryKey);
+      const hasCapturedPreview =
+        capturedPreview !== undefined && capturedPreview.revision === revision;
+      const shouldCaptureMissingPreview = !item.preview && !hasCapturedPreview;
+      return (
+        shouldCaptureMissingPreview &&
+        !pendingDockPopupPreviewMemoryKeys.has(previewMemoryKey)
+      );
+    });
     if (missingItems.length === 0) {
+      logWorkbenchDockPopupDebug(
+        "dock.popup.preview_capture.batch",
+        debugDiagnostics,
+        {
+          itemCount: items.length,
+          missingNodeIds: []
+        }
+      );
       return () => {
         cancelled = true;
       };
     }
+    logWorkbenchDockPopupDebug(
+      "dock.popup.preview_capture.batch",
+      debugDiagnostics,
+      {
+        itemCount: items.length,
+        missingNodeIds: missingItems.map((item) => item.node.id)
+      }
+    );
 
-    void Promise.all(
-      missingItems.map(async (item) => {
-        const cacheKey = resolveDockPreviewCacheKey?.(item.node) ?? null;
+    for (const item of missingItems) {
+      pendingDockPopupPreviewMemoryKeys.add(
+        resolveDockPopupPreviewMemoryKey(
+          item.node,
+          resolveDockPreviewCacheKey?.(item.node) ?? null
+        )
+      );
+    }
+
+    void (async () => {
+      for (const item of missingItems) {
+        if (cancelled) {
+          break;
+        }
+
+        const revision = item.previewRevision;
+        logWorkbenchDockPopupDebug(
+          "dock.popup.preview_capture.started",
+          debugDiagnostics,
+          {
+            isMinimized: item.isMinimized,
+            nodeId: item.node.id,
+            revision
+          }
+        );
+        const previewMemoryKey = resolveDockPopupPreviewMemoryKey(
+          item.node,
+          resolveDockPreviewCacheKey?.(item.node) ?? null
+        );
+        const cacheKey = resolveDockPopupPreviewCacheKey(
+          resolveDockPreviewCacheKey?.(item.node) ?? null,
+          revision
+        );
         if (item.isMinimized && cacheKey) {
           const minimizedPersistedPreview = await readPersistedDockPreview(
             dockPreviewCache,
             cacheKey
           );
+          if (cancelled) {
+            break;
+          }
           if (minimizedPersistedPreview) {
+            const persistedPreview: WorkbenchDockPreviewContent = {
+              kind: "image",
+              src: minimizedPersistedPreview
+            };
             writeCachedWorkbenchNodePreviewImage(
               item.node.id,
               minimizedPersistedPreview
             );
-            return {
-              nodeId: item.node.id,
-              previewImageUrl: minimizedPersistedPreview
-            };
+            writeDockPopupPreviewImage(
+              previewMemoryKey,
+              persistedPreview,
+              revision
+            );
+            setCapturedPreviewByMemoryKey((current) => ({
+              ...current,
+              [previewMemoryKey]: {
+                preview: persistedPreview,
+                revision
+              }
+            }));
+            pendingDockPopupPreviewMemoryKeys.delete(previewMemoryKey);
+            continue;
           }
         }
 
-        const previewImageUrl =
-          (await capturePreview?.(item)) ??
-          (await captureWorkbenchNodePreviewImage(item.node.id, {
-            bypassCache: !item.isMinimized
-          }));
-        if (previewImageUrl) {
-          writeCachedWorkbenchNodePreviewImage(item.node.id, previewImageUrl);
-          if (cacheKey) {
-            dockPreviewCache?.write({ key: cacheKey, previewImageUrl });
-          }
-          return {
+        const preview = normalizeDockPopupPreviewContentResult(
+          item.isMinimized
+            ? ((await capturePreview?.(item)) ??
+                (await captureWorkbenchNodePreviewImage(item.node.id, {
+                  bypassCache: false
+                })))
+            : await Promise.resolve(capturePreview?.(item) ?? null).catch(
+                () => null
+              ),
+          revision
+        );
+        if (cancelled) {
+          break;
+        }
+        logWorkbenchDockPopupDebug(
+          "dock.popup.preview_capture.resolved",
+          debugDiagnostics,
+          {
+            hasPreview: Boolean(preview),
             nodeId: item.node.id,
-            previewImageUrl
-          };
+            providerRevision: preview?.revision ?? null,
+            revision
+          }
+        );
+        if (preview) {
+          if (preview.kind === "image") {
+            writeCachedWorkbenchNodePreviewImage(item.node.id, preview.src);
+          }
+          writeDockPopupPreviewImage(previewMemoryKey, preview, revision);
+          if (cacheKey && preview.kind === "image") {
+            dockPreviewCache?.write({
+              key: cacheKey,
+              previewImageUrl: preview.src
+            });
+          }
+          setCapturedPreviewByMemoryKey((current) => ({
+            ...current,
+            [previewMemoryKey]: { preview, revision }
+          }));
+          pendingDockPopupPreviewMemoryKeys.delete(previewMemoryKey);
+          continue;
         }
 
         const fallbackPersistedPreview =
           !item.isMinimized && cacheKey
             ? await readPersistedDockPreview(dockPreviewCache, cacheKey)
             : null;
+        if (cancelled) {
+          break;
+        }
         if (fallbackPersistedPreview) {
           writeCachedWorkbenchNodePreviewImage(
             item.node.id,
             fallbackPersistedPreview
           );
         }
-        return {
-          nodeId: item.node.id,
-          previewImageUrl: fallbackPersistedPreview
-        };
-      })
-    ).then((results) => {
-      if (cancelled) {
-        return;
+        if (fallbackPersistedPreview || item.isMinimized) {
+          const fallbackPreview: WorkbenchDockPreviewContent | null =
+            fallbackPersistedPreview
+              ? { kind: "image", src: fallbackPersistedPreview }
+              : null;
+          writeDockPopupPreviewImage(
+            previewMemoryKey,
+            fallbackPreview,
+            revision
+          );
+        }
+        if (!cancelled) {
+          const fallbackPreview: WorkbenchDockPreviewContent | null =
+            fallbackPersistedPreview
+              ? { kind: "image", src: fallbackPersistedPreview }
+              : null;
+          setCapturedPreviewByMemoryKey((current) => ({
+            ...current,
+            [previewMemoryKey]: { preview: fallbackPreview, revision }
+          }));
+        }
+        pendingDockPopupPreviewMemoryKeys.delete(previewMemoryKey);
       }
-      const nextEntries = results.filter(
-        (result): result is { nodeId: string; previewImageUrl: string } =>
-          Boolean(result.previewImageUrl)
-      );
-      if (nextEntries.length === 0) {
-        return;
+    })().catch(() => {
+      for (const item of missingItems) {
+        const previewMemoryKey = resolveDockPopupPreviewMemoryKey(
+          item.node,
+          resolveDockPreviewCacheKey?.(item.node) ?? null
+        );
+        writeDockPopupPreviewImage(
+          previewMemoryKey,
+          null,
+          item.previewRevision
+        );
+        pendingDockPopupPreviewMemoryKeys.delete(previewMemoryKey);
       }
-      setCapturedPreviewByNodeId((current) => ({
-        ...current,
-        ...Object.fromEntries(
-          nextEntries.map((entry) => [entry.nodeId, entry.previewImageUrl])
-        )
-      }));
+      if (!cancelled) {
+        setCapturedPreviewByMemoryKey((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            missingItems.map((item) => {
+              const previewMemoryKey = resolveDockPopupPreviewMemoryKey(
+                item.node,
+                resolveDockPreviewCacheKey?.(item.node) ?? null
+              );
+              return [
+                previewMemoryKey,
+                { preview: null, revision: item.previewRevision }
+              ];
+            })
+          )
+        }));
+      }
     });
 
     return () => {
       cancelled = true;
+      for (const item of missingItems) {
+        pendingDockPopupPreviewMemoryKeys.delete(
+          resolveDockPopupPreviewMemoryKey(
+            item.node,
+            resolveDockPreviewCacheKey?.(item.node) ?? null
+          )
+        );
+      }
     };
   }, [
     capturePreview,
-    capturedPreviewByNodeId,
     dockPreviewCache,
     items,
     previewCaptureKey,
@@ -464,6 +715,7 @@ export function WorkbenchHostDockPopup({
 
   const content = (
     <div
+      ref={popupRootRef}
       className="desktop-dock-popup-root"
       data-dock-placement={placement}
       data-desktop-dock-popup-root="true"
@@ -514,8 +766,19 @@ export function WorkbenchHostDockPopup({
               }}
             >
               {items.map((item, index) => {
-                const previewImageUrl =
-                  item.previewImageUrl ?? capturedPreviewByNodeId[item.node.id];
+                const previewMemoryKey = resolveDockPopupPreviewMemoryKey(
+                  item.node,
+                  resolveDockPreviewCacheKey?.(item.node) ?? null
+                );
+                const capturedPreview =
+                  capturedPreviewByMemoryKey[previewMemoryKey] !== undefined
+                    ? capturedPreviewByMemoryKey[previewMemoryKey]
+                    : readDockPopupPreviewImage(previewMemoryKey);
+                const previewState = resolveDockPopupItemPreviewState(
+                  item,
+                  capturedPreview,
+                  Boolean(capturePreview)
+                );
                 return (
                   <WorkbenchHostDockPopupCard
                     key={item.node.id}
@@ -525,7 +788,7 @@ export function WorkbenchHostDockPopup({
                     labelMode={resolvedLabelMode}
                     onCloseNode={onCloseNode}
                     onSelectNode={onSelectNode}
-                    previewImageUrl={previewImageUrl}
+                    previewState={previewState}
                     style={{
                       ...resolvePopupFanCardStyle(
                         index,
@@ -546,8 +809,19 @@ export function WorkbenchHostDockPopup({
         ) : (
           <div className="grid max-h-[min(52vh,420px)] grid-cols-[repeat(var(--desktop-dock-popup-columns,2),165px)] gap-2 overflow-auto overscroll-contain">
             {items.map((item) => {
-              const previewImageUrl =
-                item.previewImageUrl ?? capturedPreviewByNodeId[item.node.id];
+              const previewMemoryKey = resolveDockPopupPreviewMemoryKey(
+                item.node,
+                resolveDockPreviewCacheKey?.(item.node) ?? null
+              );
+              const capturedPreview =
+                capturedPreviewByMemoryKey[previewMemoryKey] !== undefined
+                  ? capturedPreviewByMemoryKey[previewMemoryKey]
+                  : readDockPopupPreviewImage(previewMemoryKey);
+              const previewState = resolveDockPopupItemPreviewState(
+                item,
+                capturedPreview,
+                Boolean(capturePreview)
+              );
               return (
                 <WorkbenchHostDockPopupCard
                   key={item.node.id}
@@ -557,7 +831,7 @@ export function WorkbenchHostDockPopup({
                   labelMode={resolvedLabelMode}
                   onCloseNode={onCloseNode}
                   onSelectNode={onSelectNode}
-                  previewImageUrl={previewImageUrl}
+                  previewState={previewState}
                   variant={resolvedVariant}
                 />
               );
@@ -602,13 +876,134 @@ function readPersistedDockPreview(
   );
 }
 
+function resolveDockPopupPreviewCacheKey(
+  cacheKey: WorkbenchDockPreviewCacheKey | null,
+  revision: string | null
+): WorkbenchDockPreviewCacheKey | null {
+  return cacheKey ? { ...cacheKey, revision } : null;
+}
+
+function resolveDockPopupPreviewMemoryKey(
+  node: WorkbenchNode<WorkbenchHostNodeData>,
+  cacheKey: WorkbenchDockPreviewCacheKey | null
+): string {
+  if (!cacheKey) {
+    return `node:${node.id}`;
+  }
+  return `cache:${JSON.stringify({
+    instanceId: cacheKey.instanceId,
+    instanceKey: cacheKey.instanceKey ?? null,
+    nodeId: cacheKey.nodeId,
+    typeId: cacheKey.typeId,
+    workspaceId: cacheKey.workspaceId
+  })}`;
+}
+
+function normalizeDockPopupPreviewContentResult(
+  preview: WorkbenchDockPreviewContent | string | null | undefined,
+  revision: string | null
+): WorkbenchDockPreviewContent | null {
+  if (!preview) {
+    return null;
+  }
+  if (typeof preview === "string") {
+    return { kind: "image", revision: revision ?? undefined, src: preview };
+  }
+  return {
+    ...preview,
+    revision: preview.revision ?? revision ?? undefined
+  };
+}
+
+function resolveDockPopupItemPreviewState(
+  item: WorkbenchHostDockPopupItem,
+  capturedPreview: WorkbenchHostDockPopupCapturedPreview | undefined,
+  hasPreviewProvider: boolean
+): WorkbenchHostDockPopupPreviewState {
+  const revision = item.previewRevision;
+  if (item.preview) {
+    return { preview: item.preview, status: "ready" };
+  }
+  if (
+    capturedPreview &&
+    capturedPreview.revision === revision &&
+    capturedPreview.preview
+  ) {
+    return { preview: capturedPreview.preview, status: "ready" };
+  }
+  if (
+    (capturedPreview !== undefined && capturedPreview.revision === revision) ||
+    !hasPreviewProvider
+  ) {
+    return { status: "fallback" };
+  }
+  return { status: "loading" };
+}
+
+function previewCacheToken(
+  preview: WorkbenchDockPreviewContent | null | undefined
+): string {
+  if (!preview) {
+    return "";
+  }
+  switch (preview.kind) {
+    case "component":
+      return `component:${preview.revision ?? ""}`;
+    case "image":
+      return `image:${preview.revision ?? ""}:${preview.src}`;
+  }
+}
+
+function logWorkbenchDockPopupDebug(
+  event: string,
+  debugDiagnostics: WorkbenchHostProps["debugDiagnostics"],
+  details: Record<string, unknown>
+): void {
+  if (!debugDiagnostics?.log) {
+    return;
+  }
+  void Promise.resolve(
+    debugDiagnostics.log({
+      details,
+      event,
+      level: "info",
+      source: "workbench-dock"
+    })
+  ).catch(() => undefined);
+}
+
+function rectToDiagnostic(element: HTMLElement): Record<string, number> {
+  const rect = element.getBoundingClientRect();
+  return {
+    bottom: Math.round(rect.bottom),
+    height: Math.round(rect.height),
+    left: Math.round(rect.left),
+    right: Math.round(rect.right),
+    top: Math.round(rect.top),
+    width: Math.round(rect.width)
+  };
+}
+
+function styleToDiagnostic(element: HTMLElement): Record<string, string> {
+  const style = window.getComputedStyle(element);
+  return {
+    display: style.display,
+    opacity: style.opacity,
+    pointerEvents: style.pointerEvents,
+    position: style.position,
+    transform: style.transform,
+    visibility: style.visibility,
+    zIndex: style.zIndex
+  };
+}
+
 interface WorkbenchHostDockPopupCardProps {
   closeWindowLabel: (title: string) => string;
   item: WorkbenchHostDockPopupItem;
   labelMode?: WorkbenchHostDockPopupCardLabelMode;
   onCloseNode: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
-  previewImageUrl?: string;
+  previewState: WorkbenchHostDockPopupPreviewState;
   style?: CSSProperties;
   variant?: WorkbenchHostDockPopupVariant;
 }
@@ -623,7 +1018,7 @@ const WorkbenchHostDockPopupCard = forwardRef<
     labelMode,
     onCloseNode,
     onSelectNode,
-    previewImageUrl,
+    previewState,
     style,
     variant
   },
@@ -657,14 +1052,23 @@ const WorkbenchHostDockPopupCard = forwardRef<
       onSelectNode(item.node.id);
     }, dockPopupMinimizedStackLaunchDisappearMs);
   }, [isMinimizedStack, item.node.id, onSelectNode]);
+  const handleSelectKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      handleSelect();
+    },
+    [handleSelect]
+  );
+  const hasReadyPreview = previewState.status === "ready";
 
   return (
     <div
       ref={ref}
       className={cn(
         "group/dock-popup-card relative flex h-[103px] w-[165px] min-w-0 flex-col overflow-hidden rounded-[8px] border border-[var(--border-1)] bg-background-fronted text-left text-[var(--text-primary)] transition-[border-color,color] duration-150",
-        item.isFocused &&
-          "border-transparent shadow-[inset_0_0_0_2px_var(--border-focus)]",
         item.isMinimized && "text-[var(--text-secondary)]"
       )}
       data-active={item.isFocused ? "true" : undefined}
@@ -674,39 +1078,23 @@ const WorkbenchHostDockPopupCard = forwardRef<
       data-minimized={item.isMinimized ? "true" : undefined}
       style={style}
     >
-      <button
+      <div
         aria-label={title}
         data-active={item.isFocused ? "true" : undefined}
-        className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md bg-transparent p-1 text-inherit"
-        type="button"
-        onClick={handleSelect}
-      >
-        {previewImageUrl ? (
-          <span
-            className="block min-h-0 min-w-0 flex-1 overflow-hidden rounded-md bg-transparency-block"
-            aria-hidden="true"
-          >
-            <img
-              alt=""
-              className="block h-full max-h-full w-full max-w-full object-contain object-center"
-              draggable={false}
-              src={previewImageUrl}
-            />
-          </span>
-        ) : (
-          <span
-            className="flex size-full flex-col justify-center gap-[7px] rounded-md border border-[var(--border-1)] bg-transparency-block px-3 py-[11px]"
-            aria-hidden="true"
-          >
-            <span className="block h-[7px] w-[72%] rounded-full bg-transparency-hover" />
-            <span className="block h-[7px] w-[58%] rounded-full bg-transparency-hover" />
-            <span className="block h-[7px] w-[34%] rounded-full bg-transparency-hover" />
-          </span>
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-1 cursor-pointer flex-col overflow-hidden rounded-md bg-transparent text-inherit",
+          hasReadyPreview ? "p-0" : "p-1"
         )}
+        role="button"
+        tabIndex={0}
+        onClick={handleSelect}
+        onKeyDown={handleSelectKeyDown}
+      >
+        <WorkbenchHostDockPopupCardPreview previewState={previewState} />
         {labelMode === "hover-overlay" && item.title?.trim() ? (
           <WorkbenchHostDockPopupCardLabel title={item.title} />
         ) : null}
-      </button>
+      </div>
       <Button
         aria-label={closeWindowLabel(title)}
         className="absolute top-1.5 right-1.5 z-[2] rounded-full bg-[var(--background-fronted)] opacity-0 transition-[background-color,opacity] duration-150 hover:bg-[var(--background-fronted)] focus-visible:bg-[var(--background-fronted)] group-hover/dock-popup-card:opacity-100 group-focus-within/dock-popup-card:opacity-100 focus-visible:opacity-100"
@@ -722,6 +1110,13 @@ const WorkbenchHostDockPopupCard = forwardRef<
       >
         <CloseIcon className="size-3.5" />
       </Button>
+      {item.isFocused ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[3] rounded-[8px] shadow-[inset_0_0_0_2px_var(--border-focus)]"
+          data-desktop-dock-popup-card-active-overlay="true"
+        />
+      ) : null}
       {isMinimizedStack ? (
         <span className="desktop-dock-popup__fan-title-tip" title={title}>
           {title}
@@ -730,6 +1125,56 @@ const WorkbenchHostDockPopupCard = forwardRef<
     </div>
   );
 });
+
+function WorkbenchHostDockPopupCardPreview({
+  previewState
+}: {
+  previewState: WorkbenchHostDockPopupPreviewState;
+}) {
+  if (previewState.status !== "ready") {
+    return (
+      <span
+        className="flex min-h-0 min-w-0 flex-1 flex-col justify-center gap-[7px] rounded-md border border-[var(--border-1)] bg-transparency-block px-3 py-[11px]"
+        aria-hidden="true"
+        data-preview-state={previewState.status}
+      >
+        <span className="block h-[7px] w-[72%] rounded-full bg-transparency-hover" />
+        <span className="block h-[7px] w-[58%] rounded-full bg-transparency-hover" />
+        <span className="block h-[7px] w-[34%] rounded-full bg-transparency-hover" />
+      </span>
+    );
+  }
+
+  const preview = previewState.preview;
+  if (preview.kind === "component") {
+    return (
+      <span
+        className="block min-h-0 min-w-0 flex-1 overflow-hidden rounded-md"
+        aria-hidden="true"
+        data-preview-kind={preview.kind}
+        data-preview-state={previewState.status}
+      >
+        {preview.element}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="block min-h-0 min-w-0 flex-1 overflow-hidden rounded-md"
+      aria-hidden="true"
+      data-preview-kind={preview.kind}
+      data-preview-state={previewState.status}
+    >
+      <img
+        alt=""
+        className="block h-full max-h-full w-full max-w-full object-contain object-center"
+        draggable={false}
+        src={preview.src}
+      />
+    </span>
+  );
+}
 
 function WorkbenchHostDockPopupCardLabel({ title }: { title: string }) {
   return (

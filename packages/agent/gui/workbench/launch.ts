@@ -5,8 +5,7 @@ import {
 } from "./providerCatalog.ts";
 import {
   agentGuiWorkbenchOpenSessionActivationType,
-  type AgentGuiWorkbenchProvider,
-  type AgentGuiWorkbenchPendingHandoff
+  type AgentGuiWorkbenchProvider
 } from "./types.ts";
 
 type AgentGuiWorkbenchLaunchRequestInput = Pick<
@@ -37,9 +36,6 @@ export function agentGuiWorkbenchInstanceId(
 
 export function createAgentGuiWorkbenchInstanceId(input: {
   agentSessionId?: string | null;
-  pendingHandoff?: {
-    requestId?: string | null;
-  } | null;
   provider: AgentGuiWorkbenchProvider;
 }): string {
   const prefix = agentGuiWorkbenchInstanceId(input.provider);
@@ -47,13 +43,6 @@ export function createAgentGuiWorkbenchInstanceId(input: {
   if (agentSessionId) {
     return `${prefix}:session:${encodeAgentGuiWorkbenchInstanceSegment(
       agentSessionId
-    )}`;
-  }
-
-  const handoffRequestId = input.pendingHandoff?.requestId?.trim();
-  if (handoffRequestId) {
-    return `${prefix}:handoff:${encodeAgentGuiWorkbenchInstanceSegment(
-      handoffRequestId
     )}`;
   }
 
@@ -102,7 +91,6 @@ export function agentGuiWorkbenchProviderFromLaunchRequest(
 
 export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
   agentSessionId?: string;
-  pendingHandoff?: AgentGuiWorkbenchPendingHandoff;
   provider: unknown;
 }) {
   const provider = normalizeAgentGuiWorkbenchProvider(input.provider);
@@ -110,7 +98,6 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
     dockEntryId: agentGuiWorkbenchDockEntryId(provider),
     payload: {
       ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
-      ...(input.pendingHandoff ? { pendingHandoff: input.pendingHandoff } : {}),
       provider
     },
     reason: "host" as const,
@@ -127,7 +114,6 @@ export interface AgentGuiWorkbenchLaunchDescriptor {
   } | null;
   dockEntryId: string;
   instanceId: string;
-  pendingHandoff: AgentGuiWorkbenchPendingHandoff | null;
   provider: AgentGuiWorkbenchProvider;
   reuseDockEntryNode: boolean;
   targetAgentSessionId: string | null;
@@ -138,10 +124,8 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
 ): AgentGuiWorkbenchLaunchDescriptor {
   const provider = agentGuiWorkbenchProviderFromLaunchRequest(request);
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
-  const pendingHandoff = pendingHandoffFromLaunchPayload(request.payload);
   const instanceId = createAgentGuiWorkbenchInstanceId({
     agentSessionId: targetAgentSessionId,
-    pendingHandoff,
     provider
   });
 
@@ -156,7 +140,6 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
       : null,
     dockEntryId: request.dockEntryId ?? agentGuiWorkbenchDockEntryId(provider),
     instanceId,
-    pendingHandoff,
     provider,
     reuseDockEntryNode: Boolean(targetAgentSessionId),
     targetAgentSessionId
@@ -176,46 +159,4 @@ function agentSessionIdFromLaunchPayload(payload: unknown): string | null {
   return typeof agentSessionId === "string" && agentSessionId.trim()
     ? agentSessionId.trim()
     : null;
-}
-
-function pendingHandoffFromLaunchPayload(
-  payload: unknown
-): AgentGuiWorkbenchPendingHandoff | null {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return null;
-  }
-  const pendingHandoff = (payload as { pendingHandoff?: unknown })
-    .pendingHandoff;
-  if (
-    !pendingHandoff ||
-    typeof pendingHandoff !== "object" ||
-    Array.isArray(pendingHandoff)
-  ) {
-    return null;
-  }
-  const requestId = (pendingHandoff as { requestId?: unknown }).requestId;
-  const prompt = (pendingHandoff as { prompt?: unknown }).prompt;
-  const title = (pendingHandoff as { title?: unknown }).title;
-  const taskTitle = (pendingHandoff as { taskTitle?: unknown }).taskTitle;
-  if (
-    typeof requestId !== "string" ||
-    typeof prompt !== "string" ||
-    typeof title !== "string" ||
-    typeof taskTitle !== "string"
-  ) {
-    return null;
-  }
-
-  const issueId = (pendingHandoff as { issueId?: unknown }).issueId;
-  const issueTitle = (pendingHandoff as { issueTitle?: unknown }).issueTitle;
-  const taskId = (pendingHandoff as { taskId?: unknown }).taskId;
-  return {
-    issueId: typeof issueId === "string" ? issueId : null,
-    issueTitle: typeof issueTitle === "string" ? issueTitle : null,
-    prompt,
-    requestId,
-    taskId: typeof taskId === "string" ? taskId : null,
-    taskTitle,
-    title
-  };
 }

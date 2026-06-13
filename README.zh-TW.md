@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/tutti-logo.png" alt="Tutti logo" width="120" />
+
 # Tutti
 
 **人與 Agent「同步協作」的工作空間。**

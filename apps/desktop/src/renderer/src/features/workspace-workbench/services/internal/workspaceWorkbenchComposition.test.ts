@@ -73,13 +73,6 @@ test("workspace agent GUI creates multi-open panel instance ids", () => {
     }),
     "agent-gui:gemini:session:session%3A1"
   );
-  assert.equal(
-    createWorkspaceAgentGuiInstanceId({
-      pendingHandoff: { requestId: "handoff/1" },
-      provider: "openclaw"
-    }),
-    "agent-gui:openclaw:handoff:handoff%2F1"
-  );
 });
 
 test("workspace files open at the task center default height", () => {

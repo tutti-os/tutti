@@ -46,6 +46,10 @@ type AgentSessionViewStoreListener = () => void;
 type AgentSessionActivityStreamListener = (
   event: AgentHostAgentActivityStreamEvent
 ) => void;
+type AgentSessionMessageUpdateEvent = Extract<
+  AgentHostAgentActivityStreamEvent,
+  { eventType: "message_update" }
+>;
 
 interface NormalizedAgentSessionViewRef {
   sessionKey: string;
@@ -69,13 +73,22 @@ interface AgentSessionActivityStreamEntry {
   payload: NormalizedAgentSessionActivityStreamPayload;
   listeners: Set<AgentSessionActivityStreamListener>;
   lingerTimer: ReturnType<typeof setTimeout> | null;
+  pendingMessageBatch: PendingAgentSessionMessageBatch | null;
   releaseRuntimeEvents: (() => void) | null;
   retainPromise: Promise<void> | null;
+}
+
+interface PendingAgentSessionMessageBatch {
+  events: AgentSessionMessageUpdateEvent[];
+  incomingCount: number;
+  timer: ReturnType<typeof setTimeout> | null;
 }
 
 const EMPTY_AGENT_SESSION_VIEW_STORE_SNAPSHOT: AgentSessionViewStoreSnapshot = {
   sessionViewsBySessionKey: {}
 };
+
+const MESSAGE_UPDATE_BATCH_DELAY_MS = 33;
 
 let snapshot = EMPTY_AGENT_SESSION_VIEW_STORE_SNAPSHOT;
 const storeListeners = new Set<AgentSessionViewStoreListener>();
@@ -150,6 +163,7 @@ export function watchAgentSession(
       payload: normalizedPayload,
       listeners: new Set<AgentSessionActivityStreamListener>(),
       lingerTimer: null,
+      pendingMessageBatch: null,
       releaseRuntimeEvents: null,
       retainPromise: null
     };
@@ -396,6 +410,7 @@ export function resetAgentSessionViewStoreForTests(): void {
   }
   runtimeSessionEventUnsubscribeByWorkspaceId.clear();
   for (const entry of activityStreamEntries.values()) {
+    clearPendingMessageBatch(entry);
     clearEntryLingerTimer(entry);
     entry.releaseRuntimeEvents?.();
   }
@@ -473,10 +488,7 @@ function ensureWorkspaceSessionEventListener(workspaceId: string): void {
         return;
       }
       for (const entry of entries) {
-        recordAgentSessionStreamEvent(entry, event);
-        for (const listener of entry.listeners) {
-          listener(event);
-        }
+        receiveAgentSessionStreamEvent(entry, event);
       }
     }
   );
@@ -555,6 +567,107 @@ function clearEntryLingerTimer(entry: AgentSessionActivityStreamEntry): void {
   entry.lingerTimer = null;
 }
 
+function receiveAgentSessionStreamEvent(
+  entry: AgentSessionActivityStreamEntry,
+  event: AgentHostAgentActivityStreamEvent
+): void {
+  if (
+    event.eventType !== "message_update" ||
+    isImmediateMessageUpdateEvent(event)
+  ) {
+    flushPendingMessageBatch(entry);
+    dispatchAgentSessionStreamEvent(entry, event);
+    return;
+  }
+  enqueueMessageUpdateEvent(entry, event);
+}
+
+function enqueueMessageUpdateEvent(
+  entry: AgentSessionActivityStreamEntry,
+  event: AgentSessionMessageUpdateEvent
+): void {
+  let batch = entry.pendingMessageBatch;
+  if (!batch) {
+    batch = {
+      events: [],
+      incomingCount: 0,
+      timer: null
+    };
+    entry.pendingMessageBatch = batch;
+  }
+  batch.incomingCount += 1;
+  upsertCoalescedMessageUpdate(batch.events, event);
+  if (batch.timer !== null) {
+    return;
+  }
+  batch.timer = setTimeout(
+    () => flushPendingMessageBatch(entry),
+    MESSAGE_UPDATE_BATCH_DELAY_MS
+  );
+}
+
+function flushPendingMessageBatch(
+  entry: AgentSessionActivityStreamEntry
+): void {
+  const batch = entry.pendingMessageBatch;
+  if (!batch) {
+    return;
+  }
+  clearPendingMessageBatch(entry);
+  if (batch.events.length === 0) {
+    return;
+  }
+  recordAgentSessionStreamEvents(entry, batch.events);
+  for (const event of batch.events) {
+    for (const listener of entry.listeners) {
+      listener(event);
+    }
+  }
+  reportMessageBatchDiagnostics(entry, batch);
+}
+
+function clearPendingMessageBatch(
+  entry: AgentSessionActivityStreamEntry
+): void {
+  const batch = entry.pendingMessageBatch;
+  if (!batch) {
+    return;
+  }
+  if (batch.timer !== null) {
+    clearTimeout(batch.timer);
+    batch.timer = null;
+  }
+  entry.pendingMessageBatch = null;
+}
+
+function dispatchAgentSessionStreamEvent(
+  entry: AgentSessionActivityStreamEntry,
+  event: AgentHostAgentActivityStreamEvent
+): void {
+  recordAgentSessionStreamEvent(entry, event);
+  for (const listener of entry.listeners) {
+    listener(event);
+  }
+}
+
+function upsertCoalescedMessageUpdate(
+  events: AgentSessionMessageUpdateEvent[],
+  event: AgentSessionMessageUpdateEvent
+): void {
+  const messageId = event.data.messageId.trim();
+  const existingIndex = events.findIndex(
+    (candidate) =>
+      candidate.eventType === "message_update" &&
+      candidate.data.messageId.trim() === messageId
+  );
+  if (existingIndex >= 0) {
+    events.splice(existingIndex, 1);
+    events.push(event);
+    return;
+  }
+  events.push(event);
+}
+
 function normalizeSubscribePayload(
   payload: AgentSessionActivityStreamPayload
 ): NormalizedAgentSessionActivityStreamPayload | null {
@@ -616,14 +729,28 @@ function recordAgentSessionStreamEvent(
   entry: AgentSessionActivityStreamEntry,
   event: AgentHostAgentActivityStreamEvent
 ): void {
+  recordAgentSessionStreamEvents(entry, [event]);
+}
+
+function recordAgentSessionStreamEvents(
+  entry: AgentSessionActivityStreamEntry,
+  events: readonly AgentHostAgentActivityStreamEvent[]
+): void {
+  const latestEvent = events.at(-1);
+  if (!latestEvent) {
+    return;
+  }
   const occurredAtUnixMs =
-    "occurredAtUnixMs" in event.data &&
-    typeof event.data.occurredAtUnixMs === "number"
-      ? event.data.occurredAtUnixMs
+    "occurredAtUnixMs" in latestEvent.data &&
+    typeof latestEvent.data.occurredAtUnixMs === "number"
+      ? latestEvent.data.occurredAtUnixMs
       : Date.now();
   updateAgentSessionView(entry.payload, (current) => {
     let next = current;
-    if (event.eventType === "available_commands_update") {
+    for (const event of events) {
+      if (event.eventType !== "available_commands_update") {
+        continue;
+      }
       next = {
         ...next,
         controlCommands: [...event.data.commands]
@@ -636,6 +763,51 @@ function recordAgentSessionStreamEvent(
       error: null
     };
   });
+}
+
+function isImmediateMessageUpdateEvent(
+  event: AgentHostAgentActivityStreamEvent
+): boolean {
+  if (event.eventType !== "message_update") {
+    return true;
+  }
+  if (typeof event.data.completedAtUnixMs === "number") {
+    return true;
+  }
+  const status = event.data.status?.trim().toLowerCase() ?? "";
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "canceled" ||
+    status === "cancelled" ||
+    status === "error" ||
+    status === "waiting"
+  );
+}
+
+function reportMessageBatchDiagnostics(
+  entry: AgentSessionActivityStreamEntry,
+  batch: PendingAgentSessionMessageBatch
+): void {
+  if (batch.incomingCount <= 1 && batch.events.length <= 1) {
+    return;
+  }
+  const runtime = getOptionalAgentActivityRuntime();
+  try {
+    void runtime?.reportDiagnostic?.({
+      details: {
+        agentSessionId: entry.payload.agentSessionId,
+        coalescedCount: batch.events.length,
+        incomingCount: batch.incomingCount
+      },
+      event: "agent.session_view.message_update_batch_flushed",
+      level: "debug",
+      source: "agent-gui",
+      workspaceId: entry.payload.workspaceId
+    });
+  } catch {
+    // Diagnostics must not affect the session event path.
+  }
 }
 
 function isAgentSessionActivityStreamEvent(

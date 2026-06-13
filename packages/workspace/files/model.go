@@ -32,12 +32,14 @@ type WorkspaceRoot struct {
 }
 
 type FileEntry struct {
-	Path        LogicalPath
-	Name        string
-	Kind        EntryKind
-	HasChildren bool
-	SizeBytes   *int64
-	MtimeMs     *int64
+	Path          LogicalPath
+	Name          string
+	Kind          EntryKind
+	HasChildren   bool
+	SizeBytes     *int64
+	MtimeMs       *int64
+	CreatedTimeMs *int64
+	LastOpenedMs  *int64
 }
 
 type FileContent struct {
@@ -91,6 +93,8 @@ type DirectoryTreeEntry struct {
 	HasChildren         bool
 	SizeBytes           *int64
 	MtimeMs             *int64
+	CreatedTimeMs       *int64
+	LastOpenedMs        *int64
 	PrefetchReason      DirectoryTreePrefetchReason
 	PrefetchState       DirectoryTreePrefetchState
 	PrefetchedDirectory *DirectoryTreeDirectory
