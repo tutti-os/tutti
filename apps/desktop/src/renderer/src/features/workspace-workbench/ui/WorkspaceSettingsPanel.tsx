@@ -8,8 +8,8 @@ import {
   CloseIcon,
   DeleteIcon,
   EyeIcon,
+  LinkIcon,
   LoadingIcon,
-  RefreshIcon,
   Select,
   SelectContent,
   SelectItem,
@@ -32,6 +32,7 @@ import type {
 } from "../services/workspaceSettingsTypes";
 import {
   desktopLocales,
+  type DesktopI18nKey,
   type DesktopLocale
 } from "../../../../../shared/i18n/index.ts";
 import {
@@ -238,16 +239,8 @@ export function WorkspaceSettingsPanel({
                 onDeleteProvider={(providerID) => {
                   void settingsService.removeManagedModelProvider(providerID);
                 }}
-                onDetectProviderModels={(providerID) => {
-                  void settingsService.detectManagedModelProviderModels(
-                    providerID
-                  );
-                }}
                 onSaveProvider={(provider) => {
                   void settingsService.saveManagedModelProvider(provider);
-                }}
-                onTestProvider={(providerID) => {
-                  void settingsService.testManagedModelProvider(providerID);
                 }}
                 onUpdateProvider={(providerID, patch) => {
                   settingsService.updateManagedModelProviderDraft(
@@ -290,6 +283,123 @@ const managedModelProviderLabels: Record<
   openai: "OpenAI"
 };
 
+type ManagedModelProviderPreset = {
+  provider: WorkspaceManagedModelProviderID;
+  labelKey: DesktopI18nKey;
+  baseUrl: string;
+  apiKeyUrl: string;
+  models: readonly string[];
+};
+
+const CUSTOM_MANAGED_MODEL_PROVIDER_PRESET = "__custom_provider__";
+const AGNES_API_KEYS_URL = "https://platform.agnes-ai.com/settings/apiKeys";
+const ANTHROPIC_API_KEYS_URL = "https://console.anthropic.com/settings/keys";
+const DEEPSEEK_API_KEYS_URL = "https://platform.deepseek.com/api_keys";
+const MINIMAX_API_KEYS_URL = "https://platform.minimax.io/console/access";
+const MIMO_API_KEYS_URL = "https://platform.xiaomimimo.com/console/api-keys";
+const OPENAI_API_KEYS_URL = "https://platform.openai.com/api-keys";
+
+const managedModelProviderPresets: readonly ManagedModelProviderPreset[] = [
+  {
+    provider: "agnes",
+    labelKey: "workspace.settings.apps.managedModels.presetLabels.agnes",
+    baseUrl: "https://apihub.agnes-ai.com/v1",
+    apiKeyUrl: AGNES_API_KEYS_URL,
+    models: ["agnes-2.0-flash", "agnes-1.5-flash"]
+  },
+  {
+    provider: "anthropic",
+    labelKey:
+      "workspace.settings.apps.managedModels.presetLabels.anthropicClaude",
+    baseUrl: "https://api.anthropic.com",
+    apiKeyUrl: ANTHROPIC_API_KEYS_URL,
+    models: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"]
+  },
+  {
+    provider: "anthropic",
+    labelKey:
+      "workspace.settings.apps.managedModels.presetLabels.deepseekAnthropic",
+    baseUrl: "https://api.deepseek.com/anthropic",
+    apiKeyUrl: DEEPSEEK_API_KEYS_URL,
+    models: [
+      "deepseek-v4-flash",
+      "deepseek-v4-pro",
+      "deepseek-chat",
+      "deepseek-reasoner"
+    ]
+  },
+  {
+    provider: "anthropic",
+    labelKey:
+      "workspace.settings.apps.managedModels.presetLabels.minimaxAnthropic",
+    baseUrl: "https://api.minimaxi.com/anthropic",
+    apiKeyUrl: MINIMAX_API_KEYS_URL,
+    models: [
+      "MiniMax-M3",
+      "MiniMax-M2.7-highspeed",
+      "MiniMax-M2.7",
+      "MiniMax-M2.5-highspeed",
+      "MiniMax-M2.5",
+      "MiniMax-M2.1-highspeed",
+      "MiniMax-M2.1",
+      "MiniMax-M2"
+    ]
+  },
+  {
+    provider: "openai",
+    labelKey:
+      "workspace.settings.apps.managedModels.presetLabels.openaiOfficial",
+    baseUrl: "https://api.openai.com/v1",
+    apiKeyUrl: OPENAI_API_KEYS_URL,
+    models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
+  },
+  {
+    provider: "openai",
+    labelKey:
+      "workspace.settings.apps.managedModels.presetLabels.deepseekOpenai",
+    baseUrl: "https://api.deepseek.com",
+    apiKeyUrl: DEEPSEEK_API_KEYS_URL,
+    models: [
+      "deepseek-v4-flash",
+      "deepseek-v4-pro",
+      "deepseek-chat",
+      "deepseek-reasoner"
+    ]
+  },
+  {
+    provider: "openai",
+    labelKey:
+      "workspace.settings.apps.managedModels.presetLabels.minimaxOpenai",
+    baseUrl: "https://api.minimaxi.com/v1",
+    apiKeyUrl: MINIMAX_API_KEYS_URL,
+    models: [
+      "MiniMax-M3",
+      "MiniMax-M2.7-highspeed",
+      "MiniMax-M2.7",
+      "MiniMax-M2.5-highspeed",
+      "MiniMax-M2.5",
+      "MiniMax-M2.1-highspeed",
+      "MiniMax-M2.1",
+      "MiniMax-M2"
+    ]
+  },
+  {
+    provider: "openai",
+    labelKey: "workspace.settings.apps.managedModels.presetLabels.mimoOpenai",
+    baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
+    apiKeyUrl: MIMO_API_KEYS_URL,
+    models: ["mimo-v2.5-pro"]
+  },
+  {
+    provider: "anthropic",
+    labelKey:
+      "workspace.settings.apps.managedModels.presetLabels.mimoAnthropic",
+    baseUrl: "https://token-plan-cn.xiaomimimo.com/anthropic",
+    apiKeyUrl: MIMO_API_KEYS_URL,
+    models: ["mimo-v2.5-pro"]
+  }
+];
+
 function defaultManagedProviderBaseUrl(
   provider: WorkspaceManagedModelProviderID
 ): string {
@@ -310,10 +420,56 @@ function defaultManagedProviderModel(
     case "agnes":
       return "agnes-2.0-flash";
     case "anthropic":
-      return "claude-sonnet-4-5";
+      return "claude-sonnet-4-6";
     case "openai":
-      return "gpt-5.1";
+      return "gpt-5.5";
   }
+}
+
+function getManagedModelProviderPresets(
+  provider: WorkspaceManagedModelProviderID
+): ManagedModelProviderPreset[] {
+  return managedModelProviderPresets.filter(
+    (preset) => preset.provider === provider
+  );
+}
+
+function getSelectedManagedModelProviderPreset(
+  provider: WorkspaceManagedModelProviderID,
+  baseUrl: string | undefined
+): ManagedModelProviderPreset | null {
+  const currentBaseUrl = baseUrl?.trim() ?? "";
+  if (!currentBaseUrl) {
+    return null;
+  }
+  return (
+    managedModelProviderPresets.find(
+      (preset) =>
+        preset.provider === provider && preset.baseUrl === currentBaseUrl
+    ) ?? null
+  );
+}
+
+function toManagedModelPresetRows(
+  preset: ManagedModelProviderPreset
+): WorkspaceManagedModel[] {
+  return preset.models.map((id) => ({
+    id,
+    name: id,
+    provider: preset.provider
+  }));
+}
+
+function hasDeletableManagedModelProvider(
+  provider: WorkspaceManagedModelProviderDraft
+): boolean {
+  return (
+    provider.hasApiKey ||
+    provider.apiKey.trim().length > 0 ||
+    (provider.baseUrl?.trim().length ?? 0) > 0 ||
+    provider.models.length > 0 ||
+    Boolean(provider.updatedAt || provider.workspaceId)
+  );
 }
 
 function normalizeWorkspaceManagedModelRows(
@@ -340,16 +496,12 @@ function normalizeWorkspaceManagedModelRows(
 function WorkspaceAppsSettingsSection({
   managedModels,
   onDeleteProvider,
-  onDetectProviderModels,
   onSaveProvider,
-  onTestProvider,
   onUpdateProvider
 }: {
   managedModels: WorkspaceSettingsManagedModelsSnapshotState;
   onDeleteProvider: (providerID: WorkspaceManagedModelProviderID) => void;
-  onDetectProviderModels: (providerID: WorkspaceManagedModelProviderID) => void;
   onSaveProvider: (provider: WorkspaceManagedModelProviderDraft) => void;
-  onTestProvider: (providerID: WorkspaceManagedModelProviderID) => void;
   onUpdateProvider: (
     providerID: WorkspaceManagedModelProviderID,
     patch: Partial<WorkspaceManagedModelProviderDraft>
@@ -405,9 +557,28 @@ function WorkspaceAppsSettingsSection({
     ) ??
     managedModels.providers[0] ??
     null;
+  const selectedProviderPresets = selectedProvider
+    ? getManagedModelProviderPresets(selectedProvider.provider)
+    : [];
+  const selectedProviderPreset = selectedProvider
+    ? getSelectedManagedModelProviderPreset(
+        selectedProvider.provider,
+        selectedProvider.baseUrl
+      )
+    : null;
+  const selectedPresetValue =
+    selectedProviderPreset?.baseUrl ?? CUSTOM_MANAGED_MODEL_PROVIDER_PRESET;
+  const selectedApiKeyPreset =
+    selectedProviderPresets.length === 1
+      ? selectedProviderPresets[0]
+      : selectedProviderPreset;
+  const apiKeyUrl = selectedApiKeyPreset?.apiKeyUrl ?? "";
   const apiKeyVisible =
     selectedProvider !== null &&
     visibleAPIKeyProviderID === selectedProvider.provider;
+  const canDeleteSelectedProvider =
+    selectedProvider !== null &&
+    hasDeletableManagedModelProvider(selectedProvider);
 
   useEffect(() => {
     setNewModelID("");
@@ -529,6 +700,61 @@ function WorkspaceAppsSettingsSection({
             />
           </div>
 
+          {selectedProviderPresets.length > 1 ? (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+                {t("workspace.settings.apps.managedModels.quickFillProvider")}
+              </span>
+              <Select
+                value={selectedPresetValue}
+                onValueChange={(value) => {
+                  if (value === CUSTOM_MANAGED_MODEL_PROVIDER_PRESET) {
+                    onUpdateProvider(selectedProvider.provider, {
+                      baseUrl: "",
+                      models: []
+                    });
+                    return;
+                  }
+                  const preset = selectedProviderPresets.find(
+                    (candidate) => candidate.baseUrl === value
+                  );
+                  if (!preset) {
+                    return;
+                  }
+                  onUpdateProvider(selectedProvider.provider, {
+                    baseUrl: preset.baseUrl,
+                    models: normalizeWorkspaceManagedModelRows(
+                      selectedProvider.provider,
+                      toManagedModelPresetRows(preset)
+                    )
+                  });
+                }}
+              >
+                <SelectTrigger
+                  aria-label={t(
+                    "workspace.settings.apps.managedModels.quickFillProvider"
+                  )}
+                  className={workspaceSettingsSelectTriggerClass}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent
+                  className={workspaceSettingsSelectContentClass}
+                  style={{ zIndex: "var(--z-panel-popover)" }}
+                >
+                  <SelectItem value={CUSTOM_MANAGED_MODEL_PROVIDER_PRESET}>
+                    {t("workspace.settings.apps.managedModels.customProvider")}
+                  </SelectItem>
+                  {selectedProviderPresets.map((preset) => (
+                    <SelectItem key={preset.baseUrl} value={preset.baseUrl}>
+                      {t(preset.labelKey)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
             <label className="flex flex-col gap-1.5">
               <span className="text-[11px] font-medium text-[var(--text-secondary)]">
@@ -598,28 +824,29 @@ function WorkspaceAppsSettingsSection({
             </label>
           </div>
 
+          {apiKeyUrl ? (
+            <button
+              className="inline-flex w-fit items-center gap-1.5 rounded-[5px] text-left text-[12px] font-medium text-[var(--text-primary)] underline underline-offset-4 transition-opacity duration-150 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
+              type="button"
+              onClick={() => {
+                window.open(apiKeyUrl, "_blank", "noopener,noreferrer");
+              }}
+            >
+              {t("workspace.settings.apps.managedModels.getApiKey", {
+                provider:
+                  (selectedApiKeyPreset
+                    ? t(selectedApiKeyPreset.labelKey)
+                    : null) ??
+                  managedModelProviderLabels[selectedProvider.provider]
+              })}
+              <LinkIcon aria-hidden="true" size={13} />
+            </button>
+          ) : null}
+
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-                {t("workspace.settings.apps.managedModels.models")}
-              </span>
-              <Button
-                disabled={
-                  managedModels.detectingProvider === selectedProvider.provider
-                }
-                size="sm"
-                type="button"
-                variant="secondary"
-                onClick={() =>
-                  onDetectProviderModels(selectedProvider.provider)
-                }
-              >
-                <RefreshIcon className="size-3.5" />
-                {managedModels.detectingProvider === selectedProvider.provider
-                  ? t("workspace.settings.apps.managedModels.detectingModels")
-                  : t("workspace.settings.apps.managedModels.detectModels")}
-              </Button>
-            </div>
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+              {t("workspace.settings.apps.managedModels.models")}
+            </span>
             <div className="flex flex-col gap-1.5">
               {selectedProvider.models.map((model, index) => (
                 <div
@@ -690,30 +917,20 @@ function WorkspaceAppsSettingsSection({
           </div>
 
           <div className="flex flex-wrap justify-end gap-2">
-            <Button
-              disabled={
-                managedModels.testingProvider === selectedProvider.provider
-              }
-              type="button"
-              variant="secondary"
-              onClick={() => onTestProvider(selectedProvider.provider)}
-            >
-              {managedModels.testingProvider === selectedProvider.provider
-                ? t("workspace.settings.apps.managedModels.testing")
-                : t("workspace.settings.apps.managedModels.test")}
-            </Button>
-            <Button
-              disabled={
-                managedModels.deletingProvider === selectedProvider.provider
-              }
-              type="button"
-              variant="secondary"
-              onClick={() => onDeleteProvider(selectedProvider.provider)}
-            >
-              {managedModels.deletingProvider === selectedProvider.provider
-                ? t("workspace.settings.apps.managedModels.deleting")
-                : t("workspace.settings.apps.managedModels.delete")}
-            </Button>
+            {canDeleteSelectedProvider ? (
+              <Button
+                disabled={
+                  managedModels.deletingProvider === selectedProvider.provider
+                }
+                type="button"
+                variant="secondary"
+                onClick={() => onDeleteProvider(selectedProvider.provider)}
+              >
+                {managedModels.deletingProvider === selectedProvider.provider
+                  ? t("workspace.settings.apps.managedModels.deleting")
+                  : t("workspace.settings.apps.managedModels.delete")}
+              </Button>
+            ) : null}
             <Button
               disabled={
                 managedModels.savingProvider === selectedProvider.provider
