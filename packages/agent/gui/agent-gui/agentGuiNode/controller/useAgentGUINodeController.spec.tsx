@@ -5077,6 +5077,102 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  describe.each(["codex", "claude-code"] as const)(
+    "compact busy recovery (%s)",
+    (provider) => {
+      it("clears busy UI when cancel returns a raw core created status", async () => {
+        let sessionStatus: "waiting" | "created" = "waiting";
+        const cancel = vi.fn(async () => {
+          sessionStatus = "created";
+          return {
+            agentSessionId: "session-1",
+            canceled: false,
+            reason: "no_active_turn",
+            sessionStatus: "created"
+          };
+        });
+        const getState = vi.fn(async () =>
+          sessionStatus === "waiting"
+            ? agentSessionState("session-1", {
+                status: "waiting",
+                pendingInteractive: {
+                  kind: "approval",
+                  requestId: "request-1",
+                  toolName: "Run command",
+                  status: "waiting",
+                  input: {
+                    callId: "call-1",
+                    options: [
+                      {
+                        id: "allow_once",
+                        label: "Allow once",
+                        kind: "allow_once"
+                      }
+                    ]
+                  }
+                }
+              })
+            : agentSessionState("session-1", { status: "created" })
+        );
+        const reportDiagnostic = vi.fn();
+        // Use a session with no turnPhase so result.session.currentPhase is null
+        // after cancel. Only projectCoreSessionStatus("created") → "ready" can
+        // then make cancelResultSessionStatusIsNonBusy return true; without the
+        // projection "created" is unknown to the normalizer → returns null →
+        // returnedSessionNonBusy: false, causing the assertion below to fail.
+        installAgentHostApi({
+          list: vi.fn(async () => ({
+            presences: [],
+            sessions: [
+              workspaceAgentSession("session-1", { turnPhase: undefined })
+            ]
+          })),
+          listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+          subscribeEvents: vi.fn(() => vi.fn()),
+          cancel,
+          getState
+        });
+        (
+          window as unknown as { agentActivityRuntime: AgentActivityRuntime }
+        ).agentActivityRuntime.reportDiagnostic = reportDiagnostic;
+
+        const { result } = renderHook(() =>
+          useAgentGUINodeController({
+            workspaceId: "room-1",
+            currentUserId: "user-1",
+            workspacePath: "/workspace",
+            avoidGroupingEdits: false,
+            data: agentGuiData("session-1", provider),
+            onDataChange: vi.fn()
+          })
+        );
+
+        await waitFor(() => {
+          expect(result.current.viewModel.pendingApproval?.requestId).toBe(
+            "request-1"
+          );
+        });
+
+        act(() => {
+          result.current.actions.interruptCurrentTurn("No running response");
+        });
+
+        await waitFor(() => {
+          expect(result.current.viewModel.canQueueWhileBusy).toBe(false);
+        });
+        const diagnosticPayload = reportDiagnostic.mock.calls.find(
+          ([payload]) => payload?.event === "agent.gui.cancel.noop"
+        )?.[0];
+        expect(diagnosticPayload?.details).toEqual(
+          expect.objectContaining({
+            returnedSessionNonBusy: true,
+            returnedSessionStatus: "created"
+          })
+        );
+      });
+    }
+  );
+
   it("promotes provider-session-not-found from getState into the live recovery state", async () => {
     const getState = vi.fn(async () => {
       throw {

@@ -64,6 +64,7 @@ import type {
 import type { AgentApprovalItemVM } from "../../../shared/agentConversation/contracts/agentApprovalItemVM";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../../shared/workspaceAgentStatusNormalizer";
+import { projectCoreSessionStatus } from "../../../shared/agentActivitySnapshotProjection";
 import { isWorkspaceAgentUntitledTask } from "../../../shared/workspaceAgentLatestActivitySummary";
 import { projectWorkspaceAgentMessagesToTimelineItems } from "../../../shared/agentConversation/projection/workspaceAgentMessageProjection";
 import { mergeWorkspaceAgentMessages } from "../../../host/workspaceAgentSessionMessages";
@@ -289,7 +290,7 @@ function cancelResultSessionStatusIsNonBusy(
 ): boolean {
   const status = normalizeOptionalWorkspaceAgentStatus({
     currentPhase: result.session.currentPhase,
-    status: result.session.status
+    status: projectCoreSessionStatus(result.session.status)
   });
   return (
     status !== null && status.kind !== "working" && status.kind !== "waiting"
@@ -1747,29 +1748,7 @@ function conversationStatusFromSessionState(
 function conversationStatusFromStatusValue(
   value: string | null | undefined
 ): AgentGUIConversationSummary["status"] | null {
-  const status = value?.trim().toLowerCase();
-  switch (status) {
-    case "failed":
-      return "failed";
-    case "completed":
-    case "ended":
-    case "end":
-      return "completed";
-    case "canceled":
-      return "canceled";
-    case "waiting":
-    case "waiting_approval":
-      return "waiting";
-    case "working":
-    case "running":
-    case "streaming":
-      return "working";
-    case "ready":
-    case "idle":
-      return "ready";
-    default:
-      return null;
-  }
+  return normalizeOptionalWorkspaceAgentStatus({ status: value })?.kind ?? null;
 }
 
 function conversationStatusFromTimelineItems(
@@ -4764,7 +4743,7 @@ export function useAgentGUINodeController({
             return;
           }
           const submittedStatus = conversationStatusFromStatusValue(
-            result.status
+            projectCoreSessionStatus(result.status)
           );
           if (submittedStatus && submittedStatus !== "ready") {
             updateConversationList((current) =>
