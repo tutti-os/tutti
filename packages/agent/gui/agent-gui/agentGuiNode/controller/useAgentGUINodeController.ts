@@ -5649,7 +5649,6 @@ export function useAgentGUINodeController({
     if (!agentSessionId) {
       return;
     }
-    dismissPlanImplementation();
     // Turn plan mode off on the daemon first so the coding turn starts
     // without the plan collaboration mode, then mirror the setting locally
     // and submit the same literal message as the codex TUI.
@@ -5660,13 +5659,28 @@ export function useAgentGUINodeController({
         settings: { planMode: false }
       })
     )
-      .catch(() => undefined)
       .then(() => {
         if (!isCurrentConversation(agentSessionId)) {
           return;
         }
+        dismissPlanImplementation();
         updateComposerSettingsRef.current({ planMode: false });
         submitPrompt(textPromptContent(PLAN_IMPLEMENTATION_PROMPT));
+      })
+      .catch((error) => {
+        if (!isCurrentConversation(agentSessionId)) {
+          return;
+        }
+        const message = getAgentGUIErrorMessage(error);
+        reportAgentGUIRuntimeError({
+          agentSessionId,
+          error,
+          phase: "update_session_settings",
+          provider: dataRef.current.provider,
+          runtime: agentActivityRuntime,
+          workspaceId
+        });
+        setDetailError(message);
       });
   }, [
     agentActivityRuntime,
@@ -7076,8 +7090,7 @@ export function useAgentGUINodeController({
   const stableRetryOpenclawGateway = useStableControllerEventCallback(
     ensureOpenclawGateway
   );
-  const stableSubmitCompact =
-    useStableControllerEventCallback(submitCompact);
+  const stableSubmitCompact = useStableControllerEventCallback(submitCompact);
   const stableDismissUsageAlert =
     useStableControllerEventCallback(dismissUsageAlert);
   const controllerActions = useMemo(

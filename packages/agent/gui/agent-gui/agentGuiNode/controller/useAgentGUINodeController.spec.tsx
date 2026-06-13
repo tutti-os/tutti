@@ -8660,6 +8660,92 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("does not submit plan implementation when leaving plan mode fails", async () => {
+    const planTimelineItem = {
+      id: 1,
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      turnId: "turn-plan",
+      eventId: "plan-msg-1",
+      actorType: "agent",
+      actorId: "codex",
+      itemType: "message",
+      role: "assistant",
+      content: "# Plan\n1. inspect",
+      payload: { messageKind: "plan" },
+      occurredAtUnixMs: 10,
+      createdAtUnixMs: 10
+    } as unknown as Parameters<typeof timelineItemToMessage>[0];
+    const exec = vi.fn(async () => ({ events: [] }));
+    const updateSettings = vi.fn(async () => {
+      throw new Error("daemon disconnected");
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({
+        timelineItems: [planTimelineItem]
+      })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          provider: "codex",
+          status: "ready",
+          settings: {
+            planMode: true,
+            permissionModeId: "auto"
+          },
+          runtimeContext: { capabilities: ["planMode"] }
+        })
+      ),
+      exec,
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.pendingInteractivePrompt).toEqual(
+        expect.objectContaining({
+          kind: "plan-implementation",
+          requestId: "turn-plan"
+        })
+      );
+    });
+
+    act(() => {
+      result.current.actions.submitInteractivePrompt({
+        requestId: "turn-plan",
+        action: "implement"
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          settings: expect.objectContaining({ planMode: false })
+        })
+      );
+    });
+    await Promise.resolve();
+
+    expect(exec).not.toHaveBeenCalled();
+    expect(result.current.viewModel.pendingInteractivePrompt).toEqual(
+      expect.objectContaining({
+        kind: "plan-implementation",
+        requestId: "turn-plan"
+      })
+    );
+  });
+
   it("keeps plan mode after rejecting an exit-plan prompt", async () => {
     const submitInteractive = vi.fn(async () => ({
       agentSessionId: "session-1",
