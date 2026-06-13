@@ -259,8 +259,27 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: tutti-app-runtime-*
-          path: tutti-app-runtime
-          merge-multiple: true
+          path: downloaded-tutti-app-runtime
+          merge-multiple: false
+
+      - name: Restore runtime artifact layout
+        shell: bash
+        run: |
+          rm -rf tutti-app-runtime
+          mkdir -p tutti-app-runtime
+          while IFS= read -r metadata_file; do
+            runtime_version="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).runtimeVersion)" "${metadata_file}")"
+            platform="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).platform)" "${metadata_file}")"
+            target_dir="tutti-app-runtime/${runtime_version}/${platform}"
+            mkdir -p "${target_dir}"
+            cp -R "$(dirname "${metadata_file}")/." "${target_dir}/"
+          done < <(find downloaded-tutti-app-runtime -name metadata.json -type f | sort)
+          metadata_count="$(find tutti-app-runtime -name metadata.json -type f | wc -l | tr -d ' ')"
+          if [ "${metadata_count}" -eq 0 ]; then
+            echo "No runtime metadata files were downloaded" >&2
+            exit 1
+          fi
+          echo "Restored ${metadata_count} runtime artifact metadata files."
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

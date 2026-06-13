@@ -119,6 +119,13 @@ test("Tutti app runtime workflow publishes immutable artifacts and mutable catal
   assert.match(workflow, /npx-cli\.js/);
   assert.match(workflow, /\$\{node_staging\}\/node\/bin\/npm" --version/);
   assert.match(workflow, /\$\{node_staging\}\/node\/bin\/npx" --version/);
+  assert.match(workflow, /path: downloaded-tutti-app-runtime/);
+  assert.match(workflow, /merge-multiple: false/);
+  assert.match(workflow, /Restore runtime artifact layout/);
+  assert.match(
+    workflow,
+    /target_dir="tutti-app-runtime\/\$\{runtime_version\}\/\$\{platform\}"/
+  );
   assert.match(workflow, /build-tutti-app-runtime-catalog\.mjs/);
   assert.match(workflow, /max-age=31536000, immutable/);
   assert.match(workflow, /max-age=60/);
