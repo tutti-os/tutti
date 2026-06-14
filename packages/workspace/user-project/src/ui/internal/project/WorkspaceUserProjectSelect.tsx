@@ -113,8 +113,24 @@ const noProjectOptionValue = "__tutti_no_project__";
 const addProjectOptionValue = "__tutti_add_project__";
 const linkExistingProjectOptionValue = "__tutti_link_existing_project__";
 const workspaceUserProjectOverflowLabelStyle = `
+@keyframes workspace-user-project-label-marquee {
+  0% {
+    transform: translateX(0);
+  }
+
+  44%,
+  56% {
+    transform: translateX(min(0px, calc(100cqw - 100%)));
+  }
+
+  88%,
+  100% {
+    transform: translateX(0);
+  }
+}
+
 .workspace-user-project-overflow-label {
-  container-type: normal;
+  container-type: inline-size;
   display: block;
   flex: 1 1 auto;
   min-width: 0;
@@ -139,6 +155,21 @@ const workspaceUserProjectOverflowLabelStyle = `
   transform: translateX(0);
   white-space: nowrap;
   width: max-content;
+}
+
+.workspace-user-project-overflow-label:hover
+  .workspace-user-project-overflow-label__content {
+  animation: workspace-user-project-label-marquee 14s linear infinite;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-user-project-overflow-label:hover
+    .workspace-user-project-overflow-label__content {
+    animation: none;
+  }
 }
 `;
 const defaultWorkspaceUserProjectSelectI18n =
