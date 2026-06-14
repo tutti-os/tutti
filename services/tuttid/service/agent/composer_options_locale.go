@@ -17,6 +17,7 @@ type composerOptionLocaleCatalog struct {
 	PermissionModes     map[string]map[string]composerOptionDisplayText `json:"permissionModes"`
 	PermissionSemantics map[string]composerOptionDisplayText            `json:"permissionSemantics"`
 	Reasoning           map[string]composerOptionDisplayText            `json:"reasoning"`
+	Speed               map[string]composerOptionDisplayText            `json:"speed"`
 }
 
 type composerOptionDisplayText struct {
@@ -33,6 +34,20 @@ func reasoningEffortLabel(value string, locale string) string {
 		return strings.TrimSpace(text.Label)
 	}
 	return value
+}
+
+func speedDisplay(value string, locale string) (string, string) {
+	value = strings.TrimSpace(value)
+	catalog := composerOptionLocaleCatalogFor(locale)
+	if text, ok := catalog.Speed[value]; ok && strings.TrimSpace(text.Label) != "" {
+		return strings.TrimSpace(text.Label), strings.TrimSpace(text.Description)
+	}
+	return value, ""
+}
+
+func speedLabel(value string, locale string) string {
+	label, _ := speedDisplay(value, locale)
+	return label
 }
 
 func permissionModeDisplay(provider string, id string, semantic PermissionModeSemantic, locale string) (string, string) {
@@ -86,6 +101,7 @@ func mergeComposerOptionLocaleCatalogs(base composerOptionLocaleCatalog, overrid
 			override.PermissionSemantics,
 		),
 		Reasoning: mergeDisplayTextMap(base.Reasoning, override.Reasoning),
+		Speed:     mergeDisplayTextMap(base.Speed, override.Speed),
 	}
 }
 

@@ -449,14 +449,20 @@ func TestServiceGetsComposerOptionsWithoutStartingRuntime(t *testing.T) {
 	if !ok {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	if len(configOptions) != 2 {
-		t.Fatalf("len(configOptions) = %d, want 2", len(configOptions))
+	if len(configOptions) != 3 {
+		t.Fatalf("len(configOptions) = %d, want 3", len(configOptions))
 	}
 	if configOptions[0]["id"] != "model" || configOptions[0]["currentValue"] != "gpt-5" {
 		t.Fatalf("model option = %#v", configOptions[0])
 	}
 	if configOptions[1]["id"] != "reasoning_effort" || configOptions[1]["currentValue"] != "high" {
 		t.Fatalf("reasoning option = %#v", configOptions[1])
+	}
+	if configOptions[2]["id"] != "service_tier" || configOptions[2]["currentValue"] != "standard" {
+		t.Fatalf("speed option = %#v", configOptions[2])
+	}
+	if options.SpeedConfig.CurrentValue != "standard" || len(options.SpeedConfig.Options) != 2 {
+		t.Fatalf("speedConfig = %#v", options.SpeedConfig)
 	}
 	if options.ModelConfig.CurrentValue != "gpt-5" || len(options.ModelConfig.Options) != 1 {
 		t.Fatalf("modelConfig = %#v", options.ModelConfig)

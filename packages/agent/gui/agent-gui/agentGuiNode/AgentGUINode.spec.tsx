@@ -2191,17 +2191,22 @@ describe("AgentGUINode", () => {
         sessionSettings: {
           model: "gpt-5",
           reasoningEffort: "high",
+          speed: null,
           planMode: false,
           permissionModeId: "auto"
         },
         draftSettings: {
           model: "gpt-5",
           reasoningEffort: "high",
+          speed: null,
           planMode: false,
           permissionModeId: "preset"
         },
         supportsModel: true,
         supportsReasoningEffort: true,
+        supportsSpeed: true,
+        speedUnavailable: false,
+        availableSpeeds: [],
         supportsPermissionMode: true,
         supportsPlanMode: true,
         isSettingsLoading: false,
@@ -2290,18 +2295,23 @@ describe("AgentGUINode", () => {
         sessionSettings: {
           model: "claude-4",
           reasoningEffort: "high",
+          speed: null,
           planMode: false,
           permissionModeId: "default"
         },
         draftSettings: {
           model: "claude-4",
           reasoningEffort: "high",
+          speed: null,
           planMode: false,
           permissionModeId: "default"
         },
         effectivePlanMode: false,
         supportsModel: true,
         supportsReasoningEffort: true,
+        supportsSpeed: true,
+        speedUnavailable: false,
+        availableSpeeds: [],
         supportsPermissionMode: true,
         supportsPlanMode: true,
         isSettingsLoading: false,
@@ -2345,12 +2355,16 @@ describe("AgentGUINode", () => {
         draftSettings: {
           model: "claude-4",
           reasoningEffort: "high",
+          speed: null,
           planMode: false,
           permissionModeId: "acceptEdits"
         },
         effectivePlanMode: false,
         supportsModel: true,
         supportsReasoningEffort: true,
+        supportsSpeed: true,
+        speedUnavailable: false,
+        availableSpeeds: [],
         supportsPermissionMode: true,
         supportsPlanMode: true,
         isSettingsLoading: false,
@@ -2385,12 +2399,16 @@ describe("AgentGUINode", () => {
         draftSettings: {
           model: "claude-4",
           reasoningEffort: "high",
+          speed: null,
           planMode: true,
           permissionModeId: "acceptEdits"
         },
         effectivePlanMode: true,
         supportsModel: true,
         supportsReasoningEffort: true,
+        supportsSpeed: true,
+        speedUnavailable: false,
+        availableSpeeds: [],
         supportsPermissionMode: true,
         supportsPlanMode: true,
         isSettingsLoading: false,
@@ -2465,12 +2483,16 @@ describe("AgentGUINode", () => {
         draftSettings: {
           model: "gpt-5",
           reasoningEffort: "high",
+          speed: null,
           planMode: false,
           permissionModeId: "auto"
         },
         effectivePlanMode: false,
         supportsModel: true,
         supportsReasoningEffort: true,
+        supportsSpeed: true,
+        speedUnavailable: false,
+        availableSpeeds: [],
         supportsPermissionMode: true,
         supportsPlanMode: false,
         isSettingsLoading: false,
@@ -2521,11 +2543,15 @@ describe("AgentGUINode", () => {
         draftSettings: {
           model: "gpt-5",
           reasoningEffort: "high",
+          speed: null,
           planMode: false,
           permissionModeId: "preset"
         },
         supportsModel: true,
         supportsReasoningEffort: true,
+        supportsSpeed: true,
+        speedUnavailable: false,
+        availableSpeeds: [],
         supportsPlanMode: true,
         isSettingsLoading: false,
         modelUnavailable: false,
@@ -2555,11 +2581,15 @@ describe("AgentGUINode", () => {
         draftSettings: {
           model: null,
           reasoningEffort: null,
+          speed: null,
           planMode: false,
           permissionModeId: "preset"
         },
         supportsModel: false,
         supportsReasoningEffort: false,
+        supportsSpeed: false,
+        speedUnavailable: false,
+        availableSpeeds: [],
         supportsPlanMode: false,
         isSettingsLoading: false,
         modelUnavailable: false,
@@ -2585,17 +2615,22 @@ describe("AgentGUINode", () => {
         sessionSettings: {
           model: null,
           reasoningEffort: "high",
+          speed: null,
           planMode: false,
           permissionModeId: "auto"
         },
         draftSettings: {
           model: null,
           reasoningEffort: "high",
+          speed: null,
           planMode: false,
           permissionModeId: "auto"
         },
         supportsModel: true,
         supportsReasoningEffort: true,
+        supportsSpeed: true,
+        speedUnavailable: false,
+        availableSpeeds: [],
         supportsPlanMode: true,
         isSettingsLoading: false,
         modelUnavailable: false,
@@ -6625,11 +6660,15 @@ function createViewModel(
       draftSettings: {
         model: null,
         reasoningEffort: null,
+        speed: null,
         planMode: false,
         permissionModeId: "preset"
       },
       supportsModel: true,
       supportsReasoningEffort: true,
+      supportsSpeed: true,
+      speedUnavailable: false,
+      availableSpeeds: [],
       supportsPlanMode: true,
       isSettingsLoading: false,
       modelUnavailable: false,

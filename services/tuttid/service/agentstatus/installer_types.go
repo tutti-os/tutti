@@ -14,6 +14,17 @@ const (
 	InstallerKindGitHubReleaseBinary InstallerKind = "github_release_binary"
 )
 
+// InstallerPostStep names an optional, idempotent step run after a successful
+// install (best-effort; failures are surfaced but do not fail the install).
+type InstallerPostStep string
+
+const (
+	InstallerPostStepNone InstallerPostStep = ""
+	// InstallerPostStepPatchClaudeAgentACP patches the claude-agent-acp bridge
+	// to advertise a `fast` config option backed by the SDK's `Settings.fastMode`.
+	InstallerPostStepPatchClaudeAgentACP InstallerPostStep = "patch_claude_agent_acp"
+)
+
 type InstallerSpec struct {
 	Kind           InstallerKind
 	DisplayCommand string
@@ -21,6 +32,7 @@ type InstallerSpec struct {
 	ScriptURL      string
 	ScriptShell    string
 	ReleaseBinary  *ReleaseBinaryInstallerSpec
+	PostInstall    InstallerPostStep
 }
 
 type ReleaseBinaryInstallerSpec struct {

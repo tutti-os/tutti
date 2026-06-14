@@ -833,6 +833,20 @@ func codexACPReasoningEffortValue(value string) string {
 	}
 }
 
+// codexServiceTierValue maps the orthogonal speed tier onto the codex
+// app-server `service_tier` config value. The "fast" tier is sent verbatim;
+// the codex app-server maps the legacy `fast` config onto the request value
+// `priority` ("1.5x speed, increased usage"). The default/standard tier is
+// represented by an empty value so the request omits the override.
+func codexServiceTierValue(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "fast", "priority":
+		return "fast"
+	default:
+		return ""
+	}
+}
+
 func codexACPModeID(mode string) string {
 	switch strings.TrimSpace(mode) {
 	case "read-only":
@@ -1069,6 +1083,7 @@ func (a *CodexAdapter) SessionState(session Session) SessionStateSnapshot {
 	if snapshot.Settings != nil {
 		snapshot.RuntimeContext["model"] = snapshot.Settings.Model
 		snapshot.RuntimeContext["reasoningEffort"] = snapshot.Settings.ReasoningEffort
+		snapshot.RuntimeContext["speed"] = snapshot.Settings.Speed
 		snapshot.RuntimeContext["planMode"] = snapshot.Settings.PlanMode
 	}
 	if state.pendingPrompt != nil {

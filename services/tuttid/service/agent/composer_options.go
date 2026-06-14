@@ -51,6 +51,7 @@ type ComposerSettings struct {
 	PermissionModeID string
 	PlanMode         bool
 	ReasoningEffort  string
+	Speed            string
 }
 
 type ComposerOptionsInput struct {
@@ -73,6 +74,7 @@ type ComposerOptions struct {
 	ModelConfig       ComposerConfigOption
 	PermissionConfig  PermissionConfig
 	ReasoningConfig   ComposerConfigOption
+	SpeedConfig       ComposerConfigOption
 	EffectiveSettings ComposerSettings
 	RuntimeContext    map[string]any
 	Skills            []ComposerSkillOption
@@ -88,6 +90,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		PermissionModeID: strings.TrimSpace(input.Settings.PermissionModeID),
 		PlanMode:         input.Settings.PlanMode,
 		ReasoningEffort:  strings.TrimSpace(input.Settings.ReasoningEffort),
+		Speed:            strings.TrimSpace(input.Settings.Speed),
 	})
 	effectiveSettings := resolveComposerEffectiveSettings(
 		ctx,
@@ -104,6 +107,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		"model":            nullableString(effectiveSettings.Model),
 		"permissionModeId": nullableString(effectiveSettings.PermissionModeID),
 		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
+		"speed":            nullableString(effectiveSettings.Speed),
 	}
 	skills := discoverComposerSkillOptions(provider, input.Cwd, nil)
 	runtimeContext["skills"] = composerSkillOptionsRuntimeContext(skills)
@@ -119,6 +123,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		ModelConfig:       composerModelConfig(provider, effectiveSettings.Model, modelOptions),
 		PermissionConfig:  permissionConfig,
 		ReasoningConfig:   composerReasoningConfig(provider, effectiveSettings.ReasoningEffort, locale),
+		SpeedConfig:       composerSpeedConfig(provider, effectiveSettings.Speed, locale),
 		EffectiveSettings: effectiveSettings,
 		RuntimeContext:    runtimeContext,
 		Skills:            skills,
@@ -154,6 +159,7 @@ func resolveComposerEffectiveSettings(
 		Model:            composerDefaultModel(ctx, provider, catalog),
 		PermissionModeID: defaultPermissionModeIDForProvider(provider),
 		ReasoningEffort:  composerDefaultReasoningEffort(provider),
+		Speed:            composerDefaultSpeed(provider),
 	}
 	if requested.Model != "" {
 		effective.Model = requested.Model
@@ -167,7 +173,19 @@ func resolveComposerEffectiveSettings(
 	if requested.ReasoningEffort != "" {
 		effective.ReasoningEffort = requested.ReasoningEffort
 	}
+	if requested.Speed != "" {
+		effective.Speed = requested.Speed
+	}
 	return normalizeComposerSettingsForProvider(provider, effective)
+}
+
+// composerDefaultSpeed returns the default speed tier for providers that expose
+// the speed dimension; an empty string for providers that do not.
+func composerDefaultSpeed(provider string) string {
+	if speedProviderSupportsSpeed(provider) {
+		return speedTierStandard
+	}
+	return ""
 }
 
 func composerDefaultReasoningEffort(provider string) string {
@@ -212,7 +230,7 @@ func composerConfigOptions(provider string, settings ComposerSettings, modelOpti
 	if modelOptions == nil {
 		modelOptions = composerSelectedModelOptions(settings.Model)
 	}
-	return []map[string]any{
+	options := []map[string]any{
 		{
 			"currentValue": nullableString(settings.Model),
 			"id":           "model",
@@ -224,6 +242,14 @@ func composerConfigOptions(provider string, settings ComposerSettings, modelOpti
 			"options":      reasoningEffortOptions(provider, settings.ReasoningEffort),
 		},
 	}
+	if speedProviderSupportsSpeed(provider) {
+		options = append(options, map[string]any{
+			"currentValue": nullableString(settings.Speed),
+			"id":           speedConfigOptionID(provider),
+			"options":      speedTierOptions(provider, settings.Speed),
+		})
+	}
+	return options
 }
 
 func composerPermissionConfig(provider string, selectedModeID string, locale string) PermissionConfig {
@@ -257,6 +283,7 @@ func normalizeComposerSettingsForProvider(provider string, settings ComposerSett
 	settings.Model = strings.TrimSpace(settings.Model)
 	settings.PermissionModeID = normalizePermissionModeIDForProvider(provider, settings.PermissionModeID)
 	settings.ReasoningEffort = normalizeReasoningEffortForProvider(provider, settings.ReasoningEffort)
+	settings.Speed = normalizeSpeedForProvider(provider, settings.Speed)
 	settings.Model = clampComposerModelForProvider(provider, settings.Model)
 	settings.PlanMode = clampComposerPlanModeForProvider(provider, settings.PlanMode)
 	return settings
@@ -487,6 +514,93 @@ func reasoningConfigOptionID(provider string) string {
 		return "reasoning_effort"
 	}
 	return "effort"
+}
+
+const (
+	speedTierStandard = "standard"
+	speedTierFast     = "fast"
+)
+
+// speedProviderSupportsSpeed reports whether the provider exposes the speed
+// dimension. Speed combines orthogonally with model and reasoning effort.
+//
+//   - Codex: the codex app-server honours `service_tier` (fast → priority).
+//   - Claude Code: requires the patched claude-agent-acp bridge that advertises
+//     a `fast` config option backed by the SDK's `Settings.fastMode` (applied
+//     automatically on install, or via `pnpm patch:claude-agent-acp`). Stock
+//     bridges (≤0.44) do not
+//     advertise it; there the daemon's `supported["fast"]` gate skips it and the
+//     dropdown/`/fast` are simply a no-op until the patch is applied.
+func speedProviderSupportsSpeed(provider string) bool {
+	switch agentprovider.Normalize(provider) {
+	case agentprovider.Codex, agentprovider.ClaudeCode:
+		return composerOptionsProviderSupportsSettings(provider)
+	default:
+		return false
+	}
+}
+
+// speedConfigOptionID is the live config-option id the adapter sets. Codex maps
+// the tier onto the app-server `service_tier` config; Claude Code sets a `fast`
+// ACP config option when the agent advertises it.
+func speedConfigOptionID(provider string) string {
+	if agentprovider.Normalize(provider) == agentprovider.Codex {
+		return "service_tier"
+	}
+	return "fast"
+}
+
+func speedTierValuesForProvider(provider string) []string {
+	if speedProviderSupportsSpeed(provider) {
+		return []string{speedTierStandard, speedTierFast}
+	}
+	return nil
+}
+
+func normalizeSpeedForProvider(provider string, value string) string {
+	if !speedProviderSupportsSpeed(provider) {
+		return ""
+	}
+	normalized := strings.TrimSpace(value)
+	for _, candidate := range speedTierValuesForProvider(provider) {
+		if candidate == normalized {
+			return normalized
+		}
+	}
+	return speedTierStandard
+}
+
+func speedTierOptions(provider string, selected string) []map[string]string {
+	values := speedTierValuesForProvider(provider)
+	options := make([]map[string]string, 0, len(values))
+	for _, value := range values {
+		options = append(options, map[string]string{
+			"name":  speedLabel(value, preferencesbiz.DefaultDesktopLocale),
+			"value": value,
+		})
+	}
+	return options
+}
+
+func composerSpeedConfig(provider string, selected string, locale string) ComposerConfigOption {
+	values := speedTierValuesForProvider(provider)
+	options := make([]ComposerConfigOptionValue, 0, len(values))
+	for _, value := range values {
+		label, description := speedDisplay(value, locale)
+		options = append(options, ComposerConfigOptionValue{
+			ID:          value,
+			Label:       label,
+			Value:       value,
+			Description: description,
+		})
+	}
+	selected = normalizeSpeedForProvider(provider, selected)
+	return ComposerConfigOption{
+		Configurable: speedProviderSupportsSpeed(provider),
+		CurrentValue: selected,
+		DefaultValue: selected,
+		Options:      options,
+	}
 }
 
 func reasoningEffortOptions(provider string, selected string) []map[string]string {

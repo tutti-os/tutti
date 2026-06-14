@@ -1031,6 +1031,15 @@ func (a *CodexAppServerAdapter) ApplySessionSettings(
 			updateConfigOptionDescriptorValue(appSession.configOptionDescriptors, "reasoning_effort", reasoning)
 		}
 	}
+	if patch.Speed != nil {
+		// Speed (service_tier) is applied as a config override on the next
+		// thread/start; mirror it into the picker state so the dropdown stays
+		// in sync. "standard" clears the override.
+		if speed := strings.TrimSpace(*patch.Speed); speed != "" {
+			appSession.configOptions["service_tier"] = speed
+			updateConfigOptionDescriptorValue(appSession.configOptionDescriptors, "service_tier", speed)
+		}
+	}
 	return nil
 }
 
@@ -1103,6 +1112,7 @@ func (a *CodexAppServerAdapter) SessionState(session Session) SessionStateSnapsh
 	if snapshot.Settings != nil {
 		snapshot.RuntimeContext["model"] = snapshot.Settings.Model
 		snapshot.RuntimeContext["reasoningEffort"] = snapshot.Settings.ReasoningEffort
+		snapshot.RuntimeContext["speed"] = snapshot.Settings.Speed
 		snapshot.RuntimeContext["planMode"] = snapshot.Settings.PlanMode
 	}
 	if state.pendingPrompt != nil {

@@ -155,6 +155,9 @@ func (s Service) executeInstaller(
 			Command: spec.ShellCommand,
 			Env:     s.commandResolver().Env(nil),
 		})
+		if err == nil && result.ExitCode == 0 {
+			result = s.applyInstallerPostStep(installCtx, spec.PostInstall, result)
+		}
 		return runResult(result, err)
 	case InstallerKindOfficialScript:
 		result, err := s.runOfficialScriptInstaller(installCtx, spec)

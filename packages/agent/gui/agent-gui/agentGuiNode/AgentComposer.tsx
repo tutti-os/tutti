@@ -162,6 +162,10 @@ export interface AgentComposerProps {
     reasoningOptionMedium: string;
     reasoningOptionHigh: string;
     reasoningOptionXHigh: string;
+    speedLabel: string;
+    speedSelectionLabel: string;
+    speedOptionStandard: string;
+    speedOptionFast: string;
     permissionLabel: string;
     permissionModeReadOnly: string;
     permissionModeAuto: string;
@@ -239,6 +243,7 @@ export interface AgentComposerProps {
   onSettingsChange: (settings: {
     model?: string | null;
     reasoningEffort?: string | null;
+    speed?: string | null;
     planMode?: boolean;
     permissionModeId?: string | null;
   }) => void;
@@ -816,6 +821,19 @@ export function AgentComposer({
         });
         return;
       }
+      if (effect.kind === "toggleSpeed") {
+        clearSlashCommandDraft();
+        if (composerSettings.supportsSpeed) {
+          const currentSpeed =
+            composerSettings.selectedSpeedValue ??
+            composerSettings.draftSettings.speed ??
+            "standard";
+          onSettingsChange({
+            speed: currentSpeed === "fast" ? "standard" : "fast"
+          });
+        }
+        return;
+      }
       const nextDraft = effect.draft;
       draftPromptRef.current = nextDraft;
       setPaletteDraftPrompt(nextDraft);
@@ -825,6 +843,9 @@ export function AgentComposer({
     [
       clearSlashCommandDraft,
       composerSettings.draftSettings.planMode,
+      composerSettings.draftSettings.speed,
+      composerSettings.selectedSpeedValue,
+      composerSettings.supportsSpeed,
       onDraftChange,
       onSettingsChange,
       onSubmit
@@ -2165,6 +2186,10 @@ export function AgentComposer({
                     reasoningOptionMedium: labels.reasoningOptionMedium,
                     reasoningOptionHigh: labels.reasoningOptionHigh,
                     reasoningOptionXHigh: labels.reasoningOptionXHigh,
+                    speedLabel: labels.speedLabel,
+                    speedSelectionLabel: labels.speedSelectionLabel,
+                    speedOptionStandard: labels.speedOptionStandard,
+                    speedOptionFast: labels.speedOptionFast,
                     permissionLabel: labels.permissionLabel,
                     modelDescriptions: labels.modelDescriptions,
                     defaultModel: labels.defaultModel,

@@ -22,6 +22,7 @@ export type AgentHostAgentSessionReasoningEffort =
   | "high"
   | "xhigh"
   | string;
+export type AgentHostAgentSessionSpeed = "standard" | "fast" | string;
 
 export interface AgentHostAgentSessionPermissionModeOption {
   id: string;
@@ -39,6 +40,7 @@ export interface AgentHostAgentSessionPermissionConfig {
 export interface AgentHostAgentSessionComposerSettings {
   model?: string | null;
   reasoningEffort?: AgentHostAgentSessionReasoningEffort | null;
+  speed?: AgentHostAgentSessionSpeed | null;
   planMode?: boolean;
   permissionModeId?: string | null;
 }

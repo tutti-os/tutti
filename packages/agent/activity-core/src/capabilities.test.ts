@@ -71,6 +71,7 @@ function composerOptions(
     provider: "codex",
     models: [],
     reasoningEfforts: [],
+    speeds: [],
     permissionConfig: null,
     runtimeContext,
     skills: [],

@@ -6,6 +6,7 @@ import {
 export interface AgentComposerSettingsSupport {
   model: boolean;
   reasoning: boolean;
+  speed: boolean;
   permission: boolean;
   plan: boolean;
 }
@@ -24,6 +25,7 @@ export function composerSettingsSupportFromOptions(
   return {
     model: composerOptions?.modelConfigurable ?? false,
     reasoning: composerOptions?.reasoningConfigurable ?? false,
+    speed: composerOptions?.speedConfigurable ?? false,
     permission: composerOptions?.permissionConfig?.configurable ?? false,
     plan:
       resolveAgentActivityCapability("planMode", {

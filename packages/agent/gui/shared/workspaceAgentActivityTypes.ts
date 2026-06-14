@@ -11,6 +11,7 @@ export type WorkspaceAgentActivityProvider = "codex" | "claude-code" | string;
 export interface WorkspaceAgentActivityComposerSettings {
   model?: string | null;
   reasoningEffort?: string | null;
+  speed?: string | null;
   planMode?: boolean;
   permissionModeId?: string | null;
 }

@@ -104,5 +104,15 @@
     "xhigh": {
       "label": "X-High"
     }
+  },
+  "speed": {
+    "standard": {
+      "description": "Standard speed",
+      "label": "Standard"
+    },
+    "fast": {
+      "description": "1.5x speed, increased usage",
+      "label": "Fast"
+    }
   }
 }

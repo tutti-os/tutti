@@ -16,7 +16,8 @@ const browserFiles = [
 const nodeFiles = [
   "apps/**/*.{ts,tsx,mts,cts,mjs,cjs}",
   "packages/**/*.{ts,tsx,mts,cts,mjs,cjs}",
-  "tools/**/*.mjs"
+  "tools/**/*.mjs",
+  "services/**/*.mjs"
 ];
 
 const businessTypeScriptFiles = [

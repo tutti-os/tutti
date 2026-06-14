@@ -236,9 +236,11 @@ function agentActivityComposerOptionsFromTuttidResult(
     : [];
   const modelConfig = recordValue(result.modelConfig);
   const reasoningConfig = recordValue(result.reasoningConfig);
+  const speedConfig = recordValue(result.speedConfig);
   const modelsFromConfig = settingOptionsFromComposerConfig(modelConfig);
   const reasoningEffortsFromConfig =
     settingOptionsFromComposerConfig(reasoningConfig);
+  const speedsFromConfig = settingOptionsFromComposerConfig(speedConfig);
   const skillsFromResult = skillOptionsFromValue(result.skills);
   const skillsFromRuntimeContext = skillOptionsFromValue(runtimeContext.skills);
   return {
@@ -255,8 +257,17 @@ function agentActivityComposerOptionsFromTuttidResult(
             "model_reasoning_effort",
             "effort"
           ]),
+    speeds:
+      speedsFromConfig.length > 0
+        ? speedsFromConfig
+        : settingOptionsFromConfigOption(rawConfigOptions, [
+            "service_tier",
+            "speed",
+            "fast"
+          ]),
     modelConfigurable: modelConfig.configurable === true,
     reasoningConfigurable: reasoningConfig.configurable === true,
+    speedConfigurable: speedConfig.configurable === true,
     permissionConfig: permissionConfigFromValue(result.permissionConfig),
     runtimeContext,
     skills:

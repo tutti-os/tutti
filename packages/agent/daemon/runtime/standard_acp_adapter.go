@@ -1050,6 +1050,12 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 		}
 		a.updateSessionConfigOption(session.AgentSessionID, "effort", reasoning)
 	}
+	if speed := strings.TrimSpace(settings.Speed); speed != "" && supported["fast"] {
+		if err := a.setSessionConfigOption(ctx, client, session, "fast", speed); err != nil {
+			return fmt.Errorf("agent session ACP fast configuration failed: %w", err)
+		}
+		a.updateSessionConfigOption(session.AgentSessionID, "fast", speed)
+	}
 	a.logHermesStartupDiagnostics("config_options.succeeded", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
@@ -1198,6 +1204,18 @@ func (a *standardACPAdapter) ApplySessionSettings(
 		}
 	}
 
+	if patch.Speed != nil {
+		speed := strings.TrimSpace(*patch.Speed)
+		if speed != "" {
+			if !a.sessionConfigOptionMatches(session.AgentSessionID, "fast", speed) {
+				if err := a.setSessionConfigOption(ctx, acpSession.client, session, "fast", speed); err != nil {
+					return fmt.Errorf("agent session ACP fast configuration failed: %w", err)
+				}
+				a.updateSessionConfigOption(session.AgentSessionID, "fast", speed)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -1294,6 +1312,7 @@ func (a *standardACPAdapter) SessionState(session Session) SessionStateSnapshot 
 	if snapshot.Settings != nil {
 		snapshot.RuntimeContext["model"] = snapshot.Settings.Model
 		snapshot.RuntimeContext["reasoningEffort"] = snapshot.Settings.ReasoningEffort
+		snapshot.RuntimeContext["speed"] = snapshot.Settings.Speed
 		snapshot.RuntimeContext["planMode"] = snapshot.Settings.PlanMode
 	}
 	if prompt != nil {

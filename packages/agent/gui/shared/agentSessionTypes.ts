@@ -11,6 +11,7 @@ import type {
   AgentHostAgentSessionPermissionModeOption,
   AgentHostAgentSessionProvider,
   AgentHostAgentSessionReasoningEffort,
+  AgentHostAgentSessionSpeed,
   AgentHostAgentSessionState
 } from "./contracts/dto";
 
@@ -30,4 +31,5 @@ export type AgentSessionPermissionModeOption =
   AgentHostAgentSessionPermissionModeOption;
 export type AgentSessionProvider = AgentHostAgentSessionProvider;
 export type AgentSessionReasoningEffort = AgentHostAgentSessionReasoningEffort;
+export type AgentSessionSpeed = AgentHostAgentSessionSpeed;
 export type AgentSessionState = AgentHostAgentSessionState;

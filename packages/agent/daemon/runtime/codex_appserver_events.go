@@ -873,6 +873,9 @@ func appServerThreadStartParams(session Session, cwd string) map[string]any {
 	if summary := codexACPReasoningSummaryOverride(settings.Model); summary != "" {
 		config[codexACPConfigModelReasoningSummary] = summary
 	}
+	if serviceTier := codexServiceTierValue(settings.Speed); serviceTier != "" {
+		config["service_tier"] = serviceTier
+	}
 	if len(config) > 0 {
 		params["config"] = config
 	}
@@ -1245,6 +1248,17 @@ func codexAppServerConfigOptionDescriptors(
 		"category":     "thought_level",
 		"currentValue": firstNonEmpty(currentEffort, "medium"),
 		"options":      effortOptions,
+	})
+	descriptors = append(descriptors, map[string]any{
+		"id":           "service_tier",
+		"name":         "Speed",
+		"type":         "select",
+		"category":     "speed",
+		"currentValue": firstNonEmpty(strings.TrimSpace(settings.Speed), "standard"),
+		"options": []any{
+			map[string]any{"value": "standard", "name": "Standard"},
+			map[string]any{"value": "fast", "name": "Fast"},
+		},
 	})
 	return descriptors
 }

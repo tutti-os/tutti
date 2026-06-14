@@ -124,6 +124,7 @@ type UpdateSettingsInput struct {
 type SessionSettings struct {
 	Model            string `json:"model,omitempty"`
 	ReasoningEffort  string `json:"reasoningEffort,omitempty"`
+	Speed            string `json:"speed,omitempty"`
 	PlanMode         bool   `json:"planMode,omitempty"`
 	PermissionModeID string `json:"permissionModeId,omitempty"`
 }
@@ -131,6 +132,7 @@ type SessionSettings struct {
 type SessionSettingsPatch struct {
 	Model            *string `json:"model,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+	Speed            *string `json:"speed,omitempty"`
 	PlanMode         *bool   `json:"planMode,omitempty"`
 	PermissionModeID *string `json:"permissionModeId,omitempty"`
 }

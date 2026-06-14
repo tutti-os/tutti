@@ -3731,6 +3731,9 @@ components:
         reasoningEffort:
           type: string
           nullable: true
+        speed:
+          type: string
+          nullable: true
     PermissionModeSemantic:
       type: string
       enum:
@@ -3838,6 +3841,8 @@ components:
         permissionConfig:
           $ref: "#/components/schemas/PermissionConfig"
         reasoningConfig:
+          $ref: "#/components/schemas/AgentProviderComposerConfig"
+        speedConfig:
           $ref: "#/components/schemas/AgentProviderComposerConfig"
         effectiveSettings:
           $ref: "#/components/schemas/AgentSessionComposerSettings"
@@ -4333,6 +4338,9 @@ components:
           type: string
           nullable: true
         reasoningEffort:
+          type: string
+          nullable: true
+        speed:
           type: string
           nullable: true
         planMode:

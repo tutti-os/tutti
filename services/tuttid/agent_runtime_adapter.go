@@ -44,6 +44,7 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 		Settings: &agentruntime.SessionSettings{
 			Model:            input.Settings.Model,
 			ReasoningEffort:  input.Settings.ReasoningEffort,
+			Speed:            input.Settings.Speed,
 			PlanMode:         input.Settings.PlanMode,
 			PermissionModeID: input.Settings.PermissionModeID,
 		},
@@ -131,6 +132,7 @@ func (a agentRuntimeAdapter) UpdateSettings(ctx context.Context, input agentserv
 		Settings: agentruntime.SessionSettingsPatch{
 			Model:            input.Settings.Model,
 			ReasoningEffort:  input.Settings.ReasoningEffort,
+			Speed:            input.Settings.Speed,
 			PlanMode:         input.Settings.PlanMode,
 			PermissionModeID: input.Settings.PermissionModeID,
 		},
@@ -153,6 +155,7 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 		Settings: &agentruntime.SessionSettings{
 			Model:            input.Settings.Model,
 			ReasoningEffort:  input.Settings.ReasoningEffort,
+			Speed:            input.Settings.Speed,
 			PlanMode:         input.Settings.PlanMode,
 			PermissionModeID: input.Settings.PermissionModeID,
 		},
@@ -193,6 +196,7 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 		Settings: &agentruntime.SessionSettings{
 			Model:            input.Model,
 			ReasoningEffort:  input.ReasoningEffort,
+			Speed:            input.Speed,
 			PlanMode:         input.PlanMode,
 			PermissionModeID: input.PermissionModeID,
 		},
@@ -250,6 +254,7 @@ func agentRuntimeComposerSettings(settings *agentruntime.SessionSettings) *agent
 		PermissionModeID: settings.PermissionModeID,
 		PlanMode:         settings.PlanMode,
 		ReasoningEffort:  settings.ReasoningEffort,
+		Speed:            settings.Speed,
 	}
 }
 

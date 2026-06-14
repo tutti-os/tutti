@@ -12,6 +12,7 @@ import type {
   AgentSessionComposerSettings,
   AgentSessionPermissionConfig,
   AgentSessionReasoningEffort,
+  AgentSessionSpeed,
   AgentSessionState
 } from "../../../shared/agentSessionTypes";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
@@ -74,27 +75,32 @@ export interface AgentGUIComposerSettingsVM {
   draftSettings: {
     model: string | null;
     reasoningEffort: AgentSessionReasoningEffort | null;
+    speed: AgentSessionSpeed | null;
     planMode: boolean;
     permissionModeId?: string | null;
   };
   effectivePlanMode?: boolean;
   supportsModel: boolean;
   supportsReasoningEffort: boolean;
+  supportsSpeed: boolean;
   supportsPermissionMode?: boolean;
   supportsPlanMode: boolean;
   isSettingsLoading: boolean;
   modelUnavailable: boolean;
   reasoningUnavailable: boolean;
+  speedUnavailable: boolean;
   permissionModeUnavailable?: boolean;
   planUnavailable: boolean;
   selectedModelValue?: string | null;
   selectedReasoningEffortValue?: AgentSessionReasoningEffort | null;
+  selectedSpeedValue?: AgentSessionSpeed | null;
   selectedPermissionModeValue?: string | null;
   permissionConfig?: AgentSessionPermissionConfig | null;
   selectedProjectPath?: string | null;
   projectLocked?: boolean;
   availableModels: AgentGUIComposerSettingOption[];
   availableReasoningEfforts: AgentGUIComposerSettingOption[];
+  availableSpeeds: AgentGUIComposerSettingOption[];
   availablePermissionModes?: AgentGUIComposerSettingOption[];
 }
 

@@ -58,6 +58,7 @@
     "review:architecture": "node ./.codex/skills/tutti-architecture-review/scripts/plan-review.mjs --format summary",
     "review:architecture:package": "node ./.codex/skills/tutti-architecture-review/scripts/plan-review.mjs --format json --output-temp",
     "review:architecture:test": "node --test ./.codex/skills/tutti-architecture-review/scripts/plan-review.test.mjs ./.codex/skills/tutti-architecture-review/scripts/build-review-scope.test.mjs",
+    "patch:claude-agent-acp": "node ./services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs",
     "setup:dev": "node ./tools/scripts/setup-dev.mjs",
     "smoke:desktop-transport": "node ./tools/scripts/smoke-desktop-transport.mjs",
     "sync:workbench-openapi-schema": "node ./tools/scripts/sync-workbench-openapi-schema.mjs",

@@ -24,6 +24,9 @@ export type SlashCommandSelectionEffect =
       kind: "togglePlanMode";
     }
   | {
+      kind: "toggleSpeed";
+    }
+  | {
       kind: "blockCommand";
     };
 
@@ -42,6 +45,9 @@ interface ResolveSlashCommandSubmitEffectInput {
 const CODEX_IMMEDIATE_SLASH_COMMANDS = new Set(["init", "compact"]);
 const PROVIDER_NATIVE_IMMEDIATE_COMMANDS = new Set(["compact"]);
 const LOCAL_STATUS_COMMANDS = new Set(["status"]);
+// `/fast` toggles the orthogonal speed dimension locally rather than reaching
+// the agent as a prompt; supported for codex and claude-code.
+const LOCAL_TOGGLE_SPEED_COMMANDS = new Set(["fast"]);
 const CLAUDE_CODE_PROVIDER_NATIVE_COMMANDS = new Set([
   "compact",
   "context",
@@ -49,11 +55,13 @@ const CLAUDE_CODE_PROVIDER_NATIVE_COMMANDS = new Set([
 ]);
 const CODEX_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   { name: "compact" },
-  { name: "status" }
+  { name: "status" },
+  { name: "fast" }
 ];
 const CLAUDE_CODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   { name: "compact" },
-  { name: "status" }
+  { name: "status" },
+  { name: "fast" }
 ];
 
 export function resolveSlashCommandsForProvider({
@@ -94,6 +102,9 @@ export function resolveSlashCommandSelectionEffect({
   const commandName = normalizedCommandName(command);
   if (isBlockedSlashCommand(provider, commandName)) {
     return { kind: "blockCommand" };
+  }
+  if (isLocalToggleSpeedCommand(provider, commandName)) {
+    return { kind: "toggleSpeed" };
   }
   if (isLocalStatusCommand(provider, commandName)) {
     return { kind: "showStatus" };
@@ -137,6 +148,9 @@ export function resolveSlashCommandSubmitEffect({
     return null;
   }
   const commandName = normalizedCommandName(command);
+  if (isLocalToggleSpeedCommand(provider, commandName)) {
+    return { kind: "toggleSpeed" };
+  }
   if (isLocalStatusCommand(provider, commandName)) {
     return { kind: "showStatus" };
   }
@@ -191,6 +205,16 @@ function isLocalStatusCommand(
   return (
     (provider === "codex" || provider === "claude-code") &&
     LOCAL_STATUS_COMMANDS.has(commandName)
+  );
+}
+
+function isLocalToggleSpeedCommand(
+  provider: AgentSlashCommandProvider,
+  commandName: string
+): boolean {
+  return (
+    (provider === "codex" || provider === "claude-code") &&
+    LOCAL_TOGGLE_SPEED_COMMANDS.has(commandName)
   );
 }
 

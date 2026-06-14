@@ -122,6 +122,7 @@ export interface AgentActivityComposerPermissionConfig {
 export interface AgentActivityComposerSettings {
   model?: string | null;
   reasoningEffort?: string | null;
+  speed?: string | null;
   planMode?: boolean | null;
   permissionModeId?: string | null;
 }
@@ -130,10 +131,14 @@ export interface AgentActivityComposerOptions {
   provider: string;
   models: AgentActivityComposerSettingOption[];
   reasoningEfforts: AgentActivityComposerSettingOption[];
+  /** Orthogonal speed tiers (e.g. standard/fast); empty when unsupported. */
+  speeds: AgentActivityComposerSettingOption[];
   /** Mirrors tuttid modelConfig.configurable; false when absent. */
   modelConfigurable?: boolean;
   /** Mirrors tuttid reasoningConfig.configurable; false when absent. */
   reasoningConfigurable?: boolean;
+  /** Mirrors tuttid speedConfig.configurable; false when absent. */
+  speedConfigurable?: boolean;
   permissionConfig?: AgentActivityComposerPermissionConfig | null;
   runtimeContext?: Record<string, unknown>;
   skills: AgentActivityComposerSkillOption[];

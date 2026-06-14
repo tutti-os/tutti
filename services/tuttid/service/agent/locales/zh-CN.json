@@ -104,5 +104,15 @@
     "xhigh": {
       "label": "超高"
     }
+  },
+  "speed": {
+    "standard": {
+      "description": "标准速度",
+      "label": "标准"
+    },
+    "fast": {
+      "description": "1.5 倍速度，用量增加",
+      "label": "快速"
+    }
   }
 }

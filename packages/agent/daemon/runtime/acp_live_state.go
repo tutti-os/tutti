@@ -509,6 +509,14 @@ func sessionSettingsWithACPConfig(
 		settings.ReasoningEffort = reasoning
 		hasSettings = true
 	}
+	if speed := firstNonEmpty(
+		asString(config["service_tier"]),
+		asString(config["speed"]),
+		asString(config["fast"]),
+	); speed != "" {
+		settings.Speed = speed
+		hasSettings = true
+	}
 	if !hasSettings {
 		return nil
 	}

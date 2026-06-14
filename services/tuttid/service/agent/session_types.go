@@ -157,6 +157,7 @@ type RuntimeStartInput struct {
 	Model            string
 	PlanMode         bool
 	ReasoningEffort  string
+	Speed            string
 	Visible          *bool
 }
 
@@ -226,6 +227,7 @@ type ComposerSettingsPatch struct {
 	PermissionModeID *string
 	PlanMode         *bool
 	ReasoningEffort  *string
+	Speed            *string
 }
 
 type RuntimeStreamEvent struct {
@@ -244,6 +246,7 @@ type CreateSessionInput struct {
 	Model                *string
 	PlanMode             *bool
 	ReasoningEffort      *string
+	Speed                *string
 	Visible              *bool
 	ExtraSkills          []SessionSkillBundle
 }

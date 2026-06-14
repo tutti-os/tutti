@@ -88,6 +88,8 @@ func DefaultRegistry() Registry {
 				Kind:           InstallerKindShellCommand,
 				DisplayCommand: "npm install -g @agentclientprotocol/claude-agent-acp@0.42.0",
 				ShellCommand:   "npm install -g @agentclientprotocol/claude-agent-acp@0.42.0",
+				// Auto-apply the fast-mode bridge patch after a successful install.
+				PostInstall: InstallerPostStepPatchClaudeAgentACP,
 			},
 			LoginArgs: []string{"auth", "login"},
 		},

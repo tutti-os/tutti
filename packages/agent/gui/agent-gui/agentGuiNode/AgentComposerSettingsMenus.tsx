@@ -48,6 +48,10 @@ export type AgentComposerSettingsMenuLabels = {
   reasoningOptionMedium: string;
   reasoningOptionHigh: string;
   reasoningOptionXHigh: string;
+  speedLabel: string;
+  speedSelectionLabel: string;
+  speedOptionStandard: string;
+  speedOptionFast: string;
   permissionLabel: string;
   planModeLabel: string;
   permissionModeReadOnly?: string;
@@ -450,6 +454,51 @@ function selectedComposerModelValue(
   );
 }
 
+function selectedComposerSpeedValue(
+  composerSettings: AgentGUIComposerSettingsVM
+): string | null {
+  return (
+    composerSettings.selectedSpeedValue ??
+    composerSettings.draftSettings.speed ??
+    null
+  );
+}
+
+function speedOptionsWithSelectedValue(
+  composerSettings: AgentGUIComposerSettingsVM
+): AgentGUIComposerSettingsVM["availableSpeeds"] {
+  const selectedValue = selectedComposerSpeedValue(composerSettings);
+  if (
+    !selectedValue ||
+    composerSettings.availableSpeeds.some(
+      (option) => option.value === selectedValue
+    )
+  ) {
+    return composerSettings.availableSpeeds;
+  }
+  return [
+    { value: selectedValue, label: selectedValue },
+    ...composerSettings.availableSpeeds
+  ];
+}
+
+function resolveSpeedOptionLabel(
+  value: string,
+  labels: Pick<
+    AgentComposerSettingsMenuLabels,
+    "speedOptionStandard" | "speedOptionFast"
+  >
+): string {
+  switch (value) {
+    case "standard":
+      return labels.speedOptionStandard;
+    case "fast":
+      return labels.speedOptionFast;
+    default:
+      return value;
+  }
+}
+
 function selectedComposerReasoningValue(
   composerSettings: AgentGUIComposerSettingsVM
 ): string | null {
@@ -593,6 +642,7 @@ export function AgentModelReasoningDropdown({
   onSettingsChange: (patch: {
     model?: string;
     reasoningEffort?: string;
+    speed?: string;
   }) => void;
 }): React.JSX.Element {
   "use memo";
@@ -610,11 +660,13 @@ export function AgentModelReasoningDropdown({
       : `${selectedModelLabel} ${selectedReasoningLabel}`.trim();
   const modelItems = modelOptionsWithSelectedValue(composerSettings);
   const reasoningItems = reasoningOptionsWithSelectedValue(composerSettings);
+  const speedItems = speedOptionsWithSelectedValue(composerSettings);
   const triggerDisabled =
     disabled ||
     composerSettings.isSettingsLoading ||
     (!composerSettings.supportsModel &&
-      !composerSettings.supportsReasoningEffort);
+      !composerSettings.supportsReasoningEffort &&
+      !composerSettings.supportsSpeed);
   const showReasoningSection =
     composerSettings.supportsReasoningEffort &&
     reasoningItems.length > 0 &&
@@ -623,11 +675,18 @@ export function AgentModelReasoningDropdown({
     composerSettings.supportsModel &&
     modelItems.length > 0 &&
     !composerSettings.modelUnavailable;
+  const showSpeedSection =
+    composerSettings.supportsSpeed &&
+    speedItems.length > 0 &&
+    !composerSettings.speedUnavailable;
   const selectedReasoningValue =
     selectedComposerReasoningValue(composerSettings) ?? "";
   const selectedModelValue = selectedComposerModelValue(composerSettings) ?? "";
+  const selectedSpeedValue = selectedComposerSpeedValue(composerSettings) ?? "";
+  const speedIsFast = selectedSpeedValue === "fast";
   const selectDisabled =
-    triggerDisabled || (!showModelSection && !showReasoningSection);
+    triggerDisabled ||
+    (!showModelSection && !showReasoningSection && !showSpeedSection);
   const selectedModelSelectValue = selectedModelValue
     ? `model:${selectedModelValue}`
     : "";
@@ -645,6 +704,10 @@ export function AgentModelReasoningDropdown({
       onSettingsChange({
         reasoningEffort: nextValue.slice("reasoning:".length)
       });
+      return;
+    }
+    if (nextValue.startsWith("speed:")) {
+      onSettingsChange({ speed: nextValue.slice("speed:".length) });
       return;
     }
     if (nextValue.startsWith("model:")) {
@@ -679,6 +742,15 @@ export function AgentModelReasoningDropdown({
         data-agent-model-reasoning-trigger="true"
       >
         <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          {showSpeedSection && speedIsFast ? (
+            <span
+              aria-hidden
+              className="shrink-0"
+              data-agent-speed-indicator="fast"
+            >
+              ⚡
+            </span>
+          ) : null}
           {selectedModelLabel === selectedReasoningLabel ||
           selectedReasoningLabel.length === 0 ? (
             <span className="min-w-0 truncate">{triggerLabel}</span>
@@ -767,8 +839,76 @@ export function AgentModelReasoningDropdown({
             ) : null}
           </>
         )}
+        {showSpeedSection ? (
+          <>
+            {showModelSection || showReasoningSection ? (
+              <SelectSplitDivider />
+            ) : null}
+            <div className={styles.composerMenuLabel}>{labels.speedLabel}</div>
+            <ComposerSettingsSpeedItems
+              composerSettings={composerSettings}
+              disabled={selectDisabled}
+              labels={labels}
+              speeds={speedItems}
+              onSelectedItemPointerDown={handleSelectedItemPointerDown}
+            />
+          </>
+        ) : null}
       </SelectContent>
     </Select>
+  );
+}
+
+function ComposerSettingsSpeedItems({
+  composerSettings,
+  disabled,
+  labels,
+  speeds,
+  onSelectedItemPointerDown
+}: {
+  composerSettings: AgentGUIComposerSettingsVM;
+  disabled: boolean;
+  labels: AgentComposerSettingsMenuLabels;
+  speeds: AgentGUIComposerSettingsVM["availableSpeeds"];
+  onSelectedItemPointerDown: (
+    event: React.PointerEvent,
+    optionValue: string
+  ) => void;
+}): React.JSX.Element {
+  const selectedSpeedValue =
+    composerSettings.selectedSpeedValue ??
+    composerSettings.draftSettings.speed ??
+    "";
+  return (
+    <>
+      {speeds.map((option) => {
+        const optionValue = `speed:${option.value}`;
+        const isSelected = selectedSpeedValue === option.value;
+        return (
+          <SelectItem
+            key={option.value}
+            value={optionValue}
+            disabled={disabled}
+            className={styles.composerMenuItem}
+            forceSelectedIndicator={isSelected}
+            onPointerDown={(event) =>
+              onSelectedItemPointerDown(event, optionValue)
+            }
+          >
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="min-w-0 truncate">
+                {resolveSpeedOptionLabel(option.value, labels)}
+              </span>
+              {option.description ? (
+                <span className="whitespace-normal text-[11px] leading-[1.3] text-[var(--text-tertiary)]">
+                  {option.description}
+                </span>
+              ) : null}
+            </span>
+          </SelectItem>
+        );
+      })}
+    </>
   );
 }
 

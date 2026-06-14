@@ -11,6 +11,7 @@ function optionsFixture(input: {
     provider: "test",
     models: [],
     reasoningEfforts: [],
+    speeds: [],
     modelConfigurable: input.model,
     reasoningConfigurable: input.model,
     permissionConfig: {
@@ -97,6 +98,7 @@ describe("composerSettingsSupportFromOptions", () => {
     expect(composerSettingsSupportFromOptions(null, null)).toEqual({
       model: false,
       reasoning: false,
+      speed: false,
       permission: false,
       plan: false
     });

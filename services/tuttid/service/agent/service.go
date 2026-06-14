@@ -128,6 +128,10 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			provider,
 			value(input.ReasoningEffort),
 		),
+		Speed: normalizeSpeedForProvider(
+			provider,
+			value(input.Speed),
+		),
 		Visible: input.Visible,
 	})
 	if err != nil {
@@ -547,6 +551,13 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 		)
 		settings.ReasoningEffort = &normalizedReasoningEffort
 	}
+	if settings.Speed != nil {
+		normalizedSpeed := normalizeSpeedForProvider(
+			strings.TrimSpace(ensured.Session.Provider),
+			*settings.Speed,
+		)
+		settings.Speed = &normalizedSpeed
+	}
 	if err := s.controller().UpdateSettings(ctx, RuntimeUpdateSettingsInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
@@ -740,6 +751,13 @@ func (s *Service) prepareRuntimeForResume(ctx context.Context, session Persisted
 			reasoningEffort,
 		)
 		input.ReasoningEffort = &normalizedReasoningEffort
+	}
+	if speed := strings.TrimSpace(session.Settings.Speed); speed != "" {
+		normalizedSpeed := normalizeSpeedForProvider(
+			strings.TrimSpace(session.Provider),
+			speed,
+		)
+		input.Speed = &normalizedSpeed
 	}
 	return s.prepareRuntime(ctx, strings.TrimSpace(session.WorkspaceID), strings.TrimSpace(session.Cwd), input)
 }
