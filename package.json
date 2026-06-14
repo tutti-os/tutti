@@ -78,12 +78,15 @@
   "devDependencies": {
     "@changesets/cli": "2.31.0",
     "@hey-api/openapi-ts": "0.97.2",
+    "@tailwindcss/node": "^4.3.0",
+    "@tailwindcss/oxide": "^4.3.0",
     "@tutti-os/config-eslint": "workspace:*",
     "@tutti-os/ui-system": "workspace:*",
     "eslint": "^10.4.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.5",
     "prettier": "^3.8.3",
+    "tailwindcss": "^4.3.0",
     "tsup": "8.5.1",
     "yaml": "^2.9.0"
   }

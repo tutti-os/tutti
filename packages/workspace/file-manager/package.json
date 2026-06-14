@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./i18n": "./src/i18n/index.ts",
-    "./services": "./src/services/index.ts"
+    "./services": "./src/services/index.ts",
+    "./styles.css": "./src/styles.css"
   },
   "files": [
     "dist",
@@ -19,7 +20,7 @@
     "directory": "packages/workspace/file-manager"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts",
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/build-package-tailwind-css.mjs",
     "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -60,7 +61,8 @@
       "./services": {
         "types": "./dist/services/index.d.ts",
         "import": "./dist/services/index.js"
-      }
+      },
+      "./styles.css": "./dist/styles.css"
     },
     "types": "./dist/index.d.ts",
     "typesVersions": {
@@ -73,5 +75,9 @@
         ]
       }
     }
-  }
+  },
+  "sideEffects": [
+    "./src/styles.css",
+    "./dist/styles.css"
+  ]
 }

@@ -16,6 +16,12 @@ importers:
       "@hey-api/openapi-ts":
         specifier: 0.97.2
         version: 0.97.2(typescript@5.9.3)
+      "@tailwindcss/node":
+        specifier: ^4.3.0
+        version: 4.3.0
+      "@tailwindcss/oxide":
+        specifier: ^4.3.0
+        version: 4.3.0
       "@tutti-os/config-eslint":
         specifier: workspace:*
         version: link:packages/configs/eslint
@@ -34,6 +40,9 @@ importers:
       prettier:
         specifier: ^3.8.3
         version: 3.8.3
+      tailwindcss:
+        specifier: ^4.3.0
+        version: 4.3.0
       tsup:
         specifier: 8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)

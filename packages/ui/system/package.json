@@ -24,8 +24,8 @@
     "./dev-vite": "./src/dev-vite.ts",
     "./icons": "./src/icons/index.ts",
     "./metadata": "./src/metadata/index.ts",
-    "./styles.css": "./src/styles/index.css",
-    "./utils": "./src/lib/utils.ts"
+    "./utils": "./src/lib/utils.ts",
+    "./styles.css": "./src/styles/index.css"
   },
   "files": [
     "dist",
@@ -40,7 +40,7 @@
     "directory": "packages/ui/system"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/styles dist/styles src/metadata/components.json dist/metadata/components.json src/metadata/components.schema.json dist/metadata/components.schema.json",
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/styles dist/styles src/metadata/components.json dist/metadata/components.json src/metadata/components.schema.json dist/metadata/components.schema.json && node ../../../tools/scripts/build-package-tailwind-css.mjs",
     "dev:server": "tsx src/dev-server/server.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -99,11 +99,11 @@
         "types": "./dist/metadata/index.d.ts",
         "import": "./dist/metadata/index.js"
       },
-      "./styles.css": "./dist/styles/index.css",
       "./utils": {
         "types": "./dist/utils.d.ts",
         "import": "./dist/utils.js"
-      }
+      },
+      "./styles.css": "./dist/styles/index.css"
     },
     "types": "./dist/index.d.ts",
     "typesVersions": {

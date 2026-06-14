@@ -1,5 +1,13 @@
 @import "react-medium-image-zoom/dist/styles.css";
+@import "../../../../workbench/surface/src/styles/workbench.css";
+@import "../../../../workspace/file-manager/src/styles.css";
+@import "../../../../workspace/file-reference/src/styles.css";
+@import "../../../../workspace/issue-manager/src/styles.css";
+@import "../../../../workspace/user-project/src/styles.css";
+@import "tailwindcss/theme" theme(reference);
+@reference "@tutti-os/ui-system/styles.css";
 @source "../..";
+@tailwind utilities source(none);
 
 /* Restored agent activity renderer styles from the TSH desktop source during the GUI migration. */
 

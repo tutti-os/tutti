@@ -31,7 +31,7 @@
     "directory": "packages/agent/gui"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/agentactivity.css dist/app/renderer/agentactivity.css app/renderer/assets/icons dist/app/renderer/assets/icons",
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/assets/icons dist/app/renderer/assets/icons && node ../../../tools/scripts/build-package-tailwind-css.mjs",
     "test": "vitest run --environment jsdom",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -188,5 +188,9 @@
         ]
       }
     }
-  }
+  },
+  "sideEffects": [
+    "./app/renderer/agentactivity.css",
+    "./dist/app/renderer/agentactivity.css"
+  ]
 }

@@ -557,7 +557,6 @@ export const stateMatrix = ${JSON.stringify(stateMatrix, null, 2)} satisfies Pre
 
 function styleCss() {
   return `@source "../.tutti-ui-system-dev";
-@source "../node_modules/@tutti-os/ui-system/dist";
 
 :root {
   color: hsl(var(--foreground));
