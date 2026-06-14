@@ -2,6 +2,11 @@ name: PR Checks
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
     branches:
       - main
 
@@ -10,8 +15,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ci-skip:
+    name: CI Skip Request
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.detect.outputs.skip }}
+
+    steps:
+      - name: Detect temporary CI skip checkbox
+        id: detect
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request?.body ?? "";
+            const skip = /-\s*\[[xX]\]\s*Temporarily skip CI checks for this PR\./.test(body);
+            core.setOutput("skip", skip ? "true" : "false");
+
+            if (skip) {
+              core.warning("CI checks were temporarily skipped from the pull request checklist.");
+            }
+
   tooling-consistency:
     name: Tooling Consistency
+    needs: ci-skip
+    if: needs.ci-skip.outputs.skip != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -49,6 +76,8 @@ jobs:
 
   ts-lint:
     name: TypeScript Lint
+    needs: ci-skip
+    if: needs.ci-skip.outputs.skip != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -95,6 +124,8 @@ jobs:
 
   typecheck:
     name: Typecheck
+    needs: ci-skip
+    if: needs.ci-skip.outputs.skip != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -121,6 +152,8 @@ jobs:
 
   ts-tests:
     name: TypeScript Tests
+    needs: ci-skip
+    if: needs.ci-skip.outputs.skip != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -147,6 +180,8 @@ jobs:
 
   npm-package-packs:
     name: npm Package Pack Check
+    needs: ci-skip
+    if: needs.ci-skip.outputs.skip != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -173,6 +208,8 @@ jobs:
 
   go-tests:
     name: Go Tests
+    needs: ci-skip
+    if: needs.ci-skip.outputs.skip != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -202,6 +239,8 @@ jobs:
 
   go-lint:
     name: Go Lint
+    needs: ci-skip
+    if: needs.ci-skip.outputs.skip != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -231,3 +270,41 @@ jobs:
 
       - name: Run Go lint
         run: node ./tools/scripts/run-golangci-lint.mjs
+
+  ci-check:
+    name: CI Check
+    needs:
+      - ci-skip
+      - tooling-consistency
+      - ts-lint
+      - typecheck
+      - ts-tests
+      - npm-package-packs
+      - go-tests
+      - go-lint
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verify required PR checks
+        run: |
+          if [ "${{ needs.ci-skip.result }}" != "success" ]; then
+            echo "CI skip detection did not complete successfully."
+            exit 1
+          fi
+
+          if [ "${{ needs.ci-skip.outputs.skip }}" = "true" ]; then
+            echo "CI checks were temporarily skipped from the pull request checklist."
+            exit 0
+          fi
+
+          results='${{ toJSON(needs) }}'
+          failures=$(echo "$results" | jq -r 'to_entries[] | select(.key != "ci-skip") | select(.value.result != "success") | "\(.key)=\(.value.result)"')
+
+          if [ -n "$failures" ]; then
+            echo "One or more PR checks failed or were cancelled:"
+            echo "$failures"
+            exit 1
+          fi
+
+          echo "All required PR checks passed."
