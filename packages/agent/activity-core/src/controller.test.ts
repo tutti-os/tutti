@@ -429,6 +429,217 @@ test("controller handles duplicate inline activity updates without notifying sub
   assert.equal(notificationCount, 3);
 });
 
+test("controller canonicalizes provider-session message updates to the agent session", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              agentSessionId: "session-1",
+              providerSessionId: "provider-1"
+            })
+          ]
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+  await controller.load();
+
+  const result = controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "provider-1",
+    eventType: "message_update",
+    data: {
+      messages: [
+        createMessage({
+          agentSessionId: "provider-1",
+          messageId: "approval-1",
+          kind: "approval.requested",
+          status: "waiting_approval",
+          payload: { callType: "approval" }
+        })
+      ]
+    }
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.messages[0]?.agentSessionId, "session-1");
+  assert.equal(
+    controller.getSnapshot().sessionMessagesById["session-1"]?.[0]
+      ?.agentSessionId,
+    "session-1"
+  );
+  assert.equal(
+    controller.getSnapshot().sessionMessagesById["provider-1"],
+    undefined
+  );
+});
+
+test("controller accepts canonical inline messages before alias metadata loads", () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter(),
+    workspaceId: "workspace-1"
+  });
+
+  const result = controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "provider-1",
+    eventType: "message_update",
+    data: {
+      messages: [
+        createMessage({
+          agentSessionId: "session-1",
+          messageId: "approval-1",
+          kind: "approval.requested",
+          status: "waiting_approval",
+          payload: { callType: "approval" }
+        })
+      ]
+    }
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.messages[0]?.agentSessionId, "session-1");
+  assert.equal(
+    controller.getSnapshot().sessionMessagesById["session-1"]?.[0]?.messageId,
+    "approval-1"
+  );
+  assert.equal(
+    controller.getSnapshot().sessionMessagesById["provider-1"],
+    undefined
+  );
+});
+
+test("controller migrates provider-session message buckets when session metadata arrives", () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter(),
+    workspaceId: "workspace-1"
+  });
+
+  controller.applySessionEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "provider-1",
+    eventType: "message_update",
+    data: createMessage({
+      agentSessionId: "provider-1",
+      messageId: "approval-1",
+      kind: "approval.requested",
+      status: "waiting_approval",
+      payload: { callType: "approval" }
+    })
+  });
+  assert.equal(
+    controller.getSnapshot().sessionMessagesById["provider-1"]?.[0]?.messageId,
+    "approval-1"
+  );
+
+  controller.applySessionEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "session_update",
+    data: createSession({
+      agentSessionId: "session-1",
+      providerSessionId: "provider-1"
+    })
+  });
+
+  const snapshot = controller.getSnapshot();
+  assert.equal(snapshot.sessionMessagesById["provider-1"], undefined);
+  assert.equal(
+    snapshot.sessionMessagesById["session-1"]?.[0]?.agentSessionId,
+    "session-1"
+  );
+  assert.equal(
+    snapshot.sessionMessagesById["session-1"]?.[0]?.messageId,
+    "approval-1"
+  );
+});
+
+test("controller does not canonicalize ambiguous provider-session message buckets", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              agentSessionId: "runtime-session",
+              providerSessionId: "provider-1"
+            }),
+            createSession({
+              agentSessionId: "hook-session",
+              providerSessionId: "provider-1"
+            })
+          ]
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+  await controller.load();
+
+  controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "provider-1",
+    eventType: "message_update",
+    data: {
+      messages: [
+        createMessage({
+          agentSessionId: "provider-1",
+          messageId: "message-ambiguous"
+        })
+      ]
+    }
+  });
+
+  const snapshot = controller.getSnapshot();
+  assert.equal(
+    snapshot.sessionMessagesById["provider-1"]?.[0]?.messageId,
+    "message-ambiguous"
+  );
+  assert.equal(snapshot.sessionMessagesById["runtime-session"], undefined);
+  assert.equal(snapshot.sessionMessagesById["hook-session"], undefined);
+});
+
+test("controller canonicalizes provider-session state patches to the agent session", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              agentSessionId: "session-1",
+              providerSessionId: "provider-1",
+              status: "working",
+              updatedAtUnixMs: 100
+            })
+          ]
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+  await controller.load();
+
+  const result = controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "provider-1",
+    eventType: "state_patch",
+    data: {
+      agentSessionId: "provider-1",
+      providerSessionId: "provider-1",
+      lifecycleStatus: "completed",
+      occurredAtUnixMs: 200
+    }
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.statePatch?.agentSessionId, "session-1");
+  assert.equal(
+    controller.getSnapshot().sessions[0]?.agentSessionId,
+    "session-1"
+  );
+  assert.equal(controller.getSnapshot().sessions[0]?.status, "completed");
+});
+
 test("controller uses cached latest message version when retaining events", async () => {
   let retainedAfterVersion: number | undefined;
   const adapter = fakeAdapter({

@@ -118,17 +118,21 @@ export function createAgentActivityController({
       const nextSessions = response.sessions;
       const nextPresences = response.presences ?? [];
       const nextSnapshot = updateSnapshot((current) => {
-        if (
+        const sessionDataUnchanged =
           areShallowObjectArraysEqual(current.sessions, nextSessions) &&
-          areShallowObjectArraysEqual(current.presences, nextPresences)
-        ) {
-          return current;
+          areShallowObjectArraysEqual(current.presences, nextPresences);
+        const source = sessionDataUnchanged
+          ? current
+          : {
+              ...current,
+              presences: nextPresences,
+              sessions: nextSessions
+            };
+        const canonical = canonicalizeSnapshotMessageBuckets(source);
+        if (canonical !== source) {
+          return canonical;
         }
-        return {
-          ...current,
-          presences: nextPresences,
-          sessions: nextSessions
-        };
+        return sessionDataUnchanged ? current : source;
       });
       if (autoRetainSessionEvents) {
         reconcileAutoRetainedSessionStreams(nextSnapshot.sessions, signal);
@@ -604,24 +608,39 @@ function applyActivityUpdatedMessages(
   if (inlineMessages.length === 0) {
     return emptyActivityUpdatedApplyResult(snapshot);
   }
-  const sessionMessages = inlineMessages.filter((message) =>
-    inlineMessageBelongsToSession(message, input.agentSessionId)
-  );
-  if (sessionMessages.length === 0) {
-    return emptyActivityUpdatedApplyResult(snapshot);
-  }
-  const messages = sessionMessages.map((message) =>
-    agentActivityMessageFromInlineMessage({
-      agentSessionId: input.agentSessionId,
+  const messagesBySessionId = new Map<string, AgentActivityMessage[]>();
+  for (const message of inlineMessages) {
+    const targetSessionId = inlineMessageTargetAgentSessionId(
+      snapshot,
+      input.agentSessionId,
+      message
+    );
+    if (!targetSessionId) {
+      continue;
+    }
+    const activityMessage = agentActivityMessageFromInlineMessage({
+      agentSessionId: targetSessionId,
       message,
       workspaceId: input.workspaceId
-    })
-  );
-  const nextSnapshot = mergeSnapshotMessages(
-    snapshot,
-    input.agentSessionId,
-    messages
-  );
+    });
+    messagesBySessionId.set(targetSessionId, [
+      ...(messagesBySessionId.get(targetSessionId) ?? []),
+      activityMessage
+    ]);
+  }
+  if (messagesBySessionId.size === 0) {
+    return emptyActivityUpdatedApplyResult(snapshot);
+  }
+  let nextSnapshot = snapshot;
+  const messages: AgentActivityMessage[] = [];
+  for (const [agentSessionId, sessionMessages] of messagesBySessionId) {
+    nextSnapshot = mergeSnapshotMessages(
+      nextSnapshot,
+      agentSessionId,
+      sessionMessages
+    );
+    messages.push(...sessionMessages);
+  }
   if (nextSnapshot === snapshot) {
     return {
       applied: true,
@@ -649,19 +668,39 @@ function applyActivityUpdatedStatePatch(
   }
 ): AgentActivityUpdatedApplyResult & { snapshot: AgentActivitySnapshot } {
   const statePatch = inlineStatePatchFromActivityUpdateData(input.data);
-  if (!statePatch || statePatch.agentSessionId !== input.agentSessionId) {
+  if (!statePatch) {
     return emptyActivityUpdatedApplyResult(snapshot);
   }
+  const canonicalEventSessionId = resolveCanonicalAgentSessionId(
+    snapshot,
+    input.agentSessionId,
+    statePatch.provider
+  );
+  const canonicalPatchSessionId = resolveCanonicalAgentSessionId(
+    snapshot,
+    statePatch.agentSessionId,
+    statePatch.provider
+  );
+  if (canonicalPatchSessionId !== canonicalEventSessionId) {
+    return emptyActivityUpdatedApplyResult(snapshot);
+  }
+  const canonicalStatePatch = {
+    ...statePatch,
+    agentSessionId: canonicalPatchSessionId
+  };
   const existingSession =
     snapshot.sessions.find(
-      (session) => session.agentSessionId === input.agentSessionId
+      (session) => session.agentSessionId === canonicalPatchSessionId
     ) ?? null;
-  if (!existingSession || isStaleStatePatch(existingSession, statePatch)) {
+  if (
+    !existingSession ||
+    isStaleStatePatch(existingSession, canonicalStatePatch)
+  ) {
     return emptyActivityUpdatedApplyResult(snapshot);
   }
   const session = agentActivitySessionFromInlineStatePatch({
     existingSession,
-    patch: statePatch,
+    patch: canonicalStatePatch,
     workspaceId: input.workspaceId
   });
   return {
@@ -669,7 +708,7 @@ function applyActivityUpdatedStatePatch(
     messages: [],
     session,
     snapshot: upsertSnapshotSession(snapshot, session),
-    statePatch
+    statePatch: canonicalStatePatch
   };
 }
 
@@ -714,22 +753,66 @@ function mergeSnapshotMessages(
   agentSessionId: string,
   messages: readonly AgentActivityMessage[]
 ): AgentActivitySnapshot {
-  const normalizedAgentSessionId = agentSessionId.trim();
-  if (!normalizedAgentSessionId || messages.length === 0) {
+  const rawAgentSessionId = agentSessionId.trim();
+  const canonicalAgentSessionId = resolveCanonicalAgentSessionId(
+    snapshot,
+    rawAgentSessionId
+  );
+  if (!canonicalAgentSessionId || messages.length === 0) {
     return snapshot;
   }
   const currentMessages =
-    snapshot.sessionMessagesById[normalizedAgentSessionId] ?? [];
-  const mergedMessages = mergeAgentActivityMessages(currentMessages, messages);
+    snapshot.sessionMessagesById[canonicalAgentSessionId] ?? [];
+  const aliasMessages =
+    rawAgentSessionId && rawAgentSessionId !== canonicalAgentSessionId
+      ? (snapshot.sessionMessagesById[rawAgentSessionId] ?? [])
+      : [];
+  const currentCanonicalMessages =
+    aliasMessages.length > 0
+      ? mergeAgentActivityMessages(
+          currentMessages,
+          canonicalizeAgentActivityMessages(
+            aliasMessages,
+            canonicalAgentSessionId
+          )
+        )
+      : currentMessages;
+  const canonicalMessages = canonicalizeAgentActivityMessages(
+    messages,
+    canonicalAgentSessionId
+  );
+  const mergedMessages = mergeAgentActivityMessages(
+    currentCanonicalMessages,
+    canonicalMessages
+  );
+  const hasAliasBucket =
+    rawAgentSessionId !== "" &&
+    rawAgentSessionId !== canonicalAgentSessionId &&
+    Object.prototype.hasOwnProperty.call(
+      snapshot.sessionMessagesById,
+      rawAgentSessionId
+    );
   if (areAgentActivityMessageArraysEqual(currentMessages, mergedMessages)) {
-    return snapshot;
+    return hasAliasBucket
+      ? {
+          ...snapshot,
+          sessionMessagesById: deleteSessionMessageBucket(
+            snapshot.sessionMessagesById,
+            rawAgentSessionId
+          )
+        }
+      : snapshot;
+  }
+  const sessionMessagesById = {
+    ...snapshot.sessionMessagesById,
+    [canonicalAgentSessionId]: mergedMessages
+  };
+  if (hasAliasBucket) {
+    delete sessionMessagesById[rawAgentSessionId];
   }
   return {
     ...snapshot,
-    sessionMessagesById: {
-      ...snapshot.sessionMessagesById,
-      [normalizedAgentSessionId]: mergedMessages
-    }
+    sessionMessagesById
   };
 }
 
@@ -741,17 +824,17 @@ function upsertSnapshotSession(
     (item) => item.agentSessionId === session.agentSessionId
   );
   if (index < 0) {
-    return {
+    return canonicalizeSnapshotMessageBuckets({
       ...snapshot,
       sessions: [...snapshot.sessions, session]
-    };
+    });
   }
   const sessions = [...snapshot.sessions];
   sessions[index] = session;
-  return {
+  return canonicalizeSnapshotMessageBuckets({
     ...snapshot,
     sessions
-  };
+  });
 }
 
 function removeSnapshotSession(
@@ -765,19 +848,179 @@ function removeSnapshotSession(
   const sessions = snapshot.sessions.filter(
     (session) => session.agentSessionId !== normalizedAgentSessionId
   );
+  const removedSession =
+    snapshot.sessions.find(
+      (session) => session.agentSessionId === normalizedAgentSessionId
+    ) ?? null;
+  const removableMessageBuckets = new Set([normalizedAgentSessionId]);
+  if (removedSession) {
+    for (const alias of sessionMessageAliases(removedSession)) {
+      if (
+        alias === normalizedAgentSessionId ||
+        resolveCanonicalAgentSessionId(
+          snapshot,
+          alias,
+          removedSession.provider
+        ) === normalizedAgentSessionId
+      ) {
+        removableMessageBuckets.add(alias);
+      }
+    }
+  }
   if (
     sessions.length === snapshot.sessions.length &&
-    !snapshot.sessionMessagesById[normalizedAgentSessionId]
+    [...removableMessageBuckets].every(
+      (bucket) => !snapshot.sessionMessagesById[bucket]
+    )
   ) {
     return snapshot;
   }
   const sessionMessagesById = { ...snapshot.sessionMessagesById };
-  delete sessionMessagesById[normalizedAgentSessionId];
+  for (const bucket of removableMessageBuckets) {
+    delete sessionMessagesById[bucket];
+  }
   return {
     ...snapshot,
     sessions,
     sessionMessagesById
   };
+}
+
+function canonicalizeSnapshotMessageBuckets(
+  snapshot: AgentActivitySnapshot
+): AgentActivitySnapshot {
+  let sessionMessagesById = snapshot.sessionMessagesById;
+  let changed = false;
+
+  for (const session of snapshot.sessions) {
+    const canonicalAgentSessionId = session.agentSessionId.trim();
+    if (!canonicalAgentSessionId) {
+      continue;
+    }
+
+    let mergedMessages = sessionMessagesById[canonicalAgentSessionId] ?? [];
+    for (const alias of sessionMessageAliases(session)) {
+      if (
+        alias !== canonicalAgentSessionId &&
+        resolveCanonicalAgentSessionId(snapshot, alias, session.provider) !==
+          canonicalAgentSessionId
+      ) {
+        continue;
+      }
+      const aliasMessages = sessionMessagesById[alias];
+      if (!aliasMessages) {
+        continue;
+      }
+      const canonicalMessages = canonicalizeAgentActivityMessages(
+        aliasMessages,
+        canonicalAgentSessionId
+      );
+      if (alias === canonicalAgentSessionId) {
+        if (
+          !areAgentActivityMessageArraysEqual(aliasMessages, canonicalMessages)
+        ) {
+          sessionMessagesById = {
+            ...sessionMessagesById,
+            [canonicalAgentSessionId]: canonicalMessages
+          };
+          mergedMessages = canonicalMessages;
+          changed = true;
+        }
+        continue;
+      }
+      mergedMessages = mergeAgentActivityMessages(
+        mergedMessages,
+        canonicalMessages
+      );
+      sessionMessagesById = deleteSessionMessageBucket(
+        sessionMessagesById,
+        alias
+      );
+      changed = true;
+    }
+
+    const currentMessages = sessionMessagesById[canonicalAgentSessionId] ?? [];
+    if (!areAgentActivityMessageArraysEqual(currentMessages, mergedMessages)) {
+      sessionMessagesById = {
+        ...sessionMessagesById,
+        [canonicalAgentSessionId]: mergedMessages
+      };
+      changed = true;
+    }
+  }
+
+  return changed ? { ...snapshot, sessionMessagesById } : snapshot;
+}
+
+function resolveCanonicalAgentSessionId(
+  snapshot: AgentActivitySnapshot,
+  rawAgentSessionId: string | null | undefined,
+  provider?: string | null
+): string {
+  const normalizedAgentSessionId = rawAgentSessionId?.trim() ?? "";
+  if (!normalizedAgentSessionId) {
+    return "";
+  }
+
+  const exactSession = snapshot.sessions.find(
+    (session) => session.agentSessionId.trim() === normalizedAgentSessionId
+  );
+  if (exactSession) {
+    return exactSession.agentSessionId.trim();
+  }
+
+  const normalizedProvider = provider?.trim() ?? "";
+  const candidates = snapshot.sessions.filter((session) => {
+    if (session.providerSessionId?.trim() !== normalizedAgentSessionId) {
+      return false;
+    }
+    return (
+      !normalizedProvider || session.provider.trim() === normalizedProvider
+    );
+  });
+  return candidates.length === 1
+    ? candidates[0]!.agentSessionId.trim()
+    : normalizedAgentSessionId;
+}
+
+function sessionMessageAliases(session: AgentActivitySession): string[] {
+  const values = [session.agentSessionId, session.providerSessionId];
+  const seen = new Set<string>();
+  const aliases: string[] = [];
+  for (const value of values) {
+    const normalized = value?.trim() ?? "";
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    aliases.push(normalized);
+  }
+  return aliases;
+}
+
+function canonicalizeAgentActivityMessages(
+  messages: readonly AgentActivityMessage[],
+  agentSessionId: string
+): AgentActivityMessage[] {
+  return messages.map((message) =>
+    message.agentSessionId === agentSessionId
+      ? message
+      : { ...message, agentSessionId }
+  );
+}
+
+function deleteSessionMessageBucket(
+  sessionMessagesById: Record<string, AgentActivityMessage[]>,
+  agentSessionId: string
+): Record<string, AgentActivityMessage[]> {
+  if (
+    !Object.prototype.hasOwnProperty.call(sessionMessagesById, agentSessionId)
+  ) {
+    return sessionMessagesById;
+  }
+  const next = { ...sessionMessagesById };
+  delete next[agentSessionId];
+  return next;
 }
 
 function shouldAutoRetainSessionEvents(session: AgentActivitySession): boolean {
@@ -867,12 +1110,41 @@ function inlineMessagesFromActivityUpdateData(
   });
 }
 
-function inlineMessageBelongsToSession(
-  message: Record<string, unknown>,
+function inlineMessageTargetAgentSessionId(
+  snapshot: AgentActivitySnapshot,
+  eventAgentSessionId: string,
+  message: Record<string, unknown>
+): string {
+  const canonicalEventSessionId = resolveCanonicalAgentSessionId(
+    snapshot,
+    eventAgentSessionId
+  );
+  if (!canonicalEventSessionId) {
+    return "";
+  }
+  const messageAgentSessionId = stringValue(message.agentSessionId);
+  return messageAgentSessionId === "" ||
+    resolveCanonicalAgentSessionId(snapshot, messageAgentSessionId) ===
+      canonicalEventSessionId
+    ? canonicalEventSessionId
+    : knownSessionIdentity(snapshot, eventAgentSessionId)
+      ? ""
+      : resolveCanonicalAgentSessionId(snapshot, messageAgentSessionId);
+}
+
+function knownSessionIdentity(
+  snapshot: AgentActivitySnapshot,
   agentSessionId: string
 ): boolean {
-  const messageAgentSessionId = stringValue(message.agentSessionId);
-  return !messageAgentSessionId || messageAgentSessionId === agentSessionId;
+  const normalizedAgentSessionId = agentSessionId.trim();
+  return (
+    normalizedAgentSessionId !== "" &&
+    (snapshot.sessions.some(
+      (session) => session.agentSessionId.trim() === normalizedAgentSessionId
+    ) ||
+      resolveCanonicalAgentSessionId(snapshot, normalizedAgentSessionId) !==
+        normalizedAgentSessionId)
+  );
 }
 
 function agentActivityMessageFromInlineMessage(input: {
@@ -882,8 +1154,7 @@ function agentActivityMessageFromInlineMessage(input: {
 }): AgentActivityMessage {
   return {
     workspaceId: stringValue(input.message.workspaceId) || input.workspaceId,
-    agentSessionId:
-      stringValue(input.message.agentSessionId) || input.agentSessionId,
+    agentSessionId: input.agentSessionId,
     messageId: stringValue(input.message.messageId),
     id: numberValue(input.message.id),
     version: numberValue(input.message.version) ?? 0,

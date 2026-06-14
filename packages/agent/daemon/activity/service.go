@@ -645,11 +645,24 @@ func (*Store) applyEventLocked(entry *sessionEntry, _ string, source EventSource
 
 func applyStatePatchLocked(entry *sessionEntry, source EventSource, patch WorkspaceAgentStatePatch, now int64) {
 	sessionID := firstNonEmptyString(patch.AgentSessionID, source.AgentID)
+	if sessionID != "" {
+		sessionID = resolveKnownOrProviderAliasSessionID(
+			entry.state.Sessions,
+			sessionID,
+			firstNonEmptyString(patch.Provider, source.Provider),
+			patch.ProviderSessionID,
+			source.ProviderSessionID,
+			source.SessionOrigin,
+		)
+	}
 	if sessionID == "" {
-		index := findSessionIndex(entry.state.Sessions, "", patch.ProviderSessionID, source.ProviderSessionID, source.SessionOrigin)
-		if index >= 0 {
-			sessionID = strings.TrimSpace(entry.state.Sessions[index].AgentSessionID)
-		}
+		sessionID = findUniqueSessionIDByProvider(
+			entry.state.Sessions,
+			firstNonEmptyString(patch.Provider, source.Provider),
+			patch.ProviderSessionID,
+			source.ProviderSessionID,
+			source.SessionOrigin,
+		)
 	}
 	if sessionID == "" || isHiddenAgentSession(entry, sessionID) {
 		return
@@ -749,6 +762,7 @@ func applyStatePatchLocked(entry *sessionEntry, source EventSource, patch Worksp
 		session.UpdatedAtUnixMS = timestamp
 	}
 	entry.state.Sessions[index] = session
+	canonicalizeSessionMessageBucketsLocked(entry)
 	slog.Info("agent activity local state patch updated session",
 		"event", "agent_activity.local_state_patch.updated",
 		"source_agent_session_id", strings.TrimSpace(source.AgentID),
@@ -1525,6 +1539,7 @@ func (s *Store) updateState(roomID string, snapshot WorkspaceAgentSnapshot) {
 		filterHiddenSessions(snapshot.Sessions, entry.hiddenSessions),
 		entry.state.Sessions,
 	)
+	canonicalizeSessionMessageBucketsLocked(entry)
 	mergeSnapshotMessagesLocked(entry, snapshot)
 	changed := !workspaceAgentSnapshotBusinessEqual(before, snapshotFromEntryLocked(entry))
 	entry.mu.Unlock()
@@ -1553,6 +1568,7 @@ func (s *Store) updateStateForOrigin(
 	)
 	entry.state.Presences = clonePresences(snapshot.Presences)
 	entry.state.Sessions = mergeSyncedSessionsForOrigin(entry.state.Sessions, incoming, origin)
+	canonicalizeSessionMessageBucketsLocked(entry)
 	mergeSnapshotMessagesLocked(entry, snapshot)
 	changed := !workspaceAgentSnapshotBusinessEqual(before, snapshotFromEntryLocked(entry))
 	entry.mu.Unlock()
@@ -1706,8 +1722,7 @@ func appendMessageUpdatesLocked(entry *sessionEntry, source EventSource, updates
 	grouped := make(map[string][]WorkspaceAgentSessionMessage)
 	latestVersionBySession := make(map[string]uint64)
 	for _, update := range updates {
-		sessionID := firstNonEmptyString(update.AgentSessionID, source.AgentID, source.ProviderSessionID)
-		sessionID = strings.TrimSpace(sessionID)
+		sessionID := resolveMessageUpdateSessionID(entry, source, update)
 		if sessionID == "" || isHiddenAgentSession(entry, sessionID) {
 			continue
 		}
@@ -1722,11 +1737,43 @@ func appendMessageUpdatesLocked(entry *sessionEntry, source EventSource, updates
 	}
 	changed := false
 	for sessionID, messages := range grouped {
-		if appendSessionMessagesLocked(entry, sessionID, messages, latestVersionBySession[sessionID]) {
+		if appendSessionMessagesForProviderLocked(entry, source.Provider, sessionID, messages, latestVersionBySession[sessionID]) {
 			changed = true
 		}
 	}
 	return changed
+}
+
+func resolveMessageUpdateSessionID(
+	entry *sessionEntry,
+	source EventSource,
+	update WorkspaceAgentMessageUpdate,
+) string {
+	if entry == nil {
+		return ""
+	}
+	sessionID := firstNonEmptyString(update.AgentSessionID, source.AgentID)
+	if sessionID != "" {
+		return resolveKnownOrProviderAliasSessionID(
+			entry.state.Sessions,
+			sessionID,
+			source.Provider,
+			"",
+			source.ProviderSessionID,
+			source.SessionOrigin,
+		)
+	}
+	canonicalID := findUniqueSessionIDByProvider(
+		entry.state.Sessions,
+		source.Provider,
+		"",
+		source.ProviderSessionID,
+		source.SessionOrigin,
+	)
+	if canonicalID != "" {
+		return canonicalID
+	}
+	return strings.TrimSpace(source.ProviderSessionID)
 }
 
 func appendSessionMessagesLocked(
@@ -1735,10 +1782,27 @@ func appendSessionMessagesLocked(
 	messages []WorkspaceAgentSessionMessage,
 	latestVersion uint64,
 ) bool {
+	return appendSessionMessagesForProviderLocked(entry, "", agentSessionID, messages, latestVersion)
+}
+
+func appendSessionMessagesForProviderLocked(
+	entry *sessionEntry,
+	provider string,
+	agentSessionID string,
+	messages []WorkspaceAgentSessionMessage,
+	latestVersion uint64,
+) bool {
 	if entry == nil {
 		return false
 	}
-	agentSessionID = strings.TrimSpace(agentSessionID)
+	agentSessionID = resolveKnownOrProviderAliasSessionID(
+		entry.state.Sessions,
+		agentSessionID,
+		provider,
+		"",
+		"",
+		"",
+	)
 	if agentSessionID == "" {
 		return false
 	}
@@ -1752,8 +1816,7 @@ func appendSessionMessagesLocked(
 	items := entry.sessionMessages[agentSessionID]
 	changed := false
 	for _, message := range messages {
-		message.AgentSessionID = firstNonEmptyString(message.AgentSessionID, agentSessionID)
-		message.AgentSessionID = strings.TrimSpace(message.AgentSessionID)
+		message.AgentSessionID = agentSessionID
 		message.MessageID = strings.TrimSpace(message.MessageID)
 		if message.AgentSessionID == "" || message.MessageID == "" || isHiddenAgentSession(entry, message.AgentSessionID) {
 			continue
@@ -1795,6 +1858,101 @@ func mergeSnapshotMessagesLocked(entry *sessionEntry, snapshot WorkspaceAgentSna
 		}
 	}
 	return changed
+}
+
+func canonicalizeSessionMessageBucketsLocked(entry *sessionEntry) bool {
+	if entry == nil || len(entry.sessionMessages) == 0 {
+		return false
+	}
+	changed := false
+	sessionIDs := make([]string, 0, len(entry.sessionMessages))
+	for sessionID := range entry.sessionMessages {
+		sessionIDs = append(sessionIDs, sessionID)
+	}
+	for _, sessionID := range sessionIDs {
+		messages := entry.sessionMessages[sessionID]
+		sessionID = strings.TrimSpace(sessionID)
+		if sessionID == "" {
+			continue
+		}
+		canonicalID := resolveKnownOrProviderAliasSessionID(
+			entry.state.Sessions,
+			sessionID,
+			"",
+			"",
+			"",
+			"",
+		)
+		if canonicalID == "" || canonicalID == sessionID {
+			continue
+		}
+		latestVersion := maxSessionMessageVersion(entry.messageVersionBySession[sessionID], messages)
+		if appendSessionMessagesLocked(entry, canonicalID, messages, latestVersion) {
+			changed = true
+		}
+		delete(entry.sessionMessages, sessionID)
+		delete(entry.messageVersionBySession, sessionID)
+		changed = true
+	}
+	return changed
+}
+
+func resolveKnownOrProviderAliasSessionID(
+	sessions []WorkspaceAgentSession,
+	sessionID,
+	provider,
+	providerSessionID,
+	sourceProviderSessionID,
+	sessionOrigin string,
+) string {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return ""
+	}
+	if findSessionIndex(sessions, sessionID, "", "", "") >= 0 {
+		return sessionID
+	}
+	aliasProviderSessionID := firstNonEmptyString(providerSessionID, sourceProviderSessionID, sessionID)
+	if canonicalID := findUniqueSessionIDByProvider(sessions, provider, aliasProviderSessionID, "", sessionOrigin); canonicalID != "" {
+		return canonicalID
+	}
+	return sessionID
+}
+
+func findUniqueSessionIDByProvider(
+	sessions []WorkspaceAgentSession,
+	provider,
+	providerSessionID,
+	sourceProviderSessionID,
+	sessionOrigin string,
+) string {
+	providerSessionID = strings.TrimSpace(firstNonEmptyString(providerSessionID, sourceProviderSessionID))
+	if providerSessionID == "" {
+		return ""
+	}
+	provider = strings.TrimSpace(provider)
+	sessionOrigin = lookupSessionOrigin(sessionOrigin)
+	matchedID := ""
+	for _, session := range sessions {
+		if strings.TrimSpace(session.ProviderSessionID) != providerSessionID {
+			continue
+		}
+		if provider != "" && strings.TrimSpace(session.Provider) != provider {
+			continue
+		}
+		if sessionOrigin != "" && NormalizeSessionOrigin(session.SessionOrigin) != sessionOrigin {
+			continue
+		}
+		agentSessionID := strings.TrimSpace(session.AgentSessionID)
+		if agentSessionID == "" {
+			continue
+		}
+		if matchedID != "" && matchedID != agentSessionID {
+			return ""
+		}
+		matchedID = agentSessionID
+	}
+	return matchedID
 }
 
 func mergeMessageUpdate(existing WorkspaceAgentMessageUpdate, incoming WorkspaceAgentMessageUpdate) WorkspaceAgentMessageUpdate {

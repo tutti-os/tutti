@@ -227,15 +227,17 @@ func (p *ActivityProjection) ReportSessionMessages(
 		WorkspaceID:    strings.TrimSpace(input.WorkspaceID),
 		AgentSessionID: strings.TrimSpace(input.AgentSessionID),
 		Origin:         strings.TrimSpace(input.SessionOrigin),
+		Provider:       strings.TrimSpace(input.Source.Provider),
 		Messages:       activityMessageUpdates(input.Updates),
 	})
 	if err != nil {
 		return agentsessionstore.ReportSessionMessagesReply{}, err
 	}
 	if result.AcceptedCount > 0 {
-		p.publishActivityUpdated(ctx, input.WorkspaceID, input.AgentSessionID, "message_update", map[string]any{
+		publishedAgentSessionID := canonicalMessageUpdateSessionID(input.AgentSessionID, result.Messages)
+		p.publishActivityUpdated(ctx, input.WorkspaceID, publishedAgentSessionID, "message_update", map[string]any{
 			"acceptedCount":  result.AcceptedCount,
-			"agentSessionId": strings.TrimSpace(input.AgentSessionID),
+			"agentSessionId": publishedAgentSessionID,
 			"eventType":      "message_update",
 			"latestVersion":  result.LatestVersion,
 			"messages":       activityMessagesEventPayload(result.Messages),
@@ -249,6 +251,15 @@ func (p *ActivityProjection) ReportSessionMessages(
 	}
 	p.observeSessionMessages(ctx, input, reply)
 	return reply, nil
+}
+
+func canonicalMessageUpdateSessionID(fallback string, messages []agentactivitybiz.Message) string {
+	for _, message := range messages {
+		if agentSessionID := strings.TrimSpace(message.AgentSessionID); agentSessionID != "" {
+			return agentSessionID
+		}
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func (p *ActivityProjection) GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool) {

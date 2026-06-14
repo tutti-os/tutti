@@ -384,6 +384,213 @@ func TestSQLiteStoreReportAndListAgentActivityMessages(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreReportsProviderSessionMessagesToCanonicalAgentSession(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-agent-provider-message",
+		Name: "Workspace Agent Provider Message",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:       "ws-agent-provider-message",
+		AgentSessionID:    "session-1",
+		Origin:            agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:          "codex",
+		ProviderSessionID: "provider-session-1",
+		Status:            "running",
+		OccurredAtUnixMS:  100,
+	}); err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+
+	result, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
+		WorkspaceID:    "ws-agent-provider-message",
+		AgentSessionID: "provider-session-1",
+		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Messages: []agentactivitybiz.MessageUpdate{{
+			MessageID:        "approval-1",
+			Role:             "assistant",
+			Kind:             "tool_call",
+			Status:           "waiting",
+			Payload:          map[string]any{"toolName": "Bash"},
+			OccurredAtUnixMS: 110,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionMessages() error = %v", err)
+	}
+	if result.AcceptedCount != 1 || result.LatestVersion != 1 {
+		t.Fatalf("result = %#v, want one canonical message", result)
+	}
+	if result.Messages[0].AgentSessionID != "session-1" {
+		t.Fatalf("accepted message session id = %q, want session-1", result.Messages[0].AgentSessionID)
+	}
+
+	page, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID:    "ws-agent-provider-message",
+		AgentSessionID: "session-1",
+		Limit:          10,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionMessages(canonical) error = %v", err)
+	}
+	if !ok || len(page.Messages) != 1 || page.Messages[0].AgentSessionID != "session-1" {
+		t.Fatalf("canonical page = %#v ok=%v, want message under session-1", page, ok)
+	}
+	if _, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID:    "ws-agent-provider-message",
+		AgentSessionID: "provider-session-1",
+		Limit:          10,
+	}); err != nil || ok {
+		t.Fatalf("ListSessionMessages(provider) ok=%v error=%v, want no alias session", ok, err)
+	}
+}
+
+func TestSQLiteStoreReportsProviderSessionMessagesToSameOriginSession(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-agent-provider-origin-message",
+		Name: "Workspace Agent Provider Origin Message",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:       "ws-agent-provider-origin-message",
+		AgentSessionID:    "runtime-1",
+		Origin:            agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:          "codex",
+		ProviderSessionID: "shared-provider-session",
+		Status:            "running",
+		OccurredAtUnixMS:  100,
+	}); err != nil {
+		t.Fatalf("ReportSessionState(runtime) error = %v", err)
+	}
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:       "ws-agent-provider-origin-message",
+		AgentSessionID:    "hook-1",
+		Origin:            agentsessionstore.WorkspaceAgentSessionOriginHook,
+		Provider:          "codex",
+		ProviderSessionID: "shared-provider-session",
+		Status:            "running",
+		OccurredAtUnixMS:  100,
+	}); err != nil {
+		t.Fatalf("ReportSessionState(hook) error = %v", err)
+	}
+
+	result, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
+		WorkspaceID:    "ws-agent-provider-origin-message",
+		AgentSessionID: "shared-provider-session",
+		Origin:         agentsessionstore.WorkspaceAgentSessionOriginHook,
+		Messages: []agentactivitybiz.MessageUpdate{{
+			MessageID:        "hook-message-1",
+			Role:             "assistant",
+			Kind:             "text",
+			Status:           "completed",
+			Payload:          map[string]any{"text": "hook"},
+			OccurredAtUnixMS: 110,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionMessages() error = %v", err)
+	}
+	if result.AcceptedCount != 1 || result.Messages[0].AgentSessionID != "hook-1" {
+		t.Fatalf("result = %#v, want message under hook-1", result)
+	}
+
+	hookPage, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID:    "ws-agent-provider-origin-message",
+		AgentSessionID: "hook-1",
+		Limit:          10,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionMessages(hook) error = %v", err)
+	}
+	if !ok || len(hookPage.Messages) != 1 || hookPage.Messages[0].AgentSessionID != "hook-1" {
+		t.Fatalf("hook page = %#v ok=%v, want hook message", hookPage, ok)
+	}
+	runtimePage, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID:    "ws-agent-provider-origin-message",
+		AgentSessionID: "runtime-1",
+		Limit:          10,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionMessages(runtime) error = %v", err)
+	}
+	if !ok || len(runtimePage.Messages) != 0 {
+		t.Fatalf("runtime page = %#v ok=%v, want no misrouted message", runtimePage, ok)
+	}
+}
+
+func TestSQLiteStoreDoesNotResolveProviderSessionMessagesAcrossProviders(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-agent-provider-collision-message",
+		Name: "Workspace Agent Provider Collision Message",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:       "ws-agent-provider-collision-message",
+		AgentSessionID:    "codex-session-1",
+		Origin:            agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:          "codex",
+		ProviderSessionID: "shared-provider-session",
+		Status:            "running",
+		OccurredAtUnixMS:  100,
+	}); err != nil {
+		t.Fatalf("ReportSessionState(codex) error = %v", err)
+	}
+
+	result, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
+		WorkspaceID:    "ws-agent-provider-collision-message",
+		AgentSessionID: "shared-provider-session",
+		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:       "claude",
+		Messages: []agentactivitybiz.MessageUpdate{{
+			MessageID:        "claude-message-1",
+			Role:             "assistant",
+			Kind:             "text",
+			Status:           "completed",
+			Payload:          map[string]any{"text": "claude"},
+			OccurredAtUnixMS: 110,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionMessages() error = %v", err)
+	}
+	if result.AcceptedCount != 1 || result.Messages[0].AgentSessionID != "shared-provider-session" {
+		t.Fatalf("result = %#v, want message under raw claude provider session", result)
+	}
+
+	codexPage, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID:    "ws-agent-provider-collision-message",
+		AgentSessionID: "codex-session-1",
+		Limit:          10,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionMessages(codex) error = %v", err)
+	}
+	if !ok || len(codexPage.Messages) != 0 {
+		t.Fatalf("codex page = %#v ok=%v, want no provider-mismatched message", codexPage, ok)
+	}
+}
+
 func TestSQLiteStorePersistsLargeAgentActivityMessagePayload(t *testing.T) {
 	t.Parallel()
 

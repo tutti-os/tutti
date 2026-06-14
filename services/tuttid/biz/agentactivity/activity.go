@@ -82,6 +82,7 @@ type SessionMessageReport struct {
 	WorkspaceID    string
 	AgentSessionID string
 	Origin         string
+	Provider       string
 	Messages       []MessageUpdate
 }
 

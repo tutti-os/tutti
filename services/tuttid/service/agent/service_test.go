@@ -912,6 +912,62 @@ func TestActivityProjectionPublishesSessionUpdateForUnappliedStatePatch(t *testi
 	}
 }
 
+func TestActivityProjectionPublishesCanonicalSessionIDForMessageUpdates(t *testing.T) {
+	repo := &activityProjectionRepoStub{
+		messageResult: agentactivitybiz.MessageReportResult{
+			AcceptedCount: 1,
+			LatestVersion: 1,
+			Messages: []agentactivitybiz.Message{{
+				AgentSessionID: "session-1",
+				MessageID:      "message-1",
+				Version:        1,
+				Role:           "assistant",
+				Kind:           "text",
+				Status:         "completed",
+				Payload:        map[string]any{"text": "hello"},
+			}},
+		},
+	}
+	publisher := &activityUpdatePublisherStub{}
+	projection := NewActivityProjection(repo)
+	projection.SetPublisher(publisher)
+
+	reply, err := projection.ReportSessionMessages(context.Background(), agentsessionstore.ReportSessionMessagesInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "provider-session-1",
+		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Source: agentsessionstore.EventSource{
+			Provider:          "codex",
+			ProviderSessionID: "provider-session-1",
+		},
+		Updates: []agentsessionstore.WorkspaceAgentSessionMessageUpdate{{
+			MessageID: "message-1",
+			Role:      "assistant",
+			Kind:      "text",
+			Status:    "completed",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionMessages() error = %v", err)
+	}
+	if reply.AcceptedCount != 1 {
+		t.Fatalf("reply = %#v, want accepted message", reply)
+	}
+	if repo.messageInput.Provider != "codex" {
+		t.Fatalf("repo message provider = %q, want codex", repo.messageInput.Provider)
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want 1", len(publisher.events))
+	}
+	event := publisher.events[0]
+	if event.agentSessionID != "session-1" {
+		t.Fatalf("published agentSessionID = %q, want session-1", event.agentSessionID)
+	}
+	if event.payload["agentSessionId"] != "session-1" {
+		t.Fatalf("payload agentSessionId = %#v, want session-1", event.payload["agentSessionId"])
+	}
+}
+
 func TestStaleResumeMessageUpdatesFailOpenToolCallsForLatestTurn(t *testing.T) {
 	updates := staleResumeMessageUpdates([]SessionMessage{
 		{
@@ -1939,7 +1995,9 @@ func (*fakeRuntime) Subscribe(string, string) (<-chan RuntimeStreamEvent, func()
 }
 
 type activityProjectionRepoStub struct {
-	stateResult agentactivitybiz.StateReportResult
+	stateResult   agentactivitybiz.StateReportResult
+	messageInput  agentactivitybiz.SessionMessageReport
+	messageResult agentactivitybiz.MessageReportResult
 }
 
 func (*activityProjectionRepoStub) DeleteSession(context.Context, string, string) (bool, error) {
@@ -1958,8 +2016,9 @@ func (*activityProjectionRepoStub) ListSessionMessages(context.Context, agentact
 	return agentactivitybiz.MessagePage{}, false, nil
 }
 
-func (*activityProjectionRepoStub) ReportSessionMessages(context.Context, agentactivitybiz.SessionMessageReport) (agentactivitybiz.MessageReportResult, error) {
-	return agentactivitybiz.MessageReportResult{}, nil
+func (r *activityProjectionRepoStub) ReportSessionMessages(_ context.Context, input agentactivitybiz.SessionMessageReport) (agentactivitybiz.MessageReportResult, error) {
+	r.messageInput = input
+	return r.messageResult, nil
 }
 
 func (r *activityProjectionRepoStub) ReportSessionState(context.Context, agentactivitybiz.SessionStateReport) (agentactivitybiz.StateReportResult, error) {

@@ -1130,6 +1130,220 @@ func TestStoreBuildsSnapshotMessagesFromCanonicalSessionMessages(t *testing.T) {
 	}
 }
 
+func TestStoreAppliesProviderOnlyMessageUpdateToExistingSession(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+	svc.updateState("room-1", WorkspaceAgentSnapshot{
+		Sessions: []WorkspaceAgentSession{{
+			AgentSessionID:    "runtime-1",
+			Provider:          "codex",
+			ProviderSessionID: "provider-1",
+			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+		}},
+	})
+
+	svc.ApplyActivity("room-1", EventSource{
+		Provider:          "codex",
+		ProviderSessionID: "provider-1",
+		SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+	}, nil, nil, []WorkspaceAgentMessageUpdate{{
+		AgentSessionID:   "provider-1",
+		MessageID:        "approval-1",
+		Role:             "assistant",
+		Kind:             "tool_call",
+		Status:           "waiting",
+		Payload:          map[string]any{"toolName": "Bash"},
+		OccurredAtUnixMS: 1000,
+	}})
+
+	snapshot, ok := svc.GetAgentSnapshot("room-1")
+	if !ok {
+		t.Fatal("GetAgentSnapshot() ok = false, want true")
+	}
+	if _, ok := snapshot.SessionMessagesByID["provider-1"]; ok {
+		t.Fatalf("provider bucket = %#v, want no alias message bucket", snapshot.SessionMessagesByID["provider-1"])
+	}
+	messages := snapshot.SessionMessagesByID["runtime-1"]
+	if len(messages) != 1 {
+		t.Fatalf("runtime messages = %#v, want one canonical message", snapshot.SessionMessagesByID)
+	}
+	if messages[0].AgentSessionID != "runtime-1" || messages[0].MessageID != "approval-1" {
+		t.Fatalf("message = %#v, want canonical runtime session id", messages[0])
+	}
+}
+
+func TestStoreMigratesProviderMessageBucketWhenSessionMetadataArrives(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+
+	svc.ApplyActivity("room-1", EventSource{
+		Provider:          "codex",
+		ProviderSessionID: "provider-1",
+	}, nil, nil, []WorkspaceAgentMessageUpdate{{
+		MessageID:        "approval-1",
+		Role:             "assistant",
+		Kind:             "tool_call",
+		Status:           "waiting",
+		Payload:          map[string]any{"toolName": "Bash"},
+		OccurredAtUnixMS: 1000,
+	}})
+	svc.updateState("room-1", WorkspaceAgentSnapshot{
+		Sessions: []WorkspaceAgentSession{{
+			AgentSessionID:    "runtime-1",
+			Provider:          "codex",
+			ProviderSessionID: "provider-1",
+			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+		}},
+	})
+
+	snapshot, ok := svc.GetAgentSnapshot("room-1")
+	if !ok {
+		t.Fatal("GetAgentSnapshot() ok = false, want true")
+	}
+	if _, ok := snapshot.SessionMessagesByID["provider-1"]; ok {
+		t.Fatalf("provider bucket = %#v, want migrated message bucket", snapshot.SessionMessagesByID["provider-1"])
+	}
+	messages := snapshot.SessionMessagesByID["runtime-1"]
+	if len(messages) != 1 || messages[0].AgentSessionID != "runtime-1" {
+		t.Fatalf("runtime messages = %#v, want migrated canonical message", messages)
+	}
+}
+
+func TestStoreAppliesProviderOnlyMessageUpdateToSameOriginSession(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+	svc.updateState("room-1", WorkspaceAgentSnapshot{
+		Sessions: []WorkspaceAgentSession{
+			{
+				AgentSessionID:    "runtime-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-1",
+				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+			},
+			{
+				AgentSessionID:    "hook-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-1",
+				SessionOrigin:     WorkspaceAgentSessionOriginHook,
+			},
+		},
+	})
+
+	svc.ApplyActivity("room-1", EventSource{
+		Provider:          "codex",
+		ProviderSessionID: "provider-1",
+		SessionOrigin:     WorkspaceAgentSessionOriginHook,
+	}, nil, nil, []WorkspaceAgentMessageUpdate{{
+		AgentSessionID:   "provider-1",
+		MessageID:        "hook-message-1",
+		Role:             "assistant",
+		Kind:             "text",
+		Status:           "completed",
+		Payload:          map[string]any{"text": "hook"},
+		OccurredAtUnixMS: 1000,
+	}})
+
+	snapshot, ok := svc.GetAgentSnapshot("room-1")
+	if !ok {
+		t.Fatal("GetAgentSnapshot() ok = false, want true")
+	}
+	if _, ok := snapshot.SessionMessagesByID["provider-1"]; ok {
+		t.Fatalf("provider bucket = %#v, want no alias message bucket", snapshot.SessionMessagesByID["provider-1"])
+	}
+	if len(snapshot.SessionMessagesByID["runtime-1"]) != 0 {
+		t.Fatalf("runtime messages = %#v, want untouched runtime session", snapshot.SessionMessagesByID["runtime-1"])
+	}
+	messages := snapshot.SessionMessagesByID["hook-1"]
+	if len(messages) != 1 || messages[0].AgentSessionID != "hook-1" || messages[0].MessageID != "hook-message-1" {
+		t.Fatalf("hook messages = %#v, want provider-only message on hook session", messages)
+	}
+}
+
+func TestStoreKeepsProviderOnlyMessageUpdateAmbiguousWithoutOrigin(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+	svc.updateState("room-1", WorkspaceAgentSnapshot{
+		Sessions: []WorkspaceAgentSession{
+			{
+				AgentSessionID:    "runtime-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-1",
+				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+			},
+			{
+				AgentSessionID:    "hook-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-1",
+				SessionOrigin:     WorkspaceAgentSessionOriginHook,
+			},
+		},
+	})
+
+	svc.ApplyActivity("room-1", EventSource{
+		Provider:          "codex",
+		ProviderSessionID: "provider-1",
+	}, nil, nil, []WorkspaceAgentMessageUpdate{{
+		AgentSessionID:   "provider-1",
+		MessageID:        "ambiguous-message-1",
+		Role:             "assistant",
+		Kind:             "text",
+		Status:           "completed",
+		Payload:          map[string]any{"text": "ambiguous"},
+		OccurredAtUnixMS: 1000,
+	}})
+
+	snapshot, ok := svc.GetAgentSnapshot("room-1")
+	if !ok {
+		t.Fatal("GetAgentSnapshot() ok = false, want true")
+	}
+	if len(snapshot.SessionMessagesByID["runtime-1"]) != 0 || len(snapshot.SessionMessagesByID["hook-1"]) != 0 {
+		t.Fatalf("canonical buckets = %#v, want ambiguous message left unmapped", snapshot.SessionMessagesByID)
+	}
+	messages := snapshot.SessionMessagesByID["provider-1"]
+	if len(messages) != 1 || messages[0].AgentSessionID != "provider-1" {
+		t.Fatalf("provider messages = %#v, want conservative alias bucket", messages)
+	}
+}
+
+func TestStoreKeepsProviderOnlyMessageUpdateForDifferentProvider(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+	svc.updateState("room-1", WorkspaceAgentSnapshot{
+		Sessions: []WorkspaceAgentSession{{
+			AgentSessionID:    "codex-session-1",
+			Provider:          "codex",
+			ProviderSessionID: "shared-provider-session",
+			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+		}},
+	})
+
+	svc.ApplyActivity("room-1", EventSource{
+		Provider:          "claude",
+		ProviderSessionID: "shared-provider-session",
+		SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+	}, nil, nil, []WorkspaceAgentMessageUpdate{{
+		AgentSessionID:   "shared-provider-session",
+		MessageID:        "claude-message-1",
+		Role:             "assistant",
+		Kind:             "text",
+		Status:           "completed",
+		Payload:          map[string]any{"text": "claude"},
+		OccurredAtUnixMS: 1000,
+	}})
+
+	snapshot, ok := svc.GetAgentSnapshot("room-1")
+	if !ok {
+		t.Fatal("GetAgentSnapshot() ok = false, want true")
+	}
+	if len(snapshot.SessionMessagesByID["codex-session-1"]) != 0 {
+		t.Fatalf("codex messages = %#v, want provider mismatch not attached", snapshot.SessionMessagesByID["codex-session-1"])
+	}
+	messages := snapshot.SessionMessagesByID["shared-provider-session"]
+	if len(messages) != 1 || messages[0].AgentSessionID != "shared-provider-session" {
+		t.Fatalf("provider messages = %#v, want conservative alias bucket for provider mismatch", messages)
+	}
+}
+
 func TestStoreIgnoresSnapshotTimelineDetailsWhenUpdatingState(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
@@ -1491,6 +1705,59 @@ func TestStoreAppliesProviderOnlyStatePatchToExistingSession(t *testing.T) {
 		session.EndedAtUnixMS != 1000 ||
 		session.UpdatedAtUnixMS != 900 {
 		t.Fatalf("session = %#v, want completed session without recency bump from provider-only patch", session)
+	}
+}
+
+func TestStoreKeepsProviderOnlyStatePatchForDifferentProvider(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+	svc.updateState("room-1", WorkspaceAgentSnapshot{
+		Sessions: []WorkspaceAgentSession{{
+			AgentSessionID:    "codex-session-1",
+			Provider:          "codex",
+			ProviderSessionID: "shared-provider-session",
+			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+			LifecycleStatus:   "active",
+			TurnPhase:         "working",
+			EffectiveStatus:   "working",
+			UpdatedAtUnixMS:   900,
+		}},
+	})
+
+	svc.ApplyActivity("room-1", EventSource{
+		Provider:          "claude",
+		ProviderSessionID: "shared-provider-session",
+		SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+	}, nil, []WorkspaceAgentStatePatch{{
+		AgentSessionID:    "shared-provider-session",
+		Provider:          "claude",
+		ProviderSessionID: "shared-provider-session",
+		LifecycleStatus:   string(activityshared.SessionLifecycleStatusActive),
+		CurrentPhase:      string(activityshared.TurnPhaseIdle),
+		OccurredAtUnixMS:  1000,
+	}}, nil)
+
+	state, ok := svc.GetAgentState("room-1")
+	if !ok || len(state.Sessions) != 2 {
+		t.Fatalf("state = %#v, ok=%v, want distinct provider sessions", state, ok)
+	}
+
+	var codexSession *WorkspaceAgentSession
+	var claudeSession *WorkspaceAgentSession
+	for i := range state.Sessions {
+		session := &state.Sessions[i]
+		switch session.AgentSessionID {
+		case "codex-session-1":
+			codexSession = session
+		case "shared-provider-session":
+			claudeSession = session
+		}
+	}
+	if codexSession == nil || codexSession.Provider != "codex" || codexSession.EffectiveStatus != "working" {
+		t.Fatalf("codex session = %#v, want untouched codex session", codexSession)
+	}
+	if claudeSession == nil || claudeSession.Provider != "claude" || claudeSession.ProviderSessionID != "shared-provider-session" {
+		t.Fatalf("claude session = %#v, want separate provider session", claudeSession)
 	}
 }
 
