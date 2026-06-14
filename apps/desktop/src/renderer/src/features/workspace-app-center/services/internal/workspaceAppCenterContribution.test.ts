@@ -6,7 +6,7 @@ import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.in
 import type {
   WorkspaceAppCenterApp,
   WorkspaceAppCenterReadableStoreState
-} from "../workspaceAppCenterTypes.ts";
+} from "@tutti-os/workspace-app-center";
 import { createWorkspaceAppWebviewBrowserLease } from "./workspaceAppWebviewBrowserAnalytics.ts";
 import {
   reportWorkspaceAppOpenedFromDockEntry,

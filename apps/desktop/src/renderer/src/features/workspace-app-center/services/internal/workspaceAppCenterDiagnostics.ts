@@ -1,44 +1,7 @@
 import { normalizeTuttidError } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
+import type { WorkspaceAppCenterOperationDetails } from "@tutti-os/workspace-app-center/core";
 import { getDesktopErrorCode } from "../../../../lib/desktopErrors.ts";
-
-export type WorkspaceAppCenterOperation =
-  | "app_center.refresh"
-  | "app_center.refresh_catalog"
-  | "app_center.start_workspace_updates"
-  | "app_factory.prepare_modification"
-  | "app_factory.publish"
-  | "workspace_app.delete"
-  | "workspace_app.export"
-  | "workspace_app.import"
-  | "workspace_app.install"
-  | "workspace_app.prepare_launch"
-  | "workspace_app.refresh_install_state"
-  | "workspace_app.refresh_launch_wait_state"
-  | "workspace_app.replace_icon"
-  | "workspace_app.start_enabled"
-  | "workspace_app.update";
-
-export type WorkspaceAppCenterUiAction =
-  | "delete_app"
-  | "export_app"
-  | "import_app"
-  | "install_app"
-  | "open_app"
-  | "prepare_factory_job_modification"
-  | "publish_factory_job"
-  | "refresh_install_state"
-  | "refresh_launch_wait_state"
-  | "replace_app_icon"
-  | "update_app";
-
-export interface WorkspaceAppCenterOperationDetails {
-  appId?: string;
-  jobId?: string;
-  operation: WorkspaceAppCenterOperation;
-  uiAction?: WorkspaceAppCenterUiAction;
-  workspaceId: string;
-}
 
 export function recordWorkspaceAppCenterOperationFailure(input: {
   details: WorkspaceAppCenterOperationDetails;

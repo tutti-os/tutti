@@ -1,4 +1,4 @@
-import type { ServiceRegistry } from "@zk-tech/bedrock/di";
+import type { ServiceRegistry } from "@tutti-os/infra/di";
 import type { TuttidEventStreamClient } from "@tutti-os/client-tuttid-ts";
 import { IAnalyticsDebugPreferenceService } from "./analyticsDebugPreferenceService.interface";
 import { IAnalyticsDebugEventService } from "./analyticsDebugEventService.interface";

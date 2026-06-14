@@ -1,4 +1,4 @@
-import { createDecorator } from "@zk-tech/bedrock/di";
+import { createDecorator } from "@tutti-os/infra/di";
 
 export interface WorkspaceAgentPromptSessionCreateInput {
   agentSessionId?: string | null;

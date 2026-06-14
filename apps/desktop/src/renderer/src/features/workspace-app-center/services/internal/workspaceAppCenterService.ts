@@ -8,6 +8,20 @@ import type {
   TuttidClient,
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
+import { createWorkspaceAppCenterController } from "@tutti-os/workspace-app-center/core";
+import type {
+  WorkspaceAppCenterApp,
+  WorkspaceAppCenterGateway,
+  WorkspaceAppCenterRuntimeStatus,
+  WorkspaceAppCenterStoreState,
+  WorkspaceAppCenterViewState,
+  WorkspaceAppFactoryJob,
+  WorkspaceAppFactoryProviderConfiguration
+} from "@tutti-os/workspace-app-center";
+import type {
+  WorkspaceAppCenterController,
+  WorkspaceAppCenterOperationDetails
+} from "@tutti-os/workspace-app-center/core";
 import { createDesktopErrorI18nRuntime } from "../../../../../../shared/i18n/index.ts";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import {
@@ -25,30 +39,16 @@ import { AppCenterFactoryJobCreatedReporter } from "../../../analytics/reporters
 import { ErrorAppRuntimeFailedReporter } from "../../../analytics/reporters/error-app-runtime-failed/errorAppRuntimeFailedReporter.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface";
-import type {
-  WorkspaceAppCenterApp,
-  WorkspaceAppFactoryJob,
-  WorkspaceAppFactoryProviderConfiguration,
-  WorkspaceAppFactorySnapshot,
-  WorkspaceAppCenterGateway,
-  WorkspaceAppCenterRuntimeStatus,
-  WorkspaceAppCenterSnapshot,
-  WorkspaceAppCenterViewState
-} from "../workspaceAppCenterTypes";
 import {
   normalizeWorkspaceAppCenterApp,
-  normalizeWorkspaceAppFactoryJob
+  normalizeWorkspaceAppFactoryJob,
+  type DesktopWorkspaceAppCenterLocalFileGateway
 } from "./adapters/desktopWorkspaceAppCenterGateway.ts";
-import {
-  recordWorkspaceAppCenterOperationFailure,
-  type WorkspaceAppCenterOperationDetails
-} from "./workspaceAppCenterDiagnostics.ts";
+import { recordWorkspaceAppCenterOperationFailure } from "./workspaceAppCenterDiagnostics.ts";
 import { createWorkspaceAppCenterStore } from "./workspaceAppCenterStore.ts";
 
-const catalogLoadingRefreshDelayMs = 750;
-const appOpenLaunchWaitTimeoutMs = 35_000;
-const installRefreshDelayMs = 750;
 const factoryJobDiagnosticLimit = 20;
+
 type AgentProviderComposerOptionsClient = Pick<
   TuttidClient,
   "getAgentProviderComposerOptions"
@@ -57,7 +57,8 @@ type AgentProviderComposerOptionsClient = Pick<
 export interface WorkspaceAppCenterServiceDependencies {
   eventStreamClient: TuttidEventStreamClient;
   appOpenLaunchWaitTimeoutMs?: number;
-  gateway: WorkspaceAppCenterGateway;
+  gateway: WorkspaceAppCenterGateway &
+    DesktopWorkspaceAppCenterLocalFileGateway;
   hostFilesApi: Pick<
     DesktopHostFilesApi,
     | "revealInFolder"
@@ -81,87 +82,72 @@ type WorkspaceAppLauncher = (input: {
 
 export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
   readonly _serviceBrand = undefined;
-  readonly store = createWorkspaceAppCenterStore();
+  readonly store: WorkspaceAppCenterStoreState;
 
+  private readonly controller: WorkspaceAppCenterController;
   private readonly dependencies: WorkspaceAppCenterServiceDependencies;
-  private readonly listeners = new Set<() => void>();
   private workspaceAppLauncher: WorkspaceAppLauncher | null = null;
   private workspaceAppViewCloser:
     | ((input: { appId: string; workspaceId: string }) => void)
     | null = null;
-  private catalogRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-  private installRefreshTimers = new Map<
-    string,
-    ReturnType<typeof setTimeout>
-  >();
-  private pendingInstallKeys = new Set<string>();
-  private pendingInstallReportKeys = new Set<string>();
-  private pendingFactoryPublishKeys = new Set<string>();
-  private appLoadSequence = 0;
-  private factoryLoadSequence = 0;
   private updates: WorkspaceAppCenterUpdateState | null = null;
 
   constructor(dependencies: WorkspaceAppCenterServiceDependencies) {
     this.dependencies = dependencies;
+    const store = createWorkspaceAppCenterStore();
+    this.controller = createWorkspaceAppCenterController({
+      appOpenLaunchWaitTimeoutMs: dependencies.appOpenLaunchWaitTimeoutMs,
+      formatError: formatAppCenterError,
+      gateway: dependencies.gateway,
+      getErrorReason: getAnalyticsErrorReason,
+      hooks: {
+        onAppDeleted: (app) => this.reportAppDeleted(app),
+        onAppInstallFailed: (input) => this.reportAppInstallFailed(input),
+        onAppInstalled: (app) => this.reportAppInstalled(app),
+        onAppRuntimeFailed: (input) => this.reportAppRuntimeFailed(input),
+        onAppStopped: (input) => this.reportAppStopped(input),
+        onAppUninstalled: (app) => this.reportAppUninstalled(app),
+        onAppUpdated: (input) => this.reportAppUpdated(input),
+        onCatalogRefreshed: (input) => this.reportCatalogRefreshed(input),
+        onCloseWorkspaceAppViews: (input) =>
+          this.closeWorkspaceAppViews(input.workspaceId, input.appIds),
+        onFactoryJobCreated: (job) => this.reportFactoryJobCreated(job),
+        onFactorySnapshotApplied: (input) =>
+          this.recordFactorySnapshotApplied(
+            input.workspaceId,
+            input.previousJobs,
+            input.nextJobs
+          ),
+        onOperationFailure: (input) =>
+          this.recordOperationFailure(
+            input.error,
+            input.toastMessage,
+            input.details
+          ),
+        onRefreshDiscard: (input) => this.recordRefreshDiscard(input)
+      },
+      now: () => dependencies.reporterNow?.() ?? Date.now(),
+      store
+    });
+    this.store = store;
   }
 
   consumeError(): string | null {
-    const error = this.store.error;
-    if (error === null) {
-      return null;
-    }
-    this.store.error = null;
-    this.bumpRevision();
-    return error;
+    return this.controller.consumeError();
   }
 
   async installApp(input: {
     appId: string;
     workspaceId: string;
   }): Promise<void> {
-    const installKey = appRuntimeKey(input.workspaceId, input.appId);
-    if (this.pendingInstallKeys.has(installKey)) {
-      return;
-    }
-    const previousApps = this.store.apps;
-    const appBeforeInstall =
-      previousApps.find((app) => app.appId === input.appId) ?? null;
-    this.pendingInstallKeys.add(installKey);
-    this.pendingInstallReportKeys.add(installKey);
-    this.markAppInstalling(input.appId);
-    try {
-      const snapshot = await this.dependencies.gateway.installWorkspaceApp(
-        input.workspaceId,
-        input.appId
-      );
-      this.applySnapshot(input.workspaceId, snapshot);
-      if (this.pendingInstallKeys.has(installKey)) {
-        this.scheduleInstallRefresh(input.workspaceId, input.appId);
-      }
-    } catch (error) {
-      this.pendingInstallKeys.delete(installKey);
-      this.pendingInstallReportKeys.delete(installKey);
-      this.clearInstallRefreshTimer(input.workspaceId, input.appId);
-      this.store.apps = previousApps;
-      this.reportAppInstallFailed({
-        app: appBeforeInstall,
-        appId: input.appId,
-        failureReason: getAnalyticsErrorReason(error)
-      });
-      this.recordOperationError(error, {
-        appId: input.appId,
-        operation: "workspace_app.install",
-        uiAction: "install_app",
-        workspaceId: input.workspaceId
-      });
-    }
+    await this.controller.installApp(input);
   }
 
   async openApp(input: { appId: string; workspaceId: string }): Promise<void> {
     const previousApp = this.store.apps.find(
       (candidate) => candidate.appId === input.appId
     );
-    const launchableApp = await this.prepareAppLaunch(input);
+    const launchableApp = await this.controller.prepareAppLaunch(input);
     if (!launchableApp) {
       return;
     }
@@ -177,81 +163,21 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     workspaceId: string,
     restoredState?: WorkspaceAppCenterViewState | null
   ): WorkspaceAppCenterViewState {
-    const normalizedWorkspaceId = workspaceId.trim();
-    if (!normalizedWorkspaceId) {
-      return normalizeWorkspaceAppCenterViewState(restoredState);
-    }
-    const existing = this.store.viewStateByWorkspaceId[normalizedWorkspaceId];
-    if (existing) {
-      return existing;
-    }
-    const nextState = normalizeWorkspaceAppCenterViewState(restoredState);
-    this.store.viewStateByWorkspaceId = {
-      ...this.store.viewStateByWorkspaceId,
-      [normalizedWorkspaceId]: nextState
-    };
-    return nextState;
+    return this.controller.getViewState(workspaceId, restoredState);
   }
 
   async prepareAppLaunch(input: {
     appId: string;
     workspaceId: string;
   }): Promise<WorkspaceAppCenterApp | null> {
-    const app = this.store.apps.find(
-      (candidate) => candidate.appId === input.appId
-    );
-    if (this.store.workspaceId !== input.workspaceId || !app?.installed) {
-      return null;
-    }
-    const currentLaunchableApp = this.resolveLaunchableApp(input);
-    if (currentLaunchableApp) {
-      return currentLaunchableApp;
-    }
-    this.markAppStarting(input.appId);
-    try {
-      const snapshot = await this.dependencies.gateway.retryWorkspaceApp(
-        input.workspaceId,
-        input.appId
-      );
-      this.applySnapshot(input.workspaceId, snapshot);
-    } catch (error) {
-      this.recordOperationError(error, {
-        appId: input.appId,
-        operation: "workspace_app.prepare_launch",
-        uiAction: "open_app",
-        workspaceId: input.workspaceId
-      });
-      return null;
-    }
-
-    const launchableApp = await this.waitForLaunchableApp(input);
-    if (!launchableApp) {
-      return null;
-    }
-    return launchableApp;
+    return await this.controller.prepareAppLaunch(input);
   }
 
   setViewState(input: {
     state: Partial<WorkspaceAppCenterViewState>;
     workspaceId: string;
   }): void {
-    const normalizedWorkspaceId = input.workspaceId.trim();
-    if (!normalizedWorkspaceId) {
-      return;
-    }
-    const previous = this.getViewState(normalizedWorkspaceId);
-    const nextState = normalizeWorkspaceAppCenterViewState({
-      ...previous,
-      ...input.state
-    });
-    if (areWorkspaceAppCenterViewStatesEqual(previous, nextState)) {
-      return;
-    }
-    this.store.viewStateByWorkspaceId = {
-      ...this.store.viewStateByWorkspaceId,
-      [normalizedWorkspaceId]: nextState
-    };
-    this.bumpRevision();
+    this.controller.setViewState(input);
   }
 
   async createFactoryJob(input: {
@@ -263,31 +189,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     reasoningEffort?: string;
     workspaceId: string;
   }): Promise<void> {
-    const previousJobIds = new Set(
-      this.store.factoryJobs.map((job) => job.jobId)
-    );
-    const snapshot =
-      await this.dependencies.gateway.createWorkspaceAppFactoryJob(
-        input.workspaceId,
-        {
-          displayName: input.displayName,
-          ...(input.model?.trim() ? { model: input.model.trim() } : {}),
-          ...(input.permissionModeId?.trim()
-            ? { permissionModeId: input.permissionModeId.trim() }
-            : {}),
-          ...(input.provider?.trim()
-            ? { provider: input.provider.trim() }
-            : {}),
-          prompt: input.prompt,
-          ...(input.reasoningEffort?.trim()
-            ? { reasoningEffort: input.reasoningEffort.trim() }
-            : {})
-        }
-      );
-    this.applyFactorySnapshot(input.workspaceId, snapshot);
-    this.reportFactoryJobCreated(
-      snapshot.jobs.find((job) => !previousJobIds.has(job.jobId)) ?? null
-    );
+    await this.controller.createFactoryJob(input);
   }
 
   async getFactoryProviderConfiguration(
@@ -310,55 +212,21 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     jobId: string;
     workspaceId: string;
   }): Promise<void> {
-    const snapshot =
-      await this.dependencies.gateway.cancelWorkspaceAppFactoryJob(
-        input.workspaceId,
-        input.jobId
-      );
-    this.applyFactorySnapshot(input.workspaceId, snapshot);
+    await this.controller.cancelFactoryJob(input);
   }
 
   async deleteFactoryJob(input: {
     jobId: string;
     workspaceId: string;
   }): Promise<void> {
-    const snapshot =
-      await this.dependencies.gateway.deleteWorkspaceAppFactoryJob(
-        input.workspaceId,
-        input.jobId
-      );
-    this.applyFactorySnapshot(input.workspaceId, snapshot);
+    await this.controller.deleteFactoryJob(input);
   }
 
   async deleteApp(input: {
     appId: string;
     workspaceId: string;
   }): Promise<void> {
-    const app = this.store.apps.find(
-      (candidate) => candidate.appId === input.appId
-    );
-    try {
-      const snapshot = await this.dependencies.gateway.deleteWorkspaceApp(
-        input.workspaceId,
-        input.appId
-      );
-      this.pendingInstallKeys.delete(
-        appRuntimeKey(input.workspaceId, input.appId)
-      );
-      this.pendingInstallReportKeys.delete(
-        appRuntimeKey(input.workspaceId, input.appId)
-      );
-      this.clearInstallRefreshTimer(input.workspaceId, input.appId);
-      this.applySnapshot(input.workspaceId, snapshot);
-      this.reportAppDeleted(app ?? null);
-    } catch (error) {
-      this.recordOperationError(error, {
-        appId: input.appId,
-        operation: "workspace_app.delete",
-        uiAction: "delete_app",
-        workspaceId: input.workspaceId
-      });
-    }
+    await this.controller.deleteApp(input);
   }
 
   async importApp(input: { workspaceId: string }): Promise<void> {
@@ -371,9 +239,9 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
         input.workspaceId,
         { archivePath }
       );
-      this.applySnapshot(input.workspaceId, snapshot);
+      this.controller.applySnapshot(input.workspaceId, snapshot);
     } catch (error) {
-      this.recordOperationError(error, {
+      this.controller.setOperationError(error, {
         operation: "workspace_app.import",
         uiAction: "import_app",
         workspaceId: input.workspaceId
@@ -406,7 +274,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
       );
       await this.dependencies.hostFilesApi.revealInFolder(destinationPath);
     } catch (error) {
-      this.recordOperationError(error, {
+      this.controller.setOperationError(error, {
         appId: input.appId,
         operation: "workspace_app.export",
         uiAction: "export_app",
@@ -430,9 +298,9 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
         input.appId,
         { sourcePath }
       );
-      this.applyAppSnapshot(input.workspaceId, app);
+      this.controller.applyAppSnapshot(input.workspaceId, app);
     } catch (error) {
-      this.recordOperationError(error, {
+      this.controller.setOperationError(error, {
         appId: input.appId,
         operation: "workspace_app.replace_icon",
         uiAction: "replace_app_icon",
@@ -445,12 +313,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     jobId: string;
     workspaceId: string;
   }): Promise<void> {
-    const snapshot =
-      await this.dependencies.gateway.retryWorkspaceAppFactoryJobValidation(
-        input.workspaceId,
-        input.jobId
-      );
-    this.applyFactorySnapshot(input.workspaceId, snapshot);
+    await this.controller.retryFactoryValidation(input);
   }
 
   async fixFactoryJob(input: {
@@ -458,233 +321,32 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     prompt: string;
     workspaceId: string;
   }): Promise<void> {
-    const snapshot = await this.dependencies.gateway.fixWorkspaceAppFactoryJob(
-      input.workspaceId,
-      input.jobId,
-      { prompt: input.prompt }
-    );
-    this.applyFactorySnapshot(input.workspaceId, snapshot);
+    await this.controller.fixFactoryJob(input);
   }
 
   async prepareFactoryJobModification(input: {
     jobId: string;
     workspaceId: string;
   }): Promise<WorkspaceAppFactoryJob | null> {
-    try {
-      const snapshot =
-        await this.dependencies.gateway.prepareWorkspaceAppFactoryJobModification(
-          input.workspaceId,
-          input.jobId
-        );
-      this.applyFactorySnapshot(input.workspaceId, snapshot);
-      return (
-        snapshot.jobs.find((candidate) => candidate.jobId === input.jobId) ??
-        null
-      );
-    } catch (error) {
-      this.recordOperationError(error, {
-        jobId: input.jobId,
-        operation: "app_factory.prepare_modification",
-        uiAction: "prepare_factory_job_modification",
-        workspaceId: input.workspaceId
-      });
-      return null;
-    }
+    return await this.controller.prepareFactoryJobModification(input);
   }
 
   async publishFactoryJob(input: {
     jobId: string;
     workspaceId: string;
   }): Promise<void> {
-    const publishKey = factoryJobKey(input.workspaceId, input.jobId);
-    if (this.pendingFactoryPublishKeys.has(publishKey)) {
-      return;
-    }
-    this.pendingFactoryPublishKeys.add(publishKey);
-    let result: Awaited<
-      ReturnType<WorkspaceAppCenterGateway["publishWorkspaceAppFactoryJob"]>
-    >;
-    try {
-      result = await this.dependencies.gateway.publishWorkspaceAppFactoryJob(
-        input.workspaceId,
-        input.jobId
-      );
-    } catch (error) {
-      if (this.pendingFactoryPublishKeys.delete(publishKey)) {
-        this.recordOperationError(error, {
-          jobId: input.jobId,
-          operation: "app_factory.publish",
-          uiAction: "publish_factory_job",
-          workspaceId: input.workspaceId
-        });
-      }
-      return;
-    }
-    this.pendingFactoryPublishKeys.delete(publishKey);
-    this.applyFactorySnapshot(input.workspaceId, result.factorySnapshot);
-    this.applySnapshot(input.workspaceId, result.appSnapshot);
-    const job = result.factorySnapshot.jobs.find(
-      (candidate) => candidate.jobId === input.jobId
-    );
+    const job = await this.controller.publishFactoryJob(input);
     if (job?.appId) {
       await this.openApp({ appId: job.appId, workspaceId: input.workspaceId });
     }
   }
 
   async refresh(workspaceId: string): Promise<void> {
-    const normalizedWorkspaceId = workspaceId.trim();
-    if (!normalizedWorkspaceId) {
-      return;
-    }
-
-    const appSequence = ++this.appLoadSequence;
-    const factorySequence = ++this.factoryLoadSequence;
-    const wasIdle = this.store.loadStatus === "idle";
-    this.store.workspaceId = normalizedWorkspaceId;
-    this.store.error = null;
-    if (wasIdle) {
-      this.store.loadStatus = "loading";
-    }
-
-    try {
-      const [appResult, factoryResult] = await Promise.allSettled([
-        this.dependencies.gateway.listWorkspaceApps(normalizedWorkspaceId),
-        this.dependencies.gateway.listWorkspaceAppFactoryJobs(
-          normalizedWorkspaceId
-        )
-      ]);
-
-      if (
-        appResult.status === "fulfilled" &&
-        appSequence !== this.appLoadSequence
-      ) {
-        this.recordRefreshDiscard({
-          currentSequence: this.appLoadSequence,
-          itemCount: appResult.value.apps.length,
-          operation: "app_center.refresh",
-          sequence: appSequence,
-          snapshotKind: "apps",
-          workspaceId: normalizedWorkspaceId
-        });
-      }
-      if (
-        factoryResult.status === "fulfilled" &&
-        factorySequence !== this.factoryLoadSequence
-      ) {
-        this.recordRefreshDiscard({
-          currentSequence: this.factoryLoadSequence,
-          itemCount: factoryResult.value.jobs.length,
-          operation: "app_center.refresh",
-          sequence: factorySequence,
-          snapshotKind: "factory_jobs",
-          workspaceId: normalizedWorkspaceId
-        });
-      }
-
-      let error: unknown = null;
-      if (
-        appResult.status === "rejected" &&
-        appSequence === this.appLoadSequence
-      ) {
-        error = appResult.reason;
-      } else if (
-        factoryResult.status === "rejected" &&
-        factorySequence === this.factoryLoadSequence
-      ) {
-        error = factoryResult.reason;
-      }
-      if (error) {
-        const message = formatAppCenterError(error);
-        this.recordOperationFailure(error, message, {
-          operation: "app_center.refresh",
-          workspaceId: normalizedWorkspaceId
-        });
-        this.store.error = message;
-        this.store.loadStatus = "unavailable";
-        this.bumpRevision();
-        return;
-      }
-
-      if (
-        appResult.status === "fulfilled" &&
-        appSequence === this.appLoadSequence
-      ) {
-        this.applySnapshot(normalizedWorkspaceId, appResult.value);
-      }
-      if (
-        factoryResult.status === "fulfilled" &&
-        factorySequence === this.factoryLoadSequence
-      ) {
-        this.applyFactorySnapshot(normalizedWorkspaceId, factoryResult.value);
-      }
-    } catch (error) {
-      const message = formatAppCenterError(error);
-      this.recordOperationFailure(error, message, {
-        operation: "app_center.refresh",
-        workspaceId: normalizedWorkspaceId
-      });
-      this.store.error = message;
-      this.store.loadStatus = "unavailable";
-      this.bumpRevision();
-    }
+    await this.controller.refresh(workspaceId);
   }
 
   async refreshCatalog(workspaceId: string): Promise<void> {
-    const normalizedWorkspaceId = workspaceId.trim();
-    if (!normalizedWorkspaceId) {
-      return;
-    }
-
-    const sequence = ++this.appLoadSequence;
-    this.store.workspaceId = normalizedWorkspaceId;
-    this.store.error = null;
-    try {
-      const snapshot =
-        await this.dependencies.gateway.refreshWorkspaceAppCatalog(
-          normalizedWorkspaceId
-        );
-      if (sequence !== this.appLoadSequence) {
-        this.recordRefreshDiscard({
-          currentSequence: this.appLoadSequence,
-          itemCount: snapshot.apps.length,
-          operation: "app_center.refresh_catalog",
-          sequence,
-          snapshotKind: "catalog_apps",
-          workspaceId: normalizedWorkspaceId
-        });
-        return;
-      }
-      this.applySnapshot(normalizedWorkspaceId, snapshot);
-      this.reportCatalogRefreshed({
-        appCount: snapshot.apps.length,
-        errorReason: null,
-        success: true
-      });
-    } catch (error) {
-      if (sequence !== this.appLoadSequence) {
-        this.recordRefreshDiscard({
-          currentSequence: this.appLoadSequence,
-          operation: "app_center.refresh_catalog",
-          sequence,
-          snapshotKind: "catalog_apps",
-          workspaceId: normalizedWorkspaceId
-        });
-        return;
-      }
-      const message = formatAppCenterError(error);
-      this.recordOperationFailure(error, message, {
-        operation: "app_center.refresh_catalog",
-        workspaceId: normalizedWorkspaceId
-      });
-      this.store.error = message;
-      this.store.loadStatus = "unavailable";
-      this.bumpRevision();
-      this.reportCatalogRefreshed({
-        appCount: null,
-        errorReason: getAnalyticsErrorReason(error),
-        success: false
-      });
-    }
+    await this.controller.refreshCatalog(workspaceId);
   }
 
   startWorkspacePolling(workspaceId: string): () => void {
@@ -698,6 +360,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     }
 
     this.updates?.dispose();
+    this.controller.beginWorkspacePolling(normalizedWorkspaceId);
     let disposed = false;
     let hasConnected = false;
     let startupRefreshActive = true;
@@ -705,9 +368,28 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     const unsubscribeAppUpdated = this.dependencies.eventStreamClient.subscribe(
       "workspace.app.updated",
       (event) => {
-        if (!disposed) {
-          this.applyAppUpdate(normalizedWorkspaceId, event.payload.app);
+        if (disposed) {
+          return;
         }
+        const currentApp = this.store.apps.find(
+          (candidate) => candidate.appId === event.payload.app.appId
+        );
+        this.controller.applyAppUpdate({
+          app: normalizeWorkspaceAppCenterApp({
+            ...event.payload.app,
+            createdAtUnixMs:
+              readOptionalNumberProperty(
+                event.payload.app,
+                "createdAtUnixMs"
+              ) ?? currentApp?.createdAtUnixMs
+          }),
+          failureReason:
+            event.payload.app.failureReason ??
+            event.payload.app.lastError ??
+            null,
+          startedAtUnixMs: event.payload.app.startedAtUnixMs ?? null,
+          workspaceId: normalizedWorkspaceId
+        });
       },
       {
         scope: {
@@ -720,7 +402,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
         "workspace.appfactory.job.updated",
         (event) => {
           if (!disposed) {
-            this.applyFactoryJobUpdate(
+            this.controller.applyFactoryJobUpdate(
               normalizedWorkspaceId,
               normalizeWorkspaceAppFactoryJob(event.payload.job)
             );
@@ -738,12 +420,12 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
           return;
         }
         if (hasConnected) {
-          void this.refresh(normalizedWorkspaceId);
+          void this.controller.refresh(normalizedWorkspaceId);
           return;
         }
         if (!startupRefreshActive) {
           hasConnected = true;
-          void this.refresh(normalizedWorkspaceId);
+          void this.controller.refresh(normalizedWorkspaceId);
           return;
         }
         hasConnected = true;
@@ -768,8 +450,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
       unsubscribeConnectionState();
       unsubscribeAppUpdated();
       unsubscribeFactoryJobUpdated();
-      this.clearCatalogRefreshTimer();
-      this.clearInstallRefreshTimers();
+      this.controller.endWorkspacePolling(normalizedWorkspaceId);
       if (this.updates?.workspaceId === normalizedWorkspaceId) {
         this.updates = null;
       }
@@ -782,10 +463,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
   }
 
   subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+    return this.controller.subscribe(listener);
   }
 
   async openAppFolder(input: {
@@ -837,15 +515,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     appId: string;
     workspaceId: string;
   }): Promise<void> {
-    const app = this.store.apps.find(
-      (candidate) => candidate.appId === input.appId
-    );
-    const snapshot = await this.dependencies.gateway.uninstallWorkspaceApp(
-      input.workspaceId,
-      input.appId
-    );
-    this.applySnapshot(input.workspaceId, snapshot);
-    this.reportAppUninstalled(app ?? null);
+    await this.controller.uninstallApp(input);
   }
 
   async updateApp(input: {
@@ -853,49 +523,11 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     trigger: "badge_button" | "primary_action";
     workspaceId: string;
   }): Promise<void> {
-    const installKey = appRuntimeKey(input.workspaceId, input.appId);
-    if (this.pendingInstallKeys.has(installKey)) {
-      return;
-    }
-    const app = this.store.apps.find(
-      (candidate) => candidate.appId === input.appId
-    );
-    const previousApps = this.store.apps;
-    this.pendingInstallKeys.add(installKey);
-    this.markAppInstalling(input.appId, { preserveInstalled: true });
-    try {
-      const snapshot = await this.dependencies.gateway.installWorkspaceApp(
-        input.workspaceId,
-        input.appId
-      );
-      this.applySnapshot(input.workspaceId, snapshot);
-      this.reportAppUpdated({
-        app,
-        trigger: input.trigger
-      });
-      if (this.pendingInstallKeys.has(installKey)) {
-        this.scheduleInstallRefresh(input.workspaceId, input.appId);
-      }
-    } catch (error) {
-      this.pendingInstallKeys.delete(installKey);
-      this.clearInstallRefreshTimer(input.workspaceId, input.appId);
-      this.store.apps = previousApps;
-      this.recordOperationError(error, {
-        appId: input.appId,
-        operation: "workspace_app.update",
-        uiAction: "update_app",
-        workspaceId: input.workspaceId
-      });
-    }
+    await this.controller.updateApp(input);
   }
 
   async retryApp(input: { appId: string; workspaceId: string }): Promise<void> {
-    this.markAppStarting(input.appId);
-    const snapshot = await this.dependencies.gateway.retryWorkspaceApp(
-      input.workspaceId,
-      input.appId
-    );
-    this.applySnapshot(input.workspaceId, snapshot);
+    await this.controller.retryApp(input);
   }
 
   setWorkspaceAppLauncher(launcher: WorkspaceAppLauncher | null): void {
@@ -906,332 +538,6 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     closer: ((input: { appId: string; workspaceId: string }) => void) | null
   ): void {
     this.workspaceAppViewCloser = closer;
-  }
-
-  private applySnapshot(
-    workspaceId: string,
-    snapshot: WorkspaceAppCenterSnapshot
-  ): void {
-    const nextApps = sortWorkspaceAppCenterApps(
-      this.mergeSnapshotAppsByStateRevision(
-        workspaceId,
-        this.withPendingInstallState(workspaceId, snapshot.apps)
-      )
-    );
-    for (const app of nextApps) {
-      this.settlePendingInstallReport({
-        app,
-        failureReason: app.failureReason ?? app.lastError ?? null,
-        workspaceId
-      });
-    }
-    const appIdsToClose =
-      this.store.workspaceId === workspaceId
-        ? removedOrUninstalledAppIds(this.store.apps, nextApps)
-        : [];
-    this.scheduleCatalogLoadingRefresh(workspaceId, snapshot);
-    const changed =
-      this.store.workspaceId !== workspaceId ||
-      this.store.catalogLastError !== (snapshot.catalogLastError ?? null) ||
-      this.store.catalogStatus !== snapshot.catalogStatus ||
-      this.store.catalogUpdatedAtUnixMs !==
-        (snapshot.catalogUpdatedAtUnixMs ?? null) ||
-      this.store.error !== null ||
-      this.store.loadStatus !== "ready" ||
-      !areWorkspaceAppCenterAppsEqual(this.store.apps, nextApps);
-    if (!changed) {
-      return;
-    }
-    this.store.apps = nextApps;
-    this.store.catalogLastError = snapshot.catalogLastError ?? null;
-    this.store.catalogStatus = snapshot.catalogStatus;
-    this.store.catalogUpdatedAtUnixMs = snapshot.catalogUpdatedAtUnixMs ?? null;
-    this.store.error = null;
-    this.store.loadStatus = "ready";
-    this.store.workspaceId = workspaceId;
-    this.bumpRevision();
-    this.closeWorkspaceAppViews(workspaceId, appIdsToClose);
-  }
-
-  private mergeSnapshotAppsByStateRevision(
-    workspaceId: string,
-    snapshotApps: readonly WorkspaceAppCenterApp[]
-  ): WorkspaceAppCenterApp[] {
-    if (this.store.workspaceId !== workspaceId) {
-      return [...snapshotApps];
-    }
-    const currentAppsById = new Map(
-      this.store.apps.map((app) => [app.appId, app])
-    );
-    return snapshotApps.map((snapshotApp) => {
-      const currentApp = currentAppsById.get(snapshotApp.appId);
-      if (!currentApp || currentApp.stateRevision < snapshotApp.stateRevision) {
-        return snapshotApp;
-      }
-      const installKey = appRuntimeKey(workspaceId, snapshotApp.appId);
-      if (this.pendingInstallKeys.has(installKey)) {
-        const pendingSettled = this.isPendingInstallSettled(
-          installKey,
-          snapshotApp
-        );
-        if (
-          pendingSettled &&
-          currentApp.stateRevision <= snapshotApp.stateRevision
-        ) {
-          return snapshotApp;
-        }
-      }
-      return mergeWorkspaceAppCatalogFields(currentApp, snapshotApp);
-    });
-  }
-
-  private scheduleCatalogLoadingRefresh(
-    workspaceId: string,
-    snapshot: WorkspaceAppCenterSnapshot
-  ): void {
-    if (snapshot.catalogStatus !== "loading") {
-      this.clearCatalogRefreshTimer();
-      return;
-    }
-    if (this.updates?.workspaceId !== workspaceId || this.catalogRefreshTimer) {
-      return;
-    }
-    this.catalogRefreshTimer = setTimeout(() => {
-      this.catalogRefreshTimer = null;
-      if (this.updates?.workspaceId !== workspaceId) {
-        return;
-      }
-      void this.refresh(workspaceId);
-    }, catalogLoadingRefreshDelayMs);
-  }
-
-  private clearCatalogRefreshTimer(): void {
-    if (!this.catalogRefreshTimer) {
-      return;
-    }
-    clearTimeout(this.catalogRefreshTimer);
-    this.catalogRefreshTimer = null;
-  }
-
-  private withPendingInstallState(
-    workspaceId: string,
-    apps: readonly WorkspaceAppCenterApp[]
-  ): WorkspaceAppCenterApp[] {
-    return apps.map((app) => {
-      const installKey = appRuntimeKey(workspaceId, app.appId);
-      if (!this.pendingInstallKeys.has(installKey)) {
-        return app;
-      }
-      if (this.isPendingInstallSettled(installKey, app)) {
-        return app;
-      }
-      return {
-        ...app,
-        enabled: true,
-        installed: this.pendingInstallReportKeys.has(installKey)
-          ? false
-          : app.installed,
-        runtimeStatus: "installing"
-      };
-    });
-  }
-
-  private scheduleInstallRefresh(workspaceId: string, appId: string): void {
-    const key = appRuntimeKey(workspaceId, appId);
-    if (this.installRefreshTimers.has(key)) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      this.installRefreshTimers.delete(key);
-      if (!this.pendingInstallKeys.has(key)) {
-        return;
-      }
-      void this.refreshInstallState(workspaceId, appId);
-    }, installRefreshDelayMs);
-    this.installRefreshTimers.set(key, timer);
-  }
-
-  private clearInstallRefreshTimer(workspaceId: string, appId: string): void {
-    const key = appRuntimeKey(workspaceId, appId);
-    const timer = this.installRefreshTimers.get(key);
-    if (!timer) {
-      return;
-    }
-    clearTimeout(timer);
-    this.installRefreshTimers.delete(key);
-  }
-
-  private clearInstallRefreshTimers(): void {
-    for (const timer of this.installRefreshTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.installRefreshTimers.clear();
-    this.pendingInstallKeys.clear();
-    this.pendingInstallReportKeys.clear();
-  }
-
-  private async refreshInstallState(
-    workspaceId: string,
-    appId: string
-  ): Promise<void> {
-    try {
-      const snapshot =
-        await this.dependencies.gateway.listWorkspaceApps(workspaceId);
-      this.applySnapshot(workspaceId, snapshot);
-    } catch (error) {
-      this.recordOperationError(error, {
-        appId,
-        operation: "workspace_app.refresh_install_state",
-        uiAction: "refresh_install_state",
-        workspaceId
-      });
-    }
-    if (this.pendingInstallKeys.has(appRuntimeKey(workspaceId, appId))) {
-      this.scheduleInstallRefresh(workspaceId, appId);
-    }
-  }
-
-  private applyFactorySnapshot(
-    workspaceId: string,
-    snapshot: WorkspaceAppFactorySnapshot
-  ): void {
-    if (this.store.workspaceId !== workspaceId) {
-      this.store.workspaceId = workspaceId;
-    }
-    const nextJobs = sortWorkspaceAppFactoryJobs(snapshot.jobs);
-    if (areWorkspaceAppFactoryJobsEqual(this.store.factoryJobs, nextJobs)) {
-      return;
-    }
-    const previousJobs = this.store.factoryJobs;
-    this.store.factoryJobs = nextJobs;
-    this.recordFactorySnapshotApplied(workspaceId, previousJobs, nextJobs);
-    this.bumpRevision();
-  }
-
-  private applyAppUpdate(
-    workspaceId: string,
-    app: Parameters<typeof normalizeWorkspaceAppCenterApp>[0]
-  ): void {
-    if (this.store.workspaceId !== workspaceId) {
-      return;
-    }
-    const currentApp = this.store.apps.find(
-      (candidate) => candidate.appId === app.appId
-    );
-    if (!currentApp) {
-      return;
-    }
-    const nextApp = normalizeWorkspaceAppCenterApp({
-      ...app,
-      createdAtUnixMs: app.createdAtUnixMs ?? currentApp.createdAtUnixMs
-    });
-    const acceptedRuntimeTransition =
-      nextApp.stateRevision > currentApp.stateRevision;
-    if (
-      acceptedRuntimeTransition &&
-      nextApp.runtimeStatus === "failed" &&
-      currentApp.runtimeStatus !== "failed"
-    ) {
-      this.reportAppRuntimeFailed({
-        app: nextApp,
-        failureReason: app.failureReason ?? app.lastError ?? null
-      });
-    }
-    if (
-      acceptedRuntimeTransition &&
-      currentApp.runtimeStatus === "running" &&
-      nextApp.runtimeStatus !== "running"
-    ) {
-      this.reportAppStopped({
-        app: currentApp,
-        runDurationMs: resolveAppRunDurationMs(
-          app.startedAtUnixMs,
-          this.dependencies.reporterNow?.() ?? Date.now()
-        )
-      });
-    }
-    this.applyAppSnapshot(workspaceId, nextApp, {
-      installFailureReason: app.failureReason ?? app.lastError ?? null
-    });
-  }
-
-  private applyAppSnapshot(
-    workspaceId: string,
-    nextApp: WorkspaceAppCenterApp,
-    options: { installFailureReason?: string | null } = {}
-  ): void {
-    if (this.store.workspaceId !== workspaceId) {
-      return;
-    }
-    const currentApp = this.store.apps.find(
-      (candidate) => candidate.appId === nextApp.appId
-    );
-    if (currentApp && nextApp.stateRevision <= currentApp.stateRevision) {
-      this.settlePendingInstallReport({
-        app: currentApp,
-        failureReason:
-          options.installFailureReason ??
-          currentApp.failureReason ??
-          currentApp.lastError ??
-          null,
-        workspaceId
-      });
-      return;
-    }
-    const appIdsToClose =
-      currentApp?.installed === true && !nextApp.installed
-        ? [nextApp.appId]
-        : [];
-
-    const nextApps = sortWorkspaceAppCenterApps([
-      ...this.store.apps.filter(
-        (candidate) => candidate.appId !== nextApp.appId
-      ),
-      nextApp
-    ]);
-    if (areWorkspaceAppCenterAppsEqual(this.store.apps, nextApps)) {
-      return;
-    }
-    this.store.apps = nextApps;
-    this.store.error = null;
-    this.store.loadStatus = "ready";
-    this.bumpRevision();
-    this.settlePendingInstallReport({
-      app: nextApp,
-      failureReason:
-        options.installFailureReason ??
-        nextApp.failureReason ??
-        nextApp.lastError ??
-        null,
-      workspaceId
-    });
-    this.closeWorkspaceAppViews(workspaceId, appIdsToClose);
-  }
-
-  private applyFactoryJobUpdate(
-    workspaceId: string,
-    job: WorkspaceAppFactoryJob
-  ): void {
-    if (this.store.workspaceId !== workspaceId) {
-      return;
-    }
-    const currentJob = this.store.factoryJobs.find(
-      (candidate) => candidate.jobId === job.jobId
-    );
-    if (currentJob && job.updatedAtUnixMs < currentJob.updatedAtUnixMs) {
-      return;
-    }
-    const nextJobs = sortWorkspaceAppFactoryJobs([
-      ...this.store.factoryJobs.filter(
-        (candidate) => candidate.jobId !== job.jobId
-      ),
-      job
-    ]);
-    if (areWorkspaceAppFactoryJobsEqual(this.store.factoryJobs, nextJobs)) {
-      return;
-    }
-    this.store.factoryJobs = nextJobs;
-    this.bumpRevision();
   }
 
   private async startWorkspaceUpdates(
@@ -1245,240 +551,23 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
       if (isDisposed()) {
         return;
       }
-      await this.refresh(workspaceId);
+      await this.controller.refresh(workspaceId);
       if (isDisposed()) {
         return;
       }
       markConnected();
-      await this.startEnabledApps(workspaceId);
+      await this.controller.startEnabledApps(workspaceId);
     } catch (error) {
       if (isDisposed()) {
         return;
       }
-      const message = formatAppCenterError(error);
-      this.recordOperationFailure(error, message, {
+      this.controller.setUnavailableError(error, {
         operation: "app_center.start_workspace_updates",
         workspaceId
       });
-      this.store.error = message;
-      this.store.loadStatus = "unavailable";
-      this.bumpRevision();
     } finally {
       markStartupRefreshSettled();
     }
-  }
-
-  private async startEnabledApps(workspaceId: string): Promise<void> {
-    this.markEnabledAppsStarting();
-    try {
-      const snapshot =
-        await this.dependencies.gateway.startEnabledWorkspaceApps(workspaceId);
-      this.applySnapshot(workspaceId, snapshot);
-    } catch (error) {
-      const message = formatAppCenterError(error);
-      this.recordOperationFailure(error, message, {
-        operation: "workspace_app.start_enabled",
-        workspaceId
-      });
-      this.store.error = message;
-      this.store.loadStatus = "unavailable";
-      this.bumpRevision();
-    }
-  }
-
-  private markAppStarting(appId: string): void {
-    this.store.apps = this.store.apps.map((app) =>
-      app.appId === appId
-        ? {
-            ...app,
-            enabled: true,
-            installed: true,
-            runtimeStatus: "preparing"
-          }
-        : app
-    );
-    this.bumpRevision();
-  }
-
-  private waitForLaunchableApp(input: {
-    appId: string;
-    workspaceId: string;
-  }): Promise<WorkspaceAppCenterApp | null> {
-    const current = this.resolveLaunchableApp(input);
-    if (current) {
-      return Promise.resolve(current);
-    }
-    if (this.shouldAbortLaunchWait(input)) {
-      return Promise.resolve(null);
-    }
-
-    const launchWaitTimeoutMs =
-      this.dependencies.appOpenLaunchWaitTimeoutMs ??
-      appOpenLaunchWaitTimeoutMs;
-    return new Promise((resolve) => {
-      let settled = false;
-      let unsubscribe = noop;
-      let timeout: ReturnType<typeof setTimeout> | null = null;
-      const settle = (app: WorkspaceAppCenterApp | null) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        if (timeout) {
-          clearTimeout(timeout);
-        }
-        unsubscribe();
-        resolve(app);
-      };
-      timeout = setTimeout(() => {
-        void this.refreshLaunchWaitState(input).then((app) => {
-          if (!app) {
-            this.markLaunchWaitTimedOut(input);
-          }
-          settle(app);
-        });
-      }, launchWaitTimeoutMs);
-      unsubscribe = this.subscribe(() => {
-        const app = this.store.apps.find(
-          (candidate) => candidate.appId === input.appId
-        );
-        if (this.shouldAbortLaunchWait(input, app)) {
-          settle(null);
-          return;
-        }
-        const launchable = this.resolveLaunchableApp(input);
-        if (launchable) {
-          settle(launchable);
-        }
-      });
-    });
-  }
-
-  private async refreshLaunchWaitState(input: {
-    appId: string;
-    workspaceId: string;
-  }): Promise<WorkspaceAppCenterApp | null> {
-    try {
-      const snapshot = await this.dependencies.gateway.listWorkspaceApps(
-        input.workspaceId
-      );
-      this.applySnapshot(input.workspaceId, snapshot);
-    } catch (error) {
-      this.recordOperationError(error, {
-        appId: input.appId,
-        operation: "workspace_app.refresh_launch_wait_state",
-        uiAction: "refresh_launch_wait_state",
-        workspaceId: input.workspaceId
-      });
-      return null;
-    }
-    return this.resolveLaunchableApp(input);
-  }
-
-  private markLaunchWaitTimedOut(input: {
-    appId: string;
-    workspaceId: string;
-  }): void {
-    if (this.store.workspaceId !== input.workspaceId) {
-      return;
-    }
-    let changed = false;
-    this.store.apps = this.store.apps.map((app) => {
-      if (
-        app.appId !== input.appId ||
-        !app.installed ||
-        (app.runtimeStatus !== "preparing" && app.runtimeStatus !== "starting")
-      ) {
-        return app;
-      }
-      changed = true;
-      return {
-        ...app,
-        runtimeStatus: "failed"
-      };
-    });
-    if (changed) {
-      this.bumpRevision();
-    }
-  }
-
-  private shouldAbortLaunchWait(
-    input: { appId: string; workspaceId: string },
-    app = this.store.apps.find((candidate) => candidate.appId === input.appId)
-  ): boolean {
-    return (
-      this.store.workspaceId !== input.workspaceId ||
-      !app?.installed ||
-      app.runtimeStatus === "failed"
-    );
-  }
-
-  private resolveLaunchableApp(input: {
-    appId: string;
-    workspaceId: string;
-  }): WorkspaceAppCenterApp | null {
-    if (this.store.workspaceId !== input.workspaceId) {
-      return null;
-    }
-    const app = this.store.apps.find(
-      (candidate) => candidate.appId === input.appId
-    );
-    return app?.installed && app.runtimeStatus === "running" && app.url
-      ? app
-      : null;
-  }
-
-  private markAppInstalling(
-    appId: string,
-    options: { preserveInstalled?: boolean } = {}
-  ): void {
-    this.store.apps = this.store.apps.map((app) =>
-      app.appId === appId
-        ? {
-            ...app,
-            availableVersion: null,
-            enabled: true,
-            installed:
-              options.preserveInstalled === true ? app.installed : false,
-            runtimeStatus: "installing",
-            updateAvailable: false
-          }
-        : app
-    );
-    this.bumpRevision();
-  }
-
-  private markEnabledAppsStarting(): void {
-    let changed = false;
-    this.store.apps = this.store.apps.map((app) => {
-      if (
-        !app.enabled ||
-        !app.installed ||
-        app.runtimeStatus === "running" ||
-        app.runtimeStatus === "preparing" ||
-        app.runtimeStatus === "starting"
-      ) {
-        return app;
-      }
-      changed = true;
-      return {
-        ...app,
-        runtimeStatus: "preparing"
-      };
-    });
-    if (changed) {
-      this.bumpRevision();
-    }
-  }
-
-  private recordOperationError(
-    error: unknown,
-    details: WorkspaceAppCenterOperationDetails
-  ): void {
-    const message = formatAppCenterError(error, details);
-    this.recordOperationFailure(error, message, details);
-    this.store.error = message;
-    this.bumpRevision();
   }
 
   private recordOperationFailure(
@@ -1551,13 +640,6 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
       .catch(() => undefined);
   }
 
-  private bumpRevision(): void {
-    this.store.revision += 1;
-    for (const listener of this.listeners) {
-      listener();
-    }
-  }
-
   private closeWorkspaceAppViews(
     workspaceId: string,
     appIds: readonly string[]
@@ -1568,52 +650,6 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     for (const appId of appIds) {
       this.workspaceAppViewCloser({ appId, workspaceId });
     }
-  }
-
-  private settlePendingInstallReport(input: {
-    app: WorkspaceAppCenterApp;
-    failureReason: string | null;
-    workspaceId: string;
-  }): void {
-    const installKey = appRuntimeKey(input.workspaceId, input.app.appId);
-    if (!this.pendingInstallKeys.has(installKey)) {
-      return;
-    }
-    if (!this.isPendingInstallSettled(installKey, input.app)) {
-      return;
-    }
-
-    this.pendingInstallKeys.delete(installKey);
-    this.clearInstallRefreshTimer(input.workspaceId, input.app.appId);
-    if (!this.pendingInstallReportKeys.delete(installKey)) {
-      return;
-    }
-    if (input.app.installed) {
-      this.reportAppInstalled(input.app);
-      return;
-    }
-    this.reportAppInstallFailed({
-      app: input.app,
-      appId: input.app.appId,
-      failureReason:
-        input.failureReason ??
-        input.app.failureReason ??
-        input.app.lastError ??
-        null
-    });
-  }
-
-  private isPendingInstallSettled(
-    installKey: string,
-    app: WorkspaceAppCenterApp
-  ): boolean {
-    if (app.runtimeStatus === "failed") {
-      return true;
-    }
-    if (this.pendingInstallReportKeys.has(installKey)) {
-      return app.installed;
-    }
-    return app.installed && !app.updateAvailable && !app.availableVersion;
   }
 
   private reportAppInstalled(app: WorkspaceAppCenterApp | null): void {
@@ -1795,191 +831,14 @@ function getAnalyticsErrorReason(error: unknown): string {
   return getDesktopErrorCode(error) ?? "unknown";
 }
 
-function resolveAppRunDurationMs(
-  startedAtUnixMs: number | null | undefined,
-  now: number
-) {
-  if (
-    typeof startedAtUnixMs !== "number" ||
-    !Number.isFinite(startedAtUnixMs) ||
-    startedAtUnixMs <= 0
-  ) {
-    return null;
-  }
-
-  return Math.max(0, now - startedAtUnixMs);
-}
-
-function sortWorkspaceAppCenterApps(
-  apps: readonly WorkspaceAppCenterApp[]
-): WorkspaceAppCenterApp[] {
-  return [...apps].sort((left, right) =>
-    left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
-  );
-}
-
-function mergeWorkspaceAppCatalogFields(
-  currentApp: WorkspaceAppCenterApp,
-  snapshotApp: WorkspaceAppCenterApp
-): WorkspaceAppCenterApp {
-  return {
-    ...currentApp,
-    availableIconUrl: snapshotApp.availableIconUrl,
-    availableVersion: snapshotApp.availableVersion,
-    description: snapshotApp.description,
-    iconUrl: snapshotApp.iconUrl,
-    localizations: snapshotApp.localizations,
-    minimizeBehavior: snapshotApp.minimizeBehavior,
-    name: snapshotApp.name,
-    source: snapshotApp.source,
-    tags: snapshotApp.tags,
-    updateAvailable: snapshotApp.updateAvailable
-  };
-}
-
-function areWorkspaceAppCenterAppsEqual(
-  left: readonly WorkspaceAppCenterApp[],
-  right: readonly WorkspaceAppCenterApp[]
-): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  return left.every((leftApp, index) => {
-    const rightApp = right[index];
-    return (
-      rightApp !== undefined &&
-      leftApp.appId === rightApp.appId &&
-      leftApp.availableIconUrl === rightApp.availableIconUrl &&
-      leftApp.availableVersion === rightApp.availableVersion &&
-      leftApp.createdAtUnixMs === rightApp.createdAtUnixMs &&
-      leftApp.description === rightApp.description &&
-      leftApp.enabled === rightApp.enabled &&
-      leftApp.exportable === rightApp.exportable &&
-      leftApp.iconUrl === rightApp.iconUrl &&
-      leftApp.installed === rightApp.installed &&
-      areWorkspaceAppCenterLocalizationsEqual(
-        leftApp.localizations ?? [],
-        rightApp.localizations ?? []
-      ) &&
-      leftApp.minimizeBehavior === rightApp.minimizeBehavior &&
-      leftApp.name === rightApp.name &&
-      leftApp.runtimeStatus === rightApp.runtimeStatus &&
-      leftApp.source === rightApp.source &&
-      leftApp.stateRevision === rightApp.stateRevision &&
-      areStringArraysEqual(leftApp.tags ?? [], rightApp.tags ?? []) &&
-      (leftApp.updateAvailable ?? false) ===
-        (rightApp.updateAvailable ?? false) &&
-      leftApp.url === rightApp.url &&
-      leftApp.version === rightApp.version
-    );
-  });
-}
-
-function normalizeWorkspaceAppCenterViewState(
-  value: Partial<WorkspaceAppCenterViewState> | null | undefined
-): WorkspaceAppCenterViewState {
-  return {
-    activeAppTab: value?.activeAppTab === "my" ? "my" : "recommended"
-  };
-}
-
-function areWorkspaceAppCenterViewStatesEqual(
-  left: WorkspaceAppCenterViewState,
-  right: WorkspaceAppCenterViewState
-): boolean {
-  return left.activeAppTab === right.activeAppTab;
-}
-
-function areWorkspaceAppCenterLocalizationsEqual(
-  left: NonNullable<WorkspaceAppCenterApp["localizations"]>,
-  right: NonNullable<WorkspaceAppCenterApp["localizations"]>
-): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  return left.every((leftLocalization, index) => {
-    const rightLocalization = right[index];
-    return (
-      rightLocalization !== undefined &&
-      leftLocalization.locale === rightLocalization.locale &&
-      leftLocalization.name === rightLocalization.name &&
-      leftLocalization.description === rightLocalization.description &&
-      areStringArraysEqual(leftLocalization.tags, rightLocalization.tags)
-    );
-  });
-}
-
-function areStringArraysEqual(
-  left: readonly string[],
-  right: readonly string[]
-): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  return left.every((value, index) => value === right[index]);
-}
-
-function appRuntimeKey(workspaceId: string, appId: string): string {
-  return `${workspaceId}\u0000${appId}`;
-}
-
-function factoryJobKey(workspaceId: string, jobId: string): string {
-  return `${workspaceId}\u0000${jobId}`;
-}
-
-function removedOrUninstalledAppIds(
-  previousApps: readonly WorkspaceAppCenterApp[],
-  nextApps: readonly WorkspaceAppCenterApp[]
-): string[] {
-  const nextAppsById = new Map(nextApps.map((app) => [app.appId, app]));
-  const appIds: string[] = [];
-  for (const previousApp of previousApps) {
-    if (!previousApp.installed) {
-      continue;
-    }
-    const nextApp = nextAppsById.get(previousApp.appId);
-    if (!nextApp?.installed) {
-      appIds.push(previousApp.appId);
-    }
-  }
-  return appIds;
-}
-
-function sortWorkspaceAppFactoryJobs(
-  jobs: readonly WorkspaceAppFactoryJob[]
-): WorkspaceAppFactoryJob[] {
-  return [...jobs].sort(
-    (left, right) => right.updatedAtUnixMs - left.updatedAtUnixMs
-  );
-}
-
-function areWorkspaceAppFactoryJobsEqual(
-  left: readonly WorkspaceAppFactoryJob[],
-  right: readonly WorkspaceAppFactoryJob[]
-): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  return left.every((leftJob, index) => {
-    const rightJob = right[index];
-    return (
-      rightJob !== undefined &&
-      leftJob.agentSessionId === rightJob.agentSessionId &&
-      leftJob.appId === rightJob.appId &&
-      leftJob.createdAtUnixMs === rightJob.createdAtUnixMs &&
-      leftJob.description === rightJob.description &&
-      leftJob.displayName === rightJob.displayName &&
-      leftJob.failureReason === rightJob.failureReason &&
-      leftJob.jobId === rightJob.jobId &&
-      leftJob.model === rightJob.model &&
-      leftJob.prompt === rightJob.prompt &&
-      leftJob.provider === rightJob.provider &&
-      leftJob.publishedVersion === rightJob.publishedVersion &&
-      leftJob.status === rightJob.status &&
-      leftJob.updatedAtUnixMs === rightJob.updatedAtUnixMs &&
-      leftJob.workspaceId === rightJob.workspaceId
-    );
-  });
+function readOptionalNumberProperty(
+  value: object,
+  property: string
+): number | null {
+  const rawValue = (value as Record<string, unknown>)[property];
+  return typeof rawValue === "number" && Number.isFinite(rawValue)
+    ? rawValue
+    : null;
 }
 
 function defaultWorkspaceAppArchiveName(app: WorkspaceAppCenterApp): string {

@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@zk-tech/bedrock": "0.3.2"
+    "@tutti-os/infra": "0.1.0"
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",

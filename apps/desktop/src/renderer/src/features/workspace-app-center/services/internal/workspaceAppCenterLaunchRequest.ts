@@ -10,7 +10,7 @@ import type {
 } from "@tutti-os/workbench-surface";
 import type { DesktopLocale } from "@shared/i18n";
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface";
-import type { WorkspaceAppCenterApp } from "../workspaceAppCenterTypes";
+import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import {
   workspaceAppCenterNodeID,
   workspaceAppWebviewTypeID

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useService } from "@zk-tech/bedrock/di";
+import { useService } from "@tutti-os/infra/di";
 import type {
   AgentActivityComposerOptions,
   AgentActivityComposerSkillOption

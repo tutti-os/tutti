@@ -1,4 +1,28 @@
 export {
+  type WorkspaceAppCenterApp,
+  type WorkspaceAppCenterAppTab,
+  type WorkspaceAppCenterCatalogStatus,
+  type WorkspaceAppCenterCliIssue,
+  type WorkspaceAppCenterCliState,
+  type WorkspaceAppCenterCliStatus,
+  type WorkspaceAppCenterGateway,
+  type WorkspaceAppCenterLoadStatus,
+  type WorkspaceAppCenterLocalization,
+  type WorkspaceAppCenterReadableStoreState,
+  type WorkspaceAppCenterRuntimeStatus,
+  type WorkspaceAppCenterSnapshot,
+  type WorkspaceAppCenterSource,
+  type WorkspaceAppCenterStoreState,
+  type WorkspaceAppCenterViewState,
+  type WorkspaceAppFactoryJob,
+  type WorkspaceAppFactoryModelOption,
+  type WorkspaceAppFactoryPermissionOption,
+  type WorkspaceAppFactoryProviderConfiguration,
+  type WorkspaceAppFactoryReasoningOption,
+  type WorkspaceAppFactorySnapshot,
+  type WorkspaceAppMinimizeBehavior
+} from "./host.ts";
+export {
   workspaceAppManifestSchemaVersion,
   type WorkspaceAppManifest,
   type WorkspaceAppManifestAuthor,

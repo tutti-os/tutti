@@ -1,4 +1,4 @@
-import type { ServiceRegistry } from "@zk-tech/bedrock/di";
+import type { ServiceRegistry } from "@tutti-os/infra/di";
 import type {
   TuttidClient,
   TuttidEventStreamClient

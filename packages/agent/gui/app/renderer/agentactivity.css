@@ -3079,9 +3079,90 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-conversation__message-group {
+  position: relative;
   display: grid;
   width: 100%;
   min-width: 0;
+}
+
+.agent-gui-conversation__message-group::after {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: 10px;
+  content: "";
+}
+
+.agent-gui-conversation__message-group:has(
+  > .agent-gui-conversation__message-copy-button
+) {
+  margin-bottom: 36px;
+}
+
+.agent-gui-conversation__message-copy-button {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 1;
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--line-2, var(--tutti-line-2));
+  border-radius: 6px;
+  background: var(--background-fronted);
+  color: var(--text-secondary);
+  opacity: 0;
+  outline: none;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.agent-gui-conversation__message-group[data-agent-message-speaker="user"]
+  > .agent-gui-conversation__message-copy-button {
+  right: 0;
+}
+
+.agent-gui-conversation__message-group[data-agent-message-speaker="assistant"]
+  > .agent-gui-conversation__message-copy-button {
+  left: 0;
+}
+
+.agent-gui-conversation__message-group:hover
+  > .agent-gui-conversation__message-copy-button,
+.agent-gui-conversation__message-group:focus-within
+  > .agent-gui-conversation__message-copy-button {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.agent-gui-conversation__message-copy-button:hover {
+  border-color: var(--border-focus);
+  background: var(--background-panel);
+  color: var(--text-primary);
+}
+
+.agent-gui-conversation__message-copy-button:focus-visible {
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.agent-gui-conversation__message-copy-button[data-copied="true"] {
+  border-color: color-mix(
+    in srgb,
+    var(--state-success, #22c55e) 42%,
+    transparent
+  );
+  color: var(--state-success, #22c55e);
 }
 
 .agent-gui-conversation__user-message-flow

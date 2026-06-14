@@ -1,4 +1,4 @@
-import { useService } from "@zk-tech/bedrock/di";
+import { useService } from "@tutti-os/infra/di";
 import { useSnapshot } from "valtio";
 import { IWorkspaceSettingsService } from "../services/workspaceSettingsService.interface";
 

@@ -485,6 +485,8 @@ export const zhCN = {
       planImplementationSend: "送出",
       planImplementationSkip: "留在计划模式",
       noRunningResponse: "当前没有正在运行的回复。",
+      copyMessage: "复制消息",
+      messageCopied: "已复制",
       promptTipsPrefix: "Tips：",
       promptTips: {
         setWorkspace: {

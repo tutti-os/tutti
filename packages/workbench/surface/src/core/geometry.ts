@@ -424,7 +424,7 @@ function getBalancedLayoutFrames(
   }
 
   if (itemCount >= 4) {
-    return getGridLayoutFrames(itemCount, 2, frame, constraints);
+    return getBestBalancedGridLayoutFrames(itemCount, frame, constraints);
   }
 
   const gap = WORKBENCH_LAYOUT_PRESET_GAP_PX;
@@ -469,6 +469,48 @@ function getBalancedLayoutFrames(
   }
 
   return frames;
+}
+
+function getBestBalancedGridLayoutFrames(
+  itemCount: number,
+  frame: WorkbenchFrame,
+  constraints: WorkbenchLayoutConstraints
+): WorkbenchFrame[] | null {
+  let best: {
+    columns: number;
+    emptySlots: number;
+    frames: WorkbenchFrame[];
+    shapeDistance: number;
+  } | null = null;
+
+  for (let columns = 2; columns <= itemCount; columns += 1) {
+    const rows = Math.ceil(itemCount / columns);
+    const frames = getGridLayoutFrames(itemCount, columns, frame, constraints);
+    if (!frames) {
+      continue;
+    }
+
+    const candidate = {
+      columns,
+      emptySlots: rows * columns - itemCount,
+      frames,
+      shapeDistance: Math.abs(columns - rows)
+    };
+
+    if (
+      !best ||
+      candidate.shapeDistance < best.shapeDistance ||
+      (candidate.shapeDistance === best.shapeDistance &&
+        candidate.emptySlots < best.emptySlots) ||
+      (candidate.shapeDistance === best.shapeDistance &&
+        candidate.emptySlots === best.emptySlots &&
+        candidate.columns < best.columns)
+    ) {
+      best = candidate;
+    }
+  }
+
+  return best?.frames ?? null;
 }
 
 function getSingleColumnLayoutFrames(

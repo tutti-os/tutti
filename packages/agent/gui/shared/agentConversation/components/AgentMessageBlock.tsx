@@ -4,12 +4,15 @@ import {
   useEffect,
   useMemo,
   useState,
-  type JSX
+  type JSX,
+  type ReactNode
 } from "react";
 import { AlertTriangle, ChevronRight, Info } from "lucide-react";
+import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import { Button } from "../../../app/renderer/components/ui/button";
 import { AgentPlanCard } from "./AgentPlanCard";
 import { translate } from "../../../i18n/index";
+import { useOptionalAgentHostApi } from "../../../agentActivityHost";
 import { getOptionalAgentActivityRuntime } from "../../../agentActivityRuntime";
 import { ZoomableImage } from "../../../app/renderer/components/ZoomableImage";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
@@ -30,6 +33,8 @@ import { CollapsibleReveal } from "./CollapsibleReveal";
 import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
+
+const MESSAGE_COPY_FEEDBACK_MS = 1400;
 
 interface AgentMessageBlockProps {
   workspaceRoot: string | null;
@@ -57,6 +62,7 @@ export function AgentMessageBlock({
   rawTimelineJsonLabel = ""
 }: AgentMessageBlockProps): JSX.Element {
   "use memo";
+  const agentHostApi = useOptionalAgentHostApi();
   const isUser = row.speaker === "user";
   const handleLinkClick = useCallback(
     (href: string): void => {
@@ -71,6 +77,32 @@ export function AgentMessageBlock({
       }
     },
     [basePath, onLinkAction, workspaceRoot]
+  );
+  const handleCopyMessageText = useCallback(
+    async (text: string): Promise<boolean> => {
+      if (!text.trim()) {
+        return false;
+      }
+
+      try {
+        const hostWriteText = agentHostApi?.clipboard?.writeText;
+        if (typeof hostWriteText === "function") {
+          await hostWriteText(text);
+          return true;
+        }
+        if (
+          typeof navigator !== "undefined" &&
+          typeof navigator.clipboard?.writeText === "function"
+        ) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch {
+        return false;
+      }
+      return false;
+    },
+    [agentHostApi]
   );
   const thinkingContent = !isUser
     ? row.thinking.map((thinking) => (
@@ -146,16 +178,105 @@ export function AgentMessageBlock({
 
         if (rawTimelineJson) {
           return (
-            <div key={message.id} className={styles.messageGroup}>
+            <AgentCopyableMessageGroup
+              key={message.id}
+              copyText={message.copyText ?? null}
+              speaker={row.speaker}
+              onCopyMessageText={handleCopyMessageText}
+            >
               {content}
               {rawTimelineJson}
-            </div>
+            </AgentCopyableMessageGroup>
+          );
+        }
+
+        const copyText = message.copyText ?? null;
+        if (copyText) {
+          return (
+            <AgentCopyableMessageGroup
+              key={message.id}
+              copyText={copyText}
+              speaker={row.speaker}
+              onCopyMessageText={handleCopyMessageText}
+            >
+              {content}
+            </AgentCopyableMessageGroup>
           );
         }
 
         return <Fragment key={message.id}>{content}</Fragment>;
       })}
     </div>
+  );
+}
+
+function AgentCopyableMessageGroup({
+  children,
+  copyText,
+  onCopyMessageText,
+  speaker
+}: {
+  children: ReactNode;
+  copyText: string | null;
+  onCopyMessageText: (text: string) => Promise<boolean>;
+  speaker: AgentMessageRowVM["speaker"];
+}): JSX.Element {
+  "use memo";
+
+  return (
+    <div className={styles.messageGroup} data-agent-message-speaker={speaker}>
+      {children}
+      {copyText ? (
+        <AgentMessageCopyButton
+          copyText={copyText}
+          onCopyMessageText={onCopyMessageText}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AgentMessageCopyButton({
+  copyText,
+  onCopyMessageText
+}: {
+  copyText: string;
+  onCopyMessageText: (text: string) => Promise<boolean>;
+}): JSX.Element {
+  "use memo";
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) {
+      return;
+    }
+    const reset = window.setTimeout(() => {
+      setCopied(false);
+    }, MESSAGE_COPY_FEEDBACK_MS);
+    return () => window.clearTimeout(reset);
+  }, [copied]);
+  const handleClick = useCallback(async () => {
+    if (await onCopyMessageText(copyText)) {
+      setCopied(true);
+    }
+  }, [copyText, onCopyMessageText]);
+  const label = copied
+    ? translate("agentHost.agentGui.messageCopied")
+    : translate("agentHost.agentGui.copyMessage");
+
+  return (
+    <button
+      type="button"
+      className={styles.messageCopyButton}
+      aria-label={label}
+      data-copied={copied ? "true" : "false"}
+      onClick={handleClick}
+    >
+      {copied ? (
+        <CheckIcon width={14} height={14} aria-hidden="true" />
+      ) : (
+        <CopyIcon width={14} height={14} aria-hidden="true" />
+      )}
+    </button>
   );
 }
 

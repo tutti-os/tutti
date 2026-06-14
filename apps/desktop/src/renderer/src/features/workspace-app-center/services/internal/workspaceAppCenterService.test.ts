@@ -9,12 +9,15 @@ import type {
   WorkspaceAppCenterSnapshot,
   WorkspaceAppFactoryJob,
   WorkspaceAppFactorySnapshot
-} from "../workspaceAppCenterTypes.ts";
+} from "@tutti-os/workspace-app-center";
 import {
   WorkspaceAppCenterService,
   type WorkspaceAppCenterServiceDependencies
 } from "./workspaceAppCenterService.ts";
-import type { WorkspaceAppLike } from "./adapters/desktopWorkspaceAppCenterGateway.ts";
+import type {
+  DesktopWorkspaceAppCenterLocalFileGateway,
+  WorkspaceAppLike
+} from "./adapters/desktopWorkspaceAppCenterGateway.ts";
 
 type OpenWorkspaceAppFolderInput = Parameters<
   WorkspaceAppCenterServiceDependencies["hostWorkspaceApi"]["openWorkspaceAppFolder"]
@@ -1139,8 +1142,10 @@ function createDeferred<T>(): {
 }
 
 function createGateway(
-  overrides: Partial<WorkspaceAppCenterGateway> = {}
-): WorkspaceAppCenterGateway {
+  overrides: Partial<
+    WorkspaceAppCenterGateway & DesktopWorkspaceAppCenterLocalFileGateway
+  > = {}
+): WorkspaceAppCenterGateway & DesktopWorkspaceAppCenterLocalFileGateway {
   return {
     async cancelWorkspaceAppFactoryJob() {
       return createFactorySnapshot();

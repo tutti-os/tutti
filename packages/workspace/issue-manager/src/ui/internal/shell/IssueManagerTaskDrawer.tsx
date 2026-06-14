@@ -64,6 +64,7 @@ export function IssueManagerTaskDrawer({
         {view.bodyKind === "edit" ? null : (
           <IssueManagerTaskDrawerHeader
             controller={controller}
+            onClose={onClose}
             selectedTask={selectedTask}
             view={view}
           />

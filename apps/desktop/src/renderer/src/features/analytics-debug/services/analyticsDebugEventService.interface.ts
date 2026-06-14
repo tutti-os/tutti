@@ -1,5 +1,5 @@
 import type { TrackEvent } from "@tutti-os/client-tuttid-ts";
-import { createDecorator } from "@zk-tech/bedrock/di";
+import { createDecorator } from "@tutti-os/infra/di";
 
 export type AnalyticsDebugEventServiceSnapshot = TrackEvent[];
 

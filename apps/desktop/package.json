@@ -107,7 +107,7 @@
     "@types/react-dom": "^19.1.5",
     "@types/yazl": "^3.3.1",
     "@vitejs/plugin-react": "^4.5.2",
-    "@zk-tech/bedrock": "0.3.2",
+    "@tutti-os/infra": "0.1.0",
     "babel-plugin-react-compiler": "^1.0.0",
     "dmg-builder": "^26.8.1",
     "electron": "^35.7.5",

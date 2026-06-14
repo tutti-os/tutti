@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,6 +9,7 @@ const workspaceRoot = join(scriptDirectory, "..", "..");
 const legacyTokens = ["nextop", "Nextop", "NEXTOP"];
 const allowedFiles = new Set([
   ".codex/skills/tutti-app-release/SKILL.md",
+  ".github/workflows/desktop-release-notify.yml",
   ".github/workflows/desktop-release.yml",
   ".github/workflows/publish-tutti-app-catalog.yml",
   ".github/workflows/publish-tutti-app-catalog-staging.yml",
@@ -47,14 +48,19 @@ const ignoredPrefixes = [
   "apps/cli/build/"
 ];
 
-const files = execFileSync("git", ["ls-files"], {
-  cwd: workspaceRoot,
-  encoding: "utf8"
-})
+const files = execFileSync(
+  "git",
+  ["ls-files", "--cached", "--others", "--exclude-standard"],
+  {
+    cwd: workspaceRoot,
+    encoding: "utf8"
+  }
+)
   .split("\n")
   .map((line) => line.trim())
   .filter(Boolean)
-  .filter((file) => !ignoredPrefixes.some((prefix) => file.startsWith(prefix)));
+  .filter((file) => !ignoredPrefixes.some((prefix) => file.startsWith(prefix)))
+  .filter((file) => existsSync(join(workspaceRoot, file)));
 
 const violations = [];
 

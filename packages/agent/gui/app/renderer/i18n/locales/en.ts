@@ -530,6 +530,8 @@ export const en = {
       planImplementationSend: "Send",
       planImplementationSkip: "Stay in Plan Mode",
       noRunningResponse: "No running response to stop.",
+      copyMessage: "Copy message",
+      messageCopied: "Copied",
       promptTipsPrefix: "Tips: ",
       promptTips: {
         setWorkspace: {

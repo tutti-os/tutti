@@ -165,6 +165,26 @@ test("returns null when a layout preset cannot fit within minimum window bounds"
   );
 });
 
+test("balances nine layout preset windows into a fitting grid", () => {
+  const frames = getWorkbenchLayoutPresetFrames(
+    9,
+    { kind: "balanced" },
+    { width: 1000, height: 700 }
+  );
+
+  assert.deepEqual(frames, [
+    { x: 1, y: 53, width: 325, height: 178 },
+    { x: 338, y: 53, width: 325, height: 178 },
+    { x: 675, y: 53, width: 325, height: 178 },
+    { x: 1, y: 243, width: 325, height: 178 },
+    { x: 338, y: 243, width: 325, height: 178 },
+    { x: 675, y: 243, width: 325, height: 178 },
+    { x: 1, y: 433, width: 325, height: 178 },
+    { x: 338, y: 433, width: 325, height: 178 },
+    { x: 675, y: 433, width: 325, height: 178 }
+  ]);
+});
+
 test("infers drag snap only after the pointer crosses into the top safe area", () => {
   const constraints = {
     minWidth: 220,

@@ -244,7 +244,7 @@ It should:
 - keep feature UI under `renderer/src/features/<feature>/ui/*`
 - keep feature service public surfaces under `renderer/src/features/<feature>/services/*`
 - keep feature service implementation under `renderer/src/features/<feature>/services/internal/**`
-- use `@zk-tech/bedrock/di` for renderer feature service tokens and window-scoped composition
+- use `@tutti-os/infra/di` for renderer feature service tokens and window-scoped composition
 - expose feature stores to UI as readonly state and mutate them only inside the owning service
 - consume shared tokens, icons, and primitives from `@tutti-os/ui-system`
 - prefer the `@tutti-os/ui-system` root export for runtime imports instead of reaching into package internals
@@ -397,7 +397,7 @@ Renderer DI is used for feature composition and replaceable capabilities.
 
 Rules:
 
-- use `@zk-tech/bedrock/di` for service tokens and window-scoped containers
+- use `@tutti-os/infra/di` for service tokens and window-scoped containers
 - window shells create the container and register the features they compose
 - feature services may depend on other public service interfaces or on feature-local adapters
 - prefer explicit registration in `renderer/src/app/windows/*/create*Container.ts`

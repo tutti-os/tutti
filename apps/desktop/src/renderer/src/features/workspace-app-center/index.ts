@@ -13,15 +13,6 @@ export {
   workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "./services/internal/workspaceAppCenterContribution";
-export type {
-  WorkspaceAppCenterApp,
-  WorkspaceAppCenterCatalogStatus,
-  WorkspaceAppCenterGateway,
-  WorkspaceAppCenterReadableStoreState,
-  WorkspaceAppCenterRuntimeStatus,
-  WorkspaceAppCenterSnapshot,
-  WorkspaceAppCenterStoreState
-} from "./services/workspaceAppCenterTypes";
 export { WorkspaceAppCenterIntegration } from "./ui/WorkspaceAppCenterIntegration";
 export { WorkspaceAppCenterPane } from "./ui/WorkspaceAppCenterPane";
 export { useWorkspaceAppCenterService } from "./ui/useWorkspaceAppCenterService";

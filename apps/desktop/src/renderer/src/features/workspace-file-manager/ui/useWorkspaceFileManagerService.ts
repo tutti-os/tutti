@@ -1,4 +1,4 @@
-import { useService } from "@zk-tech/bedrock/di";
+import { useService } from "@tutti-os/infra/di";
 import { IWorkspaceFileManagerService } from "../services/workspaceFileManagerService.interface";
 
 export function useWorkspaceFileManagerService() {

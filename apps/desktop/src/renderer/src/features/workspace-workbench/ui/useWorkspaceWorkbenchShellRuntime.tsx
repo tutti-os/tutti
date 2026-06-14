@@ -5,7 +5,7 @@ import {
   useRef,
   useSyncExternalStore
 } from "react";
-import { useService } from "@zk-tech/bedrock/di";
+import { useService } from "@tutti-os/infra/di";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type {
@@ -16,11 +16,11 @@ import type {
   WorkbenchMissionControlAdapter,
   WorkbenchMissionControlMode
 } from "@tutti-os/workbench-surface";
+import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import {
   resolveWorkspaceAppDisplayName,
   resolveWorkspaceAppSizeConstraints,
   useWorkspaceAppCenterService,
-  type WorkspaceAppCenterApp,
   workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "@renderer/features/workspace-app-center";

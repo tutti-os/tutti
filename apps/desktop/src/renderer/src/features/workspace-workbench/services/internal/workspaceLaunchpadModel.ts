@@ -2,7 +2,7 @@ import type {
   AgentProviderStatus,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
-import type { WorkspaceAppCenterApp } from "@renderer/features/workspace-app-center";
+import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 
 export const workspaceLaunchpadDockActionId = "open-launchpad";
 export const workspaceLaunchpadDockEntryId = "workspace-launchpad";

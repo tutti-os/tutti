@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { InstantiationContext } from "@zk-tech/bedrock/di";
+import { InstantiationContext } from "@tutti-os/infra/di";
 import { AnalyticsDebugFloatingEntryGate } from "@renderer/features/analytics-debug";
 import { AppUpdateStatus } from "@renderer/features/app-update";
 import { WorkspaceWorkbench } from "@renderer/features/workspace-workbench";

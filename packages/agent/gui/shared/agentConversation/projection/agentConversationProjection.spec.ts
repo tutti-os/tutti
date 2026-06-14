@@ -404,6 +404,184 @@ describe("projectAgentConversationVM", () => {
     ]);
   });
 
+  it("marks user text and each settled turn's latest assistant text reply as copyable", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          status: "completed"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "First request" },
+            userMessages: [{ id: "user-1", body: "First request" }],
+            agentMessages: [{ id: "assistant-1", body: "Older answer" }],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-1", body: "Older answer" }
+              }
+            ]
+          },
+          {
+            id: "turn-2",
+            userMessage: { id: "user-2", body: "Second request" },
+            userMessages: [{ id: "user-2", body: "Second request" }],
+            agentMessages: [{ id: "assistant-2", body: "Latest answer" }],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-2", body: "Latest answer" }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const messageRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message"
+    );
+    const userMessages = messageRows
+      .filter((row) => row.speaker === "user")
+      .flatMap((row) => row.messages);
+    const assistantMessages = messageRows
+      .filter((row) => row.speaker === "assistant")
+      .flatMap((row) => row.messages);
+
+    expect(userMessages.map((message) => message.copyText)).toEqual([
+      "First request",
+      "Second request"
+    ]);
+    expect(
+      assistantMessages.map((message) => ({
+        id: message.id,
+        copyText: message.copyText ?? null
+      }))
+    ).toEqual([
+      { id: "assistant-1", copyText: "Older answer" },
+      { id: "assistant-2", copyText: "Latest answer" }
+    ]);
+  });
+
+  it("marks prior turn assistant replies copyable while the latest turn is still working", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "First request" },
+            userMessages: [{ id: "user-1", body: "First request" }],
+            agentMessages: [{ id: "assistant-1", body: "Prior answer" }],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-1", body: "Prior answer" }
+              }
+            ]
+          },
+          {
+            id: "turn-2",
+            userMessage: { id: "user-2", body: "Keep going" },
+            userMessages: [{ id: "user-2", body: "Keep going" }],
+            agentMessages: [{ id: "assistant-2", body: "Still working" }],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-2", body: "Still working" }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantMessages = conversation.rows
+      .filter(
+        (
+          row
+        ): row is Extract<
+          (typeof conversation.rows)[number],
+          { kind: "message" }
+        > => row.kind === "message" && row.speaker === "assistant"
+      )
+      .flatMap((row) => row.messages);
+
+    expect(
+      assistantMessages.map((message) => ({
+        id: message.id,
+        copyText: message.copyText ?? null
+      }))
+    ).toEqual([
+      { id: "assistant-1", copyText: "Prior answer" },
+      { id: "assistant-2", copyText: null }
+    ]);
+  });
+
+  it("does not mark assistant replies copyable while the session is working", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Stream a response" },
+            userMessages: [{ id: "user-1", body: "Stream a response" }],
+            agentMessages: [
+              {
+                id: "assistant-working",
+                body: "Still streaming"
+              }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-working",
+                  body: "Still streaming"
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRow?.messages[0]?.copyText).toBeUndefined();
+  });
+
   it("projects user prompt images before text and keeps the session workspace id", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({

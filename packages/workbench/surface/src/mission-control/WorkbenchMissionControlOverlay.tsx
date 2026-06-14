@@ -14,7 +14,8 @@ import {
 } from "@tutti-os/ui-system";
 import {
   shouldShowWorkbenchMissionControlLayoutHint,
-  shouldShowWorkbenchMissionControlLayoutPreset
+  shouldShowWorkbenchMissionControlLayoutPreset,
+  shouldShowWorkbenchMissionControlNoAvailableLayoutMessage
 } from "./layoutDock.ts";
 import type { WorkbenchMissionControlState } from "./useWorkbenchMissionControlState.ts";
 import type { WorkbenchMissionControlPhase } from "./useWorkbenchMissionControlPresence.ts";
@@ -95,6 +96,17 @@ export function WorkbenchMissionControlOverlay({
       option.preset
     )
   );
+  const showLayoutSelectionHint = shouldShowWorkbenchMissionControlLayoutHint(
+    state.selectedCount
+  );
+  const hasUsableLayoutPreset = layoutPresets.some((option) =>
+    state.canUsePreset(option.preset)
+  );
+  const showNoAvailableLayoutMessage =
+    shouldShowWorkbenchMissionControlNoAvailableLayoutMessage(
+      state.selectedCount,
+      hasUsableLayoutPreset
+    );
 
   useLayoutEffect(() => {
     const element = layoutDockContentRef.current;
@@ -108,7 +120,13 @@ export function WorkbenchMissionControlOverlay({
       Number.parseFloat(computedStyle.borderLeftWidth) +
       Number.parseFloat(computedStyle.borderRightWidth);
     setLayoutDockWidth(element.scrollWidth + horizontalChrome);
-  }, [i18n, layoutPresets.length, state.selectedCount]);
+  }, [
+    i18n,
+    layoutPresets.length,
+    showLayoutSelectionHint,
+    showNoAvailableLayoutMessage,
+    state.selectedCount
+  ]);
 
   return (
     <div
@@ -128,11 +146,13 @@ export function WorkbenchMissionControlOverlay({
               ref={layoutDockContentRef}
               className="workbench-mission-control__layout-dock-content"
             >
-              {shouldShowWorkbenchMissionControlLayoutHint(
-                state.selectedCount
-              ) ? (
+              {showLayoutSelectionHint ? (
                 <span className="workbench-mission-control__layout-hint">
                   {i18n.t("layoutSelectionHint")}
+                </span>
+              ) : showNoAvailableLayoutMessage ? (
+                <span className="workbench-mission-control__layout-hint">
+                  {i18n.t("noAvailableLayout")}
                 </span>
               ) : (
                 <div className="flex items-end gap-2">

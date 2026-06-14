@@ -23,7 +23,7 @@ import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.in
 import type {
   WorkspaceAppCenterApp,
   WorkspaceAppCenterViewState
-} from "../workspaceAppCenterTypes";
+} from "@tutti-os/workspace-app-center";
 import { createWorkspaceAppCenterOpenedLease } from "./workspaceAppCenterAnalytics.ts";
 import {
   workspaceAppCenterDockOrder,

@@ -2,7 +2,7 @@ import type { WorkbenchHostDockEntryState } from "@tutti-os/workbench-surface";
 import type {
   WorkspaceAppCenterApp,
   WorkspaceAppCenterRuntimeStatus
-} from "../workspaceAppCenterTypes";
+} from "@tutti-os/workspace-app-center";
 
 export interface WorkspaceAppCenterDockProjection {
   app: WorkspaceAppCenterApp;

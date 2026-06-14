@@ -1,4 +1,4 @@
-import { createDecorator } from "@zk-tech/bedrock/di";
+import { createDecorator } from "@tutti-os/infra/di";
 import type { WorkspaceCatalogReadableStoreState } from "./workspaceCatalogTypes";
 
 export interface IWorkspaceCatalogService {

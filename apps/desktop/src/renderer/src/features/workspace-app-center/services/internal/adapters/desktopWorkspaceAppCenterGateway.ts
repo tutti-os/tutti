@@ -19,7 +19,33 @@ import type {
   WorkspaceAppCenterSource,
   WorkspaceAppCenterRuntimeStatus,
   WorkspaceAppCenterSnapshot
-} from "../../workspaceAppCenterTypes";
+} from "@tutti-os/workspace-app-center";
+
+export interface DesktopWorkspaceAppExportResult {
+  appId: string;
+  archivePath: string;
+  artifactSha256: string;
+  artifactSizeBytes: number;
+  version: string;
+  workspaceId: string;
+}
+
+export interface DesktopWorkspaceAppCenterLocalFileGateway {
+  exportWorkspaceApp(
+    workspaceId: string,
+    appId: string,
+    input: { destinationPath: string; version?: string }
+  ): Promise<DesktopWorkspaceAppExportResult>;
+  importWorkspaceApp(
+    workspaceId: string,
+    input: { archivePath: string }
+  ): Promise<WorkspaceAppCenterSnapshot>;
+  replaceWorkspaceAppIcon(
+    workspaceId: string,
+    appId: string,
+    input: { sourcePath: string }
+  ): Promise<WorkspaceAppCenterApp>;
+}
 
 export interface WorkspaceAppLike {
   readonly appId: string;
@@ -60,7 +86,7 @@ export interface WorkspaceAppLocalizationLike {
 
 export function createDesktopWorkspaceAppCenterGateway(
   tuttidClient: TuttidClient
-): WorkspaceAppCenterGateway {
+): WorkspaceAppCenterGateway & DesktopWorkspaceAppCenterLocalFileGateway {
   return {
     async installWorkspaceApp(workspaceId, appId) {
       await tuttidClient.installWorkspaceApp(workspaceId, appId);

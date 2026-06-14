@@ -1,4 +1,4 @@
-import { InstantiationService, ServiceRegistry } from "@zk-tech/bedrock/di";
+import { InstantiationService, ServiceRegistry } from "@tutti-os/infra/di";
 import {
   isAnalyticsDebugAvailable,
   registerAnalyticsDebugServices

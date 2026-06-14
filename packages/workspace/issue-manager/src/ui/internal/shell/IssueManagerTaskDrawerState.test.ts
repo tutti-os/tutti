@@ -173,6 +173,20 @@ test("task drawer title wraps long unbroken text inside the panel", () => {
   );
 });
 
+test("task drawer header exposes an explicit back control", () => {
+  assert.match(taskDrawerSectionsSource, /ArrowLeftIcon/);
+  assert.match(taskDrawerSectionsSource, /BareIconButton/);
+  assert.match(
+    taskDrawerSectionsSource,
+    /aria-label=\{copy\.t\("actions\.closeTaskDetails"\)\}/
+  );
+  assert.match(
+    taskDrawerSectionsSource,
+    /title=\{copy\.t\("actions\.closeTaskDetails"\)\}/
+  );
+  assert.match(taskDrawerSectionsSource, /onClick=\{onClose\}/);
+});
+
 test("task delete confirmation wraps long unbroken titles", () => {
   assert.match(
     taskDrawerSectionsSource,

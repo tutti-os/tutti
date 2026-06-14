@@ -3,7 +3,7 @@ import {
   type AgentRichTextAtInsertResult,
   type AgentRichTextAtProvider
 } from "@tutti-os/agent-gui/agent-rich-text-at-provider";
-import type { WorkspaceAppCenterApp } from "@renderer/features/workspace-app-center/services/workspaceAppCenterTypes";
+import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 
 export interface DesktopWorkspaceAppMentionItem {
   readonly appId: string;

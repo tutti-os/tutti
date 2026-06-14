@@ -9,10 +9,11 @@ import type {
   WorkspaceAppCenterGateway,
   WorkspaceAppFactoryJob,
   WorkspaceAppCenterRuntimeStatus
-} from "../../workspaceAppCenterTypes.ts";
+} from "@tutti-os/workspace-app-center";
 import {
   normalizeWorkspaceAppCenterApp,
-  normalizeWorkspaceAppCenterSnapshot
+  normalizeWorkspaceAppCenterSnapshot,
+  type DesktopWorkspaceAppCenterLocalFileGateway
 } from "./desktopWorkspaceAppCenterGateway.ts";
 import { WorkspaceAppCenterService } from "../workspaceAppCenterService.ts";
 
@@ -1216,7 +1217,7 @@ function createFakeWorkspaceAppCenterGateway(
   onListWorkspaceApps?: () => void,
   getFactoryJobs: () => WorkspaceAppFactoryJob[] = () => [],
   getDeletedApps: () => WorkspaceApp[] = () => []
-): WorkspaceAppCenterGateway {
+): WorkspaceAppCenterGateway & DesktopWorkspaceAppCenterLocalFileGateway {
   const snapshot = (apps: readonly WorkspaceApp[] = [getApp()]) =>
     normalizeWorkspaceAppCenterSnapshot(
       createWorkspaceAppListResponse({

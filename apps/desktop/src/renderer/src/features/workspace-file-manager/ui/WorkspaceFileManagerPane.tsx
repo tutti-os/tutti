@@ -4,7 +4,7 @@ import {
   WorkspaceFileManager
 } from "@tutti-os/workspace-file-manager";
 import browserDockIconUrl from "@tutti-os/browser-node/assets/workspace-dock-website.png";
-import { useService } from "@zk-tech/bedrock/di";
+import { useService } from "@tutti-os/infra/di";
 import { useCallback, useEffect, useMemo } from "react";
 import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import { resolveOpenWithApplicationIconOverrideDataUrl } from "@shared/openWithApplicationIconOverrides";

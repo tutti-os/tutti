@@ -1,4 +1,15 @@
 export {
+  WorkspaceAppCenterController,
+  createWorkspaceAppCenterController,
+  createWorkspaceAppCenterStoreState,
+  type WorkspaceAppCenterControllerDependencies,
+  type WorkspaceAppCenterControllerHooks,
+  type WorkspaceAppCenterOperation,
+  type WorkspaceAppCenterOperationDetails,
+  type WorkspaceAppCenterRefreshDiscard,
+  type WorkspaceAppCenterUiAction
+} from "./appCenterController.ts";
+export {
   createWorkspaceAppIdentity,
   isWorkspaceAppId,
   normalizeWorkspaceAppId,

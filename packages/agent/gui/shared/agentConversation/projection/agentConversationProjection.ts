@@ -73,7 +73,12 @@ export function projectAgentConversationVM(
     rows.push(processing);
   }
 
-  const normalizedRows = mergeAdjacentAssistantMessageRows(rows);
+  const normalizedRows = projectMessageCopyText(
+    mergeAdjacentAssistantMessageRows(rows),
+    {
+      assistantCopyEligibleTurnIds: buildAssistantCopyEligibleTurnIds(detail)
+    }
+  );
 
   return {
     activity: detail.activity,
@@ -244,6 +249,116 @@ function mergeAdjacentAssistantMessageRows(
     merged.push(row);
   }
   return merged;
+}
+
+function projectMessageCopyText(
+  rows: readonly AgentTranscriptRowVM[],
+  options: { assistantCopyEligibleTurnIds: ReadonlySet<string> }
+): AgentTranscriptRowVM[] {
+  const assistantCopyTargetKeys = findLatestAssistantCopyTargetKeys(
+    rows,
+    options.assistantCopyEligibleTurnIds
+  );
+  return rows.map((row) => {
+    if (row.kind !== "message") {
+      return row;
+    }
+
+    let changed = false;
+    const messages = row.messages.map((message) => {
+      const copyText =
+        row.speaker === "user"
+          ? copyTextForUserMessage(message)
+          : assistantCopyTargetKeys.has(messageCopyTargetKey(row, message))
+            ? message.body
+            : null;
+      if ((message.copyText ?? null) === copyText) {
+        return message;
+      }
+      changed = true;
+      if (copyText) {
+        return { ...message, copyText };
+      }
+      const { copyText: _copyText, ...withoutCopyText } = message;
+      return withoutCopyText;
+    });
+
+    return changed ? { ...row, messages } : row;
+  });
+}
+
+function buildAssistantCopyEligibleTurnIds(
+  detail: WorkspaceAgentSessionDetailViewModel
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  detail.turns.forEach((turn, index) => {
+    if (index < detail.turns.length - 1 || isLatestTurnSettled(detail)) {
+      ids.add(turn.id);
+    }
+  });
+  return ids;
+}
+
+function findLatestAssistantCopyTargetKeys(
+  rows: readonly AgentTranscriptRowVM[],
+  eligibleTurnIds: ReadonlySet<string>
+): ReadonlySet<string> {
+  const targetKeys = new Set<string>();
+  const coveredTurnIds = new Set<string>();
+  for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
+    const row = rows[rowIndex];
+    if (
+      row?.kind !== "message" ||
+      row.speaker !== "assistant" ||
+      coveredTurnIds.has(row.turnId) ||
+      !eligibleTurnIds.has(row.turnId)
+    ) {
+      continue;
+    }
+    for (
+      let messageIndex = row.messages.length - 1;
+      messageIndex >= 0;
+      messageIndex -= 1
+    ) {
+      const message = row.messages[messageIndex];
+      if (message && isSettledTextMessageCopyCandidate(message)) {
+        targetKeys.add(messageCopyTargetKey(row, message));
+        coveredTurnIds.add(row.turnId);
+        break;
+      }
+    }
+  }
+  return targetKeys;
+}
+
+function messageCopyTargetKey(
+  row: AgentMessageRowVM,
+  message: AgentMessageContentVM
+): string {
+  return `${row.id}\u0000${message.id}`;
+}
+
+function copyTextForUserMessage(message: AgentMessageContentVM): string | null {
+  return isTextMessageCopyCandidate(message) ? message.body : null;
+}
+
+function isSettledTextMessageCopyCandidate(
+  message: AgentMessageContentVM
+): boolean {
+  return (
+    isTextMessageCopyCandidate(message) &&
+    message.statusKind !== "working" &&
+    message.statusKind !== "waiting"
+  );
+}
+
+function isTextMessageCopyCandidate(message: AgentMessageContentVM): boolean {
+  return (
+    message.body.trim() !== "" &&
+    message.contentKind !== "image-grid" &&
+    !message.visibleError &&
+    !message.systemNotice
+  );
 }
 
 function isMergeableAssistantMessageRow(

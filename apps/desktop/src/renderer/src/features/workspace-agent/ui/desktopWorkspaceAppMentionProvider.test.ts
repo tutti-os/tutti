@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentRichTextAtProvider } from "@tutti-os/agent-gui/agent-rich-text-at-provider";
-import type { WorkspaceAppCenterApp } from "@renderer/features/workspace-app-center/services/workspaceAppCenterTypes";
+import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import { createDesktopWorkspaceAppMentionProvider } from "./desktopWorkspaceAppMentionProvider.ts";
 
 test("workspace app mention provider uses localized Chinese app text", async () => {

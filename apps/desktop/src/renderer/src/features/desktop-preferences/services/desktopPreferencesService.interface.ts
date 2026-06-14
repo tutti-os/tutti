@@ -1,4 +1,4 @@
-import { createDecorator } from "@zk-tech/bedrock/di";
+import { createDecorator } from "@tutti-os/infra/di";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentComposerDefaults,

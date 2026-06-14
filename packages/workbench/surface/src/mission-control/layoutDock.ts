@@ -6,6 +6,13 @@ export function shouldShowWorkbenchMissionControlLayoutHint(
   return selectedCount < 2;
 }
 
+export function shouldShowWorkbenchMissionControlNoAvailableLayoutMessage(
+  selectedCount: number,
+  hasUsablePreset: boolean
+): boolean {
+  return selectedCount >= 2 && !hasUsablePreset;
+}
+
 export function shouldShowWorkbenchMissionControlLayoutPreset(
   selectedCount: number,
   preset: WorkbenchLayoutPreset

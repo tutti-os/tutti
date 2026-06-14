@@ -160,7 +160,7 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(mockState.markdownStreamingFlags.at(-1)).toBe(false);
   });
 
-  it("renders plain user messages as direct flow children without an extra group", () => {
+  it("renders plain user messages inside a copyable message group", () => {
     render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -175,11 +175,88 @@ describe("AgentTranscriptItemView render stability", () => {
     );
     expect(flow).toBeInstanceOf(HTMLElement);
     expect(flow?.children).toHaveLength(1);
-    expect(flow?.children[0]).toHaveClass(
+    const group = flow?.children.item(0);
+    expect(group).toBeInstanceOf(HTMLElement);
+    if (!(group instanceof HTMLElement)) {
+      throw new Error("Expected user message group to render.");
+    }
+    const bubble = group.children.item(0);
+    expect(bubble).toBeInstanceOf(HTMLElement);
+    if (!(bubble instanceof HTMLElement)) {
+      throw new Error("Expected user message bubble to render.");
+    }
+    expect(group).toHaveClass("agent-gui-conversation__message-group");
+    expect(group).toHaveAttribute("data-agent-message-speaker", "user");
+    expect(bubble).toHaveClass(
       "workspace-agents-status-panel__detail-user-message",
       "agent-gui-conversation__user-message-bubble"
     );
-    expect(flow?.children[0]).toHaveTextContent("User asks for a fix");
+    expect(group).toHaveTextContent("User asks for a fix");
+    expect(
+      group.querySelector(".agent-gui-conversation__message-copy-button")
+    ).toBeInstanceOf(HTMLButtonElement);
+  });
+
+  it("copies user message text through the agent host clipboard", async () => {
+    const writeText = vi.fn(async () => undefined);
+    installAgentHostClipboard(writeText);
+
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow()}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.copyMessage"
+      })
+    );
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("User asks for a fix");
+    });
+    expect(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.messageCopied"
+      })
+    ).toBeTruthy();
+  });
+
+  it("copies assistant markdown source through the agent host clipboard", async () => {
+    const writeText = vi.fn(async () => undefined);
+    installAgentHostClipboard(writeText);
+
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-copy-1",
+          turnId: "turn-1",
+          body: "Assistant **summary** with `code`",
+          copyText: "Assistant **summary** with `code`",
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.copyMessage"
+      })
+    );
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        "Assistant **summary** with `code`"
+      );
+    });
   });
 
   it("loads user prompt image attachments from the activity runtime", async () => {
@@ -308,6 +385,12 @@ describe("AgentTranscriptItemView render stability", () => {
     );
     expect(css).toMatch(
       /\.workspace-agents-status-panel__detail-user-message\.agent-gui-conversation__user-message-bubble\s*{[^}]*font-size:\s*13px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__message-copy-button\s*{[^}]*position:\s*absolute[^}]*opacity:\s*0/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__message-group:hover[\s\S]*?\.agent-gui-conversation__message-copy-button,[\s\S]*?\.agent-gui-conversation__message-group:focus-within[\s\S]*?\.agent-gui-conversation__message-copy-button\s*{[^}]*opacity:\s*1/s
     );
     expect(css).toMatch(
       /\.tsh-agent-object-token--file\s*{[^}]*font-size:\s*13px/s
@@ -478,11 +561,27 @@ function userMessageRow(message?: AgentMessageContentVM): AgentMessageRowVM {
         id: "user-1",
         turnId: "turn-1",
         body: "User asks for a fix",
+        copyText: "User asks for a fix",
         occurredAtUnixMs: 1
       }
     ],
     thinking: [],
     occurredAtUnixMs: 1
+  };
+}
+
+function installAgentHostClipboard(
+  writeText: (text: string) => Promise<void>
+): void {
+  (
+    window as unknown as {
+      agentHostApi?: unknown;
+    }
+  ).agentHostApi = {
+    agentGuiBatch: {},
+    clipboard: { writeText },
+    filesystem: {},
+    workspace: {}
   };
 }
 

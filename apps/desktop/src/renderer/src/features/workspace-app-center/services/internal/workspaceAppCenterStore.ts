@@ -1,5 +1,5 @@
 import { proxy } from "valtio";
-import type { WorkspaceAppCenterStoreState } from "../workspaceAppCenterTypes";
+import type { WorkspaceAppCenterStoreState } from "@tutti-os/workspace-app-center";
 
 export function createWorkspaceAppCenterStore(): WorkspaceAppCenterStoreState {
   return proxy({

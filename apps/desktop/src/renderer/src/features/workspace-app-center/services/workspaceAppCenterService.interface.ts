@@ -1,11 +1,11 @@
-import { createDecorator } from "@zk-tech/bedrock/di";
+import { createDecorator } from "@tutti-os/infra/di";
 import type {
   WorkspaceAppCenterApp,
   WorkspaceAppFactoryJob,
   WorkspaceAppFactoryProviderConfiguration,
   WorkspaceAppCenterReadableStoreState,
   WorkspaceAppCenterViewState
-} from "./workspaceAppCenterTypes";
+} from "@tutti-os/workspace-app-center";
 
 export interface IWorkspaceAppCenterService {
   readonly _serviceBrand: undefined;

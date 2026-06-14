@@ -38,7 +38,7 @@ import {
 } from "@tutti-os/ui-system";
 import { INotificationService } from "@tutti-os/ui-notifications";
 import type { CompositeNotificationMessage } from "@renderer/lib/compositeNotificationService";
-import { useService } from "@zk-tech/bedrock/di";
+import { useService } from "@tutti-os/infra/di";
 import { MessageCenterOpenedReporter } from "@renderer/features/analytics/reporters/message-center-opened/messageCenterOpenedReporter.ts";
 import { MessageCenterNotificationActionedReporter } from "@renderer/features/analytics/reporters/message-center-notification-actioned/messageCenterNotificationActionedReporter.ts";
 import { IReporterService } from "@renderer/features/analytics";

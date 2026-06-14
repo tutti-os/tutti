@@ -1,4 +1,4 @@
-import type { ServiceRegistry } from "@zk-tech/bedrock/di";
+import type { ServiceRegistry } from "@tutti-os/infra/di";
 import type { DesktopApi } from "@preload/types";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import { IAppUpdateService } from "./appUpdateService.interface";

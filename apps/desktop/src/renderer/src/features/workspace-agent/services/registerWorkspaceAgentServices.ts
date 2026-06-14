@@ -1,4 +1,4 @@
-import { SyncDescriptor, type ServiceRegistry } from "@zk-tech/bedrock/di";
+import { SyncDescriptor, type ServiceRegistry } from "@tutti-os/infra/di";
 import type {
   TuttidClient,
   TuttidEventStreamClient

@@ -25,7 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@tutti-os/ui-system";
-import { useService } from "@zk-tech/bedrock/di";
+import { useService } from "@tutti-os/infra/di";
 import {
   IAgentProviderStatusService,
   requestWorkspaceAgentGuiLaunch

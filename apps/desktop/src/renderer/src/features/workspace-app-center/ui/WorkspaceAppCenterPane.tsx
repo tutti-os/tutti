@@ -1,21 +1,25 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
-import { createAppCenterViewModel } from "../../../../../../../../packages/workspace/app-center/src/core/appCenterViewModel.ts";
 import type {
+  WorkspaceAppCenterApp,
+  WorkspaceAppCenterViewState,
   WorkspaceAppManifest,
   WorkspaceAppRecord,
   WorkspaceAppRuntimeState
-} from "../../../../../../../../packages/workspace/app-center/src/contracts/index.ts";
-import { workspaceAppManifestSchemaVersion } from "../../../../../../../../packages/workspace/app-center/src/contracts/index.ts";
-import { createAppCenterI18nRuntime } from "../../../../../../../../packages/workspace/app-center/src/i18n/appCenterI18n.ts";
+} from "@tutti-os/workspace-app-center";
+import {
+  createAppCenterViewModel,
+  workspaceAppManifestSchemaVersion
+} from "@tutti-os/workspace-app-center";
+import { createAppCenterI18nRuntime } from "@tutti-os/workspace-app-center/i18n";
 import type {
+  AppCenterAppTab,
   AppCenterFactoryProviderConfiguration,
   AppCenterFactoryProviderOption
-} from "../../../../../../../../packages/workspace/app-center/src/ui/AppCard.tsx";
-import { AppCenterPanel } from "../../../../../../../../packages/workspace/app-center/src/ui/AppCenterPanel.tsx";
+} from "@tutti-os/workspace-app-center/ui";
+import { AppCenterPanel } from "@tutti-os/workspace-app-center/ui";
 import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
 import type { AgentProviderStatus } from "@tutti-os/client-tuttid-ts";
-import { useService } from "@zk-tech/bedrock/di";
-import type { AppCenterAppTab } from "../../../../../../../../packages/workspace/app-center/src/ui/AppCenterPanel.tsx";
+import { useService } from "@tutti-os/infra/di";
 import {
   IAgentProviderStatusService,
   requestWorkspaceAgentGuiLaunch
@@ -28,10 +32,6 @@ import {
   resolveWorkspaceAgentGuiLabel,
   workspaceAgentGuiProviders
 } from "@renderer/features/workspace-workbench/services/workspaceAgentProviderCatalog";
-import type {
-  WorkspaceAppCenterApp,
-  WorkspaceAppCenterViewState
-} from "../services/workspaceAppCenterTypes";
 import { shouldShowWorkspaceApp } from "../services/workspaceAppVisibility.ts";
 import { useWorkspaceAppCenterService } from "./useWorkspaceAppCenterService.ts";
 

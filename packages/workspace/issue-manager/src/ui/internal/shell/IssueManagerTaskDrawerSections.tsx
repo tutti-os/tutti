@@ -1,5 +1,11 @@
 import { useState, type JSX } from "react";
-import { Badge, Button, ConfirmationDialog } from "@tutti-os/ui-system";
+import {
+  ArrowLeftIcon,
+  Badge,
+  BareIconButton,
+  Button,
+  ConfirmationDialog
+} from "@tutti-os/ui-system";
 import type {
   IssueManagerIssueSummary,
   IssueManagerTaskSummary
@@ -41,10 +47,12 @@ import {
 
 export function IssueManagerTaskDrawerHeader({
   controller,
+  onClose,
   selectedTask,
   view
 }: {
   controller: IssueManagerController;
+  onClose: () => void;
   selectedTask: IssueManagerTaskSummary | null;
   view: Pick<
     IssueManagerTaskDrawerViewState,
@@ -59,19 +67,29 @@ export function IssueManagerTaskDrawerHeader({
     <>
       <div className="grid gap-3 px-6 py-7">
         <div className="flex items-center justify-between gap-6">
-          {view.showTaskMetadata && selectedTask ? (
-            <IssueManagerTitleTooltip title={view.title}>
-              <h3 className="line-clamp-2 min-w-0 flex-1 whitespace-normal text-[15px] font-semibold leading-6 text-[var(--text-primary)] [overflow-wrap:anywhere]">
-                {view.title}
-              </h3>
-            </IssueManagerTitleTooltip>
-          ) : (
-            <IssueManagerTitleTooltip title={view.title}>
-              <h3 className="line-clamp-2 min-w-0 flex-1 whitespace-normal text-[15px] font-semibold leading-[1.35] text-[var(--text-primary)] [overflow-wrap:anywhere]">
-                {view.title}
-              </h3>
-            </IssueManagerTitleTooltip>
-          )}
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <BareIconButton
+              aria-label={copy.t("actions.closeTaskDetails")}
+              size="md"
+              title={copy.t("actions.closeTaskDetails")}
+              onClick={onClose}
+            >
+              <ArrowLeftIcon className="size-4" />
+            </BareIconButton>
+            {view.showTaskMetadata && selectedTask ? (
+              <IssueManagerTitleTooltip title={view.title}>
+                <h3 className="line-clamp-2 min-w-0 flex-1 whitespace-normal text-[15px] font-semibold leading-6 text-[var(--text-primary)] [overflow-wrap:anywhere]">
+                  {view.title}
+                </h3>
+              </IssueManagerTitleTooltip>
+            ) : (
+              <IssueManagerTitleTooltip title={view.title}>
+                <h3 className="line-clamp-2 min-w-0 flex-1 whitespace-normal text-[15px] font-semibold leading-[1.35] text-[var(--text-primary)] [overflow-wrap:anywhere]">
+                  {view.title}
+                </h3>
+              </IssueManagerTitleTooltip>
+            )}
+          </div>
           <div className="flex shrink-0 items-center gap-2">
             {view.showTaskActions && selectedTask ? (
               <>

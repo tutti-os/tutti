@@ -1,11 +1,7 @@
-export type WorkspaceAppCenterRuntimeStatus =
-  | "failed"
-  | "idle"
-  | "installing"
-  | "preparing"
-  | "running"
-  | "starting"
-  | "stopping";
+import type { WorkspaceAppRuntimeStatus } from "./runtime.ts";
+import type { WorkspaceAppFactoryJobStatus } from "./viewModel.ts";
+
+export type WorkspaceAppCenterRuntimeStatus = WorkspaceAppRuntimeStatus;
 
 export type WorkspaceAppCenterSource = "builtin" | "generated" | "imported";
 
@@ -77,25 +73,6 @@ export interface WorkspaceAppCenterSnapshot {
   catalogStatus: WorkspaceAppCenterCatalogStatus;
   catalogUpdatedAtUnixMs?: number | null;
 }
-
-export interface WorkspaceAppExportResult {
-  appId: string;
-  archivePath: string;
-  artifactSha256: string;
-  artifactSizeBytes: number;
-  version: string;
-  workspaceId: string;
-}
-
-export type WorkspaceAppFactoryJobStatus =
-  | "canceled"
-  | "failed"
-  | "generating"
-  | "preparing"
-  | "published"
-  | "queued"
-  | "ready"
-  | "validating";
 
 export interface WorkspaceAppFactoryJob {
   agentSessionId?: string | null;
@@ -186,20 +163,6 @@ export interface WorkspaceAppCenterGateway {
     workspaceId: string,
     appId: string
   ): Promise<WorkspaceAppCenterSnapshot>;
-  exportWorkspaceApp(
-    workspaceId: string,
-    appId: string,
-    input: { destinationPath: string; version?: string }
-  ): Promise<WorkspaceAppExportResult>;
-  importWorkspaceApp(
-    workspaceId: string,
-    input: { archivePath: string }
-  ): Promise<WorkspaceAppCenterSnapshot>;
-  replaceWorkspaceAppIcon(
-    workspaceId: string,
-    appId: string,
-    input: { sourcePath: string }
-  ): Promise<WorkspaceAppCenterApp>;
   listWorkspaceApps(workspaceId: string): Promise<WorkspaceAppCenterSnapshot>;
   refreshWorkspaceAppCatalog(
     workspaceId: string
