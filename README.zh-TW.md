@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/banner.png" alt="Tutti —— 人與 Agent 同頻協作的地方" width="720" />
+
 <img src="docs/assets/tutti-logo.png" alt="Tutti logo" width="120" />
 
 # Tutti
@@ -12,8 +14,6 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/website-tutti.sh-black.svg)](https://tutti.sh)
-
-<img src="docs/assets/banner.png" alt="Tutti —— 人與 Agent 同頻協作的地方" width="720" />
 
 </div>
 
