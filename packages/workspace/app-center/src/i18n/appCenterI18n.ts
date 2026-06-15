@@ -52,7 +52,7 @@ export const appCenterEn = {
     uninstallAppTitle: 'Uninstall "{{name}}"?',
     updateAppTitle: 'Update "{{name}}"?',
     updateRunningAppDescription:
-      "Updating will restart this app to apply the new version.",
+      "Updating will restart the app to apply changes.",
     uninstallAndDeleteAppDescription:
       "This uninstalls the app, deletes its app data, and removes it from your local apps.",
     uninstallAndDeleteAppTitle: 'Uninstall and delete "{{name}}"?'
@@ -70,7 +70,7 @@ export const appCenterEn = {
       agent: "Agent",
       appName: "App name",
       create: "Create app",
-      jobs: "Creation queue",
+      jobs: "In progress",
       model: "Model",
       modelReasoning: "Model and thinking depth",
       prompt: "Prompt",
@@ -80,10 +80,9 @@ export const appCenterEn = {
       templates: "Start from"
     },
     messages: {
-      factoryJobFailed:
-        "App creation failed. Open the agent session to view details.",
+      factoryJobFailed: "Creation failed. Open the agent session for details.",
       factoryJobFailedWithFix:
-        "App creation failed. Open the agent session or try Fix to view details.",
+        "Creation failed. Open the agent session or use Fix for details.",
       loadingConfiguration: "Loading configuration...",
       loadingProviders: "Loading agent providers...",
       noAgentProviders: "No available agent providers.",
@@ -167,118 +166,91 @@ export const appCenterEn = {
       validating: "Validating"
     }
   },
+  catalogApps: {
+    aiMediaCanvas: {
+      description: "Generate and organize AI images and videos on a canvas.",
+      name: "AI Canvas"
+    },
+    automation: {
+      description: "Create and schedule automation tasks.",
+      name: "Automation"
+    },
+    dailyProductRadar: {
+      description:
+        "Summarize daily new products and trending open-source projects.",
+      name: "Daily Product Radar"
+    },
+    groupChat: {
+      description: "Collaborate with multiple agents in a group chat.",
+      name: "Group Chat"
+    },
+    vibeDesign: {
+      description: "Create and iterate on design prototypes.",
+      name: "Prototype Design"
+    }
+  },
   comingSoonApps: {
     productCompetition: {
-      category: "Product and design",
+      category: "Product design",
       description:
-        "Compare competing products, extract positioning, and review product and design decisions.",
-      name: "Competitive Analysis"
+        "Compare competitor positioning, features, and experience to support product decisions.",
+      name: "Competitor Analysis"
     },
     designReview: {
-      category: "Product and design",
+      category: "Product design",
       description:
-        "Review product flows, interface details, and design quality before release.",
+        "Review flows, interfaces, and experience issues before release.",
       name: "Design Review"
     },
     groupChat: {
-      category: "Productivity",
-      description: "Get work done with your agents in group chat.",
+      category: "Other tools",
+      description: "Collaborate with multiple agents in a group chat.",
       name: "Group Chat"
     },
     aiPpt: {
-      category: "Office",
+      category: "Daily office",
       description:
-        "Create presentation outlines, slide structure, and polished decks with AI assistance.",
+        "Generate presentation outlines, slide structure, and first-draft content.",
       name: "AI PPT"
     },
     aiDocument: {
-      category: "Office",
-      description:
-        "Draft, rewrite, and organize workspace documents with AI assistance.",
-      name: "AI Docs"
+      category: "Daily office",
+      description: "Draft, rewrite, and organize documents.",
+      name: "AI Document"
     },
     aiSheet: {
-      category: "Office",
-      description:
-        "Build spreadsheet structures, analyze tables, and generate formulas with AI assistance.",
-      name: "AI Sheets"
+      category: "Daily office",
+      description: "Build spreadsheets and analyze data with AI assistance.",
+      name: "AI Spreadsheet"
     },
     openCut: {
       category: "Content creation",
       description:
-        "Edit videos on an open-source timeline with clips, cuts, and media tracks.",
+        "Open-source video editor with media arrangement and timeline editing.",
       name: "Open Cut"
     },
     calendar: {
-      category: "Productivity",
-      description:
-        "Track meetings, milestones, follow-ups, and shared workspace schedules.",
+      category: "Other tools",
+      description: "Manage schedules, meetings, and to-dos.",
       name: "Calendar"
     },
     documentSummarizer: {
-      category: "Productivity",
+      category: "Other tools",
       description:
-        "Summarize long documents into key points, action items, and concise briefs.",
+        "Extract conclusions, key points, and action items from long documents.",
       name: "Document Summarizer"
-    }
-  },
-  comingSoonTags: {
-    productCompetition: {
-      primary: "Market",
-      secondary: "Benchmark",
-      tertiary: "Insights"
-    },
-    designReview: {
-      primary: "UX",
-      secondary: "Heuristics",
-      tertiary: "Review"
-    },
-    groupChat: {
-      primary: "Chat",
-      secondary: "Team",
-      tertiary: "Sync"
-    },
-    aiPpt: {
-      primary: "Slides",
-      secondary: "Outline",
-      tertiary: "Deck"
-    },
-    aiDocument: {
-      primary: "Writing",
-      secondary: "Rewrite",
-      tertiary: "Docs"
-    },
-    aiSheet: {
-      primary: "Data",
-      secondary: "Formula",
-      tertiary: "Tables"
-    },
-    openCut: {
-      primary: "Video",
-      secondary: "Timeline",
-      tertiary: "Editing"
-    },
-    calendar: {
-      primary: "Schedule",
-      secondary: "Meetings",
-      tertiary: "Tasks"
-    },
-    documentSummarizer: {
-      primary: "Summary",
-      secondary: "Key points",
-      tertiary: "Actions"
     }
   },
   categories: {
     contentCreation: "Content creation",
-    office: "Office",
-    productDesign: "Product and design",
-    tools: "Productivity"
+    office: "Daily office",
+    productDesign: "Product design",
+    tools: "Other tools"
   },
   labels: {
     allApps: "All",
     appCategories: "App categories",
-    appList: "Apps",
+    appList: "App Center",
     appPlural: "Apps",
     appSingular: "App",
     failedCount: "{{count}} failed",
@@ -310,7 +282,7 @@ export const appCenterEn = {
     stopping: "Stopping",
     unavailable: "Unavailable"
   },
-  title: "Applications"
+  title: "App Center"
 } as const satisfies I18nDictionary;
 
 export const appCenterZhCN = {
@@ -344,7 +316,7 @@ export const appCenterZhCN = {
       "这会从当前工作区卸载该应用，并删除此工作区中的应用数据。",
     uninstallAppTitle: "卸载“{{name}}”？",
     updateAppTitle: "更新“{{name}}”？",
-    updateRunningAppDescription: "更新会重启应用以应用新版本。",
+    updateRunningAppDescription: "更新将重启应用后生效。",
     uninstallAndDeleteAppDescription:
       "这会卸载该应用、删除应用数据，并从本地应用列表移除。",
     uninstallAndDeleteAppTitle: "卸载并删除“{{name}}”？"
@@ -362,7 +334,7 @@ export const appCenterZhCN = {
       agent: "Agent",
       appName: "应用名称",
       create: "创建应用",
-      jobs: "创建队列",
+      jobs: "进行中",
       model: "模型",
       modelReasoning: "模型与思考深度",
       prompt: "提示词",
@@ -372,9 +344,8 @@ export const appCenterZhCN = {
       templates: "选择起点"
     },
     messages: {
-      factoryJobFailed: "应用创建失败。打开 Agent 会话查看详情。",
-      factoryJobFailedWithFix:
-        "应用创建失败。打开 Agent 会话或使用修复操作查看详情。",
+      factoryJobFailed: "创建失败，打开 Agent 会话查看详情。",
+      factoryJobFailedWithFix: "创建失败，打开 Agent 会话或使用修复查看详情。",
       loadingConfiguration: "正在加载配置...",
       loadingProviders: "正在加载 Agent Provider...",
       noAgentProviders: "暂无可用的 Agent Provider。",
@@ -458,110 +429,85 @@ export const appCenterZhCN = {
       validating: "验证中"
     }
   },
+  catalogApps: {
+    aiMediaCanvas: {
+      description: "在画布上生成和整理 AI 图片、视频",
+      name: "AI Canvas"
+    },
+    automation: {
+      description: "创建并定时运行自动化任务",
+      name: "自动化"
+    },
+    dailyProductRadar: {
+      description: "汇总每日新产品和热门开源项目",
+      name: "每日产品雷达"
+    },
+    groupChat: {
+      description: "在群里和多个 Agent 一起协作",
+      name: "群聊"
+    },
+    vibeDesign: {
+      description: "创建并迭代产品原型设计",
+      name: "产品原型设计"
+    }
+  },
   comingSoonApps: {
     productCompetition: {
-      category: "产品与设计",
-      description: "对比竞品定位、功能路径与设计表达，沉淀产品和设计决策依据。",
+      category: "产品设计",
+      description: "对比竞品定位、功能和体验，辅助产品决策",
       name: "竞品分析"
     },
     designReview: {
-      category: "产品与设计",
-      description: "评审产品流程、界面细节和设计质量，帮助发布前发现问题。",
+      category: "产品设计",
+      description: "检查流程、界面和体验问题",
       name: "设计评审"
     },
     groupChat: {
-      category: "工具",
-      description: "在群里跟你的 Agents 一起干活",
+      category: "其他工具",
+      description: "在群里和多个 Agent 一起协作",
       name: "群聊"
     },
     aiPpt: {
-      category: "办公",
-      description: "用 AI 辅助生成演示大纲、页面结构和成稿内容。",
+      category: "日常办公",
+      description: "生成演示大纲、页面结构和初稿内容",
       name: "AI PPT"
     },
     aiDocument: {
-      category: "办公",
-      description: "用 AI 辅助起草、改写和整理工作区文档。",
+      category: "日常办公",
+      description: "起草、改写和整理文档",
       name: "AI 文档"
     },
     aiSheet: {
-      category: "办公",
-      description: "用 AI 辅助搭建表格结构、分析数据并生成公式。",
+      category: "日常办公",
+      description: "用 AI 辅助搭建表格、分析数据",
       name: "AI 表格"
     },
     openCut: {
       category: "内容创作",
-      description: "开源时间线剪辑工具，用于编排素材、裁切片段和编辑视频轨道。",
+      description: "开源视频剪辑工具，支持素材编排和时间线编辑",
       name: "Open Cut"
     },
     calendar: {
-      category: "工具",
-      description: "管理会议、里程碑、跟进事项和共享日程。",
+      category: "其他工具",
+      description: "管理日程、会议和待办事项",
       name: "Calendar"
     },
     documentSummarizer: {
-      category: "工具",
-      description: "将长文档提炼为关键结论、行动项和简明摘要。",
+      category: "其他工具",
+      description: "提炼长文档的结论、要点和行动项",
       name: "文档总结器"
-    }
-  },
-  comingSoonTags: {
-    productCompetition: {
-      primary: "市场",
-      secondary: "对标",
-      tertiary: "洞察"
-    },
-    designReview: {
-      primary: "体验",
-      secondary: "准则",
-      tertiary: "评审"
-    },
-    groupChat: {
-      primary: "团队",
-      secondary: "协同",
-      tertiary: "工作"
-    },
-    aiPpt: {
-      primary: "幻灯片",
-      secondary: "大纲",
-      tertiary: "成稿"
-    },
-    aiDocument: {
-      primary: "写作",
-      secondary: "改写",
-      tertiary: "文档"
-    },
-    aiSheet: {
-      primary: "数据",
-      secondary: "公式",
-      tertiary: "表格"
-    },
-    openCut: {
-      primary: "视频",
-      secondary: "时间线",
-      tertiary: "剪辑"
-    },
-    calendar: {
-      primary: "日程",
-      secondary: "会议",
-      tertiary: "任务"
-    },
-    documentSummarizer: {
-      primary: "摘要",
-      secondary: "要点",
-      tertiary: "行动项"
     }
   },
   categories: {
     contentCreation: "内容创作",
-    office: "办公",
-    productDesign: "产品与设计",
-    tools: "工具"
+    office: "日常办公",
+    productDesign: "产品设计",
+    tools: "其他工具"
   },
   labels: {
     allApps: "全部",
     appCategories: "应用分类",
-    appList: "应用",
+    appList: "应用中心",
     appPlural: "App",
     appSingular: "App",
     failedCount: "{{count}} 个失败",
@@ -591,7 +537,7 @@ export const appCenterZhCN = {
     stopping: "停止中",
     unavailable: "不可用"
   },
-  title: "应用"
+  title: "应用中心"
 } as const satisfies I18nDictionary;
 
 export type AppCenterI18nKey = string;

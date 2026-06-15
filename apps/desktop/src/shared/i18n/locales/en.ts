@@ -163,7 +163,7 @@ export const en = {
       title: "Analytics events"
     },
     appCenter: {
-      dockLabel: "Applications"
+      dockLabel: "App Center"
     },
     info: {
       idDescription: "Stable identifier for preload and daemon coordination.",
@@ -404,7 +404,7 @@ export const en = {
       },
       nodes: {
         agent: "Agent",
-        appCenter: "Applications",
+        appCenter: "App Center",
         appWebview: "Workspace app",
         browser: "Browser",
         files: "Files",

@@ -121,10 +121,10 @@ const recommendedCategoryTabDefinitions: readonly (
     }
 )[] = [
   { id: "all", labelKey: null },
-  { id: "tools", labelKey: "categories.tools" },
-  { id: "content-creation", labelKey: "categories.contentCreation" },
   { id: "product-design", labelKey: "categories.productDesign" },
-  { id: "office", labelKey: "categories.office" }
+  { id: "content-creation", labelKey: "categories.contentCreation" },
+  { id: "office", labelKey: "categories.office" },
+  { id: "tools", labelKey: "categories.tools" }
 ];
 
 export interface AppCenterPanelProps {

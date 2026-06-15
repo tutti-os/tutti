@@ -159,7 +159,7 @@ export const zhCN = {
       title: "埋点事件"
     },
     appCenter: {
-      dockLabel: "应用"
+      dockLabel: "应用中心"
     },
     info: {
       idDescription: "用于 preload 和 daemon 协调的稳定标识。",
@@ -386,7 +386,7 @@ export const zhCN = {
       },
       nodes: {
         agent: "Agent",
-        appCenter: "应用",
+        appCenter: "应用中心",
         appWebview: "工作区应用",
         browser: "浏览器",
         files: "文件",
