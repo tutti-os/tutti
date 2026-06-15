@@ -854,7 +854,7 @@ describe("AgentMessageMarkdown", () => {
     expect(onLinkClick).not.toHaveBeenCalled();
   });
 
-  it("does not link relative file paths inside inline code", () => {
+  it("does not link relative file paths inside inline code without workspace context", () => {
     const onLinkClick = vi.fn();
     render(
       <AgentMessageMarkdown
@@ -867,6 +867,41 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.getByText("a.md")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "xxx" })).toBeNull();
     expect(onLinkClick).not.toHaveBeenCalled();
+  });
+
+  it("links relative file paths inside inline code when workspace context is provided", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content={
+          "已创建目录 [empty-files](empty-files/)，里面包含：\n- `xx.html`\n- `xx.md`"
+        }
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot: "/Users/local/project",
+          basePath: "/Users/local/project",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "xx.html" }));
+    fireEvent.click(screen.getByRole("link", { name: "xx.md" }));
+
+    expect(onLinkAction).toHaveBeenNthCalledWith(1, {
+      type: "open-workspace-file",
+      path: "/Users/local/project/empty-files/xx.html",
+      directoryPath: "/Users/local/project/empty-files",
+      workspaceRoot: "/Users/local/project",
+      source: "agent-markdown"
+    });
+    expect(onLinkAction).toHaveBeenNthCalledWith(2, {
+      type: "open-workspace-file",
+      path: "/Users/local/project/empty-files/xx.md",
+      directoryPath: "/Users/local/project/empty-files",
+      workspaceRoot: "/Users/local/project",
+      source: "agent-markdown"
+    });
   });
 
   it("does not treat ordinary inline code as a path", () => {
