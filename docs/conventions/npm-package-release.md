@@ -307,29 +307,27 @@ separate:
 reusable packages should consume UI system primitives and token-backed Tailwind
 utilities before introducing package-local CSS.
 
-Reusable packages should not publish their own stylesheet entrypoint by default.
-Prefer React components and Tailwind utilities that resolve through the
-consumer's Tailwind build and the shared UI system token layer.
+Reusable packages should not publish handwritten stylesheet contracts by
+default. Prefer React components and token-backed Tailwind utilities that are
+compiled by the package build.
 
-The current stylesheet entrypoint exceptions are explicit package contracts:
+Packages that render Tailwind utility classes must expose a `./styles.css`
+subpath. In the workspace `exports`, that subpath should point at a source CSS
+entrypoint that contains the package-local `@source` directive so `npm link` and
+workspace development can debug source class changes. In `publishConfig.exports`,
+the same subpath must point at the compiled CSS emitted by
+`tools/scripts/build-package-tailwind-css.mjs`.
 
-- `@tutti-os/agent-gui/styles.css` for the carried agent GUI,
-  session chrome, session transcript, and workspace-agent status panel
-  selectors that remain package-owned during the migration
-- `@tutti-os/workbench-surface/styles.css` for surface layout, window frames,
-  resize handles, snap previews, and dock/chrome positioning
-- `@tutti-os/workspace-terminal/styles.css` for the terminal node structural
-  shell, close guard, and xterm host container selectors
-
-Tailwind consumers should include reusable packages in their source scan when
-they consume packages that render Tailwind utility classes. For example:
+Consumers import package CSS; they should not add `@source` entries for
+published packages in `node_modules`:
 
 ```css
-@source "../node_modules/@tutti-os/workbench-surface/dist";
+@import "@tutti-os/workbench-surface/styles.css";
 ```
 
 For monorepo packages that render runtime Tailwind utility classes, declare the
-source root in `package.json` so repository checks can enforce consumer setup:
+source root in `package.json` so the package CSS build and repository checks can
+enforce the style contract:
 
 ```json
 {
@@ -339,21 +337,21 @@ source root in `package.json` so repository checks can enforce consumer setup:
 }
 ```
 
-Desktop renderer consumers should then add the matching package source path to
+Desktop renderer consumers should import the package stylesheet subpath from
 their Tailwind entrypoint. `pnpm check:ui-boundaries` validates this for
-workspace packages imported by `apps/desktop`, including mismatched `@source`
-paths that point at the wrong directory.
+workspace packages imported by `apps/desktop`.
 
 Package-local CSS should be rare. Add it only when a reusable package needs
-selectors, keyframes, or structure that is awkward to express through primitives
-and Tailwind utilities. When package-local CSS is necessary, it must use UI
-system tokens and must not contain app-specific product styling or user-visible
-copy.
+selectors, keyframes, dependency stylesheet imports, or source-scan entrypoints
+that are awkward to express through primitives and Tailwind utilities. When
+package-local CSS is necessary, it must use UI system tokens and must not contain
+app-specific product styling or user-visible copy.
 
 Do not add a public `./styles.css` export for a reusable package unless that CSS
-is genuinely part of the package's stable contract. If the same need would help
-multiple packages, add the token, primitive, or utility support to
-`@tutti-os/ui-system` instead.
+is genuinely part of the package's stable contract or the package renders
+Tailwind utilities that must be compiled for published consumers. If the same
+need would help multiple packages, add the token, primitive, or utility support
+to `@tutti-os/ui-system` instead.
 
 ## Access And Credentials
 

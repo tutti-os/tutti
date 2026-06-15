@@ -9,7 +9,8 @@
     "./core": "./src/core/index.ts",
     "./editor": "./src/editor/index.ts",
     "./plugins": "./src/plugins/index.ts",
-    "./types": "./src/types/index.ts"
+    "./types": "./src/types/index.ts",
+    "./styles.css": "./src/styles.css"
   },
   "files": [
     "dist",
@@ -21,7 +22,7 @@
     "directory": "packages/ui/rich-text"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts",
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/build-package-tailwind-css.mjs",
     "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -73,7 +74,8 @@
       "./types": {
         "types": "./dist/types/index.d.ts",
         "import": "./dist/types/index.js"
-      }
+      },
+      "./styles.css": "./dist/styles.css"
     },
     "types": "./dist/index.d.ts",
     "typesVersions": {
@@ -92,5 +94,9 @@
         ]
       }
     }
-  }
+  },
+  "sideEffects": [
+    "./src/styles.css",
+    "./dist/styles.css"
+  ]
 }

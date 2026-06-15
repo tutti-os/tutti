@@ -1,4 +1,7 @@
 @import "@tutti-os/ui-system/styles.css";
+@import "tailwindcss/theme" theme(reference);
+@source "..";
+@tailwind utilities source(none);
 
 :root {
   --workbench-window-border: var(--line-focus-window);

@@ -1,0 +1,9 @@
+@import "../../../ui/rich-text/src/styles.css";
+@import "../../../workbench/surface/src/styles/workbench.css";
+@import "../../file-preview/src/styles.css";
+@import "../../file-reference/src/styles.css";
+@import "../../user-project/src/styles.css";
+@import "tailwindcss/theme" theme(reference);
+@reference "@tutti-os/ui-system/styles.css";
+@source ".";
+@tailwind utilities source(none);

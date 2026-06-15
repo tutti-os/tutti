@@ -19,7 +19,7 @@
     "directory": "packages/workbench/surface"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/styles dist/styles",
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/build-package-tailwind-css.mjs",
     "test": "node --test --experimental-strip-types ./src/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -56,5 +56,9 @@
       "./styles.css": "./dist/styles/workbench.css"
     },
     "types": "./dist/index.d.ts"
-  }
+  },
+  "sideEffects": [
+    "./src/styles/workbench.css",
+    "./dist/styles/workbench.css"
+  ]
 }

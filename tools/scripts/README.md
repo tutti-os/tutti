@@ -19,7 +19,7 @@ Current examples include:
 - `smoke-desktop-transport.mjs` for daemon transport smoke validation
 - `check-i18n.mjs` for desktop locale parity, placeholder parity, i18n key references, and hardcoded user-visible copy candidates
 - `check-electron-runtime-boundaries.mjs` for Electron `main`/`preload` runtime import graph checks that catch React/TSX leaks and externalized workspace packages that resolve to raw source files
-- `check-ui-boundaries.mjs` for shared UI boundary enforcement across imports, CSS, SVG usage, and desktop Tailwind `@source` coverage for workspace packages that declare `tutti.tailwindSourceRoot`
+- `check-ui-boundaries.mjs` for shared UI boundary enforcement across imports, CSS, SVG usage, and desktop package stylesheet imports for workspace packages that declare `tutti.tailwindSourceRoot`
 - `build-tutti-app-release.mjs` for packaging an external Tutti app into a zip plus `release.json` and `latest.json`
 - `build-tutti-app-catalog.mjs` for merging app `release.json` files into the App Center remote catalog
 - `build-tutti-app-runtime-catalog.mjs` for merging managed app runtime artifact metadata into the runtime download catalog

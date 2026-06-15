@@ -48,11 +48,11 @@ Add the generated cache to the external app's `.gitignore`:
 .tutti-ui-system-dev/
 ```
 
-If the external app uses Tailwind CSS, include both the installed package output
-and the generated dev cache in the app's Tailwind source scan:
+If the external app uses the development cache, include only that cache in the
+app's Tailwind source scan. The installed package stylesheet is already compiled
+by the package build:
 
 ```css
-@source "../node_modules/@tutti-os/ui-system/dist";
 @source "../.tutti-ui-system-dev";
 ```
 

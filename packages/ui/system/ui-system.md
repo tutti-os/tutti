@@ -90,9 +90,9 @@ Use the script output as the source of truth for the mechanically-checkable rule
 
 - `check:ui-boundaries:staged` is the fast local hook variant for staged files
 - `check:ui-boundaries` is the full-repository variant for `pre-push` and CI
-- `@tutti-os/workbench-surface/styles.css`, `@tutti-os/workspace-terminal/styles.css`, and `@tutti-os/agent-gui/styles.css` are the only non-UI-system package stylesheets allowed by the boundary check
-- `@tutti-os/workbench-surface/styles.css` and `@tutti-os/workspace-terminal/styles.css` should remain structural and variable-driven, not product-branded
-- `@tutti-os/agent-gui/styles.css` is a deliberate package contract for the carried agent GUI and workspace-agent panel selectors that still rely on package-owned class names
+- packages that declare `tutti.tailwindSourceRoot` must expose `./styles.css` so published consumers import compiled package CSS instead of adding `@source` entries for package internals
+- structural stylesheets such as `@tutti-os/workbench-surface/styles.css` and `@tutti-os/workspace-terminal/styles.css` should remain variable-driven, not product-branded
+- `@tutti-os/agent-gui/styles.css` is a deliberate package contract for the carried agent GUI, workspace-agent panels, and the reusable workspace packages it renders
 
 Keep this check aligned with the package exports and file boundary rules:
 
@@ -344,18 +344,17 @@ Reusable packages outside `packages/ui/*` should not create their own visual
 systems. They should consume `@tutti-os/ui-system` primitives, icons, tokens, and
 token-backed Tailwind utilities as their default styling model.
 
-For reusable packages that render Tailwind utility classes, consumers are
-responsible for including the published package output in Tailwind source
-scanning. For example, a consumer of `@tutti-os/workbench-surface` should include
-that package's built output in its Tailwind entrypoint or equivalent build
-configuration:
+For reusable packages that render Tailwind utility classes, the package build is
+responsible for compiling those utilities into the package stylesheet. Consumers
+import the stylesheet subpath instead of adding `@source` entries for package
+internals:
 
 ```css
-@source "../node_modules/@tutti-os/workbench-surface/dist";
+@import "@tutti-os/workbench-surface/styles.css";
 ```
 
-Within this monorepo, reusable packages that require consumer Tailwind scanning
-should declare that requirement in their `package.json`:
+Within this monorepo, reusable packages that render runtime Tailwind classes
+should declare their source root in `package.json`:
 
 ```json
 {
@@ -365,16 +364,16 @@ should declare that requirement in their `package.json`:
 }
 ```
 
-`pnpm check:ui-boundaries` validates that the desktop renderer entrypoint
-`apps/desktop/src/renderer/src/style.css` includes matching `@source` directives
-for any imported workspace package that declares `tutti.tailwindSourceRoot`.
-It also validates that the path matches the declared source root and reports the
-exact `@source` line to add or replace.
+`pnpm check:ui-boundaries` validates that the package exports `./styles.css` for
+both source and publish surfaces, and that the desktop renderer entrypoint
+`apps/desktop/src/renderer/src/style.css` imports the stylesheet for any imported
+workspace package that declares `tutti.tailwindSourceRoot`.
 
 Tailwind source troubleshooting checklist:
 
-- if a reusable package introduces new utility classes but the desktop UI does not change at runtime, confirm the package declares `tutti.tailwindSourceRoot` when it renders runtime Tailwind classes
-- confirm the desktop renderer Tailwind entrypoint includes the package source path through `@source`
+- if a reusable package introduces new utility classes but the desktop UI does not change at runtime, confirm the package declares `tutti.tailwindSourceRoot` and its source `./styles.css` contains the package-local `@source`
+- confirm the desktop renderer Tailwind entrypoint imports the package stylesheet subpath
+- for published packages, run the package build and confirm the emitted CSS no longer contains `@source`, `@reference`, or `@tailwind`
 - re-run `pnpm check:ui-boundaries` before assuming the issue is a hot-reload or build-cache problem
 
 Package-local CSS in reusable packages is an exception, not the default. Add it
@@ -632,10 +631,9 @@ the stable entrypoints to a generated local cache.
   installed package in `node_modules`
 - the generated `.tutti-ui-system-dev/` cache belongs in the external app's
   `.gitignore`
-- Tailwind consumers must include both the installed package output and the
-  generated dev cache in source scanning, for example
-  `@source "../node_modules/@tutti-os/ui-system/dist";` and
-  `@source "../.tutti-ui-system-dev";`
+- Tailwind consumers using the dev cache must include that generated cache in
+  source scanning, for example `@source "../.tutti-ui-system-dev";`; the
+  installed package stylesheet is already compiled by the package build
 - do not make CI, production builds, or package publishing depend on the dev
   server
 - `@tutti-os/ui-system/dev-vite` may be imported only from bundler config or

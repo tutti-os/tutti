@@ -2,7 +2,6 @@
 @source ".";
 @source "../../../../packages/ui/system/src";
 @source "../.tutti-ui-system-dev";
-@source "../node_modules/@tutti-os/ui-system/dist";
 @reference "@tutti-os/ui-system/styles.css";
 
 :root {

@@ -1,4 +1,9 @@
 @import "@xterm/xterm/css/xterm.css";
+@import "../../../../workbench/surface/src/styles/workbench.css";
+@import "tailwindcss/theme" theme(reference);
+@reference "@tutti-os/ui-system/styles.css";
+@source "..";
+@tailwind utilities source(none);
 
 .workbench-window-shell[data-workbench-node-type-id="workspace-terminal"]
   .workbench-window {

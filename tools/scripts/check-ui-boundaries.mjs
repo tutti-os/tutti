@@ -71,11 +71,15 @@ const textExtensions = new Set([
   ".ts",
   ".tsx"
 ]);
-const rendererStyleDirectoryPath = dirname(rendererStyleEntryPath);
-const styleSourcesByEntryPath = new Map();
-const usedRendererTailwindSourcePackages = new Set();
-const packageTailwindSourceRequirements =
-  await loadPackageTailwindSourceRequirements();
+const styleImportsByEntryPath = new Map();
+const usedRendererTailwindStylePackages = new Set();
+const packageTailwindStyleRequirements =
+  await loadPackageTailwindStyleRequirements();
+const packageTailwindStyleSourcePaths = new Set(
+  Array.from(packageTailwindStyleRequirements.values())
+    .map((requirement) => requirement.sourceStylePath)
+    .filter(Boolean)
+);
 const inspectedFiles = new Set();
 
 const violations = [];
@@ -88,7 +92,7 @@ if (stagedOnly) {
   }
 }
 
-validateRendererTailwindSources();
+validateRendererTailwindStyleImports();
 
 if (violations.length > 0) {
   console.error("Found frontend boundary violations:");
@@ -199,8 +203,8 @@ async function inspectCssFile(relativePath, absolutePath) {
 
   if (thinTailwindStyleEntryPaths.has(relativePath)) {
     const lines = content.split("\n");
-    const styleSources = new Map();
-    styleSourcesByEntryPath.set(relativePath, styleSources);
+    const styleImports = new Map();
+    styleImportsByEntryPath.set(relativePath, styleImports);
 
     for (let index = 0; index < lines.length; index += 1) {
       const trimmed = lines[index].trim();
@@ -222,18 +226,33 @@ async function inspectCssFile(relativePath, absolutePath) {
         });
       }
 
+      const importMatch = trimmed.match(/^@import\s+["']([^"']+)["'];?$/);
+      if (importMatch) {
+        const importSpecifier = importMatch[1];
+        styleImports.set(importMatch[1], {
+          line: index + 1,
+          specifier: importSpecifier
+        });
+
+        if (importSpecifier.startsWith(".")) {
+          const resolvedImportPath = normalizePosix(
+            relative(
+              workspaceRoot,
+              join(dirname(absolutePath), importSpecifier)
+            )
+          );
+          styleImports.set(resolvedImportPath, {
+            line: index + 1,
+            specifier: importSpecifier
+          });
+        }
+        continue;
+      }
+
       const sourceMatch = trimmed.match(/^@source\s+["']([^"']+)["'];?$/);
       if (!sourceMatch) {
         continue;
       }
-
-      const resolvedSourcePath = normalizePosix(
-        relative(workspaceRoot, join(dirname(absolutePath), sourceMatch[1]))
-      );
-      styleSources.set(resolvedSourcePath, {
-        line: index + 1,
-        sourceLiteral: sourceMatch[1]
-      });
     }
   }
 }
@@ -343,9 +362,9 @@ function inspectDevViteImports(relativePath, content) {
 }
 
 function registerRendererTailwindSourcePackageUsage(specifier) {
-  for (const packageName of packageTailwindSourceRequirements.keys()) {
+  for (const packageName of packageTailwindStyleRequirements.keys()) {
     if (specifier === packageName || specifier.startsWith(`${packageName}/`)) {
-      usedRendererTailwindSourcePackages.add(packageName);
+      usedRendererTailwindStylePackages.add(packageName);
     }
   }
 }
@@ -372,6 +391,7 @@ function isIgnoredPath(relativePath) {
 function isAllowedCssFile(relativePath) {
   return (
     allowedCssFiles.has(relativePath) ||
+    packageTailwindStyleSourcePaths.has(relativePath) ||
     allowedCssPrefixes.some((prefix) => relativePath.startsWith(prefix))
   );
 }
@@ -448,7 +468,7 @@ function normalizePosix(path) {
   return path.split(sep).join("/");
 }
 
-async function loadPackageTailwindSourceRequirements() {
+async function loadPackageTailwindStyleRequirements() {
   const requirements = new Map();
   await walkPackageDirectory(join(workspaceRoot, "packages"), requirements);
   return requirements;
@@ -484,62 +504,74 @@ async function walkPackageDirectory(directory, requirements) {
       continue;
     }
 
+    const sourceStylePath = readPackageStyleExport(manifest.exports);
+    const publishStylePath = readPackageStyleExport(
+      manifest.publishConfig?.exports
+    );
+
+    if (!sourceStylePath || !publishStylePath) {
+      violations.push({
+        file: relativeManifestPath,
+        line: 1,
+        message:
+          "packages that declare tutti.tailwindSourceRoot must export and publish ./styles.css so Tailwind utilities are compiled by the package build",
+        rule: "tailwind-style-export"
+      });
+      continue;
+    }
+
     requirements.set(manifest.name, {
       packageDirectoryPath,
-      sourcePath: normalizePosix(join(packageDirectoryPath, tailwindSourceRoot))
+      sourcePath: normalizePosix(
+        join(packageDirectoryPath, tailwindSourceRoot)
+      ),
+      sourceStylePath: normalizePosix(
+        join(packageDirectoryPath, sourceStylePath)
+      ),
+      styleSpecifier: `${manifest.name}/styles.css`
     });
   }
 }
 
-function validateRendererTailwindSources() {
-  const rendererStyleSources =
-    styleSourcesByEntryPath.get(rendererStyleEntryPath) ?? new Map();
+function validateRendererTailwindStyleImports() {
+  const rendererStyleImports =
+    styleImportsByEntryPath.get(rendererStyleEntryPath) ?? new Map();
 
-  for (const packageName of usedRendererTailwindSourcePackages) {
-    const requirement = packageTailwindSourceRequirements.get(packageName);
+  for (const packageName of usedRendererTailwindStylePackages) {
+    const requirement = packageTailwindStyleRequirements.get(packageName);
     if (!requirement) {
       continue;
     }
 
-    if (rendererStyleSources.has(requirement.sourcePath)) {
-      continue;
-    }
-
-    const expectedSourceLiteral = normalizePosix(
-      relative(rendererStyleDirectoryPath, requirement.sourcePath)
-    );
-    const mismatchedSourceEntry = findRendererSourceEntryForPackage(
-      rendererStyleSources,
-      requirement.packageDirectoryPath
-    );
-
-    if (mismatchedSourceEntry) {
-      violations.push({
-        file: rendererStyleEntryPath,
-        line: mismatchedSourceEntry.line,
-        message: `renderer style.css has the wrong @source for ${packageName}. Expected "@source \\"${expectedSourceLiteral}\\";" but found "@source \\"${mismatchedSourceEntry.sourceLiteral}\\";".`,
-        rule: "tailwind-source"
-      });
+    if (
+      rendererStyleImports.has(requirement.styleSpecifier) ||
+      rendererStyleImports.has(requirement.sourceStylePath)
+    ) {
       continue;
     }
 
     violations.push({
       file: rendererStyleEntryPath,
       line: 1,
-      message: `renderer style.css is missing @source for ${packageName}. Add: @source "${expectedSourceLiteral}";`,
-      rule: "tailwind-source"
+      message: `renderer style.css is missing the package Tailwind stylesheet for ${packageName}. Add: @import "${requirement.styleSpecifier}";`,
+      rule: "tailwind-style-import"
     });
   }
 }
 
-function findRendererSourceEntryForPackage(styleSources, packageDirectoryPath) {
-  for (const [sourcePath, entry] of styleSources.entries()) {
-    if (
-      sourcePath === packageDirectoryPath ||
-      sourcePath.startsWith(`${packageDirectoryPath}/`)
-    ) {
-      return entry;
-    }
+function readPackageStyleExport(exportsField) {
+  const value = exportsField?.["./styles.css"];
+
+  if (typeof value === "string") {
+    return value.replace(/^\.\//, "");
+  }
+
+  if (value && typeof value === "object" && typeof value.default === "string") {
+    return value.default.replace(/^\.\//, "");
+  }
+
+  if (value && typeof value === "object" && typeof value.import === "string") {
+    return value.import.replace(/^\.\//, "");
   }
 
   return null;

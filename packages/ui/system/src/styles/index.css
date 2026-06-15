@@ -1,4 +1,7 @@
 @import "@fontsource-variable/lexend";
+@import "tailwindcss/theme" theme(reference);
 @import "./theme.css";
 @import "./semantic.css";
 @import "./base.css";
+@source "..";
+@tailwind utilities source(none);

@@ -1,0 +1,4 @@
+@import "tailwindcss/theme" theme(reference);
+@reference "@tutti-os/ui-system/styles.css";
+@source ".";
+@tailwind utilities source(none);

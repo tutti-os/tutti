@@ -15,7 +15,8 @@
     "./electron-preload": "./src/electron-preload/index.ts",
     "./i18n": "./src/i18n/index.ts",
     "./react": "./src/react/index.ts",
-    "./workbench": "./src/workbench/index.ts"
+    "./workbench": "./src/workbench/index.ts",
+    "./styles.css": "./src/styles.css"
   },
   "files": [
     "dist",
@@ -27,7 +28,7 @@
     "directory": "packages/browser/workbench-node"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets",
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets && node ../../../tools/scripts/build-package-tailwind-css.mjs",
     "test": "node --test --experimental-strip-types ./src/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -96,8 +97,13 @@
       "./workbench": {
         "types": "./dist/workbench/index.d.ts",
         "import": "./dist/workbench/index.js"
-      }
+      },
+      "./styles.css": "./dist/styles.css"
     },
     "types": "./dist/index.d.ts"
-  }
+  },
+  "sideEffects": [
+    "./src/styles.css",
+    "./dist/styles.css"
+  ]
 }

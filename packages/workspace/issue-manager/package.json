@@ -17,7 +17,8 @@
     "./services": "./src/services/index.ts",
     "./ui": "./src/ui/index.ts",
     "./workbench/constants": "./src/workbench/constants.ts",
-    "./workbench": "./src/workbench/index.ts"
+    "./workbench": "./src/workbench/index.ts",
+    "./styles.css": "./src/styles.css"
   },
   "files": [
     "dist",
@@ -30,7 +31,7 @@
     "directory": "packages/workspace/issue-manager"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets",
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets && node ../../../tools/scripts/build-package-tailwind-css.mjs",
     "test": "tsx --test \"./src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -103,8 +104,13 @@
       "./workbench": {
         "types": "./dist/workbench/index.d.ts",
         "import": "./dist/workbench/index.js"
-      }
+      },
+      "./styles.css": "./dist/styles.css"
     },
     "types": "./dist/index.d.ts"
-  }
+  },
+  "sideEffects": [
+    "./src/styles.css",
+    "./dist/styles.css"
+  ]
 }

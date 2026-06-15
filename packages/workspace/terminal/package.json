@@ -9,8 +9,8 @@
     "./contracts": "./src/contracts/index.ts",
     "./i18n": "./src/i18n/index.ts",
     "./react": "./src/react/index.ts",
-    "./styles.css": "./src/styles/terminal.css",
-    "./workbench": "./src/workbench/index.ts"
+    "./workbench": "./src/workbench/index.ts",
+    "./styles.css": "./src/styles/terminal.css"
   },
   "files": [
     "dist",
@@ -22,7 +22,7 @@
     "directory": "packages/workspace/terminal"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/styles dist/styles",
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/build-package-tailwind-css.mjs",
     "test": "node --test --experimental-strip-types ./src/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -72,12 +72,16 @@
         "types": "./dist/react/index.d.ts",
         "import": "./dist/react/index.js"
       },
-      "./styles.css": "./dist/styles/terminal.css",
       "./workbench": {
         "types": "./dist/workbench/index.d.ts",
         "import": "./dist/workbench/index.js"
-      }
+      },
+      "./styles.css": "./dist/styles/terminal.css"
     },
     "types": "./dist/index.d.ts"
-  }
+  },
+  "sideEffects": [
+    "./src/styles/terminal.css",
+    "./dist/styles/terminal.css"
+  ]
 }
