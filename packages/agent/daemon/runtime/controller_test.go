@@ -441,6 +441,35 @@ func TestControllerExecTurnContextHasNoDeadline(t *testing.T) {
 	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
 }
 
+func TestControllerExecPassesOnlyExplicitDisplayPrompt(t *testing.T) {
+	t.Parallel()
+
+	adapter := newBlockingExecAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:   "room-1",
+		Provider: ProviderCodex,
+		CWD:      "/workspace",
+		Title:    "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("ordinary prompt"),
+	}); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	adapter.waitForPrompt(t, "ordinary prompt")
+	if displays := adapter.displayPrompts(); len(displays) != 1 || displays[0] != "" {
+		t.Fatalf("display prompts = %#v, want one empty explicit prompt", displays)
+	}
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+}
+
 func TestControllerExecRejectsPromptDuringActiveTurn(t *testing.T) {
 	t.Parallel()
 
@@ -1459,6 +1488,7 @@ func (workingOnlyAdapter) Cancel(context.Context, Session, string) ([]activitysh
 type blockingExecAdapter struct {
 	mu       sync.Mutex
 	seen     []string
+	displays []string
 	contexts chan context.Context
 	started  chan string
 	releases chan struct{}
@@ -1482,10 +1512,11 @@ func (*blockingExecAdapter) Resume(context.Context, Session) error { return nil 
 
 func (*blockingExecAdapter) Close(context.Context, Session) error { return nil }
 
-func (a *blockingExecAdapter) Exec(ctx context.Context, session Session, content []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
+func (a *blockingExecAdapter) Exec(ctx context.Context, session Session, content []PromptContentBlock, displayPrompt string, turnID string, emit EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
 	prompt := promptDisplayText(content)
 	a.mu.Lock()
 	a.seen = append(a.seen, prompt)
+	a.displays = append(a.displays, displayPrompt)
 	a.mu.Unlock()
 	a.contexts <- ctx
 	emit([]activityshared.Event{
@@ -1534,6 +1565,12 @@ func (a *blockingExecAdapter) prompts() []string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return append([]string(nil), a.seen...)
+}
+
+func (a *blockingExecAdapter) displayPrompts() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]string(nil), a.displays...)
 }
 
 type deferredRemoteCancelAdapter struct {

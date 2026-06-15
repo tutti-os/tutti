@@ -927,11 +927,17 @@ function messageRole(
 }
 
 function messageText(message: WorkspaceAgentActivityMessage): string {
+  const payloadDisplayPrompt =
+    typeof message.payload?.displayPrompt === "string"
+      ? message.payload.displayPrompt
+      : "";
   const payloadContent =
     typeof message.payload?.content === "string" ? message.payload.content : "";
   const payloadText =
     typeof message.payload?.text === "string" ? message.payload.text : "";
-  return (payloadContent || payloadText).replace(/\s+/g, " ").trim();
+  return (payloadDisplayPrompt || payloadText || payloadContent)
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function compareMessagesAscending(
@@ -979,11 +985,15 @@ function timelineItemRole(
 }
 
 function timelineItemText(item: WorkspaceAgentActivityTimelineItem): string {
+  const payloadDisplayPrompt =
+    typeof item.payload?.displayPrompt === "string"
+      ? item.payload.displayPrompt
+      : "";
   const payloadContent =
     typeof item.payload?.content === "string" ? item.payload.content : "";
   const payloadText =
     typeof item.payload?.text === "string" ? item.payload.text : "";
-  return (payloadContent || item.content || payloadText)
+  return (payloadDisplayPrompt || payloadText || item.content || payloadContent)
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -1498,13 +1508,17 @@ function normalizedTimelineItemBody(
   item: WorkspaceAgentActivityTimelineItem
 ): string {
   const content =
-    typeof item.content === "string" && item.content.trim()
-      ? item.content
-      : typeof item.payload?.content === "string" && item.payload.content.trim()
-        ? item.payload.content
-        : typeof item.payload?.text === "string"
-          ? item.payload.text
-          : "";
+    typeof item.payload?.displayPrompt === "string" &&
+    item.payload.displayPrompt.trim()
+      ? item.payload.displayPrompt
+      : typeof item.payload?.text === "string" && item.payload.text.trim()
+        ? item.payload.text
+        : typeof item.payload?.content === "string" &&
+            item.payload.content.trim()
+          ? item.payload.content
+          : typeof item.content === "string"
+            ? item.content
+            : "";
   return content.trim();
 }
 

@@ -654,6 +654,79 @@ describe("projectAgentConversationVM", () => {
     });
   });
 
+  it("replaces rich user prompt text blocks with displayPrompt while preserving images", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          workspaceId: "room-1"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [
+              {
+                id: "user-1",
+                body: "Run Automation",
+                sourceTimelineItems: [
+                  {
+                    id: 1,
+                    agentSessionId: "session-1",
+                    eventId: "event-1",
+                    actorType: "user",
+                    actorId: "user",
+                    itemType: "message",
+                    role: "user",
+                    payload: {
+                      displayPrompt: "Run Automation",
+                      content: [
+                        { type: "text", text: "long automation prompt" },
+                        {
+                          type: "image",
+                          mimeType: "image/png",
+                          attachmentId: "attachment-1",
+                          name: "screen.png"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages.map((message) => message.contentKind)).toEqual([
+      "image-grid",
+      "text"
+    ]);
+    expect(userRow?.messages[0]?.images?.[0]?.attachmentId).toBe(
+      "attachment-1"
+    );
+    expect(userRow?.messages[1]?.body).toBe("Run Automation");
+    expect(userRow?.messages.map((message) => message.body)).not.toContain(
+      "long automation prompt"
+    );
+  });
+
   it("reuses unchanged transcript row references across incremental updates", () => {
     const firstTurn = detailViewModel().turns[0]!;
     const secondTurn = {

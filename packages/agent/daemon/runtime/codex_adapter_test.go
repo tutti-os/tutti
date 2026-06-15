@@ -922,6 +922,10 @@ func TestCodexAdapterExecUsesDisplayPromptForUserMessageOnly(t *testing.T) {
 	if !hasActivityMessage(emittedActivity, activityshared.MessageRoleUser, "Run Automation") {
 		t.Fatalf("emitted events = %#v, missing display prompt user message", emittedActivity)
 	}
+	userMessages := activityMessagesWithRole(emittedActivity, activityshared.MessageRoleUser)
+	if len(userMessages) == 0 || userMessages[0].Payload.Metadata["displayPrompt"] != "Run Automation" {
+		t.Fatalf("user message metadata = %#v, want display prompt", userMessages)
+	}
 	if hasActivityMessage(emittedActivity, activityshared.MessageRoleUser, "real automation prompt") {
 		t.Fatalf("emitted events = %#v, leaked provider prompt as user message", emittedActivity)
 	}

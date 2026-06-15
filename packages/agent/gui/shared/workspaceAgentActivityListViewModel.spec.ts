@@ -465,6 +465,47 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     });
   });
 
+  it("prefers displayPrompt for activity titles and latest summaries", () => {
+    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+      presences: [],
+      sessions: [
+        {
+          id: 10,
+          agentSessionId: "session-10",
+          presenceId: 1,
+          provider: "codex",
+          providerSessionId: "provider-10",
+          cwd: "/repo",
+          status: "working",
+          updatedAtUnixMs: 2000,
+          createdAtUnixMs: 2000,
+          title: "Codex"
+        }
+      ]
+    };
+
+    const view = buildWorkspaceAgentActivityListViewModel(snapshot, {
+      sessionMessagesById: {
+        "session-10": [
+          messageItem({
+            id: 1,
+            content: "long automation prompt",
+            payload: {
+              displayPrompt: "Run Automation",
+              text: "long automation prompt",
+              content: "long automation prompt"
+            }
+          })
+        ]
+      }
+    });
+
+    expect(view.activities[0]).toMatchObject({
+      title: "Run Automation",
+      latestActivitySummary: "Run Automation"
+    });
+  });
+
   it("treats resumed active sessions without a running turn as idle", () => {
     const snapshot: AgentHostWorkspaceAgentSnapshot = {
       presences: [],

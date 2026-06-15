@@ -155,6 +155,7 @@ function isAgentMessageRole(role: string): boolean {
 
 type MessageSummarySource =
   | "payload.summary"
+  | "payload.displayPrompt"
   | "payload.text"
   | "payload.content"
   | "payload.message"
@@ -183,6 +184,7 @@ function messageSummaryCandidates(
 ): MessageSummaryCandidate[] {
   const explicitCandidates = [
     summaryCandidate("payload.summary", message.payload.summary),
+    summaryCandidate("payload.displayPrompt", message.payload.displayPrompt),
     summaryCandidate("payload.text", message.payload.text),
     summaryCandidate("payload.content", message.payload.content),
     summaryCandidate("payload.message", message.payload.message),

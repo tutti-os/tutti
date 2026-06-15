@@ -561,13 +561,17 @@ describe("agentGuiConversationModel", () => {
             actorId: "user-1",
             itemType: "message.user",
             role: "user",
-            payload: { text: "AAA" },
+            payload: {
+              displayPrompt: "Run Automation",
+              text: "long automation prompt",
+              content: "long automation prompt"
+            },
             occurredAtUnixMs: 10
           })
         ]
       })
     ).toEqual({
-      title: "AAA",
+      title: "Run Automation",
       titleFallback: null
     });
   });
@@ -1238,7 +1242,11 @@ describe("agentGuiConversationModel", () => {
           },
           options: [
             { kind: "allow_once", name: "Yes", optionId: "default" },
-            { kind: "reject_once", name: "No, keep planning", optionId: "plan" }
+            {
+              kind: "reject_once",
+              name: "No, keep planning",
+              optionId: "plan"
+            }
           ]
         }
       },

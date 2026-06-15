@@ -694,6 +694,7 @@ function includesAny(value: string, needles: readonly string[]): boolean {
 function messageSummary(message: AgentActivityMessage): string {
   return firstNonEmptyString(
     stringValue(message.payload.summary),
+    stringValue(message.payload.displayPrompt),
     stringValue(message.payload.text),
     stringValue(message.payload.content),
     stringValue(message.payload.message),

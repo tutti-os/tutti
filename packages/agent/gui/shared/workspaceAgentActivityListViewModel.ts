@@ -1007,8 +1007,9 @@ function messageDisplayText(message: WorkspaceAgentActivityMessage): string {
   const payload = message.payload ?? {};
   const text = normalizeAgentTitleText(
     compactText(
-      stringValue(payload.content) ||
+      stringValue(payload.displayPrompt) ||
         stringValue(payload.text) ||
+        stringValue(payload.content) ||
         stringValue(payload.message) ||
         stringValue(payload.body) ||
         stringValue(payload.title) ||

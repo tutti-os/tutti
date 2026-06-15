@@ -302,6 +302,14 @@ test("needs-attention selectors use summary and timestamp fallbacks", () => {
   const items = selectNeedsAttentionItems(
     snapshotWithMessages([
       message({
+        messageId: "display-prompt",
+        payload: {
+          displayPrompt: "Display prompt wins",
+          summary: "Summary loses"
+        },
+        occurredAtUnixMs: 60
+      }),
+      message({
         messageId: "summary",
         payload: { summary: "Summary wins", title: "Title loses" },
         occurredAtUnixMs: 50
@@ -313,7 +321,7 @@ test("needs-attention selectors use summary and timestamp fallbacks", () => {
       }),
       message({
         messageId: "content",
-        payload: { content: "Content wins", text: "Text loses" },
+        payload: { content: "Content loses", text: "Text wins" },
         completedAtUnixMs: 30
       }),
       message({
@@ -330,9 +338,10 @@ test("needs-attention selectors use summary and timestamp fallbacks", () => {
   assert.deepEqual(
     items.map((item) => [item.id, item.summary, item.occurredAtUnixMs]),
     [
+      ["session-1:display-prompt", "Display prompt wins", 60],
       ["session-1:summary", "Summary wins", 50],
       ["session-1:title", "Title wins", 40],
-      ["session-1:content", "Content wins", 30],
+      ["session-1:content", "Text wins", 30],
       ["session-1:kind", "message.assistant", 1],
       ["session-1:text", "Text wins", 1]
     ]

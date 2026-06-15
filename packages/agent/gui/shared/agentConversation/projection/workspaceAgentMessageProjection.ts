@@ -326,6 +326,7 @@ function messageText(message: WorkspaceAgentActivityMessage): string {
   const payload = normalizedPayload(message.payload);
   const title = messagePayloadString(message, "title");
   return firstNonEmptyString(
+    stringValue(payload.displayPrompt),
     stringValue(payload.text),
     stringValue(payload.content),
     stringValue(payload.message),

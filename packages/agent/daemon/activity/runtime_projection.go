@@ -676,11 +676,14 @@ func timelineDisplayMessageRole(item WorkspaceAgentTimelineItem) string {
 
 func timelineDisplayMessageContent(item WorkspaceAgentTimelineItem) string {
 	if item.Payload != nil {
-		if content, ok := item.Payload["content"].(string); ok && strings.TrimSpace(content) != "" {
-			return content
+		if displayPrompt, ok := item.Payload["displayPrompt"].(string); ok && strings.TrimSpace(displayPrompt) != "" {
+			return displayPrompt
 		}
 		if text, ok := item.Payload["text"].(string); ok && strings.TrimSpace(text) != "" {
 			return text
+		}
+		if content, ok := item.Payload["content"].(string); ok && strings.TrimSpace(content) != "" {
+			return content
 		}
 	}
 	return ""

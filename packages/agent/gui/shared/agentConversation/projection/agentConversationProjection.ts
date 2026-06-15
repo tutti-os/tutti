@@ -576,7 +576,14 @@ function userPromptContentBlocks(
   if (!content) {
     return [];
   }
-  return content.flatMap((raw): UserPromptContentBlock[] => {
+  const displayPrompt = firstString(
+    message.sourceTimelineItems?.map((candidate) =>
+      typeof candidate.payload?.displayPrompt === "string"
+        ? candidate.payload.displayPrompt
+        : ""
+    ) ?? []
+  );
+  const blocks = content.flatMap((raw): UserPromptContentBlock[] => {
     const block =
       raw && typeof raw === "object" && !Array.isArray(raw)
         ? (raw as Record<string, unknown>)
@@ -585,6 +592,9 @@ function userPromptContentBlocks(
       return [];
     }
     if (block.type === "text" && typeof block.text === "string") {
+      if (displayPrompt) {
+        return [];
+      }
       return [{ type: "text", text: block.text }];
     }
     if (block.type !== "image") {
@@ -618,6 +628,20 @@ function userPromptContentBlocks(
       }
     ];
   });
+  if (!displayPrompt) {
+    return blocks;
+  }
+  return [{ type: "text", text: displayPrompt }, ...blocks];
+}
+
+function firstString(values: readonly string[]): string {
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return "";
 }
 
 function projectTurnAgentRows(

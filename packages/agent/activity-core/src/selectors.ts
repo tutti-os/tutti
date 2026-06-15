@@ -235,10 +235,11 @@ function needsAttentionItemFromMessage(
 
 function messageSummary(message: AgentActivityMessage): string {
   return (
+    stringValue(message.payload.displayPrompt) ||
     stringValue(message.payload.summary) ||
     stringValue(message.payload.title) ||
-    stringValue(message.payload.content) ||
     stringValue(message.payload.text) ||
+    stringValue(message.payload.content) ||
     message.kind
   );
 }

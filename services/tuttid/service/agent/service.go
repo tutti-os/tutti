@@ -95,7 +95,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		input.PermissionModeID = nil
 	}
 	input.AgentSessionID = agentSessionIDOrNew(input.AgentSessionID)
-	normalizedContent, displayPrompt, err := normalizePromptContent(input.InitialContent)
+	normalizedContent, _, err := normalizePromptContent(input.InitialContent)
 	if err != nil {
 		return Session{}, err
 	}
@@ -140,7 +140,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		})
 		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
 	}
-	content, displayPrompt, err := s.prepareNormalizedPromptContentForExec(workspaceID, session.ID, normalizedContent, displayPrompt)
+	content, _, err := s.prepareNormalizedPromptContentForExec(workspaceID, session.ID, normalizedContent, "")
 	if err != nil {
 		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
 			WorkspaceID:    workspaceID,
@@ -148,9 +148,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		})
 		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
 	}
-	if strings.TrimSpace(input.InitialDisplayPrompt) != "" {
-		displayPrompt = input.InitialDisplayPrompt
-	}
+	displayPrompt := strings.TrimSpace(input.InitialDisplayPrompt)
 	if _, err := s.controller().Exec(ctx, RuntimeExecInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: session.ID,
@@ -474,20 +472,18 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	if _, err := s.ensureRuntimeSession(ctx, workspaceID, agentSessionID); err != nil {
 		return Session{}, err
 	}
-	normalizedContent, displayPrompt, err := normalizePromptContent(input.Content)
+	normalizedContent, _, err := normalizePromptContent(input.Content)
 	if err != nil {
 		return Session{}, err
 	}
 	if err := s.validatePromptContentForExec(ctx, workspaceID, agentSessionID, normalizedContent); err != nil {
 		return Session{}, err
 	}
-	content, displayPrompt, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, displayPrompt)
+	content, _, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, "")
 	if err != nil {
 		return Session{}, err
 	}
-	if strings.TrimSpace(input.DisplayPrompt) != "" {
-		displayPrompt = input.DisplayPrompt
-	}
+	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
 	result, err := s.controller().Exec(ctx, RuntimeExecInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,

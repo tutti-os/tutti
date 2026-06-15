@@ -449,9 +449,6 @@ func (c *Controller) Exec(_ context.Context, input ExecInput) (ExecResult, error
 		return ExecResult{}, fmt.Errorf("prompt is required")
 	}
 	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
-	if displayPrompt == "" {
-		displayPrompt = promptDisplayText(content)
-	}
 	if promptAdapter, ok := adapter.(PromptContentAdapter); ok {
 		if err := promptAdapter.ValidatePromptContent(session, content); err != nil {
 			return ExecResult{}, err

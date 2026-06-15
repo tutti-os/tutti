@@ -356,6 +356,9 @@ func textMessageUpdateFromSessionEvent(
 	if content, ok := event.Payload.Metadata["content"]; ok {
 		payload["content"] = acpSanitizeImagePayload(content)
 	}
+	if displayPrompt := stringFromPayload(event.Payload.Metadata, "displayPrompt"); displayPrompt != "" {
+		payload["displayPrompt"] = displayPrompt
+	}
 	update := agentsessionstore.WorkspaceAgentMessageUpdate{
 		AgentSessionID:   strings.TrimSpace(sessionID),
 		MessageID:        messageID,

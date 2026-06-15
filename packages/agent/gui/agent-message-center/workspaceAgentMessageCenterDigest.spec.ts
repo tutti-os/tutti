@@ -36,6 +36,31 @@ describe("buildWorkspaceAgentMessageCenterDigest", () => {
     });
   });
 
+  it("prefers displayPrompt for message summaries", () => {
+    const digest = buildWorkspaceAgentMessageCenterDigest({
+      fallbackTitle: "Fallback title",
+      messages: [
+        message({
+          messageId: "assistant-1",
+          role: "assistant",
+          payload: {
+            displayPrompt: "Run Automation",
+            text: "long automation prompt",
+            content: "long automation prompt"
+          },
+          occurredAtUnixMs: 10
+        })
+      ],
+      needsAttention: null,
+      pendingPrompt: null,
+      status: "idle"
+    });
+
+    expect(digest.primary).toMatchObject({
+      summary: "Run Automation"
+    });
+  });
+
   it("prioritizes input-required over terminal-looking message summaries", () => {
     const digest = buildWorkspaceAgentMessageCenterDigest({
       fallbackTitle: "Fallback title",

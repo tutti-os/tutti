@@ -169,6 +169,33 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     });
   });
 
+  it("prefers displayPrompt for message-center model summaries", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "assistant-1",
+            role: "assistant",
+            kind: "text",
+            payload: {
+              displayPrompt: "Run Automation",
+              text: "long automation prompt",
+              content: "long automation prompt"
+            },
+            occurredAtUnixMs: 10
+          })
+        ],
+        sessions: [session({ agentSessionId: "session-1" })]
+      })
+    );
+
+    expect(model.items[0]?.lastAgentMessageSummary).toBe("Run Automation");
+    expect(model.items[0]?.digest.primary).toMatchObject({
+      summary: "Run Automation"
+    });
+  });
+
   it("preserves the session user id for message-center stacking", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({

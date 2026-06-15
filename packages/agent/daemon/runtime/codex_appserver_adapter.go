@@ -601,13 +601,10 @@ func (a *CodexAppServerAdapter) Exec(
 		return nil, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = appSession.threadID
-	trimmedDisplayPrompt := strings.TrimSpace(displayPrompt)
-	if trimmedDisplayPrompt == "" {
-		trimmedDisplayPrompt = promptDisplayText(content)
-	}
+	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 
 	if activeTurnID := a.sessionActiveTurnID(session.AgentSessionID); activeTurnID != "" {
-		return a.steerActiveTurn(ctx, appSession, session, content, trimmedDisplayPrompt, turnID, activeTurnID, emit)
+		return a.steerActiveTurn(ctx, appSession, session, content, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
 	}
 
 	normalizer := newACPTurnNormalizer()
@@ -654,14 +651,12 @@ func (a *CodexAppServerAdapter) Exec(
 		return append([]activityshared.Event(nil), events...)
 	}
 	startEvents := make([]activityshared.Event, 0, 3)
-	if fallbackTitle := fallbackACPFamilySessionTitle(session.Title, trimmedDisplayPrompt, "", ProviderCodex); fallbackTitle != "" {
+	if fallbackTitle := fallbackACPFamilySessionTitle(session.Title, visibleText, "", ProviderCodex); fallbackTitle != "" {
 		startEvents = append(startEvents, newSessionTitleActivityEvent(session, fallbackTitle))
 		session.Title = fallbackTitle
 	}
 	startEvents = append(startEvents,
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, trimmedDisplayPrompt, map[string]any{
-			"content": promptContentForActivity(content),
-		}),
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, nil)),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", nil),
 	)
 	emitEvents(startEvents)
@@ -680,7 +675,7 @@ func (a *CodexAppServerAdapter) Exec(
 	}
 	defer a.endActiveTurn(session.AgentSessionID, appTurn)
 
-	if handled, err := a.execSlashCommand(ctx, appSession, session, trimmedDisplayPrompt, turnID, appTurn, normalizer, emitEvents, emitTerminal, emitCommands); handled {
+	if handled, err := a.execSlashCommand(ctx, appSession, session, visibleText, turnID, appTurn, normalizer, emitEvents, emitTerminal, emitCommands); handled {
 		return snapshotEvents(), err
 	}
 
@@ -808,6 +803,7 @@ func (a *CodexAppServerAdapter) steerActiveTurn(
 	appSession *codexAppServerSession,
 	session Session,
 	content []PromptContentBlock,
+	explicitDisplayPrompt string,
 	displayPrompt string,
 	turnID string,
 	activeTurnID string,
@@ -822,10 +818,9 @@ func (a *CodexAppServerAdapter) steerActiveTurn(
 		return nil, err
 	}
 	events := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, displayPrompt, map[string]any{
-			"content": promptContentForActivity(content),
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, displayPrompt, userPromptActivityPayload(content, explicitDisplayPrompt, map[string]any{
 			"steered": true,
-		}),
+		})),
 	}
 	if emit != nil {
 		emit(events)

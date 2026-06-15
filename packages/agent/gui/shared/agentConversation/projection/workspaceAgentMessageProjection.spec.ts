@@ -381,6 +381,52 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     );
     expect(toolRows[0]?.calls[0]?.toolName).toBe("Agent");
   });
+
+  it("renders displayPrompt instead of rich content text while preserving prompt images", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "user-1",
+          id: 1,
+          role: "user",
+          kind: "text",
+          payload: {
+            displayPrompt: "Run Automation",
+            text: "Run Automation",
+            content: [
+              { type: "text", text: "long automation prompt" },
+              {
+                type: "image",
+                mimeType: "image/png",
+                attachmentId: "attachment-1",
+                name: "screen.png"
+              }
+            ]
+          }
+        })
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(
+      userRow?.kind === "message" ? userRow.messages[0]?.contentKind : null
+    ).toBe("image-grid");
+    expect(
+      userRow?.kind === "message" ? userRow.messages[0]?.images?.[0] : null
+    ).toMatchObject({
+      attachmentId: "attachment-1",
+      mimeType: "image/png"
+    });
+    expect(userRow?.kind === "message" ? userRow.messages[1]?.body : null).toBe(
+      "Run Automation"
+    );
+  });
 });
 
 function activity(

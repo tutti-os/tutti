@@ -676,10 +676,7 @@ func (a *standardACPAdapter) Exec(
 		return nil, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = acpSession.providerSessionID
-	trimmedDisplayPrompt := strings.TrimSpace(displayPrompt)
-	if trimmedDisplayPrompt == "" {
-		trimmedDisplayPrompt = promptDisplayText(content)
-	}
+	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	normalizer := newACPTurnNormalizer()
 	var events []activityshared.Event
 	emitEvents := func(next []activityshared.Event) {
@@ -693,14 +690,12 @@ func (a *standardACPAdapter) Exec(
 	}
 
 	startEvents := make([]activityshared.Event, 0, 3)
-	if fallbackTitle := fallbackStandardSessionTitle(a.config, session.Title, trimmedDisplayPrompt); fallbackTitle != "" {
+	if fallbackTitle := fallbackStandardSessionTitle(a.config, session.Title, visibleText); fallbackTitle != "" {
 		startEvents = append(startEvents, newSessionTitleActivityEvent(session, fallbackTitle))
 		session.Title = fallbackTitle
 	}
 	startEvents = append(startEvents,
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, trimmedDisplayPrompt, map[string]any{
-			"content": promptContentForActivity(content),
-		}),
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, nil)),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", nil),
 	)
 	emitEvents(startEvents)
@@ -712,7 +707,7 @@ func (a *standardACPAdapter) Exec(
 		"agent_session_id", session.AgentSessionID,
 		"provider_session_id", session.ProviderSessionID,
 		"turn_id", turnID,
-		"prompt_length", len(trimmedDisplayPrompt),
+		"prompt_length", len(visibleText),
 	)
 
 	result, err := acpSession.client.Call(ctx, acpMethodPrompt, map[string]any{

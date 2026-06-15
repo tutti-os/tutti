@@ -283,6 +283,26 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	}
 }
 
+func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-1",
+		Provider:       "codex",
+		InitialContent: TextPromptContent("ordinary prompt"),
+	})
+	if err != nil {
+		t.Fatalf("Create error = %v", err)
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+	if runtime.execCalls[0].DisplayPrompt != "" {
+		t.Fatalf("runtime display prompt = %q, want empty explicit display prompt", runtime.execCalls[0].DisplayPrompt)
+	}
+}
+
 func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)

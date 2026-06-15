@@ -157,9 +157,10 @@ function latestUserMessageText(
   }
 
   return firstPresentText(
+    stringPayloadValue(latestUserMessage, "displayPrompt"),
+    stringPayloadValue(latestUserMessage, "text"),
     stringPayloadValue(latestUserMessage, "content"),
-    latestUserMessage.content,
-    stringPayloadValue(latestUserMessage, "text")
+    latestUserMessage.content
   );
 }
 
@@ -236,16 +237,17 @@ function messageRole(
 
 function messageContent(item: WorkspaceAgentActivityTimelineItem): string {
   const content = firstPresentText(
+    stringPayloadValue(item, "displayPrompt"),
+    stringPayloadValue(item, "text"),
     stringPayloadValue(item, "content"),
-    item.content,
-    stringPayloadValue(item, "text")
+    item.content
   );
   return isWorkspaceAgentSyntheticControlMessage(content) ? "" : content;
 }
 
 function stringPayloadValue(
   item: WorkspaceAgentActivityTimelineItem,
-  key: "content" | "summary" | "text"
+  key: "content" | "displayPrompt" | "summary" | "text"
 ): string {
   const value = item.payload?.[key];
   return typeof value === "string" ? value : "";
