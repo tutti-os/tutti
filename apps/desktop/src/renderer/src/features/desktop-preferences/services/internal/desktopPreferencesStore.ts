@@ -4,7 +4,9 @@ import type {
   DesktopAgentProvider,
   DesktopDockIconStyle,
   DesktopDockPlacement,
-  DesktopSleepPreventionMode
+  DesktopSleepPreventionMode,
+  DesktopUpdateChannel,
+  DesktopUpdatePolicy
 } from "@shared/preferences";
 import type { DesktopThemeState } from "@shared/theme";
 import { proxy } from "valtio";
@@ -18,6 +20,8 @@ export function createDesktopPreferencesStore(input: {
   locale: DesktopLocale;
   sleepPreventionMode: DesktopSleepPreventionMode;
   theme: DesktopThemeState;
+  updateChannel: DesktopUpdateChannel;
+  updatePolicy: DesktopUpdatePolicy;
 }): DesktopPreferencesStoreState {
   return proxy({
     changingDefaultAgentProvider: null,
@@ -26,6 +30,8 @@ export function createDesktopPreferencesStore(input: {
     changingLocale: null,
     changingSleepPreventionMode: null,
     changingThemeSource: null,
+    changingUpdateChannel: null,
+    changingUpdatePolicy: null,
     agentComposerDefaultsByProvider:
       input.agentComposerDefaultsByProvider ?? {},
     defaultAgentProvider: input.defaultAgentProvider,
@@ -33,6 +39,8 @@ export function createDesktopPreferencesStore(input: {
     dockPlacement: input.dockPlacement,
     locale: input.locale,
     sleepPreventionMode: input.sleepPreventionMode,
-    theme: input.theme
+    theme: input.theme,
+    updateChannel: input.updateChannel,
+    updatePolicy: input.updatePolicy
   });
 }

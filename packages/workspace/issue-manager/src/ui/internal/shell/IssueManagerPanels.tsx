@@ -18,6 +18,7 @@ import {
 } from "../issue/IssueManagerIssueSections.tsx";
 import {
   resolveIssueManagerIssueAcceptanceTaskId,
+  resolveIssueManagerIssueRunTaskId,
   resolveIssueManagerVisibleSubtasks
 } from "../issue/IssueManagerIssueAcceptanceState.ts";
 import type { IssueManagerLatestRunStatusRenderer } from "../../latestRunStatusRenderer.ts";
@@ -78,8 +79,14 @@ export function IssueManagerIssuePane({
     selectedTaskId,
     tasks
   });
+  const issueRunTaskId = resolveIssueManagerIssueRunTaskId({
+    latestRun,
+    selectedIssue,
+    selectedTaskId,
+    tasks
+  });
   const visibleTasks = resolveIssueManagerVisibleSubtasks({
-    hiddenAcceptanceTaskId: issueAcceptanceTaskId,
+    hiddenIssueRunTaskId: issueRunTaskId,
     tasks
   });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

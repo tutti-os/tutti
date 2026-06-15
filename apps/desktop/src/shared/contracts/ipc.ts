@@ -424,7 +424,7 @@ export const appUpdatePolicies = ["off", "prompt", "auto"] as const;
 
 export type AppUpdatePolicy = (typeof appUpdatePolicies)[number];
 
-export const appUpdateChannels = ["stable"] as const;
+export const appUpdateChannels = ["stable", "rc"] as const;
 
 export type AppUpdateChannel = (typeof appUpdateChannels)[number];
 

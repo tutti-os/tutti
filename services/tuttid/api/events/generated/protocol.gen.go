@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:af057c7c4057cb9f"
+	BusinessEventCatalogRevision = "sha256:3b800f900e63f4ae"
 )
 
 type Topic string
@@ -97,6 +97,8 @@ type PreferencesDesktopPreferences struct {
 	Locale               string `json:"locale"`
 	SleepPreventionMode  string `json:"sleepPreventionMode"`
 	ThemeSource          string `json:"themeSource"`
+	UpdateChannel        string `json:"updateChannel"`
+	UpdatePolicy         string `json:"updatePolicy"`
 }
 
 type WorkspaceWorkspaceAppFactoryJob struct {
@@ -147,7 +149,7 @@ type WorkspaceWorkspaceApp struct {
 	WindowMinWidth   *int   `json:"windowMinWidth"`
 	WindowMinHeight  *int   `json:"windowMinHeight"`
 	References       struct {
-		SearchSupported bool `json:"searchSupported"`
+		ListSupported bool `json:"listSupported"`
 	} `json:"references"`
 }
 

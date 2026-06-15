@@ -15,6 +15,10 @@ export type WorkspaceAppPrimaryAction =
   | "update"
   | "none";
 
+export type WorkspaceAppFactoryEditAction =
+  | "open_session"
+  | "prepare_modification";
+
 export interface WorkspaceAppActionContext {
   readonly installationId?: string | null;
   readonly runtimeId?: string | null;
@@ -57,6 +61,7 @@ export interface WorkspaceAppCardViewModel {
   readonly canRetry: boolean;
   readonly canUpdate: boolean;
   readonly errorMessage?: string;
+  readonly factoryEditAction?: WorkspaceAppFactoryEditAction | null;
   readonly factoryAgentSessionId?: string | null;
   readonly factoryJobId?: string | null;
   readonly factoryProvider?: string | null;

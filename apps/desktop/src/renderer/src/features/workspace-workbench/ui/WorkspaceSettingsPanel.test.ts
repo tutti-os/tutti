@@ -34,6 +34,22 @@ test("workspace settings general panel lists language before default provider", 
   );
 });
 
+test("workspace settings general panel does not expose update preferences", () => {
+  assert.doesNotMatch(source, /WorkspaceUpdateSettingsSection/);
+  assert.doesNotMatch(source, /workspace\.settings\.general\.updateTitle/);
+  assert.doesNotMatch(
+    source,
+    /workspace\.settings\.general\.updatePolicyLabel/
+  );
+  assert.doesNotMatch(
+    source,
+    /workspace\.settings\.general\.updateChannelLabel/
+  );
+  assert.doesNotMatch(source, /onUpdatePolicyChange/);
+  assert.doesNotMatch(source, /onUpdateChannelChange/);
+  assert.doesNotMatch(source, /app_update\.settings_rendered/);
+});
+
 test("workspace settings appearance panel owns visual settings", () => {
   assert.match(source, /WorkspaceAppearanceSettingsSection/);
   assert.match(source, /workspace\.settings\.appearance\.themeLabel/);
@@ -49,11 +65,6 @@ test("workspace managed provider API key is masked until toggled visible", () =>
 });
 
 test("workspace managed provider models use compact rows instead of a textarea", () => {
-  assert.match(source, /onDetectProviderModels/);
   assert.match(source, /models\.map\(\(model, index\)/);
-  assert.match(
-    source,
-    /workspace\.settings\.apps\.managedModels\.detectModels/
-  );
   assert.doesNotMatch(source, /modelsText/);
 });

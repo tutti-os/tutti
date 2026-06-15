@@ -357,7 +357,7 @@ function createApp(
     installed: input.installed ?? false,
     minimizeBehavior: input.minimizeBehavior ?? "keep-mounted",
     name: input.name,
-    references: input.references ?? { searchSupported: false },
+    references: input.references ?? { listSupported: false },
     runtimeStatus: input.runtimeStatus ?? "idle",
     source: input.source ?? "builtin",
     stateRevision: input.stateRevision ?? 1,

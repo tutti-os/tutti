@@ -141,9 +141,9 @@
     "references": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["searchSupported"],
+      "required": ["listSupported"],
       "properties": {
-        "searchSupported": {
+        "listSupported": {
           "type": "boolean"
         }
       }

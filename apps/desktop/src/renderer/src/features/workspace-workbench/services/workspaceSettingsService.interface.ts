@@ -5,7 +5,9 @@ import type {
   DesktopAgentProvider,
   DesktopDockIconStyle,
   DesktopDockPlacement,
-  DesktopSleepPreventionMode
+  DesktopSleepPreventionMode,
+  DesktopUpdateChannel,
+  DesktopUpdatePolicy
 } from "@shared/preferences";
 import type { DesktopThemeSource } from "@shared/theme";
 import type {
@@ -43,6 +45,8 @@ export interface IWorkspaceSettingsService {
   changeLocale(nextLocale: DesktopLocale): Promise<void>;
   changeSleepPreventionMode(mode: DesktopSleepPreventionMode): Promise<void>;
   changeThemeSource(nextThemeSource: DesktopThemeSource): Promise<void>;
+  changeUpdateChannel(channel: DesktopUpdateChannel): Promise<void>;
+  changeUpdatePolicy(policy: DesktopUpdatePolicy): Promise<void>;
   clearDeveloperLogs(): Promise<void>;
   exportDeveloperLogs(): Promise<void>;
   openLogDirectory(): Promise<void>;

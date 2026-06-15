@@ -12,13 +12,25 @@ export function resolveIssueManagerIssueAcceptanceTaskId(input: {
 }): string | null {
   if (
     input.selectedIssue?.status !== "pending_acceptance" ||
-    input.selectedTaskId ||
     input.latestRun?.status !== "completed"
   ) {
     return null;
   }
 
-  const taskId = input.latestRun.taskId?.trim() ?? "";
+  return resolveIssueManagerIssueRunTaskId(input);
+}
+
+export function resolveIssueManagerIssueRunTaskId(input: {
+  latestRun: IssueManagerRun | null;
+  selectedIssue: IssueManagerIssueSummary | null;
+  selectedTaskId: string | null;
+  tasks: readonly IssueManagerTaskSummary[];
+}): string | null {
+  if (!input.selectedIssue || input.selectedTaskId) {
+    return null;
+  }
+
+  const taskId = input.latestRun?.taskId?.trim() ?? "";
   if (!taskId) {
     return null;
   }
@@ -34,10 +46,10 @@ export function resolveIssueManagerIssueAcceptanceTaskId(input: {
 }
 
 export function resolveIssueManagerVisibleSubtasks(input: {
-  hiddenAcceptanceTaskId: string | null;
+  hiddenIssueRunTaskId: string | null;
   tasks: readonly IssueManagerTaskSummary[];
 }): IssueManagerTaskSummary[] {
-  const hiddenTaskId = input.hiddenAcceptanceTaskId?.trim() ?? "";
+  const hiddenTaskId = input.hiddenIssueRunTaskId?.trim() ?? "";
   if (!hiddenTaskId) {
     return [...input.tasks];
   }

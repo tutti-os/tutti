@@ -24,7 +24,9 @@ test("desktop preferences client resolves writes from the authoritative event", 
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -39,7 +41,9 @@ test("desktop preferences client resolves writes from the authoritative event", 
           dockPlacement: "bottom",
           locale: "zh-CN",
           sleepPreventionMode: "never",
-          themeSource: "dark"
+          themeSource: "dark",
+          updateChannel: "stable",
+          updatePolicy: "prompt"
         }
       },
       topic: "preferences.desktop.update.requested"
@@ -56,7 +60,9 @@ test("desktop preferences client resolves writes from the authoritative event", 
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -68,7 +74,9 @@ test("desktop preferences client resolves writes from the authoritative event", 
     dockPlacement: "bottom",
     locale: "zh-CN",
     sleepPreventionMode: "never",
-    themeSource: "dark"
+    themeSource: "dark",
+    updateChannel: "stable",
+    updatePolicy: "prompt"
   });
 
   client.dispose();
@@ -98,7 +106,9 @@ test("desktop preferences client fans out authoritative preference updates", asy
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -111,7 +121,9 @@ test("desktop preferences client fans out authoritative preference updates", asy
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   ]);
 
@@ -135,7 +147,9 @@ test("desktop preferences client rejects pending writes when disposed", async ()
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -156,7 +170,9 @@ test("desktop preferences client confirms writes from HTTP when the event does n
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
   const eventStreamClient = createFakeEventStreamClient();
@@ -177,7 +193,9 @@ test("desktop preferences client confirms writes from HTTP when the event does n
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -189,7 +207,9 @@ test("desktop preferences client confirms writes from HTTP when the event does n
     dockPlacement: "bottom",
     locale: "zh-CN",
     sleepPreventionMode: "never",
-    themeSource: "dark"
+    themeSource: "dark",
+    updateChannel: "stable",
+    updatePolicy: "prompt"
   });
   assert.equal(tuttidClient.getDesktopPreferencesCalls, 1);
 
@@ -207,7 +227,9 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
   const eventStreamClient = createFakeEventStreamClient();
@@ -233,7 +255,9 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -246,7 +270,9 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   ]);
 
@@ -264,7 +290,9 @@ test("desktop preferences client rejects writes when the authoritative state can
       dockPlacement: "bottom",
       locale: "en",
       sleepPreventionMode: "never",
-      themeSource: "system"
+      themeSource: "system",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
   const eventStreamClient = createFakeEventStreamClient();
@@ -285,7 +313,9 @@ test("desktop preferences client rejects writes when the authoritative state can
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -315,7 +345,9 @@ test("desktop preferences client coalesces concurrent identical writes", async (
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
   const secondCompletion = client.updateDesktopPreferences({
@@ -327,7 +359,9 @@ test("desktop preferences client coalesces concurrent identical writes", async (
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -343,7 +377,9 @@ test("desktop preferences client coalesces concurrent identical writes", async (
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -367,7 +403,9 @@ function createFakeTuttidClient(
       dockPlacement: "bottom",
       locale: "en",
       sleepPreventionMode: "never",
-      themeSource: "system"
+      themeSource: "system",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   }
 ): Pick<TuttidClient, "getDesktopPreferences"> & {

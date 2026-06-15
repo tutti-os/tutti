@@ -287,6 +287,12 @@ function createFakePreferences(
     getThemeSource() {
       return "system";
     },
+    getUpdateChannel() {
+      return "stable";
+    },
+    getUpdatePolicy() {
+      return "prompt";
+    },
     setSleepPreventionMode(nextMode) {
       mode = nextMode;
       for (const listener of listeners) {

@@ -18,124 +18,160 @@ import (
 )
 
 const (
-	appReferenceSearchDefaultLimit  = 20
-	appReferenceSearchMaxLimit      = 50
-	appReferenceSearchMaxBytes      = 1024 * 1024
-	appReferenceSearchTimeout       = 1500 * time.Millisecond
-	appReferenceQueryMaxRunes       = 200
-	appReferenceCursorMaxRunes      = 2048
-	appReferenceDisplayNameMaxRunes = 160
-	appReferenceDescriptionMaxRunes = 500
-	appReferenceMimeTypeMaxRunes    = 128
+	appReferenceListDefaultLimit = 20
+	appReferenceListMaxLimit     = 50
+	appReferenceListMaxBytes     = 1024 * 1024
+	appReferenceListTimeout      = 1500 * time.Millisecond
+	appReferenceTextMaxRunes     = 200
+	appReferenceGroupIDMaxRunes  = 2048
+	appReferenceCursorMaxRunes   = 2048
+	appReferenceDisplayNameRunes = 160
+	appReferenceDescriptionRunes = 500
+	appReferenceMimeTypeMaxRunes = 128
 )
 
-func (s *AppCenterService) SearchReferences(ctx context.Context, workspaceID string, appID string, input workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error) {
+func (s *AppCenterService) ListReferences(ctx context.Context, workspaceID string, appID string, input workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
 	if _, err := s.workspaceSummary(ctx, workspaceID); err != nil {
-		return workspacebiz.AppReferenceSearchResult{}, err
+		return workspacebiz.AppReferenceListResult{}, err
 	}
 
 	appPackage, installation, err := s.installedPackage(ctx, workspaceID, appID)
 	if err != nil {
-		return workspacebiz.AppReferenceSearchResult{}, err
+		return workspacebiz.AppReferenceListResult{}, err
 	}
-	if !installation.Enabled || !appPackage.ReferenceSearchSupported() {
-		return workspacebiz.AppReferenceSearchResult{}, nil
+	if !installation.Enabled || !appPackage.ReferenceListSupported() {
+		return workspacebiz.AppReferenceListResult{}, nil
 	}
 
 	runtimeState := s.runner().State(workspaceID, appPackage.AppID)
 	if runtimeState.Status != workspacebiz.AppRuntimeStatusRunning || runtimeState.LaunchURL == nil || strings.TrimSpace(*runtimeState.LaunchURL) == "" {
-		return workspacebiz.AppReferenceSearchResult{}, nil
+		return workspacebiz.AppReferenceListResult{}, nil
 	}
 
-	endpointURL, err := appReferenceSearchURL(*runtimeState.LaunchURL, appPackage.Manifest.References.SearchEndpoint)
+	endpointURL, err := appReferenceListURL(*runtimeState.LaunchURL, appPackage.Manifest.References.ListEndpoint)
 	if err != nil {
-		slog.Warn("workspace app reference search endpoint invalid", "workspaceId", workspaceID, "appId", appPackage.AppID, "error", err)
-		return workspacebiz.AppReferenceSearchResult{}, nil
+		slog.Warn("workspace app reference list endpoint invalid", "workspaceId", workspaceID, "appId", appPackage.AppID, "error", err)
+		return workspacebiz.AppReferenceListResult{}, nil
 	}
 
-	result, err := s.searchAppRuntimeReferences(ctx, endpointURL, appPackage, workspaceID, input)
+	result, err := s.listAppRuntimeReferences(ctx, endpointURL, appPackage, workspaceID, input)
 	if err != nil {
-		slog.Warn("workspace app reference search failed", "workspaceId", workspaceID, "appId", appPackage.AppID, "error", err)
-		return workspacebiz.AppReferenceSearchResult{}, nil
+		slog.Warn("workspace app reference list failed", "workspaceId", workspaceID, "appId", appPackage.AppID, "error", err)
+		return workspacebiz.AppReferenceListResult{}, nil
 	}
 	return result, nil
 }
 
-func (s *AppCenterService) searchAppRuntimeReferences(ctx context.Context, endpointURL string, appPackage workspacebiz.AppPackage, workspaceID string, input workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error) {
-	payload := appRuntimeReferenceSearchRequest{
-		Query: trimRunes(strings.TrimSpace(input.Query), appReferenceQueryMaxRunes),
-		Limit: normalizeAppReferenceSearchLimit(input.Limit),
-		Kinds: []string{string(workspacebiz.AppReferenceKindFile)},
+func (s *AppCenterService) listAppRuntimeReferences(ctx context.Context, endpointURL string, appPackage workspacebiz.AppPackage, workspaceID string, input workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
+	payload := appRuntimeReferenceListRequest{
+		FilterText: trimRunes(strings.TrimSpace(input.FilterText), appReferenceTextMaxRunes),
+		Limit:      normalizeAppReferenceListLimit(input.Limit),
+	}
+	if parentGroupID := trimRunes(strings.TrimSpace(input.ParentGroupID), appReferenceGroupIDMaxRunes); parentGroupID != "" {
+		payload.ParentGroupID = parentGroupID
 	}
 	if cursor := trimRunes(strings.TrimSpace(input.Cursor), appReferenceCursorMaxRunes); cursor != "" {
 		payload.Cursor = cursor
 	}
-	if len(input.Kinds) > 0 && !appReferenceKindsIncludeFile(input.Kinds) {
-		return workspacebiz.AppReferenceSearchResult{}, nil
+	if input.TimeRange != nil {
+		payload.TimeRange = &appRuntimeReferenceListTimeRange{
+			FromMs: input.TimeRange.FromMs,
+			ToMs:   input.TimeRange.ToMs,
+		}
+	}
+	if len(input.Kinds) > 0 {
+		if !appReferenceKindsIncludeFile(input.Kinds) {
+			return workspacebiz.AppReferenceListResult{}, nil
+		}
+		payload.Kinds = []string{string(workspacebiz.AppReferenceKindFile)}
 	}
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return workspacebiz.AppReferenceSearchResult{}, err
+		return workspacebiz.AppReferenceListResult{}, err
 	}
-	searchCtx, cancel := context.WithTimeout(ctx, appReferenceSearchTimeout)
+	listCtx, cancel := context.WithTimeout(ctx, appReferenceListTimeout)
 	defer cancel()
-	request, err := http.NewRequestWithContext(searchCtx, http.MethodPost, endpointURL, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(listCtx, http.MethodPost, endpointURL, bytes.NewReader(body))
 	if err != nil {
-		return workspacebiz.AppReferenceSearchResult{}, err
+		return workspacebiz.AppReferenceListResult{}, err
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
 
-	client := appReferenceSearchHTTPClient(s.runner().HTTPClient)
+	client := appReferenceListHTTPClient(s.runner().HTTPClient)
 	response, err := client.Do(request)
 	if err != nil {
-		return workspacebiz.AppReferenceSearchResult{}, err
+		return workspacebiz.AppReferenceListResult{}, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return workspacebiz.AppReferenceSearchResult{}, fmt.Errorf("app reference search returned status %d", response.StatusCode)
+		return workspacebiz.AppReferenceListResult{}, fmt.Errorf("app reference list returned status %d", response.StatusCode)
 	}
 
-	decoder := json.NewDecoder(io.LimitReader(response.Body, appReferenceSearchMaxBytes))
-	var raw appRuntimeReferenceSearchResponse
+	decoder := json.NewDecoder(io.LimitReader(response.Body, appReferenceListMaxBytes))
+	var raw appRuntimeReferenceListResponse
 	if err := decoder.Decode(&raw); err != nil {
-		return workspacebiz.AppReferenceSearchResult{}, err
+		return workspacebiz.AppReferenceListResult{}, err
 	}
 
 	validator := appReferenceLocationValidator{
 		dataRoot:    filepath.Join(s.workspaceAppStateRoot(workspaceID, appPackage.AppID), "data"),
 		packageRoot: appPackage.PackageDir,
 	}
-	references := make([]workspacebiz.AppReference, 0, len(raw.References))
-	for index, rawReference := range raw.References {
-		reference, ok := decodeAppRuntimeReference(rawReference, validator)
+	items := make([]workspacebiz.AppReferenceListItem, 0, len(raw.Items))
+	for index, rawItem := range raw.Items {
+		item, ok := decodeAppRuntimeReferenceListItem(rawItem, validator)
 		if !ok {
-			slog.Warn("workspace app reference item dropped", "workspaceId", workspaceID, "appId", appPackage.AppID, "index", index)
+			slog.Warn("workspace app reference list item dropped", "workspaceId", workspaceID, "appId", appPackage.AppID, "index", index)
 			continue
 		}
-		references = append(references, reference)
-		if len(references) >= payload.Limit {
+		items = append(items, item)
+		if len(items) >= payload.Limit {
 			break
 		}
 	}
 
-	return workspacebiz.AppReferenceSearchResult{
-		References: references,
+	return workspacebiz.AppReferenceListResult{
+		Items:      items,
 		NextCursor: normalizeOptionalCursor(raw.NextCursor),
 	}, nil
 }
 
-type appRuntimeReferenceSearchRequest struct {
-	Query  string   `json:"query"`
-	Limit  int      `json:"limit"`
-	Cursor string   `json:"cursor,omitempty"`
-	Kinds  []string `json:"kinds"`
+type appRuntimeReferenceListRequest struct {
+	ParentGroupID string                            `json:"parentGroupId,omitempty"`
+	FilterText    string                            `json:"filterText,omitempty"`
+	Limit         int                               `json:"limit"`
+	Cursor        string                            `json:"cursor,omitempty"`
+	Kinds         []string                          `json:"kinds,omitempty"`
+	TimeRange     *appRuntimeReferenceListTimeRange `json:"timeRange,omitempty"`
 }
 
-type appRuntimeReferenceSearchResponse struct {
-	References []json.RawMessage `json:"references"`
+type appRuntimeReferenceListTimeRange struct {
+	FromMs *int64 `json:"fromMs,omitempty"`
+	ToMs   *int64 `json:"toMs,omitempty"`
+}
+
+type appRuntimeReferenceListResponse struct {
+	Items      []json.RawMessage `json:"items"`
 	NextCursor *string           `json:"nextCursor,omitempty"`
+}
+
+type appRuntimeReferenceListItemTypeHeader struct {
+	Type string `json:"type"`
+}
+
+type appRuntimeReferenceGroupItem struct {
+	Type           string  `json:"type"`
+	ID             string  `json:"id"`
+	DisplayName    string  `json:"displayName"`
+	Description    *string `json:"description,omitempty"`
+	ReferenceCount *int    `json:"referenceCount"`
+}
+
+type appRuntimeReferenceListReferenceItem struct {
+	Type      string          `json:"type"`
+	Reference json.RawMessage `json:"reference"`
 }
 
 type appRuntimeReferenceKindHeader struct {
@@ -161,6 +197,64 @@ type appRuntimeReferenceLocation struct {
 type appReferenceLocationValidator struct {
 	dataRoot    string
 	packageRoot string
+}
+
+func decodeAppRuntimeReferenceListItem(raw json.RawMessage, validator appReferenceLocationValidator) (workspacebiz.AppReferenceListItem, bool) {
+	var header appRuntimeReferenceListItemTypeHeader
+	if err := json.Unmarshal(raw, &header); err != nil {
+		return nil, false
+	}
+	switch strings.TrimSpace(header.Type) {
+	case string(workspacebiz.AppReferenceListItemTypeGroup):
+		return decodeAppRuntimeReferenceGroupItem(raw)
+	case string(workspacebiz.AppReferenceListItemTypeReference):
+		return decodeAppRuntimeReferenceListReferenceItem(raw, validator)
+	default:
+		return nil, false
+	}
+}
+
+func decodeAppRuntimeReferenceGroupItem(raw json.RawMessage) (workspacebiz.AppReferenceListItem, bool) {
+	var decoded appRuntimeReferenceGroupItem
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, false
+	}
+	id, ok := normalizeRequiredBoundedString(decoded.ID, appReferenceGroupIDMaxRunes)
+	if !ok {
+		return nil, false
+	}
+	displayName, ok := normalizeRequiredBoundedString(decoded.DisplayName, appReferenceDisplayNameRunes)
+	if !ok {
+		return nil, false
+	}
+	description, ok := normalizeOptionalBoundedString(decoded.Description, appReferenceDescriptionRunes)
+	if !ok {
+		return nil, false
+	}
+	if decoded.ReferenceCount == nil || *decoded.ReferenceCount < 0 {
+		return nil, false
+	}
+	return workspacebiz.AppReferenceGroup{
+		ID:             id,
+		DisplayName:    displayName,
+		Description:    description,
+		ReferenceCount: *decoded.ReferenceCount,
+	}, true
+}
+
+func decodeAppRuntimeReferenceListReferenceItem(raw json.RawMessage, validator appReferenceLocationValidator) (workspacebiz.AppReferenceListItem, bool) {
+	var decoded appRuntimeReferenceListReferenceItem
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, false
+	}
+	if len(decoded.Reference) == 0 {
+		return nil, false
+	}
+	reference, ok := decodeAppRuntimeReference(decoded.Reference, validator)
+	if !ok {
+		return nil, false
+	}
+	return workspacebiz.AppReferenceListReferenceItem{Reference: reference}, true
 }
 
 func decodeAppRuntimeReference(raw json.RawMessage, validator appReferenceLocationValidator) (workspacebiz.AppReference, bool) {
@@ -201,14 +295,14 @@ func decodeAppRuntimeFileReference(raw json.RawMessage, validator appReferenceLo
 	if !ok {
 		return nil, false
 	}
-	displayName, ok := normalizeOptionalBoundedString(decoded.DisplayName, appReferenceDisplayNameMaxRunes)
+	displayName, ok := normalizeOptionalBoundedString(decoded.DisplayName, appReferenceDisplayNameRunes)
 	if !ok {
 		return nil, false
 	}
 	if displayName == "" {
 		displayName = filepath.Base(referencePath)
 	}
-	description, ok := normalizeOptionalBoundedString(decoded.Description, appReferenceDescriptionMaxRunes)
+	description, ok := normalizeOptionalBoundedString(decoded.Description, appReferenceDescriptionRunes)
 	if !ok {
 		return nil, false
 	}
@@ -286,7 +380,7 @@ func hasAppReferenceDrivePrefix(value string) bool {
 	return len(value) >= 2 && value[1] == ':' && ((value[0] >= 'a' && value[0] <= 'z') || (value[0] >= 'A' && value[0] <= 'Z'))
 }
 
-func appReferenceSearchURL(launchURL string, searchEndpoint string) (string, error) {
+func appReferenceListURL(launchURL string, listEndpoint string) (string, error) {
 	base, err := url.Parse(strings.TrimSpace(launchURL))
 	if err != nil {
 		return "", err
@@ -294,9 +388,9 @@ func appReferenceSearchURL(launchURL string, searchEndpoint string) (string, err
 	if base.Scheme != "http" && base.Scheme != "https" {
 		return "", fmt.Errorf("unsupported app launch url scheme %q", base.Scheme)
 	}
-	endpoint := strings.TrimSpace(searchEndpoint)
+	endpoint := strings.TrimSpace(listEndpoint)
 	if endpoint == "" || !strings.HasPrefix(endpoint, "/") || strings.HasPrefix(endpoint, "//") {
-		return "", fmt.Errorf("invalid reference search endpoint %q", searchEndpoint)
+		return "", fmt.Errorf("invalid reference list endpoint %q", listEndpoint)
 	}
 	base.Path = endpoint
 	base.RawQuery = ""
@@ -304,19 +398,19 @@ func appReferenceSearchURL(launchURL string, searchEndpoint string) (string, err
 	return base.String(), nil
 }
 
-func appReferenceSearchHTTPClient(client *http.Client) *http.Client {
+func appReferenceListHTTPClient(client *http.Client) *http.Client {
 	if client != nil {
 		return client
 	}
 	return http.DefaultClient
 }
 
-func normalizeAppReferenceSearchLimit(limit int) int {
+func normalizeAppReferenceListLimit(limit int) int {
 	if limit <= 0 {
-		return appReferenceSearchDefaultLimit
+		return appReferenceListDefaultLimit
 	}
-	if limit > appReferenceSearchMaxLimit {
-		return appReferenceSearchMaxLimit
+	if limit > appReferenceListMaxLimit {
+		return appReferenceListMaxLimit
 	}
 	return limit
 }
@@ -339,6 +433,14 @@ func normalizeOptionalCursor(value *string) *string {
 		return nil
 	}
 	return &normalized
+}
+
+func normalizeRequiredBoundedString(value string, maxRunes int) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || runeCount(trimmed) > maxRunes {
+		return "", false
+	}
+	return trimmed, true
 }
 
 func normalizeOptionalBoundedString(value *string, maxRunes int) (string, bool) {

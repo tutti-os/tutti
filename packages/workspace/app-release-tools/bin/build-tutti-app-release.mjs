@@ -176,16 +176,28 @@ function validateManifestReferences(references, sourceLabel) {
   if (references === undefined) {
     return;
   }
-  if (!references || typeof references !== "object") {
+  if (
+    !references ||
+    typeof references !== "object" ||
+    Array.isArray(references)
+  ) {
     throw new Error(`${sourceLabel} references must be an object`);
   }
-  const searchEndpoint = requireNonEmpty(
-    references.searchEndpoint,
-    `${sourceLabel}.references.searchEndpoint`
+  const unsupportedKey = Object.keys(references).find(
+    (key) => key !== "listEndpoint"
   );
-  if (!isRelativeURLPath(searchEndpoint)) {
+  if (unsupportedKey) {
     throw new Error(
-      `${sourceLabel}.references.searchEndpoint must be a relative URL path without query or hash`
+      `${sourceLabel}.references.${unsupportedKey} is unsupported`
+    );
+  }
+  const listEndpoint = requireNonEmpty(
+    references.listEndpoint,
+    `${sourceLabel}.references.listEndpoint`
+  );
+  if (!isRelativeURLPath(listEndpoint)) {
+    throw new Error(
+      `${sourceLabel}.references.listEndpoint must be a relative URL path without query or fragment`
     );
   }
 }
@@ -520,14 +532,21 @@ function isRelativeURLPath(value) {
     text === "" ||
     !text.startsWith("/") ||
     text.startsWith("//") ||
-    text.includes("\0") ||
-    text.includes("?") ||
-    text.includes("#") ||
-    text.includes("%")
+    text.includes("\0")
   ) {
     return false;
   }
-  return true;
+  try {
+    const parsed = new URL(text, "http://tutti.local");
+    return (
+      parsed.origin === "http://tutti.local" &&
+      parsed.pathname === text &&
+      parsed.search === "" &&
+      parsed.hash === ""
+    );
+  } catch {
+    return false;
+  }
 }
 
 function normalizeBaseUrl(value) {

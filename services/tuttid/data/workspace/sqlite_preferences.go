@@ -19,7 +19,7 @@ func (s *SQLiteStore) GetDesktopPreferences(ctx context.Context) (preferencesbiz
 	}
 
 	row := s.db.QueryRowContext(ctx, `
-SELECT default_agent_provider, dock_icon_style, dock_placement, locale, theme_source, sleep_prevention_mode, agent_composer_defaults_by_provider_json
+SELECT default_agent_provider, dock_icon_style, dock_placement, locale, theme_source, sleep_prevention_mode, update_channel, update_policy, agent_composer_defaults_by_provider_json
 FROM desktop_preferences
 WHERE id = ?
 `, desktopPreferencesRowID)
@@ -30,8 +30,10 @@ WHERE id = ?
 	var locale string
 	var themeSource string
 	var sleepPreventionMode string
+	var updateChannel string
+	var updatePolicy string
 	var agentComposerDefaultsJSON string
-	if err := row.Scan(&defaultAgentProvider, &dockIconStyle, &dockPlacement, &locale, &themeSource, &sleepPreventionMode, &agentComposerDefaultsJSON); err != nil {
+	if err := row.Scan(&defaultAgentProvider, &dockIconStyle, &dockPlacement, &locale, &themeSource, &sleepPreventionMode, &updateChannel, &updatePolicy, &agentComposerDefaultsJSON); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return preferencesbiz.DefaultDesktopPreferences(), nil
 		}
@@ -51,6 +53,8 @@ WHERE id = ?
 		Locale:                          locale,
 		SleepPreventionMode:             sleepPreventionMode,
 		ThemeSource:                     themeSource,
+		UpdateChannel:                   updateChannel,
+		UpdatePolicy:                    updatePolicy,
 	}, nil
 }
 
@@ -73,10 +77,12 @@ INSERT INTO desktop_preferences (
   locale,
   theme_source,
   sleep_prevention_mode,
+  update_channel,
+  update_policy,
   agent_composer_defaults_by_provider_json,
   updated_at_unix_ms
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   default_agent_provider = excluded.default_agent_provider,
   dock_icon_style = excluded.dock_icon_style,
@@ -84,9 +90,11 @@ ON CONFLICT(id) DO UPDATE SET
   locale = excluded.locale,
   theme_source = excluded.theme_source,
   sleep_prevention_mode = excluded.sleep_prevention_mode,
+  update_channel = excluded.update_channel,
+  update_policy = excluded.update_policy,
   agent_composer_defaults_by_provider_json = excluded.agent_composer_defaults_by_provider_json,
   updated_at_unix_ms = excluded.updated_at_unix_ms
-`, desktopPreferencesRowID, preferences.DefaultAgentProvider, preferences.DockIconStyle, preferences.DockPlacement, preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, agentComposerDefaultsJSON, now)
+`, desktopPreferencesRowID, preferences.DefaultAgentProvider, preferences.DockIconStyle, preferences.DockPlacement, preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, preferences.UpdateChannel, preferences.UpdatePolicy, agentComposerDefaultsJSON, now)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("put desktop preferences: %w", err)
 	}
@@ -100,6 +108,8 @@ ON CONFLICT(id) DO UPDATE SET
 		Locale:                          preferences.Locale,
 		SleepPreventionMode:             preferences.SleepPreventionMode,
 		ThemeSource:                     preferences.ThemeSource,
+		UpdateChannel:                   preferences.UpdateChannel,
+		UpdatePolicy:                    preferences.UpdatePolicy,
 	}, nil
 }
 

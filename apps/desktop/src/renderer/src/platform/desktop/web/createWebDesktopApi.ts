@@ -18,7 +18,7 @@ import type {
 import { desktopErrorCodes } from "@shared/errors/desktopErrors";
 
 const webAppUpdateState: AppUpdateState = {
-  channel: "stable",
+  channel: "rc",
   checkedAt: null,
   currentVersion: "dev-web",
   downloadedBytes: null,

@@ -29,7 +29,6 @@ export interface AgentMentionFileItem {
   name: string;
   entryKind: AgentFileMentionKind;
   directoryPath: string;
-  sourceKey?: string;
   score?: number;
   thumbnailUrl?: string | null;
   mentionNavigation?: AgentMentionFileNavigationAction;
@@ -75,9 +74,6 @@ export interface AgentMentionWorkspaceAppItem {
   name: string;
   description?: string;
   iconUrl?: string;
-  referenceItems?: readonly AgentMentionFileItem[];
-  referenceNextCursor?: string | null;
-  referenceItemsLoading?: boolean;
 }
 
 export interface AgentMentionWorkspaceAppFactoryItem {

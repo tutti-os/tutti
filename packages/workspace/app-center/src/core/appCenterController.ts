@@ -480,11 +480,17 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
     this.pendingInstallKeys.add(installKey);
     this.markAppInstalling(input.appId, { preserveInstalled: true });
     try {
+      const restartRunning =
+        app?.installed === true && app.runtimeStatus === "running";
       const snapshot = await this.dependencies.gateway.installWorkspaceApp(
         input.workspaceId,
-        input.appId
+        input.appId,
+        restartRunning ? { restartRunning: true } : undefined
       );
       this.applySnapshot(input.workspaceId, snapshot);
+      if (restartRunning) {
+        this.closeWorkspaceAppViews(input.workspaceId, [input.appId]);
+      }
       this.dependencies.hooks?.onAppUpdated?.({
         app,
         trigger: input.trigger

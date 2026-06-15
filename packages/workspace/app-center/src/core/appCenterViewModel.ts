@@ -7,6 +7,7 @@ import type {
 } from "../contracts/catalog.ts";
 import type {
   AppCenterViewModel,
+  WorkspaceAppFactoryEditAction,
   WorkspaceAppFactoryJobStatus,
   WorkspaceAppFactoryJobViewModel,
   WorkspaceAppPrimaryAction
@@ -67,6 +68,12 @@ export function createAppCenterViewModel({
         manifest: app.manifest
       });
       const factoryAgentSessionId = factoryJob?.agentSessionId?.trim() || null;
+      const factoryEditAction: WorkspaceAppFactoryEditAction | null =
+        factoryJob && factoryAgentSessionId
+          ? factoryJob.status === "published"
+            ? "prepare_modification"
+            : "open_session"
+          : null;
       const status = runtime?.status ?? "idle";
       const presentation = resolveWorkspaceAppStatusPresentation(status);
       const installed = Boolean(app.install);
@@ -139,6 +146,7 @@ export function createAppCenterViewModel({
         canRetry,
         canUpdate,
         ...(factoryAgentSessionId ? { factoryAgentSessionId } : {}),
+        ...(factoryEditAction ? { factoryEditAction } : {}),
         ...(factoryJob?.jobId ? { factoryJobId: factoryJob.jobId } : {}),
         ...(factoryJob?.provider
           ? { factoryProvider: factoryJob.provider }

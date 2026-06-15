@@ -269,28 +269,14 @@ export function AppCard({
           ) : null}
         </div>
 
-        {app.errorMessage || app.tags.length > 0 ? (
+        {app.errorMessage ? (
           <div className="mt-auto flex min-w-0 flex-col gap-3 pt-3">
-            {app.errorMessage ? (
-              <p
-                className="min-w-0 rounded-[6px] bg-[color-mix(in_srgb,var(--state-danger)_10%,transparent)] px-2 py-1 text-[11px] leading-4 text-[var(--state-danger)]"
-                title={app.errorMessage}
-              >
-                {copy.t("messages.appRuntimeFailed")}
-              </p>
-            ) : null}
-            {app.tags.length > 0 ? (
-              <div className="flex min-w-0 flex-wrap gap-1.5">
-                {app.tags.slice(0, 3).map((tag) => (
-                  <span
-                    className="inline-flex h-5 max-w-full items-center rounded-[4px] bg-[var(--transparency-block)] px-2 text-[11px] leading-4 text-[var(--text-secondary)]"
-                    key={tag}
-                  >
-                    <span className="truncate">{tag}</span>
-                  </span>
-                ))}
-              </div>
-            ) : null}
+            <p
+              className="min-w-0 rounded-[6px] bg-[color-mix(in_srgb,var(--state-danger)_10%,transparent)] px-2 py-1 text-[11px] leading-4 text-[var(--state-danger)]"
+              title={app.errorMessage}
+            >
+              {copy.t("messages.appRuntimeFailed")}
+            </p>
           </div>
         ) : null}
       </div>
@@ -341,6 +327,13 @@ function AppCardMoreActions({
       key: "modify-app-with-agent",
       label: copy.t("actions.modifyAppWithAgent"),
       onSelect: () => {
+        if (app.factoryEditAction === "open_session") {
+          void actions.openFactoryJobAgentSession?.(
+            app.factoryAgentSessionId ?? "",
+            app.factoryProvider
+          );
+          return;
+        }
         void actions.modifyAppWithAgent?.(
           app.factoryJobId ?? "",
           app.factoryAgentSessionId ?? "",

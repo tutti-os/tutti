@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import electron from "electron";
 import electronUpdater, {
   type AppUpdater,
   type ProgressInfo,
@@ -12,18 +12,31 @@ import {
   type AppUpdateState,
   type AppUpdateStatus,
   type ConfigureAppUpdatesInput
-} from "../../shared/contracts/ipc";
-import { getDesktopLogger } from "../logging";
+} from "../../shared/contracts/ipc.ts";
+import { getDesktopLogger, type DesktopLogger } from "../logging.ts";
 import {
   resolveMacAppBundlePath,
   resolveMacUpdaterSupport
-} from "./macosUpdaterSupport";
+} from "./macosUpdaterSupport.ts";
+import {
+  compareDesktopVersions,
+  createGitHubPrefixedDesktopReleaseResolver,
+  parseDesktopVersion,
+  type PrefixedDesktopReleaseResolver
+} from "./prefixedDesktopReleaseResolver.ts";
 
-const { autoUpdater } = electronUpdater;
+const { app, BrowserWindow } = electron;
 
 const updateCheckIntervalMs = 1000 * 60 * 60 * 6;
 
 type DriverDisposer = () => void;
+
+interface ElectronUpdaterLogger {
+  debug?(message?: unknown, ...optionalParams: unknown[]): void;
+  error(message?: unknown, ...optionalParams: unknown[]): void;
+  info(message?: unknown, ...optionalParams: unknown[]): void;
+  warn(message?: unknown, ...optionalParams: unknown[]): void;
+}
 
 interface AppUpdateDriver {
   checkForUpdates(): Promise<void>;
@@ -32,6 +45,7 @@ interface AppUpdateDriver {
     autoDownload: boolean;
     autoInstallOnAppQuit: boolean;
     channel: string;
+    forceDevUpdateConfig: boolean;
   }): void;
   downloadUpdate(): Promise<void>;
   onCheckingForUpdate(listener: () => void): DriverDisposer;
@@ -60,11 +74,23 @@ export interface AppUpdateService {
 }
 
 interface AppUpdateServiceOptions {
+  prefixedReleaseResolver?: PrefixedDesktopReleaseResolver | null;
   supportsUpdates?: boolean;
   unsupportedMessage?: string;
 }
 
-function createElectronAppUpdateDriver(updater: AppUpdater): AppUpdateDriver {
+export function createElectronAppUpdateDriver(
+  updater: AppUpdater,
+  options: {
+    shouldSuppressNoPublishedVersionsError(): boolean;
+  }
+): AppUpdateDriver {
+  updater.logger = createElectronUpdaterLogger({
+    logger: getDesktopLogger(),
+    shouldSuppressNoPublishedVersionsError: () =>
+      options.shouldSuppressNoPublishedVersionsError()
+  });
+
   const emitter = updater as unknown as {
     on: (event: string, listener: (...args: unknown[]) => void) => void;
     removeListener: (
@@ -100,6 +126,8 @@ function createElectronAppUpdateDriver(updater: AppUpdater): AppUpdateDriver {
       updater.autoInstallOnAppQuit = options.autoInstallOnAppQuit;
       updater.allowPrerelease = options.allowPrerelease;
       updater.channel = options.channel;
+      updater.allowDowngrade = false;
+      updater.forceDevUpdateConfig = options.forceDevUpdateConfig;
     },
     downloadUpdate: () => updater.downloadUpdate().then(() => undefined),
     onCheckingForUpdate: (listener) =>
@@ -115,6 +143,52 @@ function createElectronAppUpdateDriver(updater: AppUpdater): AppUpdateDriver {
       listen<UpdateInfo>("update-not-available", listener),
     quitAndInstall: () => {
       updater.quitAndInstall();
+    }
+  };
+}
+
+export function createElectronUpdaterLogger(options: {
+  logger: Pick<DesktopLogger, "debug" | "error" | "info" | "warn">;
+  shouldSuppressNoPublishedVersionsError(): boolean;
+}): ElectronUpdaterLogger {
+  const formatArguments = (
+    message?: unknown,
+    optionalParams: unknown[] = []
+  ): string => [message, ...optionalParams].map(formatLogArgument).join(" ");
+
+  return {
+    debug(message, ...optionalParams) {
+      options.logger.debug("electron updater debug", {
+        detail: formatArguments(message, optionalParams)
+      });
+    },
+    error(message, ...optionalParams) {
+      if (
+        options.shouldSuppressNoPublishedVersionsError() &&
+        isNoPublishedVersionsLogArgument(message)
+      ) {
+        options.logger.info(
+          "electron updater error deferred for prefixed GitHub release fallback",
+          {
+            detail: formatArguments(message, optionalParams)
+          }
+        );
+        return;
+      }
+
+      options.logger.error("electron updater error", {
+        detail: formatArguments(message, optionalParams)
+      });
+    },
+    info(message, ...optionalParams) {
+      options.logger.info("electron updater info", {
+        detail: formatArguments(message, optionalParams)
+      });
+    },
+    warn(message, ...optionalParams) {
+      options.logger.warn("electron updater warning", {
+        detail: formatArguments(message, optionalParams)
+      });
     }
   };
 }
@@ -188,14 +262,183 @@ function normalizeMessage(error: unknown): string {
   return "Unknown update error";
 }
 
+function formatErrorDetail(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+
+  return typeof error === "string" ? error : String(error);
+}
+
+function formatLogArgument(value: unknown): string {
+  if (value instanceof Error) {
+    return value.stack ?? `${value.name}: ${value.message}`;
+  }
+
+  return typeof value === "string" ? value : String(value);
+}
+
+function envFlagEnabled(name: string): boolean {
+  const value = process.env[name]?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function resolveCurrentVersion(
+  appVersion: string,
+  isPackaged: boolean
+): string {
+  const override = process.env.TUTTI_APP_UPDATE_CURRENT_VERSION?.trim();
+  if (!isPackaged && override) {
+    return override;
+  }
+
+  return appVersion;
+}
+
+function resolveMockLatestVersion(currentVersion: string): string {
+  return (
+    process.env.TUTTI_APP_UPDATE_LATEST_VERSION?.trim() ||
+    `${currentVersion}-dev-update`
+  );
+}
+
+function isNoPublishedVersionsError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes("No published versions on GitHub")
+  );
+}
+
+function isNoPublishedVersionsLogArgument(value: unknown): boolean {
+  return (
+    isNoPublishedVersionsError(value) ||
+    formatLogArgument(value).includes("No published versions on GitHub")
+  );
+}
+
+function createDevelopmentMockAppUpdateDriver(
+  currentVersion: string
+): AppUpdateDriver | null {
+  const mode = process.env.TUTTI_APP_UPDATE_MOCK?.trim().toLowerCase();
+  if (!mode) {
+    return null;
+  }
+
+  const checkingListeners = new Set<() => void>();
+  const progressListeners = new Set<(progress: ProgressInfo) => void>();
+  const errorListeners = new Set<(error: Error) => void>();
+  const availableListeners = new Set<(info: UpdateInfo) => void>();
+  const downloadedListeners = new Set<(info: UpdateDownloadedEvent) => void>();
+  const notAvailableListeners = new Set<(info: UpdateInfo) => void>();
+
+  const latestVersion = resolveMockLatestVersion(currentVersion);
+  const updateInfo = (): UpdateInfo => ({
+    files: [],
+    path: "",
+    releaseDate: new Date().toISOString(),
+    releaseName: latestVersion,
+    sha512: "",
+    version: latestVersion
+  });
+
+  return {
+    checkForUpdates() {
+      for (const listener of checkingListeners) {
+        listener();
+      }
+      if (mode === "error") {
+        for (const listener of errorListeners) {
+          listener(new Error("Mock update check failed."));
+        }
+        return Promise.resolve();
+      }
+      if (mode === "up_to_date" || mode === "not_available") {
+        const info = updateInfo();
+        for (const listener of notAvailableListeners) {
+          listener(info);
+        }
+        return Promise.resolve();
+      }
+
+      const info = updateInfo();
+      for (const listener of availableListeners) {
+        listener(info);
+      }
+      if (mode === "downloaded") {
+        for (const listener of downloadedListeners) {
+          listener(info as UpdateDownloadedEvent);
+        }
+      }
+      return Promise.resolve();
+    },
+    configure() {},
+    downloadUpdate() {
+      const info = updateInfo();
+      for (const listener of progressListeners) {
+        listener({
+          bytesPerSecond: 0,
+          delta: 100,
+          percent: 100,
+          total: 100,
+          transferred: 100
+        });
+      }
+      for (const listener of downloadedListeners) {
+        listener(info as UpdateDownloadedEvent);
+      }
+      return Promise.resolve();
+    },
+    onCheckingForUpdate(listener) {
+      checkingListeners.add(listener);
+      return () => checkingListeners.delete(listener);
+    },
+    onDownloadProgress(listener) {
+      progressListeners.add(listener);
+      return () => progressListeners.delete(listener);
+    },
+    onError(listener) {
+      errorListeners.add(listener);
+      return () => errorListeners.delete(listener);
+    },
+    onUpdateAvailable(listener) {
+      availableListeners.add(listener);
+      return () => availableListeners.delete(listener);
+    },
+    onUpdateDownloaded(listener) {
+      downloadedListeners.add(listener);
+      return () => downloadedListeners.delete(listener);
+    },
+    onUpdateNotAvailable(listener) {
+      notAvailableListeners.add(listener);
+      return () => notAvailableListeners.delete(listener);
+    },
+    quitAndInstall() {}
+  };
+}
+
 export function createAppUpdateService(
-  driver: AppUpdateDriver = createElectronAppUpdateDriver(autoUpdater),
+  driver?: AppUpdateDriver,
   options: AppUpdateServiceOptions = {}
 ): AppUpdateService {
-  const currentVersion = app.getVersion();
+  const isPackaged = Boolean(app?.isPackaged);
+  const devUpdatesEnabled = envFlagEnabled("TUTTI_APP_UPDATE_DEV");
+  const appVersion = app?.getVersion?.() ?? "0.0.0";
+  const currentVersion = resolveCurrentVersion(appVersion, isPackaged);
+  const prefixedReleaseResolver =
+    options.prefixedReleaseResolver === undefined
+      ? createGitHubPrefixedDesktopReleaseResolver()
+      : options.prefixedReleaseResolver;
+  let activeCheckCanUsePrefixedFallback = false;
+  const resolvedDriver =
+    driver ??
+    createDevelopmentMockAppUpdateDriver(currentVersion) ??
+    createElectronAppUpdateDriver(electronUpdater.autoUpdater, {
+      shouldSuppressNoPublishedVersionsError: () =>
+        activeCheckCanUsePrefixedFallback
+    });
   let supportsUpdates =
     options.supportsUpdates ??
-    (process.env.NODE_ENV !== "test" && app.isPackaged);
+    ((process.env.NODE_ENV !== "test" && isPackaged) || devUpdatesEnabled);
   let unsupportedMessage =
     options.unsupportedMessage ??
     (process.env.NODE_ENV === "test"
@@ -205,6 +448,7 @@ export function createAppUpdateService(
   if (
     options.supportsUpdates === undefined &&
     supportsUpdates &&
+    isPackaged &&
     process.platform === "darwin"
   ) {
     const macSupport = resolveMacUpdaterSupport({
@@ -219,7 +463,7 @@ export function createAppUpdateService(
   let state = buildBaseState(
     currentVersion,
     "prompt",
-    "stable",
+    "rc",
     supportsUpdates ? "idle" : "unsupported",
     supportsUpdates ? null : unsupportedMessage
   );
@@ -231,7 +475,7 @@ export function createAppUpdateService(
   >();
 
   const emitState = (): void => {
-    for (const window of BrowserWindow.getAllWindows()) {
+    for (const window of BrowserWindow?.getAllWindows?.() ?? []) {
       window.webContents.send(desktopIpcChannels.update.state, state);
     }
   };
@@ -275,12 +519,12 @@ export function createAppUpdateService(
     }
 
     intervalId = setInterval(() => {
-      void service.checkForUpdates();
+      runBackgroundCheck("interval");
     }, updateCheckIntervalMs);
   };
 
   const driverDisposers = [
-    driver.onCheckingForUpdate(() => {
+    resolvedDriver.onCheckingForUpdate(() => {
       getDesktopLogger().info("checking for application updates", {
         channel: state.channel,
         policy: state.policy
@@ -295,7 +539,7 @@ export function createAppUpdateService(
         checkedAt: state.checkedAt
       });
     }),
-    driver.onUpdateAvailable((info) => {
+    resolvedDriver.onUpdateAvailable((info) => {
       getDesktopLogger().info("application update is available", {
         release_date: normalizeReleaseDate(info.releaseDate),
         release_name: info.releaseName ?? null,
@@ -314,7 +558,7 @@ export function createAppUpdateService(
         releaseName: info.releaseName ?? null
       });
     }),
-    driver.onUpdateNotAvailable(() => {
+    resolvedDriver.onUpdateNotAvailable(() => {
       applyState({
         ...buildBaseState(
           currentVersion,
@@ -325,7 +569,7 @@ export function createAppUpdateService(
         checkedAt: new Date().toISOString()
       });
     }),
-    driver.onDownloadProgress((progress) => {
+    resolvedDriver.onDownloadProgress((progress) => {
       applyState({
         ...state,
         downloadedBytes: Number.isFinite(progress.transferred)
@@ -338,7 +582,7 @@ export function createAppUpdateService(
         totalBytes: Number.isFinite(progress.total) ? progress.total : null
       });
     }),
-    driver.onUpdateDownloaded((info) => {
+    resolvedDriver.onUpdateDownloaded((info) => {
       applyState({
         ...state,
         checkedAt: new Date().toISOString(),
@@ -351,7 +595,21 @@ export function createAppUpdateService(
         status: "downloaded"
       });
     }),
-    driver.onError((error) => {
+    resolvedDriver.onError((error) => {
+      if (
+        activeCheckCanUsePrefixedFallback &&
+        isNoPublishedVersionsError(error)
+      ) {
+        getDesktopLogger().info(
+          "application updater error deferred for prefixed GitHub release fallback",
+          {
+            error: error.message,
+            error_name: error.name
+          }
+        );
+        return;
+      }
+
       getDesktopLogger().error("application updater failed", {
         error: error.message,
         error_name: error.name
@@ -387,10 +645,19 @@ export function createAppUpdateService(
         return state;
       }
 
-      activeCheckPromise = driver.checkForUpdates().finally(() => {
+      activeCheckCanUsePrefixedFallback = Boolean(prefixedReleaseResolver);
+      activeCheckPromise = resolvedDriver.checkForUpdates().finally(() => {
         activeCheckPromise = null;
+        activeCheckCanUsePrefixedFallback = false;
       });
-      await activeCheckPromise;
+      try {
+        await activeCheckPromise;
+      } catch (error) {
+        const fallbackState = await applyPrefixedReleaseFallback(error);
+        if (!fallbackState) {
+          throw error;
+        }
+      }
       return state;
     },
     configure(input) {
@@ -428,15 +695,17 @@ export function createAppUpdateService(
         );
       }
 
-      driver.configure({
-        allowPrerelease: false,
+      const updaterChannel = state.channel === "rc" ? "rc" : "latest";
+      resolvedDriver.configure({
+        allowPrerelease: state.channel === "rc",
         autoDownload: state.policy === "auto",
         autoInstallOnAppQuit: state.policy === "auto",
-        channel: "latest"
+        channel: updaterChannel,
+        forceDevUpdateConfig: devUpdatesEnabled && !isPackaged
       });
       resetConfiguredState("idle");
       scheduleChecks();
-      void service.checkForUpdates();
+      runBackgroundCheck("configure");
       return Promise.resolve(state);
     },
     dispose() {
@@ -455,25 +724,28 @@ export function createAppUpdateService(
         return state;
       }
 
-      applyState({
-        ...state,
-        downloadedBytes: 0,
-        downloadPercent: 0,
-        status: "downloading",
-        totalBytes: null
-      });
-      activeDownloadPromise = driver.downloadUpdate().finally(() => {
+      activeDownloadPromise = resolvedDriver.downloadUpdate().finally(() => {
         activeDownloadPromise = null;
       });
       await activeDownloadPromise;
       return state;
     },
     getState() {
+      getDesktopLogger().info("application update state requested", {
+        channel: state.channel,
+        current_version: state.currentVersion,
+        is_checking: Boolean(activeCheckPromise),
+        is_downloading: Boolean(activeDownloadPromise),
+        latest_version: state.latestVersion,
+        policy: state.policy,
+        status: state.status,
+        supports_updates: supportsUpdates
+      });
       return state;
     },
     installUpdate() {
       if (state.status === "downloaded") {
-        driver.quitAndInstall();
+        resolvedDriver.quitAndInstall();
       }
       return Promise.resolve();
     },
@@ -482,6 +754,87 @@ export function createAppUpdateService(
       return () => {
         stateChangedListeners.delete(listener);
       };
+    }
+  };
+
+  const runBackgroundCheck = (reason: string): void => {
+    void service.checkForUpdates().catch((error) => {
+      getDesktopLogger().warn("background application update check failed", {
+        error: formatErrorDetail(error),
+        reason
+      });
+    });
+  };
+
+  const applyPrefixedReleaseFallback = async (
+    error: unknown
+  ): Promise<AppUpdateState | null> => {
+    if (!prefixedReleaseResolver || !isNoPublishedVersionsError(error)) {
+      return null;
+    }
+
+    try {
+      const release = await prefixedReleaseResolver({
+        channel: state.channel,
+        currentVersion
+      });
+      const checkedAt = new Date().toISOString();
+      if (!release) {
+        return applyState({
+          ...buildBaseState(
+            currentVersion,
+            state.policy,
+            state.channel,
+            "up_to_date"
+          ),
+          checkedAt
+        });
+      }
+
+      const current = parseDesktopVersion(currentVersion);
+      const latest = parseDesktopVersion(release.version);
+      if (current && latest && compareDesktopVersions(latest, current) <= 0) {
+        return applyState({
+          ...buildBaseState(
+            currentVersion,
+            state.policy,
+            state.channel,
+            "up_to_date"
+          ),
+          checkedAt
+        });
+      }
+
+      getDesktopLogger().info(
+        "application update found from prefixed GitHub release tag",
+        {
+          channel: state.channel,
+          tag_name: release.tagName,
+          version: release.version
+        }
+      );
+      return applyState({
+        ...buildBaseState(
+          currentVersion,
+          state.policy,
+          state.channel,
+          "available"
+        ),
+        checkedAt,
+        latestVersion: release.version,
+        releaseDate: release.publishedAt,
+        releaseName: release.name ?? release.tagName,
+        releaseNotesUrl: release.htmlUrl
+      });
+    } catch (fallbackError) {
+      getDesktopLogger().warn(
+        "failed to resolve prefixed GitHub desktop release",
+        {
+          error: formatErrorDetail(fallbackError),
+          original_error: formatErrorDetail(error)
+        }
+      );
+      return null;
     }
   };
 

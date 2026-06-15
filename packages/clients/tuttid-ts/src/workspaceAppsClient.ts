@@ -9,6 +9,7 @@ import {
   importWorkspaceApp,
   installWorkspaceApp,
   launchWorkspaceApp,
+  listWorkspaceAppReferences,
   listWorkspaceAppFactoryJobs,
   listWorkspaceApps,
   prepareWorkspaceAppFactoryJobModification,
@@ -18,7 +19,6 @@ import {
   retryWorkspaceApp,
   retryWorkspaceAppFactoryJobValidation,
   rollbackWorkspaceApp,
-  searchWorkspaceAppReferences,
   startEnabledWorkspaceApps,
   stopAllWorkspaceApps,
   uninstallWorkspaceApp
@@ -39,6 +39,7 @@ type WorkspaceAppsClient = Pick<
   | "importWorkspaceApp"
   | "installWorkspaceApp"
   | "launchWorkspaceApp"
+  | "listWorkspaceAppReferences"
   | "listWorkspaceAppFactoryJobs"
   | "listWorkspaceApps"
   | "prepareWorkspaceAppFactoryJobModification"
@@ -48,7 +49,6 @@ type WorkspaceAppsClient = Pick<
   | "retryWorkspaceApp"
   | "retryWorkspaceAppFactoryJobValidation"
   | "rollbackWorkspaceApp"
-  | "searchWorkspaceAppReferences"
   | "startEnabledWorkspaceApps"
   | "stopAllWorkspaceApps"
   | "uninstallWorkspaceApp"
@@ -63,15 +63,15 @@ export function createWorkspaceAppsClient(client: Client): WorkspaceAppsClient {
       });
       return unwrapData(response, "List workspace apps request failed.");
     },
-    async searchWorkspaceAppReferences(workspaceID, appID, request) {
-      const response = await searchWorkspaceAppReferences({
+    async listWorkspaceAppReferences(workspaceID, appID, request) {
+      const response = await listWorkspaceAppReferences({
         client,
         body: request,
         path: { appID, workspaceID }
       });
       return unwrapData(
         response,
-        "Search workspace app references request failed."
+        "List workspace app references request failed."
       );
     },
     async refreshWorkspaceAppCatalog(workspaceID) {
@@ -84,8 +84,9 @@ export function createWorkspaceAppsClient(client: Client): WorkspaceAppsClient {
         "Refresh workspace app catalog request failed."
       );
     },
-    async installWorkspaceApp(workspaceID, appID) {
+    async installWorkspaceApp(workspaceID, appID, request) {
       const response = await installWorkspaceApp({
+        ...(request ? { body: request } : {}),
         client,
         path: { appID, workspaceID }
       });

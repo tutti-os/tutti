@@ -189,6 +189,54 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}, nil
 	}
 
+	updateChannel := strings.TrimSpace(string(request.Body.Preferences.UpdateChannel))
+	if updateChannel == "" {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonMissingDesktopUpdateChannel,
+					apierrors.WithDeveloperMessage("desktop update channel is required"),
+					apierrors.WithParams(map[string]any{"field": "preferences.updateChannel"}),
+				),
+			),
+		}, nil
+	}
+	if !preferencesbiz.IsDesktopUpdateChannel(updateChannel) {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonUnsupportedDesktopUpdateChannel,
+					apierrors.WithDeveloperMessage("desktop update channel is unsupported"),
+					apierrors.WithParams(map[string]any{"field": "preferences.updateChannel"}),
+				),
+			),
+		}, nil
+	}
+
+	updatePolicy := strings.TrimSpace(string(request.Body.Preferences.UpdatePolicy))
+	if updatePolicy == "" {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonMissingDesktopUpdatePolicy,
+					apierrors.WithDeveloperMessage("desktop update policy is required"),
+					apierrors.WithParams(map[string]any{"field": "preferences.updatePolicy"}),
+				),
+			),
+		}, nil
+	}
+	if !preferencesbiz.IsDesktopUpdatePolicy(updatePolicy) {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonUnsupportedDesktopUpdatePolicy,
+					apierrors.WithDeveloperMessage("desktop update policy is unsupported"),
+					apierrors.WithParams(map[string]any{"field": "preferences.updatePolicy"}),
+				),
+			),
+		}, nil
+	}
+
 	preferences, err := api.PreferencesService.Put(ctx, preferencesservice.PutInput{
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromGenerated(
 			request.Body.Preferences.AgentComposerDefaultsByProvider,
@@ -199,6 +247,8 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		Locale:               locale,
 		SleepPreventionMode:  sleepPreventionMode,
 		ThemeSource:          themeSource,
+		UpdateChannel:        updateChannel,
+		UpdatePolicy:         updatePolicy,
 	})
 	if err != nil {
 		return tuttigenerated.PutDesktopPreferences502JSONResponse{

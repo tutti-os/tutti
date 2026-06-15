@@ -175,7 +175,7 @@ function createApp(
     localizations: [],
     minimizeBehavior: "keep-mounted",
     name: "Ready",
-    references: { searchSupported: false },
+    references: { listSupported: false },
     runtimeStatus: "idle",
     source: "builtin",
     stateRevision: 1,

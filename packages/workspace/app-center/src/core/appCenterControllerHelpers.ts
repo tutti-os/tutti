@@ -74,8 +74,7 @@ export function areWorkspaceAppCenterAppsEqual(
       ) &&
       leftApp.minimizeBehavior === rightApp.minimizeBehavior &&
       leftApp.name === rightApp.name &&
-      leftApp.references.searchSupported ===
-        rightApp.references.searchSupported &&
+      leftApp.references.listSupported === rightApp.references.listSupported &&
       leftApp.runtimeId === rightApp.runtimeId &&
       leftApp.runtimeStatus === rightApp.runtimeStatus &&
       leftApp.source === rightApp.source &&

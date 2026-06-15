@@ -11,7 +11,9 @@
     "dockPlacement",
     "locale",
     "sleepPreventionMode",
-    "themeSource"
+    "themeSource",
+    "updateChannel",
+    "updatePolicy"
   ],
   "properties": {
     "agentComposerDefaultsByProvider": {
@@ -56,6 +58,14 @@
     "themeSource": {
       "type": "string",
       "enum": ["system", "dark", "light"]
+    },
+    "updateChannel": {
+      "type": "string",
+      "enum": ["stable", "rc"]
+    },
+    "updatePolicy": {
+      "type": "string",
+      "enum": ["off", "prompt", "auto"]
     }
   },
   "$defs": {

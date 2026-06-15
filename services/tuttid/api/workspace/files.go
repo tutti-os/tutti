@@ -189,9 +189,9 @@ func DomainEntryKindFromGenerated(
 		return ""
 	}
 	switch *kind {
-	case tuttigenerated.File:
+	case tuttigenerated.WorkspaceFileFilterKindFile:
 		return workspacefiles.EntryKindFile
-	case tuttigenerated.Directory:
+	case tuttigenerated.WorkspaceFileFilterKindDirectory:
 		return workspacefiles.EntryKindDirectory
 	default:
 		return workspacefiles.EntryKindUnknown
@@ -208,9 +208,9 @@ func DomainSearchKindsFromGenerated(
 	result := make([]workspacefiles.EntryKind, 0, len(*kinds))
 	for _, kind := range *kinds {
 		switch kind {
-		case tuttigenerated.File:
+		case tuttigenerated.WorkspaceFileFilterKindFile:
 			result = append(result, workspacefiles.EntryKindFile)
-		case tuttigenerated.Directory:
+		case tuttigenerated.WorkspaceFileFilterKindDirectory:
 			result = append(result, workspacefiles.EntryKindDirectory)
 		default:
 			result = append(result, workspacefiles.EntryKindUnknown)
@@ -258,8 +258,8 @@ func generatedSearchMatchTarget(
 ) tuttigenerated.WorkspaceFileSearchMatchTarget {
 	switch target {
 	case workspacefiles.SearchMatchTargetPath:
-		return tuttigenerated.Path
+		return tuttigenerated.WorkspaceFileSearchMatchTargetPath
 	default:
-		return tuttigenerated.Basename
+		return tuttigenerated.WorkspaceFileSearchMatchTargetBasename
 	}
 }

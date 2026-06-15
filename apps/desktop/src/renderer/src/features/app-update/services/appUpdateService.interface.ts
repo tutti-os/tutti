@@ -6,6 +6,7 @@ export interface IAppUpdateService {
   readonly store: AppUpdateReadableStoreState;
 
   load(): Promise<void>;
+  checkForUpdates(): Promise<void>;
   runPrimaryAction(): Promise<void>;
 }
 

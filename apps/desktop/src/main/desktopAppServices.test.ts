@@ -76,6 +76,12 @@ function createHostServices(): DesktopHostServices {
       getThemeSource() {
         return "system";
       },
+      getUpdateChannel() {
+        return "stable";
+      },
+      getUpdatePolicy() {
+        return "prompt";
+      },
       subscribe() {
         return () => undefined;
       },

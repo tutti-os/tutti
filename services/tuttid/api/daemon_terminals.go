@@ -393,13 +393,13 @@ func generatedTerminalCloseGuard(guard workspaceservice.TerminalCloseGuard) tutt
 func generatedTerminalCloseGuardReason(reason string) tuttigenerated.WorkspaceTerminalCloseGuardReason {
 	switch reason {
 	case "foreground-process":
-		return tuttigenerated.ForegroundProcess
+		return tuttigenerated.WorkspaceTerminalCloseGuardReasonForegroundProcess
 	case "not-running":
-		return tuttigenerated.NotRunning
+		return tuttigenerated.WorkspaceTerminalCloseGuardReasonNotRunning
 	case "running":
-		return tuttigenerated.Running
+		return tuttigenerated.WorkspaceTerminalCloseGuardReasonRunning
 	default:
-		return tuttigenerated.Unknown
+		return tuttigenerated.WorkspaceTerminalCloseGuardReasonUnknown
 	}
 }
 

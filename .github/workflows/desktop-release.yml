@@ -3,7 +3,7 @@ name: Desktop Release
 on:
   push:
     tags:
-      - "tutti-desktop-v*"
+      - "v*"
   schedule:
     - cron: "23 1 * * *"
   workflow_dispatch:
@@ -302,134 +302,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  build-windows:
-    name: Build Windows
-    needs: resolve
-    runs-on: windows-latest
-    env:
-      TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
-      TUTTI_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
-          fetch-depth: 0
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.11.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.24.5"
-          cache-dependency-path: |
-            go.work
-            go.work.sum
-            packages/workbench/service/go.mod
-            packages/workspace/files/go.mod
-            packages/workspace/issues/go.mod
-            services/tuttid/go.mod
-            services/tuttid/go.sum
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Align package version with release tag
-        working-directory: apps/desktop
-        run: node scripts/apply-ci-release-version.mjs "$env:TUTTI_DESKTOP_RELEASE_TAG"
-
-      - name: Build release artifacts
-        shell: bash
-        run: pnpm --filter @tutti-os/desktop build:win
-
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: tutti-desktop-release-assets-windows
-          compression-level: 0
-          path: |
-            apps/desktop/dist/*.blockmap
-            apps/desktop/dist/*.exe
-            apps/desktop/dist/*.yml
-          if-no-files-found: error
-          retention-days: 7
-
-  build-linux:
-    name: Build Linux
-    needs: resolve
-    runs-on: ubuntu-latest
-    env:
-      TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
-      TUTTI_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
-          fetch-depth: 0
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.11.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.24.5"
-          cache-dependency-path: |
-            go.work
-            go.work.sum
-            packages/workbench/service/go.mod
-            packages/workspace/files/go.mod
-            packages/workspace/issues/go.mod
-            services/tuttid/go.mod
-            services/tuttid/go.sum
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Align package version with release tag
-        working-directory: apps/desktop
-        run: node scripts/apply-ci-release-version.mjs "${TUTTI_DESKTOP_RELEASE_TAG}"
-
-      - name: Build release artifacts
-        run: pnpm --filter @tutti-os/desktop build:linux
-
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: tutti-desktop-release-assets-linux
-          compression-level: 0
-          path: |
-            apps/desktop/dist/*.AppImage
-            apps/desktop/dist/*.blockmap
-            apps/desktop/dist/*.yml
-          if-no-files-found: error
-          retention-days: 7
-
   publish:
     name: Publish Release
-    needs: [resolve, build-macos, build-windows, build-linux]
+    needs: [resolve, build-macos]
     if: ${{ github.event_name == 'push' || needs.resolve.outputs.release_dry_run != 'true' }}
     runs-on: ubuntu-latest
     env:
@@ -456,7 +331,7 @@ jobs:
       - name: Download built artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: tutti-desktop-release-assets-*
+          pattern: tutti-desktop-release-assets-macos
           merge-multiple: true
           path: release-assets
 
@@ -579,7 +454,7 @@ jobs:
         if: env.FEISHU_WEBHOOK_URL != ''
         uses: actions/download-artifact@v4
         with:
-          pattern: tutti-desktop-release-assets-*
+          pattern: tutti-desktop-release-assets-macos
           merge-multiple: true
           path: release-assets
 

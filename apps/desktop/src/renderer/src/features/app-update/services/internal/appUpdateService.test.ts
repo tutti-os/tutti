@@ -22,6 +22,9 @@ test("AppUpdateService does not report status changes from initial state hydrati
   await service.load();
 
   assert.deepEqual(reporterCalls, []);
+  assert.equal(service.store.updateState?.currentVersion, "1.0.0");
+  assert.equal(service.store.updateState?.latestVersion, "1.3.0");
+  assert.equal(service.store.updateState?.status, "available");
 });
 
 test("AppUpdateService tracks primary update actions", async () => {
@@ -56,6 +59,63 @@ test("AppUpdateService tracks primary update actions", async () => {
       }
     }
   ]);
+});
+
+test("AppUpdateService keeps install action pending after IPC succeeds", async () => {
+  let installCalls = 0;
+  const service = new AppUpdateService(
+    createClient({
+      getState: async () =>
+        createState({
+          latestVersion: "1.3.0",
+          status: "downloaded"
+        }),
+      async installUpdate() {
+        installCalls += 1;
+      }
+    })
+  );
+  await service.load();
+
+  await service.runPrimaryAction();
+
+  assert.equal(installCalls, 1);
+  assert.equal(service.store.isActing, true);
+  assert.equal(service.store.view.busy, true);
+});
+
+test("AppUpdateService reports when load state is skipped after disposal", async () => {
+  const diagnosticEvents: string[] = [];
+  let resolveGetState: ((state: AppUpdateState) => void) | null = null;
+  const service = new AppUpdateService(
+    createClient({
+      getState: () =>
+        new Promise<AppUpdateState>((resolve) => {
+          resolveGetState = resolve;
+        })
+    }),
+    null,
+    undefined,
+    {
+      async logRendererDiagnostic(input) {
+        diagnosticEvents.push(input.event);
+      }
+    }
+  );
+
+  const loadPromise = service.load();
+  service.dispose();
+  const resolveState = resolveGetState as
+    | ((state: AppUpdateState) => void)
+    | null;
+  assert.ok(resolveState);
+  resolveState(createState({ status: "available" }));
+  await loadPromise;
+
+  assert.equal(service.store.updateState, null);
+  assert.ok(diagnosticEvents.includes("app_update.service_disposed"));
+  assert.ok(diagnosticEvents.includes("app_update.state_apply_skipped"));
+  assert.ok(!diagnosticEvents.includes("app_update.load_succeeded"));
 });
 
 function createClient(

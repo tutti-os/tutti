@@ -14,6 +14,8 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		Locale:                          tuttigenerated.DesktopLocale(value.Locale),
 		SleepPreventionMode:             tuttigenerated.DesktopSleepPreventionMode(value.SleepPreventionMode),
 		ThemeSource:                     tuttigenerated.DesktopThemeSource(value.ThemeSource),
+		UpdateChannel:                   tuttigenerated.DesktopUpdateChannel(value.UpdateChannel),
+		UpdatePolicy:                    tuttigenerated.DesktopUpdatePolicy(value.UpdatePolicy),
 	}
 }
 

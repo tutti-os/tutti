@@ -34,6 +34,8 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			Locale:               preferences.Locale,
 			SleepPreventionMode:  preferences.SleepPreventionMode,
 			ThemeSource:          preferences.ThemeSource,
+			UpdateChannel:        preferences.UpdateChannel,
+			UpdatePolicy:         preferences.UpdatePolicy,
 		},
 	})
 	if err != nil {
@@ -61,6 +63,8 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			Locale:                          decoded.Locale,
 			SleepPreventionMode:             decoded.SleepPreventionMode,
 			ThemeSource:                     decoded.ThemeSource,
+			UpdateChannel:                   decoded.UpdateChannel,
+			UpdatePolicy:                    decoded.UpdatePolicy,
 		})
 		if err != nil {
 			return fmt.Errorf("put desktop preferences: %w", err)
@@ -77,6 +81,8 @@ type decodedDesktopPreferencesMutationPayload struct {
 	Locale                          string
 	SleepPreventionMode             string
 	ThemeSource                     string
+	UpdateChannel                   string
+	UpdatePolicy                    string
 }
 
 func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPreferencesMutationPayload, error) {
@@ -94,6 +100,8 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		Locale:               decoded.Preferences.Locale,
 		SleepPreventionMode:  decoded.Preferences.SleepPreventionMode,
 		ThemeSource:          decoded.Preferences.ThemeSource,
+		UpdateChannel:        decoded.Preferences.UpdateChannel,
+		UpdatePolicy:         decoded.Preferences.UpdatePolicy,
 	}, nil
 }
 

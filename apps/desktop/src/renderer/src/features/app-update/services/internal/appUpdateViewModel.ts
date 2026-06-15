@@ -3,6 +3,7 @@ import type { AppUpdateViewState } from "../appUpdateTypes";
 
 const hiddenStatuses = new Set([
   "disabled",
+  "error",
   "idle",
   "unsupported",
   "up_to_date"
@@ -16,8 +17,6 @@ export function resolveAppUpdateViewState(
   if (!state || hiddenStatuses.has(state.status)) {
     return hiddenView;
   }
-
-  const version = state.latestVersion ?? state.releaseName ?? "";
 
   if (state.status === "checking") {
     return {
@@ -37,7 +36,6 @@ export function resolveAppUpdateViewState(
       busy: isActing,
       icon: isActing ? "loading" : "spark",
       titleKey: "updates.availableTitle",
-      titleParams: { version },
       visible: true
     };
   }
@@ -51,8 +49,7 @@ export function resolveAppUpdateViewState(
       progressPercent,
       titleKey: "updates.downloadingTitle",
       titleParams: {
-        percent: formatPercent(progressPercent),
-        version
+        percent: formatPercent(progressPercent)
       },
       visible: true
     };
@@ -66,7 +63,6 @@ export function resolveAppUpdateViewState(
       busy: isActing,
       icon: isActing ? "loading" : "spark",
       titleKey: "updates.downloadedTitle",
-      titleParams: { version },
       visible: true
     };
   }

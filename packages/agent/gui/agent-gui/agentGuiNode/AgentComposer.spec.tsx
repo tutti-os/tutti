@@ -20,23 +20,13 @@ import type {
 } from "./model/agentGuiNodeTypes";
 import type { AgentHostAgentSessionCommand } from "../../shared/contracts/dto";
 
-const {
-  mockMentionControllerInstances,
-  mockMentionPaletteEntries,
-  mockProjectMissingState
-} = vi.hoisted(() => ({
-  mockMentionControllerInstances: [] as any[],
-  mockMentionPaletteEntries: {
-    current: [] as any[]
-  },
+const { mockProjectMissingState } = vi.hoisted(() => ({
   mockProjectMissingState: {
     current: false
   }
 }));
 
 afterEach(() => {
-  mockMentionControllerInstances.length = 0;
-  mockMentionPaletteEntries.current = [];
   mockProjectMissingState.current = false;
 });
 
@@ -77,13 +67,11 @@ vi.mock("../../app/renderer/components/ui/popover", () => ({
 vi.mock("./agentRichText/AgentRichTextEditor", () => ({
   AgentRichTextEditor: ({
     disabled,
-    onFileMentionSuggestionChange,
     onPasteImages,
     value,
     placeholder
   }: {
     disabled?: boolean;
-    onFileMentionSuggestionChange?: (state: unknown) => void;
     onPasteImages?: (images: unknown[]) => void;
     value: string;
     placeholder: string;
@@ -109,19 +97,6 @@ vi.mock("./agentRichText/AgentRichTextEditor", () => ({
         }
       >
         paste image
-      </button>
-      <button
-        type="button"
-        data-testid="mock-open-file-mention"
-        onClick={() =>
-          onFileMentionSuggestionChange?.({
-            query: "guide",
-            editor: {},
-            command: vi.fn()
-          })
-        }
-      >
-        open file mention
       </button>
     </>
   )
@@ -192,25 +167,19 @@ vi.mock("./AgentQueuedPromptPanel", () => ({
 
 vi.mock("./AgentFileMentionPalette", () => ({
   AgentFileMentionPalette: () => null,
-  flattenAgentMentionPaletteEntries: () => mockMentionPaletteEntries.current
+  flattenAgentMentionPaletteEntries: () => []
 }));
 
 vi.mock("./AgentMentionSearchController", () => ({
   AgentMentionSearchController: class {
-    close = vi.fn();
-    dispose = vi.fn();
-    enterCategory = vi.fn();
-    expandGroup = vi.fn();
-    expandWorkspaceAppReferences = vi.fn();
-    selectAgentGeneratedMentionItem = vi.fn();
-    setFilter = vi.fn();
-    updateQuery = vi.fn();
-    constructor() {
-      mockMentionControllerInstances.push(this);
-    }
     subscribe() {
       return () => undefined;
     }
+    dispose() {}
+    close() {}
+    updateQuery() {}
+    setFilter() {}
+    expandGroup() {}
   }
 }));
 
@@ -251,63 +220,6 @@ describe("AgentComposer", () => {
     expect(
       screen.queryByRole("button", { name: "完全访问权限" })
     ).not.toBeInTheDocument();
-  });
-
-  it("expands workspace app reference entries from the file mention palette with Enter", async () => {
-    mockMentionPaletteEntries.current = [
-      {
-        key: "apps:workspace-app-reference-expand:docs",
-        type: "app-reference-expand",
-        appId: "docs",
-        groupId: "apps"
-      }
-    ];
-    render(
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        draftPrompt=""
-        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings()}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftChange={vi.fn()}
-        onSettingsChange={vi.fn()}
-        onSubmit={vi.fn()}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-      />
-    );
-
-    fireEvent.click(screen.getByTestId("mock-open-file-mention"));
-    await waitFor(() =>
-      expect(mockMentionControllerInstances[0]?.updateQuery).toHaveBeenCalled()
-    );
-    fireEvent.keyDown(screen.getByPlaceholderText("placeholder"), {
-      key: "Enter"
-    });
-
-    expect(
-      mockMentionControllerInstances[0]?.expandWorkspaceAppReferences
-    ).toHaveBeenCalledWith("docs");
-    expect(
-      mockMentionControllerInstances[0]?.expandGroup
-    ).not.toHaveBeenCalled();
   });
 
   it("renders the permission dropdown when only plan mode is supported", () => {

@@ -647,6 +647,12 @@ paths:
       tags:
         - app-center
       summary: Install one app in a workspace
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstallWorkspaceAppRequest"
       responses:
         "200":
           description: Workspace app installed
@@ -666,17 +672,17 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
-  /v1/workspaces/{workspaceID}/apps/{appID}/references/search:
+  /v1/workspaces/{workspaceID}/apps/{appID}/references/list:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
       - $ref: "#/components/parameters/WorkspaceAppID"
     post:
-      operationId: searchWorkspaceAppReferences
+      operationId: listWorkspaceAppReferences
       tags:
         - app-center
-      summary: Search file references exposed by one running workspace app
+      summary: List file references exposed by one running workspace app
       description: >
-        Proxies a reference search to a running workspace app and returns
+        Proxies a reference list request to a running workspace app and returns
         daemon-resolved file references. Workspace app runtimes return scoped
         locations to the daemon; this public daemon API returns absolute file
         paths that desktop clients can use as ordinary file links.
@@ -685,14 +691,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AppReferenceSearchRequest"
+              $ref: "#/components/schemas/AppReferenceListRequest"
       responses:
         "200":
-          description: Workspace app references
+          description: Workspace app reference list
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AppReferenceSearchResponse"
+                $ref: "#/components/schemas/AppReferenceListResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -2933,6 +2939,17 @@ components:
         - never
         - whileAgentRunning
         - always
+    DesktopUpdatePolicy:
+      type: string
+      enum:
+        - off
+        - prompt
+        - auto
+    DesktopUpdateChannel:
+      type: string
+      enum:
+        - stable
+        - rc
     DesktopDockPlacement:
       type: string
       enum:
@@ -2954,6 +2971,8 @@ components:
         - locale
         - sleepPreventionMode
         - themeSource
+        - updateChannel
+        - updatePolicy
       properties:
         agentComposerDefaultsByProvider:
           $ref: "#/components/schemas/DesktopAgentComposerDefaultsByProvider"
@@ -2969,6 +2988,10 @@ components:
           $ref: "#/components/schemas/DesktopSleepPreventionMode"
         themeSource:
           $ref: "#/components/schemas/DesktopThemeSource"
+        updateChannel:
+          $ref: "#/components/schemas/DesktopUpdateChannel"
+        updatePolicy:
+          $ref: "#/components/schemas/DesktopUpdatePolicy"
     DesktopAgentComposerDefaults:
       type: object
       additionalProperties: false
@@ -3156,9 +3179,9 @@ components:
       type: object
       additionalProperties: false
       required:
-        - searchSupported
+        - listSupported
       properties:
-        searchSupported:
+        listSupported:
           type: boolean
     AppReferenceKind:
       type: string
@@ -3166,14 +3189,17 @@ components:
         - file
       x-enum-varnames:
         - AppReferenceKindFile
-    AppReferenceSearchRequest:
+    AppReferenceListRequest:
       type: object
       additionalProperties: false
-      required:
-        - query
       properties:
-        query:
+        parentGroupId:
           type: string
+          nullable: true
+          maxLength: 2048
+        filterText:
+          type: string
+          nullable: true
           maxLength: 200
         limit:
           type: integer
@@ -3181,18 +3207,43 @@ components:
           maximum: 50
         cursor:
           type: string
+          nullable: true
           maxLength: 2048
         kinds:
           type: array
           items:
             $ref: "#/components/schemas/AppReferenceKind"
-    AppReferenceSearchResponse:
+        timeRange:
+          $ref: "#/components/schemas/AppReferenceListTimeRange"
+    AppReferenceListTimeRange:
+      type: object
+      additionalProperties: false
+      description: >
+        Inclusive timestamp range for references. For file references, runtimes
+        should filter by the file mtimeMs when available.
+      properties:
+        fromMs:
+          type: integer
+          format: int64
+          minimum: 0
+        toMs:
+          type: integer
+          format: int64
+          minimum: 0
+    InstallWorkspaceAppRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        restartRunning:
+          type: boolean
+          description: Restart the app runtime after installing if it is already running.
+    AppReferenceListResponse:
       type: object
       additionalProperties: false
       required:
         - workspaceId
         - appId
-        - references
+        - items
         - nextCursor
       properties:
         workspaceId:
@@ -3201,14 +3252,68 @@ components:
         appId:
           type: string
           minLength: 1
-        references:
+        items:
           type: array
           items:
-            $ref: "#/components/schemas/AppReference"
+            $ref: "#/components/schemas/AppReferenceListItem"
         nextCursor:
           type: string
           nullable: true
           maxLength: 2048
+    AppReferenceListItem:
+      oneOf:
+        - $ref: "#/components/schemas/AppReferenceGroup"
+        - $ref: "#/components/schemas/AppReferenceListReferenceItem"
+      discriminator:
+        propertyName: type
+        mapping:
+          group: "#/components/schemas/AppReferenceGroup"
+          reference: "#/components/schemas/AppReferenceListReferenceItem"
+    AppReferenceGroup:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - id
+        - displayName
+        - referenceCount
+      properties:
+        type:
+          type: string
+          enum:
+            - group
+          x-enum-varnames:
+            - AppReferenceGroupTypeGroup
+        id:
+          type: string
+          minLength: 1
+          maxLength: 2048
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 160
+        description:
+          type: string
+          nullable: true
+          maxLength: 500
+        referenceCount:
+          type: integer
+          minimum: 0
+    AppReferenceListReferenceItem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - reference
+      properties:
+        type:
+          type: string
+          enum:
+            - reference
+          x-enum-varnames:
+            - AppReferenceListReferenceItemTypeReference
+        reference:
+          $ref: "#/components/schemas/AppReference"
     AppReference:
       oneOf:
         - $ref: "#/components/schemas/AppFileReference"
@@ -3233,6 +3338,8 @@ components:
           type: string
           enum:
             - file
+          x-enum-varnames:
+            - AppFileReferenceKindFile
         displayName:
           type: string
           nullable: true
@@ -4734,6 +4841,9 @@ components:
       enum:
         - file
         - directory
+      x-enum-varnames:
+        - WorkspaceFileFilterKindFile
+        - WorkspaceFileFilterKindDirectory
     WorkspaceFileEntry:
       type: object
       additionalProperties: false
@@ -4991,6 +5101,9 @@ components:
       enum:
         - basename
         - path
+      x-enum-varnames:
+        - WorkspaceFileSearchMatchTargetBasename
+        - WorkspaceFileSearchMatchTargetPath
     WorkspaceFileSearchResponse:
       type: object
       additionalProperties: false

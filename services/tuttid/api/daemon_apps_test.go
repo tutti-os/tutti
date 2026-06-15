@@ -10,22 +10,22 @@ import (
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
-func TestDaemonAPIGeneratedRoutesSearchWorkspaceAppReferences(t *testing.T) {
+func TestDaemonAPIGeneratedRoutesListWorkspaceAppReferences(t *testing.T) {
 	mux := http.NewServeMux()
 	var gotWorkspaceID string
 	var gotAppID string
-	var gotInput workspacebiz.AppReferenceSearchInput
-	searchCalls := 0
+	var gotInput workspacebiz.AppReferenceListInput
+	listCalls := 0
 	RegisterRoutes(
 		mux,
 		NewRoutes(DaemonAPI{
 			AppCenterService: stubWorkspaceAppCenterService{
-				searchReferencesFn: func(_ context.Context, workspaceID string, appID string, input workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error) {
-					searchCalls++
+				listReferencesFn: func(_ context.Context, workspaceID string, appID string, input workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
+					listCalls++
 					gotWorkspaceID = workspaceID
 					gotAppID = appID
 					gotInput = input
-					return workspacebiz.AppReferenceSearchResult{}, nil
+					return workspacebiz.AppReferenceListResult{}, nil
 				},
 			},
 		}),
@@ -35,20 +35,25 @@ func TestDaemonAPIGeneratedRoutesSearchWorkspaceAppReferences(t *testing.T) {
 		t,
 		mux,
 		http.MethodPost,
-		"/v1/workspaces/workspace-1/apps/docs/references/search",
+		"/v1/workspaces/workspace-1/apps/docs/references/list",
 		map[string]any{
-			"query":  " guide ",
-			"limit":  5,
-			"cursor": " cursor ",
-			"kinds":  []string{"file"},
+			"parentGroupId": " group-1 ",
+			"filterText":    " guide ",
+			"limit":         5,
+			"cursor":        " cursor ",
+			"kinds":         []string{"file"},
+			"timeRange": map[string]any{
+				"fromMs": 1000,
+				"toMs":   2000,
+			},
 		},
 	)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", recorder.Code, recorder.Body.String())
 	}
-	if searchCalls != 1 {
-		t.Fatalf("expected one search call, got %d", searchCalls)
+	if listCalls != 1 {
+		t.Fatalf("expected one list call, got %d", listCalls)
 	}
 	if gotWorkspaceID != "workspace-1" {
 		t.Fatalf("expected workspace id workspace-1, got %q", gotWorkspaceID)
@@ -56,8 +61,11 @@ func TestDaemonAPIGeneratedRoutesSearchWorkspaceAppReferences(t *testing.T) {
 	if gotAppID != "docs" {
 		t.Fatalf("expected app id docs, got %q", gotAppID)
 	}
-	if gotInput.Query != "guide" {
-		t.Fatalf("expected trimmed query, got %q", gotInput.Query)
+	if gotInput.ParentGroupID != "group-1" {
+		t.Fatalf("expected trimmed parentGroupId, got %q", gotInput.ParentGroupID)
+	}
+	if gotInput.FilterText != "guide" {
+		t.Fatalf("expected trimmed filterText, got %q", gotInput.FilterText)
 	}
 	if gotInput.Limit != 5 {
 		t.Fatalf("expected limit 5, got %d", gotInput.Limit)
@@ -68,50 +76,69 @@ func TestDaemonAPIGeneratedRoutesSearchWorkspaceAppReferences(t *testing.T) {
 	if len(gotInput.Kinds) != 1 || gotInput.Kinds[0] != workspacebiz.AppReferenceKindFile {
 		t.Fatalf("expected file kind filter, got %#v", gotInput.Kinds)
 	}
+	if gotInput.TimeRange == nil || gotInput.TimeRange.FromMs == nil || *gotInput.TimeRange.FromMs != 1000 || gotInput.TimeRange.ToMs == nil || *gotInput.TimeRange.ToMs != 2000 {
+		t.Fatalf("expected forwarded time range, got %#v", gotInput.TimeRange)
+	}
 }
 
-func TestDaemonAPIGeneratedRoutesSearchWorkspaceAppReferencesRejectsInvalidRequest(t *testing.T) {
+func TestDaemonAPIGeneratedRoutesListWorkspaceAppReferencesRejectsInvalidRequest(t *testing.T) {
 	tests := []struct {
 		name string
 		body map[string]any
 	}{
 		{
-			name: "missing query",
-			body: map[string]any{},
+			name: "blank parent group id",
+			body: map[string]any{"parentGroupId": " "},
 		},
 		{
-			name: "query too long",
-			body: map[string]any{"query": strings.Repeat("x", 201)},
+			name: "parent group id too long",
+			body: map[string]any{"parentGroupId": strings.Repeat("g", 2049)},
+		},
+		{
+			name: "filterText too long",
+			body: map[string]any{"filterText": strings.Repeat("x", 201)},
 		},
 		{
 			name: "limit below minimum",
-			body: map[string]any{"query": "guide", "limit": 0},
+			body: map[string]any{"limit": 0},
 		},
 		{
 			name: "limit above maximum",
-			body: map[string]any{"query": "guide", "limit": 51},
+			body: map[string]any{"limit": 51},
 		},
 		{
 			name: "cursor too long",
-			body: map[string]any{"query": "guide", "cursor": strings.Repeat("c", 2049)},
+			body: map[string]any{"cursor": strings.Repeat("c", 2049)},
 		},
 		{
 			name: "unknown kind",
-			body: map[string]any{"query": "guide", "kinds": []string{"url"}},
+			body: map[string]any{"kinds": []string{"url"}},
+		},
+		{
+			name: "negative from",
+			body: map[string]any{"timeRange": map[string]any{"fromMs": -1}},
+		},
+		{
+			name: "negative to",
+			body: map[string]any{"timeRange": map[string]any{"toMs": -1}},
+		},
+		{
+			name: "from after to",
+			body: map[string]any{"timeRange": map[string]any{"fromMs": 2, "toMs": 1}},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mux := http.NewServeMux()
-			searchCalls := 0
+			listCalls := 0
 			RegisterRoutes(
 				mux,
 				NewRoutes(DaemonAPI{
 					AppCenterService: stubWorkspaceAppCenterService{
-						searchReferencesFn: func(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error) {
-							searchCalls++
-							return workspacebiz.AppReferenceSearchResult{}, nil
+						listReferencesFn: func(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
+							listCalls++
+							return workspacebiz.AppReferenceListResult{}, nil
 						},
 					},
 				}),
@@ -121,22 +148,80 @@ func TestDaemonAPIGeneratedRoutesSearchWorkspaceAppReferencesRejectsInvalidReque
 				t,
 				mux,
 				http.MethodPost,
-				"/v1/workspaces/workspace-1/apps/docs/references/search",
+				"/v1/workspaces/workspace-1/apps/docs/references/list",
 				tt.body,
 			)
 
 			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("expected status 400, got %d: %s", recorder.Code, recorder.Body.String())
 			}
-			if searchCalls != 0 {
-				t.Fatalf("expected search not to be called, got %d calls", searchCalls)
+			if listCalls != 0 {
+				t.Fatalf("expected list not to be called, got %d calls", listCalls)
 			}
 		})
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesInstallWorkspaceAppPassesRestartOption(t *testing.T) {
+	mux := http.NewServeMux()
+	var gotWorkspaceID string
+	var gotAppID string
+	var gotOptions workspaceservice.InstallOptions
+	installCalls := 0
+	RegisterRoutes(
+		mux,
+		NewRoutes(DaemonAPI{
+			AppCenterService: stubWorkspaceAppCenterService{
+				installWithOptionsFn: func(_ context.Context, workspaceID string, appID string, options workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error) {
+					installCalls++
+					gotWorkspaceID = workspaceID
+					gotAppID = appID
+					gotOptions = options
+					return workspacebiz.WorkspaceApp{
+						Package: workspacebiz.AppPackage{
+							AppID:      appID,
+							Version:    "1.0.0",
+							PackageDir: "/tmp/app",
+							Manifest: workspacebiz.AppManifest{
+								AppID:       appID,
+								Version:     "1.0.0",
+								Name:        "App",
+								Description: "",
+							},
+							Source: workspacebiz.AppPackageSourceBuiltin,
+						},
+						Runtime: workspacebiz.AppRuntimeState{Status: workspacebiz.AppRuntimeStatusIdle},
+					}, nil
+				},
+			},
+		}),
+	)
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/workspace-1/apps/docs/install",
+		map[string]any{"restartRunning": true},
+	)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if installCalls != 1 {
+		t.Fatalf("expected one install call, got %d", installCalls)
+	}
+	if gotWorkspaceID != "workspace-1" || gotAppID != "docs" {
+		t.Fatalf("install target = %q/%q, want workspace-1/docs", gotWorkspaceID, gotAppID)
+	}
+	if !gotOptions.RestartRunning {
+		t.Fatal("RestartRunning = false, want true")
+	}
+}
+
 type stubWorkspaceAppCenterService struct {
-	searchReferencesFn func(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error)
+	installWithOptionsFn func(context.Context, string, string, workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error)
+	listReferencesFn     func(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error)
 }
 
 func (stubWorkspaceAppCenterService) Add(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
@@ -159,8 +244,22 @@ func (stubWorkspaceAppCenterService) Install(context.Context, string, string) (w
 	return workspacebiz.WorkspaceApp{}, nil
 }
 
+func (s stubWorkspaceAppCenterService) InstallWithOptions(ctx context.Context, workspaceID string, appID string, options workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error) {
+	if s.installWithOptionsFn == nil {
+		return workspacebiz.WorkspaceApp{}, nil
+	}
+	return s.installWithOptionsFn(ctx, workspaceID, appID, options)
+}
+
 func (stubWorkspaceAppCenterService) Launch(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
 	return workspacebiz.WorkspaceApp{}, nil
+}
+
+func (s stubWorkspaceAppCenterService) ListReferences(ctx context.Context, workspaceID string, appID string, input workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
+	if s.listReferencesFn == nil {
+		return workspacebiz.AppReferenceListResult{}, nil
+	}
+	return s.listReferencesFn(ctx, workspaceID, appID, input)
 }
 
 func (stubWorkspaceAppCenterService) List(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {
@@ -189,13 +288,6 @@ func (stubWorkspaceAppCenterService) Retry(context.Context, string, string) (wor
 
 func (stubWorkspaceAppCenterService) Rollback(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error) {
 	return workspacebiz.WorkspaceApp{}, nil
-}
-
-func (s stubWorkspaceAppCenterService) SearchReferences(ctx context.Context, workspaceID string, appID string, input workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error) {
-	if s.searchReferencesFn == nil {
-		return workspacebiz.AppReferenceSearchResult{}, nil
-	}
-	return s.searchReferencesFn(ctx, workspaceID, appID, input)
 }
 
 func (stubWorkspaceAppCenterService) StartEnabled(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {

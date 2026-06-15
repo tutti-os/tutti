@@ -151,12 +151,20 @@ func (s Service) GetIssueDetail(ctx context.Context, workspaceID string, issueID
 		latestRun = &runs[0]
 	}
 	outputs := make([]RunOutput, 0)
+	seenOutputPaths := map[string]struct{}{}
 	for _, run := range runs {
 		runOutputs, err := store.ListRunOutputs(ctx, workspaceID, issueID, run.TaskID, run.RunID)
 		if err != nil {
 			return IssueDetail{}, err
 		}
-		outputs = append(outputs, runOutputs...)
+		for _, output := range runOutputs {
+			outputPath := strings.TrimSpace(output.Path)
+			if _, exists := seenOutputPaths[outputPath]; exists {
+				continue
+			}
+			seenOutputPaths[outputPath] = struct{}{}
+			outputs = append(outputs, output)
+		}
 	}
 	return IssueDetail{
 		Issue:         issue,

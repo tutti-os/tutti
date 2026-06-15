@@ -298,6 +298,64 @@ test("WorkspaceAppCenterController ignores retry for non-failed apps", async () 
   assert.equal(controller.store.apps[0]?.runtimeStatus, "idle");
 });
 
+test("WorkspaceAppCenterController requests restart when updating a running installed app", async () => {
+  const installInputs: Array<{ restartRunning?: boolean } | undefined> = [];
+  const closeRequests: Array<{
+    appIds: readonly string[];
+    workspaceId: string;
+  }> = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async installWorkspaceApp(_workspaceId, _appId, input) {
+        installInputs.push(input);
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              availableVersion: null,
+              runtimeStatus: "preparing",
+              stateRevision: 2,
+              updateAvailable: false,
+              version: "1.1.0"
+            })
+          ]
+        });
+      }
+    }),
+    hooks: {
+      onCloseWorkspaceAppViews(input) {
+        closeRequests.push(input);
+      }
+    }
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          appId: "app-1",
+          availableVersion: "1.1.0",
+          runtimeStatus: "running",
+          updateAvailable: true,
+          version: "1.0.0"
+        })
+      ]
+    })
+  );
+
+  await controller.updateApp({
+    appId: "app-1",
+    trigger: "primary_action",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(installInputs, [{ restartRunning: true }]);
+  assert.deepEqual(closeRequests, [
+    { appIds: ["app-1"], workspaceId: "workspace-1" }
+  ]);
+});
+
 test("WorkspaceAppCenterController only marks idle enabled apps as starting", async () => {
   let optimisticStatuses: string[] = [];
   const controller = createWorkspaceAppCenterController({
@@ -344,7 +402,7 @@ function createApp(
     installed: true,
     minimizeBehavior: "keep-mounted",
     name: "App One",
-    references: { searchSupported: false },
+    references: { listSupported: false },
     runtimeStatus: "idle",
     source: "generated",
     stateRevision: 1,

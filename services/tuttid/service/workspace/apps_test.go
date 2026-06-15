@@ -839,108 +839,6 @@ func TestAppCenterServiceStartEnabledSkipsUninstalledRemoteBuiltinUpdate(t *test
 	}
 }
 
-func TestAppCenterServiceRemoteBuiltinStartRefreshesCachedManifestFromPackage(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	packageDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
-		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
-		AppID:         "large-builtin",
-		Version:       "1.1.0",
-		Name:          "Large Builtin",
-		Description:   "Large app",
-		Icon: workspacebiz.AppManifestIcon{
-			Type: "asset",
-			Src:  "icon.png",
-		},
-		Runtime: workspacebiz.AppManifestRuntime{
-			Bootstrap:       "bootstrap.sh",
-			HealthcheckPath: "/",
-		},
-	})
-	manifestWithReferencesJSON := `{
-  "schemaVersion": "tutti.app.manifest.v1",
-  "appId": "large-builtin",
-  "version": "1.1.0",
-  "name": "Large Builtin",
-  "description": "Large app",
-  "icon": {
-    "type": "asset",
-    "src": "icon.png"
-  },
-  "runtime": {
-    "bootstrap": "bootstrap.sh",
-    "healthcheckPath": "/"
-  },
-  "references": {
-    "searchEndpoint": "/tutti/references/search"
-  }
-}
-`
-	if err := os.WriteFile(filepath.Join(packageDir, "tutti.app.json"), []byte(manifestWithReferencesJSON), 0o644); err != nil {
-		t.Fatalf("write manifest with references: %v", err)
-	}
-	remoteManifest := mustReadManifestForTest(t, packageDir)
-	staleManifest := remoteManifest
-	staleManifest.References = nil
-
-	store := newAppStoreStub()
-	if err := store.PutAppPackage(ctx, workspacebiz.AppPackage{
-		AppID:      "large-builtin",
-		Version:    "1.1.0",
-		PackageDir: packageDir,
-		Manifest:   staleManifest,
-		Source:     workspacebiz.AppPackageSourceBuiltin,
-	}); err != nil {
-		t.Fatalf("PutAppPackage() error = %v", err)
-	}
-	fetcher := &appArtifactFetcherStub{}
-	service := AppCenterService{
-		Store:           store,
-		WorkspaceStore:  &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
-		Runner:          &AppRunner{},
-		StateDir:        t.TempDir(),
-		ArtifactFetcher: fetcher,
-		BuiltinCatalog: func() ([]builtinapps.App, error) {
-			return []builtinapps.App{{
-				Manifest: remoteManifest,
-				Distribution: builtinapps.Distribution{
-					Kind:           builtinapps.DistributionRemote,
-					ArtifactURL:    "https://cdn.example.test/large-builtin.zip",
-					ArtifactSHA256: "sha256",
-					IconURL:        "https://cdn.example.test/large-builtin.png",
-				},
-			}}, nil
-		},
-	}
-
-	appPackage, err := service.packageForRemoteBuiltinStart(ctx, builtinapps.App{
-		Manifest: remoteManifest,
-		Distribution: builtinapps.Distribution{
-			Kind:           builtinapps.DistributionRemote,
-			ArtifactURL:    "https://cdn.example.test/large-builtin.zip",
-			ArtifactSHA256: "sha256",
-			IconURL:        "https://cdn.example.test/large-builtin.png",
-		},
-	})
-	if err != nil {
-		t.Fatalf("packageForRemoteBuiltinStart() error = %v", err)
-	}
-	if len(fetcher.calls) != 0 {
-		t.Fatalf("artifact fetch calls = %#v, want none", fetcher.calls)
-	}
-	if !appPackage.ReferenceSearchSupported() {
-		t.Fatalf("packageForRemoteBuiltinStart() references = %#v, want search supported", appPackage.Manifest.References)
-	}
-	stored, err := store.GetAppPackage(ctx, "large-builtin")
-	if err != nil {
-		t.Fatalf("GetAppPackage() error = %v", err)
-	}
-	if !stored.ReferenceSearchSupported() || !strings.Contains(stored.ManifestJSON, `"references"`) {
-		t.Fatalf("stored package references = %#v, manifestJSON=%s", stored.Manifest.References, stored.ManifestJSON)
-	}
-}
-
 func TestAppCenterServiceStartEnabledDoesNotBlockOnRemoteBuiltinUpdate(t *testing.T) {
 	t.Parallel()
 
@@ -2466,23 +2364,6 @@ func TestAppCenterServiceDeletePackagePrunesEmptyPackageCacheParent(t *testing.T
 	}
 	if _, err := os.Stat(service.packageCacheRoot()); err != nil {
 		t.Fatalf("package cache root stat error = %v, want exists", err)
-	}
-}
-
-func TestAppCenterServiceAppStatePathsRejectDotSegments(t *testing.T) {
-	t.Parallel()
-
-	stateDir := t.TempDir()
-	service := AppCenterService{StateDir: stateDir}
-
-	if got, want := service.packageCacheDir("app", ".."), filepath.Join(stateDir, "apps", "packages", "app", "_"); got != want {
-		t.Fatalf("packageCacheDir version escape = %q, want %q", got, want)
-	}
-	if got, want := service.packageCacheDir("..", "1.0.0"), filepath.Join(stateDir, "apps", "packages", "_", "1.0.0"); got != want {
-		t.Fatalf("packageCacheDir app escape = %q, want %q", got, want)
-	}
-	if got, want := service.workspaceAppStateRoot(".", ".."), filepath.Join(stateDir, "apps", "workspaces", "_", "_"); got != want {
-		t.Fatalf("workspaceAppStateRoot escape = %q, want %q", got, want)
 	}
 }
 

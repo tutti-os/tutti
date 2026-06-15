@@ -30,9 +30,7 @@ function resolveDesktopDownloadLinks(
   releaseAssetBaseUrl
 ) {
   const desktopAssets = [
-    { label: "macOS", matcher: (name) => /\.dmg$/i.test(name) },
-    { label: "Windows", matcher: (name) => /\.exe$/i.test(name) },
-    { label: "Linux", matcher: (name) => /\.AppImage$/i.test(name) }
+    { label: "macOS", matcher: (name) => /\.dmg$/i.test(name) }
   ];
   const normalizedBaseUrl = normalizeBaseUrl(releaseAssetBaseUrl);
 

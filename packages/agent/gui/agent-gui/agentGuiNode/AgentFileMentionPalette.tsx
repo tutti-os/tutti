@@ -41,16 +41,14 @@ import {
   type AgentMentionBrowseCategory,
   type AgentMentionFilterId,
   type AgentMentionGroupId,
-  type AgentMentionSearchState,
-  WORKSPACE_APP_REFERENCE_PAGE_SIZE
+  type AgentMentionSearchState
 } from "./AgentMentionSearchController";
 import { agentGeneratedMentionItemKey } from "./agentMentionAgentGeneratedFilesPresentation";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 
 export interface AgentMentionPaletteEntry {
   key: string;
-  type: "category" | "item" | "expand" | "app-reference-expand";
-  appId?: string;
+  type: "category" | "item" | "expand";
   categoryId?: AgentMentionBrowseCategory["id"];
   groupId?: AgentMentionGroupId;
   item?: AgentContextMentionItem;
@@ -71,7 +69,6 @@ interface AgentFileMentionPaletteProps {
   onSelectCategory: (categoryId: AgentMentionBrowseCategory["id"]) => void;
   onSelectFilter: (filter: AgentMentionFilterId) => void;
   onExpandGroup: (groupId: AgentMentionGroupId) => void;
-  onExpandWorkspaceAppReferences?: (appId: string) => void;
   onCycleFilter: () => void;
   onMoveSelection: (delta: 1 | -1) => void;
 }
@@ -109,29 +106,15 @@ export function flattenAgentMentionPaletteEntries(
   for (const group of state.groups) {
     for (const item of group.items) {
       entries.push({
-        key: mentionPaletteItemKey(group.id, item),
+        key: `${group.id}:${item.kind}:${
+          item.kind === "file"
+            ? agentGeneratedMentionItemKey(item)
+            : item.targetId
+        }`,
         type: "item",
         groupId: group.id,
         item
       });
-      if (item.kind === "workspace-app") {
-        for (const referenceItem of item.referenceItems ?? []) {
-          entries.push({
-            key: mentionPaletteReferenceItemKey(group.id, item, referenceItem),
-            type: "item",
-            groupId: group.id,
-            item: referenceItem
-          });
-        }
-        if (item.referenceNextCursor) {
-          entries.push({
-            key: mentionPaletteReferenceExpandKey(group.id, item),
-            type: "app-reference-expand",
-            appId: item.appId,
-            groupId: group.id
-          });
-        }
-      }
     }
     if (group.hasMore) {
       entries.push({
@@ -152,7 +135,7 @@ export function groupStartKeys(state: AgentMentionSearchState): string[] {
     .map((group) => {
       const firstItem = group.items[0];
       if (firstItem) {
-        return mentionPaletteItemKey(group.id, firstItem);
+        return `${group.id}:${firstItem.kind}:${firstItem.kind === "file" ? firstItem.path : firstItem.targetId}`;
       }
       if (group.hasMore) {
         return `expand:${group.id}`;
@@ -160,32 +143,6 @@ export function groupStartKeys(state: AgentMentionSearchState): string[] {
       return null;
     })
     .filter((key): key is string => key !== null);
-}
-
-function mentionPaletteItemKey(
-  groupId: AgentMentionGroupId,
-  item: AgentContextMentionItem
-): string {
-  return `${groupId}:${item.kind}:${
-    item.kind === "file" ? agentGeneratedMentionItemKey(item) : item.targetId
-  }`;
-}
-
-function mentionPaletteReferenceItemKey(
-  groupId: AgentMentionGroupId,
-  parentItem: Extract<AgentContextMentionItem, { kind: "workspace-app" }>,
-  referenceItem: Extract<AgentContextMentionItem, { kind: "file" }>
-): string {
-  return `${groupId}:workspace-app-reference:${parentItem.appId}:${
-    referenceItem.sourceKey ?? referenceItem.href
-  }`;
-}
-
-function mentionPaletteReferenceExpandKey(
-  groupId: AgentMentionGroupId,
-  parentItem: Extract<AgentContextMentionItem, { kind: "workspace-app" }>
-): string {
-  return `${groupId}:workspace-app-reference-expand:${parentItem.appId}`;
 }
 
 export function AgentFileMentionPalette({
@@ -203,7 +160,6 @@ export function AgentFileMentionPalette({
   onSelectCategory,
   onSelectFilter,
   onExpandGroup,
-  onExpandWorkspaceAppReferences = () => undefined,
   onCycleFilter,
   onMoveSelection
 }: AgentFileMentionPaletteProps): React.JSX.Element {
@@ -346,7 +302,6 @@ export function AgentFileMentionPalette({
                 highlightedOptionRef,
                 mode: state.mode,
                 onExpandGroup,
-                onExpandWorkspaceAppReferences,
                 onHighlightChange,
                 onSelectItem,
                 query: state.query
@@ -409,7 +364,6 @@ export function AgentFileMentionPalette({
               highlightedOptionRef,
               mode: state.mode,
               onExpandGroup,
-              onExpandWorkspaceAppReferences,
               onHighlightChange,
               onSelectItem,
               query: state.query
@@ -823,7 +777,6 @@ function renderMentionPaletteGroups(input: {
   highlightedOptionRef: MutableRefObject<HTMLButtonElement | null>;
   mode: AgentMentionSearchState["mode"];
   onExpandGroup: (groupId: AgentMentionGroupId) => void;
-  onExpandWorkspaceAppReferences: (appId: string) => void;
   onHighlightChange: (key: string) => void;
   onSelectItem: (entry: AgentContextMentionItem) => void;
   query: string;
@@ -838,8 +791,7 @@ function renderMentionPaletteGroups(input: {
         input.highlightedOptionRef,
         input.onHighlightChange,
         input.onSelectItem,
-        input.onExpandGroup,
-        input.onExpandWorkspaceAppReferences
+        input.onExpandGroup
       )}
       {shouldShowFileSearchMoreHint(input) ? (
         <MentionFileSearchMoreHint />
@@ -868,8 +820,7 @@ function renderMentionGroups(
   highlightedOptionRef: MutableRefObject<HTMLButtonElement | null>,
   onHighlightChange: (key: string) => void,
   onSelectItem: (entry: AgentContextMentionItem) => void,
-  onExpandGroup: (groupId: AgentMentionGroupId) => void,
-  onExpandWorkspaceAppReferences: (appId: string) => void
+  onExpandGroup: (groupId: AgentMentionGroupId) => void
 ): React.JSX.Element[] {
   return groups.map((group, index) => {
     const followsMySessions =
@@ -907,98 +858,29 @@ function renderMentionGroups(
             </div>
           ) : null}
           {group.items.map((item) => {
-            const itemKey = mentionPaletteItemKey(group.id, item);
+            const itemKey = `${group.id}:${item.kind}:${
+              item.kind === "file"
+                ? agentGeneratedMentionItemKey(item)
+                : item.targetId
+            }`;
             const isHighlighted = itemKey === highlightedKey;
             return (
-              <div key={itemKey} className="grid gap-1">
-                <button
-                  ref={isHighlighted ? highlightedOptionRef : null}
-                  type="button"
-                  className={cn(
-                    paletteStyles.rowButton,
-                    isHighlighted && "bg-[var(--transparency-block)]"
-                  )}
-                  role="option"
-                  aria-selected={isHighlighted}
-                  onMouseEnter={() => onHighlightChange(itemKey)}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => onSelectItem(item)}
-                >
-                  {renderMentionRow(item)}
-                </button>
-                {item.kind === "workspace-app" ? (
-                  <>
-                    {(item.referenceItems ?? []).map((referenceItem) => {
-                      const referenceKey = mentionPaletteReferenceItemKey(
-                        group.id,
-                        item,
-                        referenceItem
-                      );
-                      const isReferenceHighlighted =
-                        referenceKey === highlightedKey;
-                      return (
-                        <button
-                          key={referenceKey}
-                          ref={
-                            isReferenceHighlighted ? highlightedOptionRef : null
-                          }
-                          type="button"
-                          className={cn(
-                            paletteStyles.rowButton,
-                            "pl-8",
-                            isReferenceHighlighted &&
-                              "bg-[var(--transparency-block)]"
-                          )}
-                          role="option"
-                          aria-selected={isReferenceHighlighted}
-                          onMouseEnter={() => onHighlightChange(referenceKey)}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => onSelectItem(referenceItem)}
-                        >
-                          {renderMentionRow(referenceItem)}
-                        </button>
-                      );
-                    })}
-                    {item.referenceNextCursor ? (
-                      <button
-                        key={mentionPaletteReferenceExpandKey(group.id, item)}
-                        ref={
-                          mentionPaletteReferenceExpandKey(group.id, item) ===
-                          highlightedKey
-                            ? highlightedOptionRef
-                            : null
-                        }
-                        type="button"
-                        disabled={item.referenceItemsLoading === true}
-                        className={cn(
-                          paletteStyles.expandButton,
-                          "ml-8 w-[calc(100%-2rem)]",
-                          item.referenceItemsLoading === true && "opacity-60",
-                          mentionPaletteReferenceExpandKey(group.id, item) ===
-                            highlightedKey &&
-                            "bg-[var(--transparency-block)] text-[var(--text-primary)]"
-                        )}
-                        onMouseEnter={() =>
-                          onHighlightChange(
-                            mentionPaletteReferenceExpandKey(group.id, item)
-                          )
-                        }
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() =>
-                          onExpandWorkspaceAppReferences(item.appId)
-                        }
-                      >
-                        {translate(
-                          "agentHost.agentGui.contextPickerExpandMore",
-                          {
-                            count: WORKSPACE_APP_REFERENCE_PAGE_SIZE
-                          }
-                        )}
-                      </button>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
+              <button
+                key={itemKey}
+                ref={isHighlighted ? highlightedOptionRef : null}
+                type="button"
+                className={cn(
+                  paletteStyles.rowButton,
+                  isHighlighted && "bg-[var(--transparency-block)]"
+                )}
+                role="option"
+                aria-selected={isHighlighted}
+                onMouseEnter={() => onHighlightChange(itemKey)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onSelectItem(item)}
+              >
+                {renderMentionRow(item)}
+              </button>
             );
           })}
           {group.hasMore ? (

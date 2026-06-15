@@ -243,9 +243,10 @@ function agentActivityComposerOptionsFromTuttidResult(
   // session can actually use (e.g. concrete ids like Opus 4.6), so it takes
   // precedence over the pre-session static catalog when present. The static
   // list remains the fallback before a session has advertised its options.
-  const modelsFromLiveConfig = settingOptionsFromConfigOption(rawConfigOptions, [
-    "model"
-  ]);
+  const modelsFromLiveConfig = settingOptionsFromConfigOption(
+    rawConfigOptions,
+    ["model"]
+  );
   const reasoningEffortsFromConfig =
     settingOptionsFromComposerConfig(reasoningConfig);
   const speedsFromConfig = settingOptionsFromComposerConfig(speedConfig);
@@ -254,9 +255,7 @@ function agentActivityComposerOptionsFromTuttidResult(
   return {
     provider: normalizeText(result.provider) ?? provider,
     models:
-      modelsFromLiveConfig.length > 0
-        ? modelsFromLiveConfig
-        : modelsFromConfig,
+      modelsFromLiveConfig.length > 0 ? modelsFromLiveConfig : modelsFromConfig,
     reasoningEfforts:
       reasoningEffortsFromConfig.length > 0
         ? reasoningEffortsFromConfig

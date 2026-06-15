@@ -1123,13 +1123,6 @@ export function AgentComposer({
           mentionControllerRef.current?.setFilter(activeEntry.categoryId);
         } else if (activeEntry.type === "expand" && activeEntry.groupId) {
           mentionControllerRef.current?.expandGroup(activeEntry.groupId);
-        } else if (
-          activeEntry.type === "app-reference-expand" &&
-          activeEntry.appId
-        ) {
-          mentionControllerRef.current?.expandWorkspaceAppReferences(
-            activeEntry.appId
-          );
         } else if (activeEntry.type === "item" && activeEntry.item) {
           selectFileMention(activeEntry.item);
         }
@@ -2067,11 +2060,6 @@ export function AgentComposer({
                       }
                       onExpandGroup={(groupId) =>
                         mentionControllerRef.current?.expandGroup(groupId)
-                      }
-                      onExpandWorkspaceAppReferences={(appId) =>
-                        mentionControllerRef.current?.expandWorkspaceAppReferences(
-                          appId
-                        )
                       }
                       onCycleFilter={cycleFileMentionFilter}
                       onMoveSelection={moveFileMentionSelection}

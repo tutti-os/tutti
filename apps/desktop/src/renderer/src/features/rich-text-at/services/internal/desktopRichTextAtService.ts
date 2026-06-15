@@ -1,14 +1,5 @@
-import type {
-  AppFileReference,
-  TuttidClient,
-  WorkspaceApp
-} from "@tutti-os/client-tuttid-ts";
-import {
-  AGENT_GUI_MENTION_PROVIDER_IDS,
-  type AgentRichTextAtProvider,
-  type AgentRichTextAtReferenceItem,
-  type AgentRichTextAtReferenceItemsResult
-} from "@tutti-os/agent-gui/agent-rich-text-at-provider";
+import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import { AGENT_GUI_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/agent-rich-text-at-provider";
 import { normalizeAgentTitleText } from "@tutti-os/agent-gui/agent-title-text";
 import { buildWorkspaceIssueMentionHref } from "@tutti-os/workspace-issue-manager/core";
 import {
@@ -75,9 +66,7 @@ interface WorkspaceAppAtItem {
   commandSummaries: string[];
   displayName: string;
   iconUrl: string | null;
-  referencesSearchSupported: boolean;
   scopes: string[];
-  version: string | null;
   workspaceId: string;
 }
 
@@ -142,109 +131,58 @@ function createWorkspaceAppAtContributor(
   return {
     capability: "workspace-app",
     getProviders(input) {
-      const provider = createRichTextAtProvider<WorkspaceAppAtItem>({
-        id: WORKSPACE_APP_PROVIDER_ID,
-        async query(searchInput) {
-          if (searchInput.abortSignal?.aborted) {
-            return [];
-          }
-          const [appsResponse, capabilitiesResponse] = await Promise.all([
-            tuttidClient
-              .listWorkspaceApps(input.workspaceId)
-              .catch(() => ({ apps: [] })),
-            tuttidClient
-              .listCliCapabilities(input.workspaceId)
-              .catch(() => ({ commands: [] }))
-          ]);
-          if (searchInput.abortSignal?.aborted) {
-            return [];
-          }
-          return workspaceAppAtItemsFromAppsAndCapabilities({
-            apps: appsResponse.apps,
-            commands: capabilitiesResponse.commands,
-            keyword: searchInput.keyword,
-            maxResults: searchInput.maxResults,
-            workspaceId: input.workspaceId
-          });
-        },
-        getItemKey: (item) => item.appId,
-        getItemLabel: (item) => item.displayName,
-        getItemSubtitle: (item) => item.description,
-        toInsertResult(item) {
-          return createRichTextMentionInsertResult({
-            entityId: item.appId,
-            href: buildMentionHref(WORKSPACE_APP_PROVIDER_ID, {
-              appId: item.appId,
-              workspaceId: item.workspaceId
-            }),
-            kind: WORKSPACE_APP_PROVIDER_ID,
-            label: item.displayName,
-            meta: {
-              appId: item.appId,
-              commandCount: String(item.commandCount),
-              commandDescriptions: item.commandDescriptions.join("\n"),
-              commandPaths: item.commandPaths.join("\n"),
-              commandSummaries: item.commandSummaries.join("\n"),
-              description: item.description,
-              iconUrl: item.iconUrl ?? "",
-              referencesSearchSupported: item.referencesSearchSupported
-                ? "true"
-                : "false",
-              scopes: item.scopes.join(","),
-              version: item.version ?? "",
-              workspaceId: item.workspaceId
+      return [
+        createRichTextAtProvider<WorkspaceAppAtItem>({
+          id: WORKSPACE_APP_PROVIDER_ID,
+          async query(searchInput) {
+            if (searchInput.abortSignal?.aborted) {
+              return [];
             }
-          });
-        }
-      }) as RichTextAtProvider<WorkspaceAppAtItem> &
-        Pick<
-          AgentRichTextAtProvider<WorkspaceAppAtItem>,
-          "getItemReferenceItems"
-        >;
-      provider.getItemReferenceItems = async (
-        item,
-        searchInput
-      ): Promise<AgentRichTextAtReferenceItemsResult> => {
-        if (
-          !item.referencesSearchSupported ||
-          searchInput.abortSignal?.aborted
-        ) {
-          return { items: [], nextCursor: null };
-        }
-        const response = await tuttidClient.searchWorkspaceAppReferences(
-          input.workspaceId,
-          item.appId,
-          {
-            query: searchInput.keyword.trim(),
-            limit: searchInput.maxResults ?? 5,
-            cursor: searchInput.cursor,
-            kinds: ["file"]
+            const response = await tuttidClient.listCliCapabilities(
+              input.workspaceId
+            );
+            if (searchInput.abortSignal?.aborted) {
+              return [];
+            }
+            return workspaceAppAtItemsFromCapabilities({
+              commands: response.commands,
+              keyword: searchInput.keyword,
+              maxResults: searchInput.maxResults,
+              workspaceId: input.workspaceId
+            });
+          },
+          getItemKey: (item) => item.appId,
+          getItemLabel: (item) => item.displayName,
+          getItemSubtitle: (item) => item.description,
+          toInsertResult(item) {
+            return createRichTextMentionInsertResult({
+              entityId: item.appId,
+              href: buildMentionHref(WORKSPACE_APP_PROVIDER_ID, {
+                appId: item.appId,
+                workspaceId: item.workspaceId
+              }),
+              kind: WORKSPACE_APP_PROVIDER_ID,
+              label: item.displayName,
+              meta: {
+                appId: item.appId,
+                commandCount: String(item.commandCount),
+                commandDescriptions: item.commandDescriptions.join("\n"),
+                commandPaths: item.commandPaths.join("\n"),
+                commandSummaries: item.commandSummaries.join("\n"),
+                description: item.description,
+                iconUrl: item.iconUrl ?? "",
+                scopes: item.scopes.join(","),
+                workspaceId: item.workspaceId
+              }
+            });
           }
-        );
-        if (searchInput.abortSignal?.aborted) {
-          return { items: [], nextCursor: null };
-        }
-        return {
-          items: response.references
-            .filter((reference): reference is AppFileReference => {
-              return reference.kind === "file";
-            })
-            .map((reference) =>
-              workspaceAppReferenceItemFromFileReference({
-                app: item,
-                reference
-              })
-            ),
-          nextCursor: response.nextCursor ?? null
-        };
-      };
-      return [provider as RichTextAtProvider<unknown>];
+        }) as RichTextAtProvider<unknown>
+      ];
     }
   };
 }
 
-function workspaceAppAtItemsFromAppsAndCapabilities(input: {
-  apps: Awaited<ReturnType<TuttidClient["listWorkspaceApps"]>>["apps"];
+function workspaceAppAtItemsFromCapabilities(input: {
   commands: Awaited<
     ReturnType<TuttidClient["listCliCapabilities"]>
   >["commands"];
@@ -253,16 +191,6 @@ function workspaceAppAtItemsFromAppsAndCapabilities(input: {
   workspaceId: string;
 }): WorkspaceAppAtItem[] {
   const appsById = new Map<string, WorkspaceAppAtItem>();
-  for (const app of input.apps) {
-    if (!app.installed || !app.enabled) {
-      continue;
-    }
-    appsById.set(
-      app.appId,
-      workspaceAppAtItemFromWorkspaceApp(app, input.workspaceId)
-    );
-  }
-
   for (const command of input.commands) {
     if (command.source.kind !== "app") {
       continue;
@@ -271,105 +199,57 @@ function workspaceAppAtItemsFromAppsAndCapabilities(input: {
     if (!appId) {
       continue;
     }
-    let item = appsById.get(appId);
-    if (!item) {
-      item = workspaceAppAtItemFromCapability(command, input.workspaceId);
-      appsById.set(appId, item);
+    const appName = command.source.appName?.trim() || appId;
+    const existing = appsById.get(appId);
+    const item =
+      existing ??
+      ({
+        appId,
+        commandCount: 0,
+        commandDescriptions: [],
+        commandPaths: [],
+        description: "",
+        commandSummaries: [],
+        displayName: appName,
+        iconUrl: command.source.iconUrl?.trim() || null,
+        scopes: [],
+        workspaceId: input.workspaceId
+      } satisfies WorkspaceAppAtItem);
+    item.commandCount += 1;
+    if (!item.iconUrl) {
+      item.iconUrl = command.source.iconUrl?.trim() || null;
     }
-    mergeWorkspaceAppCapabilityIntoItem(item, command);
+    const description = workspaceAppDescriptionFromCapability(command);
+    if (description && !item.description) {
+      item.description = description;
+    }
+    const scope = command.path[0]?.trim() ?? "";
+    if (scope && !item.scopes.includes(scope)) {
+      item.scopes.push(scope);
+    }
+    const commandPath = command.path.join(" ").trim();
+    if (commandPath && !item.commandPaths.includes(commandPath)) {
+      item.commandPaths.push(commandPath);
+    }
+    const summary = command.summary.trim();
+    if (summary && !item.commandSummaries.includes(summary)) {
+      item.commandSummaries.push(summary);
+    }
+    const commandDescription = command.description?.trim() ?? "";
+    if (
+      commandDescription &&
+      !item.commandDescriptions.includes(commandDescription)
+    ) {
+      item.commandDescriptions.push(commandDescription);
+    }
+    appsById.set(appId, item);
   }
 
   const keyword = input.keyword.trim().toLowerCase();
   const apps = [...appsById.values()]
     .filter((app) => workspaceAppMatchesKeyword(app, keyword))
     .sort((left, right) => left.displayName.localeCompare(right.displayName));
-  const maxResults =
-    typeof input.maxResults === "number" && input.maxResults > 0
-      ? input.maxResults
-      : apps.length;
-  return apps.slice(0, maxResults);
-}
-
-function workspaceAppAtItemFromWorkspaceApp(
-  app: WorkspaceApp,
-  workspaceId: string
-): WorkspaceAppAtItem {
-  return {
-    appId: app.appId,
-    commandCount: 0,
-    commandDescriptions: [],
-    commandPaths: [],
-    description: app.description?.trim() ?? "",
-    commandSummaries: [],
-    displayName: app.displayName.trim() || app.appId,
-    iconUrl: app.iconUrl?.trim() || app.availableIconUrl?.trim() || null,
-    referencesSearchSupported: app.references.searchSupported,
-    scopes: [],
-    version: app.version?.trim() || null,
-    workspaceId
-  };
-}
-
-function workspaceAppAtItemFromCapability(
-  command: Awaited<
-    ReturnType<TuttidClient["listCliCapabilities"]>
-  >["commands"][number],
-  workspaceId: string
-): WorkspaceAppAtItem {
-  const appId = command.source.appId?.trim() ?? "";
-  return {
-    appId,
-    commandCount: 0,
-    commandDescriptions: [],
-    commandPaths: [],
-    commandSummaries: [],
-    description: workspaceAppDescriptionFromCapability(command),
-    displayName: command.source.appName?.trim() || appId,
-    iconUrl: command.source.iconUrl?.trim() || null,
-    referencesSearchSupported: false,
-    scopes: [],
-    version: null,
-    workspaceId
-  };
-}
-
-function mergeWorkspaceAppCapabilityIntoItem(
-  item: WorkspaceAppAtItem,
-  command: Awaited<
-    ReturnType<TuttidClient["listCliCapabilities"]>
-  >["commands"][number]
-): void {
-  item.commandCount += 1;
-  const iconUrl = command.source.iconUrl?.trim() ?? "";
-  if (iconUrl) {
-    item.iconUrl = iconUrl;
-  }
-  if (command.source.appName?.trim() && item.displayName === item.appId) {
-    item.displayName = command.source.appName.trim();
-  }
-  const description = workspaceAppDescriptionFromCapability(command);
-  if (description) {
-    item.description = description;
-  }
-  const scope = command.path[0]?.trim() ?? "";
-  if (scope && !item.scopes.includes(scope)) {
-    item.scopes.push(scope);
-  }
-  const commandPath = command.path.join(" ").trim();
-  if (commandPath && !item.commandPaths.includes(commandPath)) {
-    item.commandPaths.push(commandPath);
-  }
-  const summary = command.summary.trim();
-  if (summary && !item.commandSummaries.includes(summary)) {
-    item.commandSummaries.push(summary);
-  }
-  const commandDescription = command.description?.trim() ?? "";
-  if (
-    commandDescription &&
-    !item.commandDescriptions.includes(commandDescription)
-  ) {
-    item.commandDescriptions.push(commandDescription);
-  }
+  return apps;
 }
 
 function workspaceAppMatchesKeyword(
@@ -403,28 +283,6 @@ function workspaceAppDescriptionFromCapability(
     command.source.appDescription?.trim() ||
     ""
   );
-}
-
-function workspaceAppReferenceItemFromFileReference(input: {
-  app: WorkspaceAppAtItem;
-  reference: AppFileReference;
-}): AgentRichTextAtReferenceItem {
-  const label =
-    input.reference.displayName?.trim() ||
-    basenameFromReferencePath(input.reference.path);
-  const href = input.reference.path.trim();
-  return {
-    key: [input.app.appId, href, input.app.version ?? ""].join(":"),
-    label,
-    subtitle:
-      input.reference.description?.trim() || input.reference.path.trim(),
-    insertResult: createRichTextMarkdownLinkInsertResult(label, href)
-  };
-}
-
-function basenameFromReferencePath(path: string): string {
-  const normalized = path.trim().replace(/\/+$/u, "");
-  return normalized.split("/").filter(Boolean).at(-1) || path.trim();
 }
 
 function createProviderCacheKey(

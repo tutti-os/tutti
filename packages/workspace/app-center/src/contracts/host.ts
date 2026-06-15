@@ -33,7 +33,7 @@ export interface WorkspaceAppCenterCliState {
 }
 
 export interface WorkspaceAppCenterReferencesState {
-  searchSupported: boolean;
+  listSupported: boolean;
 }
 
 export interface WorkspaceAppCenterApp {
@@ -164,7 +164,8 @@ export type WorkspaceAppCenterReadableStoreState =
 export interface WorkspaceAppCenterGateway {
   installWorkspaceApp(
     workspaceId: string,
-    appId: string
+    appId: string,
+    input?: { restartRunning?: boolean }
   ): Promise<WorkspaceAppCenterSnapshot>;
   launchWorkspaceApp(
     workspaceId: string,

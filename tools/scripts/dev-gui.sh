@@ -458,6 +458,9 @@ start_desktop_dev() {
   local status
 
   log "starting desktop dev with prebuilt tuttid"
+  if [[ -n "${TUTTI_APP_UPDATE_DEV:-}" || -n "${TUTTI_APP_UPDATE_MOCK:-}" || -n "${TUTTI_APP_UPDATE_CURRENT_VERSION:-}" || -n "${TUTTI_APP_UPDATE_LATEST_VERSION:-}" ]]; then
+    log "app update dev: enabled=${TUTTI_APP_UPDATE_DEV:-0} mock=${TUTTI_APP_UPDATE_MOCK:-none} current=${TUTTI_APP_UPDATE_CURRENT_VERSION:-default} latest=${TUTTI_APP_UPDATE_LATEST_VERSION:-default}"
+  fi
   prepare_dev_gui_runtime
   DEV_GUI_DESKTOP_STARTED=1
   (

@@ -300,7 +300,10 @@ func TestServiceListProviderModelsFetchesOpenAICompatibleCatalog(t *testing.T) {
 		t.Fatalf("PutProvider: %v", err)
 	}
 
-	result, err := service.ListProviderModels(ctx, "workspace-1", "agnes")
+	result, err := service.ListProviderModels(ctx, ListProviderModelsInput{
+		WorkspaceID: "workspace-1",
+		Provider:    "agnes",
+	})
 	if err != nil {
 		t.Fatalf("ListProviderModels: %v", err)
 	}
@@ -318,6 +321,81 @@ func TestServiceListProviderModelsFetchesOpenAICompatibleCatalog(t *testing.T) {
 	}
 	if result.Models[1].ID != "agnes-2.0-pro" || result.Models[1].Provider != managedcredentialsbiz.ProviderAgnes {
 		t.Fatalf("second model = %#v", result.Models[1])
+	}
+}
+
+func TestServiceListProviderModelsUsesOverrideInput(t *testing.T) {
+	ctx := context.Background()
+	store := newManagedCredentialsMemoryStore()
+	var gotPath string
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"agnes-2.0-pro"}]}`))
+	}))
+	defer server.Close()
+
+	service := &Service{
+		Store:      store,
+		HTTPClient: server.Client(),
+	}
+	apiKey := "unsaved-secret"
+	result, err := service.ListProviderModels(ctx, ListProviderModelsInput{
+		WorkspaceID: "workspace-1",
+		Provider:    "agnes",
+		APIKey:      &apiKey,
+		BaseURL:     server.URL + "/v1",
+	})
+	if err != nil {
+		t.Fatalf("ListProviderModels: %v", err)
+	}
+	if gotPath != "/v1/models" {
+		t.Fatalf("request path = %q, want /v1/models", gotPath)
+	}
+	if gotAuth != "Bearer unsaved-secret" {
+		t.Fatalf("Authorization = %q, want override bearer token", gotAuth)
+	}
+	if len(result.Models) != 1 || result.Models[0].ID != "agnes-2.0-pro" {
+		t.Fatalf("models = %#v", result.Models)
+	}
+}
+
+func TestServiceListProviderModelsTriesVersionedBaseModelsFirst(t *testing.T) {
+	ctx := context.Background()
+	store := newManagedCredentialsMemoryStore()
+	var gotPaths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.URL.Path)
+		if r.URL.Path != "/api/coding/paas/v4/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"glm-coding"}]}`))
+	}))
+	defer server.Close()
+
+	service := &Service{
+		Store:      store,
+		HTTPClient: server.Client(),
+	}
+	apiKey := "coding-secret"
+	result, err := service.ListProviderModels(ctx, ListProviderModelsInput{
+		WorkspaceID: "workspace-1",
+		Provider:    "openai",
+		APIKey:      &apiKey,
+		BaseURL:     server.URL + "/api/coding/paas/v4",
+	})
+	if err != nil {
+		t.Fatalf("ListProviderModels: %v", err)
+	}
+	if len(gotPaths) != 1 || gotPaths[0] != "/api/coding/paas/v4/models" {
+		t.Fatalf("request paths = %#v, want first versioned /models", gotPaths)
+	}
+	if len(result.Models) != 1 || result.Models[0].ID != "glm-coding" {
+		t.Fatalf("models = %#v", result.Models)
 	}
 }
 

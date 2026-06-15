@@ -121,10 +121,10 @@ const recommendedCategoryTabDefinitions: readonly (
     }
 )[] = [
   { id: "all", labelKey: null },
-  { id: "tools", labelKey: "categories.tools" },
-  { id: "content-creation", labelKey: "categories.contentCreation" },
   { id: "product-design", labelKey: "categories.productDesign" },
-  { id: "office", labelKey: "categories.office" }
+  { id: "content-creation", labelKey: "categories.contentCreation" },
+  { id: "office", labelKey: "categories.office" },
+  { id: "tools", labelKey: "categories.tools" }
 ];
 
 export interface AppCenterPanelProps {
@@ -173,6 +173,12 @@ export function AppCenterPanel({
     id: string;
     name: string;
     sourceKind: AppCenterViewModel["apps"][number]["sourceKind"];
+  } | null>(null);
+  const [updateAppBusy, setUpdateAppBusy] = useState(false);
+  const [pendingUpdateApp, setPendingUpdateApp] = useState<{
+    id: string;
+    name: string;
+    trigger: "badge_button" | "primary_action";
   } | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -406,6 +412,21 @@ export function AppCenterPanel({
         name: app.name,
         sourceKind: app.sourceKind
       });
+    },
+    updateApp: (appId, trigger) => {
+      const app = viewModel.apps.find((item) => item.id === appId);
+      if (!app) {
+        return;
+      }
+      if (app.installed && app.status === "running") {
+        setPendingUpdateApp({
+          id: app.id,
+          name: app.name,
+          trigger
+        });
+        return;
+      }
+      void actions.updateApp?.(appId, trigger);
     }
   };
   const loadingMessage =
@@ -494,6 +515,9 @@ export function AppCenterPanel({
   );
   const uninstallAppConfirmTitle = copy.t("confirmations.uninstallAppTitle", {
     name: pendingUninstallApp?.name ?? ""
+  });
+  const updateAppConfirmTitle = copy.t("confirmations.updateAppTitle", {
+    name: pendingUpdateApp?.name ?? ""
   });
 
   return (
@@ -752,6 +776,32 @@ export function AppCenterPanel({
         onOpenChange={(nextOpen) => {
           if (!nextOpen && !uninstallAppBusy) {
             setPendingUninstallApp(null);
+          }
+        }}
+      />
+      <ConfirmationDialog
+        cancelLabel={copy.t("actions.cancel")}
+        confirmBusy={updateAppBusy}
+        confirmLabel={copy.t("actions.updateApp")}
+        description={copy.t("confirmations.updateRunningAppDescription")}
+        open={pendingUpdateApp != null}
+        title={updateAppConfirmTitle}
+        onConfirm={() => {
+          const app = pendingUpdateApp;
+          if (!app) {
+            return;
+          }
+          setUpdateAppBusy(true);
+          void Promise.resolve(
+            actions.updateApp?.(app.id, app.trigger)
+          ).finally(() => {
+            setUpdateAppBusy(false);
+            setPendingUpdateApp(null);
+          });
+        }}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !updateAppBusy) {
+            setPendingUpdateApp(null);
           }
         }}
       />

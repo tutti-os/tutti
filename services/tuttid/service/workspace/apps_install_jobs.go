@@ -6,7 +6,7 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
-func (s *AppCenterService) beginInstallJob(workspaceID string, appID string) bool {
+func (s *AppCenterService) beginInstallJob(workspaceID string, appID string, options InstallOptions) bool {
 	key := appRuntimeKey(workspaceID, appID)
 	s.installMu.Lock()
 	defer s.installMu.Unlock()
@@ -15,9 +15,10 @@ func (s *AppCenterService) beginInstallJob(workspaceID string, appID string) boo
 		return false
 	}
 	s.installJobs[key] = workspaceAppInstallJob{
-		WorkspaceID: workspaceID,
-		AppID:       appID,
-		Status:      workspaceAppInstallJobInstalling,
+		WorkspaceID:    workspaceID,
+		AppID:          appID,
+		Status:         workspaceAppInstallJobInstalling,
+		RestartRunning: options.RestartRunning,
 	}
 	return true
 }
@@ -41,6 +42,14 @@ func (s *AppCenterService) failInstallJob(workspaceID string, appID string, err 
 		Status:        workspaceAppInstallJobFailed,
 		FailureReason: err.Error(),
 	}
+}
+
+func (s *AppCenterService) installJobOptions(workspaceID string, appID string) InstallOptions {
+	job, ok := s.installJob(workspaceID, appID)
+	if !ok {
+		return InstallOptions{}
+	}
+	return InstallOptions{RestartRunning: job.RestartRunning}
 }
 
 func (s *AppCenterService) installJob(workspaceID string, appID string) (workspaceAppInstallJob, bool) {

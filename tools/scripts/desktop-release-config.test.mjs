@@ -63,6 +63,8 @@ test("desktop release workflow uses the published desktop package name", async (
 test("desktop release workflow publishes rc tags as prereleases and keeps stable tags as latest", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
+  assert.match(workflow, /push:\s*\n\s*tags:\s*\n\s*-\s*"v\*"/);
+  assert.doesNotMatch(workflow, /-\s*"tutti-desktop-v\*"/);
   assert.match(workflow, /default:\s*patch_rc_release/);
   assert.match(
     workflow,
@@ -117,7 +119,7 @@ test("desktop release workflow passes tsh-aligned Feishu card context", async ()
 
   assert.match(
     workflow,
-    /name:\s+Download built artifacts[\s\S]*pattern:\s+tutti-desktop-release-assets-\*/
+    /name:\s+Download built artifacts[\s\S]*pattern:\s+tutti-desktop-release-assets-macos/
   );
   assert.match(
     workflow,
@@ -190,6 +192,39 @@ test("desktop release workflow can mirror release assets to S3 and upsert direct
   assert.match(
     workflow,
     /apps\/desktop\/scripts\/upsert-release-download-links\.mjs/
+  );
+});
+
+test("desktop release workflow publishes only macOS release assets for now", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const publishJobMatch = workflow.match(
+    /publish:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  );
+  const notifyJobMatch = workflow.match(
+    /notify-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  );
+
+  assert.ok(publishJobMatch, "publish job should exist");
+  assert.ok(notifyJobMatch, "notify-feishu job should exist");
+  assert.doesNotMatch(workflow, /\n\s{2}build-windows:\n/);
+  assert.doesNotMatch(workflow, /\n\s{2}build-linux:\n/);
+  assert.match(publishJobMatch[0], /needs:\s+\[resolve, build-macos\]/);
+  assert.doesNotMatch(publishJobMatch[0], /build-windows|build-linux/);
+  assert.match(
+    publishJobMatch[0],
+    /pattern:\s+tutti-desktop-release-assets-macos/
+  );
+  assert.doesNotMatch(
+    publishJobMatch[0],
+    /pattern:\s+tutti-desktop-release-assets-\*/
+  );
+  assert.match(
+    notifyJobMatch[0],
+    /pattern:\s+tutti-desktop-release-assets-macos/
+  );
+  assert.doesNotMatch(
+    notifyJobMatch[0],
+    /pattern:\s+tutti-desktop-release-assets-\*/
   );
 });
 

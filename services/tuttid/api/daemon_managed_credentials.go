@@ -17,6 +17,11 @@ type managedProviderRequest struct {
 	Models  []managedcredentialsbiz.Model `json:"models"`
 }
 
+type managedProviderModelsRequest struct {
+	APIKey  *string `json:"apiKey"`
+	BaseURL string  `json:"baseUrl"`
+}
+
 type managedGrantCreateRequest struct {
 	ContextToken string   `json:"contextToken"`
 	Nonce        string   `json:"nonce"`
@@ -126,7 +131,14 @@ func (r daemonRoutes) HandleManagedModelProviderModels(w http.ResponseWriter, re
 		tuttitypes.WriteMethodNotAllowed(w)
 		return
 	}
-	result, err := service.ListProviderModels(req.Context(), workspaceID, providerID)
+	var body managedProviderModelsRequest
+	_ = json.NewDecoder(req.Body).Decode(&body)
+	result, err := service.ListProviderModels(req.Context(), managedcredentialsservice.ListProviderModelsInput{
+		WorkspaceID: workspaceID,
+		Provider:    providerID,
+		APIKey:      body.APIKey,
+		BaseURL:     body.BaseURL,
+	})
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == managedcredentialsservice.ErrProviderNotConfigured {

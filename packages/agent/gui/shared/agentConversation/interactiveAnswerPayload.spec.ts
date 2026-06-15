@@ -3,9 +3,7 @@ import { buildAskUserAnswerPayload } from "./interactiveAnswerPayload";
 
 describe("buildAskUserAnswerPayload", () => {
   it("keeps the keyed map and derives a flat display list from it", () => {
-    expect(
-      buildAskUserAnswerPayload({ "plan-kind": "Health check" })
-    ).toEqual({
+    expect(buildAskUserAnswerPayload({ "plan-kind": "Health check" })).toEqual({
       answers: ["Health check"],
       answersByQuestionId: { "plan-kind": "Health check" }
     });

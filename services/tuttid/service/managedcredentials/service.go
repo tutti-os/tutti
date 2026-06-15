@@ -109,6 +109,13 @@ type ModelCatalogResult struct {
 	Models    []managedcredentialsbiz.Model
 }
 
+type ListProviderModelsInput struct {
+	WorkspaceID string
+	Provider    string
+	APIKey      *string
+	BaseURL     string
+}
+
 func (s *Service) ListProviders(ctx context.Context, workspaceID string) ([]managedcredentialsbiz.PublicProviderConfig, error) {
 	configs, err := s.Store.ListManagedModelProviderConfigs(ctx, strings.TrimSpace(workspaceID))
 	if err != nil {
@@ -176,14 +183,28 @@ func (s *Service) TestProvider(ctx context.Context, workspaceID string, provider
 	return nil
 }
 
-func (s *Service) ListProviderModels(ctx context.Context, workspaceID string, providerID string) (ModelCatalogResult, error) {
-	provider, err := normalizeProvider(providerID)
+func (s *Service) ListProviderModels(ctx context.Context, input ListProviderModelsInput) (ModelCatalogResult, error) {
+	provider, err := normalizeProvider(input.Provider)
 	if err != nil {
 		return ModelCatalogResult{}, err
 	}
-	config, err := s.Store.GetManagedModelProviderConfig(ctx, strings.TrimSpace(workspaceID), provider)
-	if err != nil {
-		return ModelCatalogResult{}, err
+	config := managedcredentialsbiz.ProviderConfig{
+		WorkspaceID: strings.TrimSpace(input.WorkspaceID),
+		Provider:    provider,
+		APIKey:      strings.TrimSpace(derefString(input.APIKey)),
+		BaseURL:     strings.TrimSpace(input.BaseURL),
+	}
+	if config.APIKey == "" || config.BaseURL == "" {
+		saved, err := s.Store.GetManagedModelProviderConfig(ctx, strings.TrimSpace(input.WorkspaceID), provider)
+		if err != nil {
+			return ModelCatalogResult{}, err
+		}
+		if config.APIKey == "" {
+			config.APIKey = saved.APIKey
+		}
+		if config.BaseURL == "" {
+			config.BaseURL = saved.BaseURL
+		}
 	}
 	if config.APIKey == "" {
 		return ModelCatalogResult{}, ErrProviderNotConfigured
@@ -369,36 +390,50 @@ func (s *Service) httpClient() *http.Client {
 }
 
 func (s *Service) fetchProviderModels(ctx context.Context, config managedcredentialsbiz.ProviderConfig) ([]managedcredentialsbiz.Model, error) {
-	catalogURL, err := providerModelCatalogURL(config.Provider, config.BaseURL)
+	catalogURLs, err := providerModelCatalogURLs(config.Provider, config.BaseURL)
 	if err != nil {
 		return nil, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, catalogURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	switch config.Provider {
-	case managedcredentialsbiz.ProviderAnthropic:
-		request.Header.Set("x-api-key", config.APIKey)
-		request.Header.Set("anthropic-version", "2023-06-01")
-	default:
-		request.Header.Set("Authorization", "Bearer "+config.APIKey)
-	}
-	request.Header.Set("Accept", "application/json")
+	var lastStatus string
+	for _, catalogURL := range catalogURLs {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, catalogURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		switch config.Provider {
+		case managedcredentialsbiz.ProviderAnthropic:
+			request.Header.Set("x-api-key", config.APIKey)
+			request.Header.Set("anthropic-version", "2023-06-01")
+		default:
+			request.Header.Set("Authorization", "Bearer "+config.APIKey)
+		}
+		request.Header.Set("Accept", "application/json")
 
-	response, err := s.httpClient().Do(request)
-	if err != nil {
-		return nil, err
+		response, err := s.httpClient().Do(request)
+		if err != nil {
+			return nil, err
+		}
+		if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusMethodNotAllowed {
+			lastStatus = response.Status
+			response.Body.Close()
+			continue
+		}
+		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+			response.Body.Close()
+			return nil, fmt.Errorf("managed credential provider model catalog returned %s", response.Status)
+		}
+		var payload providerModelsResponse
+		if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
+			response.Body.Close()
+			return nil, fmt.Errorf("decode managed credential provider model catalog: %w", err)
+		}
+		response.Body.Close()
+		return payload.models(config.Provider), nil
 	}
-	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("managed credential provider model catalog returned %s", response.Status)
+	if lastStatus == "" {
+		lastStatus = "no candidate endpoints"
 	}
-	var payload providerModelsResponse
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("decode managed credential provider model catalog: %w", err)
-	}
-	return payload.models(config.Provider), nil
+	return nil, fmt.Errorf("managed credential provider model catalog candidates failed: %s", lastStatus)
 }
 
 type providerModelsResponse struct {
@@ -436,19 +471,32 @@ func (r providerModelsResponse) models(provider managedcredentialsbiz.ProviderID
 	return models
 }
 
-func providerModelCatalogURL(provider managedcredentialsbiz.ProviderID, baseURL string) (string, error) {
+func providerModelCatalogURLs(provider managedcredentialsbiz.ProviderID, baseURL string) ([]string, error) {
 	trimmedBaseURL := strings.TrimSpace(baseURL)
 	if trimmedBaseURL == "" {
 		trimmedBaseURL = defaultProviderBaseURL(provider)
 	}
 	parsed, err := url.Parse(trimmedBaseURL)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/models"
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
-	return parsed.String(), nil
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	base := parsed.String()
+	var candidates []string
+	if endsWithVersionSegment(parsed.Path) {
+		candidates = append(candidates, base+"/models")
+		if !strings.HasSuffix(parsed.Path, "/v1") {
+			candidates = append(candidates, base+"/v1/models")
+		}
+	} else {
+		candidates = append(candidates, base+"/v1/models")
+	}
+	if stripped, ok := stripKnownModelCatalogSuffix(parsed); ok {
+		candidates = append(candidates, stripped+"/v1/models", stripped+"/models")
+	}
+	return uniqueStrings(candidates), nil
 }
 
 func defaultProviderBaseURL(provider managedcredentialsbiz.ProviderID) string {
@@ -460,6 +508,68 @@ func defaultProviderBaseURL(provider managedcredentialsbiz.ProviderID) string {
 	default:
 		return "https://api.openai.com/v1"
 	}
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func endsWithVersionSegment(path string) bool {
+	last := path[strings.LastIndex(path, "/")+1:]
+	if len(last) < 2 || last[0] != 'v' {
+		return false
+	}
+	for _, char := range last[1:] {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func stripKnownModelCatalogSuffix(parsed *url.URL) (string, bool) {
+	suffixes := []string{
+		"/api/claudecode",
+		"/api/anthropic",
+		"/apps/anthropic",
+		"/api/coding",
+		"/claudecode",
+		"/anthropic",
+		"/step_plan",
+		"/coding",
+		"/claude",
+	}
+	path := strings.TrimRight(parsed.Path, "/")
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(path, suffix) {
+			copy := *parsed
+			copy.Path = strings.TrimRight(path[:len(path)-len(suffix)], "/")
+			copy.RawQuery = ""
+			copy.Fragment = ""
+			return copy.String(), true
+		}
+	}
+	return "", false
+}
+
+func uniqueStrings(values []string) []string {
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		seen := false
+		for _, existing := range unique {
+			if existing == value {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			unique = append(unique, value)
+		}
+	}
+	return unique
 }
 
 func (s *Service) ensure() {

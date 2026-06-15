@@ -23,9 +23,7 @@ import {
 } from "./agentRichText/agentFileMentionExtension";
 import type {
   AgentRichTextAtInsertResult,
-  AgentRichTextAtProvider,
-  AgentRichTextAtReferenceItem,
-  AgentRichTextAtReferenceItemsResponse
+  AgentRichTextAtProvider
 } from "./agentRichTextAtProvider";
 import { AGENT_GUI_MENTION_PROVIDER_IDS } from "./agentRichTextAtProvider";
 
@@ -93,37 +91,11 @@ interface AgentMentionSearchControllerOptions {
 
 type Listener = (state: AgentMentionSearchState) => void;
 
-interface ProviderMentionItemCandidate {
-  includeWorkspaceAppWithoutReferences: boolean;
-  item: unknown;
-}
-
-interface WorkspaceAppReferenceSource {
-  appId: string;
-  currentUserId: string;
-  item: unknown;
-  nextCursor: string | null;
-  provider: AgentRichTextAtProvider;
-  query: string;
-  workspaceId: string;
-}
-
-interface NormalizedProviderReferenceItemsResult {
-  items: readonly AgentRichTextAtReferenceItem[];
-  nextCursor: string | null;
-}
-
 const DEFAULT_DEBOUNCE_MS = 120;
 const DEFAULT_FILE_LIMIT = 30;
 const DEFAULT_ISSUE_LIMIT = 25;
 const DEFAULT_SESSION_LIMIT = 30;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 3500;
-export const WORKSPACE_APP_REFERENCE_PAGE_SIZE = 5;
-const EMPTY_PROVIDER_REFERENCE_ITEMS_RESULT: NormalizedProviderReferenceItemsResult =
-  {
-    items: [],
-    nextCursor: null
-  };
 
 const BROWSE_CATEGORIES: AgentMentionBrowseCategory[] =
   AGENT_MENTION_FILTER_TAB_ORDER.map((id) => ({ id }));
@@ -161,10 +133,6 @@ export class AgentMentionSearchController {
   private currentFileSearchLimit: number;
   private currentIssueSearchLimit: number;
   private agentGeneratedBrowsePath: string | null = null;
-  private readonly workspaceAppReferenceSources = new Map<
-    string,
-    WorkspaceAppReferenceSource
-  >();
   private rawGroups: Record<AgentMentionRawGroupId, AgentContextMentionItem[]> =
     {
       apps: [],
@@ -222,7 +190,6 @@ export class AgentMentionSearchController {
     this.clearTimer();
     const requestId = ++this.requestId;
     this.resetAgentGeneratedBrowsePath();
-    this.resetWorkspaceAppReferenceSources();
     this.resetExpandedCounts();
     this.resetSearchLimits();
 
@@ -424,44 +391,11 @@ export class AgentMentionSearchController {
     });
   }
 
-  expandWorkspaceAppReferences(appId: string): void {
-    const normalizedAppId = compactText(appId);
-    if (this.disposed || !normalizedAppId) {
-      return;
-    }
-    const source = this.workspaceAppReferenceSources.get(normalizedAppId);
-    if (
-      !source ||
-      !source.nextCursor ||
-      source.workspaceId !== this.activeWorkspaceId ||
-      source.query !== this.currentQuery ||
-      this.isWorkspaceAppReferenceLoading(normalizedAppId)
-    ) {
-      return;
-    }
-
-    const requestId = this.requestId;
-    const cursor = source.nextCursor;
-    this.updateWorkspaceAppReferenceItem(normalizedAppId, (item) => ({
-      ...item,
-      referenceItemsLoading: true
-    }));
-    this.emitCurrentState();
-
-    void this.loadMoreWorkspaceAppReferences({
-      appId: normalizedAppId,
-      cursor,
-      requestId,
-      source
-    });
-  }
-
   close(): void {
     this.clearTimer();
     this.requestId += 1;
     this.currentFilter = "all";
     this.resetAgentGeneratedBrowsePath();
-    this.resetWorkspaceAppReferenceSources();
     this.resetExpandedCounts();
     this.resetSearchLimits();
     this.rawGroups = {
@@ -495,12 +429,10 @@ export class AgentMentionSearchController {
     this.clearTimer();
     this.listeners.clear();
     this.requestId += 1;
-    this.resetWorkspaceAppReferenceSources();
   }
 
   private startBrowseModeFetch(filter: AgentMentionFilterId): void {
     if (!this.activeWorkspaceId || !shouldPrefetchBrowseFilter(filter)) {
-      this.resetWorkspaceAppReferenceSources();
       this.rawGroups = {
         apps: [],
         opened_files: [],
@@ -514,7 +446,6 @@ export class AgentMentionSearchController {
     }
     this.clearTimer();
     const requestId = ++this.requestId;
-    this.resetWorkspaceAppReferenceSources();
     this.rawGroups = {
       apps: [],
       opened_files: [],
@@ -532,90 +463,6 @@ export class AgentMentionSearchController {
     });
   }
 
-  private async loadMoreWorkspaceAppReferences(input: {
-    appId: string;
-    cursor: string;
-    requestId: number;
-    source: WorkspaceAppReferenceSource;
-  }): Promise<void> {
-    try {
-      const referenceResult = await this.runProviderQuery(
-        (abortSignal) =>
-          Promise.resolve(
-            input.source.provider.getItemReferenceItems?.(input.source.item, {
-              keyword: input.source.query,
-              maxResults: WORKSPACE_APP_REFERENCE_PAGE_SIZE,
-              cursor: input.cursor,
-              abortSignal,
-              context: {
-                metadata: {
-                  currentUserId: input.source.currentUserId,
-                  target: "agent-gui",
-                  workspaceId: input.source.workspaceId
-                }
-              }
-            }) ?? []
-          ).then(normalizeProviderReferenceItemsResult),
-        {
-          ...EMPTY_PROVIDER_REFERENCE_ITEMS_RESULT,
-          nextCursor: input.cursor
-        }
-      );
-      if (
-        !this.canApply(
-          input.requestId,
-          input.source.workspaceId,
-          input.source.query
-        )
-      ) {
-        return;
-      }
-      const currentSource = this.workspaceAppReferenceSources.get(input.appId);
-      if (!currentSource || currentSource.nextCursor !== input.cursor) {
-        return;
-      }
-      const fileReferenceItems = referenceResult.items
-        .map(providerReferenceItemToFileMentionItem)
-        .filter(
-          (
-            referenceItem
-          ): referenceItem is Extract<
-            AgentContextMentionItem,
-            { kind: "file" }
-          > => referenceItem !== null
-        );
-      this.workspaceAppReferenceSources.set(input.appId, {
-        ...currentSource,
-        nextCursor: referenceResult.nextCursor
-      });
-      this.updateWorkspaceAppReferenceItem(input.appId, (item) => ({
-        ...item,
-        referenceItems: mergeWorkspaceAppReferenceItems(
-          item.referenceItems ?? [],
-          fileReferenceItems
-        ),
-        referenceItemsLoading: false,
-        referenceNextCursor: referenceResult.nextCursor
-      }));
-      this.emitCurrentState();
-    } catch {
-      if (
-        !this.canApply(
-          input.requestId,
-          input.source.workspaceId,
-          input.source.query
-        )
-      ) {
-        return;
-      }
-      this.updateWorkspaceAppReferenceItem(input.appId, (item) => ({
-        ...item,
-        referenceItemsLoading: false
-      }));
-      this.emitCurrentState();
-    }
-  }
-
   private async runSearch(input: {
     workspaceId: string;
     currentUserId: string;
@@ -623,7 +470,6 @@ export class AgentMentionSearchController {
     requestId: number;
   }): Promise<void> {
     try {
-      const appReferenceSources: WorkspaceAppReferenceSource[] = [];
       const [fileItems, appItems, issueItems, sessionItems] = await Promise.all(
         [
           this.queryProviderMentionItemsById({
@@ -638,8 +484,7 @@ export class AgentMentionSearchController {
             workspaceId: input.workspaceId,
             currentUserId: input.currentUserId,
             query: input.query,
-            limit: DEFAULT_MENTION_GROUP_PAGE_SIZE,
-            workspaceAppReferenceSources: appReferenceSources
+            limit: DEFAULT_MENTION_GROUP_PAGE_SIZE
           }),
           this.queryProviderMentionItemsById({
             providerId: WORKSPACE_ISSUE_PROVIDER_ID,
@@ -662,7 +507,6 @@ export class AgentMentionSearchController {
         return;
       }
 
-      this.replaceWorkspaceAppReferenceSources(appReferenceSources);
       this.rawGroups = {
         apps: appItems.filter((item) => item.kind === "workspace-app"),
         opened_files: fileItems.filter((item) => item.kind === "file"),
@@ -752,19 +596,16 @@ export class AgentMentionSearchController {
         this.totalCounts.collab_sessions = 0;
         this.totalCounts.issues = 0;
       } else if (input.filter === "app") {
-        const appReferenceSources: WorkspaceAppReferenceSource[] = [];
         const appItems = await this.queryProviderMentionItemsById({
           providerId: WORKSPACE_APP_PROVIDER_ID,
           workspaceId: input.workspaceId,
           currentUserId: input.currentUserId,
           query: "",
-          limit: DEFAULT_MENTION_GROUP_PAGE_SIZE,
-          workspaceAppReferenceSources: appReferenceSources
+          limit: DEFAULT_MENTION_GROUP_PAGE_SIZE
         });
         if (!this.canApply(input.requestId, input.workspaceId, "")) {
           return;
         }
-        this.replaceWorkspaceAppReferenceSources(appReferenceSources);
         this.rawGroups = {
           apps: appItems.filter((item) => item.kind === "workspace-app"),
           opened_files: [],
@@ -843,7 +684,6 @@ export class AgentMentionSearchController {
           this.rawGroups.collab_sessions.length;
         this.totalCounts.issues = 0;
       } else {
-        const appReferenceSources: WorkspaceAppReferenceSource[] = [];
         const [
           appItems,
           fileItems,
@@ -856,8 +696,7 @@ export class AgentMentionSearchController {
             workspaceId: input.workspaceId,
             currentUserId: input.currentUserId,
             query: "",
-            limit: DEFAULT_MENTION_GROUP_PAGE_SIZE,
-            workspaceAppReferenceSources: appReferenceSources
+            limit: DEFAULT_MENTION_GROUP_PAGE_SIZE
           }),
           this.queryProviderMentionItemsById({
             providerId: FILE_PROVIDER_ID,
@@ -891,7 +730,6 @@ export class AgentMentionSearchController {
         if (!this.canApply(input.requestId, input.workspaceId, "")) {
           return;
         }
-        this.replaceWorkspaceAppReferenceSources(appReferenceSources);
         this.rawGroups = {
           apps: appItems.filter((item) => item.kind === "workspace-app"),
           opened_files: fileItems.filter((item) => item.kind === "file"),
@@ -948,150 +786,55 @@ export class AgentMentionSearchController {
     currentUserId: string;
     query: string;
     limit: number;
-    workspaceAppReferenceSources?: WorkspaceAppReferenceSource[];
     abortSignal: AbortSignal;
   }): Promise<AgentContextMentionItem[]> {
-    const providerContext = {
-      metadata: {
-        currentUserId: input.currentUserId,
-        target: "agent-gui",
-        workspaceId: input.workspaceId
-      }
-    };
-    const directItems = await input.provider.query({
+    const items = await input.provider.query({
       keyword: input.query,
       maxResults: input.limit,
       abortSignal: input.abortSignal,
-      context: providerContext
+      context: {
+        metadata: {
+          currentUserId: input.currentUserId,
+          target: "agent-gui",
+          workspaceId: input.workspaceId
+        }
+      }
     });
     if (input.abortSignal.aborted) {
       return [];
     }
-    const itemCandidates: ProviderMentionItemCandidate[] = directItems.map(
-      (item) => ({
-        includeWorkspaceAppWithoutReferences: true,
-        item
+    const mentionItems = await Promise.all(
+      items.map(async (item) => {
+        const mentionItem = providerItemToAgentMentionItem({
+          currentUserId: input.currentUserId,
+          insertResult: input.provider.toInsertResult(item),
+          label: input.provider.getItemLabel(item),
+          providerId: input.provider.id,
+          subtitle: input.provider.getItemSubtitle?.(item) ?? "",
+          workspaceId: input.workspaceId
+        });
+        if (!mentionItem || mentionItem.kind !== "file") {
+          return mentionItem;
+        }
+        const thumbnailUrl = await Promise.resolve(
+          input.provider.getItemThumbnailUrl?.(item) ?? null
+        ).catch(() => null);
+        const resolvedThumbnailUrl = resolveAgentMentionFileThumbnailUrl({
+          ...mentionItem,
+          thumbnailUrl
+        });
+        if (!resolvedThumbnailUrl) {
+          return mentionItem;
+        }
+        return {
+          ...mentionItem,
+          thumbnailUrl: resolvedThumbnailUrl
+        };
       })
     );
-
-    if (
-      input.provider.id === WORKSPACE_APP_PROVIDER_ID &&
-      input.query.trim() &&
-      input.provider.getItemReferenceItems
-    ) {
-      const seenKeys = new Set(
-        directItems
-          .map((item) => compactText(input.provider.getItemKey(item)))
-          .filter(Boolean)
-      );
-      const referenceCandidateItems = await input.provider.query({
-        keyword: "",
-        abortSignal: input.abortSignal,
-        context: providerContext
-      });
-      if (input.abortSignal.aborted) {
-        return [];
-      }
-      for (const item of referenceCandidateItems) {
-        const key = compactText(input.provider.getItemKey(item));
-        if (key && seenKeys.has(key)) {
-          continue;
-        }
-        if (key) {
-          seenKeys.add(key);
-        }
-        itemCandidates.push({
-          includeWorkspaceAppWithoutReferences: false,
-          item
-        });
-      }
-    }
-
-    const mentionItems: Array<AgentContextMentionItem | null> =
-      await Promise.all(
-        itemCandidates.map(
-          async ({ includeWorkspaceAppWithoutReferences, item }) => {
-            const mentionItem = providerItemToAgentMentionItem({
-              currentUserId: input.currentUserId,
-              insertResult: input.provider.toInsertResult(item),
-              label: input.provider.getItemLabel(item),
-              providerId: input.provider.id,
-              subtitle: input.provider.getItemSubtitle?.(item) ?? "",
-              workspaceId: input.workspaceId
-            });
-            if (mentionItem?.kind === "workspace-app") {
-              const referenceResult = await Promise.resolve(
-                input.provider.getItemReferenceItems?.(item, {
-                  keyword: input.query,
-                  maxResults: WORKSPACE_APP_REFERENCE_PAGE_SIZE,
-                  abortSignal: input.abortSignal,
-                  context: providerContext
-                }) ?? []
-              )
-                .then(normalizeProviderReferenceItemsResult)
-                .catch(() => EMPTY_PROVIDER_REFERENCE_ITEMS_RESULT);
-              const fileReferenceItems = referenceResult.items
-                .map(providerReferenceItemToFileMentionItem)
-                .filter(
-                  (
-                    referenceItem
-                  ): referenceItem is Extract<
-                    AgentContextMentionItem,
-                    { kind: "file" }
-                  > => referenceItem !== null
-                );
-              const resolvedMentionItem: AgentContextMentionItem | null =
-                fileReferenceItems.length > 0
-                  ? {
-                      ...mentionItem,
-                      referenceItems: fileReferenceItems,
-                      referenceNextCursor: referenceResult.nextCursor
-                    }
-                  : includeWorkspaceAppWithoutReferences
-                    ? {
-                        ...mentionItem,
-                        referenceNextCursor: referenceResult.nextCursor
-                      }
-                    : null;
-              if (resolvedMentionItem) {
-                input.workspaceAppReferenceSources?.push({
-                  appId: resolvedMentionItem.appId,
-                  currentUserId: input.currentUserId,
-                  item,
-                  nextCursor: referenceResult.nextCursor,
-                  provider: input.provider,
-                  query: input.query,
-                  workspaceId: input.workspaceId
-                });
-              }
-              return resolvedMentionItem;
-            }
-            if (!mentionItem || mentionItem.kind !== "file") {
-              return mentionItem;
-            }
-            const thumbnailUrl = await Promise.resolve(
-              input.provider.getItemThumbnailUrl?.(item) ?? null
-            ).catch(() => null);
-            const resolvedThumbnailUrl = resolveAgentMentionFileThumbnailUrl({
-              ...mentionItem,
-              thumbnailUrl
-            });
-            if (!resolvedThumbnailUrl) {
-              return mentionItem;
-            }
-            return {
-              ...mentionItem,
-              thumbnailUrl: resolvedThumbnailUrl
-            };
-          }
-        )
-      );
-    const resolvedItems = mentionItems.filter(
+    return mentionItems.filter(
       (item): item is AgentContextMentionItem => item !== null
     );
-    return input.provider.id === WORKSPACE_APP_PROVIDER_ID
-      ? sortMentionItemsByMatchScore(resolvedItems, input.query)
-      : resolvedItems;
   }
 
   private async queryProviderMentionItemsById(input: {
@@ -1100,7 +843,6 @@ export class AgentMentionSearchController {
     currentUserId: string;
     query: string;
     limit: number;
-    workspaceAppReferenceSources?: WorkspaceAppReferenceSource[];
   }): Promise<AgentContextMentionItem[]> {
     const provider = this.richTextAtProviders.get(input.providerId);
     if (!provider) {
@@ -1114,7 +856,6 @@ export class AgentMentionSearchController {
           currentUserId: input.currentUserId,
           query: input.query,
           limit: input.limit,
-          workspaceAppReferenceSources: input.workspaceAppReferenceSources,
           abortSignal
         }),
       []
@@ -1269,63 +1010,6 @@ export class AgentMentionSearchController {
     this.agentGeneratedBrowsePath = null;
   }
 
-  private resetWorkspaceAppReferenceSources(): void {
-    this.workspaceAppReferenceSources.clear();
-  }
-
-  private replaceWorkspaceAppReferenceSources(
-    sources: readonly WorkspaceAppReferenceSource[]
-  ): void {
-    this.workspaceAppReferenceSources.clear();
-    for (const source of sources) {
-      this.workspaceAppReferenceSources.set(source.appId, source);
-    }
-  }
-
-  private isWorkspaceAppReferenceLoading(appId: string): boolean {
-    return this.rawGroups.apps.some(
-      (item) =>
-        item.kind === "workspace-app" &&
-        item.appId === appId &&
-        item.referenceItemsLoading === true
-    );
-  }
-
-  private updateWorkspaceAppReferenceItem(
-    appId: string,
-    updater: (
-      item: Extract<AgentContextMentionItem, { kind: "workspace-app" }>
-    ) => Extract<AgentContextMentionItem, { kind: "workspace-app" }>
-  ): boolean {
-    let updated = false;
-    const apps = this.rawGroups.apps.map((item) => {
-      if (item.kind !== "workspace-app" || item.appId !== appId) {
-        return item;
-      }
-      updated = true;
-      return updater(item);
-    });
-    if (updated) {
-      this.rawGroups = {
-        ...this.rawGroups,
-        apps
-      };
-    }
-    return updated;
-  }
-
-  private emitCurrentState(): void {
-    this.setState({
-      status: this.state.status === "loading" ? "loading" : "ready",
-      query: this.currentQuery,
-      mode: this.currentQuery ? "results" : "browse",
-      filter: this.currentFilter,
-      categories: BROWSE_CATEGORIES,
-      groups: this.groupsFromRawGroups(),
-      error: null
-    });
-  }
-
   private setState(state: AgentMentionSearchState): void {
     this.state = state;
     for (const listener of this.listeners) {
@@ -1376,73 +1060,6 @@ function mentionGroupBestMatchScore(
   );
 }
 
-function normalizeProviderReferenceItemsResult(
-  result: AgentRichTextAtReferenceItemsResponse
-): NormalizedProviderReferenceItemsResult {
-  return "items" in result
-    ? {
-        items: result.items,
-        nextCursor: normalizeOptionalCursor(result.nextCursor)
-      }
-    : {
-        items: result,
-        nextCursor: null
-      };
-}
-
-function normalizeOptionalCursor(
-  value: string | null | undefined
-): string | null {
-  const trimmed = value?.trim() ?? "";
-  return trimmed ? trimmed : null;
-}
-
-function mergeWorkspaceAppReferenceItems(
-  existingItems: readonly Extract<AgentContextMentionItem, { kind: "file" }>[],
-  nextItems: readonly Extract<AgentContextMentionItem, { kind: "file" }>[]
-): Extract<AgentContextMentionItem, { kind: "file" }>[] {
-  const seen = new Set(existingItems.map(workspaceAppReferenceItemKey));
-  const merged = [...existingItems];
-  for (const item of nextItems) {
-    const key = workspaceAppReferenceItemKey(item);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    merged.push(item);
-  }
-  return merged;
-}
-
-function workspaceAppReferenceItemKey(
-  item: Extract<AgentContextMentionItem, { kind: "file" }>
-): string {
-  return item.sourceKey?.trim() || item.href;
-}
-
-function sortMentionItemsByMatchScore(
-  items: AgentContextMentionItem[],
-  query: string
-): AgentContextMentionItem[] {
-  const normalizedQuery = normalizeQuery(query).toLowerCase();
-  if (!normalizedQuery) {
-    return items;
-  }
-  return items
-    .map((item, index) => ({
-      index,
-      item,
-      score: mentionItemMatchScore(item, normalizedQuery)
-    }))
-    .sort((left, right) => {
-      if (left.score !== right.score) {
-        return right.score - left.score;
-      }
-      return left.index - right.index;
-    })
-    .map((entry) => entry.item);
-}
-
 function mentionItemMatchScore(
   item: AgentContextMentionItem,
   query: string
@@ -1453,20 +1070,8 @@ function mentionItemMatchScore(
 
   if (item.kind === "workspace-app") {
     kindBoost = 8;
-    primary.push(
-      item.name,
-      item.appId,
-      item.targetId,
-      ...(item.referenceItems ?? []).map((referenceItem) => referenceItem.name)
-    );
-    secondary.push(
-      item.description ?? "",
-      ...(item.referenceItems ?? []).flatMap((referenceItem) => [
-        referenceItem.path,
-        referenceItem.directoryPath,
-        referenceItem.sourceKey ?? ""
-      ])
-    );
+    primary.push(item.name, item.appId, item.targetId);
+    secondary.push(item.description ?? "");
   } else if (item.kind === "file") {
     primary.push(item.name);
     secondary.push(item.path, item.directoryPath);
@@ -1666,54 +1271,6 @@ function providerItemToAgentMentionItem(input: {
     };
   }
   return null;
-}
-
-function providerReferenceItemToFileMentionItem(
-  referenceItem: AgentRichTextAtReferenceItem
-): Extract<AgentContextMentionItem, { kind: "file" }> | null {
-  const label = compactText(referenceItem.label);
-  if (!label || referenceItem.insertResult.kind !== "markdown-link") {
-    return null;
-  }
-  const href = referenceItem.insertResult.href.trim();
-  if (!href) {
-    return null;
-  }
-  if (!isProviderReferenceFileHref(href)) {
-    return null;
-  }
-  const entryKind = href.endsWith("/") ? "directory" : "unknown";
-  const directoryPath = dirnameFromProviderWorkspaceFileHref(href);
-  const thumbnailUrl =
-    referenceItem.thumbnailUrl?.trim() ||
-    resolveAgentMentionFileThumbnailUrl({
-      href,
-      path: href,
-      name: label,
-      entryKind
-    });
-  return {
-    kind: "file",
-    href,
-    path: href,
-    name: label,
-    entryKind,
-    directoryPath,
-    ...(referenceItem.key?.trim()
-      ? { sourceKey: referenceItem.key.trim() }
-      : {}),
-    ...(thumbnailUrl ? { thumbnailUrl } : {})
-  };
-}
-
-function isProviderReferenceFileHref(href: string): boolean {
-  if (href.startsWith("#")) {
-    return false;
-  }
-  if (/^[A-Za-z]:[\\/]/u.test(href)) {
-    return true;
-  }
-  return !/^[A-Za-z][A-Za-z\d+.-]*:/u.test(href);
 }
 
 function normalizeSessionInitiatorDisplayName(value: string): string {

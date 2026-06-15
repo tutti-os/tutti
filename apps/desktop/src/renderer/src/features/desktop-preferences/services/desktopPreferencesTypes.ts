@@ -4,7 +4,9 @@ import type {
   DesktopAgentProvider,
   DesktopDockIconStyle,
   DesktopDockPlacement,
-  DesktopSleepPreventionMode
+  DesktopSleepPreventionMode,
+  DesktopUpdateChannel,
+  DesktopUpdatePolicy
 } from "@shared/preferences";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 
@@ -15,6 +17,8 @@ export interface DesktopPreferencesStoreState {
   changingLocale: DesktopLocale | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   changingThemeSource: DesktopThemeSource | null;
+  changingUpdateChannel: DesktopUpdateChannel | null;
+  changingUpdatePolicy: DesktopUpdatePolicy | null;
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   defaultAgentProvider: DesktopAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
@@ -22,6 +26,8 @@ export interface DesktopPreferencesStoreState {
   locale: DesktopLocale;
   sleepPreventionMode: DesktopSleepPreventionMode;
   theme: DesktopThemeState;
+  updateChannel: DesktopUpdateChannel;
+  updatePolicy: DesktopUpdatePolicy;
 }
 
 export interface DesktopPreferencesReadableStoreState {
@@ -31,6 +37,8 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingLocale: DesktopLocale | null;
   readonly changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   readonly changingThemeSource: DesktopThemeSource | null;
+  readonly changingUpdateChannel: DesktopUpdateChannel | null;
+  readonly changingUpdatePolicy: DesktopUpdatePolicy | null;
   readonly agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   readonly defaultAgentProvider: DesktopAgentProvider;
   readonly dockIconStyle: DesktopDockIconStyle;
@@ -38,4 +46,6 @@ export interface DesktopPreferencesReadableStoreState {
   readonly locale: DesktopLocale;
   readonly sleepPreventionMode: DesktopSleepPreventionMode;
   readonly theme: DesktopThemeState;
+  readonly updateChannel: DesktopUpdateChannel;
+  readonly updatePolicy: DesktopUpdatePolicy;
 }

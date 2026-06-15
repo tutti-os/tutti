@@ -62,9 +62,9 @@ func (p WorkspaceAppPublisher) PublishWorkspaceAppUpdated(ctx context.Context, w
 			WindowMinWidth:   app.Package.WindowMinWidth(),
 			WindowMinHeight:  app.Package.WindowMinHeight(),
 			References: struct {
-				SearchSupported bool `json:"searchSupported"`
+				ListSupported bool `json:"listSupported"`
 			}{
-				SearchSupported: app.Package.ReferenceSearchSupported(),
+				ListSupported: app.Package.ReferenceListSupported(),
 			},
 		},
 	})

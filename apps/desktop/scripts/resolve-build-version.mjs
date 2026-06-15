@@ -18,6 +18,8 @@ function readGitDescribeVersion() {
         "describe",
         "--tags",
         "--match",
+        "v*",
+        "--match",
         "tutti-desktop-v*",
         "--always",
         "--dirty"

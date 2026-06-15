@@ -56,7 +56,9 @@ test("tuttid event stream client dispatches typed topic events", async () => {
           dockIconStyle: "flat",
           locale: "zh-CN",
           sleepPreventionMode: "never",
-          themeSource: "dark"
+          themeSource: "dark",
+          updateChannel: "rc",
+          updatePolicy: "prompt"
         }
       },
       topic: "preferences.desktop.updated",
@@ -78,7 +80,9 @@ test("tuttid event stream client dispatches typed topic events", async () => {
           dockIconStyle: "flat",
           locale: "zh-CN",
           sleepPreventionMode: "never",
-          themeSource: "dark"
+          themeSource: "dark",
+          updateChannel: "rc",
+          updatePolicy: "prompt"
         }
       },
       topic: "preferences.desktop.updated",
@@ -151,7 +155,9 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
           dockIconStyle: "flat",
           locale: "zh-CN",
           sleepPreventionMode: "never",
-          themeSource: "dark"
+          themeSource: "dark",
+          updateChannel: "rc",
+          updatePolicy: "prompt"
         }
       },
       scope: { workspaceId: "workspace-2" },
@@ -173,7 +179,9 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
           dockIconStyle: "flat",
           locale: "zh-CN",
           sleepPreventionMode: "never",
-          themeSource: "light"
+          themeSource: "light",
+          updateChannel: "rc",
+          updatePolicy: "prompt"
         }
       },
       scope: { workspaceId: "workspace-1" },
@@ -196,7 +204,9 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
           dockIconStyle: "flat",
           locale: "zh-CN",
           sleepPreventionMode: "never",
-          themeSource: "light"
+          themeSource: "light",
+          updateChannel: "rc",
+          updatePolicy: "prompt"
         }
       },
       scope: { workspaceId: "workspace-1" },
@@ -273,7 +283,9 @@ test("tuttid event stream client can opt out of a default scope", async () => {
           dockIconStyle: "flat",
           locale: "zh-CN",
           sleepPreventionMode: "never",
-          themeSource: "dark"
+          themeSource: "dark",
+          updateChannel: "rc",
+          updatePolicy: "prompt"
         }
       },
       scope: { workspaceId: "workspace-2" },
@@ -321,7 +333,9 @@ test("tuttid event stream client publishes typed intents after connect", async (
         dockIconStyle: "flat",
         locale: "zh-CN",
         sleepPreventionMode: "never",
-        themeSource: "dark"
+        themeSource: "dark",
+        updateChannel: "rc",
+        updatePolicy: "prompt"
       }
     }
   );
@@ -339,7 +353,9 @@ test("tuttid event stream client publishes typed intents after connect", async (
           dockIconStyle: "flat",
           locale: "zh-CN",
           sleepPreventionMode: "never",
-          themeSource: "dark"
+          themeSource: "dark",
+          updateChannel: "rc",
+          updatePolicy: "prompt"
         }
       },
       topic: "preferences.desktop.update.requested",
@@ -405,7 +421,9 @@ test("tuttid event stream client fails handshake on unexpected pre-ready frames"
             dockIconStyle: "flat",
             locale: "zh-CN",
             sleepPreventionMode: "never",
-            themeSource: "dark"
+            themeSource: "dark",
+            updateChannel: "rc",
+            updatePolicy: "prompt"
           }
         },
         topic: "preferences.desktop.updated",
@@ -572,7 +590,9 @@ test("tuttid event stream client tears down a failed handshake before retrying",
         dockIconStyle: "flat",
         locale: "zh-CN",
         sleepPreventionMode: "never",
-        themeSource: "light"
+        themeSource: "light",
+        updateChannel: "rc",
+        updatePolicy: "prompt"
       }
     }
   );

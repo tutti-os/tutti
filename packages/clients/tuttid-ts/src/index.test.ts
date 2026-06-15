@@ -12,7 +12,7 @@ import {
   workspaceProtocolErrorCodes,
   type ApiErrorResponse,
   type AgentProviderComposerOptionsResponse,
-  type AppReference,
+  type AppReferenceListResponse,
   type ListWorkspacesResponse,
   type WorkspaceFilePreviewResponse
 } from "./index.ts";
@@ -31,15 +31,6 @@ test("generated tuttid client returns parsed health response", async () => {
   assert.deepEqual(response.data, { service: "tuttid", status: "ok" });
   assert.equal(response.error, undefined);
 });
-
-function assertAppReferenceNarrowing(reference: AppReference): string {
-  if (reference.kind === "file") {
-    return reference.path;
-  }
-  return "";
-}
-
-void assertAppReferenceNarrowing;
 
 test("generated tuttid client surfaces structured protocol errors", async () => {
   const client = createClient({
@@ -307,6 +298,83 @@ test("shared tuttid client launches workspace apps", async () => {
   assert.equal(requestPath, "/v1/workspaces/ws-1/apps/app-1/launch");
   assert.equal(app.appId, "app-1");
   assert.equal(app.status, "running");
+});
+
+test("shared tuttid client lists workspace app references with exact body", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+  let requestBody: unknown;
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+      requestBody = await request.json();
+
+      return new Response(
+        JSON.stringify({
+          workspaceId: "ws-1",
+          appId: "docs",
+          items: [
+            {
+              type: "group",
+              id: "reports",
+              displayName: "Reports",
+              description: null,
+              referenceCount: 12
+            }
+          ],
+          nextCursor: null
+        } satisfies AppReferenceListResponse),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  const response = await client.listWorkspaceAppReferences("ws-1", "docs", {
+    parentGroupId: "root",
+    filterText: "guide",
+    limit: 10,
+    cursor: "cursor-1",
+    kinds: ["file"],
+    timeRange: {
+      fromMs: 1000,
+      toMs: 2000
+    }
+  });
+
+  assert.equal(requestMethod, "POST");
+  assert.equal(requestPath, "/v1/workspaces/ws-1/apps/docs/references/list");
+  assert.deepEqual(requestBody, {
+    parentGroupId: "root",
+    filterText: "guide",
+    limit: 10,
+    cursor: "cursor-1",
+    kinds: ["file"],
+    timeRange: {
+      fromMs: 1000,
+      toMs: 2000
+    }
+  });
+  assert.deepEqual(response, {
+    workspaceId: "ws-1",
+    appId: "docs",
+    items: [
+      {
+        type: "group",
+        id: "reports",
+        displayName: "Reports",
+        description: null,
+        referenceCount: 12
+      }
+    ],
+    nextCursor: null
+  } satisfies AppReferenceListResponse);
 });
 
 test("shared tuttid client deletes user projects with bearer auth", async () => {

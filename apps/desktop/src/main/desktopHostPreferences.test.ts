@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type { PutDesktopPreferencesRequest } from "@tutti-os/client-tuttid-ts";
 import { createDesktopHostPreferencesState } from "./desktopHostPreferences.ts";
@@ -21,7 +24,9 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
             dockPlacement: "bottom",
             locale: "en",
             sleepPreventionMode: "never",
-            themeSource: "system"
+            themeSource: "system",
+            updateChannel: "rc",
+            updatePolicy: "prompt"
           }
         };
       },
@@ -45,7 +50,9 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         dockPlacement: "bottom",
         locale: "zh-CN",
         sleepPreventionMode: "never",
-        themeSource: "dark"
+        themeSource: "dark",
+        updateChannel: "rc",
+        updatePolicy: "prompt"
       }
     }
   ]);
@@ -74,7 +81,9 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
             dockPlacement: "bottom",
             locale: "en",
             sleepPreventionMode: "never",
-            themeSource: "system"
+            themeSource: "system",
+            updateChannel: "rc",
+            updatePolicy: "prompt"
           }
         };
       },
@@ -93,6 +102,107 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
   assert.equal(state.getThemeSource(), "system");
 });
 
+test("createDesktopHostPreferencesState migrates the old stable default update channel once", async () => {
+  const migrationStateRootDir = await mkdtemp(
+    join(tmpdir(), "tutti-update-channel-migration-")
+  );
+  const putRequests: PutDesktopPreferencesRequest[] = [];
+  const state = await createDesktopHostPreferencesState({
+    fallbackLocale: "zh-CN",
+    logger: createLogger(),
+    migrationStateRootDir,
+    tuttidClient: {
+      async getDesktopPreferences() {
+        return {
+          initialized: true,
+          preferences: {
+            agentComposerDefaultsByProvider: {},
+            defaultAgentProvider: "codex",
+
+            dockIconStyle: "default",
+            dockPlacement: "bottom",
+            locale: "zh-CN",
+            sleepPreventionMode: "never",
+            themeSource: "dark",
+            updateChannel: "stable",
+            updatePolicy: "prompt"
+          }
+        };
+      },
+      async putDesktopPreferences(request) {
+        putRequests.push(request);
+        return {
+          initialized: true,
+          preferences: request.preferences
+        };
+      }
+    }
+  });
+
+  assert.equal(state.getUpdateChannel(), "rc");
+  assert.equal(putRequests.length, 1);
+  assert.equal(putRequests[0]?.preferences.updateChannel, "rc");
+  assert.match(
+    await readFile(
+      join(
+        migrationStateRootDir,
+        "migrations",
+        "desktop-update-channel-default-rc-v1"
+      ),
+      "utf8"
+    ),
+    /^\d{4}-\d{2}-\d{2}T/
+  );
+});
+
+test("createDesktopHostPreferencesState preserves stable after the update channel migration ran", async () => {
+  const migrationStateRootDir = await mkdtemp(
+    join(tmpdir(), "tutti-update-channel-migration-")
+  );
+  await mkdir(join(migrationStateRootDir, "migrations"), { recursive: true });
+  await writeFile(
+    join(
+      migrationStateRootDir,
+      "migrations",
+      "desktop-update-channel-default-rc-v1"
+    ),
+    "applied",
+    "utf8"
+  );
+  let putCalls = 0;
+  const state = await createDesktopHostPreferencesState({
+    fallbackLocale: "zh-CN",
+    logger: createLogger(),
+    migrationStateRootDir,
+    tuttidClient: {
+      async getDesktopPreferences() {
+        return {
+          initialized: true,
+          preferences: {
+            agentComposerDefaultsByProvider: {},
+            defaultAgentProvider: "codex",
+
+            dockIconStyle: "default",
+            dockPlacement: "bottom",
+            locale: "zh-CN",
+            sleepPreventionMode: "never",
+            themeSource: "dark",
+            updateChannel: "stable",
+            updatePolicy: "prompt"
+          }
+        };
+      },
+      async putDesktopPreferences() {
+        putCalls += 1;
+        throw new Error("putDesktopPreferences should not be called");
+      }
+    }
+  });
+
+  assert.equal(putCalls, 0);
+  assert.equal(state.getUpdateChannel(), "stable");
+});
+
 test("createDesktopHostPreferencesState notifies subscribers after sync changes", async () => {
   const state = await createDesktopHostPreferencesState({
     fallbackLocale: "en",
@@ -109,7 +219,9 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
             dockPlacement: "bottom",
             locale: "en",
             sleepPreventionMode: "never",
-            themeSource: "system"
+            themeSource: "system",
+            updateChannel: "stable",
+            updatePolicy: "prompt"
           }
         };
       },

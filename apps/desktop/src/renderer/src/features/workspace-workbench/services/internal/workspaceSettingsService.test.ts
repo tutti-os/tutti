@@ -106,6 +106,7 @@ test("WorkspaceSettingsService echoes saved managed provider API keys", async ()
       listManagedModelProviders: async () => [
         {
           apiKey: "agnes-secret",
+          baseUrl: "https://apihub.agnes-ai.com/v1",
           enabled: true,
           hasApiKey: true,
           models: [],
@@ -124,12 +125,88 @@ test("WorkspaceSettingsService echoes saved managed provider API keys", async ()
   assert.equal(agnesProvider?.apiKey, "agnes-secret");
 });
 
+test("WorkspaceSettingsService seeds managed provider defaults", async () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listManagedModelProviders: async () => []
+    })
+  });
+
+  service.openPanel({ id: "workspace-1" });
+  await waitFor(() => service.store.managedModels.loading === false);
+
+  const agnesProvider = service.store.managedModels.providers.find(
+    (provider) => provider.provider === "agnes"
+  );
+  assert.equal(agnesProvider?.baseUrl, "https://apihub.agnes-ai.com/v1");
+  assert.deepEqual(agnesProvider?.models, [
+    {
+      id: "agnes-2.0-flash",
+      name: "agnes-2.0-flash",
+      provider: "agnes"
+    },
+    {
+      id: "agnes-1.5-flash",
+      name: "agnes-1.5-flash",
+      provider: "agnes"
+    }
+  ]);
+  const openaiProvider = service.store.managedModels.providers.find(
+    (provider) => provider.provider === "openai"
+  );
+  assert.equal(openaiProvider?.baseUrl, "https://api.openai.com/v1");
+  assert.deepEqual(openaiProvider?.models, [
+    {
+      id: "gpt-5.5",
+      name: "gpt-5.5",
+      provider: "openai"
+    },
+    {
+      id: "gpt-5.4",
+      name: "gpt-5.4",
+      provider: "openai"
+    },
+    {
+      id: "gpt-5.4-mini",
+      name: "gpt-5.4-mini",
+      provider: "openai"
+    },
+    {
+      id: "gpt-5.4-nano",
+      name: "gpt-5.4-nano",
+      provider: "openai"
+    }
+  ]);
+  const anthropicProvider = service.store.managedModels.providers.find(
+    (provider) => provider.provider === "anthropic"
+  );
+  assert.equal(anthropicProvider?.baseUrl, "https://api.anthropic.com/v1");
+  assert.deepEqual(anthropicProvider?.models, [
+    {
+      id: "claude-sonnet-4-6",
+      name: "claude-sonnet-4-6",
+      provider: "anthropic"
+    },
+    {
+      id: "claude-opus-4-8",
+      name: "claude-opus-4-8",
+      provider: "anthropic"
+    },
+    {
+      id: "claude-haiku-4-5",
+      name: "claude-haiku-4-5",
+      provider: "anthropic"
+    }
+  ]);
+});
+
 test("WorkspaceSettingsService fills detected managed provider models", async () => {
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({
       listManagedModelProviders: async () => [
         {
           apiKey: "agnes-secret",
+          baseUrl: "https://apihub.agnes-ai.com/v1",
           enabled: true,
           hasApiKey: true,
           models: [],
@@ -157,6 +234,150 @@ test("WorkspaceSettingsService fills detected managed provider models", async ()
     {
       id: "agnes-2.0-flash",
       name: "Agnes 2.0 Flash",
+      provider: "agnes"
+    }
+  ]);
+});
+
+test("WorkspaceSettingsService saves managed providers as enabled", async () => {
+  const savedInputs: unknown[] = [];
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      putManagedModelProvider: async (_workspaceID, providerID, input) => {
+        savedInputs.push(input);
+        return {
+          apiKey: input.apiKey,
+          baseUrl: input.baseUrl,
+          enabled: input.enabled,
+          hasApiKey: Boolean(input.apiKey),
+          models: input.models,
+          provider: providerID
+        };
+      }
+    })
+  });
+
+  service.openPanel({ id: "workspace-1" });
+  await waitFor(() => service.store.managedModels.loading === false);
+  await service.saveManagedModelProvider({
+    apiKey: "agnes-secret",
+    baseUrl: "https://apihub.agnes-ai.com/v1",
+    enabled: false,
+    hasApiKey: false,
+    models: [
+      {
+        id: "agnes-2.0-flash",
+        name: "agnes-2.0-flash",
+        provider: "agnes"
+      }
+    ],
+    provider: "agnes"
+  });
+
+  assert.deepEqual(savedInputs, [
+    {
+      apiKey: "agnes-secret",
+      baseUrl: "https://apihub.agnes-ai.com/v1",
+      enabled: true,
+      models: [
+        {
+          id: "agnes-2.0-flash",
+          name: "agnes-2.0-flash",
+          provider: "agnes"
+        }
+      ]
+    }
+  ]);
+});
+
+test("WorkspaceSettingsService requires managed provider API key and base URL before saving", async () => {
+  const notifications = createNotificationRecorder();
+  let saveCount = 0;
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({
+        putManagedModelProvider: async (_workspaceID, providerID, input) => {
+          saveCount += 1;
+          return {
+            baseUrl: input.baseUrl,
+            enabled: input.enabled,
+            hasApiKey: Boolean(input.apiKey),
+            models: input.models,
+            provider: providerID
+          };
+        }
+      })
+    },
+    createDesktopPreferencesService({
+      state: createPreferencesState({})
+    }),
+    notifications.service
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  await waitFor(() => service.store.managedModels.loading === false);
+  const agnesProvider = service.store.managedModels.providers.find(
+    (provider) => provider.provider === "agnes"
+  );
+  assert.ok(agnesProvider);
+
+  await service.saveManagedModelProvider({
+    ...agnesProvider,
+    apiKey: "",
+    hasApiKey: false
+  });
+  await service.saveManagedModelProvider({
+    ...agnesProvider,
+    apiKey: "agnes-secret",
+    baseUrl: ""
+  });
+
+  assert.equal(saveCount, 0);
+  assert.equal(notifications.items.length, 2);
+});
+
+test("WorkspaceSettingsService detects provider models with the current draft", async () => {
+  const detectInputs: unknown[] = [];
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listManagedModelProviders: async () => [],
+      listManagedModelProviderModels: async (
+        _workspaceID,
+        _providerID,
+        input
+      ) => {
+        detectInputs.push(input);
+        return [
+          {
+            id: "agnes-2.0-pro",
+            name: "Agnes 2.0 Pro",
+            provider: "agnes"
+          }
+        ];
+      }
+    })
+  });
+
+  service.openPanel({ id: "workspace-1" });
+  await waitFor(() => service.store.managedModels.loading === false);
+  service.updateManagedModelProviderDraft("agnes", {
+    apiKey: "agnes-secret"
+  });
+  await service.detectManagedModelProviderModels("agnes");
+
+  assert.deepEqual(detectInputs, [
+    {
+      apiKey: "agnes-secret",
+      baseUrl: "https://apihub.agnes-ai.com/v1"
+    }
+  ]);
+  const agnesProvider = service.store.managedModels.providers.find(
+    (provider) => provider.provider === "agnes"
+  );
+  assert.deepEqual(agnesProvider?.models, [
+    {
+      id: "agnes-2.0-pro",
+      name: "Agnes 2.0 Pro",
       provider: "agnes"
     }
   ]);
@@ -477,6 +698,8 @@ function createDesktopPreferencesService(input: {
   onSetLocale?: IDesktopPreferencesService["setLocale"];
   onSetSleepPreventionMode?: IDesktopPreferencesService["setSleepPreventionMode"];
   onSetThemeSource?: IDesktopPreferencesService["setThemeSource"];
+  onSetUpdateChannel?: IDesktopPreferencesService["setUpdateChannel"];
+  onSetUpdatePolicy?: IDesktopPreferencesService["setUpdatePolicy"];
   state: DesktopPreferencesReadableStoreState;
 }): IDesktopPreferencesService {
   return {
@@ -492,7 +715,9 @@ function createDesktopPreferencesService(input: {
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
     setThemeSource:
-      input.onSetThemeSource ?? (async (source) => createTheme(source))
+      input.onSetThemeSource ?? (async (source) => createTheme(source)),
+    setUpdateChannel: input.onSetUpdateChannel ?? (async (channel) => channel),
+    setUpdatePolicy: input.onSetUpdatePolicy ?? (async (policy) => policy)
   };
 }
 
@@ -507,12 +732,16 @@ function createPreferencesState(
     changingLocale: null,
     changingSleepPreventionMode: null,
     changingThemeSource: null,
+    changingUpdateChannel: null,
+    changingUpdatePolicy: null,
     defaultAgentProvider: "codex",
     dockIconStyle: "default",
     dockPlacement: "bottom",
     locale: "en",
     sleepPreventionMode: "never",
     theme: createTheme("system"),
+    updateChannel: "stable",
+    updatePolicy: "prompt",
     ...overrides
   };
 }

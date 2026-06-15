@@ -615,6 +615,32 @@ export function DownloadIcon(props: IconProps) {
   );
 }
 
+export function UpgradeArrowIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path
+        d="M12 20V6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="2.4"
+      />
+      <path
+        d="M6.5 11.5 12 6l5.5 5.5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2.4"
+      />
+      <path
+        d="M7 4h10"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="2.4"
+      />
+    </SvgIcon>
+  );
+}
+
 export function DarkModeIcon(props: IconProps) {
   return (
     <FilledPathIcon {...props}>

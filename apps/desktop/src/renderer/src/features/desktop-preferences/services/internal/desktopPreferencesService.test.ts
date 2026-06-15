@@ -31,7 +31,9 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
           dockPlacement: "bottom",
           locale: "zh-CN",
           sleepPreventionMode: "never",
-          themeSource: "dark"
+          themeSource: "dark",
+          updateChannel: "stable",
+          updatePolicy: "prompt"
         }
       };
     }
@@ -85,7 +87,9 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
         dockPlacement: "bottom",
         locale: "en",
         sleepPreventionMode: "never",
-        themeSource: "system"
+        themeSource: "system",
+        updateChannel: "stable",
+        updatePolicy: "prompt"
       }
     }),
     updateDesktopPreferences: async (request) => {
@@ -148,7 +152,9 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "system"
+      themeSource: "system",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   ]);
   assert.equal(service.store.locale, "zh-CN");
@@ -162,7 +168,9 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
     dockPlacement: "bottom",
     locale: "zh-CN",
     sleepPreventionMode: "never",
-    themeSource: "system"
+    themeSource: "system",
+    updateChannel: "stable",
+    updatePolicy: "prompt"
   });
 
   assert.equal(await savedLocalePromise, "zh-CN");
@@ -231,7 +239,9 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
       dockPlacement: "bottom",
       locale: "en",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   ]);
   assert.deepEqual(service.store.theme, {
@@ -253,7 +263,9 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
     dockPlacement: "bottom",
     locale: "en",
     sleepPreventionMode: "never",
-    themeSource: "dark"
+    themeSource: "dark",
+    updateChannel: "stable",
+    updatePolicy: "prompt"
   });
 
   assert.deepEqual(await savedThemePromise, {
@@ -339,7 +351,9 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
       dockPlacement: "bottom",
       locale: "en",
       sleepPreventionMode: "whileAgentRunning",
-      themeSource: "system"
+      themeSource: "system",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   ]);
   assert.equal(service.store.sleepPreventionMode, "whileAgentRunning");
@@ -352,11 +366,73 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
     dockPlacement: "bottom",
     locale: "en",
     sleepPreventionMode: "whileAgentRunning",
-    themeSource: "system"
+    themeSource: "system",
+    updateChannel: "stable",
+    updatePolicy: "prompt"
   });
 
   assert.equal(await savedPreferencePromise, "whileAgentRunning");
   assert.equal(service.store.sleepPreventionMode, "whileAgentRunning");
+
+  service.dispose();
+});
+
+test("DesktopPreferencesService publishes update preference writes", async () => {
+  const client = createDesktopPreferencesClient({});
+
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme() {},
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+  const savedPreferencePromise = service.setUpdatePolicy("auto");
+
+  assert.deepEqual(client.updatedRequests, [
+    {
+      agentComposerDefaultsByProvider: {},
+      defaultAgentProvider: "codex",
+
+      dockIconStyle: "default",
+      dockPlacement: "bottom",
+      locale: "en",
+      sleepPreventionMode: "never",
+      themeSource: "system",
+      updateChannel: "stable",
+      updatePolicy: "auto"
+    }
+  ]);
+  assert.equal(service.store.updatePolicy, "auto");
+
+  client.emitDesktopPreferencesUpdated({
+    agentComposerDefaultsByProvider: {},
+    defaultAgentProvider: "codex",
+
+    dockIconStyle: "default",
+    dockPlacement: "bottom",
+    locale: "en",
+    sleepPreventionMode: "never",
+    themeSource: "system",
+    updateChannel: "stable",
+    updatePolicy: "auto"
+  });
+
+  assert.equal(await savedPreferencePromise, "auto");
+  assert.equal(service.store.updatePolicy, "auto");
+
+  const savedChannelPromise = service.setUpdateChannel("rc");
+  assert.equal(client.updatedRequests.at(-1)?.updateChannel, "rc");
+  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
+
+  assert.equal(await savedChannelPromise, "rc");
+  assert.equal(service.store.updateChannel, "rc");
 
   service.dispose();
 });
@@ -388,7 +464,9 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
       dockPlacement: "left",
       locale: "en",
       sleepPreventionMode: "never",
-      themeSource: "system"
+      themeSource: "system",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   ]);
   assert.equal(service.store.dockPlacement, "left");
@@ -401,7 +479,9 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
     dockPlacement: "left",
     locale: "en",
     sleepPreventionMode: "never",
-    themeSource: "system"
+    themeSource: "system",
+    updateChannel: "stable",
+    updatePolicy: "prompt"
   });
 
   assert.equal(await savedPreferencePromise, "left");
@@ -422,7 +502,9 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
         dockPlacement: "bottom",
         locale: "en",
         sleepPreventionMode: "never",
-        themeSource: "system"
+        themeSource: "system",
+        updateChannel: "stable",
+        updatePolicy: "prompt"
       }
     },
     {
@@ -435,7 +517,9 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
         dockPlacement: "bottom",
         locale: "zh-CN",
         sleepPreventionMode: "never",
-        themeSource: "system"
+        themeSource: "system",
+        updateChannel: "stable",
+        updatePolicy: "prompt"
       }
     }
   ]);
@@ -516,7 +600,9 @@ test("DesktopPreferencesService remembers agent composer defaults per provider",
     dockPlacement: "bottom",
     locale: "en",
     sleepPreventionMode: "never",
-    themeSource: "system"
+    themeSource: "system",
+    updateChannel: "stable",
+    updatePolicy: "prompt"
   });
   client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
 
@@ -582,7 +668,9 @@ function createDesktopPreferencesClient(
           pendingUpdate.request.dockPlacement !== preferences.dockPlacement ||
           pendingUpdate.request.sleepPreventionMode !==
             preferences.sleepPreventionMode ||
-          pendingUpdate.request.themeSource !== preferences.themeSource
+          pendingUpdate.request.themeSource !== preferences.themeSource ||
+          pendingUpdate.request.updateChannel !== preferences.updateChannel ||
+          pendingUpdate.request.updatePolicy !== preferences.updatePolicy
         ) {
           continue;
         }
@@ -601,7 +689,9 @@ function createDesktopPreferencesClient(
         dockPlacement: "bottom",
         locale: "en",
         sleepPreventionMode: "never",
-        themeSource: "system"
+        themeSource: "system",
+        updateChannel: "stable",
+        updatePolicy: "prompt"
       }
     }),
     updateDesktopPreferences: async (request) => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentGUIComposerSettingsVM } from "./agentGuiNodeTypes";
 import {
   buildComposerModelMenuModel,
+  formatModelDisplayLabel,
   type AgentComposerSettingsMenuLabels
 } from "./composerSettingsMenuModel";
 
@@ -78,17 +79,17 @@ describe("buildComposerModelMenuModel", () => {
     expect(menu.disabled).toBe(false);
     expect(menu.trigger).toMatchObject({
       isFast: false,
-      modelLabel: "Gpt-5.5",
+      modelLabel: "GPT-5.5",
       reasoningLabel: "High",
-      combinedLabel: "Gpt-5.5 High",
+      combinedLabel: "GPT-5.5 High",
       showCombined: false
     });
 
     expect(menu.model.show).toBe(true);
     expect(menu.model.selectedValue).toBe("gpt-5.5");
     expect(menu.model.options).toEqual([
-      { value: "gpt-5.5", label: "Gpt-5.5", description: undefined },
-      { value: "gpt-5.4", label: "Gpt-5.4", description: undefined }
+      { value: "gpt-5.5", label: "GPT-5.5", description: undefined },
+      { value: "gpt-5.4", label: "GPT-5.4", description: undefined }
     ]);
 
     expect(menu.reasoning.show).toBe(true);
@@ -151,9 +152,18 @@ describe("buildComposerModelMenuModel", () => {
     expect(menu.model.selectedValue).toBe("custom-model");
     expect(menu.model.options[0]).toEqual({
       value: "custom-model",
-      label: "Custom-model",
+      label: "Custom-Model",
       description: undefined
     });
+  });
+
+  it("normalizes GPT casing while capitalizing each label segment", () => {
+    expect(formatModelDisplayLabel("gpt-5.5")).toBe("GPT-5.5");
+    expect(formatModelDisplayLabel("gpt-5.3-codex")).toBe("GPT-5.3-Codex");
+    expect(formatModelDisplayLabel("Gpt-5.5-codex")).toBe("GPT-5.5-Codex");
+    expect(formatModelDisplayLabel("vendor/gpt-5.5")).toBe("Vendor/GPT-5.5");
+    expect(formatModelDisplayLabel("codex")).toBe("Codex");
+    expect(formatModelDisplayLabel("custom-model")).toBe("Custom-Model");
   });
 
   it("hides dimensions that are unsupported or unavailable", () => {

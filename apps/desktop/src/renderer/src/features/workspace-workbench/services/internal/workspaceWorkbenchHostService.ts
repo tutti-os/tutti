@@ -442,16 +442,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     return this.dependencies.platformApi.homeDirectory;
   }
 
-  async openWorkspaceFile(input: {
-    path: string;
-    workspaceId: string;
-  }): Promise<void> {
-    await this.dependencies.hostFilesApi.openFile(
-      input.workspaceId,
-      input.path
-    );
-  }
-
   async ensureAgentProviderStatusesLoaded(): Promise<void> {
     await this.dependencies.agentProviderStatusService.ensureLoaded();
   }

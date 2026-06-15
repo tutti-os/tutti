@@ -83,6 +83,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
   });
   await flushDesktopLogger();
   await configureApplicationMenu({
+    checkForUpdates: () => desktopAppServices.updateService.checkForUpdates(),
     exportDeveloperLogs: () =>
       exportDesktopDeveloperLogsAndNotify(
         desktopAppServices.preferences,
@@ -110,6 +111,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
     ),
     logger,
     preferences: desktopAppServices.preferences,
+    updateService: desktopAppServices.updateService,
     syncWindowBackgroundColors: syncDesktopWindowBackgroundColors
   });
   const agentPowerSaveBlocker = connectAgentPowerSaveBlocker({
@@ -132,8 +134,8 @@ export async function bootstrapDesktopApp(): Promise<void> {
   });
 
   void desktopAppServices.updateService.configure({
-    channel: "stable",
-    policy: "off"
+    channel: desktopAppServices.preferences.getUpdateChannel(),
+    policy: desktopAppServices.preferences.getUpdatePolicy()
   });
 
   await desktopAppServices.workspaceLaunch.openStartupWindow();

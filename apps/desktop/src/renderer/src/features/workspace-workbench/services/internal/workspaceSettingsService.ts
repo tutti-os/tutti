@@ -4,7 +4,9 @@ import type {
   DesktopAgentProvider,
   DesktopDockIconStyle,
   DesktopDockPlacement,
-  DesktopSleepPreventionMode
+  DesktopSleepPreventionMode,
+  DesktopUpdateChannel,
+  DesktopUpdatePolicy
 } from "@shared/preferences";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import {
@@ -259,6 +261,44 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
+  async changeUpdatePolicy(policy: DesktopUpdatePolicy): Promise<void> {
+    if (
+      this.desktopPreferences.store.updatePolicy === policy ||
+      this.desktopPreferences.store.changingUpdatePolicy === policy
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setUpdatePolicy(policy);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.updatePolicySaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeUpdateChannel(channel: DesktopUpdateChannel): Promise<void> {
+    if (
+      this.desktopPreferences.store.updateChannel === channel ||
+      this.desktopPreferences.store.changingUpdateChannel === channel
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setUpdateChannel(channel);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.updateChannelSaveFailed"
+        )
+      });
+    }
+  }
+
   async clearDeveloperLogs(): Promise<void> {
     if (this.store.developerLogs.clearing) {
       return;
@@ -385,17 +425,19 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     if (!workspaceID || this.store.managedModels.savingProvider) {
       return;
     }
+    if (!hasRequiredManagedModelProviderFields(provider)) {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.apps.managedModels.requiredFieldsMissing"
+        )
+      });
+      return;
+    }
     this.store.managedModels.savingProvider = provider.provider;
     try {
-      const saved = await this.dependencies.client.putManagedModelProvider(
+      const saved = await this.putManagedModelProviderDraft(
         workspaceID,
-        provider.provider,
-        {
-          ...(provider.apiKey.trim() ? { apiKey: provider.apiKey } : {}),
-          baseUrl: provider.baseUrl,
-          enabled: provider.enabled,
-          models: normalizeManagedModels(provider.provider, provider.models)
-        }
+        provider
       );
       this.replaceManagedModelProviderDraft(saved);
       this.notifications.success({
@@ -485,12 +527,27 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     if (!workspaceID || this.store.managedModels.detectingProvider) {
       return;
     }
+    const provider = this.store.managedModels.providers.find(
+      (item) => item.provider === providerID
+    );
+    if (!provider || !hasRequiredManagedModelProviderFields(provider)) {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.apps.managedModels.requiredFieldsMissing"
+        )
+      });
+      return;
+    }
     this.store.managedModels.detectingProvider = providerID;
     try {
       const models =
         await this.dependencies.client.listManagedModelProviderModels(
           workspaceID,
-          providerID
+          providerID,
+          {
+            ...(provider.apiKey.trim() ? { apiKey: provider.apiKey } : {}),
+            baseUrl: provider.baseUrl
+          }
         );
       this.updateManagedModelProviderDraft(providerID, {
         models: normalizeManagedModels(providerID, models)
@@ -511,6 +568,22 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     } finally {
       this.store.managedModels.detectingProvider = null;
     }
+  }
+
+  private putManagedModelProviderDraft(
+    workspaceID: string,
+    provider: WorkspaceManagedModelProviderDraft
+  ): Promise<WorkspaceManagedModelProviderConfig> {
+    return this.dependencies.client.putManagedModelProvider(
+      workspaceID,
+      provider.provider,
+      {
+        ...(provider.apiKey.trim() ? { apiKey: provider.apiKey } : {}),
+        baseUrl: provider.baseUrl,
+        enabled: true,
+        models: normalizeManagedModels(provider.provider, provider.models)
+      }
+    );
   }
 
   private replaceManagedModelProviderDraft(
@@ -609,12 +682,9 @@ function createActiveTranslator() {
 
 function createDefaultManagedModelDrafts(): WorkspaceManagedModelProviderDraft[] {
   return managedModelProviderIDs.map((provider) =>
-    toManagedModelProviderDraft({
-      enabled: false,
-      hasApiKey: false,
-      models: [],
-      provider
-    })
+    toManagedModelProviderDraft(
+      createDefaultManagedModelProviderConfig(provider)
+    )
   );
 }
 
@@ -632,14 +702,45 @@ function toManagedModelProviderDrafts(
   const byProvider = new Map(providers.map((item) => [item.provider, item]));
   return managedModelProviderIDs.map((provider) =>
     toManagedModelProviderDraft(
-      byProvider.get(provider) ?? {
-        enabled: false,
-        hasApiKey: false,
-        models: [],
-        provider
-      }
+      byProvider.get(provider) ??
+        createDefaultManagedModelProviderConfig(provider)
     )
   );
+}
+
+function createDefaultManagedModelProviderConfig(
+  provider: WorkspaceManagedModelProviderID
+): WorkspaceManagedModelProviderConfig {
+  const officialDefaults: Record<
+    WorkspaceManagedModelProviderID,
+    { baseUrl: string; models: readonly string[] }
+  > = {
+    agnes: {
+      baseUrl: "https://apihub.agnes-ai.com/v1",
+      models: ["agnes-2.0-flash", "agnes-1.5-flash"]
+    },
+    anthropic: {
+      baseUrl: "https://api.anthropic.com/v1",
+      models: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"]
+    },
+    openai: {
+      baseUrl: "https://api.openai.com/v1",
+      models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
+    }
+  };
+  const defaults = officialDefaults[provider];
+
+  return {
+    baseUrl: defaults.baseUrl,
+    enabled: false,
+    hasApiKey: false,
+    models: defaults.models.map((id) => ({
+      id,
+      name: id,
+      provider
+    })),
+    provider
+  };
 }
 
 function toManagedModelProviderDraft(
@@ -657,6 +758,15 @@ function toManagedModelProviderDraft(
     baseUrl: provider.baseUrl ?? "",
     models: normalizeManagedModels(provider.provider, models)
   };
+}
+
+function hasRequiredManagedModelProviderFields(
+  provider: WorkspaceManagedModelProviderDraft
+): boolean {
+  return (
+    (provider.hasApiKey || provider.apiKey.trim().length > 0) &&
+    (provider.baseUrl?.trim().length ?? 0) > 0
+  );
 }
 
 function normalizeManagedModels(
@@ -693,12 +803,16 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingLocale: null,
   changingSleepPreventionMode: null,
   changingThemeSource: null,
+  changingUpdateChannel: null,
+  changingUpdatePolicy: null,
   defaultAgentProvider: "codex",
   dockIconStyle: "default",
   dockPlacement: "bottom",
   locale: "en",
   sleepPreventionMode: "never",
-  theme: createNoopTheme("dark")
+  theme: createNoopTheme("dark"),
+  updateChannel: "rc",
+  updatePolicy: "prompt"
 };
 
 const noopDesktopPreferences: DesktopPreferencesService = {
@@ -721,6 +835,12 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setThemeSource(source) {
     return Promise.resolve(createNoopTheme(source));
+  },
+  setUpdateChannel(channel) {
+    return Promise.resolve(channel);
+  },
+  setUpdatePolicy(policy) {
+    return Promise.resolve(policy);
   },
   rememberAgentComposerDefaults() {
     return Promise.resolve();

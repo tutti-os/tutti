@@ -21,22 +21,16 @@ function extractFieldMap(payload) {
 }
 
 test("release Feishu card marks stable tags as latest releases", () => {
-  assert.equal(
-    resolveReleaseKind("tutti-desktop-v1.12.20"),
-    "Stable latest release"
-  );
-  assert.match(resolveIntroText("tutti-desktop-v1.12.20"), /GitHub Release/);
+  assert.equal(resolveReleaseKind("v1.12.20"), "Stable latest release");
+  assert.match(resolveIntroText("v1.12.20"), /GitHub Release/);
 });
 
 test("release Feishu card marks rc tags as prereleases", () => {
   assert.equal(
-    resolveReleaseKind("tutti-desktop-v1.12.19-rc.0"),
+    resolveReleaseKind("v1.12.19-rc.0"),
     "Release candidate prerelease"
   );
-  assert.match(
-    resolveIntroText("tutti-desktop-v1.12.19-rc.0"),
-    /GitHub RC Pre-release/
-  );
+  assert.match(resolveIntroText("v1.12.19-rc.0"), /GitHub RC Pre-release/);
 });
 
 test("release Feishu card includes tsh-aligned release context fields", () => {
@@ -45,10 +39,9 @@ test("release Feishu card includes tsh-aligned release context fields", () => {
     branch: "main",
     linuxUrl: "https://example.com/tutti.AppImage",
     macUrl: "https://example.com/tutti.dmg",
-    releaseUrl:
-      "https://github.com/tutti-os/tutti/releases/tag/tutti-desktop-v1.12.20",
+    releaseUrl: "https://github.com/tutti-os/tutti/releases/tag/v1.12.20",
     runUrl: "https://github.com/tutti-os/tutti/actions/runs/1",
-    tag: "tutti-desktop-v1.12.20",
+    tag: "v1.12.20",
     target: "4039186abcdef0",
     winUrl: "https://example.com/tutti.exe"
   });
@@ -56,7 +49,7 @@ test("release Feishu card includes tsh-aligned release context fields", () => {
   const fields = extractFieldMap(payload);
 
   assert.equal(payload.card.header.title.content, "Tutti 发布完成");
-  assert.equal(fields.get("版本号"), "tutti-desktop-v1.12.20");
+  assert.equal(fields.get("版本号"), "v1.12.20");
   assert.equal(fields.get("构建类型"), "Stable latest release");
   assert.equal(fields.get("Commit"), "4039186");
   assert.equal(fields.get("部署分支"), "main");
@@ -100,8 +93,8 @@ test("release Feishu card resolves mirrored macOS URLs from local artifact names
       ["Tutti-0.1.0-rc.4-mac-arm64.dmg", "Tutti-0.1.0-rc.4-win-x64.exe"],
       /\.dmg$/i,
       "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets",
-      "tutti-desktop-v0.1.0-rc.4"
+      "v0.1.0-rc.4"
     ),
-    "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets/tutti-desktop-v0.1.0-rc.4/Tutti-0.1.0-rc.4-mac-arm64.dmg"
+    "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets/v0.1.0-rc.4/Tutti-0.1.0-rc.4-mac-arm64.dmg"
   );
 });

@@ -122,8 +122,7 @@ export function resolveWorkspaceFilePathCandidate({
     : normalizeWorkspaceFilePath(`${base}/${normalizedPath}`);
   if (
     !isInsideOrEqual(resolvedPath, root) &&
-    !isDirectAgentGeneratedImagePath(resolvedPath) &&
-    !isDirectWorkspaceAppFilePath(resolvedPath)
+    !isDirectAgentGeneratedImagePath(resolvedPath)
   ) {
     return null;
   }
@@ -194,14 +193,13 @@ export function resolveWorkspaceMentionLinkAction({
     return null;
   }
 
-  const resource = url.hostname.trim().toLowerCase();
   const workspaceId = url.searchParams.get("workspaceId")?.trim() || "";
   const targetId = url.searchParams.get("id")?.trim() || "";
   if (!workspaceId || !targetId) {
     return null;
   }
 
-  if (resource === "agent-session") {
+  if (url.hostname === "agent-session") {
     const provider = url.searchParams.get("provider")?.trim() || null;
     return {
       type: "open-agent-session",
@@ -212,7 +210,7 @@ export function resolveWorkspaceMentionLinkAction({
     };
   }
 
-  if (resource === "workspace-issue") {
+  if (url.hostname === "workspace-issue") {
     const parsedIssueMention = parseWorkspaceIssueMentionHref(rawHref);
     if (!parsedIssueMention) {
       return null;
@@ -357,31 +355,4 @@ function isDirectAgentGeneratedImagePath(path: string): boolean {
     return false;
   }
   return /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(path);
-}
-
-function isDirectWorkspaceAppFilePath(path: string): boolean {
-  if (!isAbsoluteLocalPath(path)) {
-    return false;
-  }
-  const segments = path.split("/").filter(Boolean);
-  const stateRootIndex = segments.findIndex(
-    (segment) => segment === ".tutti" || segment === ".tutti-dev"
-  );
-  if (stateRootIndex < 0) {
-    return false;
-  }
-  const statePath = segments.slice(stateRootIndex);
-  if (statePath[1] !== "apps") {
-    return false;
-  }
-
-  if (statePath[2] === "workspaces") {
-    return statePath.length > 6 && statePath[5] === "data";
-  }
-
-  if (statePath[2] === "packages") {
-    return statePath.length > 5;
-  }
-
-  return false;
 }

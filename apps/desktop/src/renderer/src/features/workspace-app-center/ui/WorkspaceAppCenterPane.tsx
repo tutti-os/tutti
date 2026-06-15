@@ -35,93 +35,101 @@ import {
 import { shouldShowWorkspaceApp } from "../services/workspaceAppVisibility.ts";
 import { useWorkspaceAppCenterService } from "./useWorkspaceAppCenterService.ts";
 
+const catalogAppDisplayDefinitions = [
+  {
+    appIds: ["ai-media-canvas", "media-canvas"],
+    descriptionKey: "appCenter.catalogApps.aiMediaCanvas.description",
+    nameKey: "appCenter.catalogApps.aiMediaCanvas.name"
+  },
+  {
+    appIds: ["automation"],
+    descriptionKey: "appCenter.catalogApps.automation.description",
+    nameKey: "appCenter.catalogApps.automation.name"
+  },
+  {
+    appIds: ["daily-product-radar", "daily-tech-radar", "radar"],
+    descriptionKey: "appCenter.catalogApps.dailyProductRadar.description",
+    nameKey: "appCenter.catalogApps.dailyProductRadar.name"
+  },
+  {
+    appIds: ["group-chat"],
+    descriptionKey: "appCenter.catalogApps.groupChat.description",
+    nameKey: "appCenter.catalogApps.groupChat.name"
+  },
+  {
+    appIds: ["vibe-design"],
+    descriptionKey: "appCenter.catalogApps.vibeDesign.description",
+    nameKey: "appCenter.catalogApps.vibeDesign.name"
+  }
+] as const;
+
+type CatalogAppDisplayDefinition = {
+  descriptionKey: string;
+  nameKey: string;
+};
+
+const catalogAppDisplayById = new Map<string, CatalogAppDisplayDefinition>(
+  catalogAppDisplayDefinitions.flatMap((definition) =>
+    definition.appIds.map(
+      (appId) =>
+        [
+          appId,
+          {
+            descriptionKey: definition.descriptionKey,
+            nameKey: definition.nameKey
+          }
+        ] as const
+    )
+  )
+);
+
 const comingSoonWorkspaceAppDefinitions = [
   {
     appId: "ai-ppt",
     descriptionKey: "appCenter.comingSoonApps.aiPpt.description",
     nameKey: "appCenter.comingSoonApps.aiPpt.name",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.aiPpt.primary",
-      "appCenter.comingSoonTags.aiPpt.secondary",
-      "appCenter.comingSoonTags.aiPpt.tertiary"
-    ],
     tags: ["coming-soon", "office", "presentation"]
   },
   {
     appId: "ai-document",
     descriptionKey: "appCenter.comingSoonApps.aiDocument.description",
     nameKey: "appCenter.comingSoonApps.aiDocument.name",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.aiDocument.primary",
-      "appCenter.comingSoonTags.aiDocument.secondary",
-      "appCenter.comingSoonTags.aiDocument.tertiary"
-    ],
     tags: ["coming-soon", "office", "document"]
   },
   {
     appId: "ai-sheet",
     descriptionKey: "appCenter.comingSoonApps.aiSheet.description",
     nameKey: "appCenter.comingSoonApps.aiSheet.name",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.aiSheet.primary",
-      "appCenter.comingSoonTags.aiSheet.secondary",
-      "appCenter.comingSoonTags.aiSheet.tertiary"
-    ],
     tags: ["coming-soon", "office", "spreadsheet"]
   },
   {
     appId: "open-cut",
     descriptionKey: "appCenter.comingSoonApps.openCut.description",
     nameKey: "appCenter.comingSoonApps.openCut.name",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.openCut.primary",
-      "appCenter.comingSoonTags.openCut.secondary",
-      "appCenter.comingSoonTags.openCut.tertiary"
-    ],
     tags: ["coming-soon", "content", "creation", "video", "timeline", "editor"]
   },
   {
     appId: "product-competition",
     descriptionKey: "appCenter.comingSoonApps.productCompetition.description",
     nameKey: "appCenter.comingSoonApps.productCompetition.name",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.productCompetition.primary",
-      "appCenter.comingSoonTags.productCompetition.secondary",
-      "appCenter.comingSoonTags.productCompetition.tertiary"
-    ],
     tags: ["coming-soon", "product", "design"]
   },
   {
     appId: "design-review",
     descriptionKey: "appCenter.comingSoonApps.designReview.description",
     nameKey: "appCenter.comingSoonApps.designReview.name",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.designReview.primary",
-      "appCenter.comingSoonTags.designReview.secondary",
-      "appCenter.comingSoonTags.designReview.tertiary"
-    ],
     tags: ["coming-soon", "product", "design"]
   },
   {
     appId: "calendar",
     descriptionKey: "appCenter.comingSoonApps.calendar.description",
     nameKey: "appCenter.comingSoonApps.calendar.name",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.calendar.primary",
-      "appCenter.comingSoonTags.calendar.secondary",
-      "appCenter.comingSoonTags.calendar.tertiary"
-    ],
     tags: ["coming-soon", "productivity", "calendar", "schedule"]
   },
   {
     appId: "document-summarizer",
     descriptionKey: "appCenter.comingSoonApps.documentSummarizer.description",
     nameKey: "appCenter.comingSoonApps.documentSummarizer.name",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.documentSummarizer.primary",
-      "appCenter.comingSoonTags.documentSummarizer.secondary",
-      "appCenter.comingSoonTags.documentSummarizer.tertiary"
-    ],
     tags: ["coming-soon", "productivity", "summary", "document"]
   }
 ] as const;
@@ -193,51 +201,53 @@ export function WorkspaceAppCenterPane({
       },
     [service]
   );
-  const viewModel = useMemo(
-    () =>
-      createAppCenterViewModel({
-        apps: withComingSoonWorkspaceApps(state.apps, comingSoonApps)
-          .filter((app) => shouldShowWorkspaceApp(app.appId))
-          .map((app) =>
-            toWorkspaceAppRecord(
-              withWorkspaceAppIconOverride(app, resolveAppIconUrl),
-              resolveWorkspaceAppCategory(app.appId, categoryLabels)
-            )
-          ),
-        factoryJobs: state.factoryJobs.map((job) => ({
-          agentSessionId: job.agentSessionId,
-          appId: job.appId,
-          displayName: job.displayName,
-          failureReason: job.failureReason,
-          jobId: job.jobId,
-          prompt: job.prompt,
-          provider: job.provider,
-          publishedVersion: job.publishedVersion,
-          status: job.status,
-          updatedAtUnixMs: job.updatedAtUnixMs,
-          validationResult: job.validationResult
-        })),
-        locale,
-        replaceableIconAppIds: state.apps
-          .filter((app) => app.source === "generated")
-          .map((app) => app.appId),
-        runtimeStates: withComingSoonWorkspaceApps(state.apps, comingSoonApps)
-          .filter((app) => shouldShowWorkspaceApp(app.appId))
-          .map((app) =>
-            toWorkspaceAppRuntimeState(
-              withWorkspaceAppIconOverride(app, resolveAppIconUrl)
-            )
-          )
-      }),
-    [
-      categoryLabels,
-      comingSoonApps,
-      locale,
-      resolveAppIconUrl,
+  const viewModel = useMemo(() => {
+    const recommendedApps = withComingSoonWorkspaceApps(
       state.apps,
-      state.factoryJobs
-    ]
-  );
+      comingSoonApps
+    )
+      .map((app) => withWorkspaceAppDisplayOverride(app, i18n, locale))
+      .filter((app) => shouldShowWorkspaceApp(app.appId));
+
+    return createAppCenterViewModel({
+      apps: recommendedApps.map((app) =>
+        toWorkspaceAppRecord(
+          withWorkspaceAppIconOverride(app, resolveAppIconUrl),
+          resolveWorkspaceAppCategory(app.appId, categoryLabels)
+        )
+      ),
+      factoryJobs: state.factoryJobs.map((job) => ({
+        agentSessionId: job.agentSessionId,
+        appId: job.appId,
+        displayName: job.displayName,
+        failureReason: job.failureReason,
+        jobId: job.jobId,
+        prompt: job.prompt,
+        provider: job.provider,
+        publishedVersion: job.publishedVersion,
+        status: job.status,
+        updatedAtUnixMs: job.updatedAtUnixMs,
+        validationResult: job.validationResult
+      })),
+      locale,
+      replaceableIconAppIds: state.apps
+        .filter((app) => app.source === "generated")
+        .map((app) => app.appId),
+      runtimeStates: recommendedApps.map((app) =>
+        toWorkspaceAppRuntimeState(
+          withWorkspaceAppIconOverride(app, resolveAppIconUrl)
+        )
+      )
+    });
+  }, [
+    categoryLabels,
+    comingSoonApps,
+    i18n,
+    locale,
+    resolveAppIconUrl,
+    state.apps,
+    state.factoryJobs
+  ]);
 
   return (
     <AppCenterPanel
@@ -346,17 +356,43 @@ function createComingSoonWorkspaceApp(input: {
         description: input.description,
         locale: input.locale,
         name: input.name,
-        tags: input.definition.displayTagKeys.map((key) => input.t(key))
+        tags: []
       }
     ],
     minimizeBehavior: "keep-mounted",
     name: input.name,
-    references: { searchSupported: false },
+    references: { listSupported: false },
     runtimeStatus: "idle",
     source: "builtin",
     stateRevision: 0,
     tags: input.definition.tags,
     updateAvailable: false
+  };
+}
+
+function withWorkspaceAppDisplayOverride(
+  app: WorkspaceAppCenterApp,
+  i18n: { readonly t: (key: string) => string },
+  locale: string
+): WorkspaceAppCenterApp {
+  const definition = catalogAppDisplayById.get(app.appId.trim().toLowerCase());
+  if (!definition) {
+    return app;
+  }
+  const name = i18n.t(definition.nameKey);
+  const description = i18n.t(definition.descriptionKey);
+  return {
+    ...app,
+    description,
+    name,
+    localizations: [
+      {
+        description,
+        locale,
+        name,
+        tags: []
+      }
+    ]
   };
 }
 

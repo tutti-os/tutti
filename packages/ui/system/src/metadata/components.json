@@ -2240,6 +2240,20 @@
       "iconVariant": "lined"
     },
     {
+      "id": "upgrade-arrow-lined-icon",
+      "layer": "base",
+      "name": "UpgradeArrowIcon",
+      "export": "UpgradeArrowIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for upgrade-ready states.",
+      "useCases": ["Upgrade prompts", "Update ready indicators"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "dark-mode-filled-icon",
       "layer": "base",
       "name": "DarkModeIcon",

@@ -5,7 +5,9 @@ import type {
   DesktopAgentProvider,
   DesktopDockIconStyle,
   DesktopDockPlacement,
-  DesktopSleepPreventionMode
+  DesktopSleepPreventionMode,
+  DesktopUpdateChannel,
+  DesktopUpdatePolicy
 } from "@shared/preferences";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import type { DesktopPreferencesReadableStoreState } from "./desktopPreferencesTypes.ts";
@@ -26,6 +28,10 @@ export interface IDesktopPreferencesService {
     mode: DesktopSleepPreventionMode
   ): Promise<DesktopSleepPreventionMode>;
   setThemeSource(source: DesktopThemeSource): Promise<DesktopThemeState>;
+  setUpdateChannel(
+    channel: DesktopUpdateChannel
+  ): Promise<DesktopUpdateChannel>;
+  setUpdatePolicy(policy: DesktopUpdatePolicy): Promise<DesktopUpdatePolicy>;
   rememberAgentComposerDefaults(
     provider: DesktopAgentProvider,
     defaults: DesktopAgentComposerDefaults | null

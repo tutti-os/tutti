@@ -160,7 +160,12 @@ export function formatModelDisplayLabel(label: string): string {
   if (!trimmed) {
     return label;
   }
-  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
+  const capitalized = trimmed.replace(
+    /(^|[^A-Za-z0-9])([A-Za-z])/g,
+    (_match, prefix: string, letter: string) =>
+      `${prefix}${letter.toUpperCase()}`
+  );
+  return capitalized.replace(/gpt/gi, "GPT");
 }
 
 export function resolveModelDescription(

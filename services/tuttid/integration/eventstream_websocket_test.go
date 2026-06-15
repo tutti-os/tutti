@@ -201,6 +201,8 @@ func TestTuttidBlackBoxEventStreamPreferenceIntentPublishesUpdatedEvent(t *testi
 					Locale:              "zh-CN",
 					SleepPreventionMode: "whileAgentRunning",
 					ThemeSource:         "dark",
+					UpdateChannel:       "stable",
+					UpdatePolicy:        "prompt",
 				},
 			}),
 		},
@@ -242,8 +244,10 @@ func TestTuttidBlackBoxEventStreamPreferenceIntentPublishesUpdatedEvent(t *testi
 	if updated.Preferences.DefaultAgentProvider != "codex" ||
 		updated.Preferences.DockPlacement != "bottom" ||
 		updated.Preferences.Locale != "zh-CN" ||
-		updated.Preferences.ThemeSource != "dark" {
-		t.Fatalf("updated payload = %#v, want codex/bottom/zh-CN/dark", updated)
+		updated.Preferences.ThemeSource != "dark" ||
+		updated.Preferences.UpdateChannel != "stable" ||
+		updated.Preferences.UpdatePolicy != "prompt" {
+		t.Fatalf("updated payload = %#v, want codex/bottom/zh-CN/dark/stable/prompt", updated)
 	}
 
 	after := mustRequestJSON[tuttigenerated.DesktopPreferencesStateResponse](

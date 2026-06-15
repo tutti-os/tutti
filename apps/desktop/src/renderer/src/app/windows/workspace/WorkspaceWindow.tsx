@@ -4,11 +4,16 @@ import { AnalyticsDebugFloatingEntryGate } from "@renderer/features/analytics-de
 import { AppUpdateStatus } from "@renderer/features/app-update";
 import { WorkspaceWorkbench } from "@renderer/features/workspace-workbench";
 import { createWorkspaceWindowContainer } from "./createWorkspaceWindowContainer";
+import { createDeferredWorkspaceContainerDispose } from "./deferredWorkspaceContainerDispose";
 
 export function WorkspaceWindow() {
   const { container, environmentMode, startupWorkspaceID } = useMemo(
     () => createWorkspaceWindowContainer(),
     []
+  );
+  const containerDispose = useMemo(
+    () => createDeferredWorkspaceContainerDispose(() => container.dispose()),
+    [container]
   );
   const initialSearch = window.location.search;
   const searchParams = new URLSearchParams(initialSearch);
@@ -17,10 +22,11 @@ export function WorkspaceWindow() {
   const workspaceID = requestedWorkspaceID || startupWorkspaceID;
 
   useEffect(() => {
+    containerDispose.cancel();
     return () => {
-      container.dispose();
+      containerDispose.schedule();
     };
-  }, [container]);
+  }, [containerDispose]);
 
   return (
     <InstantiationContext instantiationService={container}>

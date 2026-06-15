@@ -108,40 +108,7 @@ func TestDecodeAppRuntimeReferenceAcceptsFileLocationTypes(t *testing.T) {
 	}
 }
 
-func TestDecodeAppRuntimeReferenceDropsPathOnlyReference(t *testing.T) {
-	t.Parallel()
-
-	dataRoot := t.TempDir()
-	raw, err := json.Marshal(map[string]any{
-		"kind": "file",
-		"path": filepath.Join(dataRoot, "reports", "monthly.md"),
-	})
-	if err != nil {
-		t.Fatalf("marshal reference: %v", err)
-	}
-	if _, ok := decodeAppRuntimeReference(raw, appReferenceLocationValidator{
-		dataRoot:    dataRoot,
-		packageRoot: t.TempDir(),
-	}); ok {
-		t.Fatal("decodeAppRuntimeReference() ok = true, want false")
-	}
-}
-
-func TestDecodeAppRuntimeReferenceDropsUnknownKind(t *testing.T) {
-	t.Parallel()
-
-	if _, ok := decodeAppRuntimeReference(json.RawMessage(`{
-		"kind": "url",
-		"url": "https://example.test"
-	}`), appReferenceLocationValidator{
-		dataRoot:    t.TempDir(),
-		packageRoot: t.TempDir(),
-	}); ok {
-		t.Fatal("decodeAppRuntimeReference() ok = true, want false")
-	}
-}
-
-func TestDecodeAppRuntimeFileReferenceDropsInvalidLocation(t *testing.T) {
+func TestDecodeAppRuntimeReferenceDropsInvalidLocation(t *testing.T) {
 	t.Parallel()
 
 	for _, raw := range []string{
@@ -170,59 +137,61 @@ func TestDecodeAppRuntimeFileReferenceDropsInvalidLocation(t *testing.T) {
 	}
 }
 
-func TestDecodeAppRuntimeFileReferenceDropsInvalidFieldTypes(t *testing.T) {
+func TestDecodeAppRuntimeReferenceListItemDropsInvalidGroups(t *testing.T) {
 	t.Parallel()
 
 	for _, raw := range []string{
-		fileReferenceJSONForTest(t, map[string]any{"sizeBytes": -1}),
-		fileReferenceJSONForTest(t, map[string]any{"mtimeMs": -1}),
-		fileReferenceJSONForTest(t, map[string]any{"score": 1.1}),
-		fileReferenceJSONForTest(t, map[string]any{"displayName": 12}),
+		`{"type":"group","id":"","displayName":"Reports","referenceCount":1}`,
+		`{"type":"group","id":"reports","displayName":"","referenceCount":1}`,
+		`{"type":"group","id":"reports","displayName":"Reports"}`,
+		`{"type":"group","id":"reports","displayName":"Reports","referenceCount":-1}`,
 	} {
 		t.Run(raw, func(t *testing.T) {
-			if _, ok := decodeAppRuntimeReference(json.RawMessage(raw), appReferenceLocationValidator{
+			if _, ok := decodeAppRuntimeReferenceListItem(json.RawMessage(raw), appReferenceLocationValidator{
 				dataRoot:    t.TempDir(),
 				packageRoot: t.TempDir(),
 			}); ok {
-				t.Fatal("decodeAppRuntimeReference() ok = true, want false")
+				t.Fatal("decodeAppRuntimeReferenceListItem() ok = true, want false")
 			}
 		})
 	}
 }
 
-func TestSearchReferencesQueriesRunningEnabledAppAndDropsInvalidItems(t *testing.T) {
+func TestListReferencesQueriesRunningEnabledAppAndDropsInvalidItems(t *testing.T) {
 	t.Parallel()
 
 	packageDir := t.TempDir()
 	guidePath := filepath.Join(packageDir, "docs", "guide.md")
-	outsidePath := filepath.Join(t.TempDir(), "secret.txt")
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		requests++
-		if request.URL.Path != "/references/search" {
-			t.Fatalf("request path = %q, want /references/search", request.URL.Path)
+		if request.URL.Path != "/references/list" {
+			t.Fatalf("request path = %q, want /references/list", request.URL.Path)
 		}
-		var body appRuntimeReferenceSearchRequest
+		var body appRuntimeReferenceListRequest
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
-		if body.Query != "guide" || body.Limit != 5 || len(body.Kinds) != 1 || body.Kinds[0] != "file" {
+		if body.ParentGroupID != "reports" || body.FilterText != "guide" || body.Limit != 5 || body.Cursor != "cursor" || len(body.Kinds) != 1 || body.Kinds[0] != "file" {
 			t.Fatalf("request body = %#v", body)
+		}
+		if body.TimeRange == nil || body.TimeRange.FromMs == nil || *body.TimeRange.FromMs != 1000 || body.TimeRange.ToMs == nil || *body.TimeRange.ToMs != 2000 {
+			t.Fatalf("request timeRange = %#v", body.TimeRange)
 		}
 		response.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(response).Encode(map[string]any{
-			"references": []map[string]any{
-				{"kind": "url", "url": "https://example.test"},
-				{"kind": "file", "path": outsidePath},
-				{"kind": "file", "type": "app-package-relative", "path": "docs/ignored.md"},
-				{"kind": "file", "location": map[string]any{
+			"items": []map[string]any{
+				{"type": "group", "id": "", "displayName": "Invalid", "referenceCount": 1},
+				{"type": "group", "id": "monthly", "displayName": "Monthly", "description": "Reports", "referenceCount": 12},
+				{"type": "reference", "reference": map[string]any{"kind": "url", "url": "https://example.test"}},
+				{"type": "reference", "reference": map[string]any{"kind": "file", "location": map[string]any{
 					"type": "app-package-relative",
 					"path": "../secret.txt",
-				}},
-				{"kind": "file", "displayName": "Guide", "location": map[string]any{
+				}}},
+				{"type": "reference", "reference": map[string]any{"kind": "file", "displayName": "Guide", "location": map[string]any{
 					"type": "app-package-relative",
 					"path": "docs/guide.md",
-				}},
+				}}},
 			},
 			"nextCursor": "next-page",
 		}); err != nil {
@@ -231,9 +200,11 @@ func TestSearchReferencesQueriesRunningEnabledAppAndDropsInvalidItems(t *testing
 	}))
 	t.Cleanup(server.Close)
 
-	service := newAppReferenceSearchServiceForTest(t, appReferenceSearchServiceTestInput{
+	fromMs := int64(1000)
+	toMs := int64(2000)
+	service := newAppReferenceListServiceForTest(t, appReferenceListServiceTestInput{
 		enabled:             true,
-		referenceSearch:     true,
+		referenceList:       true,
 		runtimeLaunchURL:    server.URL,
 		runtimeStatus:       workspacebiz.AppRuntimeStatusRunning,
 		runtimeHTTPClient:   server.Client(),
@@ -241,26 +212,40 @@ func TestSearchReferencesQueriesRunningEnabledAppAndDropsInvalidItems(t *testing
 		packageDir:          packageDir,
 	})
 
-	result, err := service.SearchReferences(context.Background(), "ws-1", "docs", workspacebiz.AppReferenceSearchInput{
-		Query: "guide",
-		Limit: 5,
-		Kinds: []workspacebiz.AppReferenceKind{workspacebiz.AppReferenceKindFile},
+	result, err := service.ListReferences(context.Background(), "ws-1", "docs", workspacebiz.AppReferenceListInput{
+		ParentGroupID: "reports",
+		FilterText:    "guide",
+		Limit:         5,
+		Cursor:        "cursor",
+		Kinds:         []workspacebiz.AppReferenceKind{workspacebiz.AppReferenceKindFile},
+		TimeRange:     &workspacebiz.AppReferenceListTimeRange{FromMs: &fromMs, ToMs: &toMs},
 	})
 	if err != nil {
-		t.Fatalf("SearchReferences() error = %v", err)
+		t.Fatalf("ListReferences() error = %v", err)
 	}
 	if requests != 1 {
 		t.Fatalf("runtime requests = %d, want 1", requests)
 	}
-	if len(result.References) != 1 {
-		t.Fatalf("references = %#v, want one valid reference", result.References)
+	if len(result.Items) != 2 {
+		t.Fatalf("items = %#v, want two valid items", result.Items)
 	}
-	reference, ok := result.References[0].(workspacebiz.AppFileReference)
+	group, ok := result.Items[0].(workspacebiz.AppReferenceGroup)
 	if !ok {
-		t.Fatalf("reference type = %T, want AppFileReference", result.References[0])
+		t.Fatalf("first item type = %T, want AppReferenceGroup", result.Items[0])
 	}
-	if reference.Path != guidePath {
-		t.Fatalf("reference path = %q, want %q", reference.Path, guidePath)
+	if group.ID != "monthly" || group.DisplayName != "Monthly" || group.Description != "Reports" || group.ReferenceCount != 12 {
+		t.Fatalf("group = %#v", group)
+	}
+	referenceItem, ok := result.Items[1].(workspacebiz.AppReferenceListReferenceItem)
+	if !ok {
+		t.Fatalf("second item type = %T, want AppReferenceListReferenceItem", result.Items[1])
+	}
+	fileReference, ok := referenceItem.Reference.(workspacebiz.AppFileReference)
+	if !ok {
+		t.Fatalf("reference type = %T, want AppFileReference", referenceItem.Reference)
+	}
+	if fileReference.Path != guidePath {
+		t.Fatalf("reference path = %q, want %q", fileReference.Path, guidePath)
 	}
 	if result.NextCursor == nil || *result.NextCursor != "next-page" {
 		t.Fatalf("nextCursor = %#v, want next-page", result.NextCursor)
@@ -268,62 +253,96 @@ func TestSearchReferencesQueriesRunningEnabledAppAndDropsInvalidItems(t *testing
 	assertRuntimeResolverNotCalled(t, service.Runner.RuntimeResolver.(*appRuntimeResolverStub))
 }
 
-func TestSearchReferencesDoesNotQueryAppsThatAreNotEligible(t *testing.T) {
+func TestListReferencesOmitsOptionalRuntimeFiltersWhenAbsent(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		for _, field := range []string{"parentGroupId", "filterText", "cursor", "kinds", "timeRange"} {
+			if _, ok := body[field]; ok {
+				t.Fatalf("request body unexpectedly includes %s: %#v", field, body)
+			}
+		}
+		if body["limit"] != float64(appReferenceListDefaultLimit) {
+			t.Fatalf("limit = %#v, want default %d", body["limit"], appReferenceListDefaultLimit)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"items":[],"nextCursor":null}`))
+	}))
+	t.Cleanup(server.Close)
+
+	service := newAppReferenceListServiceForTest(t, appReferenceListServiceTestInput{
+		enabled:           true,
+		referenceList:     true,
+		runtimeLaunchURL:  server.URL,
+		runtimeStatus:     workspacebiz.AppRuntimeStatusRunning,
+		runtimeHTTPClient: server.Client(),
+	})
+
+	if _, err := service.ListReferences(context.Background(), "ws-1", "docs", workspacebiz.AppReferenceListInput{}); err != nil {
+		t.Fatalf("ListReferences() error = %v", err)
+	}
+}
+
+func TestListReferencesDoesNotQueryAppsThatAreNotEligible(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct {
-		name            string
-		enabled         bool
-		referenceSearch bool
-		runtimeStatus   workspacebiz.AppRuntimeStatus
-		launchURL       string
+		name          string
+		enabled       bool
+		referenceList bool
+		runtimeStatus workspacebiz.AppRuntimeStatus
+		launchURL     string
 	}{
 		{
-			name:            "disabled",
-			enabled:         false,
-			referenceSearch: true,
-			runtimeStatus:   workspacebiz.AppRuntimeStatusRunning,
-			launchURL:       "http://127.0.0.1:1",
+			name:          "disabled",
+			enabled:       false,
+			referenceList: true,
+			runtimeStatus: workspacebiz.AppRuntimeStatusRunning,
+			launchURL:     "http://127.0.0.1:1",
 		},
 		{
-			name:            "references unsupported",
-			enabled:         true,
-			referenceSearch: false,
-			runtimeStatus:   workspacebiz.AppRuntimeStatusRunning,
-			launchURL:       "http://127.0.0.1:1",
+			name:          "references unsupported",
+			enabled:       true,
+			referenceList: false,
+			runtimeStatus: workspacebiz.AppRuntimeStatusRunning,
+			launchURL:     "http://127.0.0.1:1",
 		},
 		{
-			name:            "not running",
-			enabled:         true,
-			referenceSearch: true,
-			runtimeStatus:   workspacebiz.AppRuntimeStatusIdle,
-			launchURL:       "http://127.0.0.1:1",
+			name:          "not running",
+			enabled:       true,
+			referenceList: true,
+			runtimeStatus: workspacebiz.AppRuntimeStatusIdle,
+			launchURL:     "http://127.0.0.1:1",
 		},
 		{
-			name:            "missing launch url",
-			enabled:         true,
-			referenceSearch: true,
-			runtimeStatus:   workspacebiz.AppRuntimeStatusRunning,
-			launchURL:       "",
+			name:          "missing launch url",
+			enabled:       true,
+			referenceList: true,
+			runtimeStatus: workspacebiz.AppRuntimeStatusRunning,
+			launchURL:     "",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			resolver := &appRuntimeResolverStub{called: make(chan struct{})}
-			service := newAppReferenceSearchServiceForTest(t, appReferenceSearchServiceTestInput{
+			service := newAppReferenceListServiceForTest(t, appReferenceListServiceTestInput{
 				enabled:             tt.enabled,
-				referenceSearch:     tt.referenceSearch,
+				referenceList:       tt.referenceList,
 				runtimeLaunchURL:    tt.launchURL,
 				runtimeStatus:       tt.runtimeStatus,
 				runtimeResolverStub: resolver,
 			})
 
-			result, err := service.SearchReferences(context.Background(), "ws-1", "docs", workspacebiz.AppReferenceSearchInput{Query: "guide"})
+			result, err := service.ListReferences(context.Background(), "ws-1", "docs", workspacebiz.AppReferenceListInput{})
 			if err != nil {
-				t.Fatalf("SearchReferences() error = %v", err)
+				t.Fatalf("ListReferences() error = %v", err)
 			}
-			if len(result.References) != 0 || result.NextCursor != nil {
+			if len(result.Items) != 0 || result.NextCursor != nil {
 				t.Fatalf("result = %#v, want empty", result)
 			}
 			assertRuntimeResolverNotCalled(t, resolver)
@@ -331,7 +350,7 @@ func TestSearchReferencesDoesNotQueryAppsThatAreNotEligible(t *testing.T) {
 	}
 }
 
-func TestSearchReferencesRuntimeFailuresReturnEmptyResults(t *testing.T) {
+func TestListReferencesRuntimeFailuresReturnEmptyResults(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct {
@@ -339,7 +358,7 @@ func TestSearchReferencesRuntimeFailuresReturnEmptyResults(t *testing.T) {
 		statusCode int
 		body       string
 	}{
-		{name: "http error", statusCode: http.StatusInternalServerError, body: `{"references":[]}`},
+		{name: "http error", statusCode: http.StatusInternalServerError, body: `{"items":[]}`},
 		{name: "invalid json", statusCode: http.StatusOK, body: `{`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -350,28 +369,28 @@ func TestSearchReferencesRuntimeFailuresReturnEmptyResults(t *testing.T) {
 				_, _ = response.Write([]byte(tt.body))
 			}))
 			t.Cleanup(server.Close)
-			service := newAppReferenceSearchServiceForTest(t, appReferenceSearchServiceTestInput{
+			service := newAppReferenceListServiceForTest(t, appReferenceListServiceTestInput{
 				enabled:           true,
-				referenceSearch:   true,
+				referenceList:     true,
 				runtimeLaunchURL:  server.URL,
 				runtimeStatus:     workspacebiz.AppRuntimeStatusRunning,
 				runtimeHTTPClient: server.Client(),
 			})
 
-			result, err := service.SearchReferences(context.Background(), "ws-1", "docs", workspacebiz.AppReferenceSearchInput{Query: "guide"})
+			result, err := service.ListReferences(context.Background(), "ws-1", "docs", workspacebiz.AppReferenceListInput{})
 			if err != nil {
-				t.Fatalf("SearchReferences() error = %v", err)
+				t.Fatalf("ListReferences() error = %v", err)
 			}
-			if len(result.References) != 0 || result.NextCursor != nil {
+			if len(result.Items) != 0 || result.NextCursor != nil {
 				t.Fatalf("result = %#v, want empty", result)
 			}
 		})
 	}
 }
 
-type appReferenceSearchServiceTestInput struct {
+type appReferenceListServiceTestInput struct {
 	enabled             bool
-	referenceSearch     bool
+	referenceList       bool
 	runtimeLaunchURL    string
 	runtimeStatus       workspacebiz.AppRuntimeStatus
 	runtimeHTTPClient   *http.Client
@@ -379,7 +398,7 @@ type appReferenceSearchServiceTestInput struct {
 	packageDir          string
 }
 
-func newAppReferenceSearchServiceForTest(t *testing.T, input appReferenceSearchServiceTestInput) *AppCenterService {
+func newAppReferenceListServiceForTest(t *testing.T, input appReferenceListServiceTestInput) *AppCenterService {
 	t.Helper()
 
 	store := newAppStoreStub()
@@ -388,8 +407,8 @@ func newAppReferenceSearchServiceForTest(t *testing.T, input appReferenceSearchS
 		packageDir = t.TempDir()
 	}
 	references := (*workspacebiz.AppManifestReferences)(nil)
-	if input.referenceSearch {
-		references = &workspacebiz.AppManifestReferences{SearchEndpoint: "/references/search"}
+	if input.referenceList {
+		references = &workspacebiz.AppManifestReferences{ListEndpoint: "/references/list"}
 	}
 	if err := store.PutAppPackage(context.Background(), workspacebiz.AppPackage{
 		AppID:      "docs",
@@ -435,25 +454,6 @@ func newAppReferenceSearchServiceForTest(t *testing.T, input appReferenceSearchS
 		Runner:         runner,
 		StateDir:       t.TempDir(),
 	}
-}
-
-func fileReferenceJSONForTest(t *testing.T, fields map[string]any) string {
-	t.Helper()
-	payload := map[string]any{
-		"kind": "file",
-		"location": map[string]any{
-			"type": "app-data-relative",
-			"path": "a.txt",
-		},
-	}
-	for key, value := range fields {
-		payload[key] = value
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatalf("marshal file reference: %v", err)
-	}
-	return string(raw)
 }
 
 func assertRuntimeResolverNotCalled(t *testing.T, resolver *appRuntimeResolverStub) {

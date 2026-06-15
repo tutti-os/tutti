@@ -1,3 +1,5 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type {
   TuttidClient,
   PutDesktopPreferencesRequest
@@ -9,10 +11,14 @@ import {
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
   defaultDesktopSleepPreventionMode,
+  defaultDesktopUpdateChannel,
+  defaultDesktopUpdatePolicy,
   type DesktopAgentProvider,
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
-  type DesktopSleepPreventionMode
+  type DesktopSleepPreventionMode,
+  type DesktopUpdateChannel,
+  type DesktopUpdatePolicy
 } from "../shared/preferences/index.ts";
 import {
   defaultDesktopThemeSource,
@@ -20,6 +26,9 @@ import {
 } from "../shared/theme/index.ts";
 import type { DesktopLocale } from "../shared/i18n/index.ts";
 import type { DesktopLogger } from "./logging.ts";
+import { resolveDesktopDefaultsFromEnv } from "./defaults.ts";
+
+const updateChannelDefaultMigrationID = "desktop-update-channel-default-rc-v1";
 
 export interface DesktopHostPreferencesState {
   getAgentComposerDefaultsByProvider(): DesktopAgentComposerDefaultsByProvider;
@@ -29,6 +38,8 @@ export interface DesktopHostPreferencesState {
   getLocale(): DesktopLocale;
   getSleepPreventionMode(): DesktopSleepPreventionMode;
   getThemeSource(): DesktopThemeSource;
+  getUpdateChannel(): DesktopUpdateChannel;
+  getUpdatePolicy(): DesktopUpdatePolicy;
   subscribe(listener: () => void): () => void;
   sync(input: {
     agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
@@ -38,12 +49,15 @@ export interface DesktopHostPreferencesState {
     locale?: DesktopLocale;
     sleepPreventionMode?: DesktopSleepPreventionMode;
     themeSource?: DesktopThemeSource;
+    updateChannel?: DesktopUpdateChannel;
+    updatePolicy?: DesktopUpdatePolicy;
   }): void;
 }
 
 export interface CreateDesktopHostPreferencesOptions {
   fallbackLocale: DesktopLocale;
   logger: DesktopLogger;
+  migrationStateRootDir?: string;
   tuttidClient: Pick<
     TuttidClient,
     "getDesktopPreferences" | "putDesktopPreferences"
@@ -64,6 +78,8 @@ export async function createDesktopHostPreferencesState(
   let locale = initialPreferences.locale;
   let sleepPreventionMode = initialPreferences.sleepPreventionMode;
   let themeSource = initialPreferences.themeSource;
+  let updateChannel = initialPreferences.updateChannel;
+  let updatePolicy = initialPreferences.updatePolicy;
   const listeners = new Set<() => void>();
 
   return {
@@ -88,6 +104,12 @@ export async function createDesktopHostPreferencesState(
     getThemeSource() {
       return themeSource;
     },
+    getUpdateChannel() {
+      return updateChannel;
+    },
+    getUpdatePolicy() {
+      return updatePolicy;
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => {
@@ -103,6 +125,8 @@ export async function createDesktopHostPreferencesState(
       const previousLocale = locale;
       const previousSleepPreventionMode = sleepPreventionMode;
       const previousThemeSource = themeSource;
+      const previousUpdateChannel = updateChannel;
+      const previousUpdatePolicy = updatePolicy;
       if (input.agentComposerDefaultsByProvider) {
         agentComposerDefaultsByProvider =
           normalizeDesktopAgentComposerDefaultsByProvider(
@@ -127,6 +151,12 @@ export async function createDesktopHostPreferencesState(
       if (input.themeSource) {
         themeSource = input.themeSource;
       }
+      if (input.updateChannel) {
+        updateChannel = input.updateChannel;
+      }
+      if (input.updatePolicy) {
+        updatePolicy = input.updatePolicy;
+      }
       if (
         agentComposerDefaultsByProvider !==
           previousAgentComposerDefaultsByProvider ||
@@ -135,7 +165,9 @@ export async function createDesktopHostPreferencesState(
         dockPlacement !== previousDockPlacement ||
         locale !== previousLocale ||
         sleepPreventionMode !== previousSleepPreventionMode ||
-        themeSource !== previousThemeSource
+        themeSource !== previousThemeSource ||
+        updateChannel !== previousUpdateChannel ||
+        updatePolicy !== previousUpdatePolicy
       ) {
         for (const listener of listeners) {
           listener();
@@ -151,7 +183,10 @@ async function resolveInitialDesktopPreferences(
   try {
     const response = await options.tuttidClient.getDesktopPreferences();
     if (response.initialized) {
-      return response.preferences;
+      return migrateInitializedDesktopPreferences(
+        options,
+        response.preferences
+      );
     }
 
     return (
@@ -163,7 +198,9 @@ async function resolveInitialDesktopPreferences(
           dockPlacement: defaultDesktopDockPlacement,
           locale: options.fallbackLocale,
           sleepPreventionMode: defaultDesktopSleepPreventionMode,
-          themeSource: defaultDesktopThemeSource
+          themeSource: defaultDesktopThemeSource,
+          updateChannel: defaultDesktopUpdateChannel,
+          updatePolicy: defaultDesktopUpdatePolicy
         }
       })
     ).preferences;
@@ -178,7 +215,65 @@ async function resolveInitialDesktopPreferences(
       dockPlacement: defaultDesktopDockPlacement,
       locale: options.fallbackLocale,
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
-      themeSource: defaultDesktopThemeSource
+      themeSource: defaultDesktopThemeSource,
+      updateChannel: defaultDesktopUpdateChannel,
+      updatePolicy: defaultDesktopUpdatePolicy
     };
   }
+}
+
+async function migrateInitializedDesktopPreferences(
+  options: CreateDesktopHostPreferencesOptions,
+  preferences: PutDesktopPreferencesRequest["preferences"]
+): Promise<PutDesktopPreferencesRequest["preferences"]> {
+  if (
+    preferences.updateChannel !== "stable" ||
+    defaultDesktopUpdateChannel !== "rc"
+  ) {
+    return preferences;
+  }
+
+  const markerPath = resolveUpdateChannelDefaultMigrationMarkerPath(options);
+  if (await hasMigrationMarker(markerPath)) {
+    return preferences;
+  }
+
+  try {
+    const response = await options.tuttidClient.putDesktopPreferences({
+      preferences: {
+        ...preferences,
+        updateChannel: defaultDesktopUpdateChannel
+      }
+    });
+    await writeMigrationMarker(markerPath);
+    return response.preferences;
+  } catch (error) {
+    options.logger.warn("failed to migrate default desktop update channel", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return preferences;
+  }
+}
+
+function resolveUpdateChannelDefaultMigrationMarkerPath(
+  options: CreateDesktopHostPreferencesOptions
+): string {
+  const stateRootDir =
+    options.migrationStateRootDir ??
+    resolveDesktopDefaultsFromEnv().state.rootDir;
+  return join(stateRootDir, "migrations", updateChannelDefaultMigrationID);
+}
+
+async function hasMigrationMarker(markerPath: string): Promise<boolean> {
+  try {
+    await readFile(markerPath, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function writeMigrationMarker(markerPath: string): Promise<void> {
+  await mkdir(dirname(markerPath), { recursive: true });
+  await writeFile(markerPath, new Date().toISOString(), "utf8");
 }

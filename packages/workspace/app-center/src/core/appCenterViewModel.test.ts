@@ -848,6 +848,7 @@ describe("createAppCenterViewModel", () => {
     assert.equal(viewModel.apps[0]?.factoryJobId, "job-1");
     assert.equal(viewModel.apps[0]?.factoryAgentSessionId, "agent-session-1");
     assert.equal(viewModel.apps[0]?.factoryProvider, "codex");
+    assert.equal(viewModel.apps[0]?.factoryEditAction, "prepare_modification");
     assert.equal(viewModel.apps[0]?.canOpenFactorySession, true);
     assert.equal(viewModel.apps[0]?.canPublishFactoryUpdate, false);
   });
@@ -887,7 +888,51 @@ describe("createAppCenterViewModel", () => {
     });
 
     assert.equal(viewModel.factoryJobs?.length, 0);
+    assert.equal(viewModel.apps[0]?.canOpenFactorySession, true);
     assert.equal(viewModel.apps[0]?.canPublishFactoryUpdate, true);
+    assert.equal(viewModel.apps[0]?.factoryEditAction, "open_session");
+  });
+
+  it("opens existing agent sessions for failed republish factory jobs", () => {
+    const viewModel = createAppCenterViewModel({
+      apps: [
+        {
+          install: { appId: "app_1" },
+          manifest: {
+            appId: "app_1",
+            description: "Generated app",
+            runtime: {
+              bootstrap: "bootstrap.sh",
+              healthcheckPath: "/"
+            },
+            schemaVersion: workspaceAppManifestSchemaVersion,
+            name: "Generated Tool",
+            version: "0.1.0"
+          }
+        }
+      ],
+      factoryJobs: [
+        {
+          agentSessionId: "agent-session-1",
+          appId: "app_1",
+          displayName: "Generated Tool",
+          failureReason: 'app manifest version must be "0.1.0"',
+          jobId: "job-1",
+          prompt: "Build a tool",
+          provider: "codex",
+          publishedVersion: "0.1.0",
+          status: "failed",
+          updatedAtUnixMs: 11,
+          validationResult: {}
+        }
+      ]
+    });
+
+    assert.equal(viewModel.factoryJobs?.length, 0);
+    assert.equal(viewModel.apps[0]?.factoryJobId, "job-1");
+    assert.equal(viewModel.apps[0]?.canOpenFactorySession, true);
+    assert.equal(viewModel.apps[0]?.canPublishFactoryUpdate, false);
+    assert.equal(viewModel.apps[0]?.factoryEditAction, "open_session");
   });
 
   it("exposes icon replacement only for replaceable app ids", () => {

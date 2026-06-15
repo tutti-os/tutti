@@ -13,6 +13,10 @@ export interface WorkspaceAppManifestRuntime {
   readonly healthcheckPath: string;
 }
 
+export interface WorkspaceAppManifestReferences {
+  readonly listEndpoint: string;
+}
+
 export type WorkspaceAppManifestWindowMinimizeBehavior =
   | "hibernate"
   | "keep-mounted";
@@ -26,10 +30,6 @@ export interface WorkspaceAppManifestWindow {
 export interface WorkspaceAppManifestAuthor {
   readonly name: string;
   readonly url?: string;
-}
-
-export interface WorkspaceAppManifestReferences {
-  readonly searchEndpoint: string;
 }
 
 export interface WorkspaceAppManifestLocalizationInfo {
@@ -50,9 +50,9 @@ export interface WorkspaceAppManifest {
   readonly description: string;
   readonly icon?: WorkspaceAppManifestIcon;
   readonly runtime: WorkspaceAppManifestRuntime;
+  readonly references?: WorkspaceAppManifestReferences;
   readonly window?: WorkspaceAppManifestWindow;
   readonly author?: WorkspaceAppManifestAuthor;
-  readonly references?: WorkspaceAppManifestReferences;
   readonly tags?: readonly string[];
   readonly localizationInfo?: WorkspaceAppManifestLocalizationInfo;
 }

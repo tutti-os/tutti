@@ -73,54 +73,6 @@ describe("resolveWorkspaceFileLinkAction", () => {
     ).toBeNull();
   });
 
-  it("allows direct workspace app data and package paths under Tutti state outside the workspace root", () => {
-    expect(
-      resolveWorkspaceFileLinkAction({
-        path: "/Users/test/.tutti-dev/apps/workspaces/workspace-1/docs/data/rooms/a/upload.txt",
-        workspaceRoot: "/Users/test/project/tutti",
-        basePath: "/Users/test/project/tutti",
-        source: "agent-markdown"
-      })
-    ).toMatchObject({
-      type: "open-workspace-file",
-      path: "/Users/test/.tutti-dev/apps/workspaces/workspace-1/docs/data/rooms/a/upload.txt",
-      directoryPath:
-        "/Users/test/.tutti-dev/apps/workspaces/workspace-1/docs/data/rooms/a",
-      workspaceRoot: "/Users/test/project/tutti"
-    });
-
-    expect(
-      resolveWorkspaceFileLinkAction({
-        path: "/Users/test/.tutti-dev/apps/packages/docs/2.0.0/docs/guide.md",
-        workspaceRoot: "/Users/test/project/tutti",
-        basePath: "/Users/test/project/tutti",
-        source: "agent-markdown"
-      })
-    ).toMatchObject({
-      type: "open-workspace-file",
-      path: "/Users/test/.tutti-dev/apps/packages/docs/2.0.0/docs/guide.md",
-      directoryPath: "/Users/test/.tutti-dev/apps/packages/docs/2.0.0/docs",
-      workspaceRoot: "/Users/test/project/tutti"
-    });
-
-    for (const path of [
-      "/Users/test/.tutti-dev/apps/workspaces/workspace-1/docs/logs/app.log",
-      "/Users/test/.tutti-dev/apps/workspaces/workspace-1/docs/runtime/socket",
-      "/Users/test/.tutti-dev/apps/workspaces/workspace-1/docs/data",
-      "/Users/test/.tutti-dev/apps/packages/docs/2.0.0",
-      "/Users/test/.tutti-dev/other/workspaces/workspace-1/docs/data/file.txt"
-    ]) {
-      expect(
-        resolveWorkspaceFileLinkAction({
-          path,
-          workspaceRoot: "/Users/test/project/tutti",
-          basePath: "/Users/test/project/tutti",
-          source: "agent-markdown"
-        })
-      ).toBeNull();
-    }
-  });
-
   it("resolves relative paths through the same workspace file candidate contract", () => {
     expect(
       resolveWorkspaceFilePathCandidate({
@@ -151,15 +103,6 @@ describe("resolveWorkspaceFileLinkAction", () => {
 });
 
 describe("resolveWorkspaceMentionLinkAction", () => {
-  it("does not parse unknown mention resources as a separate link action", () => {
-    expect(
-      resolveWorkspaceMentionLinkAction({
-        href: "mention://unknown-resource?workspaceId=workspace-1&id=docs",
-        source: "agent-markdown"
-      })
-    ).toBeNull();
-  });
-
   it("parses canonical workspace-issue mention context", () => {
     expect(
       resolveWorkspaceMentionLinkAction({

@@ -1153,7 +1153,6 @@ test("Workspace App Center service starts non-running apps before launching them
 });
 
 function createWorkspaceApp(overrides: Partial<WorkspaceApp>): WorkspaceApp {
-  const { references, ...rest } = overrides;
   return {
     appId: "ready",
     availableIconUrl: null,
@@ -1177,7 +1176,6 @@ function createWorkspaceApp(overrides: Partial<WorkspaceApp>): WorkspaceApp {
     localizations: [],
     minimizeBehavior: "keep-mounted",
     port: 23456,
-    references: references ?? { searchSupported: false },
     source: "generated",
     stateRevision: 1,
     status: "running",
@@ -1188,7 +1186,8 @@ function createWorkspaceApp(overrides: Partial<WorkspaceApp>): WorkspaceApp {
     version: "0.1.0",
     windowMinHeight: null,
     windowMinWidth: null,
-    ...rest
+    ...overrides,
+    references: overrides.references ?? { listSupported: false }
   };
 }
 

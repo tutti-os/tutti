@@ -278,49 +278,7 @@ function hardenGeneratedGoServer(outputPath) {
     );
   }
 
-  const referencesSearchDecodePattern = [
-    "\tvar body SearchWorkspaceAppReferencesJSONRequestBody\n",
-    "\tdecoder := json.NewDecoder(r.Body)\n",
-    "\tdecoder.DisallowUnknownFields()\n",
-    "\tif err := decoder.Decode(&body); err != nil {\n",
-    '\t\tsh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can\'t decode JSON body: %w", err))\n',
-    "\t\treturn\n",
-    "\t}\n"
-  ].join("");
-  const referencesSearchDecode = [
-    "\tvar body SearchWorkspaceAppReferencesJSONRequestBody\n",
-    "\tbodyBytes, err := io.ReadAll(r.Body)\n",
-    "\tif err != nil {\n",
-    '\t\tsh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can\'t read JSON body: %w", err))\n',
-    "\t\treturn\n",
-    "\t}\n",
-    "\tvar bodyFields map[string]json.RawMessage\n",
-    "\tif err := json.Unmarshal(bodyBytes, &bodyFields); err != nil {\n",
-    '\t\tsh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can\'t decode JSON body: %w", err))\n',
-    "\t\treturn\n",
-    "\t}\n",
-    '\tif _, ok := bodyFields["query"]; !ok {\n',
-    '\t\tsh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can\'t decode JSON body: missing required field query"))\n',
-    "\t\treturn\n",
-    "\t}\n",
-    "\tdecoder := json.NewDecoder(bytes.NewReader(bodyBytes))\n",
-    "\tdecoder.DisallowUnknownFields()\n",
-    "\tif err := decoder.Decode(&body); err != nil {\n",
-    '\t\tsh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can\'t decode JSON body: %w", err))\n',
-    "\t\treturn\n",
-    "\t}\n"
-  ].join("");
-  const hardenedWithReferencesSearch = hardened.replace(
-    referencesSearchDecodePattern,
-    referencesSearchDecode
-  );
-  if (hardenedWithReferencesSearch === hardened) {
-    throw new Error(
-      `Generated Go server reference search required-field hardening did not find target decoder in ${outputPath}`
-    );
-  }
-
-  writeFileSync(outputPath, hardenedWithReferencesSearch, "utf8");
+  writeFileSync(outputPath, hardened, "utf8");
 }
 
 function syncWorkbenchOpenApiSchema() {

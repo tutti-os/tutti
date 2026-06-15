@@ -76,12 +76,42 @@ export type DesktopSleepPreventionMode =
 export const defaultDesktopSleepPreventionMode: DesktopSleepPreventionMode =
   "never";
 
+export const desktopUpdatePolicies = ["off", "prompt", "auto"] as const;
+
+export type DesktopUpdatePolicy = (typeof desktopUpdatePolicies)[number];
+
+export const defaultDesktopUpdatePolicy: DesktopUpdatePolicy = "prompt";
+
+export const desktopUpdateChannels = ["stable", "rc"] as const;
+
+export type DesktopUpdateChannel = (typeof desktopUpdateChannels)[number];
+
+export const defaultDesktopUpdateChannel: DesktopUpdateChannel = "rc";
+
 export function isDesktopSleepPreventionMode(
   value: unknown
 ): value is DesktopSleepPreventionMode {
   return (
     typeof value === "string" &&
     desktopSleepPreventionModes.includes(value as DesktopSleepPreventionMode)
+  );
+}
+
+export function isDesktopUpdatePolicy(
+  value: unknown
+): value is DesktopUpdatePolicy {
+  return (
+    typeof value === "string" &&
+    desktopUpdatePolicies.includes(value as DesktopUpdatePolicy)
+  );
+}
+
+export function isDesktopUpdateChannel(
+  value: unknown
+): value is DesktopUpdateChannel {
+  return (
+    typeof value === "string" &&
+    desktopUpdateChannels.includes(value as DesktopUpdateChannel)
   );
 }
 

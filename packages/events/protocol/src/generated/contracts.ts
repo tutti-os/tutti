@@ -84,6 +84,8 @@ export interface PreferencesDesktopPreferencesV1 {
   locale: "en" | "zh-CN";
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";
   themeSource: "system" | "dark" | "light";
+  updateChannel: "stable" | "rc";
+  updatePolicy: "off" | "prompt" | "auto";
 }
 
 export interface WorkspaceWorkspaceAppFactoryJobV1 {
@@ -142,7 +144,7 @@ export interface WorkspaceWorkspaceAppV1 {
   windowMinWidth: number | null;
   windowMinHeight: number | null;
   references: {
-    searchSupported: boolean;
+    listSupported: boolean;
   };
 }
 

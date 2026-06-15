@@ -314,6 +314,76 @@ func TestServiceGetIssueDetailIncludesOutputsFromAllIssueTasks(t *testing.T) {
 	}
 }
 
+func TestServiceGetIssueDetailDeduplicatesOutputsByPath(t *testing.T) {
+	store := newFakeStore()
+	service := testService(store)
+	ctx := context.Background()
+
+	issue, err := service.CreateIssue(ctx, CreateIssueInput{
+		WorkspaceID: "workspace-1",
+		TopicID:     DefaultTopicID,
+		ActorUserID: "user-1",
+		Title:       "Regenerate output",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	task, err := service.CreateTask(ctx, CreateTaskInput{
+		WorkspaceID: "workspace-1",
+		IssueID:     issue.IssueID,
+		ActorUserID: "user-1",
+		Title:       "Write package",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	for _, item := range []struct {
+		displayName string
+		runID       string
+	}{
+		{runID: "run-old", displayName: "old.md"},
+		{runID: "run-new", displayName: "new.md"},
+	} {
+		run, err := service.CreateRun(ctx, CreateRunInput{
+			WorkspaceID:   "workspace-1",
+			IssueID:       issue.IssueID,
+			TaskID:        task.TaskID,
+			RunID:         item.runID,
+			ActorUserID:   "user-1",
+			AgentProvider: "codex",
+		})
+		if err != nil {
+			t.Fatalf("CreateRun(%s) error = %v", item.runID, err)
+		}
+		if _, _, err := service.CompleteRun(ctx, CompleteRunInput{
+			WorkspaceID: "workspace-1",
+			IssueID:     issue.IssueID,
+			TaskID:      run.TaskID,
+			RunID:       run.RunID,
+			ActorUserID: "user-1",
+			Status:      "completed",
+			Summary:     "Done",
+			Outputs: []CompleteRunOutputInput{{
+				DisplayName: item.displayName,
+				Path:        "/workspace/package.md",
+			}},
+		}); err != nil {
+			t.Fatalf("CompleteRun(%s) error = %v", item.runID, err)
+		}
+	}
+
+	detail, err := service.GetIssueDetail(ctx, "workspace-1", issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	if len(detail.LatestOutputs) != 1 {
+		t.Fatalf("issue detail outputs = %+v, want one deduplicated output", detail.LatestOutputs)
+	}
+	if detail.LatestOutputs[0].RunID != "run-new" || detail.LatestOutputs[0].DisplayName != "new.md" {
+		t.Fatalf("issue detail output = %+v, want latest run output", detail.LatestOutputs[0])
+	}
+}
+
 func TestServiceCompleteRunDoesNotOverwriteTerminalRun(t *testing.T) {
 	store := newFakeStore()
 	service := testService(store)

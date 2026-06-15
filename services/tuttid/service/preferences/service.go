@@ -27,6 +27,8 @@ type PutInput struct {
 	Locale                          string
 	SleepPreventionMode             string
 	ThemeSource                     string
+	UpdateChannel                   string
+	UpdatePolicy                    string
 }
 
 func (s Service) Get(ctx context.Context) (preferencesbiz.DesktopPreferences, error) {
@@ -51,6 +53,8 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		Locale:                          strings.TrimSpace(input.Locale),
 		SleepPreventionMode:             strings.TrimSpace(input.SleepPreventionMode),
 		ThemeSource:                     strings.TrimSpace(input.ThemeSource),
+		UpdateChannel:                   strings.TrimSpace(input.UpdateChannel),
+		UpdatePolicy:                    strings.TrimSpace(input.UpdatePolicy),
 	})
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, err

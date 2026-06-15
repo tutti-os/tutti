@@ -188,7 +188,7 @@ test("desktop decision toast mirrors the message-center prompt card chrome", () 
   );
   assert.match(
     workspaceChromeSource,
-    /waitingStatusLabel=\{t\(\s*"workspace\.agentMessageCenter\.waitingNotificationStatus",?\s*\)\}/
+    /waitingStatusLabel=\{t\(\s*"workspace\.agentMessageCenter\.waitingNotificationStatus"\s*\)\}/
   );
   assert.match(
     workspaceChromeSource,

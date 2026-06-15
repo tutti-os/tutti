@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS desktop_preferences (
   locale TEXT NOT NULL,
   theme_source TEXT NOT NULL,
   sleep_prevention_mode TEXT NOT NULL DEFAULT 'never',
+  update_channel TEXT NOT NULL DEFAULT 'stable',
+  update_policy TEXT NOT NULL DEFAULT 'prompt',
   updated_at_unix_ms INTEGER NOT NULL
 );
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
@@ -33,6 +35,49 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 `, schemaMigrationDesktopPreferencesV1, now)
 	if err != nil {
 		return fmt.Errorf("migrate workspace database for desktop preferences: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesUpdateSettingsV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesUpdateSettingsV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	hasUpdateChannel, err := s.hasColumn(ctx, "desktop_preferences", "update_channel")
+	if err != nil {
+		return err
+	}
+	if !hasUpdateChannel {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN update_channel TEXT NOT NULL DEFAULT 'stable';`); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop update channel: %w", err)
+		}
+	}
+	hasUpdatePolicy, err := s.hasColumn(ctx, "desktop_preferences", "update_policy")
+	if err != nil {
+		return err
+	}
+	if !hasUpdatePolicy {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN update_policy TEXT NOT NULL DEFAULT 'prompt';`); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop update policy: %w", err)
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesUpdateSettingsV1, now)
+	if err != nil {
+		return fmt.Errorf("record desktop update settings migration: %w", err)
 	}
 
 	return nil

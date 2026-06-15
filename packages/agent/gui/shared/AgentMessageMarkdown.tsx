@@ -35,6 +35,7 @@ import {
   useOptionalAgentHostApi
 } from "../agentActivityHost";
 import {
+  resolveWorkspaceFilePathCandidate,
   resolveWorkspaceLinkAction,
   type WorkspaceLinkAction,
   type WorkspaceLinkActionSource
@@ -182,9 +183,14 @@ export function AgentMessageMarkdown({
   );
   const handleLinkClick = useCallback(
     (href: string): void => {
-      if (workspaceLinkSource && onLinkAction) {
+      if (workspaceLinkSource && onLinkAction && workspaceRoot) {
+        const resolvedHref =
+          resolveWorkspaceFileHrefFromMessage(href, stabilizedContent, {
+            workspaceRoot,
+            basePath
+          }) ?? href;
         const action = resolveWorkspaceLinkAction({
-          href,
+          href: resolvedHref,
           workspaceRoot,
           basePath,
           source: workspaceLinkSource
@@ -196,7 +202,14 @@ export function AgentMessageMarkdown({
       }
       onLinkClick?.(href);
     },
-    [basePath, onLinkAction, onLinkClick, workspaceLinkSource, workspaceRoot]
+    [
+      basePath,
+      onLinkAction,
+      onLinkClick,
+      stabilizedContent,
+      workspaceLinkSource,
+      workspaceRoot
+    ]
   );
   const handleAnchorClickCapture = useCallback(
     (event: MouseEvent<HTMLElement>): void => {
@@ -220,7 +233,13 @@ export function AgentMessageMarkdown({
         />
       ),
       code: (props: MarkdownDomProps<"code">) => (
-        <MarkdownCode {...props} onLinkClick={handleLinkClick} />
+        <MarkdownCode
+          {...props}
+          onLinkClick={handleLinkClick}
+          workspaceFileLinksEnabled={Boolean(
+            workspaceRoot && workspaceLinkSource
+          )}
+        />
       ),
       img: (props: MarkdownDomProps<"img">) => (
         <MarkdownImage {...props} enableZoom={enableImageZoom} />
@@ -232,7 +251,14 @@ export function AgentMessageMarkdown({
       ol: MarkdownOrderedList,
       li: MarkdownListItem
     }),
-    [enableImageZoom, handleLinkClick, inline, workspaceAppIcons]
+    [
+      enableImageZoom,
+      handleLinkClick,
+      inline,
+      workspaceAppIcons,
+      workspaceLinkSource,
+      workspaceRoot
+    ]
   );
 
   return (
@@ -863,23 +889,25 @@ function MarkdownCode({
   children,
   className,
   onLinkClick,
+  workspaceFileLinksEnabled = false,
   ...props
 }: MarkdownDomProps<"code"> & {
   onLinkClick?: (href: string) => void;
+  workspaceFileLinksEnabled?: boolean;
 }): JSX.Element {
   "use memo";
   const text = textFromReactNode(children).trim();
-  if (
-    !className &&
+  const isLinkablePath =
     onLinkClick &&
-    (isLocalAbsolutePath(text) || isHttpUrl(text))
-  ) {
+    !className &&
+    (isLocalAbsolutePath(text) ||
+      isHttpUrl(text) ||
+      (workspaceFileLinksEnabled && isLikelyWorkspaceRelativeFilePath(text)));
+  if (isLinkablePath) {
     return (
-      <code {...props} className={className}>
-        <PathLink href={text} onLinkClick={onLinkClick}>
-          {children}
-        </PathLink>
-      </code>
+      <PathLink href={text} onLinkClick={onLinkClick}>
+        {children}
+      </PathLink>
     );
   }
   return (
@@ -1249,6 +1277,89 @@ function isHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function resolveWorkspaceFileHrefFromMessage(
+  rawPath: string,
+  messageContent: string,
+  context: {
+    workspaceRoot: string;
+    basePath: string | null;
+  }
+): string | null {
+  const path = trimTrailingPathPunctuation(rawPath.trim());
+  if (
+    !path ||
+    isHttpUrl(path) ||
+    isLocalAbsolutePath(path) ||
+    !isLikelyWorkspaceRelativeFilePath(path)
+  ) {
+    return null;
+  }
+
+  const directoryHrefs = extractWorkspaceDirectoryLinkHrefs(messageContent);
+  const candidates: string[] = [];
+  if (path.includes("/")) {
+    candidates.push(path);
+  } else {
+    for (const directoryHref of directoryHrefs) {
+      candidates.push(`${directoryHref}/${path}`);
+    }
+    candidates.push(path);
+  }
+
+  for (const candidate of candidates) {
+    if (
+      resolveWorkspaceFilePathCandidate({
+        path: candidate,
+        workspaceRoot: context.workspaceRoot,
+        basePath: context.basePath
+      })
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function extractWorkspaceDirectoryLinkHrefs(content: string): string[] {
+  const directories: string[] = [];
+  let index = 0;
+  while (index < content.length) {
+    const linkEnd = markdownLinkEndIndex(content, index);
+    if (linkEnd <= index) {
+      index += 1;
+      continue;
+    }
+
+    const slice = content.slice(index, linkEnd);
+    const match = /^\[([^\]]*)\]\(([^)]+)\)$/.exec(slice);
+    if (match) {
+      const href = match[2]?.trim() ?? "";
+      if (
+        href &&
+        !href.toLowerCase().startsWith("mention://") &&
+        !href.includes("://")
+      ) {
+        const normalizedHref = href.replace(/\/+$/g, "");
+        if (
+          href.endsWith("/") ||
+          (!normalizedHref.includes(".") && !normalizedHref.includes(" "))
+        ) {
+          directories.push(normalizedHref);
+        }
+      }
+    }
+    index = linkEnd;
+  }
+  return [...new Set(directories)];
+}
+
+function isLikelyWorkspaceRelativeFilePath(path: string): boolean {
+  if (!path || /\s/.test(path) || path.includes("://")) {
+    return false;
+  }
+  return path.includes("/") || /\.[A-Za-z0-9][A-Za-z0-9._-]{0,15}$/.test(path);
 }
 
 function linkBareLocalAbsolutePaths(content: string): string {

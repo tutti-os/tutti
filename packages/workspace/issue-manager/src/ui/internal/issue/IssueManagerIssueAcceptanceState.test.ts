@@ -7,6 +7,7 @@ import {
 } from "../../../services/internal/controllerActionTestHarness.ts";
 import {
   resolveIssueManagerIssueAcceptanceTaskId,
+  resolveIssueManagerIssueRunTaskId,
   resolveIssueManagerVisibleSubtasks
 } from "./IssueManagerIssueAcceptanceState.ts";
 
@@ -84,6 +85,60 @@ test("issue acceptance stays hidden when a task is already selected", () => {
   assert.equal(taskId, null);
 });
 
+test("issue run task is hidden from subtasks after acceptance", () => {
+  const taskId = resolveIssueManagerIssueRunTaskId({
+    latestRun: createRun({
+      issueId: "issue-1",
+      runId: "run-1",
+      status: "completed",
+      taskId: "task-hidden"
+    }),
+    selectedIssue: createIssueSummary({
+      issueId: "issue-1",
+      status: "completed",
+      title: "Issue"
+    }),
+    selectedTaskId: null,
+    tasks: [
+      createTaskSummary({
+        issueId: "issue-1",
+        status: "completed",
+        taskId: "task-hidden",
+        title: "Issue"
+      })
+    ]
+  });
+
+  assert.equal(taskId, "task-hidden");
+});
+
+test("issue run task detection keeps normal visible subtasks", () => {
+  const taskId = resolveIssueManagerIssueRunTaskId({
+    latestRun: createRun({
+      issueId: "issue-1",
+      runId: "run-1",
+      status: "completed",
+      taskId: "task-visible"
+    }),
+    selectedIssue: createIssueSummary({
+      issueId: "issue-1",
+      status: "completed",
+      title: "Issue"
+    }),
+    selectedTaskId: null,
+    tasks: [
+      createTaskSummary({
+        issueId: "issue-1",
+        status: "completed",
+        taskId: "task-visible",
+        title: "Visible task"
+      })
+    ]
+  });
+
+  assert.equal(taskId, null);
+});
+
 test("issue subtask list hides the issue-level execution task", () => {
   const hiddenTask = createTaskSummary({
     issueId: "issue-1",
@@ -99,7 +154,7 @@ test("issue subtask list hides the issue-level execution task", () => {
   });
 
   const tasks = resolveIssueManagerVisibleSubtasks({
-    hiddenAcceptanceTaskId: "task-hidden",
+    hiddenIssueRunTaskId: "task-hidden",
     tasks: [hiddenTask, visibleTask]
   });
 

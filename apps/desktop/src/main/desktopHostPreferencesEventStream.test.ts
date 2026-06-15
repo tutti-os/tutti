@@ -40,7 +40,9 @@ test("desktop host preferences follows authoritative preference events", async (
       dockPlacement: "bottom",
       locale: "zh-CN",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -62,7 +64,9 @@ test("desktop host preferences follows authoritative preference events", async (
       dockPlacement: "bottom",
       locale: "en",
       sleepPreventionMode: "never",
-      themeSource: "dark"
+      themeSource: "dark",
+      updateChannel: "stable",
+      updatePolicy: "prompt"
     }
   });
 
@@ -84,6 +88,10 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
   let sleepPreventionMode: DesktopPreferencesStateResponse["preferences"]["sleepPreventionMode"] =
     "never";
   let themeSource: DesktopThemeSource = "system";
+  let updateChannel: DesktopPreferencesStateResponse["preferences"]["updateChannel"] =
+    "stable";
+  let updatePolicy: DesktopPreferencesStateResponse["preferences"]["updatePolicy"] =
+    "prompt";
 
   return {
     getAgentComposerDefaultsByProvider() {
@@ -107,6 +115,12 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     getThemeSource() {
       return themeSource;
     },
+    getUpdateChannel() {
+      return updateChannel;
+    },
+    getUpdatePolicy() {
+      return updatePolicy;
+    },
     subscribe() {
       return () => undefined;
     },
@@ -125,6 +139,12 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       }
       if (input.themeSource) {
         themeSource = input.themeSource;
+      }
+      if (input.updateChannel) {
+        updateChannel = input.updateChannel;
+      }
+      if (input.updatePolicy) {
+        updatePolicy = input.updatePolicy;
       }
     }
   };

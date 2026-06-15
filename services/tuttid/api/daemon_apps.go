@@ -9,13 +9,15 @@ import (
 	workspaceapi "github.com/tutti-os/tutti/services/tuttid/api/workspace"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
 const (
-	appReferenceSearchRequestQueryMaxRunes  = 200
-	appReferenceSearchRequestCursorMaxRunes = 2048
-	appReferenceSearchRequestLimitMin       = 1
-	appReferenceSearchRequestLimitMax       = 50
+	appReferenceListRequestTextMaxRunes    = 200
+	appReferenceListRequestGroupIDMaxRunes = 2048
+	appReferenceListRequestCursorMaxRunes  = 2048
+	appReferenceListRequestLimitMin        = 1
+	appReferenceListRequestLimitMax        = 50
 )
 
 func workspaceAppServiceUnavailableError() tuttigenerated.ServiceUnavailableErrorJSONResponse {
@@ -55,43 +57,6 @@ func (api DaemonAPI) ListWorkspaceApps(ctx context.Context, request tuttigenerat
 		CatalogStatus: workspaceapi.GeneratedAppCatalogLoadStateFromBiz(api.AppCenterService.CatalogLoadState()),
 		Apps:          workspaceapi.GeneratedAppsFromBiz(apps),
 	}, nil
-}
-
-func (api DaemonAPI) SearchWorkspaceAppReferences(ctx context.Context, request tuttigenerated.SearchWorkspaceAppReferencesRequestObject) (tuttigenerated.SearchWorkspaceAppReferencesResponseObject, error) {
-	if api.AppCenterService == nil {
-		return tuttigenerated.SearchWorkspaceAppReferences503JSONResponse{
-			ServiceUnavailableErrorJSONResponse: workspaceAppServiceUnavailableError(),
-		}, nil
-	}
-
-	workspaceID, appID, errResponse := validateWorkspaceAppPath(request.WorkspaceID, request.AppID)
-	if errResponse != nil {
-		return tuttigenerated.SearchWorkspaceAppReferences400JSONResponse{InvalidRequestErrorJSONResponse: *errResponse}, nil
-	}
-	if request.Body == nil {
-		return tuttigenerated.SearchWorkspaceAppReferences400JSONResponse{
-			InvalidRequestErrorJSONResponse: invalidRequestError(
-				apierrors.MalformedRequest(
-					apierrors.WithDeveloperMessage("workspace app reference search request body is required"),
-					apierrors.WithParams(map[string]any{"field": "body"}),
-				),
-			),
-		}, nil
-	}
-
-	input, validationErr := validateAppReferenceSearchRequest(*request.Body)
-	if validationErr != nil {
-		return tuttigenerated.SearchWorkspaceAppReferences400JSONResponse{InvalidRequestErrorJSONResponse: *validationErr}, nil
-	}
-
-	result, err := api.AppCenterService.SearchReferences(ctx, workspaceID, appID, input)
-	if err != nil {
-		return writeSearchWorkspaceAppReferencesError(err), nil
-	}
-
-	return tuttigenerated.SearchWorkspaceAppReferences200JSONResponse(
-		workspaceapi.GeneratedAppReferenceSearchResultFromBiz(workspaceID, appID, result),
-	), nil
 }
 
 func (api DaemonAPI) RefreshWorkspaceAppCatalog(ctx context.Context, request tuttigenerated.RefreshWorkspaceAppCatalogRequestObject) (tuttigenerated.RefreshWorkspaceAppCatalogResponseObject, error) {
@@ -137,7 +102,11 @@ func (api DaemonAPI) InstallWorkspaceApp(ctx context.Context, request tuttigener
 		return tuttigenerated.InstallWorkspaceApp400JSONResponse{InvalidRequestErrorJSONResponse: *errResponse}, nil
 	}
 
-	app, err := api.AppCenterService.Install(ctx, workspaceID, appID)
+	options := workspaceservice.InstallOptions{}
+	if request.Body != nil && request.Body.RestartRunning != nil {
+		options.RestartRunning = *request.Body.RestartRunning
+	}
+	app, err := api.AppCenterService.InstallWithOptions(ctx, workspaceID, appID, options)
 	if err != nil {
 		return writeInstallWorkspaceAppError(err), nil
 	}
@@ -146,6 +115,43 @@ func (api DaemonAPI) InstallWorkspaceApp(ctx context.Context, request tuttigener
 		WorkspaceId: workspaceID,
 		App:         workspaceapi.GeneratedAppFromBiz(app),
 	}, nil
+}
+
+func (api DaemonAPI) ListWorkspaceAppReferences(ctx context.Context, request tuttigenerated.ListWorkspaceAppReferencesRequestObject) (tuttigenerated.ListWorkspaceAppReferencesResponseObject, error) {
+	if api.AppCenterService == nil {
+		return tuttigenerated.ListWorkspaceAppReferences503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: workspaceAppServiceUnavailableError(),
+		}, nil
+	}
+
+	workspaceID, appID, errResponse := validateWorkspaceAppPath(request.WorkspaceID, request.AppID)
+	if errResponse != nil {
+		return tuttigenerated.ListWorkspaceAppReferences400JSONResponse{InvalidRequestErrorJSONResponse: *errResponse}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.ListWorkspaceAppReferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.MalformedRequest(
+					apierrors.WithDeveloperMessage("workspace app reference list request body is required"),
+					apierrors.WithParams(map[string]any{"field": "body"}),
+				),
+			),
+		}, nil
+	}
+
+	input, validationErr := validateAppReferenceListRequest(*request.Body)
+	if validationErr != nil {
+		return tuttigenerated.ListWorkspaceAppReferences400JSONResponse{InvalidRequestErrorJSONResponse: *validationErr}, nil
+	}
+
+	result, err := api.AppCenterService.ListReferences(ctx, workspaceID, appID, input)
+	if err != nil {
+		return writeListWorkspaceAppReferencesError(err), nil
+	}
+
+	return tuttigenerated.ListWorkspaceAppReferences200JSONResponse(
+		workspaceapi.GeneratedAppReferenceListResultFromBiz(workspaceID, appID, result),
+	), nil
 }
 
 func (api DaemonAPI) ImportWorkspaceApp(ctx context.Context, request tuttigenerated.ImportWorkspaceAppRequestObject) (tuttigenerated.ImportWorkspaceAppResponseObject, error) {
@@ -473,42 +479,56 @@ func validateWorkspaceAppPath(workspaceIDValue tuttigenerated.WorkspaceID, appID
 	return workspaceID, appID, nil
 }
 
-func validateAppReferenceSearchRequest(body tuttigenerated.AppReferenceSearchRequest) (workspacebiz.AppReferenceSearchInput, *tuttigenerated.InvalidRequestErrorJSONResponse) {
-	query := strings.TrimSpace(body.Query)
-	if utf8.RuneCountInString(query) > appReferenceSearchRequestQueryMaxRunes {
-		response := invalidRequestError(
-			apierrors.MalformedRequest(
-				apierrors.WithDeveloperMessage("workspace app reference search query is too long"),
-				apierrors.WithParams(map[string]any{"field": "query"}),
-			),
-		)
-		return workspacebiz.AppReferenceSearchInput{}, &response
-	}
-	input := workspacebiz.AppReferenceSearchInput{
-		Query: query,
-	}
-	if body.Limit != nil {
-		if *body.Limit < appReferenceSearchRequestLimitMin || *body.Limit > appReferenceSearchRequestLimitMax {
+func validateAppReferenceListRequest(body tuttigenerated.AppReferenceListRequest) (workspacebiz.AppReferenceListInput, *tuttigenerated.InvalidRequestErrorJSONResponse) {
+	input := workspacebiz.AppReferenceListInput{}
+	if body.ParentGroupId != nil {
+		parentGroupID := strings.TrimSpace(*body.ParentGroupId)
+		if parentGroupID == "" || utf8.RuneCountInString(parentGroupID) > appReferenceListRequestGroupIDMaxRunes {
 			response := invalidRequestError(
 				apierrors.MalformedRequest(
-					apierrors.WithDeveloperMessage("workspace app reference search limit is out of range"),
+					apierrors.WithDeveloperMessage("workspace app reference list parentGroupId is invalid"),
+					apierrors.WithParams(map[string]any{"field": "parentGroupId"}),
+				),
+			)
+			return workspacebiz.AppReferenceListInput{}, &response
+		}
+		input.ParentGroupID = parentGroupID
+	}
+	if body.FilterText != nil {
+		filterText := strings.TrimSpace(*body.FilterText)
+		if utf8.RuneCountInString(filterText) > appReferenceListRequestTextMaxRunes {
+			response := invalidRequestError(
+				apierrors.MalformedRequest(
+					apierrors.WithDeveloperMessage("workspace app reference list filterText is too long"),
+					apierrors.WithParams(map[string]any{"field": "filterText"}),
+				),
+			)
+			return workspacebiz.AppReferenceListInput{}, &response
+		}
+		input.FilterText = filterText
+	}
+	if body.Limit != nil {
+		if *body.Limit < appReferenceListRequestLimitMin || *body.Limit > appReferenceListRequestLimitMax {
+			response := invalidRequestError(
+				apierrors.MalformedRequest(
+					apierrors.WithDeveloperMessage("workspace app reference list limit is out of range"),
 					apierrors.WithParams(map[string]any{"field": "limit"}),
 				),
 			)
-			return workspacebiz.AppReferenceSearchInput{}, &response
+			return workspacebiz.AppReferenceListInput{}, &response
 		}
 		input.Limit = *body.Limit
 	}
 	if body.Cursor != nil {
 		cursor := strings.TrimSpace(*body.Cursor)
-		if utf8.RuneCountInString(cursor) > appReferenceSearchRequestCursorMaxRunes {
+		if utf8.RuneCountInString(cursor) > appReferenceListRequestCursorMaxRunes {
 			response := invalidRequestError(
 				apierrors.MalformedRequest(
-					apierrors.WithDeveloperMessage("workspace app reference search cursor is too long"),
+					apierrors.WithDeveloperMessage("workspace app reference list cursor is too long"),
 					apierrors.WithParams(map[string]any{"field": "cursor"}),
 				),
 			)
-			return workspacebiz.AppReferenceSearchInput{}, &response
+			return workspacebiz.AppReferenceListInput{}, &response
 		}
 		input.Cursor = cursor
 	}
@@ -517,15 +537,59 @@ func validateAppReferenceSearchRequest(body tuttigenerated.AppReferenceSearchReq
 		if !ok {
 			response := invalidRequestError(
 				apierrors.MalformedRequest(
-					apierrors.WithDeveloperMessage("workspace app reference search kind is unsupported"),
+					apierrors.WithDeveloperMessage("workspace app reference list kind is unsupported"),
 					apierrors.WithParams(map[string]any{"field": "kinds"}),
 				),
 			)
-			return workspacebiz.AppReferenceSearchInput{}, &response
+			return workspacebiz.AppReferenceListInput{}, &response
 		}
 		input.Kinds = kinds
 	}
+	if body.TimeRange != nil {
+		timeRange, response := validateAppReferenceListTimeRange(*body.TimeRange)
+		if response != nil {
+			return workspacebiz.AppReferenceListInput{}, response
+		}
+		input.TimeRange = timeRange
+	}
 	return input, nil
+}
+
+func validateAppReferenceListTimeRange(body tuttigenerated.AppReferenceListTimeRange) (*workspacebiz.AppReferenceListTimeRange, *tuttigenerated.InvalidRequestErrorJSONResponse) {
+	if body.FromMs != nil && *body.FromMs < 0 {
+		response := invalidRequestError(
+			apierrors.MalformedRequest(
+				apierrors.WithDeveloperMessage("workspace app reference list timeRange.fromMs is out of range"),
+				apierrors.WithParams(map[string]any{"field": "timeRange.fromMs"}),
+			),
+		)
+		return nil, &response
+	}
+	if body.ToMs != nil && *body.ToMs < 0 {
+		response := invalidRequestError(
+			apierrors.MalformedRequest(
+				apierrors.WithDeveloperMessage("workspace app reference list timeRange.toMs is out of range"),
+				apierrors.WithParams(map[string]any{"field": "timeRange.toMs"}),
+			),
+		)
+		return nil, &response
+	}
+	if body.FromMs != nil && body.ToMs != nil && *body.FromMs > *body.ToMs {
+		response := invalidRequestError(
+			apierrors.MalformedRequest(
+				apierrors.WithDeveloperMessage("workspace app reference list timeRange.fromMs must be less than or equal to timeRange.toMs"),
+				apierrors.WithParams(map[string]any{"field": "timeRange"}),
+			),
+		)
+		return nil, &response
+	}
+	if body.FromMs == nil && body.ToMs == nil {
+		return nil, nil
+	}
+	return &workspacebiz.AppReferenceListTimeRange{
+		FromMs: body.FromMs,
+		ToMs:   body.ToMs,
+	}, nil
 }
 
 func generatedAppReferenceKindsToBiz(kinds []tuttigenerated.AppReferenceKind) ([]workspacebiz.AppReferenceKind, bool) {
@@ -558,19 +622,19 @@ func writeListWorkspaceAppsError(err error) tuttigenerated.ListWorkspaceAppsResp
 	}
 }
 
-func writeSearchWorkspaceAppReferencesError(err error) tuttigenerated.SearchWorkspaceAppReferencesResponseObject {
+func writeListWorkspaceAppReferencesError(err error) tuttigenerated.ListWorkspaceAppReferencesResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
 	case tuttigenerated.WorkspaceNotFound, tuttigenerated.WorkspaceAppNotFound:
-		return tuttigenerated.SearchWorkspaceAppReferences404JSONResponse{
+		return tuttigenerated.ListWorkspaceAppReferences404JSONResponse{
 			WorkspaceAppNotFoundErrorJSONResponse: workspaceAppNotFoundError(protocolErr),
 		}
 	case tuttigenerated.InvalidRequest:
-		return tuttigenerated.SearchWorkspaceAppReferences400JSONResponse{
+		return tuttigenerated.ListWorkspaceAppReferences400JSONResponse{
 			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
 		}
 	default:
-		return tuttigenerated.SearchWorkspaceAppReferences502JSONResponse{
+		return tuttigenerated.ListWorkspaceAppReferences502JSONResponse{
 			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
 		}
 	}

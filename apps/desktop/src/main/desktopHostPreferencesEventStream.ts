@@ -5,6 +5,7 @@ import {
 import type { DesktopThemeSource } from "../shared/theme/index.ts";
 import type { DesktopHostPreferencesState } from "./desktopHostPreferences.ts";
 import type { DesktopLogger } from "./logging.ts";
+import type { AppUpdateService } from "./update/appUpdateService.ts";
 import {
   resolveDesktopBusinessEventStreamUrl,
   type DesktopDaemonEndpoint
@@ -19,6 +20,7 @@ export interface DesktopHostPreferencesEventStreamDependencies {
   eventStreamClient: TuttidEventStreamClient;
   logger: DesktopLogger;
   preferences: DesktopHostPreferencesState;
+  updateService?: Pick<AppUpdateService, "configure">;
   syncWindowBackgroundColors: () => void;
 }
 
@@ -44,11 +46,25 @@ export function connectDesktopHostPreferencesEventStream(
         agentComposerDefaultsByProvider:
           nextPreferences.agentComposerDefaultsByProvider,
         defaultAgentProvider: nextPreferences.defaultAgentProvider,
+        dockIconStyle: nextPreferences.dockIconStyle,
         dockPlacement: nextPreferences.dockPlacement,
         locale: nextPreferences.locale,
         sleepPreventionMode: nextPreferences.sleepPreventionMode,
-        themeSource: nextPreferences.themeSource
+        themeSource: nextPreferences.themeSource,
+        updateChannel: nextPreferences.updateChannel,
+        updatePolicy: nextPreferences.updatePolicy
       });
+
+      void deps.updateService
+        ?.configure({
+          channel: nextPreferences.updateChannel,
+          policy: nextPreferences.updatePolicy
+        })
+        .catch((error: unknown) => {
+          deps.logger.warn("failed to apply desktop update preferences", {
+            error: error instanceof Error ? error.message : String(error)
+          });
+        });
 
       if (themeSourceChanged) {
         deps.applyThemeSource(nextPreferences.themeSource);

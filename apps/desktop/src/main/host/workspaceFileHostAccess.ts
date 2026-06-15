@@ -83,8 +83,6 @@ export function createWorkspaceFileHostAccess(
   const readFileImpl = deps.readFile ?? readFile;
   const showItemInFolder = deps.showItemInFolder ?? defaultShowItemInFolder;
   const statImpl = deps.stat ?? stat;
-  const resolveTargetPath = (payload: DesktopWorkspaceFilePathPayload) =>
-    resolveWorkspaceTargetPath(payload);
 
   return {
     async createUserDocumentsProjectDirectory(payload) {
@@ -118,12 +116,12 @@ export function createWorkspaceFileHostAccess(
     },
 
     async listOpenWithApplications(payload) {
-      const targetPath = resolveTargetPath(payload);
+      const targetPath = resolveWorkspaceTargetPath(payload);
       return listOpenWithApplications(targetPath);
     },
 
     async openFile(payload) {
-      const targetPath = resolveTargetPath(payload);
+      const targetPath = resolveWorkspaceTargetPath(payload);
       const openError = await openPath(targetPath);
       if (
         openError &&
@@ -136,12 +134,12 @@ export function createWorkspaceFileHostAccess(
     },
 
     async openFileWithApplication(payload) {
-      const targetPath = resolveTargetPath(payload);
+      const targetPath = resolveWorkspaceTargetPath(payload);
       await openFileWithApplication(targetPath, payload.applicationPath);
     },
 
     async openFileWithOtherApplication(payload) {
-      const targetPath = resolveTargetPath(payload);
+      const targetPath = resolveWorkspaceTargetPath(payload);
       await openFileWithOtherApplication(
         targetPath,
         payload.applicationPickerPrompt
@@ -149,17 +147,17 @@ export function createWorkspaceFileHostAccess(
     },
 
     async openFileInBrowser(payload) {
-      const targetPath = resolveTargetPath(payload);
+      const targetPath = resolveWorkspaceTargetPath(payload);
       await openFileWithDefaultBrowserImpl(targetPath);
     },
 
     resolveWorkspaceFileFileUrl(payload) {
-      const targetPath = resolveTargetPath(payload);
+      const targetPath = resolveWorkspaceTargetPath(payload);
       return Promise.resolve(pathToFileURL(targetPath).href);
     },
 
     async revealWorkspaceFile(payload) {
-      const targetPath = resolveTargetPath(payload);
+      const targetPath = resolveWorkspaceTargetPath(payload);
       await revealPathInOsFileManager(targetPath, {
         openPath,
         showItemInFolder,
@@ -191,7 +189,7 @@ export function createWorkspaceFileHostAccess(
     },
 
     async readPreviewFile(payload) {
-      const targetPath = resolveTargetPath(payload);
+      const targetPath = resolveWorkspaceTargetPath(payload);
       await ensureFileWithinPreviewBudget(targetPath, statImpl);
 
       const bytes = await readFileImpl(targetPath);
@@ -202,7 +200,7 @@ export function createWorkspaceFileHostAccess(
       if (!deps.workspaceFileIconCache) {
         return null;
       }
-      const targetPath = resolveTargetPath(payload);
+      const targetPath = resolveWorkspaceTargetPath(payload);
       return resolveWorkspaceFileEntryIconUrl(
         targetPath,
         {

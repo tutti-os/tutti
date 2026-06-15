@@ -277,6 +277,21 @@ func (e AppFileReferenceKind) Valid() bool {
 	}
 }
 
+// Defines values for AppReferenceGroupType.
+const (
+	AppReferenceGroupTypeGroup AppReferenceGroupType = "group"
+)
+
+// Valid indicates whether the value is a known member of the AppReferenceGroupType enum.
+func (e AppReferenceGroupType) Valid() bool {
+	switch e {
+	case AppReferenceGroupTypeGroup:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AppReferenceKind.
 const (
 	AppReferenceKindFile AppReferenceKind = "file"
@@ -286,6 +301,21 @@ const (
 func (e AppReferenceKind) Valid() bool {
 	switch e {
 	case AppReferenceKindFile:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AppReferenceListReferenceItemType.
+const (
+	AppReferenceListReferenceItemTypeReference AppReferenceListReferenceItemType = "reference"
+)
+
+// Valid indicates whether the value is a known member of the AppReferenceListReferenceItemType enum.
+func (e AppReferenceListReferenceItemType) Valid() bool {
+	switch e {
+	case AppReferenceListReferenceItemTypeReference:
 		return true
 	default:
 		return false
@@ -424,6 +454,45 @@ func (e DesktopThemeSource) Valid() bool {
 	case DesktopThemeSourceLight:
 		return true
 	case DesktopThemeSourceSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DesktopUpdateChannel.
+const (
+	Rc     DesktopUpdateChannel = "rc"
+	Stable DesktopUpdateChannel = "stable"
+)
+
+// Valid indicates whether the value is a known member of the DesktopUpdateChannel enum.
+func (e DesktopUpdateChannel) Valid() bool {
+	switch e {
+	case Rc:
+		return true
+	case Stable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DesktopUpdatePolicy.
+const (
+	DesktopUpdatePolicyAuto   DesktopUpdatePolicy = "auto"
+	DesktopUpdatePolicyOff    DesktopUpdatePolicy = "off"
+	DesktopUpdatePolicyPrompt DesktopUpdatePolicy = "prompt"
+)
+
+// Valid indicates whether the value is a known member of the DesktopUpdatePolicy enum.
+func (e DesktopUpdatePolicy) Valid() bool {
+	switch e {
+	case DesktopUpdatePolicyAuto:
+		return true
+	case DesktopUpdatePolicyOff:
+		return true
+	case DesktopUpdatePolicyPrompt:
 		return true
 	default:
 		return false
@@ -588,28 +657,28 @@ func (e IssueManagerTaskContextRefParentKind) Valid() bool {
 
 // Defines values for PermissionModeSemantic.
 const (
-	AcceptEdits    PermissionModeSemantic = "accept-edits"
-	AskBeforeWrite PermissionModeSemantic = "ask-before-write"
-	Auto           PermissionModeSemantic = "auto"
-	FullAccess     PermissionModeSemantic = "full-access"
-	LockedDown     PermissionModeSemantic = "locked-down"
-	Unconfigurable PermissionModeSemantic = "unconfigurable"
+	PermissionModeSemanticAcceptEdits    PermissionModeSemantic = "accept-edits"
+	PermissionModeSemanticAskBeforeWrite PermissionModeSemantic = "ask-before-write"
+	PermissionModeSemanticAuto           PermissionModeSemantic = "auto"
+	PermissionModeSemanticFullAccess     PermissionModeSemantic = "full-access"
+	PermissionModeSemanticLockedDown     PermissionModeSemantic = "locked-down"
+	PermissionModeSemanticUnconfigurable PermissionModeSemantic = "unconfigurable"
 )
 
 // Valid indicates whether the value is a known member of the PermissionModeSemantic enum.
 func (e PermissionModeSemantic) Valid() bool {
 	switch e {
-	case AcceptEdits:
+	case PermissionModeSemanticAcceptEdits:
 		return true
-	case AskBeforeWrite:
+	case PermissionModeSemanticAskBeforeWrite:
 		return true
-	case Auto:
+	case PermissionModeSemanticAuto:
 		return true
-	case FullAccess:
+	case PermissionModeSemanticFullAccess:
 		return true
-	case LockedDown:
+	case PermissionModeSemanticLockedDown:
 		return true
-	case Unconfigurable:
+	case PermissionModeSemanticUnconfigurable:
 		return true
 	default:
 		return false
@@ -930,16 +999,16 @@ func (e WorkspaceFileEntryKind) Valid() bool {
 
 // Defines values for WorkspaceFileFilterKind.
 const (
-	Directory WorkspaceFileFilterKind = "directory"
-	File      WorkspaceFileFilterKind = "file"
+	WorkspaceFileFilterKindDirectory WorkspaceFileFilterKind = "directory"
+	WorkspaceFileFilterKindFile      WorkspaceFileFilterKind = "file"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceFileFilterKind enum.
 func (e WorkspaceFileFilterKind) Valid() bool {
 	switch e {
-	case Directory:
+	case WorkspaceFileFilterKindDirectory:
 		return true
-	case File:
+	case WorkspaceFileFilterKindFile:
 		return true
 	default:
 		return false
@@ -948,16 +1017,16 @@ func (e WorkspaceFileFilterKind) Valid() bool {
 
 // Defines values for WorkspaceFileSearchMatchTarget.
 const (
-	Basename WorkspaceFileSearchMatchTarget = "basename"
-	Path     WorkspaceFileSearchMatchTarget = "path"
+	WorkspaceFileSearchMatchTargetBasename WorkspaceFileSearchMatchTarget = "basename"
+	WorkspaceFileSearchMatchTargetPath     WorkspaceFileSearchMatchTarget = "path"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceFileSearchMatchTarget enum.
 func (e WorkspaceFileSearchMatchTarget) Valid() bool {
 	switch e {
-	case Basename:
+	case WorkspaceFileSearchMatchTargetBasename:
 		return true
-	case Path:
+	case WorkspaceFileSearchMatchTargetPath:
 		return true
 	default:
 		return false
@@ -1029,22 +1098,22 @@ func (e WorkspaceFileUploadConflictKind) Valid() bool {
 
 // Defines values for WorkspaceTerminalCloseGuardReason.
 const (
-	ForegroundProcess WorkspaceTerminalCloseGuardReason = "foreground-process"
-	NotRunning        WorkspaceTerminalCloseGuardReason = "not-running"
-	Running           WorkspaceTerminalCloseGuardReason = "running"
-	Unknown           WorkspaceTerminalCloseGuardReason = "unknown"
+	WorkspaceTerminalCloseGuardReasonForegroundProcess WorkspaceTerminalCloseGuardReason = "foreground-process"
+	WorkspaceTerminalCloseGuardReasonNotRunning        WorkspaceTerminalCloseGuardReason = "not-running"
+	WorkspaceTerminalCloseGuardReasonRunning           WorkspaceTerminalCloseGuardReason = "running"
+	WorkspaceTerminalCloseGuardReasonUnknown           WorkspaceTerminalCloseGuardReason = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceTerminalCloseGuardReason enum.
 func (e WorkspaceTerminalCloseGuardReason) Valid() bool {
 	switch e {
-	case ForegroundProcess:
+	case WorkspaceTerminalCloseGuardReasonForegroundProcess:
 		return true
-	case NotRunning:
+	case WorkspaceTerminalCloseGuardReasonNotRunning:
 		return true
-	case Running:
+	case WorkspaceTerminalCloseGuardReasonRunning:
 		return true
-	case Unknown:
+	case WorkspaceTerminalCloseGuardReasonUnknown:
 		return true
 	default:
 		return false
@@ -1339,23 +1408,59 @@ type AppReference struct {
 	union json.RawMessage
 }
 
+// AppReferenceGroup defines model for AppReferenceGroup.
+type AppReferenceGroup struct {
+	Description    *string               `json:"description,omitempty"`
+	DisplayName    string                `json:"displayName"`
+	Id             string                `json:"id"`
+	ReferenceCount int                   `json:"referenceCount"`
+	Type           AppReferenceGroupType `json:"type"`
+}
+
+// AppReferenceGroupType defines model for AppReferenceGroup.Type.
+type AppReferenceGroupType string
+
 // AppReferenceKind defines model for AppReferenceKind.
 type AppReferenceKind string
 
-// AppReferenceSearchRequest defines model for AppReferenceSearchRequest.
-type AppReferenceSearchRequest struct {
-	Cursor *string             `json:"cursor,omitempty"`
-	Kinds  *[]AppReferenceKind `json:"kinds,omitempty"`
-	Limit  *int                `json:"limit,omitempty"`
-	Query  string              `json:"query"`
+// AppReferenceListItem defines model for AppReferenceListItem.
+type AppReferenceListItem struct {
+	union json.RawMessage
 }
 
-// AppReferenceSearchResponse defines model for AppReferenceSearchResponse.
-type AppReferenceSearchResponse struct {
-	AppId       string         `json:"appId"`
-	NextCursor  *string        `json:"nextCursor"`
-	References  []AppReference `json:"references"`
-	WorkspaceId string         `json:"workspaceId"`
+// AppReferenceListReferenceItem defines model for AppReferenceListReferenceItem.
+type AppReferenceListReferenceItem struct {
+	Reference AppReference                      `json:"reference"`
+	Type      AppReferenceListReferenceItemType `json:"type"`
+}
+
+// AppReferenceListReferenceItemType defines model for AppReferenceListReferenceItem.Type.
+type AppReferenceListReferenceItemType string
+
+// AppReferenceListRequest defines model for AppReferenceListRequest.
+type AppReferenceListRequest struct {
+	Cursor        *string             `json:"cursor,omitempty"`
+	FilterText    *string             `json:"filterText,omitempty"`
+	Kinds         *[]AppReferenceKind `json:"kinds,omitempty"`
+	Limit         *int                `json:"limit,omitempty"`
+	ParentGroupId *string             `json:"parentGroupId,omitempty"`
+
+	// TimeRange Inclusive timestamp range for references. For file references, runtimes should filter by the file mtimeMs when available.
+	TimeRange *AppReferenceListTimeRange `json:"timeRange,omitempty"`
+}
+
+// AppReferenceListResponse defines model for AppReferenceListResponse.
+type AppReferenceListResponse struct {
+	AppId       string                 `json:"appId"`
+	Items       []AppReferenceListItem `json:"items"`
+	NextCursor  *string                `json:"nextCursor"`
+	WorkspaceId string                 `json:"workspaceId"`
+}
+
+// AppReferenceListTimeRange Inclusive timestamp range for references. For file references, runtimes should filter by the file mtimeMs when available.
+type AppReferenceListTimeRange struct {
+	FromMs *int64 `json:"fromMs,omitempty"`
+	ToMs   *int64 `json:"toMs,omitempty"`
 }
 
 // CheckUserProjectPathRequest defines model for CheckUserProjectPathRequest.
@@ -1660,6 +1765,8 @@ type DesktopPreferences struct {
 	Locale                          DesktopLocale                          `json:"locale"`
 	SleepPreventionMode             DesktopSleepPreventionMode             `json:"sleepPreventionMode"`
 	ThemeSource                     DesktopThemeSource                     `json:"themeSource"`
+	UpdateChannel                   DesktopUpdateChannel                   `json:"updateChannel"`
+	UpdatePolicy                    DesktopUpdatePolicy                    `json:"updatePolicy"`
 }
 
 // DesktopPreferencesStateResponse defines model for DesktopPreferencesStateResponse.
@@ -1673,6 +1780,12 @@ type DesktopSleepPreventionMode string
 
 // DesktopThemeSource defines model for DesktopThemeSource.
 type DesktopThemeSource string
+
+// DesktopUpdateChannel defines model for DesktopUpdateChannel.
+type DesktopUpdateChannel string
+
+// DesktopUpdatePolicy defines model for DesktopUpdatePolicy.
+type DesktopUpdatePolicy string
 
 // ExportWorkspaceAppRequest defines model for ExportWorkspaceAppRequest.
 type ExportWorkspaceAppRequest struct {
@@ -1714,6 +1827,12 @@ type HealthStatusResponseStatus string
 // ImportWorkspaceAppRequest defines model for ImportWorkspaceAppRequest.
 type ImportWorkspaceAppRequest struct {
 	ArchivePath string `json:"archivePath"`
+}
+
+// InstallWorkspaceAppRequest defines model for InstallWorkspaceAppRequest.
+type InstallWorkspaceAppRequest struct {
+	// RestartRunning Restart the app runtime after installing if it is already running.
+	RestartRunning *bool `json:"restartRunning,omitempty"`
 }
 
 // IssueManagerContextRef defines model for IssueManagerContextRef.
@@ -2394,7 +2513,7 @@ type WorkspaceAppMinimizeBehavior string
 
 // WorkspaceAppReferencesState defines model for WorkspaceAppReferencesState.
 type WorkspaceAppReferencesState struct {
-	SearchSupported bool `json:"searchSupported"`
+	ListSupported bool `json:"listSupported"`
 }
 
 // WorkspaceAppResponse defines model for WorkspaceAppResponse.
@@ -2863,8 +2982,11 @@ type ExportWorkspaceAppJSONRequestBody = ExportWorkspaceAppRequest
 // ReplaceWorkspaceAppIconJSONRequestBody defines body for ReplaceWorkspaceAppIcon for application/json ContentType.
 type ReplaceWorkspaceAppIconJSONRequestBody = ReplaceWorkspaceAppIconRequest
 
-// SearchWorkspaceAppReferencesJSONRequestBody defines body for SearchWorkspaceAppReferences for application/json ContentType.
-type SearchWorkspaceAppReferencesJSONRequestBody = AppReferenceSearchRequest
+// InstallWorkspaceAppJSONRequestBody defines body for InstallWorkspaceApp for application/json ContentType.
+type InstallWorkspaceAppJSONRequestBody = InstallWorkspaceAppRequest
+
+// ListWorkspaceAppReferencesJSONRequestBody defines body for ListWorkspaceAppReferences for application/json ContentType.
+type ListWorkspaceAppReferencesJSONRequestBody = AppReferenceListRequest
 
 // RollbackWorkspaceAppJSONRequestBody defines body for RollbackWorkspaceApp for application/json ContentType.
 type RollbackWorkspaceAppJSONRequestBody = RollbackWorkspaceAppRequest
@@ -2996,6 +3118,95 @@ func (t AppReference) MarshalJSON() ([]byte, error) {
 }
 
 func (t *AppReference) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsAppReferenceGroup returns the union data inside the AppReferenceListItem as a AppReferenceGroup
+func (t AppReferenceListItem) AsAppReferenceGroup() (AppReferenceGroup, error) {
+	var body AppReferenceGroup
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAppReferenceGroup overwrites any union data inside the AppReferenceListItem as the provided AppReferenceGroup
+func (t *AppReferenceListItem) FromAppReferenceGroup(v AppReferenceGroup) error {
+	v.Type = "group"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAppReferenceGroup performs a merge with any union data inside the AppReferenceListItem, using the provided AppReferenceGroup
+func (t *AppReferenceListItem) MergeAppReferenceGroup(v AppReferenceGroup) error {
+	v.Type = "group"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAppReferenceListReferenceItem returns the union data inside the AppReferenceListItem as a AppReferenceListReferenceItem
+func (t AppReferenceListItem) AsAppReferenceListReferenceItem() (AppReferenceListReferenceItem, error) {
+	var body AppReferenceListReferenceItem
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAppReferenceListReferenceItem overwrites any union data inside the AppReferenceListItem as the provided AppReferenceListReferenceItem
+func (t *AppReferenceListItem) FromAppReferenceListReferenceItem(v AppReferenceListReferenceItem) error {
+	v.Type = "reference"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAppReferenceListReferenceItem performs a merge with any union data inside the AppReferenceListItem, using the provided AppReferenceListReferenceItem
+func (t *AppReferenceListItem) MergeAppReferenceListReferenceItem(v AppReferenceListReferenceItem) error {
+	v.Type = "reference"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AppReferenceListItem) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t AppReferenceListItem) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "group":
+		return t.AsAppReferenceGroup()
+	case "reference":
+		return t.AsAppReferenceListReferenceItem()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t AppReferenceListItem) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *AppReferenceListItem) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

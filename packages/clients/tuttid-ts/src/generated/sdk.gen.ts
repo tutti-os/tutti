@@ -178,6 +178,9 @@ import type {
   ListWorkspaceAppFactoryJobsData,
   ListWorkspaceAppFactoryJobsErrors,
   ListWorkspaceAppFactoryJobsResponses,
+  ListWorkspaceAppReferencesData,
+  ListWorkspaceAppReferencesErrors,
+  ListWorkspaceAppReferencesResponses,
   ListWorkspaceAppsData,
   ListWorkspaceAppsErrors,
   ListWorkspaceAppsResponses,
@@ -265,9 +268,6 @@ import type {
   RunAgentProviderActionData,
   RunAgentProviderActionErrors,
   RunAgentProviderActionResponses,
-  SearchWorkspaceAppReferencesData,
-  SearchWorkspaceAppReferencesErrors,
-  SearchWorkspaceAppReferencesResponses,
   SearchWorkspaceFilesData,
   SearchWorkspaceFilesErrors,
   SearchWorkspaceFilesResponses,
@@ -784,27 +784,31 @@ export const installWorkspaceApp = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/apps/{appID}/install",
-    ...options
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**
- * Search file references exposed by one running workspace app
+ * List file references exposed by one running workspace app
  *
- * Proxies a reference search to a running workspace app and returns daemon-resolved file references. Workspace app runtimes return scoped locations to the daemon; this public daemon API returns absolute file paths that desktop clients can use as ordinary file links.
+ * Proxies a reference list request to a running workspace app and returns daemon-resolved file references. Workspace app runtimes return scoped locations to the daemon; this public daemon API returns absolute file paths that desktop clients can use as ordinary file links.
  *
  */
-export const searchWorkspaceAppReferences = <
+export const listWorkspaceAppReferences = <
   ThrowOnError extends boolean = false
 >(
-  options: Options<SearchWorkspaceAppReferencesData, ThrowOnError>
+  options: Options<ListWorkspaceAppReferencesData, ThrowOnError>
 ) =>
   (options.client ?? client).post<
-    SearchWorkspaceAppReferencesResponses,
-    SearchWorkspaceAppReferencesErrors,
+    ListWorkspaceAppReferencesResponses,
+    ListWorkspaceAppReferencesErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/workspaces/{workspaceID}/apps/{appID}/references/search",
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/references/list",
     ...options,
     headers: {
       "Content-Type": "application/json",

@@ -49,10 +49,11 @@ const (
 )
 
 type workspaceAppInstallJob struct {
-	WorkspaceID   string
-	AppID         string
-	Status        workspaceAppInstallJobStatus
-	FailureReason string
+	WorkspaceID    string
+	AppID          string
+	Status         workspaceAppInstallJobStatus
+	FailureReason  string
+	RestartRunning bool
 }
 
 type WorkspaceRootResolver interface {
@@ -163,6 +164,14 @@ func (s *AppCenterService) RefreshCatalog(ctx context.Context, workspaceID strin
 }
 
 func (s *AppCenterService) Install(ctx context.Context, workspaceID string, appID string) (workspacebiz.WorkspaceApp, error) {
+	return s.InstallWithOptions(ctx, workspaceID, appID, InstallOptions{})
+}
+
+type InstallOptions struct {
+	RestartRunning bool
+}
+
+func (s *AppCenterService) InstallWithOptions(ctx context.Context, workspaceID string, appID string, options InstallOptions) (workspacebiz.WorkspaceApp, error) {
 	if _, err := s.workspaceSummary(ctx, workspaceID); err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
@@ -171,13 +180,13 @@ func (s *AppCenterService) Install(ctx context.Context, workspaceID string, appI
 	if err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
-	if s.beginInstallJob(workspaceID, appID) {
+	if s.beginInstallJob(workspaceID, appID, options) {
 		go s.runInstallJob(workspaceID, appID)
 	}
 	return app, nil
 }
 
-func (s *AppCenterService) installPackage(ctx context.Context, workspaceID string, appPackage workspacebiz.AppPackage) (workspacebiz.WorkspaceApp, error) {
+func (s *AppCenterService) installPackage(ctx context.Context, workspaceID string, appPackage workspacebiz.AppPackage, options InstallOptions) (workspacebiz.WorkspaceApp, error) {
 	installation := workspacebiz.AppInstallation{
 		WorkspaceID: workspaceID,
 		AppID:       appPackage.AppID,
@@ -186,7 +195,7 @@ func (s *AppCenterService) installPackage(ctx context.Context, workspaceID strin
 	if err := s.Store.PutWorkspaceAppInstallation(ctx, installation); err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
-	runtimeState, err := s.startPackage(ctx, workspaceID, appPackage, false)
+	runtimeState, err := s.startPackage(ctx, workspaceID, appPackage, options.RestartRunning)
 	if err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
@@ -203,9 +212,10 @@ func (s *AppCenterService) installPackage(ctx context.Context, workspaceID strin
 func (s *AppCenterService) runInstallJob(workspaceID string, appID string) {
 	startedAt := time.Now()
 	ctx := context.Background()
+	options := s.installJobOptions(workspaceID, appID)
 	appPackage, err := s.packageForInstall(ctx, appID)
 	if err == nil {
-		_, err = s.installPackage(ctx, workspaceID, appPackage)
+		_, err = s.installPackage(ctx, workspaceID, appPackage, options)
 	}
 	if err != nil {
 		slog.Warn("workspace_app_install_job_failed", "workspaceId", workspaceID, "appId", appID, "packageSource", appPackage.Source, "version", appPackage.Version, "packageDir", appPackage.PackageDir, "failureReason", err.Error(), "durationMs", time.Since(startedAt).Milliseconds(), "error", err)

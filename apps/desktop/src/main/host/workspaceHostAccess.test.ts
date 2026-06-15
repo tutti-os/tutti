@@ -26,13 +26,13 @@ function createTransportClient(
     async listCliCapabilities() {
       throw new Error("not used");
     },
-    async searchWorkspaceAppReferences() {
-      throw new Error("not used");
-    },
     async addWorkspaceIssueContextRefs() {
       throw new Error("not used");
     },
     async addWorkspaceIssueTaskContextRefs() {
+      throw new Error("not used");
+    },
+    async listWorkspaceAppReferences() {
       throw new Error("not used");
     },
     async installWorkspaceApp() {

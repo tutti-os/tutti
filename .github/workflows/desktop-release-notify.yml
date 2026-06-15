@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Desktop release tag to notify, such as tutti-desktop-v0.0.1-rc.12
+        description: Desktop release tag to notify, such as v0.0.1-rc.12
         required: true
         type: string
       target_commitish:

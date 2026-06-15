@@ -23,7 +23,7 @@ test("claimDesktopRelease retries auto rc releases until a unique tag is reserve
   });
 
   assert.equal(release.version, "1.12.21-rc.1");
-  assert.equal(release.tag, "tutti-desktop-v1.12.21-rc.1");
+  assert.equal(release.tag, "v1.12.21-rc.1");
   assert.equal(release.prerelease, true);
   assert.equal(release.makeLatest, false);
   assert.equal(reserveAttempts, 2);
@@ -34,11 +34,11 @@ test("claimDesktopRelease fails explicit versions when the tag is already reserv
     claimDesktopRelease({
       currentVersion: "0.0.0",
       explicitVersion: "1.12.21-rc.3",
-      listTags: async () => ["tutti-desktop-v1.12.21-rc.3"],
+      listTags: async () => ["v1.12.21-rc.3"],
       reserveTag: async () => false,
       strategy: "explicit_version"
     }),
-    /Release tag already exists: tutti-desktop-v1.12.21-rc.3/
+    /Release tag already exists: v1.12.21-rc.3/
   );
 });
 

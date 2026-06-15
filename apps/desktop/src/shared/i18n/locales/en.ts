@@ -5,6 +5,7 @@ export const en = {
     defaultWorkspace: "default",
     loading: "Loading",
     neverOpened: "Never opened",
+    ok: "OK",
     selectFolder: "Select folder",
     unknownError: "Unknown error",
     unreachable: "unreachable",
@@ -57,14 +58,14 @@ export const en = {
     workspaceCountNote: "{{count}} recent workspaces are currently available"
   },
   updates: {
-    availableTitle: "Version {{version}} is available",
+    availableTitle: "New version available",
     badge: "update",
     checkingTitle: "Checking for updates",
-    downloadAction: "Download",
-    downloadedTitle: "Version {{version}} is ready to install",
-    downloadingTitle: "Downloading {{version}} {{percent}}",
+    downloadAction: "Download update",
+    downloadedTitle: "Update ready to install",
+    downloadingTitle: "Downloading {{percent}}",
     errorTitle: "Unable to check for updates",
-    restartAction: "Restart",
+    restartAction: "Install update",
     retryAction: "Retry"
   },
   desktop: {
@@ -92,12 +93,15 @@ export const en = {
       title: "Export Logs"
     },
     menu: {
+      checkForUpdates: "Check for Updates...",
       edit: "Edit",
       exportLogsFailed: "Unable to export logs",
       exportLogsTitle: "Export Logs",
       exportServiceLogs: "Export Service Logs...",
       file: "File",
       help: "Help",
+      upToDateDetail: "Tutti {{version}} is currently the latest version.",
+      upToDateMessage: "You're up to date!",
       view: "View",
       window: "Window"
     }
@@ -163,7 +167,7 @@ export const en = {
       title: "Analytics events"
     },
     appCenter: {
-      dockLabel: "Applications"
+      dockLabel: "App Center"
     },
     info: {
       idDescription: "Stable identifier for preload and daemon coordination.",
@@ -293,7 +297,10 @@ export const en = {
           whileAgentRunning: "While agents run"
         },
         preventSleepSaveFailed:
-          "We couldn't update the sleep prevention setting right now."
+          "We couldn't update the sleep prevention setting right now.",
+        updateChannelSaveFailed:
+          "We couldn't update the release channel right now.",
+        updatePolicySaveFailed: "We couldn't update the update mode right now."
       },
       nav: {
         agent: "Agent",
@@ -308,10 +315,10 @@ export const en = {
           apiKey: "API key",
           baseUrl: "Base URL",
           customProvider: "Custom provider",
-          delete: "Delete",
-          deleting: "Deleting...",
-          deleteFailed: "We couldn't delete that managed provider.",
-          deleteSucceeded: "Managed provider deleted.",
+          delete: "Clear",
+          deleting: "Clearing...",
+          deleteFailed: "We couldn't clear that managed provider.",
+          deleteSucceeded: "Managed provider cleared.",
           addModel: "Add",
           description:
             "Store provider credentials in Tutti and let workspace apps request short-lived access.",
@@ -342,6 +349,7 @@ export const en = {
             openaiOfficial: "OpenAI official"
           },
           removeModel: "Remove model",
+          requiredFieldsMissing: "Fill in API key and Base URL first.",
           quickFillProvider: "Quick fill provider",
           save: "Save",
           saveFailed: "We couldn't save that managed provider.",
@@ -404,7 +412,7 @@ export const en = {
       },
       nodes: {
         agent: "Agent",
-        appCenter: "Applications",
+        appCenter: "App Center",
         appWebview: "Workspace app",
         browser: "Browser",
         files: "Files",

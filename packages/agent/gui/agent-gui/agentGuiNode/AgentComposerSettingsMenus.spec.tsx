@@ -1376,7 +1376,7 @@ describe("AgentModelReasoningDropdown", () => {
 
   it("shows model and reasoning together in the trigger", () => {
     renderModelReasoning();
-    expect(modelReasoningTrigger()).toHaveTextContent(/Gpt-5\.5\s*High/);
+    expect(modelReasoningTrigger()).toHaveTextContent(/GPT-5\.5\s*High/);
   });
 
   it("shows the fast lightning indicator only when speed is fast", () => {
@@ -1405,10 +1405,10 @@ describe("AgentModelReasoningDropdown", () => {
     renderModelReasoning({}, onSettingsChange);
     openModelReasoningMenu();
     const current = await screen.findByRole("menuitem", {
-      name: /Gpt-5\.5/
+      name: /GPT-5\.5/
     });
     expect(current).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitem", { name: /Gpt-5\.4/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /GPT-5\.4/ }));
     expect(onSettingsChange).toHaveBeenCalledWith({ model: "gpt-5.4" });
   });
 

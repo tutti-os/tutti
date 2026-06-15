@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type {
-  AgentRichTextAtProvider,
-  AgentRichTextAtReferenceItemsResult
-} from "@tutti-os/agent-gui/agent-rich-text-at-provider";
+import type { AgentRichTextAtProvider } from "@tutti-os/agent-gui/agent-rich-text-at-provider";
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import { createDesktopWorkspaceAppMentionProvider } from "./desktopWorkspaceAppMentionProvider.ts";
 
@@ -60,9 +57,7 @@ test("workspace app mention provider uses localized Chinese app text", async () 
         commandSummaries: "Run automation",
         description: "管理工作区自动化任务。",
         iconUrl: "",
-        referencesSearchSupported: "false",
         scopes: "automation",
-        version: "",
         workspaceId: "workspace-1"
       }
     }
@@ -234,65 +229,6 @@ test("workspace app mention provider does not truncate CLI apps with maxResults"
   assert.deepEqual(requestedMaxResults, [undefined]);
 });
 
-test("workspace app mention provider forwards base provider child reference query", async () => {
-  const provider = createDesktopWorkspaceAppMentionProvider({
-    apps: [
-      createWorkspaceApp({
-        appId: "automation",
-        name: "Automation",
-        references: { searchSupported: true },
-        version: "1.0.0"
-      })
-    ],
-    baseProvider: {
-      ...createBaseWorkspaceAppProvider([
-        {
-          appId: "automation",
-          label: "Automation"
-        }
-      ]),
-      getItemReferenceItems(item, input) {
-        return {
-          items: [
-            {
-              key: `${item.appId}:${input.keyword}:${input.cursor ?? ""}`,
-              label: "Guide",
-              insertResult: {
-                kind: "markdown-link",
-                label: "Guide",
-                href: "guide.md"
-              }
-            }
-          ],
-          nextCursor: "cursor-2"
-        };
-      }
-    },
-    locale: "en-US",
-    workspaceId: "workspace-1"
-  });
-
-  const [item] = await provider.query({
-    context: {},
-    keyword: "",
-    maxResults: 10
-  });
-  assert.ok(item);
-
-  const references = await provider.getItemReferenceItems?.(item, {
-    context: {},
-    cursor: "cursor-1",
-    keyword: "guide",
-    maxResults: 5
-  });
-
-  assert.ok(references && !Array.isArray(references));
-  const referenceResult = references as AgentRichTextAtReferenceItemsResult;
-  assert.equal(referenceResult.nextCursor, "cursor-2");
-  assert.equal(referenceResult.items[0]?.label, "Guide");
-  assert.equal(referenceResult.items[0]?.key, "automation:guide:cursor-1");
-});
-
 function createWorkspaceApp(
   overrides: Partial<WorkspaceAppCenterApp>
 ): WorkspaceAppCenterApp {
@@ -306,11 +242,11 @@ function createWorkspaceApp(
     localizations: [],
     minimizeBehavior: "keep-mounted",
     name: "App",
-    references: { searchSupported: false },
     runtimeStatus: "idle",
     source: "builtin",
     stateRevision: 1,
-    ...overrides
+    ...overrides,
+    references: overrides.references ?? { listSupported: false }
   };
 }
 

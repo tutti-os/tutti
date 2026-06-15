@@ -13,7 +13,7 @@ test("stable releases stay latest and are not prereleases", () => {
   assert.deepEqual(release, {
     makeLatest: true,
     prerelease: false,
-    tag: "tutti-desktop-v1.12.20",
+    tag: "v1.12.20",
     version: "1.12.20"
   });
 });
@@ -29,7 +29,7 @@ test("rc releases are marked as prereleases and do not become latest", () => {
   assert.deepEqual(release, {
     makeLatest: false,
     prerelease: true,
-    tag: "tutti-desktop-v1.12.19-rc.0",
+    tag: "v1.12.19-rc.0",
     version: "1.12.19-rc.0"
   });
 });
@@ -48,7 +48,7 @@ test("patch rc releases increment the rc number for the next stable version", ()
   assert.deepEqual(release, {
     makeLatest: false,
     prerelease: true,
-    tag: "tutti-desktop-v1.12.21-rc.2",
+    tag: "v1.12.21-rc.2",
     version: "1.12.21-rc.2"
   });
 });
@@ -67,7 +67,7 @@ test("stable patch releases ignore rc tags when resolving the next latest releas
   assert.deepEqual(release, {
     makeLatest: true,
     prerelease: false,
-    tag: "tutti-desktop-v1.12.21",
+    tag: "v1.12.21",
     version: "1.12.21"
   });
 });
