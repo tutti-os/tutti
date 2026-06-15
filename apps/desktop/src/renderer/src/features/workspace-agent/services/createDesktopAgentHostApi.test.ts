@@ -981,7 +981,9 @@ test("desktop agent host api loads composer options through tuttid without creat
     }
   });
 
-  assert.deepEqual(options.models, [{ value: "gpt-5", label: "gpt-5" }]);
+  // The live agent's advertised model list takes precedence over the static
+  // catalog, so the display name comes from runtimeContext.configOptions.
+  assert.deepEqual(options.models, [{ value: "gpt-5", label: "GPT-5" }]);
   assert.deepEqual(options.reasoningEfforts, [
     { value: "high", label: "high" }
   ]);

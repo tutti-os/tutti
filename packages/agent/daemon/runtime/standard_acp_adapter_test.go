@@ -2175,6 +2175,87 @@ func TestClaudeCodeAdapterApplySessionSettingsRejectsCustomModel(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeAdapterApplySessionSettingsSwitchesToAdvertisedModel(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-advertised-model")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.Settings = &SessionSettings{
+		Model: "sonnet",
+	}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// The live agent advertises a concrete model id (e.g. Opus 4.6) that is
+	// not one of the static aliases.
+	adapter.applyACPUpdate(session.AgentSessionID, json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "config_option_update",
+			"key": "model",
+			"value": "default",
+			"configOptions": [
+				{
+					"id": "model",
+					"currentValue": "default",
+					"options": [
+						{"value": "default", "name": "Default"},
+						{"value": "claude-opus-4-6", "name": "Opus 4.6"}
+					]
+				}
+			]
+		}
+	}`))
+
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		Model: stringPtr("claude-opus-4-6"),
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings should switch to an advertised model, got: %v", err)
+	}
+
+	calls := transport.conn.setConfigOptionCalls()
+	if len(calls) == 0 {
+		t.Fatal("config option calls = none, want an advertised model switch call")
+	}
+	last := calls[len(calls)-1]
+	if got, _ := last["configId"].(string); got != "model" {
+		t.Fatalf("config id = %q, want model", got)
+	}
+	if got, _ := last["value"].(string); got != "claude-opus-4-6" {
+		t.Fatalf("config value = %q, want claude-opus-4-6", got)
+	}
+}
+
+func TestClaudeCodeAdapterStartToleratesRejectedModelConfig(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-reject-model")
+	transport.conn.rejectModelValue = "opus"
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.Settings = &SessionSettings{
+		Model: "opus",
+	}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start should tolerate a rejected model config option, got: %v", err)
+	}
+
+	if adapter.getSession(session.AgentSessionID) == nil {
+		t.Fatal("session should remain live after a tolerated model rejection")
+	}
+
+	calls := transport.conn.setConfigOptionCalls()
+	if len(calls) != 1 {
+		t.Fatalf("config option calls = %#v, want one rejected model attempt", calls)
+	}
+	if got, _ := calls[0]["value"].(string); got != "opus" {
+		t.Fatalf("config value = %q, want opus", got)
+	}
+}
+
 func configOptionDescriptorValues(descriptors []map[string]any, configID string) []string {
 	for _, descriptor := range descriptors {
 		if strings.TrimSpace(asString(descriptor["id"])) != configID {
@@ -2521,6 +2602,7 @@ type standardACPConnection struct {
 	lastAuthenticatedMethodID    string
 	setModeError                 *acpError
 	loadSessionError             *acpError
+	rejectModelValue             string
 	supportsLoadSession          bool
 	isClosed                     bool
 	lastNewSessionParams         map[string]any
@@ -2672,7 +2754,24 @@ func (c *standardACPConnection) Send(data []byte) error {
 			if request.Params != nil {
 				c.setConfigOptionSnapshots = append(c.setConfigOptionSnapshots, maps.Clone(request.Params))
 			}
+			rejectModelValue := c.rejectModelValue
 			c.mu.Unlock()
+			if rejectModelValue != "" && request.Params != nil {
+				configID, _ := request.Params["configId"].(string)
+				value, _ := request.Params["value"].(string)
+				if configID == "model" && value == rejectModelValue {
+					c.sendJSON(map[string]any{
+						"jsonrpc": "2.0",
+						"id":      message.ID,
+						"error": &acpError{
+							Code:    -32603,
+							Message: "Internal error",
+							Data:    json.RawMessage(`{"details":"Invalid value for config option model: ` + value + `"}`),
+						},
+					})
+					return nil
+				}
+			}
 			c.sendJSON(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      message.ID,

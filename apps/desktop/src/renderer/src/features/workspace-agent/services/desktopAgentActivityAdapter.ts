@@ -237,6 +237,13 @@ function agentActivityComposerOptionsFromTuttidResult(
   const modelConfig = recordValue(result.modelConfig);
   const reasoningConfig = recordValue(result.reasoningConfig);
   const modelsFromConfig = settingOptionsFromComposerConfig(modelConfig);
+  // The live agent's advertised model list reflects the models the running
+  // session can actually use (e.g. concrete ids like Opus 4.6), so it takes
+  // precedence over the pre-session static catalog when present. The static
+  // list remains the fallback before a session has advertised its options.
+  const modelsFromLiveConfig = settingOptionsFromConfigOption(rawConfigOptions, [
+    "model"
+  ]);
   const reasoningEffortsFromConfig =
     settingOptionsFromComposerConfig(reasoningConfig);
   const skillsFromResult = skillOptionsFromValue(result.skills);
@@ -244,9 +251,9 @@ function agentActivityComposerOptionsFromTuttidResult(
   return {
     provider: normalizeText(result.provider) ?? provider,
     models:
-      modelsFromConfig.length > 0
-        ? modelsFromConfig
-        : settingOptionsFromConfigOption(rawConfigOptions, ["model"]),
+      modelsFromLiveConfig.length > 0
+        ? modelsFromLiveConfig
+        : modelsFromConfig,
     reasoningEfforts:
       reasoningEffortsFromConfig.length > 0
         ? reasoningEffortsFromConfig

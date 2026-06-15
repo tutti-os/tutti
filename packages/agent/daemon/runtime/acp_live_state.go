@@ -474,6 +474,46 @@ func acpConfigOptionMatches(state acpLiveState, configID string, value string) b
 	return ok && strings.TrimSpace(asString(got)) == strings.TrimSpace(value)
 }
 
+// acpConfigOptionAdvertisesValue reports whether the live agent has advertised
+// value as a selectable option for configID (e.g. a concrete model id in the
+// "model" option). It lets callers accept any value the running agent will
+// actually honor, instead of relying on a hardcoded alias list.
+func acpConfigOptionAdvertisesValue(state acpLiveState, configID string, value string) bool {
+	configID = strings.TrimSpace(configID)
+	value = strings.TrimSpace(value)
+	if configID == "" || value == "" {
+		return false
+	}
+	for _, descriptor := range state.configOptionDescriptors {
+		if strings.TrimSpace(asString(descriptor["id"])) != configID {
+			continue
+		}
+		for _, option := range configOptionEntries(descriptor["options"]) {
+			if strings.TrimSpace(asString(option["value"])) == value {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func configOptionEntries(options any) []map[string]any {
+	switch items := options.(type) {
+	case []map[string]any:
+		return items
+	case []any:
+		out := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			if option, ok := item.(map[string]any); ok {
+				out = append(out, option)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
 func cloneConfigOptionDescriptors(descriptors []map[string]any) []map[string]any {
 	if len(descriptors) == 0 {
 		return nil

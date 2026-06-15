@@ -1038,17 +1038,23 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 		"model_requested":      strings.TrimSpace(settings.Model) != "",
 		"effort_requested":     strings.TrimSpace(settings.ReasoningEffort) != "",
 	})
+	// Startup config options are applied best-effort: a value the agent
+	// rejects (e.g. a model alias the signed-in account cannot access) must
+	// not abort the whole session. The session stays usable on the agent's
+	// default, and the user can pick a supported value from the live list.
 	if model := strings.TrimSpace(settings.Model); model != "" && a.shouldApplyACPModelConfigOption(model, supported) {
 		if err := a.setSessionConfigOption(ctx, client, session, "model", model); err != nil {
-			return fmt.Errorf("agent session ACP model configuration failed: %w", err)
+			a.logStartupConfigOptionRejected(session, "model", model, err)
+		} else {
+			a.updateSessionConfigOption(session.AgentSessionID, "model", model)
 		}
-		a.updateSessionConfigOption(session.AgentSessionID, "model", model)
 	}
 	if reasoning := strings.TrimSpace(settings.ReasoningEffort); reasoning != "" && supported["effort"] {
 		if err := a.setSessionConfigOption(ctx, client, session, "effort", reasoning); err != nil {
-			return fmt.Errorf("agent session ACP effort configuration failed: %w", err)
+			a.logStartupConfigOptionRejected(session, "effort", reasoning, err)
+		} else {
+			a.updateSessionConfigOption(session.AgentSessionID, "effort", reasoning)
 		}
-		a.updateSessionConfigOption(session.AgentSessionID, "effort", reasoning)
 	}
 	a.logHermesStartupDiagnostics("config_options.succeeded", map[string]any{
 		"room_id":             session.RoomID,
@@ -1056,6 +1062,25 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 		"provider_session_id": session.ProviderSessionID,
 	})
 	return nil
+}
+
+func (a *standardACPAdapter) logStartupConfigOptionRejected(
+	session Session,
+	configID string,
+	value string,
+	err error,
+) {
+	slog.Warn("agent session ACP startup config option rejected; continuing on agent default",
+		"event", "agent_session.acp.config_option.rejected",
+		"provider", a.config.provider,
+		"adapter", a.config.adapterName,
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"provider_session_id", session.ProviderSessionID,
+		"config_id", configID,
+		"value", value,
+		"error", err.Error(),
+	)
 }
 
 func (a *standardACPAdapter) shouldApplyACPModelConfigOption(model string, supported map[string]bool) bool {
@@ -1172,11 +1197,16 @@ func (a *standardACPAdapter) ApplySessionSettings(
 
 	if patch.Model != nil {
 		model := strings.TrimSpace(*patch.Model)
-		if a.config.provider == ProviderClaudeCode && model != "" && !claudeCodeACPModelAliases[model] {
+		// A model the live agent advertises as a selectable option can be
+		// switched in place via set_config_option, even if it is a concrete id
+		// (e.g. Opus 4.6) rather than one of the static aliases. Only models the
+		// running agent has not advertised still require a fresh session.
+		advertised := a.sessionConfigOptionAdvertisesValue(session.AgentSessionID, "model", model)
+		if a.config.provider == ProviderClaudeCode && model != "" && !claudeCodeACPModelAliases[model] && !advertised {
 			return errors.New("claude code custom model changes require a new session")
 		}
 		supported := map[string]bool{"model": true}
-		if a.shouldApplyACPModelConfigOption(model, supported) {
+		if advertised || a.shouldApplyACPModelConfigOption(model, supported) {
 			if !a.sessionConfigOptionMatches(session.AgentSessionID, "model", model) {
 				if err := a.setSessionConfigOption(ctx, acpSession.client, session, "model", model); err != nil {
 					return fmt.Errorf("agent session ACP model configuration failed: %w", err)
@@ -1702,6 +1732,19 @@ func (a *standardACPAdapter) sessionConfigOptionMatches(agentSessionID string, c
 		return false
 	}
 	return acpConfigOptionMatches(session.acpLiveState, configID, value)
+}
+
+func (a *standardACPAdapter) sessionConfigOptionAdvertisesValue(agentSessionID string, configID string, value string) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.sessions[strings.TrimSpace(agentSessionID)]
+	if session == nil {
+		return false
+	}
+	return acpConfigOptionAdvertisesValue(session.acpLiveState, configID, value)
 }
 
 func (a *standardACPAdapter) removeSession(agentSessionID string) {

@@ -34,11 +34,10 @@ func readClaudeCodeConfiguredDefaultModel() string {
 		claudeConfigDir = filepath.Join(home, ".claude")
 	}
 	settings := readJSONRecord(filepath.Join(claudeConfigDir, "settings.json"))
-	model := normalizeModelID(settings["model"])
-	if model == "" || !claudeCodeStaticModelExists(model) {
-		return ""
-	}
-	return model
+	// Keep whatever model the user configured, including a concrete id
+	// (e.g. claude-opus-4-6) that is not one of the static aliases. Dropping it
+	// here is what hid the user's chosen model from the composer catalog.
+	return normalizeModelID(settings["model"])
 }
 
 func readGeminiConfiguredDefaultModel() string {

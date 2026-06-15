@@ -465,6 +465,59 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
   ]);
 });
 
+test("desktop agent activity adapter prefers live model list over static catalog", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async getAgentProviderComposerOptions(provider) {
+        return {
+          provider,
+          effectiveSettings: {},
+          modelConfig: {
+            configurable: true,
+            currentValue: "default",
+            options: [
+              { id: "default", value: "default", label: "default" },
+              { id: "opus", value: "opus", label: "opus" }
+            ]
+          },
+          permissionConfig: {
+            configurable: false,
+            modes: []
+          },
+          reasoningConfig: {
+            configurable: true,
+            options: []
+          },
+          runtimeContext: {
+            configOptions: [
+              {
+                id: "model",
+                currentValue: "default",
+                options: [
+                  { value: "default", name: "Default" },
+                  { value: "claude-opus-4-6", name: "Opus 4.6" }
+                ]
+              }
+            ]
+          },
+          skills: []
+        };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const options = await adapter.loadComposerOptions({
+    workspaceId,
+    provider: "claude-code"
+  });
+
+  assert.deepEqual(options.models, [
+    { value: "default", label: "Default" },
+    { value: "claude-opus-4-6", label: "Opus 4.6" }
+  ]);
+});
+
 function createTuttidClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {

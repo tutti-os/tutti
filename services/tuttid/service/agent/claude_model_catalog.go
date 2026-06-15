@@ -41,12 +41,3 @@ func listClaudeCodeModels() []AgentModelOption {
 		"Claude Code model alias",
 	)
 }
-
-func claudeCodeStaticModelExists(model string) bool {
-	for _, option := range claudeCodeStaticModels {
-		if option.ID == model {
-			return true
-		}
-	}
-	return false
-}
