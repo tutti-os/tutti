@@ -24,6 +24,11 @@ on:
         required: false
         type: string
         default: tutti-rd
+      official_member_logins:
+        description: Comma or whitespace separated logins that count as internal authors and reviewers.
+        required: false
+        type: string
+        default: ""
       status_context:
         description: Commit status context used by branch protection.
         required: false
@@ -47,6 +52,7 @@ jobs:
             const org = context.repo.owner;
             const repo = context.repo.repo;
             const teamSlug = '${{ inputs.review_team_slug }}';
+            const officialMemberLogins = '${{ inputs.official_member_logins }}';
             const statusContext = '${{ inputs.status_context }}';
             const prNumber = Number('${{ inputs.pr_number }}');
             const author = '${{ inputs.pr_author }}';
@@ -66,27 +72,26 @@ jobs:
               });
             }
 
+            const officialLogins = new Set(
+              officialMemberLogins
+                .split(/[\s,]+/)
+                .map((login) => login.trim())
+                .filter(Boolean),
+            );
+
+            if (officialLogins.size === 0) {
+              await setGateStatus('failure', 'TUTTI_RD_MEMBERS is not configured.');
+              core.setFailed('official_member_logins is empty; configure TUTTI_RD_MEMBERS for this repository or organization.');
+              return;
+            }
+
             if (isDraft) {
               await setGateStatus('success', 'Draft PRs are not gated until ready for review.');
               core.info('Draft PR; review gate is not enforced yet.');
               return;
             }
 
-            let isOfficial = false;
-            try {
-              const membership = await github.rest.teams.getMembershipForUserInOrg({
-                org,
-                team_slug: teamSlug,
-                username: author,
-              });
-              isOfficial = membership.data.state === 'active';
-            } catch (error) {
-              if (error.status !== 404) {
-                throw error;
-              }
-            }
-
-            if (isOfficial) {
+            if (officialLogins.has(author)) {
               await setGateStatus('success', `${author} is in ${org}/${teamSlug}.`);
               core.info(`${author} is in ${org}/${teamSlug}; no review request needed.`);
               return;
@@ -108,12 +113,6 @@ jobs:
               }
             }
 
-            const teamMembers = await github.paginate(github.rest.teams.listMembersInOrg, {
-              org,
-              team_slug: teamSlug,
-              per_page: 100,
-            });
-            const officialLogins = new Set(teamMembers.map((member) => member.login));
             const reviews = await github.paginate(github.rest.pulls.listReviews, {
               owner: org,
               repo,

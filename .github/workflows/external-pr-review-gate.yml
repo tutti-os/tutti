@@ -27,4 +27,5 @@ jobs:
       pr_head_sha: ${{ github.event.pull_request.head.sha }}
       pr_is_draft: ${{ github.event.pull_request.draft }}
       review_team_slug: tutti-rd
+      official_member_logins: ${{ vars.TUTTI_RD_MEMBERS }}
       status_context: external-pr-review-gate
