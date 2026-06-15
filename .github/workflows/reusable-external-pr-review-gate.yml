@@ -45,6 +45,62 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Create review app token
+        id: review-app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.TUTTI_REVIEW_APP_ID }}
+          private-key: ${{ secrets.TUTTI_REVIEW_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-pull-requests: write
+
+      - name: Request official review for external PRs
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.review-app-token.outputs.token }}
+          script: |
+            const org = context.repo.owner;
+            const repo = context.repo.repo;
+            const teamSlug = '${{ inputs.review_team_slug }}';
+            const officialMemberLogins = '${{ inputs.official_member_logins }}';
+            const prNumber = Number('${{ inputs.pr_number }}');
+            const author = '${{ inputs.pr_author }}';
+            const isDraft = '${{ inputs.pr_is_draft }}' === 'true';
+
+            const officialLogins = new Set(
+              officialMemberLogins
+                .split(/[\s,]+/)
+                .map((login) => login.trim())
+                .filter(Boolean),
+            );
+
+            if (isDraft) {
+              core.info('Draft PR; review request is skipped until ready for review.');
+              return;
+            }
+
+            if (officialLogins.has(author)) {
+              core.info(`${author} is in ${org}/${teamSlug}; no review request needed.`);
+              return;
+            }
+
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner: org,
+                repo,
+                pull_number: prNumber,
+                team_reviewers: [teamSlug],
+              });
+              core.info(`Requested ${org}/${teamSlug} review for PR from ${author}.`);
+            } catch (error) {
+              if (error.status === 422) {
+                core.info(`Review request already exists or cannot be added: ${error.message}`);
+              } else {
+                throw error;
+              }
+            }
+
       - name: Enforce official review for external PRs
         uses: actions/github-script@v8
         with:
@@ -95,22 +151,6 @@ jobs:
               await setGateStatus('success', `${author} is in ${org}/${teamSlug}.`);
               core.info(`${author} is in ${org}/${teamSlug}; no review request needed.`);
               return;
-            }
-
-            try {
-              await github.rest.pulls.requestReviewers({
-                owner: org,
-                repo,
-                pull_number: prNumber,
-                team_reviewers: [teamSlug],
-              });
-              core.info(`Requested ${org}/${teamSlug} review for PR from ${author}.`);
-            } catch (error) {
-              if (error.status === 422) {
-                core.info(`Review request already exists or cannot be added: ${error.message}`);
-              } else {
-                throw error;
-              }
             }
 
             const reviews = await github.paginate(github.rest.pulls.listReviews, {

@@ -20,7 +20,8 @@ permissions:
 
 jobs:
   external-pr-review-gate:
-    uses: tutti-os/tutti/.github/workflows/reusable-external-pr-review-gate.yml@main
+    uses: ./.github/workflows/reusable-external-pr-review-gate.yml
+    secrets: inherit
     with:
       pr_number: ${{ github.event.pull_request.number }}
       pr_author: ${{ github.event.pull_request.user.login }}
