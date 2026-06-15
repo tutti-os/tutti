@@ -1,0 +1,153 @@
+name: Reusable External PR Review Gate
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: Pull request number to evaluate.
+        required: true
+        type: number
+      pr_author:
+        description: Pull request author login.
+        required: true
+        type: string
+      pr_head_sha:
+        description: Pull request current head commit SHA.
+        required: true
+        type: string
+      pr_is_draft:
+        description: Whether the pull request is currently a draft.
+        required: true
+        type: boolean
+      review_team_slug:
+        description: Organization team slug that owns external contribution review.
+        required: false
+        type: string
+        default: tutti-rd
+      status_context:
+        description: Commit status context used by branch protection.
+        required: false
+        type: string
+        default: external-pr-review-gate
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+
+jobs:
+  external-pr-review-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Enforce official review for external PRs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const org = context.repo.owner;
+            const repo = context.repo.repo;
+            const teamSlug = '${{ inputs.review_team_slug }}';
+            const statusContext = '${{ inputs.status_context }}';
+            const prNumber = Number('${{ inputs.pr_number }}');
+            const author = '${{ inputs.pr_author }}';
+            const headSha = '${{ inputs.pr_head_sha }}';
+            const isDraft = '${{ inputs.pr_is_draft }}' === 'true';
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${org}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
+            async function setGateStatus(state, description) {
+              await github.rest.repos.createCommitStatus({
+                owner: org,
+                repo,
+                sha: headSha,
+                state,
+                context: statusContext,
+                description,
+                target_url: runUrl,
+              });
+            }
+
+            if (isDraft) {
+              await setGateStatus('success', 'Draft PRs are not gated until ready for review.');
+              core.info('Draft PR; review gate is not enforced yet.');
+              return;
+            }
+
+            let isOfficial = false;
+            try {
+              const membership = await github.rest.teams.getMembershipForUserInOrg({
+                org,
+                team_slug: teamSlug,
+                username: author,
+              });
+              isOfficial = membership.data.state === 'active';
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+            if (isOfficial) {
+              await setGateStatus('success', `${author} is in ${org}/${teamSlug}.`);
+              core.info(`${author} is in ${org}/${teamSlug}; no review request needed.`);
+              return;
+            }
+
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner: org,
+                repo,
+                pull_number: prNumber,
+                team_reviewers: [teamSlug],
+              });
+              core.info(`Requested ${org}/${teamSlug} review for PR from ${author}.`);
+            } catch (error) {
+              if (error.status === 422) {
+                core.info(`Review request already exists or cannot be added: ${error.message}`);
+              } else {
+                throw error;
+              }
+            }
+
+            const teamMembers = await github.paginate(github.rest.teams.listMembersInOrg, {
+              org,
+              team_slug: teamSlug,
+              per_page: 100,
+            });
+            const officialLogins = new Set(teamMembers.map((member) => member.login));
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner: org,
+              repo,
+              pull_number: prNumber,
+              per_page: 100,
+            });
+
+            const latestDecisionByReviewer = new Map();
+            for (const review of reviews) {
+              const reviewer = review.user?.login;
+              if (!reviewer || !officialLogins.has(reviewer)) {
+                continue;
+              }
+              if (review.commit_id !== headSha) {
+                continue;
+              }
+              if (!['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)) {
+                continue;
+              }
+              latestDecisionByReviewer.set(reviewer, review.state);
+            }
+
+            const latestDecisions = Array.from(latestDecisionByReviewer.values());
+            if (latestDecisions.includes('CHANGES_REQUESTED')) {
+              await setGateStatus('failure', `External PR has changes requested by ${teamSlug}.`);
+              core.setFailed(`External PR #${prNumber} has changes requested by ${org}/${teamSlug}.`);
+              return;
+            }
+
+            if (latestDecisions.includes('APPROVED')) {
+              await setGateStatus('success', `External PR approved by ${teamSlug}.`);
+              core.info(`External PR #${prNumber} has ${org}/${teamSlug} approval for ${headSha}.`);
+              return;
+            }
+
+            await setGateStatus('failure', `External PR requires ${teamSlug} approval.`);
+            core.setFailed(`External PR #${prNumber} requires approval from ${org}/${teamSlug}.`);
