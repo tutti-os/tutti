@@ -45,7 +45,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Determine whether review request is needed
+        id: review-request-needed
+        uses: actions/github-script@v8
+        with:
+          result-encoding: string
+          script: |
+            const teamSlug = '${{ inputs.review_team_slug }}';
+            const officialMemberLogins = '${{ inputs.official_member_logins }}';
+            const author = '${{ inputs.pr_author }}';
+            const isDraft = '${{ inputs.pr_is_draft }}' === 'true';
+
+            const officialLogins = new Set(
+              officialMemberLogins
+                .split(/[\s,]+/)
+                .map((login) => login.trim())
+                .filter(Boolean),
+            );
+
+            if (officialLogins.size === 0) {
+              core.info('TUTTI_RD_MEMBERS is empty; skip review request and let enforcement fail clearly.');
+              return 'false';
+            }
+
+            if (isDraft) {
+              core.info('Draft PR; review request is skipped until ready for review.');
+              return 'false';
+            }
+
+            if (officialLogins.has(author)) {
+              core.info(`${author} is in ${context.repo.owner}/${teamSlug}; no review request needed.`);
+              return 'false';
+            }
+
+            core.info(`${author} is external; ${context.repo.owner}/${teamSlug} review request is needed.`);
+            return 'true';
+
       - name: Create review app token
+        if: ${{ steps.review-request-needed.outputs.result == 'true' }}
         id: review-app-token
         uses: actions/create-github-app-token@v3
         with:
@@ -56,6 +93,7 @@ jobs:
           permission-pull-requests: write
 
       - name: Request official review for external PRs
+        if: ${{ steps.review-request-needed.outputs.result == 'true' }}
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.review-app-token.outputs.token }}
