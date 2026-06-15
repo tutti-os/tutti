@@ -52,7 +52,6 @@ jobs:
           app-id: ${{ vars.TUTTI_REVIEW_APP_ID }}
           private-key: ${{ secrets.TUTTI_REVIEW_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
           permission-members: read
           permission-pull-requests: write
 
