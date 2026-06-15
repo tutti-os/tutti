@@ -1,5 +1,26 @@
 import type { AppCenterViewModel } from "../contracts/viewModel.ts";
 
+const installableRecommendedAppIds = [
+  ["ai-media-canvas", "media-canvas"],
+  ["vibe-design"],
+  ["group-chat"],
+  ["automation"],
+  ["daily-product-radar", "daily-tech-radar", "radar"]
+] as const;
+
+const comingSoonRecommendedAppIds = [
+  "ai-ppt",
+  "ai-document",
+  "ai-sheet",
+  "open-cut",
+  "product-competition",
+  "design-review",
+  "calendar",
+  "document-summarizer"
+] as const;
+
+const recommendedAppDisplayRankById = buildRecommendedAppDisplayRankById();
+
 export function sortMyAppsByCreatedDesc(
   apps: readonly AppCenterViewModel["apps"][number][]
 ): AppCenterViewModel["apps"] {
@@ -20,41 +41,83 @@ export function sortMyAppsByCreatedDesc(
 export function sortRecommendedApps(
   apps: readonly AppCenterViewModel["apps"][number][]
 ): AppCenterViewModel["apps"] {
-  return [...apps].sort((left, right) => {
-    const categoryOrder =
-      getRecommendedAppCategoryRank(left) -
-      getRecommendedAppCategoryRank(right);
-    if (categoryOrder !== 0) {
-      return categoryOrder;
-    }
-    const comingSoonOrder =
-      getRecommendedAppComingSoonRank(left) -
-      getRecommendedAppComingSoonRank(right);
-    if (comingSoonOrder !== 0) {
-      return comingSoonOrder;
-    }
-    return left.name.localeCompare(right.name);
-  });
+  return [...apps].sort(compareRecommendedApps);
 }
 
 export function sortRecommendedAppsForAllTab(
   apps: readonly AppCenterViewModel["apps"][number][]
 ): AppCenterViewModel["apps"] {
-  return [...apps].sort((left, right) => {
-    const comingSoonOrder =
-      getRecommendedAppComingSoonRank(left) -
-      getRecommendedAppComingSoonRank(right);
-    if (comingSoonOrder !== 0) {
-      return comingSoonOrder;
+  return [...apps].sort(compareRecommendedApps);
+}
+
+function compareRecommendedApps(
+  left: AppCenterViewModel["apps"][number],
+  right: AppCenterViewModel["apps"][number]
+): number {
+  const sectionOrder =
+    getRecommendedAppSectionRank(left) - getRecommendedAppSectionRank(right);
+  if (sectionOrder !== 0) {
+    return sectionOrder;
+  }
+
+  const displayOrder =
+    getRecommendedAppDisplayRank(left.id) -
+    getRecommendedAppDisplayRank(right.id);
+  if (displayOrder !== 0) {
+    return displayOrder;
+  }
+
+  const comingSoonOrder =
+    getRecommendedAppComingSoonRank(left) -
+    getRecommendedAppComingSoonRank(right);
+  if (comingSoonOrder !== 0) {
+    return comingSoonOrder;
+  }
+
+  return left.name.localeCompare(right.name);
+}
+
+function buildRecommendedAppDisplayRankById(): Map<string, number> {
+  const rankById = new Map<string, number>();
+  let rank = 0;
+
+  for (const aliases of installableRecommendedAppIds) {
+    for (const appId of aliases) {
+      rankById.set(appId, rank);
     }
-    const categoryOrder =
-      getRecommendedAppCategoryRank(left) -
-      getRecommendedAppCategoryRank(right);
-    if (categoryOrder !== 0) {
-      return categoryOrder;
-    }
-    return left.name.localeCompare(right.name);
-  });
+    rank += 1;
+  }
+
+  for (const appId of comingSoonRecommendedAppIds) {
+    rankById.set(appId, rank);
+    rank += 1;
+  }
+
+  return rankById;
+}
+
+function getRecommendedAppDisplayRank(appId: string): number {
+  return (
+    recommendedAppDisplayRankById.get(appId.trim().toLowerCase()) ??
+    Number.MAX_SAFE_INTEGER
+  );
+}
+
+function getRecommendedAppSectionRank(
+  app: AppCenterViewModel["apps"][number]
+): number {
+  const normalizedAppId = app.id.trim().toLowerCase();
+  if (recommendedAppDisplayRankById.has(normalizedAppId)) {
+    return isConfiguredComingSoonApp(normalizedAppId) ? 1 : 0;
+  }
+
+  return getRecommendedAppComingSoonRank(app);
+}
+
+function isConfiguredComingSoonApp(appId: string): boolean {
+  return comingSoonRecommendedAppIds.some(
+    (configuredAppId) => configuredAppId === appId
+  );
 }
 
 function getRecommendedAppComingSoonRank(
@@ -64,49 +127,4 @@ function getRecommendedAppComingSoonRank(
     app.tags.some((tag) => tag.trim().toLowerCase() === "coming-soon")
     ? 1
     : 0;
-}
-
-function getRecommendedAppCategoryRank(
-  app: AppCenterViewModel["apps"][number]
-): number {
-  const category = app.category?.trim().toLowerCase() ?? "";
-  if (category === "产品与设计" || category === "product and design") {
-    return 0;
-  }
-  if (category === "办公" || category === "office") {
-    return 1;
-  }
-  if (
-    category === "工具" ||
-    category === "tools" ||
-    category === "productivity"
-  ) {
-    return 2;
-  }
-  if (category === "内容创作" || category === "content creation") {
-    return 3;
-  }
-
-  const searchableText = [app.id, app.name, app.description, ...app.tags]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  if (
-    /\b(automation|schedule|recurring|productivity|efficiency|workflow|task)\b/.test(
-      searchableText
-    )
-  ) {
-    return 0;
-  }
-
-  if (
-    /\b(media|canvas|video|edit|design|prototype|creative|creation)\b/.test(
-      searchableText
-    )
-  ) {
-    return 1;
-  }
-
-  return 2;
 }

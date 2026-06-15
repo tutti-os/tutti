@@ -121,7 +121,29 @@ func (s *AppFactoryService) List(ctx context.Context, workspaceID string) ([]wor
 	if _, err := s.workspaceSummary(ctx, workspaceID); err != nil {
 		return nil, err
 	}
-	return s.store().ListAppFactoryJobs(ctx, workspaceID)
+	jobs, err := s.store().ListAppFactoryJobs(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	for index, job := range jobs {
+		if !isActiveAppFactoryJobStatus(job.Status) &&
+			!isRecoverablePreValidationAgentFailure(job) {
+			continue
+		}
+		handled, reconcileErr := s.reconcileFromPersistedAgentSession(ctx, workspaceID, job)
+		if reconcileErr != nil {
+			return nil, reconcileErr
+		}
+		if !handled {
+			continue
+		}
+		updated, getErr := s.store().GetAppFactoryJob(ctx, workspaceID, job.JobID)
+		if getErr != nil {
+			return nil, getErr
+		}
+		jobs[index] = updated
+	}
+	return jobs, nil
 }
 
 func (s *AppFactoryService) ReconcileInterruptedJobs(ctx context.Context) (int, error) {

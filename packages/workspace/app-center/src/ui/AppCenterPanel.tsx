@@ -506,129 +506,6 @@ export function AppCenterPanel({
     >
       {statusToast ? <AppCenterStatusToast toast={statusToast} /> : null}
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto px-6 pb-6 pt-5 [container-type:inline-size]">
-        {hasFactoryJobs ? (
-          <section className="min-w-0">
-            <h2 className="mb-3 text-[15px] font-semibold leading-5 tracking-[0] text-[var(--text-primary)]">
-              {copy.t("factory.labels.jobs")}
-            </h2>
-            <div className="flex min-w-0 flex-col gap-2">
-              {factoryJobs.map((job) => (
-                <article
-                  aria-disabled={job.canOpenAgentSession ? undefined : true}
-                  className={cn(
-                    "group flex min-w-0 items-center justify-between gap-3 rounded-[8px] border border-[color:var(--line-2)] bg-[var(--background-fronted)] p-[12px] text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]",
-                    job.canOpenAgentSession
-                      ? "cursor-pointer hover:bg-[var(--transparency-block)]"
-                      : "cursor-default"
-                  )}
-                  key={job.id}
-                  role="button"
-                  tabIndex={job.canOpenAgentSession ? 0 : -1}
-                  onClick={() => openFactoryJobAgentSession(job)}
-                  onKeyDown={(event) => {
-                    if (
-                      !job.canOpenAgentSession ||
-                      event.currentTarget !== event.target ||
-                      (event.key !== "Enter" && event.key !== " ")
-                    ) {
-                      return;
-                    }
-                    event.preventDefault();
-                    openFactoryJobAgentSession(job);
-                  }}
-                >
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <h3 className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
-                        {job.title}
-                      </h3>
-                      <FactoryJobStatusIndicator copy={copy} job={job} />
-                    </div>
-                    {job.failureReason ? (
-                      <p
-                        className="mt-2 truncate text-[11px] leading-4 text-[var(--state-danger)]"
-                        title={job.failureReason}
-                      >
-                        {copy.t(
-                          job.canFix
-                            ? "factory.messages.factoryJobFailedWithFix"
-                            : "factory.messages.factoryJobFailed"
-                        )}
-                      </p>
-                    ) : (
-                      <p className="mt-2 truncate text-[11px] leading-4 text-[var(--text-secondary)]">
-                        {job.prompt}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {job.canPublish ? (
-                      <Button
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void actions.publishFactoryJob?.(job.id);
-                        }}
-                      >
-                        {copy.t("factory.actions.publish")}
-                      </Button>
-                    ) : null}
-                    {job.canFix ? (
-                      <Button
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void actions.fixFactoryJob?.(
-                            job.id,
-                            copy.t("factory.prompts.fixDefault")
-                          );
-                        }}
-                      >
-                        {copy.t("factory.actions.fix")}
-                      </Button>
-                    ) : null}
-                    {job.canCancel ? (
-                      <Button
-                        aria-label={copy.t("factory.actions.cancel")}
-                        className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-                        size="icon-sm"
-                        title={copy.t("factory.actions.cancel")}
-                        type="button"
-                        variant="ghost"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void actions.cancelFactoryJob?.(job.id);
-                        }}
-                      >
-                        <CloseIcon />
-                      </Button>
-                    ) : null}
-                    {job.canDelete ? (
-                      <BareIconButton
-                        aria-label={copy.t("factory.actions.delete")}
-                        className="text-[var(--text-secondary)]"
-                        size="md"
-                        title={copy.t("factory.actions.delete")}
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void actions.deleteFactoryJob?.(job.id);
-                        }}
-                      >
-                        <DeleteIcon />
-                      </BareIconButton>
-                    ) : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
         <section className="flex min-w-0 flex-col gap-3">
           <div className="flex h-8 min-w-0 items-center justify-between gap-3">
             <SectionTabs
@@ -669,6 +546,141 @@ export function AppCenterPanel({
               )}
             </div>
           </div>
+          {activeAppTab === "my" && hasFactoryJobs ? (
+            <section className="min-w-0">
+              <h2 className="mb-3 text-[15px] font-semibold leading-5 tracking-[0] text-[var(--text-primary)]">
+                {copy.t("factory.labels.jobs")}
+              </h2>
+              <div className="flex min-w-0 flex-col gap-2">
+                {factoryJobs.map((job) => (
+                  <article
+                    aria-disabled={job.canOpenAgentSession ? undefined : true}
+                    className={cn(
+                      "group flex min-w-0 items-center justify-between gap-3 rounded-[8px] border border-[color:var(--line-2)] bg-[var(--background-fronted)] p-[12px] text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]",
+                      job.canOpenAgentSession
+                        ? "cursor-pointer hover:bg-[var(--transparency-block)]"
+                        : "cursor-default"
+                    )}
+                    key={job.id}
+                    role="button"
+                    tabIndex={job.canOpenAgentSession ? 0 : -1}
+                    onClick={() => openFactoryJobAgentSession(job)}
+                    onKeyDown={(event) => {
+                      if (
+                        !job.canOpenAgentSession ||
+                        event.currentTarget !== event.target ||
+                        (event.key !== "Enter" && event.key !== " ")
+                      ) {
+                        return;
+                      }
+                      event.preventDefault();
+                      openFactoryJobAgentSession(job);
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <h3 className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
+                          {job.title}
+                        </h3>
+                        <FactoryJobStatusIndicator copy={copy} job={job} />
+                      </div>
+                      {job.failureReason ? (
+                        <p
+                          className="mt-2 truncate text-[11px] leading-4 text-[var(--state-danger)]"
+                          title={job.failureReason}
+                        >
+                          {copy.t(
+                            job.canFix
+                              ? "factory.messages.factoryJobFailedWithFix"
+                              : "factory.messages.factoryJobFailed"
+                          )}
+                        </p>
+                      ) : (
+                        <p className="mt-2 truncate text-[11px] leading-4 text-[var(--text-secondary)]">
+                          {job.prompt}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {job.canRetryValidation ? (
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void actions.retryFactoryValidation?.(job.id);
+                          }}
+                        >
+                          {copy.t("factory.actions.validate")}
+                        </Button>
+                      ) : null}
+                      {job.canPublish ? (
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void actions.publishFactoryJob?.(job.id);
+                          }}
+                        >
+                          {copy.t("factory.actions.publish")}
+                        </Button>
+                      ) : null}
+                      {job.canFix ? (
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void actions.fixFactoryJob?.(
+                              job.id,
+                              copy.t("factory.prompts.fixDefault")
+                            );
+                          }}
+                        >
+                          {copy.t("factory.actions.fix")}
+                        </Button>
+                      ) : null}
+                      {job.canCancel ? (
+                        <Button
+                          aria-label={copy.t("factory.actions.cancel")}
+                          className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                          size="icon-sm"
+                          title={copy.t("factory.actions.cancel")}
+                          type="button"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void actions.cancelFactoryJob?.(job.id);
+                          }}
+                        >
+                          <CloseIcon />
+                        </Button>
+                      ) : null}
+                      {job.canDelete ? (
+                        <BareIconButton
+                          aria-label={copy.t("factory.actions.delete")}
+                          className="text-[var(--text-secondary)]"
+                          size="md"
+                          title={copy.t("factory.actions.delete")}
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void actions.deleteFactoryJob?.(job.id);
+                          }}
+                        >
+                          <DeleteIcon />
+                        </BareIconButton>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
           {viewModel.empty ? (
             <p className="text-[13px] leading-5 text-[var(--text-secondary)]">
               {copy.t("messages.empty")}

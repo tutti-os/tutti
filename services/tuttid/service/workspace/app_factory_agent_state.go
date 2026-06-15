@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentactivityprojection "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/projection"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
@@ -122,7 +123,9 @@ func (s *AppFactoryService) reconcileFromPersistedAgentSession(ctx context.Conte
 	if !ok {
 		return false, nil
 	}
-	status := normalizePersistedFactoryAgentSessionStatus(session.Status)
+	status := normalizeFactoryAgentSessionStatus(
+		agentactivityprojection.CanonicalSessionStatus(session.Status, session.CurrentPhase),
+	)
 	if status == "" {
 		return s.reconcileCompletedAgentSessionMessages(ctx, workspaceID, job)
 	}
@@ -290,12 +293,17 @@ func factoryAgentTerminalStatus(state agentsessionstore.WorkspaceAgentSessionSta
 	if status := normalizeFactoryAgentSessionStatus(state.LifecycleStatus); status != "" {
 		return status
 	}
+	if strings.ToLower(strings.TrimSpace(state.CurrentPhase)) == "failed" {
+		return "failed"
+	}
 	if state.Turn == nil {
 		return ""
 	}
 	switch strings.ToLower(strings.TrimSpace(state.Turn.Outcome)) {
 	case "completed", "complete", "succeeded", "success":
 		return "completed"
+	case "failed", "failure", "error", "errored":
+		return "failed"
 	default:
 		return ""
 	}

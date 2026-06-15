@@ -37,34 +37,9 @@ import { useWorkspaceAppCenterService } from "./useWorkspaceAppCenterService.ts"
 
 const comingSoonWorkspaceAppDefinitions = [
   {
-    appId: "product-competition",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.productCompetition.primary",
-      "appCenter.comingSoonTags.productCompetition.secondary",
-      "appCenter.comingSoonTags.productCompetition.tertiary"
-    ],
-    tags: ["coming-soon", "product", "design"]
-  },
-  {
-    appId: "design-review",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.designReview.primary",
-      "appCenter.comingSoonTags.designReview.secondary",
-      "appCenter.comingSoonTags.designReview.tertiary"
-    ],
-    tags: ["coming-soon", "product", "design"]
-  },
-  {
-    appId: "group-chat",
-    displayTagKeys: [
-      "appCenter.comingSoonTags.groupChat.primary",
-      "appCenter.comingSoonTags.groupChat.secondary",
-      "appCenter.comingSoonTags.groupChat.tertiary"
-    ],
-    tags: ["coming-soon", "productivity", "chat", "team"]
-  },
-  {
     appId: "ai-ppt",
+    descriptionKey: "appCenter.comingSoonApps.aiPpt.description",
+    nameKey: "appCenter.comingSoonApps.aiPpt.name",
     displayTagKeys: [
       "appCenter.comingSoonTags.aiPpt.primary",
       "appCenter.comingSoonTags.aiPpt.secondary",
@@ -74,6 +49,8 @@ const comingSoonWorkspaceAppDefinitions = [
   },
   {
     appId: "ai-document",
+    descriptionKey: "appCenter.comingSoonApps.aiDocument.description",
+    nameKey: "appCenter.comingSoonApps.aiDocument.name",
     displayTagKeys: [
       "appCenter.comingSoonTags.aiDocument.primary",
       "appCenter.comingSoonTags.aiDocument.secondary",
@@ -83,6 +60,8 @@ const comingSoonWorkspaceAppDefinitions = [
   },
   {
     appId: "ai-sheet",
+    descriptionKey: "appCenter.comingSoonApps.aiSheet.description",
+    nameKey: "appCenter.comingSoonApps.aiSheet.name",
     displayTagKeys: [
       "appCenter.comingSoonTags.aiSheet.primary",
       "appCenter.comingSoonTags.aiSheet.secondary",
@@ -92,6 +71,8 @@ const comingSoonWorkspaceAppDefinitions = [
   },
   {
     appId: "open-cut",
+    descriptionKey: "appCenter.comingSoonApps.openCut.description",
+    nameKey: "appCenter.comingSoonApps.openCut.name",
     displayTagKeys: [
       "appCenter.comingSoonTags.openCut.primary",
       "appCenter.comingSoonTags.openCut.secondary",
@@ -100,7 +81,31 @@ const comingSoonWorkspaceAppDefinitions = [
     tags: ["coming-soon", "content", "creation", "video", "timeline", "editor"]
   },
   {
+    appId: "product-competition",
+    descriptionKey: "appCenter.comingSoonApps.productCompetition.description",
+    nameKey: "appCenter.comingSoonApps.productCompetition.name",
+    displayTagKeys: [
+      "appCenter.comingSoonTags.productCompetition.primary",
+      "appCenter.comingSoonTags.productCompetition.secondary",
+      "appCenter.comingSoonTags.productCompetition.tertiary"
+    ],
+    tags: ["coming-soon", "product", "design"]
+  },
+  {
+    appId: "design-review",
+    descriptionKey: "appCenter.comingSoonApps.designReview.description",
+    nameKey: "appCenter.comingSoonApps.designReview.name",
+    displayTagKeys: [
+      "appCenter.comingSoonTags.designReview.primary",
+      "appCenter.comingSoonTags.designReview.secondary",
+      "appCenter.comingSoonTags.designReview.tertiary"
+    ],
+    tags: ["coming-soon", "product", "design"]
+  },
+  {
     appId: "calendar",
+    descriptionKey: "appCenter.comingSoonApps.calendar.description",
+    nameKey: "appCenter.comingSoonApps.calendar.name",
     displayTagKeys: [
       "appCenter.comingSoonTags.calendar.primary",
       "appCenter.comingSoonTags.calendar.secondary",
@@ -110,6 +115,8 @@ const comingSoonWorkspaceAppDefinitions = [
   },
   {
     appId: "document-summarizer",
+    descriptionKey: "appCenter.comingSoonApps.documentSummarizer.description",
+    nameKey: "appCenter.comingSoonApps.documentSummarizer.name",
     displayTagKeys: [
       "appCenter.comingSoonTags.documentSummarizer.primary",
       "appCenter.comingSoonTags.documentSummarizer.secondary",
@@ -309,75 +316,15 @@ function createComingSoonWorkspaceApps(
   i18n: { readonly t: (key: string) => string },
   locale: string
 ): readonly WorkspaceAppCenterApp[] {
-  return [
+  return comingSoonWorkspaceAppDefinitions.map((definition) =>
     createComingSoonWorkspaceApp({
-      description: i18n.t(
-        "appCenter.comingSoonApps.productCompetition.description"
-      ),
-      definition: comingSoonWorkspaceAppDefinitions[0],
+      description: i18n.t(definition.descriptionKey),
+      definition,
       locale,
-      name: i18n.t("appCenter.comingSoonApps.productCompetition.name"),
-      t: i18n.t
-    }),
-    createComingSoonWorkspaceApp({
-      description: i18n.t("appCenter.comingSoonApps.designReview.description"),
-      definition: comingSoonWorkspaceAppDefinitions[1],
-      locale,
-      name: i18n.t("appCenter.comingSoonApps.designReview.name"),
-      t: i18n.t
-    }),
-    createComingSoonWorkspaceApp({
-      description: i18n.t("appCenter.comingSoonApps.groupChat.description"),
-      definition: comingSoonWorkspaceAppDefinitions[2],
-      locale,
-      name: i18n.t("appCenter.comingSoonApps.groupChat.name"),
-      t: i18n.t
-    }),
-    createComingSoonWorkspaceApp({
-      description: i18n.t("appCenter.comingSoonApps.aiPpt.description"),
-      definition: comingSoonWorkspaceAppDefinitions[3],
-      locale,
-      name: i18n.t("appCenter.comingSoonApps.aiPpt.name"),
-      t: i18n.t
-    }),
-    createComingSoonWorkspaceApp({
-      description: i18n.t("appCenter.comingSoonApps.aiDocument.description"),
-      definition: comingSoonWorkspaceAppDefinitions[4],
-      locale,
-      name: i18n.t("appCenter.comingSoonApps.aiDocument.name"),
-      t: i18n.t
-    }),
-    createComingSoonWorkspaceApp({
-      description: i18n.t("appCenter.comingSoonApps.aiSheet.description"),
-      definition: comingSoonWorkspaceAppDefinitions[5],
-      locale,
-      name: i18n.t("appCenter.comingSoonApps.aiSheet.name"),
-      t: i18n.t
-    }),
-    createComingSoonWorkspaceApp({
-      description: i18n.t("appCenter.comingSoonApps.openCut.description"),
-      definition: comingSoonWorkspaceAppDefinitions[6],
-      locale,
-      name: i18n.t("appCenter.comingSoonApps.openCut.name"),
-      t: i18n.t
-    }),
-    createComingSoonWorkspaceApp({
-      description: i18n.t("appCenter.comingSoonApps.calendar.description"),
-      definition: comingSoonWorkspaceAppDefinitions[7],
-      locale,
-      name: i18n.t("appCenter.comingSoonApps.calendar.name"),
-      t: i18n.t
-    }),
-    createComingSoonWorkspaceApp({
-      description: i18n.t(
-        "appCenter.comingSoonApps.documentSummarizer.description"
-      ),
-      definition: comingSoonWorkspaceAppDefinitions[8],
-      locale,
-      name: i18n.t("appCenter.comingSoonApps.documentSummarizer.name"),
+      name: i18n.t(definition.nameKey),
       t: i18n.t
     })
-  ];
+  );
 }
 
 function createComingSoonWorkspaceApp(input: {
@@ -417,13 +364,27 @@ function withComingSoonWorkspaceApps(
   apps: readonly WorkspaceAppCenterApp[],
   comingSoonApps: readonly WorkspaceAppCenterApp[]
 ): readonly WorkspaceAppCenterApp[] {
-  const existingAppIds = new Set(apps.map((app) => app.appId));
-  const missingComingSoonApps = comingSoonApps.filter(
-    (app) => !existingAppIds.has(app.appId)
+  const comingSoonByAppId = new Map(
+    comingSoonApps.map((app) => [app.appId, app] as const)
   );
-  return missingComingSoonApps.length > 0
-    ? [...apps, ...missingComingSoonApps]
-    : apps;
+  const mergedApps = apps.map((app) => {
+    const comingSoonApp = comingSoonByAppId.get(app.appId);
+    if (!comingSoonApp) {
+      return app;
+    }
+    comingSoonByAppId.delete(app.appId);
+    return {
+      ...comingSoonApp,
+      ...(app.iconUrl ? { iconUrl: app.iconUrl } : {}),
+      ...(app.availableIconUrl
+        ? { availableIconUrl: app.availableIconUrl }
+        : {})
+    };
+  });
+  const remainingComingSoonApps = [...comingSoonByAppId.values()];
+  return remainingComingSoonApps.length > 0
+    ? [...mergedApps, ...remainingComingSoonApps]
+    : mergedApps;
 }
 
 function withWorkspaceAppIconOverride(

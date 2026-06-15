@@ -1255,6 +1255,96 @@ func TestAppFactoryServicePublishReturnsPublishedJobIdempotently(t *testing.T) {
 	}
 }
 
+func TestAppFactoryServiceFailedTurnOutcomeFailsGeneratingJob(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppFactoryStoreStub()
+	if err := store.PutAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AgentSessionID: "session-1",
+		AppID:          "app_1",
+		JobID:          "job-1",
+		Status:         workspacebiz.AppFactoryJobStatusGenerating,
+		WorkspaceID:    "ws-1",
+	}); err != nil {
+		t.Fatalf("PutAppFactoryJob() error = %v", err)
+	}
+	service := AppFactoryService{Store: store}
+	state := agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		CurrentPhase:    "failed",
+		LastError:       "Codex request failed because a quota or rate limit was reached.",
+		LifecycleStatus: "active",
+		Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+			Outcome: "failed",
+			TurnID:  "turn-1",
+		},
+	}
+	status := factoryAgentTerminalStatus(state)
+	if status != "failed" {
+		t.Fatalf("terminal status = %q, want failed", status)
+	}
+	if err := service.handleAgentSessionTerminalState(ctx, "ws-1", "session-1", status, state.LastError); err != nil {
+		t.Fatalf("handleAgentSessionTerminalState() error = %v", err)
+	}
+	job, err := store.GetAppFactoryJob(ctx, "ws-1", "job-1")
+	if err != nil {
+		t.Fatalf("GetAppFactoryJob() error = %v", err)
+	}
+	if job.Status != workspacebiz.AppFactoryJobStatusFailed {
+		t.Fatalf("status = %q, want failed", job.Status)
+	}
+	if job.FailureReason != state.LastError {
+		t.Fatalf("failure reason = %q, want %q", job.FailureReason, state.LastError)
+	}
+}
+
+func TestAppFactoryServiceListReconcilesFailedAgentSession(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppFactoryStoreStub()
+	if err := store.PutAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AgentSessionID: "session-1",
+		AppID:          "app_1",
+		JobID:          "job-1",
+		Status:         workspacebiz.AppFactoryJobStatusGenerating,
+		WorkspaceID:    "ws-1",
+	}); err != nil {
+		t.Fatalf("PutAppFactoryJob() error = %v", err)
+	}
+	service := AppFactoryService{
+		Store: store,
+		WorkspaceStore: &catalogStoreStub{
+			getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"},
+		},
+		AgentSessionReader: factoryAgentSessionReaderStub{
+			sessions: map[string]agentservice.PersistedSession{
+				appFactoryJobStoreKey("ws-1", "session-1"): {
+					ID:           "session-1",
+					WorkspaceID:  "ws-1",
+					Status:       "active",
+					CurrentPhase: "failed",
+					LastError:    "Codex request failed because a quota or rate limit was reached.",
+				},
+			},
+		},
+	}
+
+	jobs, err := service.List(ctx, "ws-1")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("jobs = %d, want 1", len(jobs))
+	}
+	if jobs[0].Status != workspacebiz.AppFactoryJobStatusFailed {
+		t.Fatalf("status = %q, want failed", jobs[0].Status)
+	}
+	if jobs[0].FailureReason != "Codex request failed because a quota or rate limit was reached." {
+		t.Fatalf("failure reason = %q, want quota failure message", jobs[0].FailureReason)
+	}
+}
+
 func TestAppFactoryServiceFailedAgentSessionFailsGeneratingJob(t *testing.T) {
 	t.Parallel()
 
@@ -1336,7 +1426,33 @@ func TestFactoryAgentTerminalStatusUsesTurnOutcomeWhenSessionStaysActive(t *test
 	}
 }
 
-func TestFactoryAgentTerminalStatusIgnoresFailedTurnOutcomeWhenSessionStaysActive(t *testing.T) {
+func TestFactoryAgentTerminalStatusUsesFailedTurnOutcomeWhenSessionStaysActive(t *testing.T) {
+	t.Parallel()
+
+	status := factoryAgentTerminalStatus(agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		LifecycleStatus: "active",
+		Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+			Outcome: "failed",
+		},
+	})
+	if status != "failed" {
+		t.Fatalf("status = %q, want failed", status)
+	}
+}
+
+func TestFactoryAgentTerminalStatusUsesFailedPhaseWhenSessionStaysActive(t *testing.T) {
+	t.Parallel()
+
+	status := factoryAgentTerminalStatus(agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		LifecycleStatus: "active",
+		CurrentPhase:    "failed",
+	})
+	if status != "failed" {
+		t.Fatalf("status = %q, want failed", status)
+	}
+}
+
+func TestFactoryAgentTerminalStatusIgnoresInterruptedTurnOutcomeWhenSessionStaysActive(t *testing.T) {
 	t.Parallel()
 
 	status := factoryAgentTerminalStatus(agentsessionstore.WorkspaceAgentSessionStateUpdate{

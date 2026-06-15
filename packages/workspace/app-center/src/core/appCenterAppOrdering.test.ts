@@ -25,88 +25,123 @@ describe("sortMyAppsByCreatedDesc", () => {
 });
 
 describe("sortRecommendedApps", () => {
-  it("orders recommended apps by configured category sections", () => {
+  it("orders recommended apps by the configured display list", () => {
     const apps = [
-      createApp({ category: "内容创作", id: "media", name: "Media" }),
-      createApp({ category: "工具", id: "automation", name: "Automation" }),
-      createApp({ category: "办公", id: "chat", name: "Chat" }),
       createApp({
-        category: "产品与设计",
-        id: "design",
-        name: "Design"
+        id: "automation",
+        name: "Automation",
+        sourceKind: "bundled"
+      }),
+      createApp({
+        id: "ai-ppt",
+        name: "AI PPT",
+        sourceKind: "bundled",
+        tags: ["coming-soon"]
+      }),
+      createApp({
+        id: "vibe-design",
+        name: "Vibe Design",
+        sourceKind: "bundled"
+      }),
+      createApp({
+        id: "ai-media-canvas",
+        name: "AI Media Canvas",
+        sourceKind: "bundled"
+      }),
+      createApp({
+        id: "daily-product-radar",
+        name: "Daily Product Radar",
+        sourceKind: "bundled"
       })
     ];
 
     assert.deepEqual(
       sortRecommendedApps(apps).map((app) => app.id),
-      ["design", "chat", "automation", "media"]
+      [
+        "ai-media-canvas",
+        "vibe-design",
+        "automation",
+        "daily-product-radar",
+        "ai-ppt"
+      ]
     );
   });
 
-  it("places coming soon apps at the end of each category", () => {
+  it("places unlisted apps after configured apps and keeps coming soon after ready", () => {
     const apps = [
       createApp({
-        category: "产品与设计",
-        id: "soon-a",
-        name: "Alpha coming soon",
+        id: "unknown-soon",
+        name: "Unknown soon",
+        sourceKind: "bundled",
         statusLabelKey: "status.comingSoon"
       }),
       createApp({
-        category: "产品与设计",
-        id: "ready-b",
-        name: "Zeta ready"
+        id: "unknown-ready",
+        name: "Unknown ready",
+        sourceKind: "bundled"
       }),
-      createApp({
-        category: "产品与设计",
-        id: "ready-a",
-        name: "Alpha ready"
-      }),
-      createApp({
-        category: "产品与设计",
-        id: "soon-b",
-        name: "Beta coming soon",
-        tags: ["coming-soon"]
-      }),
-      createApp({ category: "办公", id: "office", name: "Office" })
+      createApp({ id: "automation", name: "Automation", sourceKind: "bundled" })
     ];
 
     assert.deepEqual(
       sortRecommendedApps(apps).map((app) => app.id),
-      ["ready-a", "ready-b", "soon-a", "soon-b", "office"]
+      ["automation", "unknown-ready", "unknown-soon"]
     );
   });
 });
 
 describe("sortRecommendedAppsForAllTab", () => {
-  it("places all coming soon apps after ready apps across categories", () => {
+  it("uses the same configured display order as category tabs", () => {
     const apps = [
       createApp({
-        category: "产品与设计",
-        id: "design-soon",
-        name: "Design soon",
+        id: "document-summarizer",
+        name: "Document Summarizer",
+        sourceKind: "bundled",
         tags: ["coming-soon"]
       }),
       createApp({
-        category: "内容创作",
-        id: "media-ready",
-        name: "Media ready"
+        id: "group-chat",
+        name: "Group Chat",
+        sourceKind: "bundled"
       }),
       createApp({
-        category: "办公",
-        id: "office-soon",
-        name: "Office soon",
-        statusLabelKey: "status.comingSoon"
+        id: "open-cut",
+        name: "Open Cut",
+        sourceKind: "bundled",
+        tags: ["coming-soon"]
       }),
       createApp({
-        category: "工具",
-        id: "tool-ready",
-        name: "Tool ready"
+        id: "ai-media-canvas",
+        name: "AI Media Canvas",
+        sourceKind: "bundled"
       })
     ];
 
     assert.deepEqual(
       sortRecommendedAppsForAllTab(apps).map((app) => app.id),
-      ["tool-ready", "media-ready", "design-soon", "office-soon"]
+      ["ai-media-canvas", "group-chat", "open-cut", "document-summarizer"]
+    );
+  });
+
+  it("orders radar aliases with other installable apps before coming soon apps", () => {
+    const apps = [
+      createApp({
+        id: "ai-ppt",
+        name: "AI PPT",
+        sourceKind: "bundled",
+        tags: ["coming-soon"]
+      }),
+      createApp({
+        id: "daily-tech-radar",
+        name: "每日产品雷达",
+        sourceKind: "bundled"
+      }),
+      createApp({ id: "automation", name: "Automation", sourceKind: "bundled" })
+    ];
+
+    assert.deepEqual(
+      sortRecommendedAppsForAllTab(apps).map((app) => app.id),
+      ["automation", "daily-tech-radar", "ai-ppt"]
     );
   });
 });
@@ -116,7 +151,11 @@ function createApp(
     Partial<
       Pick<
         AppCenterViewModel["apps"][number],
-        "category" | "createdAtUnixMs" | "statusLabelKey" | "tags"
+        | "category"
+        | "createdAtUnixMs"
+        | "sourceKind"
+        | "statusLabelKey"
+        | "tags"
       >
     >
 ): AppCenterViewModel["apps"][number] {
