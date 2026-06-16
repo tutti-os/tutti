@@ -876,6 +876,7 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		return true, nil
 	case appServerSlashGoal:
 		method, params := appServerGoalSlashRequest(args, appSession.threadID)
+		goalObjective := strings.TrimSpace(asString(params["objective"]))
 		result, err := appSession.client.Call(ctx, method, params,
 			a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 		if err != nil {
@@ -886,6 +887,34 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 			a.applyGoalClear(session.AgentSessionID)
 		} else if goal := appServerGoalFromResult(result); len(goal) > 0 {
 			a.applyGoalUpdate(session.AgentSessionID, goal)
+		}
+		if method == appServerMethodThreadGoalSet && goalObjective != "" {
+			initialTurn := appServerTurnFromResult(result)
+			if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
+				if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
+					a.interruptActiveTurnAsync(appSession, session, providerTurnID, "queued cancel")
+				}
+			}
+			finalTurn, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, initialTurn)
+			a.endActiveTurn(session.AgentSessionID, appTurn)
+			if finishErr != nil {
+				if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) {
+					terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
+					terminalEvents = append(terminalEvents, normalizer.FinishInterrupted(session, turnID, "interrupted")...)
+					terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
+						"error": finishErr.Error(),
+					}))
+					emitTerminal(terminalEvents)
+				} else {
+					terminalEvents := normalizer.FinishFailed(session, turnID)
+					terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(finishErr)))
+					emitTerminal(terminalEvents)
+				}
+				return true, nil
+			}
+			normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
+			emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
+			return true, nil
 		}
 		terminalEvents := []activityshared.Event{}
 		if notice := appServerGoalNoticeEvent(session, turnID, method, result); notice != nil {

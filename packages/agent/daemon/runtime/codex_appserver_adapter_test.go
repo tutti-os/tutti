@@ -70,6 +70,7 @@ type scriptedAppServerConnection struct {
 	reviewStartEntered           chan struct{} // closed once review/start has responded
 	approvalResponse             map[string]any
 	goal                         map[string]any
+	goalStartsTurn               bool
 	goalCleared                  bool
 	closeOnce                    sync.Once
 }
@@ -401,6 +402,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 		case appServerMethodThreadGoalSet:
 			c.mu.Lock()
 			previousGoal := clonePayload(c.goal)
+			goalStartsTurn := c.goalStartsTurn
 			goal := map[string]any{
 				"threadId":        "codex-thread-1",
 				"objective":       firstNonEmpty(asString(message.Params["objective"]), asString(previousGoal["objective"])),
@@ -419,6 +421,25 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"id":     message.ID,
 				"result": map[string]any{"goal": goal},
 			})
+			if goalStartsTurn && strings.TrimSpace(asString(message.Params["objective"])) != "" {
+				c.notify(appServerNotifyTurnStarted, map[string]any{
+					"threadId": "codex-thread-1",
+					"turn":     map[string]any{"id": "turn-goal", "status": "inProgress", "items": []any{}},
+				})
+				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
+					"threadId": "codex-thread-1", "turnId": "turn-goal", "itemId": "item-goal", "delta": "I'll work on the goal.",
+				})
+				c.notify(appServerNotifyTurnCompleted, map[string]any{
+					"threadId": "codex-thread-1",
+					"turn": map[string]any{
+						"id":     "turn-goal",
+						"status": "completed",
+						"items": []any{
+							map[string]any{"type": "agentMessage", "id": "item-goal", "text": "I'll work on the goal."},
+						},
+					},
+				})
+			}
 		case appServerMethodThreadGoalGet:
 			c.mu.Lock()
 			goal := clonePayload(c.goal)
@@ -1529,6 +1550,7 @@ func TestCodexAppServerAdapterSlashGoalSetsObjective(t *testing.T) {
 	t.Parallel()
 
 	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.goalStartsTurn = true
 	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
 		Type: "text", Text: "/goal ship the review picker",
 	}}, "", "turn-local-1", nil, nil)
@@ -1547,6 +1569,18 @@ func TestCodexAppServerAdapterSlashGoalSetsObjective(t *testing.T) {
 	}
 	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(requests) != 0 {
 		t.Fatalf("turn/start should not run for /goal")
+	}
+	var assistantText string
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Role == activityshared.MessageRoleAssistant {
+			assistantText = event.Payload.Content
+		}
+		if event.Payload.Metadata["kind"] == "agent_system_notice" {
+			t.Fatalf("goal objective should stream app-server turn instead of local-only notice: %#v", event)
+		}
+	}
+	if assistantText != "I'll work on the goal." {
+		t.Fatalf("goal assistant message = %q", assistantText)
 	}
 	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
 		t.Fatalf("goal turn completed events = %d, want 1", len(completed))
@@ -1586,6 +1620,7 @@ func TestCodexAppServerAdapterSlashGoalObjectiveMayStartWithStatusWord(t *testin
 	t.Parallel()
 
 	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.goalStartsTurn = true
 	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
 		Type: "text", Text: "/goal complete support for goal commands",
 	}}, "", "turn-local-1", nil, nil); err != nil {
