@@ -44,6 +44,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
   dockEntries: readonly WorkbenchHostDockEntry[];
   dockStateSource?: WorkbenchHostProps["dockStateSource"];
   externalStateSource?: WorkbenchHostExternalStateSource;
+  externalStateRevision: number;
   hostI18n: WorkbenchHostI18nRuntime;
   hostSession: WorkbenchHostRuntimeHandle;
   nodeDefinitionByType: Map<string, WorkbenchHostNodeDefinition>;
@@ -225,6 +226,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     [
       input.debugDiagnostics,
       input.externalStateSource,
+      input.externalStateRevision,
       input.hostSession,
       input.nodeDefinitionByType,
       input.workspaceId
@@ -266,6 +268,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     },
     [
       input.externalStateSource,
+      input.externalStateRevision,
       input.hostSession,
       input.nodeDefinitionByType,
       input.workspaceId

@@ -41,7 +41,7 @@ export function useWorkbenchHostRuntime({
   > & {
     missionControlEnabled: boolean;
   }) {
-  const [, bumpExternalStateRevision] = useState(0);
+  const [externalStateRevision, bumpExternalStateRevision] = useState(0);
   const [, bumpHydrationRevision] = useState(0);
   const hostSession = useMemo(() => {
     logWorkbenchHostDebug("create-session", debugDiagnostics, {
@@ -160,6 +160,7 @@ export function useWorkbenchHostRuntime({
 
   return {
     chromeContext,
+    externalStateRevision,
     hostI18n,
     isHydrating,
     hostSession,

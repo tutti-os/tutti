@@ -22,6 +22,10 @@ export interface ConsumeDesktopAgentGUIOpenSessionActivationInput {
     this: void,
     input: { agentSessionId: string; error: unknown }
   ): void;
+  onOpenSessionRequest?(
+    this: void,
+    request: { agentSessionId: string; sequence: number }
+  ): void;
   onStateChange(this: void, state: DesktopAgentGUIWorkbenchState): void;
   provider: DesktopAgentGUIProvider;
   workspaceId: string;
@@ -39,6 +43,7 @@ export function consumeDesktopAgentGUIOpenSessionActivation({
   markHandled,
   nodeId,
   onActivationError,
+  onOpenSessionRequest,
   onStateChange,
   provider,
   workspaceId,
@@ -51,6 +56,7 @@ export function consumeDesktopAgentGUIOpenSessionActivation({
 
   markHandled(request.sequence);
   clearNodeActivation?.(nodeId, request.sequence);
+  onOpenSessionRequest?.(request);
   void agentActivityRuntime
     .activateSession({
       workspaceId,

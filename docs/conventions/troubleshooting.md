@@ -567,3 +567,30 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 - References:
   [workspaceFilePreviewNodeController.ts](../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceFilePreviewNodeController.ts)
   [WorkspaceFilePreviewNodeBody.tsx](../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/WorkspaceFilePreviewNodeBody.tsx)
+
+### App update diagnostics flood with identical download progress states
+
+- Symptom:
+  Renderer diagnostics show hundreds of
+  `app_update.state_applied` events per minute during update downloads, often
+  with identical payloads. `AppUpdateStatus` may re-render without visible UI
+  changes.
+- Quick checks:
+  Compare consecutive diagnostic payloads for `status`, `downloadPercent`, and
+  `downloadedBytes`. Inspect whether main-process `applyState` and renderer
+  `applyUpdateState` both commit every IPC event.
+- Root cause:
+  `electron-updater` can emit high-frequency download progress callbacks. Without
+  a shared `AppUpdateState` equality guard at the commit boundary, identical
+  states still emit IPC, write the valtio store, and log diagnostics.
+- Fix:
+  Compare incoming state with the current snapshot via
+  `isSameAppUpdateState()` before committing in both main `applyState` and
+  renderer `applyUpdateState`. Keep diagnostics on successful commits only.
+- Validation:
+  Run desktop app-update tests and confirm repeated identical progress events
+  produce a single state change.
+- References:
+  [appUpdateState.ts](../../apps/desktop/src/shared/contracts/appUpdateState.ts)
+  [appUpdateService.ts](../../apps/desktop/src/main/update/appUpdateService.ts)
+  [appUpdateService.ts](../../apps/desktop/src/renderer/src/features/app-update/services/internal/appUpdateService.ts)

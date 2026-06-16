@@ -5,6 +5,7 @@ import electronUpdater, {
   type UpdateDownloadedEvent,
   type UpdateInfo
 } from "electron-updater";
+import { isSameAppUpdateState } from "../../shared/contracts/appUpdateState.ts";
 import {
   desktopIpcChannels,
   type AppUpdateChannel,
@@ -481,6 +482,10 @@ export function createAppUpdateService(
   };
 
   const applyState = (nextState: AppUpdateState): AppUpdateState => {
+    if (isSameAppUpdateState(state, nextState)) {
+      return state;
+    }
+
     const previousState = state;
     state = nextState;
     emitState();

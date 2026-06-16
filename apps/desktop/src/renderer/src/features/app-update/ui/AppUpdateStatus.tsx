@@ -15,10 +15,6 @@ export function AppUpdateStatus({
   const { t } = useTranslation();
   const { service, state } = useAppUpdateService();
 
-  useEffect(() => {
-    void service.load();
-  }, [service]);
-
   const view = state.view;
 
   if (!view.visible || !view.titleKey) {

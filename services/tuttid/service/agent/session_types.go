@@ -16,6 +16,7 @@ type Service struct {
 	SessionDirectoryAllocator SessionDirectoryAllocator
 	PromptAttachmentStore     PromptAttachmentStore
 	RuntimePreparer           agentsidecarservice.Preparer
+	skillOptionsCache         *composerSkillOptionsCache
 }
 
 type StaleTurnResumeReconciler interface {

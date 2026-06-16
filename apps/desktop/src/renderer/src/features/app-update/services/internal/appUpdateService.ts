@@ -2,6 +2,7 @@ import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import { AppUpdateActionClickedReporter } from "../../../analytics/reporters/app-update-action-clicked/appUpdateActionClickedReporter.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
+import { isSameAppUpdateState } from "../../../../../../shared/contracts/appUpdateState.ts";
 import type { AppUpdateState } from "@shared/contracts/ipc";
 import type { DesktopRuntimeApi } from "@preload/types";
 import type { IAppUpdateService } from "../appUpdateService.interface";
@@ -192,9 +193,7 @@ export class AppUpdateService implements IAppUpdateService {
 
     this.recordDiagnostic("app_update.subscription_started");
     this.unsubscribe = this.updateClient.onState((updateState) => {
-      if (this.applyUpdateState(updateState)) {
-        this.recordDiagnostic("app_update.subscription_state_received");
-      }
+      this.applyUpdateState(updateState);
     });
   }
 
@@ -210,6 +209,13 @@ export class AppUpdateService implements IAppUpdateService {
         },
         "warn"
       );
+      return false;
+    }
+
+    if (
+      this.store.updateState &&
+      isSameAppUpdateState(this.store.updateState, updateState)
+    ) {
       return false;
     }
 

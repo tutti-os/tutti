@@ -38,6 +38,7 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
   const activated: unknown[] = [];
   const cleared: unknown[] = [];
   const handled: number[] = [];
+  const openSessionRequests: unknown[] = [];
   const stateChanges: DesktopAgentGUIWorkbenchState[] = [];
   let nodeState: DesktopAgentGUINodeState = {
     provider: "codex",
@@ -65,6 +66,9 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
       handled.push(sequence);
     },
     nodeId: "node-1",
+    onOpenSessionRequest: (request) => {
+      openSessionRequests.push(request);
+    },
     onStateChange: (state) => {
       stateChanges.push(state);
     },
@@ -80,6 +84,12 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
   assert.equal(consumed, true);
   assert.deepEqual(handled, [11]);
   assert.deepEqual(cleared, [{ nodeId: "node-1", sequence: 11 }]);
+  assert.deepEqual(openSessionRequests, [
+    {
+      agentSessionId: "session-2",
+      sequence: 11
+    }
+  ]);
   assert.deepEqual(activated, [
     {
       workspaceId: "workspace-1",
@@ -128,11 +138,18 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
       mode: "existing"
     }
   ]);
+  assert.deepEqual(openSessionRequests, [
+    {
+      agentSessionId: "session-2",
+      sequence: 11
+    }
+  ]);
 });
 
 test("consumeDesktopAgentGUIOpenSessionActivation reports activation errors after selecting the session", async () => {
   const error = new Error("session not found");
   const activationErrors: unknown[] = [];
+  const openSessionRequests: unknown[] = [];
   let nodeState: DesktopAgentGUINodeState = {
     provider: "codex",
     lastActiveAgentSessionId: "session-1"
@@ -156,6 +173,9 @@ test("consumeDesktopAgentGUIOpenSessionActivation reports activation errors afte
     onActivationError: (input) => {
       activationErrors.push(input);
     },
+    onOpenSessionRequest: (request) => {
+      openSessionRequests.push(request);
+    },
     onStateChange: () => {},
     provider: "codex",
     workspaceId: "workspace-1",
@@ -167,6 +187,12 @@ test("consumeDesktopAgentGUIOpenSessionActivation reports activation errors afte
   await Promise.resolve();
 
   assert.equal(consumed, true);
+  assert.deepEqual(openSessionRequests, [
+    {
+      agentSessionId: "missing-session",
+      sequence: 12
+    }
+  ]);
   assert.equal(nodeState.lastActiveAgentSessionId, "missing-session");
   assert.deepEqual(activationErrors, [
     {

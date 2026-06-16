@@ -1,5 +1,7 @@
 import importlib.util
+import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -286,6 +288,111 @@ def fake_interval_automation(module, next_run_at):
         "schedule": {"intervalMinutes": 15},
         "nextRunAt": next_run_at.isoformat(),
     }
+
+
+class AgentGetLogCompactionTest(unittest.TestCase):
+    def test_compact_agent_get_log_stdout_keeps_poll_summary_only(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module = load_server_module(Path(temp_dir))
+            stdout = json.dumps(
+                {
+                    "session": {
+                        "id": "agent-session-1",
+                        "status": "running",
+                        "updatedAt": "2026-06-16T12:00:00+00:00",
+                        "lastError": None,
+                        "provider": "codex",
+                        "runtimeContext": {
+                            "skills": [{"name": "skill-a", "description": "x" * 5000}],
+                            "configOptions": [{"id": "model", "currentValue": "gpt-5"}],
+                        },
+                        "messages": [{"role": "assistant", "payload": {"text": "hello"}}],
+                    }
+                }
+            )
+
+            compacted, meta = module.compact_agent_get_log_stdout(stdout)
+
+            self.assertEqual(
+                meta,
+                {
+                    "originalBytes": len(stdout.encode("utf-8")),
+                    "omitted": ["runtimeContext", "messages"],
+                },
+            )
+            self.assertIn('"id": "agent-session-1"', compacted)
+            self.assertIn('"status": "running"', compacted)
+            self.assertIn('"updatedAt": "2026-06-16T12:00:00+00:00"', compacted)
+            self.assertIn('"lastError": null', compacted)
+            self.assertNotIn("skill-a", compacted)
+            summary_json = compacted.split("[automation] stdout compacted:", 1)[0]
+            self.assertNotIn("runtimeContext", summary_json)
+            self.assertNotIn("messages", summary_json)
+            self.assertIn("[automation] stdout compacted:", compacted)
+            self.assertIn("omitted=runtimeContext,messages", compacted)
+
+    def test_run_tutti_cli_compacts_agent_get_poll_stdout_only(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module = load_server_module(Path(temp_dir))
+            large_stdout = json.dumps(
+                {
+                    "session": {
+                        "id": "agent-session-1",
+                        "status": "running",
+                        "runtimeContext": {"skills": [{"name": "skill-a"}]},
+                    }
+                }
+            )
+            completed = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=large_stdout,
+                stderr="",
+            )
+
+            with tempfile.NamedTemporaryFile(mode="w+b") as log_file:
+                with mock.patch.object(module.subprocess, "run", return_value=completed):
+                    module.run_tutti_cli(
+                        ["agent", "get", "--session-id", "agent-session-1"],
+                        log_file=log_file,
+                    )
+                log_file.seek(0)
+                log_text = log_file.read().decode("utf-8")
+
+            self.assertIn("Command: /usr/local/bin/tutti --json agent get --session-id agent-session-1", log_text)
+            summary_json = log_text.split("[automation] stdout compacted:", 1)[0]
+            self.assertNotIn("runtimeContext", summary_json)
+            self.assertIn("[automation] stdout compacted:", log_text)
+
+    def test_run_tutti_cli_keeps_full_stdout_for_non_poll_commands(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module = load_server_module(Path(temp_dir))
+            large_stdout = json.dumps(
+                {
+                    "session": {
+                        "id": "agent-session-1",
+                        "runtimeContext": {"skills": [{"name": "skill-a"}]},
+                    }
+                }
+            )
+            completed = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=large_stdout,
+                stderr="",
+            )
+
+            with tempfile.NamedTemporaryFile(mode="w+b") as log_file:
+                with mock.patch.object(module.subprocess, "run", return_value=completed):
+                    module.run_tutti_cli(
+                        ["agent", "start", "--provider", "codex"],
+                        log_file=log_file,
+                    )
+                log_file.seek(0)
+                log_text = log_file.read().decode("utf-8")
+
+            self.assertIn("runtimeContext", log_text)
+            self.assertNotIn("[automation] stdout compacted:", log_text)
 
 
 class RunCompletionTest(unittest.TestCase):

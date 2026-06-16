@@ -349,6 +349,9 @@ export function DesktopAgentGUIWorkbenchBody({
   >({});
   const [workspaceAgentProbes, setWorkspaceAgentProbes] =
     useState<DesktopAgentProbeState | null>(null);
+  const [openSessionRequest, setOpenSessionRequest] = useState<NonNullable<
+    AgentGUIProps["openSessionRequest"]
+  > | null>(null);
   const [prefillPromptRequest, setPrefillPromptRequest] =
     useState<DesktopAgentGUIPrefillPromptRequest | null>(null);
   const lastRequestedWorkbenchStateRef =
@@ -493,6 +496,7 @@ export function DesktopAgentGUIWorkbenchBody({
       },
       nodeId: context.node.id,
       onActivationError: handleOpenSessionActivationError,
+      onOpenSessionRequest: setOpenSessionRequest,
       onStateChange,
       provider,
       workspaceId,
@@ -710,6 +714,7 @@ export function DesktopAgentGUIWorkbenchBody({
       isMaximized={context.displayMode === "fullscreen"}
       isActive={context.isFocused}
       composerFocusRequestSequence={composerFocusRequestSequence}
+      openSessionRequest={openSessionRequest}
       prefillPromptRequest={prefillPromptRequest}
       managedAgentsState={managedAgentsState}
       nodeId={context.node.id}

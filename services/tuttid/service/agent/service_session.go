@@ -56,10 +56,6 @@ func serviceSession(session RuntimeSession, resumable bool) Session {
 		normalizedSettings,
 		session.RuntimeContext,
 	)
-	runtimeContext = withComposerSkillOptionsRuntimeContext(
-		runtimeContext,
-		discoverComposerSkillOptions(normalizedProvider, session.Cwd, session.Env),
-	)
 	return Session{
 		ID:                strings.TrimSpace(session.ID),
 		Provider:          normalizedProvider,
@@ -78,6 +74,19 @@ func serviceSession(session RuntimeSession, resumable bool) Session {
 		EndedAt:           endedAt,
 		LastError:         stringPointer(strings.TrimSpace(session.LastError)),
 	}
+}
+
+func serviceSessionWithComposerSkillOptions(
+	session RuntimeSession,
+	resumable bool,
+	options []ComposerSkillOption,
+) Session {
+	result := serviceSession(session, resumable)
+	result.RuntimeContext = withFallbackComposerSkillOptionsRuntimeContext(
+		result.RuntimeContext,
+		options,
+	)
+	return result
 }
 
 func sessionFromPersisted(session PersistedSession, resumable bool) Session {

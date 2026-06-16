@@ -84,6 +84,53 @@ test("AppUpdateService keeps install action pending after IPC succeeds", async (
   assert.equal(service.store.view.busy, true);
 });
 
+test("AppUpdateService skips redundant subscription states", async () => {
+  const diagnosticEvents: string[] = [];
+  let emitState: ((state: AppUpdateState) => void) | null = null;
+  const service = new AppUpdateService(
+    createClient({
+      getState: async () =>
+        createState({
+          downloadPercent: 5,
+          downloadedBytes: 50,
+          status: "downloading"
+        }),
+      onState(listener) {
+        emitState = listener;
+        return () => {};
+      }
+    }),
+    null,
+    undefined,
+    {
+      async logRendererDiagnostic(input) {
+        diagnosticEvents.push(input.event);
+      }
+    }
+  );
+
+  await service.load();
+  diagnosticEvents.length = 0;
+
+  const nextState = createState({
+    downloadPercent: 10,
+    downloadedBytes: 100,
+    status: "downloading"
+  });
+  const emit = emitState as ((state: AppUpdateState) => void) | null;
+  assert.ok(emit);
+  emit(nextState);
+  emit(nextState);
+
+  assert.deepEqual(
+    diagnosticEvents.filter((event) => event === "app_update.state_applied"),
+    ["app_update.state_applied"]
+  );
+  assert.ok(
+    !diagnosticEvents.includes("app_update.subscription_state_received")
+  );
+});
+
 test("AppUpdateService reports when load state is skipped after disposal", async () => {
   const diagnosticEvents: string[] = [];
   let resolveGetState: ((state: AppUpdateState) => void) | null = null;

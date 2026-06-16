@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { createDeveloperLogsService } from "./developerLogs.ts";
@@ -53,7 +53,7 @@ test("developer logs service summarizes managed desktop and daemon logs", async 
   );
 });
 
-test("developer logs service truncates active logs and removes rotated logs", async () => {
+test("developer logs service truncates active logs, removes rotated logs, and clears app and factory logs", async () => {
   const root = join(tmpdir(), `tutti-developer-clear-${Date.now()}`);
   await mkdir(root, { recursive: true });
   const logsDir = join(root, "logs");
@@ -62,9 +62,31 @@ test("developer logs service truncates active logs and removes rotated logs", as
   const daemonPath = join(logsDir, "tuttid.log");
   const desktopPath = join(logsDir, "tutti-desktop.log");
   const rotatedPath = join(logsDir, "tutti-desktop.2026-05-23.log");
+  const appLogPath = join(
+    root,
+    "apps",
+    "workspaces",
+    "workspace-1",
+    "app.alpha",
+    "logs",
+    "runtime.log"
+  );
+  const factoryLogPath = join(
+    root,
+    "apps",
+    "factory",
+    "jobs",
+    "job-1",
+    "logs",
+    "factory.log"
+  );
+  await mkdir(dirname(appLogPath), { recursive: true });
+  await mkdir(dirname(factoryLogPath), { recursive: true });
   await writeFile(daemonPath, "daemon-live");
   await writeFile(desktopPath, "desktop-live");
   await writeFile(rotatedPath, "rotated-history");
+  await writeFile(appLogPath, "app-runtime");
+  await writeFile(factoryLogPath, "factory-runtime");
 
   const service = createDeveloperLogsService({
     defaults: {
@@ -88,7 +110,7 @@ test("developer logs service truncates active logs and removes rotated logs", as
   const result = await service.clearLogs();
   const after = await service.getLogsState();
 
-  assert.equal(result.clearedFiles, 3);
+  assert.equal(result.clearedFiles, 5);
   assert.equal(after.totalFiles, 2);
   assert.equal(after.totalSizeBytes, 0);
   assert.deepEqual(
@@ -589,4 +611,105 @@ test("developer logs service treats .LOG files as managed logs", async () => {
     state.totalSizeBytes,
     "daemon-upper".length + "desktop-rotated-upper".length
   );
+});
+
+test("developer logs service does not clear generated diagnostics", async () => {
+  const root = join(tmpdir(), `tutti-developer-clear-generated-${Date.now()}`);
+  await mkdir(root, { recursive: true });
+  const logsDir = join(root, "logs");
+  const downloadsDir = join(root, "downloads");
+  const appLogPath = join(
+    root,
+    "apps",
+    "workspaces",
+    "workspace-1",
+    "app.alpha",
+    "logs",
+    "events.jsonl"
+  );
+  await mkdir(logsDir, { recursive: true });
+  await mkdir(downloadsDir, { recursive: true });
+  await mkdir(dirname(appLogPath), { recursive: true });
+
+  const daemonPath = join(logsDir, "tuttid.log");
+  const desktopPath = join(logsDir, "tutti-desktop.log");
+  await writeFile(daemonPath, "daemon-live");
+  await writeFile(desktopPath, "desktop-live");
+  await writeFile(appLogPath, "app-events");
+
+  const workspaceID = "workspace-1";
+  const service = createDeveloperLogsService({
+    agentSessionsProvider: async () => [
+      {
+        agentSessionID: "agent-codex",
+        hasMoreMessages: false,
+        latestMessageVersion: 1,
+        messages: [
+          {
+            agentSessionId: "agent-codex",
+            id: 1,
+            kind: "text",
+            messageId: "codex-message",
+            role: "assistant",
+            version: 1
+          }
+        ],
+        provider: "codex",
+        providerSessionID: "provider-codex",
+        session: {
+          id: "agent-codex",
+          provider: "codex",
+          providerSessionId: "provider-codex",
+          createdAt: "2026-06-10T00:00:00Z",
+          updatedAt: "2026-06-10T00:00:20Z"
+        },
+        updatedAtUnixMS: 20,
+        workspaceID
+      }
+    ],
+    appCenterSnapshotProvider: async () => ({
+      workspaces: [
+        {
+          appFactoryJobsResponse: { jobs: [], workspaceId: workspaceID },
+          appsResponse: { apps: [], workspaceId: workspaceID },
+          workspaceId: workspaceID
+        }
+      ]
+    }),
+    defaults: {
+      state: {
+        desktopLogPath: desktopPath,
+        logsDir,
+        tuttidDBPath: "",
+        tuttidListenerInfoPath: "",
+        tuttidLogPath: daemonPath,
+        tuttidPIDPath: "",
+        rootDir: root,
+        runDir: ""
+      }
+    },
+    desktopVersion: "1.2.3",
+    getDownloadsPath: () => downloadsDir,
+    preferredSystemLanguages: ["en-US"],
+    systemLocale: "en",
+    transportSnapshot: { kind: "unix", socketPath: "/tmp/tutti.sock" }
+  });
+
+  const clearResult = await service.clearLogs();
+  const exportResult = await service.exportLogs();
+
+  assert.equal(clearResult.clearedFiles, 3);
+  assert.equal(await readFile(daemonPath, "utf8"), "");
+  assert.equal(await readFile(desktopPath, "utf8"), "");
+  await assert.rejects(() => stat(appLogPath));
+
+  assert.equal(exportResult.fileCount, 6);
+  const zipText = (await readFile(exportResult.filePath)).toString("utf8");
+  assert.equal(
+    zipText.includes(
+      "agent-sessions/codex/workspace-1/agent-codex/manifest.json"
+    ),
+    true
+  );
+  assert.equal(zipText.includes("app-center-snapshot.json"), true);
 });

@@ -23,7 +23,10 @@ func NewService(runtime RuntimeController) *Service {
 	if runtime == nil {
 		panic("agent service requires a runtime")
 	}
-	return &Service{Runtime: runtime}
+	return &Service{
+		Runtime:           runtime,
+		skillOptionsCache: newComposerSkillOptionsCache(),
+	}
 }
 
 func (s *Service) List(ctx context.Context, workspaceID string) ([]Session, error) {
@@ -169,9 +172,10 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	if refreshed, ok := s.controller().Session(workspaceID, session.ID); ok {
 		session = refreshed
 	}
-	return serviceSession(
+	return serviceSessionWithComposerSkillOptions(
 		session,
 		s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
+		s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
 	), nil
 }
 

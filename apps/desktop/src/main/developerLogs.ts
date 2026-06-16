@@ -49,6 +49,37 @@ export interface DeveloperLogsAppCenterSnapshot {
 const managedDesktopLogPrefixes = ["tutti-desktop"];
 const managedDaemonLogPrefixes = ["tuttid"];
 
+type DeveloperDiagnosticsArtifact =
+  | {
+      kind: "file";
+      category: "managed-log" | "workspace-app-log" | "app-factory-log";
+      path: string;
+      archivePath: string;
+      sizeBytes: number;
+      clearable: true;
+      clearMode: "truncate" | "remove";
+    }
+  | {
+      kind: "generated";
+      category: "agent-session";
+      archivePath: string;
+      content: Buffer;
+      sizeBytes: number;
+      clearable: false;
+      agentSessionID: string;
+      path: string;
+      provider: "claude-code" | "codex";
+      workspaceID: string;
+    }
+  | {
+      kind: "generated";
+      category: "app-center-snapshot";
+      archivePath: string;
+      content: Buffer;
+      sizeBytes: number;
+      clearable: false;
+    };
+
 export function createDeveloperLogsService(
   deps: DeveloperLogsDependencies
 ): DeveloperLogsService {
@@ -80,26 +111,24 @@ export class DeveloperLogsService {
   }
 
   async clearLogs(): Promise<ClearDeveloperLogsResult> {
-    const managedFiles = await listManagedLogFiles(
-      this.deps.defaults.state.logsDir
-    );
+    const artifacts = await discoverDeveloperDiagnosticsArtifacts(this.deps);
     let clearedFiles = 0;
     let clearedSizeBytes = 0;
     const clearedPaths: string[] = [];
-    const activePaths = new Set([
-      this.deps.defaults.state.tuttidLogPath,
-      this.deps.defaults.state.desktopLogPath
-    ]);
 
-    for (const file of managedFiles) {
-      if (activePaths.has(file.path)) {
-        await truncate(file.path, 0);
+    for (const artifact of artifacts) {
+      if (!artifact.clearable) {
+        continue;
+      }
+
+      if (artifact.clearMode === "truncate") {
+        await truncate(artifact.path, 0);
       } else {
-        await rm(file.path, { force: true });
+        await rm(artifact.path, { force: true });
       }
       clearedFiles += 1;
-      clearedSizeBytes += file.sizeBytes;
-      clearedPaths.push(file.path);
+      clearedSizeBytes += artifact.sizeBytes;
+      clearedPaths.push(artifact.path);
     }
 
     return {
@@ -111,36 +140,34 @@ export class DeveloperLogsService {
 
   async exportLogs(savePath?: string): Promise<ExportDeveloperLogsResult> {
     await this.deps.flushLogs?.();
-    const managedFiles = await listManagedLogFiles(
-      this.deps.defaults.state.logsDir
+    const artifacts = await discoverDeveloperDiagnosticsArtifacts(this.deps);
+    const fileArtifacts = artifacts.filter(
+      (
+        artifact
+      ): artifact is Extract<DeveloperDiagnosticsArtifact, { kind: "file" }> =>
+        artifact.kind === "file"
     );
-    const appLogFiles = await listWorkspaceAppLogFiles(
-      this.deps.defaults.state.rootDir
+    const generatedArtifacts = artifacts.filter(
+      (
+        artifact
+      ): artifact is Extract<
+        DeveloperDiagnosticsArtifact,
+        { kind: "generated" }
+      > => artifact.kind === "generated"
     );
-    const appFactoryLogFiles = await listAppFactoryLogFiles(
-      this.deps.defaults.state.rootDir
+    const agentSessionArtifacts = generatedArtifacts.filter(
+      (
+        artifact
+      ): artifact is Extract<
+        DeveloperDiagnosticsArtifact,
+        { category: "agent-session" }
+      > => artifact.category === "agent-session"
     );
-    const agentSessions = await this.deps
-      .agentSessionsProvider?.()
-      .catch(() => []);
-    const agentSessionFiles = buildProviderAgentSessionRecordFiles(
-      agentSessions ?? []
+    const appCenterSnapshotIncluded = generatedArtifacts.some(
+      (artifact) => artifact.category === "app-center-snapshot"
     );
-    const appCenterSnapshot = await this.deps
-      .appCenterSnapshotProvider?.()
-      .catch(() => null);
-    const logFiles = [
-      ...managedFiles.map((file) => ({
-        ...file,
-        archivePath: joinZipPath("logs", basename(file.path))
-      })),
-      ...appLogFiles,
-      ...appFactoryLogFiles
-    ];
-    if (
-      logFiles.length + agentSessionFiles.length === 0 &&
-      !appCenterSnapshot
-    ) {
+
+    if (artifacts.length === 0) {
       return {
         canceled: false,
         fileCount: 0,
@@ -169,25 +196,31 @@ export class DeveloperLogsService {
 
     zipFile.outputStream.pipe(output);
 
-    for (const file of logFiles) {
-      const content = await readFile(file.path);
-      zipFile.addBuffer(content, file.archivePath);
+    for (const artifact of fileArtifacts) {
+      const content = await readFile(artifact.path);
+      zipFile.addBuffer(content, artifact.archivePath);
     }
-    for (const file of agentSessionFiles) {
-      zipFile.addBuffer(file.content, file.archivePath);
-    }
-    if (appCenterSnapshot) {
-      zipFile.addBuffer(
-        Buffer.from(JSON.stringify(appCenterSnapshot, null, 2), "utf8"),
-        "app-center-snapshot.json"
-      );
+    for (const artifact of generatedArtifacts) {
+      zipFile.addBuffer(artifact.content, artifact.archivePath);
     }
 
     const runtimeContext = buildRuntimeContext({
       defaults: this.deps.defaults,
       desktopVersion: this.deps.desktopVersion,
-      agentSessionFiles,
-      logFiles,
+      agentSessionFiles: agentSessionArtifacts.map((artifact) => ({
+        agentSessionID: artifact.agentSessionID,
+        archivePath: artifact.archivePath,
+        content: artifact.content,
+        path: artifact.path,
+        provider: artifact.provider,
+        sizeBytes: artifact.sizeBytes,
+        workspaceID: artifact.workspaceID
+      })),
+      logFiles: fileArtifacts.map((artifact) => ({
+        archivePath: artifact.archivePath,
+        path: artifact.path,
+        sizeBytes: artifact.sizeBytes
+      })),
       persistedLocale: this.deps.persistedLocale ?? null,
       preferredSystemLanguages: this.deps.preferredSystemLanguages ?? null,
       systemLocale: this.deps.systemLocale ?? null,
@@ -206,15 +239,22 @@ export class DeveloperLogsService {
             desktopVersion: this.deps.desktopVersion,
             exportedAt: new Date().toISOString(),
             logsDir: this.deps.defaults.state.logsDir,
-            agentSessionFileCount: agentSessionFiles.length,
-            appCenterSnapshotIncluded: appCenterSnapshot !== null,
-            appFactoryLogFileCount: appFactoryLogFiles.length,
-            appLogFileCount: appLogFiles.length,
-            fileCount: logFiles.length + agentSessionFiles.length,
-            managedLogFileCount: managedFiles.length,
-            totalSizeBytes:
-              logFiles.reduce((sum, file) => sum + file.sizeBytes, 0) +
-              agentSessionFiles.reduce((sum, file) => sum + file.sizeBytes, 0)
+            agentSessionFileCount: agentSessionArtifacts.length,
+            appCenterSnapshotIncluded,
+            appFactoryLogFileCount: fileArtifacts.filter(
+              (artifact) => artifact.category === "app-factory-log"
+            ).length,
+            appLogFileCount: fileArtifacts.filter(
+              (artifact) => artifact.category === "workspace-app-log"
+            ).length,
+            fileCount: fileArtifacts.length + generatedArtifacts.length,
+            managedLogFileCount: fileArtifacts.filter(
+              (artifact) => artifact.category === "managed-log"
+            ).length,
+            totalSizeBytes: artifacts.reduce(
+              (sum, artifact) => sum + artifact.sizeBytes,
+              0
+            )
           },
           null,
           2
@@ -229,7 +269,7 @@ export class DeveloperLogsService {
 
     return {
       canceled: false,
-      fileCount: logFiles.length + agentSessionFiles.length,
+      fileCount: fileArtifacts.length + generatedArtifacts.length,
       filePath: targetPath
     };
   }
@@ -295,8 +335,98 @@ interface ManagedLogFile {
   sizeBytes: number;
 }
 
-interface ExportedLogFile extends ManagedLogFile {
+interface DiscoveredLogFile extends ManagedLogFile {
   archivePath: string;
+}
+
+async function discoverDeveloperDiagnosticsArtifacts(
+  deps: DeveloperLogsDependencies
+): Promise<DeveloperDiagnosticsArtifact[]> {
+  const activeManagedLogPaths = new Set([
+    deps.defaults.state.tuttidLogPath,
+    deps.defaults.state.desktopLogPath
+  ]);
+  const managedFiles = await listManagedLogFiles(deps.defaults.state.logsDir);
+  const appLogFiles = await listWorkspaceAppLogFiles(
+    deps.defaults.state.rootDir
+  );
+  const appFactoryLogFiles = await listAppFactoryLogFiles(
+    deps.defaults.state.rootDir
+  );
+  const agentSessions = await deps.agentSessionsProvider?.().catch(() => []);
+  const agentSessionFiles = buildProviderAgentSessionRecordFiles(
+    agentSessions ?? []
+  );
+  const appCenterSnapshot = await deps
+    .appCenterSnapshotProvider?.()
+    .catch(() => null);
+
+  const artifacts: DeveloperDiagnosticsArtifact[] = [
+    ...managedFiles.map(
+      (file): DeveloperDiagnosticsArtifact => ({
+        kind: "file",
+        category: "managed-log",
+        path: file.path,
+        archivePath: joinZipPath("logs", basename(file.path)),
+        sizeBytes: file.sizeBytes,
+        clearable: true,
+        clearMode: activeManagedLogPaths.has(file.path) ? "truncate" : "remove"
+      })
+    ),
+    ...appLogFiles.map(
+      (file): DeveloperDiagnosticsArtifact => ({
+        kind: "file",
+        category: "workspace-app-log",
+        path: file.path,
+        archivePath: file.archivePath,
+        sizeBytes: file.sizeBytes,
+        clearable: true,
+        clearMode: "remove"
+      })
+    ),
+    ...appFactoryLogFiles.map(
+      (file): DeveloperDiagnosticsArtifact => ({
+        kind: "file",
+        category: "app-factory-log",
+        path: file.path,
+        archivePath: file.archivePath,
+        sizeBytes: file.sizeBytes,
+        clearable: true,
+        clearMode: "remove"
+      })
+    ),
+    ...agentSessionFiles.map(
+      (file): DeveloperDiagnosticsArtifact => ({
+        kind: "generated",
+        category: "agent-session",
+        archivePath: file.archivePath,
+        content: file.content,
+        sizeBytes: file.sizeBytes,
+        clearable: false,
+        agentSessionID: file.agentSessionID,
+        path: file.path,
+        provider: file.provider,
+        workspaceID: file.workspaceID
+      })
+    )
+  ];
+
+  if (appCenterSnapshot) {
+    const content = Buffer.from(
+      JSON.stringify(appCenterSnapshot, null, 2),
+      "utf8"
+    );
+    artifacts.push({
+      kind: "generated",
+      category: "app-center-snapshot",
+      archivePath: "app-center-snapshot.json",
+      content,
+      sizeBytes: content.byteLength,
+      clearable: false
+    });
+  }
+
+  return artifacts;
 }
 
 export function createDefaultDeveloperLogsExportFileName(
@@ -313,7 +443,7 @@ interface BuildRuntimeContextInput {
   defaults: Pick<DesktopResolvedDefaults, "state">;
   desktopVersion: string;
   agentSessionFiles: ExportedAgentSessionFile[];
-  logFiles: ExportedLogFile[];
+  logFiles: DiscoveredLogFile[];
   persistedLocale: string | null;
   preferredSystemLanguages: readonly string[] | null;
   systemLocale: string | null;
@@ -478,7 +608,7 @@ async function listManagedLogFiles(logsDir: string): Promise<ManagedLogFile[]> {
 
 async function listWorkspaceAppLogFiles(
   stateRootDir: string
-): Promise<ExportedLogFile[]> {
+): Promise<DiscoveredLogFile[]> {
   const appWorkspacesDir = join(stateRootDir, "apps", "workspaces");
   let workspaceEntries: Dirent[];
   try {
@@ -522,8 +652,8 @@ async function listWorkspaceAppLogDirFiles(input: {
   appID: string;
   logsDir: string;
   workspaceID: string;
-}): Promise<ExportedLogFile[]> {
-  const files: ExportedLogFile[] = [];
+}): Promise<DiscoveredLogFile[]> {
+  const files: DiscoveredLogFile[] = [];
   const pending = [input.logsDir];
 
   while (pending.length > 0) {
@@ -578,7 +708,7 @@ async function listWorkspaceAppLogDirFiles(input: {
 
 async function listAppFactoryLogFiles(
   stateRootDir: string
-): Promise<ExportedLogFile[]> {
+): Promise<DiscoveredLogFile[]> {
   const factoryJobsDir = join(stateRootDir, "apps", "factory", "jobs");
   let jobEntries: Dirent[];
   try {
@@ -604,8 +734,8 @@ async function listAppFactoryLogFiles(
 async function listAppFactoryJobLogDirFiles(input: {
   jobID: string;
   logsDir: string;
-}): Promise<ExportedLogFile[]> {
-  const files: ExportedLogFile[] = [];
+}): Promise<DiscoveredLogFile[]> {
+  const files: DiscoveredLogFile[] = [];
   const pending = [input.logsDir];
 
   while (pending.length > 0) {

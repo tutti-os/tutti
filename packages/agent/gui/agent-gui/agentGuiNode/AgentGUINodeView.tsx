@@ -593,6 +593,56 @@ function resolveSlashStatus({
   };
 }
 
+function slashStatusLimitsEqual(
+  left: readonly AgentComposerSlashStatusLimit[] | null | undefined,
+  right: readonly AgentComposerSlashStatusLimit[] | null | undefined
+): boolean {
+  const leftLimits = left ?? [];
+  const rightLimits = right ?? [];
+  return (
+    leftLimits.length === rightLimits.length &&
+    leftLimits.every((limit, index) => {
+      const rightLimit = rightLimits[index]!;
+      return (
+        limit.id === rightLimit.id &&
+        limit.label === rightLimit.label &&
+        (limit.percentRemaining ?? null) ===
+          (rightLimit.percentRemaining ?? null) &&
+        limit.value === rightLimit.value
+      );
+    })
+  );
+}
+
+function slashStatusesEqual(
+  left: AgentComposerSlashStatus,
+  right: AgentComposerSlashStatus
+): boolean {
+  return (
+    (left.agentSessionId ?? null) === (right.agentSessionId ?? null) &&
+    (left.baseUrl ?? null) === (right.baseUrl ?? null) &&
+    (left.contextWindow?.usedTokens ?? null) ===
+      (right.contextWindow?.usedTokens ?? null) &&
+    (left.contextWindow?.totalTokens ?? null) ===
+      (right.contextWindow?.totalTokens ?? null) &&
+    slashStatusLimitsEqual(left.limits, right.limits) &&
+    Boolean(left.limitsLoading) === Boolean(right.limitsLoading)
+  );
+}
+
+function useStableSlashStatus(
+  status: AgentComposerSlashStatus
+): AgentComposerSlashStatus {
+  const statusRef = useRef<AgentComposerSlashStatus | null>(null);
+  if (
+    statusRef.current === null ||
+    !slashStatusesEqual(statusRef.current, status)
+  ) {
+    statusRef.current = status;
+  }
+  return statusRef.current;
+}
+
 function conversationHasActiveWork(
   conversation: AgentConversationVM | null | undefined
 ): boolean {
@@ -1138,7 +1188,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     () => ({ ...viewModel.sessionChrome, approval: null }),
     [viewModel.sessionChrome]
   );
-  const slashStatus = useMemo(
+  const rawSlashStatus = useMemo(
     () =>
       resolveSlashStatus({
         rawState: viewModel.sessionChrome.rawState,
@@ -1151,6 +1201,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.sessionChrome.rawState
     ]
   );
+  const slashStatus = useStableSlashStatus(rawSlashStatus);
   const displayedInlineNotice = useMemo(() => {
     const inlineNotice = viewModel.inlineNotice;
     const inlineNoticeMessage = inlineNotice?.message.trim() ?? "";

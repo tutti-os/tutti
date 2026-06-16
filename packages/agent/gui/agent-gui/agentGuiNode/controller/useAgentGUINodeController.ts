@@ -1049,6 +1049,19 @@ function normalizeOptionalPrompt(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeAgentGUIOpenSessionRequest(
+  request: AgentGUIOpenSessionRequest | null | undefined
+): AgentGUIOpenSessionRequest | null {
+  const agentSessionId = request?.agentSessionId.trim() ?? "";
+  if (!agentSessionId || typeof request?.sequence !== "number") {
+    return null;
+  }
+  return {
+    agentSessionId,
+    sequence: request.sequence
+  };
+}
+
 function recordValue(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -1143,6 +1156,31 @@ function areProviderSkillOptionListsEqual(
     left.length === right.length &&
     left.every((skill, index) =>
       areProviderSkillOptionsEqual(skill, right[index]!)
+    )
+  );
+}
+
+function areComposerSettingOptionsEqual(
+  left: AgentGUIComposerSettingOption,
+  right: AgentGUIComposerSettingOption
+): boolean {
+  return (
+    left.value === right.value &&
+    left.label === right.label &&
+    left.description === right.description
+  );
+}
+
+function areComposerSettingOptionListsEqual(
+  left: readonly AgentGUIComposerSettingOption[] | null | undefined,
+  right: readonly AgentGUIComposerSettingOption[] | null | undefined
+): boolean {
+  const leftOptions = left ?? [];
+  const rightOptions = right ?? [];
+  return (
+    leftOptions.length === rightOptions.length &&
+    leftOptions.every((option, index) =>
+      areComposerSettingOptionsEqual(option, rightOptions[index]!)
     )
   );
 }
@@ -1379,6 +1417,111 @@ function useStableProviderSkillOptions(
     skillsRef.current = skills;
   }
   return skillsRef.current;
+}
+
+function areComposerSettingsDraftsEqual(
+  left: AgentGUIComposerSettingsVM["draftSettings"],
+  right: AgentGUIComposerSettingsVM["draftSettings"]
+): boolean {
+  return (
+    left.model === right.model &&
+    left.reasoningEffort === right.reasoningEffort &&
+    left.speed === right.speed &&
+    left.planMode === right.planMode &&
+    (left.permissionModeId ?? null) === (right.permissionModeId ?? null)
+  );
+}
+
+function arePermissionModeOptionsEqual(
+  left: AgentSessionPermissionModeOption,
+  right: AgentSessionPermissionModeOption
+): boolean {
+  return (
+    left.id === right.id &&
+    left.label === right.label &&
+    left.description === right.description &&
+    left.semantic === right.semantic
+  );
+}
+
+function arePermissionConfigsEqual(
+  left: AgentSessionPermissionConfig | null | undefined,
+  right: AgentSessionPermissionConfig | null | undefined
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  return (
+    left.configurable === right.configurable &&
+    (left.defaultValue ?? null) === (right.defaultValue ?? null) &&
+    left.modes.length === right.modes.length &&
+    left.modes.every((mode, index) =>
+      arePermissionModeOptionsEqual(mode, right.modes[index]!)
+    )
+  );
+}
+
+function areComposerSettingsVMsEqual(
+  left: AgentGUIComposerSettingsVM,
+  right: AgentGUIComposerSettingsVM
+): boolean {
+  return (
+    left.sessionSettings === right.sessionSettings &&
+    areComposerSettingsDraftsEqual(left.draftSettings, right.draftSettings) &&
+    (left.effectivePlanMode ?? false) === (right.effectivePlanMode ?? false) &&
+    left.supportsModel === right.supportsModel &&
+    left.supportsReasoningEffort === right.supportsReasoningEffort &&
+    left.supportsSpeed === right.supportsSpeed &&
+    (left.supportsPermissionMode ?? false) ===
+      (right.supportsPermissionMode ?? false) &&
+    left.supportsPlanMode === right.supportsPlanMode &&
+    left.isSettingsLoading === right.isSettingsLoading &&
+    left.modelUnavailable === right.modelUnavailable &&
+    left.reasoningUnavailable === right.reasoningUnavailable &&
+    left.speedUnavailable === right.speedUnavailable &&
+    (left.permissionModeUnavailable ?? false) ===
+      (right.permissionModeUnavailable ?? false) &&
+    left.planUnavailable === right.planUnavailable &&
+    (left.selectedModelValue ?? null) === (right.selectedModelValue ?? null) &&
+    (left.selectedReasoningEffortValue ?? null) ===
+      (right.selectedReasoningEffortValue ?? null) &&
+    (left.selectedSpeedValue ?? null) === (right.selectedSpeedValue ?? null) &&
+    (left.selectedPermissionModeValue ?? null) ===
+      (right.selectedPermissionModeValue ?? null) &&
+    arePermissionConfigsEqual(left.permissionConfig, right.permissionConfig) &&
+    (left.selectedProjectPath ?? null) ===
+      (right.selectedProjectPath ?? null) &&
+    Boolean(left.projectLocked) === Boolean(right.projectLocked) &&
+    areComposerSettingOptionListsEqual(
+      left.availableModels,
+      right.availableModels
+    ) &&
+    areComposerSettingOptionListsEqual(
+      left.availableReasoningEfforts,
+      right.availableReasoningEfforts
+    ) &&
+    areComposerSettingOptionListsEqual(
+      left.availableSpeeds,
+      right.availableSpeeds
+    ) &&
+    areComposerSettingOptionListsEqual(
+      left.availablePermissionModes,
+      right.availablePermissionModes
+    )
+  );
+}
+
+function useStableComposerSettingsVM(
+  settings: AgentGUIComposerSettingsVM
+): AgentGUIComposerSettingsVM {
+  const settingsRef = useRef<AgentGUIComposerSettingsVM | null>(null);
+  if (
+    settingsRef.current === null ||
+    !areComposerSettingsVMsEqual(settingsRef.current, settings)
+  ) {
+    settingsRef.current = settings;
+  }
+  return settingsRef.current;
 }
 
 function useStableControllerEventCallback<Args extends unknown[], Result>(
@@ -1635,7 +1778,7 @@ function readNodeDefaultDraftContent(input: {
   return (
     input.drafts[nodeDefaultDraftContentKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
-    emptyAgentComposerDraft()
+    EMPTY_AGENT_COMPOSER_DRAFT
   );
 }
 
@@ -2008,6 +2151,7 @@ interface UseAgentGUINodeControllerInput {
   workspacePath: string;
   avoidGroupingEdits: boolean;
   data: AgentGUINodeData;
+  openSessionRequest?: AgentGUIOpenSessionRequest | null;
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
   previewMode?: boolean;
   onDataChange: (
@@ -2017,6 +2161,11 @@ interface UseAgentGUINodeControllerInput {
     message: string,
     tone?: "info" | "warning" | "error"
   ) => void;
+}
+
+export interface AgentGUIOpenSessionRequest {
+  agentSessionId: string;
+  sequence: number;
 }
 
 export interface AgentGUIPrefillPromptRequest {
@@ -2032,6 +2181,7 @@ export function useAgentGUINodeController({
   workspacePath,
   avoidGroupingEdits,
   data,
+  openSessionRequest = null,
   prefillPromptRequest = null,
   previewMode = false,
   onDataChange,
@@ -2542,6 +2692,9 @@ export function useAgentGUINodeController({
   const selectedConversationInitialMessagesLoadedIdsRef = useRef(
     new Set<string>()
   );
+  const handledOpenSessionSequenceRef = useRef<number | null>(null);
+  const pendingOpenSessionRequestRef =
+    useRef<AgentGUIOpenSessionRequest | null>(null);
   const stateReloadCauseRef = useRef<{
     source: "activity-stream";
     eventType?: string;
@@ -3315,45 +3468,80 @@ export function useAgentGUINodeController({
   );
 
   useEffect(() => {
+    const normalizedOpenSessionRequest =
+      normalizeAgentGUIOpenSessionRequest(openSessionRequest);
+    if (
+      !previewMode &&
+      normalizedOpenSessionRequest &&
+      handledOpenSessionSequenceRef.current !==
+        normalizedOpenSessionRequest.sequence
+    ) {
+      handledOpenSessionSequenceRef.current =
+        normalizedOpenSessionRequest.sequence;
+      pendingOpenSessionRequestRef.current = normalizedOpenSessionRequest;
+    }
+    const pendingOpenSessionRequest = pendingOpenSessionRequestRef.current;
     const requestedConversationId = data.lastActiveAgentSessionId?.trim() ?? "";
+    const explicitRequestedConversationId =
+      pendingOpenSessionRequest?.agentSessionId.trim() ?? "";
+    const effectiveRequestedConversationId =
+      explicitRequestedConversationId || requestedConversationId;
+    const hasExplicitOpenSessionRequest =
+      explicitRequestedConversationId !== "";
     const requestedConversationExists =
-      requestedConversationId !== ""
+      effectiveRequestedConversationId !== ""
         ? resolveConversationSummaryById(
             conversations,
-            requestedConversationId,
+            effectiveRequestedConversationId,
             transientConversationRef.current
           ) !== null
         : false;
-    if (!requestedConversationId) {
+    if (!effectiveRequestedConversationId) {
       externalConversationReloadAttemptRef.current = null;
       suppressedHomeConversationIdRef.current = null;
       return;
     }
     if (
-      requestedConversationId === activeConversationIdRef.current &&
+      effectiveRequestedConversationId === activeConversationIdRef.current &&
       (!hasLoadedConversations || requestedConversationExists)
     ) {
       externalConversationReloadAttemptRef.current = null;
-      return;
-    }
-    if (suppressedHomeConversationIdRef.current === requestedConversationId) {
+      if (hasExplicitOpenSessionRequest) {
+        pendingOpenSessionRequestRef.current = null;
+      }
       return;
     }
     if (
-      pendingLocalActiveConversationIdRef.current !== null &&
-      requestedConversationId !== pendingLocalActiveConversationIdRef.current &&
-      externalConversationReloadAttemptRef.current !== requestedConversationId
+      !hasExplicitOpenSessionRequest &&
+      suppressedHomeConversationIdRef.current ===
+        effectiveRequestedConversationId
     ) {
       return;
+    }
+    if (
+      !hasExplicitOpenSessionRequest &&
+      pendingLocalActiveConversationIdRef.current !== null &&
+      effectiveRequestedConversationId !==
+        pendingLocalActiveConversationIdRef.current &&
+      externalConversationReloadAttemptRef.current !==
+        effectiveRequestedConversationId
+    ) {
+      return;
+    }
+    if (hasExplicitOpenSessionRequest) {
+      pendingLocalActiveConversationIdRef.current = null;
     }
 
     if (!requestedConversationExists) {
       if (
-        requestedConversationId === activeConversationIdRef.current &&
+        effectiveRequestedConversationId === activeConversationIdRef.current &&
         hasLoadedConversations &&
         conversations.length > 0
       ) {
         externalConversationReloadAttemptRef.current = null;
+        if (hasExplicitOpenSessionRequest) {
+          pendingOpenSessionRequestRef.current = null;
+        }
         const fallbackConversationId = selectAgentGUIConversationId(
           conversations,
           activeConversationIdRef.current
@@ -3367,20 +3555,26 @@ export function useAgentGUINodeController({
       }
       if (
         hasLoadedConversations &&
-        externalConversationReloadAttemptRef.current !== requestedConversationId
+        externalConversationReloadAttemptRef.current !==
+          effectiveRequestedConversationId
       ) {
-        externalConversationReloadAttemptRef.current = requestedConversationId;
-        void syncConversationListProjection(requestedConversationId);
+        externalConversationReloadAttemptRef.current =
+          effectiveRequestedConversationId;
+        void syncConversationListProjection(effectiveRequestedConversationId);
         return;
       }
       if (
         hasLoadedConversations &&
         !isLoadingConversations &&
-        externalConversationReloadAttemptRef.current === requestedConversationId
+        externalConversationReloadAttemptRef.current ===
+          effectiveRequestedConversationId
       ) {
         externalConversationReloadAttemptRef.current = null;
+        if (hasExplicitOpenSessionRequest) {
+          pendingOpenSessionRequestRef.current = null;
+        }
         const fallbackConversationId =
-          isComposerHomeRef.current && !requestedConversationId
+          isComposerHomeRef.current && !effectiveRequestedConversationId
             ? null
             : selectAgentGUIConversationId(
                 conversations,
@@ -3396,12 +3590,18 @@ export function useAgentGUINodeController({
     }
 
     externalConversationReloadAttemptRef.current = null;
-    selectConversation(requestedConversationId, { reloadConversations: false });
+    if (hasExplicitOpenSessionRequest) {
+      pendingOpenSessionRequestRef.current = null;
+    }
+    selectConversation(effectiveRequestedConversationId, {
+      reloadConversations: false
+    });
   }, [
     conversations,
     data.lastActiveAgentSessionId,
     hasLoadedConversations,
     isLoadingConversations,
+    openSessionRequest,
     syncConversationListProjection,
     selectConversation,
     transientConversation
@@ -7552,6 +7752,7 @@ export function useAgentGUINodeController({
     draftReasoningEffort,
     draftSpeed
   ]);
+  const stableComposerSettings = useStableComposerSettingsVM(composerSettings);
 
   const stableCreateConversation =
     useStableControllerEventCallback(createConversation);
@@ -7709,7 +7910,7 @@ export function useAgentGUINodeController({
         activationError,
         openclawGateway,
         canSubmit,
-        composerSettings,
+        composerSettings: stableComposerSettings,
         queuedPrompts,
         drainingQueuedPromptId,
         canQueueWhileBusy,
@@ -7740,7 +7941,6 @@ export function useAgentGUINodeController({
       availableSkills,
       canSubmit,
       canQueueWhileBusy,
-      composerSettings,
       conversation,
       conversationDetail,
       controllerActions,
@@ -7773,6 +7973,7 @@ export function useAgentGUINodeController({
       currentUserId,
       workspaceId,
       workspacePath,
+      stableComposerSettings,
       sessionChrome,
       userProjects,
       visibleConversations

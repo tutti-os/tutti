@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { ProgressInfo } from "electron-updater";
 import type { UpdateDownloadedEvent, UpdateInfo } from "electron-updater";
 import {
   createAppUpdateService,
@@ -199,6 +200,61 @@ test("createElectronUpdaterLogger defers no published versions errors during pre
         "electron updater error deferred for prefixed GitHub release fallback"
     }
   ]);
+});
+
+test("createAppUpdateService skips identical consecutive download progress states", async () => {
+  const progressListeners = new Set<(progress: ProgressInfo) => void>();
+  let stateChangeCount = 0;
+  const driver = createFakeDriver({
+    onDownloadProgress(listener) {
+      progressListeners.add(listener);
+      return () => progressListeners.delete(listener);
+    }
+  });
+  const service = createAppUpdateService(driver, {
+    supportsUpdates: true
+  });
+
+  try {
+    service.onStateChanged(() => {
+      stateChangeCount += 1;
+    });
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+
+    const progress: ProgressInfo = {
+      bytesPerSecond: 1_000,
+      delta: 100,
+      percent: 10,
+      total: 1_000,
+      transferred: 100
+    };
+    for (const listener of progressListeners) {
+      listener(progress);
+    }
+    stateChangeCount = 0;
+
+    for (const listener of progressListeners) {
+      listener(progress);
+      listener(progress);
+    }
+    assert.equal(stateChangeCount, 0);
+
+    const nextProgress: ProgressInfo = {
+      ...progress,
+      delta: 100,
+      percent: 20,
+      transferred: 200
+    };
+    for (const listener of progressListeners) {
+      listener(nextProgress);
+    }
+    assert.equal(stateChangeCount, 1);
+  } finally {
+    service.dispose();
+  }
 });
 
 function createUpdateInfoFixture(version: string): UpdateInfo {

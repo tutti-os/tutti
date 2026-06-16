@@ -726,9 +726,65 @@ def tutti_cli_command():
     return configured
 
 
+AGENT_GET_POLL_LOG_FIELDS = ("id", "status", "taskStatus", "updatedAt", "lastError")
+AGENT_GET_LOG_OMIT_FIELDS = (
+    "runtimeContext",
+    "messages",
+    "skills",
+    "configOptions",
+    "settings",
+    "permissionConfig",
+)
+
+
+def is_agent_get_poll_args(args):
+    return (
+        len(args) >= 3
+        and args[0] == "agent"
+        and args[1] == "get"
+        and args[2] == "--session-id"
+    )
+
+
+def compact_agent_get_log_stdout(stdout_text):
+    original_bytes = len(stdout_text.encode("utf-8"))
+    try:
+        payload = json.loads(stdout_text)
+    except json.JSONDecodeError:
+        return stdout_text, None
+
+    session = payload.get("session") if isinstance(payload, dict) else None
+    if not isinstance(session, dict):
+        return stdout_text, None
+
+    omitted = [field for field in AGENT_GET_LOG_OMIT_FIELDS if field in session]
+    summary = {field: session.get(field) for field in AGENT_GET_POLL_LOG_FIELDS}
+    compact_json = json.dumps(summary, ensure_ascii=False, indent=2)
+    omitted_text = ",".join(omitted) if omitted else "none"
+    meta_line = (
+        f"[automation] stdout compacted: originalBytes={original_bytes} "
+        f"omitted={omitted_text}\n"
+    )
+    return compact_json + "\n" + meta_line, {
+        "originalBytes": original_bytes,
+        "omitted": omitted,
+    }
+
+
+def write_cli_log_output(log_file, stdout_text, *, compact_stdout=False):
+    if stdout_text:
+        text_to_log = stdout_text
+        if compact_stdout:
+            text_to_log, _meta = compact_agent_get_log_stdout(stdout_text)
+        log_file.write(text_to_log.encode("utf-8"))
+        if not text_to_log.endswith("\n"):
+            log_file.write(b"\n")
+
+
 def run_tutti_cli(args, timeout=60, log_file=None):
     command_path = tutti_cli_command()
     command = [command_path, "--json", *args]
+    compact_stdout = is_agent_get_poll_args(args)
     if log_file:
         log_file.write(("Command: " + " ".join(command) + "\n").encode("utf-8"))
         log_file.flush()
@@ -743,9 +799,11 @@ def run_tutti_cli(args, timeout=60, log_file=None):
         raise RuntimeError(f"TUTTI_CLI executable was not found: {command_path}") from exc
     if log_file:
         if result.stdout:
-            log_file.write(result.stdout.encode("utf-8"))
-            if not result.stdout.endswith("\n"):
-                log_file.write(b"\n")
+            write_cli_log_output(
+                log_file,
+                result.stdout,
+                compact_stdout=compact_stdout and result.returncode == 0,
+            )
         if result.stderr:
             log_file.write(result.stderr.encode("utf-8"))
             if not result.stderr.endswith("\n"):

@@ -799,6 +799,35 @@ func TestServiceMapsRuntimeSessionLastError(t *testing.T) {
 	}
 }
 
+func TestServiceGetDoesNotDiscoverComposerSkills(t *testing.T) {
+	tempDir := t.TempDir()
+	homeDir := filepath.Join(tempDir, "home")
+	cwd := filepath.Join(tempDir, "repo")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+	writeSkill(t, filepath.Join(cwd, ".codex", "skills", "project-skill", "SKILL.md"), `---
+description: Project skill.
+---
+`)
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		Provider:    "codex",
+		WorkspaceID: "ws-1",
+		Cwd:         cwd,
+		Status:      "working",
+	}
+	service := NewService(runtime)
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if _, ok := session.RuntimeContext["skills"]; ok {
+		t.Fatalf("runtime context skills = %#v, want not discovered on get", session.RuntimeContext["skills"])
+	}
+}
+
 func TestServiceSessionNormalizesReasoningRuntimeConfigOptions(t *testing.T) {
 	session := serviceSession(RuntimeSession{
 		ID:          "session-1",

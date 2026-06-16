@@ -24,17 +24,7 @@ export function registerAppUpdateServices(
     .catch(() => undefined);
 
   const service = new AppUpdateService(
-    createDesktopAppUpdateClient(desktopApi.update, {
-      logStateNormalized(details) {
-        void desktopApi.runtime
-          ?.logRendererDiagnostic({
-            details,
-            event: "app_update.state_normalized",
-            source: "app-update"
-          })
-          .catch(() => undefined);
-      }
-    }),
+    createDesktopAppUpdateClient(desktopApi.update),
     input.reporterService ?? null,
     undefined,
     desktopApi.runtime

@@ -109,7 +109,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
 		"speed":            nullableString(effectiveSettings.Speed),
 	}
-	skills := discoverComposerSkillOptions(provider, input.Cwd, nil)
+	skills := s.discoverComposerSkillOptions(provider, input.Cwd, nil)
 	runtimeContext["skills"] = composerSkillOptionsRuntimeContext(skills)
 	if composerOptionsProviderSupportsSettings(provider) {
 		if catalogOptions, source, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, effectiveSettings.Model); ok {

@@ -1,9 +1,13 @@
 package agent
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestDiscoverComposerSkillOptionsCodexUsesProviderNativeTriggers(t *testing.T) {
@@ -109,6 +113,47 @@ description: Internal Tutti CLI.
 	}
 	if options[2].PluginName != "product-design" || options[2].SourceKind != "plugin" {
 		t.Fatalf("plugin option = %#v", options[2])
+	}
+}
+
+func TestDiscoverComposerSkillOptionsWarnsOnceForUnchangedInvalidSkill(t *testing.T) {
+	tempDir := t.TempDir()
+	homeDir := filepath.Join(tempDir, "home")
+	cwd := filepath.Join(tempDir, "repo")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+	skillPath := filepath.Join(homeDir, ".codex", "skills", "broken", "SKILL.md")
+	writeSkill(t, skillPath, `description: Missing frontmatter delimiter.
+---
+`)
+	skillMetadataCache.mu.Lock()
+	skillMetadataCache.entries = make(map[string]skillMetadataCacheEntry)
+	skillMetadataCache.mu.Unlock()
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	_ = discoverComposerSkillOptions("codex", cwd, nil)
+	_ = discoverComposerSkillOptions("codex", cwd, nil)
+
+	if count := strings.Count(output.String(), "skill_frontmatter_invalid"); count != 1 {
+		t.Fatalf("invalid frontmatter warnings = %d, want 1; output:\n%s", count, output.String())
+	}
+
+	writeSkill(t, skillPath, `description: Still missing frontmatter delimiter.
+---
+`)
+	modTime := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(skillPath, modTime, modTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+	_ = discoverComposerSkillOptions("codex", cwd, nil)
+
+	if count := strings.Count(output.String(), "skill_frontmatter_invalid"); count != 2 {
+		t.Fatalf("invalid frontmatter warnings after modification = %d, want 2; output:\n%s", count, output.String())
 	}
 }
 

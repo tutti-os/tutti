@@ -50,7 +50,6 @@ test("registerAppUpdateServices hydrates update state immediately", async () => 
     "app_update.service_registered",
     "app_update.load_started",
     "app_update.subscription_started",
-    "app_update.state_normalized",
     "app_update.state_applied",
     "app_update.load_succeeded"
   ]);

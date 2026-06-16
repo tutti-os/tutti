@@ -1282,6 +1282,66 @@ describe("useAgentGUINodeController", () => {
     expect(onDataChange).toHaveBeenCalled();
   });
 
+  it("honors an explicit open-session request after a local conversation switch", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result, rerender } = renderHook(
+      (props) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          ...props
+        }),
+      {
+        initialProps: {
+          data: agentGuiData("session-1"),
+          onDataChange: vi.fn(),
+          openSessionRequest: null as {
+            agentSessionId: string;
+            sequence: number;
+          } | null
+        }
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    });
+
+    rerender({
+      data: agentGuiData("session-1"),
+      onDataChange: vi.fn(),
+      openSessionRequest: {
+        agentSessionId: "session-1",
+        sequence: 1
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+  });
+
   it("keeps a switched conversation loading while its timeline request is pending", async () => {
     const session2TimelineResolvers: Array<
       (value: { timelineItems: AgentHostWorkspaceAgentTimelineItem[] }) => void
