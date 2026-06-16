@@ -126,7 +126,9 @@ export const zhCN = {
     agentGui: {
       collapseConversationRail: "收起会话列表",
       expandConversationRail: "展开会话列表",
-      fallbackAgentLabel: "Agent"
+      fallbackAgentLabel: "Agent",
+      openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
+      openSessionUnavailableTitle: "会话不可用"
     },
     agentMessageCenter: {
       openAria: "打开 Agent 消息",

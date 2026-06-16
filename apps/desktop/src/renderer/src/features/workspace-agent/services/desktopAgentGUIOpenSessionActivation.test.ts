@@ -129,3 +129,49 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
     }
   ]);
 });
+
+test("consumeDesktopAgentGUIOpenSessionActivation reports activation errors after selecting the session", async () => {
+  const error = new Error("session not found");
+  const activationErrors: unknown[] = [];
+  let nodeState: DesktopAgentGUINodeState = {
+    provider: "codex",
+    lastActiveAgentSessionId: "session-1"
+  };
+  const agentActivityRuntime = {
+    async activateSession() {
+      throw error;
+    }
+  } as unknown as Pick<AgentActivityRuntime, "activateSession">;
+
+  const consumed = consumeDesktopAgentGUIOpenSessionActivation({
+    activation: {
+      payload: { agentSessionId: "missing-session" },
+      sequence: 12,
+      type: desktopAgentGUIOpenSessionActivationType
+    },
+    agentActivityRuntime,
+    handledSequence: null,
+    markHandled: () => {},
+    nodeId: "node-1",
+    onActivationError: (input) => {
+      activationErrors.push(input);
+    },
+    onStateChange: () => {},
+    provider: "codex",
+    workspaceId: "workspace-1",
+    updateNodeState: (updater) => {
+      nodeState = updater(nodeState);
+    }
+  });
+
+  await Promise.resolve();
+
+  assert.equal(consumed, true);
+  assert.equal(nodeState.lastActiveAgentSessionId, "missing-session");
+  assert.deepEqual(activationErrors, [
+    {
+      agentSessionId: "missing-session",
+      error
+    }
+  ]);
+});

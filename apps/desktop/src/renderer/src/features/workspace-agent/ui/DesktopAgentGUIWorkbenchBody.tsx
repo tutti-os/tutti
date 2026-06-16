@@ -32,6 +32,7 @@ import type {
   IAgentProviderStatusService
 } from "../services/agentProviderStatusService.interface";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
+import { Toast } from "@renderer/lib/toast";
 import type { DesktopAgentComposerDefaults } from "@shared/preferences";
 import type { DesktopRuntimeApi } from "@preload/types";
 import {
@@ -382,6 +383,24 @@ export function DesktopAgentGUIWorkbenchBody({
       };
     });
   }, []);
+  const handleOpenSessionActivationError = useCallback(
+    (input: { agentSessionId: string; error: unknown }) => {
+      Toast.Error(
+        i18n.t("workspace.agentGui.openSessionUnavailableTitle"),
+        i18n.t("workspace.agentGui.openSessionUnavailableDescription")
+      );
+      void runtimeApi?.logTerminalDiagnostic({
+        details: {
+          agentSessionId: input.agentSessionId,
+          error: stringifyDiagnosticError(input.error)
+        },
+        event: "agent.gui.open_session_activation_failed",
+        level: "warn",
+        workspaceId
+      });
+    },
+    [i18n, runtimeApi, workspaceId]
+  );
 
   useEffect(() => {
     if (previewMode) {
@@ -473,6 +492,7 @@ export function DesktopAgentGUIWorkbenchBody({
         handledOpenSessionActivationSequenceRef.current = sequence;
       },
       nodeId: context.node.id,
+      onActivationError: handleOpenSessionActivationError,
       onStateChange,
       provider,
       workspaceId,
@@ -483,6 +503,7 @@ export function DesktopAgentGUIWorkbenchBody({
     context.activation,
     context.host,
     context.node.id,
+    handleOpenSessionActivationError,
     onStateChange,
     provider,
     workspaceId

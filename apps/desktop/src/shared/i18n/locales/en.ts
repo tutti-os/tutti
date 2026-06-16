@@ -128,7 +128,10 @@ export const en = {
     agentGui: {
       collapseConversationRail: "Collapse session list",
       expandConversationRail: "Expand session list",
-      fallbackAgentLabel: "Agent"
+      fallbackAgentLabel: "Agent",
+      openSessionUnavailableDescription:
+        "This agent session no longer exists or cannot be opened.",
+      openSessionUnavailableTitle: "Session unavailable"
     },
     agentMessageCenter: {
       openAria: "Open agent messages",
@@ -282,8 +285,7 @@ export const en = {
           "We couldn't update the sleep prevention setting right now.",
         updateChannelSaveFailed:
           "We couldn't update the release channel right now.",
-        updatePolicySaveFailed:
-          "We couldn't update the update mode right now.",
+        updatePolicySaveFailed: "We couldn't update the update mode right now.",
         versionLabel: "Desktop version"
       },
       nav: {

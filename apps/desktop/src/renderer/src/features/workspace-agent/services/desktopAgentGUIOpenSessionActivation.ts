@@ -18,6 +18,10 @@ export interface ConsumeDesktopAgentGUIOpenSessionActivationInput {
   handledSequence: number | null;
   markHandled(this: void, sequence: number): void;
   nodeId: string;
+  onActivationError?(
+    this: void,
+    input: { agentSessionId: string; error: unknown }
+  ): void;
   onStateChange(this: void, state: DesktopAgentGUIWorkbenchState): void;
   provider: DesktopAgentGUIProvider;
   workspaceId: string;
@@ -34,6 +38,7 @@ export function consumeDesktopAgentGUIOpenSessionActivation({
   handledSequence,
   markHandled,
   nodeId,
+  onActivationError,
   onStateChange,
   provider,
   workspaceId,
@@ -52,7 +57,9 @@ export function consumeDesktopAgentGUIOpenSessionActivation({
       agentSessionId: request.agentSessionId,
       mode: "existing"
     })
-    .catch(() => {});
+    .catch((error: unknown) => {
+      onActivationError?.({ agentSessionId: request.agentSessionId, error });
+    });
   updateNodeState((current) => {
     const next = normalizeDesktopAgentGUINodeState(
       {
