@@ -147,7 +147,9 @@ func (c *mcpClient) respond(id json.RawMessage, result any, rpcErr *rpcError) {
 	} else {
 		payload["result"] = result
 	}
-	c.send(payload)
+	if err := c.send(payload); err != nil {
+		c.fail(fmt.Errorf("send browser MCP response: %w", err))
+	}
 }
 
 func (c *mcpClient) send(payload any) error {
