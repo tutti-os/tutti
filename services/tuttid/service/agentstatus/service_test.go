@@ -78,7 +78,7 @@ func TestServiceListReportsLoginAndRefreshActionsWhenAuthMarkerMissing(t *testin
 	if action.ID != ActionLogin {
 		t.Fatalf("first action ID = %q, want %q", action.ID, ActionLogin)
 	}
-	if action.Command == nil || action.Command.Input != "/usr/local/bin/codex --login\n" {
+	if action.Command == nil || action.Command.Input != "/usr/local/bin/codex login\n" {
 		t.Fatalf("login command = %#v", action.Command)
 	}
 	if status.Actions[1].ID != ActionRefresh || status.Actions[1].Kind != ActionKindRefresh {
@@ -154,7 +154,7 @@ func TestServiceListReportsReadyWhenInstalledAndAuthenticated(t *testing.T) {
 	if action.ID != ActionLogin {
 		t.Fatalf("first action ID = %q, want %q", action.ID, ActionLogin)
 	}
-	if action.Command == nil || action.Command.Input != "/usr/local/bin/codex --login\n" {
+	if action.Command == nil || action.Command.Input != "/usr/local/bin/codex login\n" {
 		t.Fatalf("login command = %#v", action.Command)
 	}
 }
@@ -168,7 +168,7 @@ func TestServiceListTreatsUnknownAuthAsAuthRequired(t *testing.T) {
 		BinaryNames:        []string{"codex"},
 		AdapterBinaryNames: []string{"codex-acp"},
 		AdapterCommand:     []string{"codex-acp"},
-		LoginArgs:          []string{"--login"},
+		LoginArgs:          []string{"login"},
 	}}}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
@@ -193,7 +193,7 @@ func TestServiceListTreatsUnknownAuthAsAuthRequired(t *testing.T) {
 	if action.ID != ActionLogin {
 		t.Fatalf("first action ID = %q, want %q", action.ID, ActionLogin)
 	}
-	if action.Command == nil || action.Command.Input != "/usr/local/bin/codex --login\n" {
+	if action.Command == nil || action.Command.Input != "/usr/local/bin/codex login\n" {
 		t.Fatalf("login command = %#v", action.Command)
 	}
 	if status.Actions[1].ID != ActionRefresh || status.Actions[1].Kind != ActionKindRefresh {
@@ -333,7 +333,7 @@ func TestServiceProbeReportsFailureWhenAdapterCommandCannotStart(t *testing.T) {
 			ScriptShell:    "sh",
 		},
 		AdapterInstall: codexACPInstallerSpec(),
-		LoginArgs:      []string{"--login"},
+		LoginArgs:      []string{"login"},
 	}}}
 
 	result, err := service.Probe(context.Background(), ProbeInput{Provider: "codex"})
@@ -423,7 +423,7 @@ func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 				},
 			},
 		},
-		LoginArgs: []string{"--login"},
+		LoginArgs: []string{"login"},
 	}}}
 
 	result, err := service.RunAction(context.Background(), RunActionInput{
@@ -464,7 +464,7 @@ func TestServiceRunActionReportsInstallCommandFailures(t *testing.T) {
 			DisplayCommand: "install codex test",
 			ShellCommand:   "install codex test",
 		},
-		LoginArgs: []string{"--login"},
+		LoginArgs: []string{"login"},
 	}}}
 	service.InstallCommand = func(context.Context, InstallCommandInput) (InstallCommandResult, error) {
 		return InstallCommandResult{
@@ -509,7 +509,7 @@ func TestServiceRunActionReportsInstallTimeouts(t *testing.T) {
 			DisplayCommand: "install codex test",
 			ShellCommand:   "install codex test",
 		},
-		LoginArgs: []string{"--login"},
+		LoginArgs: []string{"login"},
 	}}}
 	service.InstallCommand = func(ctx context.Context, _ InstallCommandInput) (InstallCommandResult, error) {
 		<-ctx.Done()
@@ -627,7 +627,7 @@ func TestInstallCommandLockSkipsNonNPMCommands(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "run", "locks", "npm-global-install.lock")
 	var called atomic.Bool
 	lock := installCommandLock{
-		command:  "codex --login",
+		command:  "codex login",
 		lockPath: lockPath,
 		now: func() time.Time {
 			called.Store(true)
@@ -795,7 +795,7 @@ func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) 
 			DisplayCommand: "npm install -g @openai/codex",
 			ShellCommand:   "npm install -g @openai/codex",
 		},
-		LoginArgs: []string{"--login"},
+		LoginArgs: []string{"login"},
 	}}}
 
 	var installCallCount atomic.Int32

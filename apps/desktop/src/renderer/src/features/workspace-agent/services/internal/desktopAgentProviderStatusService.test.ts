@@ -27,7 +27,7 @@ test("runAction executes terminal commands and refreshes the provider status", a
               {
                 command: {
                   cwd: "/workspace",
-                  input: "codex --login\n"
+                  input: "codex login\n"
                 },
                 id: "login",
                 kind: "terminal_command"
@@ -60,7 +60,7 @@ test("runAction executes terminal commands and refreshes the provider status", a
   assert.deepEqual(commands, [
     {
       cwd: "/workspace",
-      input: "codex --login\n"
+      input: "codex login\n"
     }
   ]);
   assert.deepEqual(statusCalls, [undefined, ["codex"]]);
@@ -78,7 +78,7 @@ test("runAction tracks provider login initiation and successful status result", 
               {
                 command: {
                   cwd: "/workspace",
-                  input: "codex --login\n"
+                  input: "codex login\n"
                 },
                 id: "login",
                 kind: "terminal_command"
@@ -139,7 +139,7 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
       {
         command: {
           cwd: "/workspace",
-          input: "codex --login\n"
+          input: "codex login\n"
         },
         id: "login",
         kind: "terminal_command"
@@ -198,7 +198,7 @@ test("runAction stops login status polling after the default three minute window
       {
         command: {
           cwd: "/workspace",
-          input: "codex --login\n"
+          input: "codex login\n"
         },
         id: "login",
         kind: "terminal_command"
@@ -418,7 +418,7 @@ test("runAction reports login launch failures and clears pending state", async (
                 {
                   command: {
                     cwd: "/workspace",
-                    input: "codex --login\n"
+                    input: "codex login\n"
                   },
                   id: "login",
                   kind: "terminal_command"
@@ -853,7 +853,7 @@ test("runAction refreshes and executes when the requested action appears", async
               {
                 command: {
                   cwd: "/workspace",
-                  input: "codex --login\n"
+                  input: "codex login\n"
                 },
                 id: "login",
                 kind: "terminal_command"
@@ -877,7 +877,7 @@ test("runAction refreshes and executes when the requested action appears", async
   assert.deepEqual(commands, [
     {
       cwd: "/workspace",
-      input: "codex --login\n"
+      input: "codex login\n"
     }
   ]);
   assert.deepEqual(statusCalls, [undefined, ["codex"], ["codex"]]);

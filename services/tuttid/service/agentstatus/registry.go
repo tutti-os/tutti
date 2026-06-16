@@ -106,7 +106,7 @@ func DefaultRegistry() Registry {
 				ScriptShell:    "sh",
 			},
 			AdapterInstall: codexACPInstallerSpec(),
-			LoginArgs:      []string{"--login"},
+			LoginArgs:      []string{"login"},
 		},
 		agentprovider.Nexight: {
 			Provider:           agentprovider.Nexight,
