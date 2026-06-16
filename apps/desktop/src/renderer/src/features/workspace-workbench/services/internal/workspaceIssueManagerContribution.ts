@@ -217,6 +217,11 @@ export function createWorkspaceIssueManagerContribution(input: {
         // any agent/desktop coupling.
         return baseProviders.map((provider) => {
           if (provider.id === AGENT_GUI_MENTION_PROVIDER_IDS.workspaceApp) {
+            // The wrapped provider is typed RichTextAtProvider<DesktopWorkspaceAppMentionItem>,
+            // which tsc rejects against RichTextAtProvider<unknown> (contravariant
+            // getItemKey). The cast is required by tsc even though eslint's checker
+            // believes it unnecessary.
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
             return createDesktopWorkspaceAppMentionProvider({
               apps: input.appCenterService.store.apps,
               baseProvider: provider,
