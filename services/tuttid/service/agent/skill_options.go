@@ -64,10 +64,6 @@ func composerSkillDiscoveryPlan(provider string, cwd string, env []string) ([]co
 	}
 }
 
-func discoverCodexComposerSkills(cwd string, env []string) []ComposerSkillOption {
-	return discoverComposerSkillOptionsFromRoots(codexComposerSkillRoots(cwd, env), codexSkillTrigger)
-}
-
 func codexComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
 	roots := make([]composerSkillRoot, 0)
 	roots = append(roots, ancestorSkillRoots(cwd, ".codex", "skills", composerSkillSourceProject)...)
@@ -92,10 +88,6 @@ func codexComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
 		})
 	}
 	return roots
-}
-
-func discoverClaudeCodeComposerSkills(cwd string, env []string) []ComposerSkillOption {
-	return discoverComposerSkillOptionsFromRoots(claudeCodeComposerSkillRoots(cwd, env), claudeCodeSkillTrigger)
 }
 
 func claudeCodeComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
