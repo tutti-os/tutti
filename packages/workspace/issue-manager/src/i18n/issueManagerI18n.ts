@@ -199,8 +199,16 @@ const issueManagerEn = {
     title: "Pick workspace references"
   },
   richTextAt: {
+    all: "All",
+    apps: "Apps",
+    files: "Files",
+    issues: "Issues",
     loading: "Loading...",
-    noMatches: "No matches"
+    noMatches: "No matches",
+    sessions: "Sessions",
+    showMore: "Show {{count}} more",
+    switchCategory: "Switch category",
+    switchSelection: "Switch selection"
   },
   run: {
     failedSummaryFallback: "Run failed",
@@ -398,8 +406,16 @@ const issueManagerZhCN = {
     title: "选择工作区引用"
   },
   richTextAt: {
+    all: "全部",
+    apps: "应用",
+    files: "文件",
+    issues: "Issue",
     loading: "正在加载...",
-    noMatches: "没有匹配项"
+    noMatches: "没有匹配项",
+    sessions: "会话",
+    showMore: "再显示 {{count}} 项",
+    switchCategory: "切换分类",
+    switchSelection: "切换选中"
   },
   run: {
     failedSummaryFallback: "运行失败",

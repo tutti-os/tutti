@@ -41,7 +41,12 @@ export function createRichTextAtRegistry(
         if (input.abortSignal?.aborted) {
           return [];
         }
-        return items.map<RichTextAtQueryMatch>((item) => ({
+        const limit = input.maxResults;
+        const visibleItems =
+          typeof limit === "number" && limit >= 0
+            ? items.slice(0, limit)
+            : items;
+        return visibleItems.map<RichTextAtQueryMatch>((item) => ({
           providerId: provider.id,
           key: provider.getItemKey(item),
           label: provider.getItemLabel(item),
@@ -53,12 +58,7 @@ export function createRichTextAtRegistry(
       })
     );
 
-    const flatMatches = matches.flat();
-    const limit = input.maxResults;
-    if (typeof limit === "number" && limit >= 0) {
-      return flatMatches.slice(0, limit);
-    }
-    return flatMatches;
+    return matches.flat();
   }
 
   return {

@@ -8,6 +8,7 @@ export const issueManagerWorkbenchContributionFactory: DesktopWorkbenchContribut
     create(context) {
       return createWorkspaceIssueManagerContribution({
         agentProviderStatusService: context.agentProviderStatusService,
+        appCenterService: context.appCenterService,
         defaultAgentProvider: context.defaultAgentProvider,
         dockIconUrl: context.dockIcons.issue,
         hostFilesApi: context.hostFilesApi,

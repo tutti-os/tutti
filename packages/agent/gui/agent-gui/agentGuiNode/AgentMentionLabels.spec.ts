@@ -25,6 +25,7 @@ describe("AgentMentionLabels", () => {
 
     expect(agentMentionFilterLabel("all")).toBe("全部");
     expect(agentMentionFilterLabel("app")).toBe("应用");
+    expect(agentMentionFilterLabel("session")).toBe("会话");
     expect(agentMentionFilterLabel("issue")).toBe("事项");
     expect(agentMentionGroupLabel("apps")).toBe("应用");
     expect(agentMentionGroupLabel("issues")).toBe("事项");

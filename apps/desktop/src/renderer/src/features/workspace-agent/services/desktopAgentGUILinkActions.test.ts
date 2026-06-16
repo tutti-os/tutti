@@ -141,6 +141,38 @@ test("desktop agent gui link actions launch workspace issue manager in the same 
   ]);
 });
 
+test("desktop agent gui link actions launch workspace apps in the same workspace", async () => {
+  const launchedApps: unknown[] = [];
+
+  const handled = await runDesktopAgentGUILinkAction(
+    {
+      appId: "ai-media-canvas",
+      source: "agent-markdown",
+      type: "open-workspace-app",
+      workspaceId: "workspace-1"
+    },
+    {
+      launchAgentGui: failLaunchAgentGui,
+      launchWorkspaceApp(input) {
+        launchedApps.push(input);
+        return true;
+      },
+      launchWorkspaceIssueManager: failLaunchWorkspaceIssueManager,
+      launchWorkspaceFiles: failLaunchWorkspaceFiles,
+      openBrowserUrl: failOpenBrowserUrl,
+      workspaceId: "workspace-1"
+    }
+  );
+
+  assert.equal(handled, true);
+  assert.deepEqual(launchedApps, [
+    {
+      appId: "ai-media-canvas",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 function failLaunchAgentGui(): never {
   throw new Error("agent gui should not launch");
 }

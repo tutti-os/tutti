@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useRef } from "react";
 import type { AgentSessionCommand } from "../../shared/agentSessionTypes";
 import { cn } from "../../app/renderer/lib/utils";
-import { menuItemClassName } from "@tutti-os/ui-system";
 import type { AgentGUIProviderSkillOption } from "./model/agentGuiNodeTypes";
 
 export type AgentSlashPaletteEntry =
@@ -34,10 +33,8 @@ interface AgentSlashCommandPaletteProps {
 const paletteStyles = {
   palette:
     "nodrag agent-gui-node__mention-palette flex h-full min-h-0 flex-col gap-1 overflow-y-auto px-1 pb-1 pt-2 [-webkit-app-region:no-drag]",
-  option: cn(
-    menuItemClassName,
-    "nodrag min-h-9 w-full min-w-0 justify-start overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left hover:bg-[var(--transparency-block)] focus:bg-[var(--transparency-block)] focus-visible:outline-none data-[highlighted]:bg-[var(--transparency-block)] active:bg-[var(--transparency-active)]"
-  ),
+  option:
+    "nodrag relative flex min-h-9 w-full min-w-0 cursor-pointer select-none items-center gap-1.5 overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left text-[13px] text-[var(--text-primary)] outline-hidden transition-colors duration-200 [-webkit-app-region:no-drag] focus-visible:outline-none active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:min-w-0 *:[span]:last:flex-1 *:[span]:last:items-center *:[span]:last:gap-2",
   copy: "flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden leading-[16px]",
   name: "min-w-0 max-w-[48%] shrink-0 truncate text-[11px] font-semibold text-[var(--text-primary)]",
   descriptionText:

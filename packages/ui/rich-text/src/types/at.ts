@@ -13,6 +13,7 @@ export interface RichTextAtProviderContext {
 export interface RichTextAtQueryInput {
   keyword: string;
   maxResults?: number;
+  cursor?: string;
   abortSignal?: AbortSignal;
   context: RichTextAtProviderContext;
 }
@@ -38,6 +39,23 @@ export type RichTextAtInsertResult =
   | RichTextMarkdownLinkInsertResult
   | RichTextTextInsertResult;
 
+export interface RichTextAtReferenceItem {
+  key?: string;
+  label: string;
+  subtitle?: string | null;
+  thumbnailUrl?: string | null;
+  insertResult: RichTextAtInsertResult;
+}
+
+export interface RichTextAtReferenceItemsResult {
+  items: readonly RichTextAtReferenceItem[];
+  nextCursor?: string | null;
+}
+
+export type RichTextAtReferenceItemsResponse =
+  | readonly RichTextAtReferenceItem[]
+  | RichTextAtReferenceItemsResult;
+
 export interface RichTextAtProvider<TItem = unknown> {
   id: string;
   trigger?: RichTextAtTrigger;
@@ -48,6 +66,15 @@ export interface RichTextAtProvider<TItem = unknown> {
   getItemLabel: (item: TItem) => string;
   getItemSubtitle?: (item: TItem) => string | null | undefined;
   getItemKeywords?: (item: TItem) => readonly string[] | undefined;
+  getItemThumbnailUrl?: (
+    item: TItem
+  ) => string | null | undefined | Promise<string | null | undefined>;
+  getItemReferenceItems?: (
+    item: TItem,
+    input: RichTextAtQueryInput
+  ) =>
+    | Promise<RichTextAtReferenceItemsResponse>
+    | RichTextAtReferenceItemsResponse;
   toInsertResult: (item: TItem) => RichTextAtInsertResult;
 }
 

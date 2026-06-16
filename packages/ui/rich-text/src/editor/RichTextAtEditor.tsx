@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -20,6 +21,7 @@ import { createRichTextMentionAttrs } from "../plugins/index.ts";
 import { createRichTextAtRegistry } from "../plugins/atRegistry.ts";
 import type {
   RichTextAtInsertResult,
+  RichTextAtProviderContext,
   RichTextAtProvider,
   RichTextAtQueryMatch
 } from "../types/at.ts";
@@ -38,6 +40,18 @@ import {
   resolveRichTextAtText,
   type RichTextAtTextOverrides
 } from "./richTextAtText.ts";
+import {
+  createRichTextAtEditorMatchEntries,
+  createRichTextAtEditorMatchEntry,
+  findRichTextAtEditorEntryKeyForMatch,
+  findRichTextAtEditorNavigationEntry,
+  haveSameRichTextAtEditorNavigationEntries,
+  isSameRichTextAtEditorMatch,
+  moveRichTextAtEditorActiveEntryKey,
+  resolveRichTextAtEditorActiveEntryKey,
+  richTextAtEditorMatchEntryKey,
+  type RichTextAtEditorNavigationEntry
+} from "./richTextAtEditorNavigation.ts";
 import type { RichTextI18nRuntime } from "../i18n/richTextI18n.ts";
 import { MentionReference } from "../extensions/mentionReference.ts";
 import { WorkspaceReference } from "../extensions/workspaceReference.ts";
@@ -62,6 +76,10 @@ export interface RichTextAtEditorProps {
   textOverrides?: RichTextAtTextOverrides;
   overlay?: ReactNode;
   focusSignal?: unknown;
+  renderPanel?: (context: RichTextAtEditorPanelContext) => ReactNode;
+  // Tab/Shift+Tab cycle the at-panel filter tabs (parity with the agent
+  // composer). When omitted, Tab is left to the browser.
+  onCycleFilter?: (delta: 1 | -1) => void;
 }
 
 type RichTextEditorAtQueryState = {
@@ -69,6 +87,31 @@ type RichTextEditorAtQueryState = {
   keyword: string;
   to: number;
 };
+
+export interface RichTextAtEditorPanelContext {
+  activeEntryKey: string | null;
+  activeIndex: number;
+  activeMatch: RichTextAtQueryMatch | null;
+  isLoading: boolean;
+  matches: readonly RichTextAtQueryMatch[];
+  maxResults: number;
+  navigationEntries: readonly RichTextAtEditorNavigationEntry[];
+  onActiveEntryKeyChange: (key: string | null) => void;
+  onActiveIndexChange: (index: number) => void;
+  onActiveMatchChange: (match: RichTextAtQueryMatch | null) => void;
+  onNavigationEntriesChange: (
+    entries: readonly RichTextAtEditorNavigationEntry[] | null
+  ) => void;
+  onNavigationMatchesChange: (
+    matches: readonly RichTextAtQueryMatch[] | null
+  ) => void;
+  onMoveSelection: (delta: 1 | -1) => void;
+  onSelect: (match: RichTextAtQueryMatch) => void;
+  providerContext: RichTextAtProviderContext;
+  providers: readonly RichTextAtProvider[];
+  query: RichTextEditorAtQueryState;
+  text: ReturnType<typeof resolveRichTextAtText>;
+}
 
 export function RichTextAtEditor({
   value,
@@ -85,7 +128,9 @@ export function RichTextAtEditor({
   i18n,
   textOverrides,
   overlay,
-  focusSignal
+  focusSignal,
+  renderPanel,
+  onCycleFilter
 }: RichTextAtEditorProps): JSX.Element {
   const menuOffset = 6;
   const normalizedValue = normalizeRichTextContent(value);
@@ -105,8 +150,11 @@ export function RichTextAtEditor({
   const [isFocused, setIsFocused] = useState(false);
   const [query, setQuery] = useState<RichTextEditorAtQueryState | null>(null);
   const [matches, setMatches] = useState<readonly RichTextAtQueryMatch[]>([]);
-  const [activeIndex, setActiveIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeEntryKey, setActiveEntryKey] = useState<string | null>(null);
+  const [panelNavigationEntries, setPanelNavigationEntries] = useState<
+    readonly RichTextAtEditorNavigationEntry[] | null
+  >(null);
   const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | null>(
     null
   );
@@ -139,8 +187,9 @@ export function RichTextAtEditor({
       window.setTimeout(() => {
         setIsFocused(false);
         setMatches([]);
-        setActiveIndex(0);
         setIsLoading(false);
+        setActiveEntryKey(null);
+        setPanelNavigationEntries(null);
         setMenuPoint(null);
       }, 100);
     },
@@ -235,15 +284,17 @@ export function RichTextAtEditor({
   useEffect(() => {
     if (!editor || !query || !isFocused || providers.length === 0) {
       setMatches([]);
-      setActiveIndex(0);
       setIsLoading(false);
+      setActiveEntryKey(null);
+      setPanelNavigationEntries(null);
       return;
     }
 
     if (query.keyword.length < minQueryLength) {
       setMatches([]);
-      setActiveIndex(0);
       setIsLoading(false);
+      setActiveEntryKey(null);
+      setPanelNavigationEntries(null);
       return;
     }
 
@@ -254,25 +305,19 @@ export function RichTextAtEditor({
       abortSignal: abortController.signal,
       keyword: query.keyword,
       maxResults,
-      context: {
-        blockText: editor.state.selection.$from.parent.textBetween(
-          0,
-          editor.state.selection.$from.parent.content.size,
-          "\n",
-          "\uFFFC"
-        ),
-        documentText: serializeRichTextDocumentToContent(editor.getJSON())
-      }
+      context: createRichTextAtEditorProviderContext(editor)
     })
       .then((nextMatches) => {
         if (abortController.signal.aborted) {
           return;
         }
         setMatches(nextMatches);
-        setActiveIndex((current) =>
-          nextMatches.length === 0
-            ? 0
-            : Math.max(0, Math.min(current, nextMatches.length - 1))
+        setPanelNavigationEntries(null);
+        setActiveEntryKey((current) =>
+          resolveRichTextAtEditorActiveEntryKey({
+            activeEntryKey: current,
+            entries: createRichTextAtEditorMatchEntries(nextMatches)
+          })
         );
       })
       .finally(() => {
@@ -324,70 +369,190 @@ export function RichTextAtEditor({
   const isEmpty =
     !editor ||
     serializeRichTextDocumentToContent(editor.getJSON()).trim().length === 0;
+  const defaultNavigationEntries = useMemo(
+    () => createRichTextAtEditorMatchEntries(matches),
+    [matches]
+  );
+  const navigationEntries = panelNavigationEntries ?? defaultNavigationEntries;
+  const resolvedActiveEntryKey = resolveRichTextAtEditorActiveEntryKey({
+    activeEntryKey,
+    entries: navigationEntries
+  });
 
-  const applyMatch = (match: RichTextAtQueryMatch) => {
-    if (!editor || !query) {
-      return;
+  useEffect(() => {
+    if (activeEntryKey !== resolvedActiveEntryKey) {
+      setActiveEntryKey(resolvedActiveEntryKey);
     }
+  }, [activeEntryKey, resolvedActiveEntryKey]);
 
-    const content = renderInsertResultAsEditorContent(
-      match.providerId,
-      match.insertResult
-    );
-    if (!content) {
-      return;
-    }
+  const updateNavigationEntries = useCallback(
+    (nextEntries: readonly RichTextAtEditorNavigationEntry[] | null) => {
+      setPanelNavigationEntries((current) =>
+        haveSameRichTextAtEditorNavigationEntries(current, nextEntries)
+          ? current
+          : nextEntries
+      );
+    },
+    []
+  );
+  const updateNavigationMatches = useCallback(
+    (nextMatches: readonly RichTextAtQueryMatch[] | null) => {
+      updateNavigationEntries(
+        nextMatches
+          ? nextMatches.map((match) => createRichTextAtEditorMatchEntry(match))
+          : null
+      );
+    },
+    [updateNavigationEntries]
+  );
+  const activeEntry = findRichTextAtEditorNavigationEntry(
+    navigationEntries,
+    resolvedActiveEntryKey
+  );
+  const activeMatch = activeEntry?.type === "match" ? activeEntry.match : null;
+  const activeIndex = activeMatch
+    ? Math.max(
+        0,
+        matches.findIndex((match) =>
+          isSameRichTextAtEditorMatch(match, activeMatch)
+        )
+      )
+    : 0;
+  const handleActiveIndexChange = useCallback(
+    (index: number) => {
+      const match = matches[index];
+      setActiveEntryKey(
+        match
+          ? findRichTextAtEditorEntryKeyForMatch(navigationEntries, match)
+          : null
+      );
+    },
+    [matches, navigationEntries]
+  );
+  const handleActiveMatchChange = useCallback(
+    (match: RichTextAtQueryMatch | null) => {
+      setActiveEntryKey(
+        match
+          ? findRichTextAtEditorEntryKeyForMatch(navigationEntries, match)
+          : null
+      );
+    },
+    [navigationEntries]
+  );
 
-    editor
-      .chain()
-      .focus()
-      .insertContentAt({ from: query.from, to: query.to }, content)
-      .run();
+  const moveSelection = useCallback(
+    (delta: 1 | -1) => {
+      setActiveEntryKey((current) =>
+        moveRichTextAtEditorActiveEntryKey({
+          activeEntryKey: findRichTextAtEditorNavigationEntry(
+            navigationEntries,
+            current
+          )
+            ? current
+            : resolvedActiveEntryKey,
+          delta,
+          entries: navigationEntries
+        })
+      );
+    },
+    [navigationEntries, resolvedActiveEntryKey]
+  );
+
+  const applyMatch = useCallback(
+    (match: RichTextAtQueryMatch) => {
+      if (!editor || !query) {
+        return;
+      }
+
+      const content = renderInsertResultAsEditorContent(
+        match.providerId,
+        match.insertResult
+      );
+      if (!content) {
+        return;
+      }
+
+      editor
+        .chain()
+        .focus()
+        .insertContentAt({ from: query.from, to: query.to }, content)
+        .run();
+      setMatches([]);
+      setPanelNavigationEntries(null);
+      setActiveEntryKey(null);
+      setIsLoading(false);
+      setMenuPoint(null);
+    },
+    [editor, query]
+  );
+
+  const closeMenu = useCallback(() => {
     setMatches([]);
-    setActiveIndex(0);
+    setPanelNavigationEntries(null);
+    setActiveEntryKey(null);
     setIsLoading(false);
     setMenuPoint(null);
-  };
+  }, []);
+
+  const commitActiveEntry = useCallback(() => {
+    const entry =
+      findRichTextAtEditorNavigationEntry(
+        navigationEntries,
+        resolvedActiveEntryKey
+      ) ??
+      navigationEntries[0] ??
+      null;
+    if (!entry) {
+      return;
+    }
+    if (entry.type === "action") {
+      entry.onSelect();
+      return;
+    }
+    applyMatch(entry.match);
+  }, [resolvedActiveEntryKey, navigationEntries, applyMatch]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (isRichTextImeComposing(event)) {
       return;
     }
 
-    if (!isMenuOpen || matches.length === 0) {
+    if (!isMenuOpen) {
+      return;
+    }
+
+    // Tab cycles the filter tabs (parity with the agent composer). Handled
+    // before the empty check so it still works while the active tab is empty.
+    if (event.key === "Tab" && onCycleFilter) {
+      event.preventDefault();
+      onCycleFilter(event.shiftKey ? -1 : 1);
       return;
     }
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveIndex((current) => (current + 1) % matches.length);
+      moveSelection(1);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActiveIndex(
-        (current) => (current - 1 + matches.length) % matches.length
-      );
+      moveSelection(-1);
       return;
     }
 
-    if (event.key === "Enter" || event.key === "Tab") {
-      const match = matches[activeIndex];
-      if (!match) {
+    if (event.key === "Enter") {
+      if (navigationEntries.length === 0) {
         return;
       }
       event.preventDefault();
-      applyMatch(match);
+      commitActiveEntry();
       return;
     }
 
     if (event.key === "Escape") {
       event.preventDefault();
-      setMatches([]);
-      setActiveIndex(0);
-      setIsLoading(false);
-      setMenuPoint(null);
+      closeMenu();
     }
   };
 
@@ -416,7 +581,7 @@ export function RichTextAtEditor({
       {isMenuOpen && menuPoint ? (
         <ViewportMenuSurface
           open
-          className="tutti-rich-text-at-menu max-h-64 w-[min(28rem,calc(100vw-24px))] overflow-y-auto p-1"
+          className="tutti-rich-text-at-menu w-[min(28rem,calc(100vw-24px))] p-0"
           placement={{
             type: "point",
             point: menuPoint,
@@ -428,36 +593,70 @@ export function RichTextAtEditor({
             }
           }}
         >
-          {matches.length > 0 ? (
-            matches.map((match, index) => (
-              <button
-                key={`${match.providerId}:${match.key}`}
-                aria-selected={index === activeIndex}
-                className={cn(
-                  "flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left outline-none transition-colors",
-                  index === activeIndex
-                    ? "bg-transparency-block text-[var(--text-primary)]"
-                    : "text-[var(--text-primary)] hover:bg-transparency-block"
-                )}
-                type="button"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  applyMatch(match);
-                }}
-              >
-                <div className="text-[13px] leading-5 font-medium">
-                  {match.label}
-                </div>
-                {match.subtitle ? (
-                  <div className="text-[11px] leading-4 text-[var(--text-secondary)]">
-                    {match.subtitle}
-                  </div>
-                ) : null}
-              </button>
-            ))
+          {renderPanel ? (
+            renderPanel({
+              activeEntryKey: resolvedActiveEntryKey,
+              activeIndex,
+              activeMatch,
+              isLoading,
+              matches,
+              maxResults,
+              navigationEntries,
+              onActiveEntryKeyChange: setActiveEntryKey,
+              onActiveIndexChange: handleActiveIndexChange,
+              onActiveMatchChange: handleActiveMatchChange,
+              onNavigationEntriesChange: updateNavigationEntries,
+              onNavigationMatchesChange: updateNavigationMatches,
+              onMoveSelection: moveSelection,
+              onSelect: applyMatch,
+              providerContext: editor
+                ? createRichTextAtEditorProviderContext(editor)
+                : {},
+              providers,
+              query,
+              text
+            })
           ) : (
-            <div className="px-3 py-2 text-[11px] leading-4 text-[var(--text-secondary)]">
-              {isLoading ? text.loadingLabel : text.noMatchesLabel}
+            <div className="flex max-h-64 min-h-0 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto p-1">
+                {matches.length > 0 ? (
+                  matches.map((match) => {
+                    const entryKey = richTextAtEditorMatchEntryKey(match);
+                    const isActive = resolvedActiveEntryKey === entryKey;
+                    return (
+                      <button
+                        key={entryKey}
+                        aria-selected={isActive}
+                        className={cn(
+                          "flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left outline-none transition-colors",
+                          isActive
+                            ? "bg-transparency-block text-[var(--text-primary)]"
+                            : "text-[var(--text-primary)] hover:bg-transparency-block"
+                        )}
+                        type="button"
+                        onMouseEnter={() => setActiveEntryKey(entryKey)}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          applyMatch(match);
+                        }}
+                      >
+                        <div className="text-[13px] leading-5 font-medium">
+                          {match.label}
+                        </div>
+                        {match.subtitle ? (
+                          <div className="text-[11px] leading-4 text-[var(--text-secondary)]">
+                            {match.subtitle}
+                          </div>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-3 py-2 text-[11px] leading-4 text-[var(--text-secondary)]">
+                    {isLoading ? text.loadingLabel : text.noMatchesLabel}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </ViewportMenuSurface>
@@ -495,6 +694,20 @@ function findEditorAtQuery(
     from: selection.from - distanceFromQueryStart,
     keyword: query.keyword,
     to: selection.from
+  };
+}
+
+function createRichTextAtEditorProviderContext(
+  editor: TiptapEditor
+): RichTextAtProviderContext {
+  return {
+    blockText: editor.state.selection.$from.parent.textBetween(
+      0,
+      editor.state.selection.$from.parent.content.size,
+      "\n",
+      "\uFFFC"
+    ),
+    documentText: serializeRichTextDocumentToContent(editor.getJSON())
   };
 }
 

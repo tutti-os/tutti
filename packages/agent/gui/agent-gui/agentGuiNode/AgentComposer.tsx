@@ -33,6 +33,7 @@ import type { AgentConversationPromptVM } from "../../shared/agentConversation/c
 import { cn } from "../../app/renderer/lib/utils";
 import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
 import { X } from "lucide-react";
+import { makeAtPanelKeyDown } from "@tutti-os/ui-rich-text/at-panel";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import {
@@ -1069,62 +1070,43 @@ export function AgentComposer({
       }
       const focusableEntries =
         flattenAgentMentionPaletteEntries(mentionSearchState);
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        moveFileMentionSelection(1);
-        return true;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        moveFileMentionSelection(-1);
-        return true;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeFileMentionPalette();
-        return true;
-      }
-      if (event.key === "Tab") {
-        event.preventDefault();
-        cycleFileMentionFilter(event.shiftKey ? -1 : 1);
-        return true;
-      }
-      if (event.key === "Enter") {
-        event.preventDefault();
-        const activeEntry = focusableEntries.find(
-          (entry) => entry.key === mentionHighlightedKey
-        );
-        if (!activeEntry) {
-          const highlightedCategoryId = mentionHighlightedKey?.startsWith(
-            "category:"
-          )
-            ? mentionHighlightedKey.slice("category:".length)
-            : null;
-          if (
-            highlightedCategoryId &&
-            mentionSearchState.categories.some(
-              (category) => category.id === highlightedCategoryId
+      return makeAtPanelKeyDown({
+        close: closeFileMentionPalette,
+        commitSelection: () => {
+          const activeEntry = focusableEntries.find(
+            (entry) => entry.key === mentionHighlightedKey
+          );
+          if (!activeEntry) {
+            const highlightedCategoryId = mentionHighlightedKey?.startsWith(
+              "category:"
             )
-          ) {
-            mentionControllerRef.current?.setFilter(
-              highlightedCategoryId as AgentMentionFilterId
-            );
+              ? mentionHighlightedKey.slice("category:".length)
+              : null;
+            if (
+              highlightedCategoryId &&
+              mentionSearchState.categories.some(
+                (category) => category.id === highlightedCategoryId
+              )
+            ) {
+              mentionControllerRef.current?.setFilter(
+                highlightedCategoryId as AgentMentionFilterId
+              );
+            }
+            return;
           }
-          return true;
-        }
-        if (activeEntry.type === "category" && activeEntry.categoryId) {
-          mentionControllerRef.current?.setFilter(activeEntry.categoryId);
-        } else if (activeEntry.type === "expand" && activeEntry.groupId) {
-          mentionControllerRef.current?.expandGroup(activeEntry.groupId);
-        } else if (activeEntry.type === "item" && activeEntry.item) {
-          selectFileMention(activeEntry.item);
-        }
-        return true;
-      }
-      return false;
+          if (activeEntry.type === "category" && activeEntry.categoryId) {
+            mentionControllerRef.current?.setFilter(activeEntry.categoryId);
+          } else if (activeEntry.type === "expand" && activeEntry.groupId) {
+            mentionControllerRef.current?.expandGroup(activeEntry.groupId);
+          } else if (activeEntry.type === "item" && activeEntry.item) {
+            selectFileMention(activeEntry.item);
+          }
+        },
+        cycleFilter: cycleFileMentionFilter,
+        moveSelection: moveFileMentionSelection
+      })(event);
     },
     [
-      fileMentionSuggestion,
       closeFileMentionPalette,
       cycleFileMentionFilter,
       mentionHighlightedKey,

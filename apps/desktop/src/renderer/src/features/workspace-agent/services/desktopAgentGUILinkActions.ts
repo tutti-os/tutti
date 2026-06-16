@@ -24,6 +24,10 @@ export interface DesktopAgentGUILinkActionDependencies {
     source?: "agent_command";
     workspaceId: string;
   }): Promise<boolean> | boolean;
+  launchWorkspaceApp?: (input: {
+    appId: string;
+    workspaceId: string;
+  }) => Promise<boolean> | boolean;
   openBrowserUrl(input: {
     source?: "agent_command";
     url: string;
@@ -74,6 +78,18 @@ export async function runDesktopAgentGUILinkAction(
         ...(action.runId ? { runId: action.runId } : {}),
         ...(action.taskId ? { taskId: action.taskId } : {}),
         ...(action.topicId ? { topicId: action.topicId } : {}),
+        workspaceId: dependencies.workspaceId
+      });
+    }
+    case "open-workspace-app": {
+      if (action.workspaceId !== dependencies.workspaceId) {
+        return false;
+      }
+      if (!action.appId.trim() || !dependencies.launchWorkspaceApp) {
+        return false;
+      }
+      return dependencies.launchWorkspaceApp({
+        appId: action.appId,
         workspaceId: dependencies.workspaceId
       });
     }

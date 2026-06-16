@@ -259,6 +259,9 @@ importers:
       "@tutti-os/ui-react-hooks":
         specifier: workspace:*
         version: link:../../ui/react-hooks
+      "@tutti-os/ui-rich-text":
+        specifier: workspace:*
+        version: link:../../ui/rich-text
       "@tutti-os/ui-system":
         specifier: workspace:*
         version: link:../../ui/system

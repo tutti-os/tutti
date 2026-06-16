@@ -14,6 +14,7 @@ import {
   defaultIssueManagerWorkbenchTypeId
 } from "@tutti-os/workspace-issue-manager/workbench";
 import { resolveDefaultAppFactoryProvider } from "@tutti-os/workspace-app-center/core";
+import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { WorkbenchContribution } from "@tutti-os/workbench-surface";
 import type {
   DesktopHostFilesApi,
@@ -21,6 +22,7 @@ import type {
   DesktopRuntimeApi
 } from "@preload/types";
 import {
+  createDesktopIssueManagerIdentityAdapter,
   createDesktopIssueManagerFeature,
   createDesktopIssueManagerNodeStateSource
 } from "@renderer/features/workspace-issue-manager";
@@ -33,11 +35,13 @@ import {
 } from "@renderer/features/workspace-agent";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
-import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
+import { type IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
+import { resolveWorkspaceLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions.ts";
 import { requestWorkspaceBrowserLaunch } from "../workspaceBrowserLaunchCoordinator.ts";
 import { requestWorkspaceFilesLaunch } from "../workspaceFilesLaunchCoordinator.ts";
 import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaunchCoordinator.ts";
+import { createWorkspaceIssueManagerRichTextAtProviderRequestFromIdentity } from "./workspaceIssueManagerRichTextAtProviderRequest.ts";
 import {
   resolveWorkspaceAgentGuiLabel,
   workspaceAgentGuiProviders
@@ -47,6 +51,7 @@ import { workspaceTaskDockSectionId } from "./workspaceDockSections.ts";
 
 export function createWorkspaceIssueManagerContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
+  appCenterService: IWorkspaceAppCenterService;
   defaultAgentProvider?: string | null;
   dockIconUrl?: string;
   hostFilesApi: DesktopHostFilesApi;
@@ -91,6 +96,33 @@ export function createWorkspaceIssueManagerContribution(input: {
         throw new Error("issue_manager.agent_gui_launch_unavailable");
       }
     },
+    mentionActionHandler: {
+      openMention: async ({ mention }) => {
+        const href = mention.href?.trim() ?? "";
+        if (!href) {
+          return;
+        }
+        const action = resolveWorkspaceLinkAction({
+          href,
+          source: "issue-manager-description"
+        });
+        if (!action) {
+          return;
+        }
+        await runDesktopAgentGUILinkAction(action, {
+          homeDirectory: input.platformApi.homeDirectory,
+          launchAgentGui: requestWorkspaceAgentGuiLaunch,
+          launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
+          launchWorkspaceFiles: requestWorkspaceFilesLaunch,
+          launchWorkspaceApp: async ({ appId, workspaceId }) => {
+            await input.appCenterService.openApp({ appId, workspaceId });
+            return true;
+          },
+          openBrowserUrl: requestWorkspaceBrowserLaunch,
+          workspaceId: input.workspaceId
+        });
+      }
+    },
     tuttidClient: input.tuttidClient,
     openWorkspaceFileManager: async (reference) =>
       requestWorkspaceFilesLaunch({
@@ -107,6 +139,7 @@ export function createWorkspaceIssueManagerContribution(input: {
     defaultAgentProvider: input.defaultAgentProvider,
     workspaceId: input.workspaceId
   });
+  const identityAdapter = createDesktopIssueManagerIdentityAdapter();
   const issueIconUrl = input.dockIconUrl ?? issueManagerDockIconUrl;
 
   const contribution = createIssueManagerWorkbenchContribution({
@@ -156,6 +189,10 @@ export function createWorkspaceIssueManagerContribution(input: {
               launchAgentGui: requestWorkspaceAgentGuiLaunch,
               launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
               launchWorkspaceFiles: requestWorkspaceFilesLaunch,
+              launchWorkspaceApp: async ({ appId, workspaceId }) => {
+                await input.appCenterService.openApp({ appId, workspaceId });
+                return true;
+              },
               openBrowserUrl: requestWorkspaceBrowserLaunch,
               workspaceId: input.workspaceId
             });
@@ -164,12 +201,18 @@ export function createWorkspaceIssueManagerContribution(input: {
           workspaceId: input.workspaceId
         }),
       resolveRichTextAtProviders: ({ surface, workspaceId }) =>
-        input.richTextAtService.getProviders({
-          capabilities: ["workspace-file"],
-          surface,
-          target: "issue-manager",
-          workspaceId
-        })
+        // The neutral `DesktopRichTextAtService` already emits the enriched
+        // workspace-app (localized name/description + resolved icon) and
+        // agent-session (provider icon + avatar + participant + status) providers,
+        // so the issue-manager `@`-mention rows render identically to the agent
+        // without this package importing any agent/desktop mention resolvers.
+        input.richTextAtService.getProviders(
+          createWorkspaceIssueManagerRichTextAtProviderRequestFromIdentity({
+            currentUser: () => identityAdapter.currentUser(),
+            surface,
+            workspaceId
+          })
+        )
     },
     typeId: defaultIssueManagerWorkbenchTypeId
   });

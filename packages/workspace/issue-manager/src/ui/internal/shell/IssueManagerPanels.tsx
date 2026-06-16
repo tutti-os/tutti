@@ -262,6 +262,7 @@ export function IssueManagerIssuePane({
                 content={issueContent}
                 emptyLabel={copy.t("messages.issueContentEmpty")}
                 label={copy.t("labels.description")}
+                onMentionAction={controller.openMention}
                 onOpen={controller.openReference}
                 variant="plain"
               />

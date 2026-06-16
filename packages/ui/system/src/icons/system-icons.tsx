@@ -1069,3 +1069,9 @@ export function GitHubBrandIcon(props: IconProps) {
     </FilledPathIcon>
   );
 }
+
+/** Alias of {@link KeyboardIcon} for the shared mention palette. */
+export const KeyboardFilledIcon = KeyboardIcon;
+
+/** Alias of {@link FolderFailedIcon} for the shared mention palette. */
+export const FolderFailedFilledIcon = FolderFailedIcon;

@@ -1,3 +1,17 @@
+import type {
+  RichTextAtInsertResult,
+  RichTextAtProvider,
+  RichTextAtProviderContext,
+  RichTextAtQueryInput,
+  RichTextAtReferenceItem,
+  RichTextAtReferenceItemsResponse,
+  RichTextAtReferenceItemsResult,
+  RichTextMarkdownLinkInsertResult,
+  RichTextMentionAtInsertResult,
+  RichTextMentionInsert,
+  RichTextTextInsertResult
+} from "@tutti-os/ui-rich-text/types";
+
 export const AGENT_GUI_MENTION_PROVIDER_IDS = {
   agentGeneratedFile: "agent-generated-file",
   agentSession: "agent-session",
@@ -9,56 +23,17 @@ export const AGENT_GUI_MENTION_PROVIDER_IDS = {
 export type AgentGUIMentionProviderId =
   (typeof AGENT_GUI_MENTION_PROVIDER_IDS)[keyof typeof AGENT_GUI_MENTION_PROVIDER_IDS];
 
-export interface AgentRichTextAtProviderContext {
-  metadata?: Readonly<Record<string, unknown>>;
-}
-
-export interface AgentRichTextAtQueryInput {
-  keyword: string;
-  maxResults?: number;
-  abortSignal?: AbortSignal;
-  context: AgentRichTextAtProviderContext;
-}
-
-export interface AgentRichTextMentionInsert {
-  entityId: string;
-  label: string;
-  href?: string | null;
-  kind?: string | null;
-  meta?: Readonly<Record<string, string>> | null;
-}
-
-export interface AgentRichTextMentionInsertResult {
-  kind: "mention";
-  mention: AgentRichTextMentionInsert;
-}
-
-export interface AgentRichTextMarkdownLinkInsertResult {
-  kind: "markdown-link";
-  label: string;
-  href: string;
-}
-
-export interface AgentRichTextTextInsertResult {
-  kind: "text";
-  text: string;
-}
-
-export type AgentRichTextAtInsertResult =
-  | AgentRichTextMentionInsertResult
-  | AgentRichTextMarkdownLinkInsertResult
-  | AgentRichTextTextInsertResult;
-
-export interface AgentRichTextAtProvider<TItem = any> {
-  id: string;
-  query: (
-    input: AgentRichTextAtQueryInput
-  ) => Promise<readonly TItem[]> | readonly TItem[];
-  getItemKey: (item: TItem) => string;
-  getItemLabel: (item: TItem) => string;
-  getItemSubtitle?: (item: TItem) => string | null | undefined;
-  getItemThumbnailUrl?: (
-    item: TItem
-  ) => string | null | undefined | Promise<string | null | undefined>;
-  toInsertResult: (item: TItem) => AgentRichTextAtInsertResult;
-}
+export type AgentRichTextAtProviderContext = RichTextAtProviderContext;
+export type AgentRichTextAtQueryInput = RichTextAtQueryInput;
+export type AgentRichTextMentionInsert = RichTextMentionInsert;
+export type AgentRichTextMentionInsertResult = RichTextMentionAtInsertResult;
+export type AgentRichTextMarkdownLinkInsertResult =
+  RichTextMarkdownLinkInsertResult;
+export type AgentRichTextTextInsertResult = RichTextTextInsertResult;
+export type AgentRichTextAtInsertResult = RichTextAtInsertResult;
+export type AgentRichTextAtReferenceItem = RichTextAtReferenceItem;
+export type AgentRichTextAtReferenceItemsResult =
+  RichTextAtReferenceItemsResult;
+export type AgentRichTextAtReferenceItemsResponse =
+  RichTextAtReferenceItemsResponse;
+export type AgentRichTextAtProvider<TItem = any> = RichTextAtProvider<TItem>;

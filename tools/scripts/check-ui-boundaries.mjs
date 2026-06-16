@@ -42,7 +42,10 @@ const allowedCssFiles = new Set([
   "packages/workbench/surface/src/styles/workbench.css",
   "tools/fixtures/ui-system-external-vite/src/style.css"
 ]);
-const allowedCssPrefixes = ["packages/ui/system/src/styles/"];
+const allowedCssPrefixes = [
+  "packages/ui/system/src/styles/",
+  "packages/ui/rich-text/src/at-panel/"
+];
 const allowedRawSvgPrefixes = [
   "packages/ui/system/src/icons/",
   "packages/agent/gui/"

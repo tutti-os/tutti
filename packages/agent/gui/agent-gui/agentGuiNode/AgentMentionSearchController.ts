@@ -14,6 +14,7 @@ import {
   shouldPrefetchBrowseFilter,
   shouldShowEmptyGroup
 } from "./agentMentionSearchHelpers";
+import { agentMentionFilterLabel } from "./AgentMentionLabels";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 import {
   buildAgentSessionMentionHref,
@@ -26,6 +27,10 @@ import type {
   AgentRichTextAtProvider
 } from "./agentRichTextAtProvider";
 import { AGENT_GUI_MENTION_PROVIDER_IDS } from "./agentRichTextAtProvider";
+import type {
+  MentionPaletteGroup,
+  MentionPaletteState
+} from "@tutti-os/ui-rich-text/at-panel";
 
 export type AgentMentionFilterId = "all" | "app" | "file" | "session" | "issue";
 export type AgentMentionGroupId =
@@ -41,45 +46,13 @@ type AgentMentionRawGroupId = Exclude<AgentMentionGroupId, "files">;
 
 export interface AgentMentionBrowseCategory {
   id: AgentMentionFilterId;
+  label: string;
 }
 
-export interface AgentMentionGroup {
-  id: AgentMentionGroupId;
-  items: AgentContextMentionItem[];
-  totalCount: number;
-  visibleCount: number;
-  hasMore: boolean;
-  emptyLabel?: string;
-}
+export type AgentMentionGroup = MentionPaletteGroup<AgentContextMentionItem>;
 
 export type AgentMentionSearchState =
-  | {
-      status: "idle";
-      query: string;
-      mode: "browse";
-      filter: AgentMentionFilterId;
-      categories: AgentMentionBrowseCategory[];
-      groups: AgentMentionGroup[];
-      error: null;
-    }
-  | {
-      status: "loading" | "ready";
-      query: string;
-      mode: "browse" | "results";
-      filter: AgentMentionFilterId;
-      categories: AgentMentionBrowseCategory[];
-      groups: AgentMentionGroup[];
-      error: null;
-    }
-  | {
-      status: "error";
-      query: string;
-      mode: "browse" | "results";
-      filter: AgentMentionFilterId;
-      categories: AgentMentionBrowseCategory[];
-      groups: AgentMentionGroup[];
-      error: string;
-    };
+  MentionPaletteState<AgentContextMentionItem>;
 
 interface AgentMentionSearchControllerOptions {
   richTextAtProviders?: readonly AgentRichTextAtProvider[];
@@ -97,8 +70,16 @@ const DEFAULT_ISSUE_LIMIT = 25;
 const DEFAULT_SESSION_LIMIT = 30;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 3500;
 
-const BROWSE_CATEGORIES: AgentMentionBrowseCategory[] =
-  AGENT_MENTION_FILTER_TAB_ORDER.map((id) => ({ id }));
+// Resolve filter tab labels lazily so they reflect the active i18n locale at the
+// time a state is emitted. Computing this at module load froze the labels to the
+// default ("en") runtime, since the agent GUI i18n locale is only synced once the
+// AgentGuiI18nProvider renders.
+function buildBrowseCategories(): AgentMentionBrowseCategory[] {
+  return AGENT_MENTION_FILTER_TAB_ORDER.map((id) => ({
+    id,
+    label: agentMentionFilterLabel(id)
+  }));
+}
 
 const {
   agentGeneratedFile: AGENT_GENERATED_FILE_PROVIDER_ID,
@@ -148,7 +129,7 @@ export class AgentMentionSearchController {
     query: "",
     mode: "browse",
     filter: "all",
-    categories: BROWSE_CATEGORIES,
+    categories: buildBrowseCategories(),
     groups: [],
     error: null
   };
@@ -202,7 +183,7 @@ export class AgentMentionSearchController {
         query: this.currentQuery,
         mode: "browse",
         filter: this.currentFilter,
-        categories: BROWSE_CATEGORIES,
+        categories: buildBrowseCategories(),
         groups: [],
         error: null
       });
@@ -219,7 +200,7 @@ export class AgentMentionSearchController {
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
-      categories: BROWSE_CATEGORIES,
+      categories: buildBrowseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -249,7 +230,7 @@ export class AgentMentionSearchController {
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
-      categories: BROWSE_CATEGORIES,
+      categories: buildBrowseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -276,7 +257,7 @@ export class AgentMentionSearchController {
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
-      categories: BROWSE_CATEGORIES,
+      categories: buildBrowseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -303,7 +284,7 @@ export class AgentMentionSearchController {
         query: this.currentQuery,
         mode: this.currentQuery ? "results" : "browse",
         filter: this.currentFilter,
-        categories: BROWSE_CATEGORIES,
+        categories: buildBrowseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -316,7 +297,7 @@ export class AgentMentionSearchController {
         query: this.currentQuery,
         mode: this.currentQuery ? "results" : "browse",
         filter: this.currentFilter,
-        categories: BROWSE_CATEGORIES,
+        categories: buildBrowseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -339,7 +320,7 @@ export class AgentMentionSearchController {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: BROWSE_CATEGORIES,
+        categories: buildBrowseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -371,7 +352,7 @@ export class AgentMentionSearchController {
         query: this.currentQuery,
         mode: "results",
         filter: this.currentFilter,
-        categories: BROWSE_CATEGORIES,
+        categories: buildBrowseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -388,7 +369,7 @@ export class AgentMentionSearchController {
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
-      categories: BROWSE_CATEGORIES,
+      categories: buildBrowseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -421,7 +402,7 @@ export class AgentMentionSearchController {
       query: "",
       mode: "browse",
       filter: "all",
-      categories: BROWSE_CATEGORIES,
+      categories: buildBrowseCategories(),
       groups: [],
       error: null
     });
@@ -534,7 +515,7 @@ export class AgentMentionSearchController {
         query: input.query,
         mode: "results",
         filter: this.currentFilter,
-        categories: BROWSE_CATEGORIES,
+        categories: buildBrowseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -547,7 +528,7 @@ export class AgentMentionSearchController {
         query: input.query,
         mode: "results",
         filter: this.currentFilter,
-        categories: BROWSE_CATEGORIES,
+        categories: buildBrowseCategories(),
         groups: [],
         error: error instanceof Error ? error.message : String(error)
       });
@@ -763,7 +744,7 @@ export class AgentMentionSearchController {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: BROWSE_CATEGORIES,
+        categories: buildBrowseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -776,7 +757,7 @@ export class AgentMentionSearchController {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: BROWSE_CATEGORIES,
+        categories: buildBrowseCategories(),
         groups: [],
         error: error instanceof Error ? error.message : String(error)
       });
@@ -962,7 +943,7 @@ export class AgentMentionSearchController {
       query: "",
       mode: "browse",
       filter: this.currentFilter,
-      categories: BROWSE_CATEGORIES,
+      categories: buildBrowseCategories(),
       groups: [],
       error: null
     });

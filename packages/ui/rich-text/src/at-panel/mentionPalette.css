@@ -1,0 +1,245 @@
+.rich-text-at-mention-palette-scroll-region {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  scrollbar-gutter: auto;
+}
+
+.rich-text-at-mention-palette-scroll-region::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.rich-text-at-mention-palette-scrollbar {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  bottom: 4px;
+  width: 4px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 160ms ease-in-out;
+}
+
+.rich-text-at-mention-palette-scrollbar-thumb {
+  width: 4px;
+  min-height: 24px;
+  border-radius: 999px;
+  background: var(--transparency-block);
+  cursor: grab;
+  transition: background-color 160ms ease-in-out;
+  will-change: transform;
+}
+
+.rich-text-at-mention-palette-scrollbar:hover
+  .rich-text-at-mention-palette-scrollbar-thumb {
+  background: var(--transparency-hover);
+}
+
+.rich-text-at-mention-palette-scrollbar[data-dragging="true"] {
+  opacity: 1;
+}
+
+.rich-text-at-mention-palette-scrollbar[data-dragging="true"]
+  .rich-text-at-mention-palette-scrollbar-thumb {
+  background: var(--transparency-hover);
+  cursor: grabbing;
+}
+
+.rich-text-at-mention-palette {
+  container-type: inline-size;
+}
+
+.tsh-underline-tabs.rich-text-at-mention-palette-tabs {
+  height: 41px;
+  padding: 8px 16px 0;
+}
+
+.rich-text-at-mention-palette-header {
+  padding: 8px 0 0;
+}
+
+.rich-text-at-mention-palette-footer {
+  min-height: 36px;
+  border-top: 1px solid var(--line-2, var(--tutti-line-2));
+  background: var(--background-fronted, var(--background-panel));
+}
+
+.rich-text-at-mention-palette-hint {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 16px 1px;
+  color: var(--agent-gui-text-secondary, var(--text-secondary));
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  pointer-events: auto;
+}
+
+.rich-text-at-mention-palette-hint-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.rich-text-at-mention-palette-hint-button,
+.rich-text-at-mention-palette-shortcut-button {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rich-text-at-mention-palette-hint-button {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.rich-text-at-mention-palette-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  min-width: 20px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--transparency-block) 72%, transparent);
+  color: var(--agent-gui-text-secondary, var(--text-secondary));
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 6px;
+}
+
+.rich-text-at-mention-palette-hint-button:hover
+  .rich-text-at-mention-palette-shortcut,
+.rich-text-at-mention-palette-hint-button:focus-visible
+  .rich-text-at-mention-palette-shortcut,
+.rich-text-at-mention-palette-shortcut-button:hover,
+.rich-text-at-mention-palette-shortcut-button:focus-visible {
+  background: var(--transparency-block);
+}
+
+.rich-text-at-mention-palette-hint-button:focus-visible,
+.rich-text-at-mention-palette-shortcut-button:focus-visible {
+  outline: 2px solid var(--line-1);
+  outline-offset: 2px;
+}
+
+.rich-text-at-mention-palette-shortcut--arrow {
+  width: 20px;
+  min-width: 20px;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+}
+
+.rich-text-at-mention-palette-shortcut-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.rich-text-at-mention-palette-hint-separator {
+  color: var(--line-2, var(--tutti-line-2));
+}
+
+.rich-text-at-mention-palette:hover
+  .rich-text-at-mention-palette-scrollbar[data-scrollable="true"] {
+  opacity: 1;
+}
+
+.rich-text-at-mention-palette {
+  --agent-mention-file-icon-size: 16px;
+}
+
+/*
+ * Structural styling for the shared MentionRow elements. These mirror the
+ * agent composer's rules (in `agentactivity.css`) under package-owned
+ * `rich-text-at-mention-*` class names so any consumer (e.g. issue-manager)
+ * that does NOT load the agent stylesheet still renders styled rows. The agent
+ * keeps passing its own class names via `renderMentionRow(item, classNames)`.
+ */
+.rich-text-at-mention-file-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--agent-mention-file-icon-size, 16px);
+  height: var(--agent-mention-file-icon-size, 16px);
+  flex: 0 0 var(--agent-mention-file-icon-size, 16px);
+  overflow: hidden;
+  border-radius: 4px;
+  background-color: var(--bg-block, var(--block));
+  vertical-align: middle;
+}
+
+.rich-text-at-mention-file-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/*
+ * NOTE: the masked file kind-icon glyph and the fallback app glyph need raw SVG
+ * mask assets. Those cannot live in this package (the `check-ui-boundaries`
+ * gate restricts raw .svg assets to `packages/ui/system/src/icons/`), so only
+ * the structural box (size/layout) is owned here. The agent composer supplies
+ * its own masked glyph rules via `agentactivity.css` + its own class names. The
+ * issue-manager file glyph + app fallback glyph are completed in Phases 3-4.
+ */
+.rich-text-at-mention-file-icon {
+  width: var(--agent-mention-file-icon-size, 16px);
+  height: var(--agent-mention-file-icon-size, 16px);
+  flex: 0 0 var(--agent-mention-file-icon-size, 16px);
+  background-color: var(--folder);
+  border-radius: 4px;
+}
+
+/* Fallback app glyph box (shown when a workspace-app mention has no icon URL). */
+.rich-text-at-mention-kind-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  background-color: currentColor;
+  border-radius: 22.5%;
+}
+
+/* Session user-avatar placeholder background (no avatar URL). */
+.rich-text-at-mention-avatar-img--user-placeholder {
+  background-color: var(--muted);
+}
+
+/*
+ * Workspace-app icon container. Data-attribute based (matches the agent's
+ * global rule) so the rounded app icon renders for any consumer of the shared
+ * row, including surfaces that do not load `agentactivity.css`.
+ */
+[data-workspace-app-icon="true"] {
+  display: inline-grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 22.5%;
+  background: var(--workspace-app-icon-bg, transparent);
+}
+
+[data-workspace-app-icon="true"] > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+[data-workspace-app-icon="true"] > .rich-text-at-mention-kind-icon {
+  display: block;
+}

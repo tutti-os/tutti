@@ -1,4 +1,5 @@
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import type { RichTextMentionAttrs } from "@tutti-os/ui-rich-text/types";
 import {
   createWorkspaceUserProjectI18nRuntime,
   type WorkspaceUserProjectI18nRuntime
@@ -26,6 +27,13 @@ export interface IssueManagerNotificationSink {
   tips(title: string): void;
 }
 
+export interface IssueManagerMentionActionHandler {
+  openMention(input: {
+    mention: RichTextMentionAttrs;
+    workspaceId: string;
+  }): Promise<void> | void;
+}
+
 export interface IssueManagerFeatureUIConfig {
   showInviteCollaborator: boolean;
 }
@@ -42,6 +50,7 @@ export interface IssueManagerFeature {
   fileAdapter?: IssueManagerFileAdapter;
   i18n: IssueManagerI18nRuntime;
   identityAdapter: IssueManagerIdentityAdapter;
+  mentionActionHandler?: IssueManagerMentionActionHandler;
   notifications?: IssueManagerNotificationSink;
   shareAdapter?: IssueManagerShareAdapter;
   ui: IssueManagerFeatureUIConfig;
@@ -60,6 +69,7 @@ export interface CreateIssueManagerFeatureInput {
   fileAdapter?: IssueManagerFileAdapter;
   i18n?: I18nRuntime<string>;
   identityAdapter: IssueManagerIdentityAdapter;
+  mentionActionHandler?: IssueManagerMentionActionHandler;
   notifications?: IssueManagerNotificationSink;
   shareAdapter?: IssueManagerShareAdapter;
   ui?: Partial<IssueManagerFeatureUIConfig>;
@@ -91,6 +101,7 @@ export function createIssueManagerFeature(
     fileAdapter: input.fileAdapter,
     i18n: createIssueManagerI18nRuntime(input.i18n),
     identityAdapter: input.identityAdapter,
+    mentionActionHandler: input.mentionActionHandler,
     notifications: input.notifications,
     shareAdapter: input.shareAdapter,
     ui: {

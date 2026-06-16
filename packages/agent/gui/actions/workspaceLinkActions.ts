@@ -79,6 +79,13 @@ export interface OpenWorkspaceIssueLinkAction {
   source: WorkspaceLinkActionSource;
 }
 
+export interface OpenWorkspaceAppLinkAction {
+  type: "open-workspace-app";
+  workspaceId: string;
+  appId: string;
+  source: WorkspaceLinkActionSource;
+}
+
 export interface ResolveWorkspaceUrlLinkActionInput {
   url: string;
   source: WorkspaceLinkActionSource;
@@ -100,7 +107,8 @@ export type WorkspaceLinkAction =
   | OpenWorkspaceFileLinkAction
   | OpenWorkspaceUrlLinkAction
   | OpenAgentSessionLinkAction
-  | OpenWorkspaceIssueLinkAction;
+  | OpenWorkspaceIssueLinkAction
+  | OpenWorkspaceAppLinkAction;
 
 const URL_LIKE_LINK_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:|^#/;
 
@@ -180,6 +188,7 @@ export function resolveWorkspaceMentionLinkAction({
 }: ResolveWorkspaceMentionLinkActionInput):
   | OpenAgentSessionLinkAction
   | OpenWorkspaceIssueLinkAction
+  | OpenWorkspaceAppLinkAction
   | null {
   const rawHref = href.trim();
   if (!rawHref.toLowerCase().startsWith("mention://")) {
@@ -194,7 +203,10 @@ export function resolveWorkspaceMentionLinkAction({
   }
 
   const workspaceId = url.searchParams.get("workspaceId")?.trim() || "";
-  const targetId = url.searchParams.get("id")?.trim() || "";
+  const targetId =
+    url.hostname === "workspace-app"
+      ? url.searchParams.get("appId")?.trim() || ""
+      : url.searchParams.get("id")?.trim() || "";
   if (!workspaceId || !targetId) {
     return null;
   }
@@ -230,6 +242,15 @@ export function resolveWorkspaceMentionLinkAction({
       ...(parsedIssueMention.topicId
         ? { topicId: parsedIssueMention.topicId }
         : {}),
+      source
+    };
+  }
+
+  if (url.hostname === "workspace-app") {
+    return {
+      type: "open-workspace-app",
+      workspaceId,
+      appId: targetId,
       source
     };
   }

@@ -239,7 +239,10 @@ export function mentionGroupExpandCount(
   group: AgentMentionGroup,
   filter: AgentMentionFilterId
 ): number {
-  const pageSize = mentionGroupPageSize(filter, group.id);
+  const pageSize = mentionGroupPageSize(
+    filter,
+    group.id as AgentMentionGroupId
+  );
   const remaining = Math.max(0, group.totalCount - group.visibleCount);
   return Math.min(pageSize, remaining);
 }

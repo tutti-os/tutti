@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from "react";
 import { RichTextReadonlyContent } from "@tutti-os/ui-rich-text/editor";
+import type { RichTextMentionAttrs } from "@tutti-os/ui-rich-text/types";
 import { cn } from "@tutti-os/ui-system";
 import { normalizeIssueManagerContent } from "../../../core/index.ts";
 import type { IssueManagerFileReference } from "../../../contracts/index.ts";
@@ -10,6 +11,7 @@ export function IssueManagerDescriptionSection({
   emptyLabel,
   label,
   minHeightClass = "min-h-[14rem]",
+  onMentionAction,
   onOpen,
   variant = "card"
 }: {
@@ -17,6 +19,7 @@ export function IssueManagerDescriptionSection({
   emptyLabel: string;
   label: string;
   minHeightClass?: string;
+  onMentionAction?: (mention: RichTextMentionAttrs) => Promise<void>;
   onOpen?: (reference: IssueManagerFileReference) => Promise<void>;
   variant?: "card" | "plain";
 }): JSX.Element {
@@ -71,6 +74,7 @@ export function IssueManagerDescriptionSection({
           <div className="min-w-0 max-w-full text-[13px] font-normal leading-5 text-[var(--text-secondary)] sm:max-w-3xl">
             <IssueManagerDescriptionContent
               content={displayContent}
+              onMentionAction={onMentionAction}
               onOpen={onOpen}
             />
           </div>
@@ -104,6 +108,7 @@ export function IssueManagerDescriptionSection({
           {displayContent ? (
             <IssueManagerDescriptionContent
               content={displayContent}
+              onMentionAction={onMentionAction}
               onOpen={onOpen}
             />
           ) : (
@@ -128,9 +133,11 @@ export function IssueManagerDescriptionSection({
 
 function IssueManagerDescriptionContent({
   content,
+  onMentionAction,
   onOpen
 }: {
   content: string;
+  onMentionAction?: (mention: RichTextMentionAttrs) => Promise<void>;
   onOpen?: (reference: IssueManagerFileReference) => Promise<void>;
 }): JSX.Element {
   return (
@@ -138,6 +145,7 @@ function IssueManagerDescriptionContent({
       className="min-w-0 max-w-full [overflow-wrap:anywhere]"
       paragraphClassName="break-words [overflow-wrap:anywhere]"
       value={content}
+      onMentionAction={onMentionAction}
       onOpenWorkspaceReference={
         onOpen
           ? (reference) =>

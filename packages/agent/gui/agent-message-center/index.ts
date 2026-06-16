@@ -5,6 +5,8 @@ export {
 } from "./WorkspaceAgentMessageCenterCard";
 export { AgentInteractivePromptSurface } from "../shared/agentConversation/components/AgentInteractivePromptSurface";
 export { managedAgentRoundedIconUrl } from "../shared/managedAgentIcons";
+export { userAvatarPlaceholderUrl } from "../shared/userAvatarPlaceholder";
+export { workspaceAgentActivityStatusLabel } from "../shared/workspaceAgentActivityStatusLabel";
 export {
   getPromptToolDetails,
   isPromptRequestIdTitle
