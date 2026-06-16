@@ -58,14 +58,14 @@ export const en = {
     workspaceCountNote: "{{count}} recent workspaces are currently available"
   },
   updates: {
-    availableTitle: "New version available",
+    availableTitle: "Update to New Version",
     badge: "update",
     checkingTitle: "Checking for updates",
-    downloadAction: "Download update",
-    downloadedTitle: "Update ready to install",
+    downloadAction: "Update",
+    downloadedTitle: "Ready to install",
     downloadingTitle: "Downloading {{percent}}",
     errorTitle: "Unable to check for updates",
-    restartAction: "Install update",
+    restartAction: "Install",
     retryAction: "Retry"
   },
   desktop: {
@@ -221,7 +221,7 @@ export const en = {
       close: "Close settings",
       appearance: {
         dockPlacementDescription:
-          "Controls where the workspace dock is anchored.",
+          "Controls where the workspace dock is anchored",
         dockPlacementLabel: "Dock layout",
         dockPlacementOptions: {
           bottom: "Bottom",
@@ -232,7 +232,7 @@ export const en = {
         dockIconStyleSaveFailed:
           "We couldn't update the Dock icon style right now.",
         themeDescription:
-          "Controls window appearance and the color mode for information.",
+          "Controls window appearance and the color mode for information",
         themeLabel: "Appearance",
         themeOptions: {
           dark: "Dark",
@@ -261,7 +261,7 @@ export const en = {
       },
       general: {
         defaultAgentProviderDescription:
-          "Used for new app factory jobs, issue tasks, and workspace apps that ask for the host default.",
+          "Used for new app factory jobs, issue tasks, and workspace apps that ask for the host default",
         defaultAgentProviderLabel: "Default provider",
         defaultAgentProviderSaveFailed:
           "We couldn't update the default provider right now.",
@@ -273,13 +273,12 @@ export const en = {
           zhCN: "Simplified Chinese"
         },
         localeSaveFailed: "We couldn't switch the app language right now.",
-        preventSleepDescription:
-          "Controls when Tutti keeps this computer awake.",
+        preventSleepDescription: "Controls whether the system can enter sleep",
         preventSleepLabel: "Sleep prevention",
         preventSleepOptions: {
-          always: "Always",
-          never: "Never",
-          whileAgentRunning: "While agents run"
+          always: "Always prevent sleep",
+          never: "Allow computer sleep",
+          whileAgentRunning: "Prevent sleep only while Agent runs"
         },
         preventSleepSaveFailed:
           "We couldn't update the sleep prevention setting right now.",
@@ -308,13 +307,13 @@ export const en = {
           deleteFailed: "Couldn't delete — try again.",
           deleting: "Deleting...",
           description:
-            "Bring your own model API keys for your workspace apps and agents to use.",
+            "Bring your own model API keys for your workspace apps and agents to use",
           detectModels: "Fetch available models",
           detectingModels: "Fetching...",
           detectModelsEmpty: "No models found.",
           detectModelsFailed: "Couldn't fetch models — try again.",
           emptyDescription:
-            "Click “Add provider” to connect Agnes, OpenAI, or Anthropic with your API key.",
+            "Click “Add provider” to connect Agnes, OpenAI, or Anthropic with your API key",
           emptyTitle: "No model providers yet",
           enabled: "Enable {{provider}}",
           expand: "Expand",
@@ -356,7 +355,7 @@ export const en = {
       developer: {
         actionsLabel: "Actions",
         analyticsDebugDescription:
-          "Shows a floating panel with local analytics events in development builds.",
+          "Shows a floating panel with local analytics events in development builds",
         analyticsDebugLabel: "Analytics event panel",
         clearLogs: "Clear logs",
         clearingLogs: "Clearing...",
@@ -381,7 +380,7 @@ export const en = {
         openDesktopLog: "Open desktop log",
         openLogsDirectory: "Open logs folder",
         visibilityDescription:
-          "Hide this panel from settings. Tap the version number in General seven times to bring it back.",
+          "Hide this panel from settings. Tap the version number in General seven times to bring it back",
         visibilityLabel: "Show developer panel"
       },
       title: "Settings",

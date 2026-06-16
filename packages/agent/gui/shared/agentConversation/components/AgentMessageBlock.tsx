@@ -33,6 +33,7 @@ import { CollapsibleReveal } from "./CollapsibleReveal";
 import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
+import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentation/renderer/components/shared/CanvasNodeGhostIconButton";
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
 
@@ -264,8 +265,7 @@ function AgentMessageCopyButton({
     : translate("agentHost.agentGui.copyMessage");
 
   return (
-    <button
-      type="button"
+    <CanvasNodeGhostIconButton
       className={styles.messageCopyButton}
       aria-label={label}
       data-copied={copied ? "true" : "false"}
@@ -276,7 +276,7 @@ function AgentMessageCopyButton({
       ) : (
         <CopyIcon width={14} height={14} aria-hidden="true" />
       )}
-    </button>
+    </CanvasNodeGhostIconButton>
   );
 }
 

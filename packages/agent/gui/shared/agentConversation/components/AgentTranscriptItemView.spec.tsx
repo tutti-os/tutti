@@ -353,6 +353,10 @@ describe("AgentTranscriptItemView render stability", () => {
 
   it("keeps conversation flow secondary text on the 13px compact scale", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+    const messageBlockSource = readFileSync(
+      resolve("shared/agentConversation/components/AgentMessageBlock.tsx"),
+      "utf8"
+    );
     const markdownSource = readFileSync(
       resolve("shared/AgentMessageMarkdown.tsx"),
       "utf8"
@@ -389,8 +393,12 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(css).toMatch(
       /\.agent-gui-conversation__message-copy-button\s*{[^}]*position:\s*absolute[^}]*opacity:\s*0/s
     );
+    expect(messageBlockSource).toContain("CanvasNodeGhostIconButton");
     expect(css).toMatch(
       /\.agent-gui-conversation__message-group:hover[\s\S]*?\.agent-gui-conversation__message-copy-button,[\s\S]*?\.agent-gui-conversation__message-group:focus-within[\s\S]*?\.agent-gui-conversation__message-copy-button\s*{[^}]*opacity:\s*1/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-conversation__message-copy-button:hover\s*{/
     );
     expect(css).toMatch(
       /\.tsh-agent-object-token--file\s*{[^}]*font-size:\s*13px/s

@@ -51,8 +51,16 @@ test("resolves image thumbnails only when enabled", () => {
   );
 });
 
-test("uses extension document icons for text and code files", () => {
-  for (const name of ["example.txt", "index.html", "README.md"]) {
+test("uses extension document icons for text, code, and archive files", () => {
+  for (const name of [
+    "example.txt",
+    "index.html",
+    "README.md",
+    "brief.pdf",
+    "Archive.zip",
+    "backup.tar",
+    "bundle.7z"
+  ]) {
     const entry = createEntry({ name, path: `/workspace/${name}` });
     assert.equal(shouldUseWorkspaceFileExtensionDocumentIcon(entry), true);
     assert.equal(shouldResolveWorkspaceFileEntryIcon(entry), false);
@@ -60,7 +68,7 @@ test("uses extension document icons for text and code files", () => {
 });
 
 test("resolves default application icons for selected document-like file types", () => {
-  for (const name of ["brief.pdf", "Deck.pptx", "Archive.zip", "Design.psd"]) {
+  for (const name of ["Deck.pptx", "Design.psd"]) {
     assert.equal(
       shouldResolveWorkspaceFileEntryIcon(
         createEntry({ name, path: `/workspace/${name}` })
@@ -128,10 +136,10 @@ test("builds cache keys by icon target kind", () => {
     resolveWorkspaceFileEntryIconCacheKey(
       createEntry({
         mtimeMs: 42,
-        name: "Brief.pdf",
-        path: "/workspace/Brief.pdf"
+        name: "Deck.pptx",
+        path: "/workspace/Deck.pptx"
       })
     ),
-    "file-type-default-application:pdf"
+    "file-type-default-application:pptx"
   );
 });

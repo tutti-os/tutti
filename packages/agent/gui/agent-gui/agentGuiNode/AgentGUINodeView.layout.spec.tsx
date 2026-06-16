@@ -563,7 +563,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(conversationFlowMock.calls).toHaveLength(initialRenderCount);
   });
 
-  it("shows ready detail status as a green pulse dot", () => {
+  it("shows ready detail status as a compact green pulse dot", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -577,7 +577,7 @@ describe("AgentGUINodeView layout persistence", () => {
       expect.objectContaining({
         ariaLabel: "statusReady",
         pulse: true,
-        size: "md",
+        size: "sm",
         title: "statusReady",
         tone: "green"
       })
@@ -753,6 +753,18 @@ describe("AgentGUINodeView usage chip", () => {
     const chip = screen.getByTestId("agent-gui-usage-chip");
     expect(chip).toHaveTextContent("usageChip:25");
     expect(chip).toHaveAttribute("data-usage-level", "normal");
+    expect(chip).toHaveClass("text-[13px]");
+    expect(chip).toHaveClass("font-normal");
+    expect(chip).toHaveClass("cursor-default");
+    expect(chip.tagName).toBe("SPAN");
+
+    const source = readFileSync(
+      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
+      "utf8"
+    );
+    expect(source).toContain(
+      'className="max-w-[320px] cursor-default text-xs"'
+    );
   });
 
   it("marks the chip with the warning level at 80 percent and above", () => {
@@ -851,7 +863,10 @@ describe("AgentGUINodeView compact action", () => {
     renderAgentGUINodeView({ viewModel: compactViewModel() });
 
     expect(screen.getByTestId("agent-gui-usage-chip")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-gui-compact-button")).toBeEnabled();
+    const compactButton = screen.getByTestId("agent-gui-compact-button");
+    expect(compactButton).toBeEnabled();
+    expect(compactButton).toHaveClass("text-[13px]");
+    expect(compactButton).toHaveClass("font-normal");
   });
 
   it("renders the compact button when the capability resolves true", () => {
@@ -992,6 +1007,24 @@ describe("AgentGUINodeView usage alert banner", () => {
     renderAgentGUINodeView({ viewModel: alertViewModel({ usageAlert: null }) });
 
     expect(screen.queryByTestId("agent-gui-usage-alert")).toBeNull();
+  });
+
+  it("keeps the usage alert attached to the composer with inset square bottom corners", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+    const usageAlertRule = css.match(
+      /\.agent-gui-node__usage-alert-banner\s*{[^}]*}/s
+    )?.[0];
+
+    expect(usageAlertRule).toContain("margin: 0 24px;");
+    expect(usageAlertRule).toContain("border-radius: 8px 8px 0 0;");
+    expect(usageAlertRule).toContain("font-size: 13px;");
+    expect(usageAlertRule).toContain("font-weight: 400;");
+    expect(usageAlertRule).not.toContain("margin: 0 12px 8px;");
+
+    const usageAlertDismissRule = css.match(
+      /\.agent-gui-node__usage-alert-dismiss\s*{[^}]*}/s
+    )?.[0];
+    expect(usageAlertDismissRule).toContain("border-radius: 4px;");
   });
 
   it("renders the warn banner without a compact action", () => {

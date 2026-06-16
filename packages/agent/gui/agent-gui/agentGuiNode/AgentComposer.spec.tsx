@@ -855,6 +855,17 @@ describe("AgentComposer", () => {
     );
   });
 
+  it("keeps footer action spacing and chevron slots consistent", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-footer-right\s*{[^}]*gap:\s*2px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-footer-right\s+\.agent-gui-node__composer-menu-trigger\s+>\s+svg\s*{[^}]*width:\s*16px[^}]*height:\s*16px[^}]*flex:\s*0 0 16px[^}]*margin-left:\s*0/s
+    );
+  });
+
   it("does not render the project dropdown below the dock input shell", () => {
     const { container } = render(
       <AgentComposer

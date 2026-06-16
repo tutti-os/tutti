@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import {
   WorkspaceUserProjectSelect,
   type WorkspaceUserProjectSelectChangeAction,
@@ -9,7 +10,6 @@ import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-p
 import { useAgentHostApi } from "../../agentActivityHost";
 import {
   CheckIcon,
-  ChevronDownIcon,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -451,7 +451,7 @@ export function AgentModelReasoningDropdown({
               </>
             )}
           </span>
-          <ChevronDownIcon aria-hidden className="ml-1 size-3 shrink-0" />
+          <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -482,18 +482,19 @@ export function AgentModelReasoningDropdown({
         {menu.reasoning.show ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger
-              className={styles.composerMenuItem}
+              className={cn(styles.composerMenuItem, "[&>svg]:!ml-0.5")}
               data-agent-reasoning-submenu-trigger="true"
             >
               <span className="min-w-0 flex-1 truncate">
                 {labels.reasoningLabel}
               </span>
-              <span className="pl-3 text-[var(--text-tertiary)]">
+              <span className="text-[var(--text-tertiary)]">
                 {menu.reasoning.selectedLabel}
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent
-              className={cn(styles.composerMenuContent, "min-w-[160px]")}
+              className={cn(styles.composerMenuContent, "min-w-[132px]")}
+              data-agent-composer-settings-layout="model-submenu"
             >
               <ComposerMenuOptionItems
                 options={menu.reasoning.options}
@@ -508,18 +509,19 @@ export function AgentModelReasoningDropdown({
         {menu.speed.show ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger
-              className={styles.composerMenuItem}
+              className={cn(styles.composerMenuItem, "[&>svg]:!ml-0.5")}
               data-agent-speed-submenu-trigger="true"
             >
               <span className="min-w-0 flex-1 truncate">
                 {labels.speedLabel}
               </span>
-              <span className="pl-3 text-[var(--text-tertiary)]">
+              <span className="text-[var(--text-tertiary)]">
                 {menu.speed.selectedLabel}
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent
-              className={cn(styles.composerMenuContent, "min-w-[200px]")}
+              className={cn(styles.composerMenuContent, "w-[200px]")}
+              data-agent-composer-settings-layout="model-submenu"
             >
               <ComposerMenuOptionItems
                 options={menu.speed.options}
@@ -555,7 +557,10 @@ function ComposerMenuOptionItems({
       {options.map((option) => (
         <DropdownMenuItem
           key={option.value}
-          className={styles.composerMenuItem}
+          className={cn(
+            styles.composerMenuItem,
+            withDescription && option.description && "items-start"
+          )}
           onPointerDown={(event) => {
             if (event.button === 0 && !event.ctrlKey) {
               event.preventDefault();
@@ -566,17 +571,28 @@ function ComposerMenuOptionItems({
             onSelect(option.value);
           }}
         >
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="min-w-0 truncate">{option.label}</span>
+          <span
+            className={cn(
+              "flex min-w-0 flex-1 flex-col",
+              withDescription && option.description ? "gap-0.5" : "gap-0"
+            )}
+          >
+            <span className="min-w-0 truncate leading-[1.15]">
+              {option.label}
+            </span>
             {withDescription && option.description ? (
-              <span className="whitespace-normal text-[11px] leading-[1.3] text-[var(--text-tertiary)]">
+              <span className="whitespace-normal text-[11px] leading-[1.2] text-[var(--text-tertiary)]">
                 {option.description}
               </span>
             ) : null}
           </span>
-          {option.value === selectedValue ? (
-            <CheckIcon className="ml-2 size-3.5 shrink-0 text-[var(--tutti-purple)]" />
-          ) : null}
+          <CheckIcon
+            aria-hidden
+            className={cn(
+              "ml-2 size-3.5 shrink-0 text-[var(--tutti-purple)]",
+              option.value !== selectedValue && "invisible"
+            )}
+          />
         </DropdownMenuItem>
       ))}
     </>

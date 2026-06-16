@@ -180,9 +180,7 @@ export function WorkspaceChrome({
         className="flex items-center justify-end gap-2 justify-self-end [-webkit-app-region:no-drag]"
         data-workbench-wallpaper-appearance={wallpaperAppearance}
       >
-        {headerSlot ? (
-          <div className="min-w-0 translate-y-1">{headerSlot}</div>
-        ) : null}
+        {headerSlot ? <div className="min-w-0">{headerSlot}</div> : null}
         <WorkspaceAgentMessageCenterAction
           launchNode={launchNode}
           workspace={workspace}

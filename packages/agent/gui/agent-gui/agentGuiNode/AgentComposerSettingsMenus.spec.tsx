@@ -1366,17 +1366,53 @@ describe("AgentModelReasoningDropdown", () => {
     };
   }
 
-  it("keeps menu option vertical padding at 4px", () => {
+  it("keeps base menu padding while compacting model settings menus", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
       /\.agent-gui-node__composer-menu-item\s*{[^}]*padding-block:\s*4px[^}]*padding-inline:\s*10px\s+28px/s
     );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-menu-content\[data-agent-composer-settings-layout="model-primary"\][\s\S]*?\.agent-gui-node__composer-menu-item,[\s\S]*?\.agent-gui-node__composer-menu-content\[data-agent-composer-settings-layout="model-submenu"\][\s\S]*?\.agent-gui-node__composer-menu-item\s*{[^}]*padding-inline:\s*8px\s+10px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-menu-trigger\[data-agent-model-reasoning-trigger="true"\]\s*>\s*svg\s*{[^}]*transition:\s*transform 200ms ease/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-menu-trigger\[data-agent-model-reasoning-trigger="true"\]:hover:not\(\s*:disabled\s*\)\s*{[^}]*color:\s*var\(--agent-gui-text-secondary\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-menu-trigger\[data-agent-model-reasoning-trigger="true"\]\[data-state="open"\]\s*>\s*svg\s*{[^}]*transform:\s*rotate\(180deg\)/s
+    );
+  });
+
+  it("keeps model options vertically centered when they have no description", async () => {
+    renderModelReasoning();
+
+    openModelReasoningMenu();
+
+    await screen.findByRole("menu");
+    const menu = document.querySelector(
+      '[data-agent-composer-settings-layout="model-primary"]'
+    );
+    const modelOption =
+      Array.from(menu?.querySelectorAll('[role="menuitem"]') ?? []).find(
+        (item) => item.textContent?.includes("GPT-5.5")
+      ) ?? null;
+    expect(modelOption).not.toBeNull();
+    expect(modelOption).not.toHaveClass("items-start");
   });
 
   it("shows model and reasoning together in the trigger", () => {
     renderModelReasoning();
-    expect(modelReasoningTrigger()).toHaveTextContent(/GPT-5\.5\s*High/);
+    const trigger = modelReasoningTrigger();
+    expect(trigger).toHaveTextContent(/GPT-5\.5\s*High/);
+
+    const chevron = trigger.querySelector(".lucide-chevron-down");
+    expect(chevron).not.toBeNull();
+    expect(chevron).toHaveAttribute("width", "16");
+    expect(chevron).toHaveAttribute("height", "16");
+    expect(chevron).not.toHaveClass("size-3");
   });
 
   it("shows the fast lightning indicator only when speed is fast", () => {
@@ -1446,6 +1482,7 @@ describe("AgentModelReasoningDropdown", () => {
       name: /Reasoning/
     });
     expect(reasoningTrigger).toHaveTextContent("High");
+    expect(reasoningTrigger).toHaveClass("[&>svg]:!ml-0.5");
     openComposerSubmenu(reasoningTrigger);
     fireEvent.click(await screen.findByRole("menuitem", { name: "Low" }));
     expect(onSettingsChange).toHaveBeenCalledWith({ reasoningEffort: "low" });
@@ -1457,7 +1494,10 @@ describe("AgentModelReasoningDropdown", () => {
     openModelReasoningMenu();
     const speedTrigger = await screen.findByRole("menuitem", { name: /Speed/ });
     expect(speedTrigger).toHaveTextContent("Standard");
+    expect(speedTrigger).toHaveClass("[&>svg]:!ml-0.5");
     openComposerSubmenu(speedTrigger);
+    const standardSpeedDescription = await screen.findByText("Standard speed");
+    expect(standardSpeedDescription.parentElement).toHaveClass("gap-0.5");
     fireEvent.click(await screen.findByRole("menuitem", { name: /Fast/ }));
     expect(onSettingsChange).toHaveBeenCalledWith({ speed: "fast" });
   });

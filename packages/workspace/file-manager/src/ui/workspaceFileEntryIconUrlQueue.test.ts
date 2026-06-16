@@ -165,18 +165,18 @@ test("icon url queue ignores ordinary files named like application bundles", asy
 test("icon url queue dedupes default application icon requests by extension", async () => {
   let calls = 0;
   const first = createEntry({
-    name: "Brief.pdf",
-    path: "/workspace/Brief.pdf"
+    name: "Deck.pptx",
+    path: "/workspace/Deck.pptx"
   });
   const second = createEntry({
-    name: "Another.pdf",
-    path: "/workspace/Another.pdf"
+    name: "Another.pptx",
+    path: "/workspace/Another.pptx"
   });
   const cacheKey = resolveWorkspaceFileEntryIconCacheKey(first);
   const queue = createWorkspaceFileEntryIconUrlQueue({
     async resolveEntryIconUrl() {
       calls += 1;
-      return "tutti-file-icon://icon/pdf";
+      return "tutti-file-icon://icon/pptx";
     }
   });
 
@@ -187,7 +187,7 @@ test("icon url queue dedupes default application icon requests by extension", as
 
   assert.equal(resolveWorkspaceFileEntryIconCacheKey(second), cacheKey);
   assert.equal(calls, 1);
-  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/pdf");
+  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/pptx");
 });
 
 test("icon url queue dedupes application icon requests", async () => {
@@ -241,13 +241,13 @@ test("icon url queue caches failed application icon requests as null", async () 
 
 test("icon url queue releases cached icons when entries leave the viewport", async () => {
   const entry = createEntry({
-    name: "Archive.zip",
-    path: "/workspace/Archive.zip"
+    name: "Deck.pptx",
+    path: "/workspace/Deck.pptx"
   });
   const cacheKey = resolveWorkspaceFileEntryIconCacheKey(entry);
   const queue = createWorkspaceFileEntryIconUrlQueue({
     async resolveEntryIconUrl() {
-      return "tutti-file-icon://icon/zip";
+      return "tutti-file-icon://icon/pptx";
     }
   });
 
@@ -255,7 +255,7 @@ test("icon url queue releases cached icons when entries leave the viewport", asy
   queue.enterViewport(entry);
   await settleQueue();
 
-  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/zip");
+  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/pptx");
 
   queue.leaveViewport(entry);
 
@@ -264,8 +264,8 @@ test("icon url queue releases cached icons when entries leave the viewport", asy
 
 test("icon url queue discards in-flight results after viewport release", async () => {
   const entry = createEntry({
-    name: "Archive.zip",
-    path: "/workspace/Archive.zip"
+    name: "Deck.pptx",
+    path: "/workspace/Deck.pptx"
   });
   const cacheKey = resolveWorkspaceFileEntryIconCacheKey(entry);
   const iconRead = createDeferred<string>();
@@ -279,7 +279,7 @@ test("icon url queue discards in-flight results after viewport release", async (
   queue.enterViewport(entry);
   await settleQueue();
   queue.leaveViewport(entry);
-  iconRead.resolve("tutti-file-icon://icon/zip");
+  iconRead.resolve("tutti-file-icon://icon/pptx");
   await settleQueue();
 
   assert.equal(queue.snapshot().has(cacheKey), false);
@@ -287,12 +287,12 @@ test("icon url queue discards in-flight results after viewport release", async (
 
 test("icon url queue removes queued entries after viewport release", async () => {
   const first = createEntry({
-    name: "Brief.pdf",
-    path: "/workspace/Brief.pdf"
+    name: "Deck.pptx",
+    path: "/workspace/Deck.pptx"
   });
   const second = createEntry({
-    name: "Archive.zip",
-    path: "/workspace/Archive.zip"
+    name: "Design.psd",
+    path: "/workspace/Design.psd"
   });
   const started: string[] = [];
   const firstIconRead = createDeferred<string>();
@@ -311,25 +311,25 @@ test("icon url queue removes queued entries after viewport release", async () =>
   queue.enterViewport(second);
   await settleQueue();
   queue.leaveViewport(second);
-  firstIconRead.resolve("tutti-file-icon://icon/pdf");
+  firstIconRead.resolve("tutti-file-icon://icon/pptx");
   await settleQueue();
 
-  assert.deepEqual(started, ["Brief.pdf"]);
+  assert.deepEqual(started, ["Deck.pptx"]);
 });
 
 test("icon url queue keeps shared file type icons while any matching entry is visible", async () => {
   const first = createEntry({
-    name: "Brief.pdf",
-    path: "/workspace/Brief.pdf"
+    name: "Deck.pptx",
+    path: "/workspace/Deck.pptx"
   });
   const second = createEntry({
-    name: "Another.pdf",
-    path: "/workspace/Another.pdf"
+    name: "Another.pptx",
+    path: "/workspace/Another.pptx"
   });
   const cacheKey = resolveWorkspaceFileEntryIconCacheKey(first);
   const queue = createWorkspaceFileEntryIconUrlQueue({
     async resolveEntryIconUrl() {
-      return "tutti-file-icon://icon/pdf";
+      return "tutti-file-icon://icon/pptx";
     }
   });
 
@@ -340,7 +340,7 @@ test("icon url queue keeps shared file type icons while any matching entry is vi
 
   queue.leaveViewport(first);
 
-  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/pdf");
+  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/pptx");
 
   queue.leaveViewport(second);
 
@@ -350,8 +350,8 @@ test("icon url queue keeps shared file type icons while any matching entry is vi
 test("icon url queue retries failed icon requests after retained entries refresh", async () => {
   let calls = 0;
   const entry = createEntry({
-    name: "Brief.pdf",
-    path: "/workspace/Brief.pdf"
+    name: "Deck.pptx",
+    path: "/workspace/Deck.pptx"
   });
   const cacheKey = resolveWorkspaceFileEntryIconCacheKey(entry);
   const queue = createWorkspaceFileEntryIconUrlQueue({
@@ -360,7 +360,7 @@ test("icon url queue retries failed icon requests after retained entries refresh
       if (calls === 1) {
         throw new Error("temporary icon failure");
       }
-      return "tutti-file-icon://icon/pdf";
+      return "tutti-file-icon://icon/pptx";
     }
   });
 
@@ -380,7 +380,7 @@ test("icon url queue retries failed icon requests after retained entries refresh
   await settleQueue();
 
   assert.equal(calls, 2);
-  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/pdf");
+  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/pptx");
 });
 
 test("icon url queue limits concurrent requests", async () => {
@@ -491,14 +491,14 @@ test("icon url queue keeps file type cache keys stable across mtime changes", as
   let calls = 0;
   const first = createEntry({
     mtimeMs: 1,
-    name: "Brief.pdf",
-    path: "/workspace/Brief.pdf"
+    name: "Deck.pptx",
+    path: "/workspace/Deck.pptx"
   });
   const second = { ...first, mtimeMs: 2 };
   const queue = createWorkspaceFileEntryIconUrlQueue({
     async resolveEntryIconUrl() {
       calls += 1;
-      return `tutti-file-icon://icon/pdf-${calls}`;
+      return `tutti-file-icon://icon/pptx-${calls}`;
     }
   });
 
@@ -512,7 +512,7 @@ test("icon url queue keeps file type cache keys stable across mtime changes", as
   assert.equal(calls, 1);
   assert.equal(
     queue.snapshot().get(resolveWorkspaceFileEntryIconCacheKey(second)),
-    "tutti-file-icon://icon/pdf-1"
+    "tutti-file-icon://icon/pptx-1"
   );
 });
 

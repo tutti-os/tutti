@@ -19,7 +19,7 @@
     "directory": "packages/workspace/file-manager"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts",
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets",
     "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

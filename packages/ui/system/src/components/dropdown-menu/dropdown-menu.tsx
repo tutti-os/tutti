@@ -259,7 +259,7 @@ function DropdownMenuSubTrigger({
       {...props}
     >
       {children}
-      <ArrowRightIcon className="ml-auto" />
+      <ArrowRightIcon className="ml-auto text-[var(--text-tertiary)]" />
     </DropdownMenuPrimitive.SubTrigger>
   );
 }

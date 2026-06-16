@@ -58,14 +58,14 @@ export const zhCN = {
     workspaceCountNote: "当前记录了 {{count}} 个最近工作区"
   },
   updates: {
-    availableTitle: "发现新版本",
+    availableTitle: "发现可用新版本",
     badge: "更新",
     checkingTitle: "正在检查更新",
-    downloadAction: "下载更新",
-    downloadedTitle: "更新已准备好安装",
+    downloadAction: "更新",
+    downloadedTitle: "更新完成，立即安装",
     downloadingTitle: "正在下载 {{percent}}",
     errorTitle: "无法检查更新",
-    restartAction: "安装更新",
+    restartAction: "安装",
     retryAction: "重试"
   },
   desktop: {
@@ -215,7 +215,7 @@ export const zhCN = {
     settings: {
       close: "关闭设置",
       appearance: {
-        dockPlacementDescription: "控制工作区 dock 栏停靠的位置。",
+        dockPlacementDescription: "控制工作区 dock 栏停靠的位置",
         dockPlacementLabel: "Dock 布局",
         dockPlacementOptions: {
           bottom: "底部",
@@ -249,7 +249,7 @@ export const zhCN = {
       },
       general: {
         defaultAgentProviderDescription:
-          "用于新的 App Factory 任务、Issue 任务，以及读取宿主默认值的工作区应用。",
+          "用于新的 App Factory 任务、Issue 任务，以及读取宿主默认值的工作区应用",
         defaultAgentProviderLabel: "默认 Provider",
         defaultAgentProviderSaveFailed: "暂时无法更新默认 Provider。",
         languageDescription: "会立刻应用到所有已打开窗口，并在重启后继续生效",
@@ -259,12 +259,12 @@ export const zhCN = {
           zhCN: "简体中文"
         },
         localeSaveFailed: "暂时无法切换应用语言。",
-        preventSleepDescription: "控制 Tutti 何时保持这台电脑不进入睡眠。",
+        preventSleepDescription: "可控制系统是否进入休眠",
         preventSleepLabel: "防止休眠",
         preventSleepOptions: {
-          always: "始终阻止",
-          never: "不阻止",
-          whileAgentRunning: "Agent 运行时阻止"
+          always: "始终防止休眠",
+          never: "允许电脑休眠",
+          whileAgentRunning: "仅 Agent 运行时防止休眠"
         },
         preventSleepSaveFailed: "暂时无法更新防止休眠设置。",
         updateChannelSaveFailed: "暂时无法更新发布渠道。",
@@ -291,13 +291,13 @@ export const zhCN = {
           deleteFailed: "删除失败，请重试。",
           deleting: "删除中...",
           description:
-            "用你自己的 API 密钥接入模型，供工作区的应用和 Agent 使用。",
+            "用你自己的 API 密钥接入模型，供工作区的应用和 Agent 使用",
           detectModels: "获取可用模型",
           detectingModels: "获取中...",
           detectModelsEmpty: "没有找到可用模型。",
           detectModelsFailed: "获取模型失败，请重试。",
           emptyDescription:
-            "点「添加」用你的 API 密钥接入 Agnes、OpenAI 或 Anthropic。",
+            "点「添加」用你的 API 密钥接入 Agnes、OpenAI 或 Anthropic",
           emptyTitle: "还没有接入模型供应商",
           enabled: "启用 {{provider}}",
           expand: "展开",
@@ -338,7 +338,7 @@ export const zhCN = {
       },
       developer: {
         actionsLabel: "操作",
-        analyticsDebugDescription: "在开发版本中显示本地埋点事件悬浮面板。",
+        analyticsDebugDescription: "在开发版本中显示本地埋点事件悬浮面板",
         analyticsDebugLabel: "埋点事件面板",
         clearLogs: "清理日志",
         clearingLogs: "清理中...",
@@ -363,7 +363,7 @@ export const zhCN = {
         openDesktopLog: "打开 desktop 日志",
         openLogsDirectory: "打开日志目录",
         visibilityDescription:
-          "在设置中隐藏此面板。在「通用」里连续点击版本号七次即可重新显示。",
+          "在设置中隐藏此面板。在「通用」里连续点击版本号七次即可重新显示",
         visibilityLabel: "显示开发者面板"
       },
       title: "设置",

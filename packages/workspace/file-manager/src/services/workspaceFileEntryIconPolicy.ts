@@ -6,14 +6,12 @@ import {
 import type { WorkspaceFileEntry } from "./workspaceFileManagerTypes.ts";
 
 const defaultApplicationIconExtensions = new Set([
-  "7z",
   "ai",
   "dmg",
   "doc",
   "docx",
   "eps",
   "fig",
-  "gz",
   "indd",
   "key",
   "numbers",
@@ -21,19 +19,24 @@ const defaultApplicationIconExtensions = new Set([
   "ods",
   "odt",
   "pages",
-  "pdf",
   "pkg",
   "ppt",
   "pptx",
   "psd",
-  "rar",
   "rtf",
   "sketch",
-  "tar",
-  "tgz",
   "xd",
   "xls",
-  "xlsx",
+  "xlsx"
+]);
+
+const extensionDocumentIconExtensions = new Set([
+  "7z",
+  "gz",
+  "pdf",
+  "rar",
+  "tar",
+  "tgz",
   "xz",
   "zip"
 ]);
@@ -62,9 +65,11 @@ export function shouldUseWorkspaceFileExtensionDocumentIcon(
   }
 
   const visualKind = resolveWorkspaceFileVisualKind(entry);
+  const extension = resolveWorkspaceFileExtension(entry.name).toLowerCase();
   return (
     visualKind === "code" ||
     visualKind === "markdown" ||
+    extensionDocumentIconExtensions.has(extension) ||
     classifyWorkspaceFilePreviewKind(entry) === "text"
   );
 }

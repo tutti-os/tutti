@@ -533,7 +533,7 @@ export function AppCenterPanel({
     >
       {statusToast ? <AppCenterStatusToast toast={statusToast} /> : null}
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto px-6 pb-6 pt-5 [container-type:inline-size]">
-        <section className="flex min-w-0 flex-col gap-3">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           <div className="flex h-8 min-w-0 items-center justify-between gap-3">
             <SectionTabs
               ariaLabel={copy.t("labels.appList")}
@@ -1381,7 +1381,7 @@ function AppCardGrid({
     return (
       <div
         aria-label={title}
-        className="flex min-h-[min(360px,45vh)] min-w-0 flex-1 items-center justify-center rounded-[8px] px-6 text-center text-[13px] leading-5 text-[var(--text-secondary)]"
+        className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-[8px] px-6 text-center text-[13px] leading-5 text-[var(--text-secondary)]"
         role="status"
       >
         {emptyMessage}
@@ -1457,7 +1457,7 @@ function RecommendedCategoryTabs({
   return (
     <div
       aria-label={copy.t("labels.appCategories")}
-      className="-mx-1 flex min-w-0 items-center gap-2 overflow-x-auto px-1 py-1"
+      className="-mx-1 flex min-h-10 min-w-0 items-center gap-2 overflow-x-auto px-1 py-1"
       role="tablist"
     >
       {tabs.map((tab) => {
@@ -1466,10 +1466,10 @@ function RecommendedCategoryTabs({
           <button
             aria-selected={selected}
             className={cn(
-              "flex h-8 shrink-0 items-center rounded-[8px] px-3 text-[13px] font-semibold leading-5 tracking-[0] transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]",
+              "flex h-8 shrink-0 items-center rounded-[8px] px-3 text-[13px] font-semibold leading-5 tracking-[0] transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--border-focus)]",
               selected
-                ? "border border-[color:var(--line-1)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
-                : "border border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-[inset_0_0_0_1px_var(--line-1)]"
+                : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
             )}
             key={tab.id}
             role="tab"

@@ -3104,24 +3104,12 @@ aside.workspace-agents-status-panel
   position: absolute;
   top: calc(100% + 8px);
   z-index: 1;
-  display: inline-grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 1px solid var(--line-2, var(--tutti-line-2));
-  border-radius: 6px;
-  background: var(--background-fronted);
-  color: var(--text-secondary);
   opacity: 0;
-  outline: none;
   pointer-events: none;
   transform: translateY(-2px);
   transition:
     opacity 120ms ease,
-    transform 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease,
-    background 120ms ease;
+    transform 120ms ease;
 }
 
 .agent-gui-conversation__message-group[data-agent-message-speaker="user"]
@@ -3143,25 +3131,7 @@ aside.workspace-agents-status-panel
   transform: translateY(0);
 }
 
-.agent-gui-conversation__message-copy-button:hover {
-  border-color: var(--border-focus);
-  background: var(--background-panel);
-  color: var(--text-primary);
-}
-
-.agent-gui-conversation__message-copy-button:focus-visible {
-  border-color: var(--border-focus);
-  color: var(--text-primary);
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
-
 .agent-gui-conversation__message-copy-button[data-copied="true"] {
-  border-color: color-mix(
-    in srgb,
-    var(--state-success, #22c55e) 42%,
-    transparent
-  );
   color: var(--state-success, #22c55e);
 }
 
@@ -5099,10 +5069,10 @@ button.agent-gui-node__conversation-section-toggle:hover
   bottom: 0;
   z-index: 4;
   display: grid;
-  align-self: center;
+  align-self: stretch;
   box-sizing: border-box;
   gap: 0;
-  width: min(100%, var(--agent-gui-detail-flow-max-width));
+  width: 100%;
   margin-top: auto;
   padding-top: 0;
   background: transparent;
@@ -5252,84 +5222,16 @@ button.agent-gui-node__conversation-section-toggle:hover
   text-transform: capitalize;
 }
 
-.agent-gui-node__detail-header-usage-chip {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  border: 0;
-  border-radius: 999px;
-  padding: 2px 8px;
-  background: var(--transparency-hover);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 16px;
-  white-space: nowrap;
-}
-
-.agent-gui-node__detail-header-usage-chip:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--border-1);
-}
-
-.agent-gui-node__detail-header-usage-chip[data-usage-level="warning"] {
-  color: var(--agent-gui-warning, var(--cove-label-orange));
-  background: color-mix(
-    in srgb,
-    var(--agent-gui-warning, var(--cove-label-orange)) 12%,
-    transparent
-  );
-}
-
-.agent-gui-node__detail-header-usage-chip[data-usage-level="critical"] {
-  color: var(--agent-gui-danger, var(--state-danger));
-  background: color-mix(
-    in srgb,
-    var(--agent-gui-danger, var(--state-danger)) 12%,
-    transparent
-  );
-}
-
-.agent-gui-node__detail-header-compact-button {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  border: 0;
-  border-radius: 999px;
-  padding: 2px 8px;
-  background: var(--transparency-hover);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 16px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.agent-gui-node__detail-header-compact-button:hover:not(:disabled) {
-  color: var(--text-primary);
-}
-
-.agent-gui-node__detail-header-compact-button:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--border-1);
-}
-
-.agent-gui-node__detail-header-compact-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .agent-gui-node__usage-alert-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin: 0 12px 8px;
-  border-radius: 8px;
+  margin: 0 24px;
+  border-radius: 8px 8px 0 0;
   padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 400;
   line-height: 16px;
   color: var(--agent-gui-warning, var(--cove-label-orange));
   background: color-mix(
@@ -5361,22 +5263,15 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__usage-alert-dismiss {
-  display: inline-flex;
   flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 6px;
-  padding: 4px;
-  background: transparent;
+  border-radius: 4px;
   color: inherit;
-  cursor: pointer;
 }
 
 .agent-gui-node__usage-alert-dismiss:hover,
 .agent-gui-node__usage-alert-dismiss:focus-visible {
-  background: var(--transparency-hover);
-  outline: none;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
 }
 
 .agent-gui-node__layout [data-slot="status-dot"],
@@ -6540,6 +6435,15 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   overflow: hidden;
 }
 
+.agent-gui-node__composer-footer-right
+  .agent-gui-node__composer-menu-trigger
+  > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-left: 0;
+}
+
 .agent-gui-node__composer-menu-trigger {
   display: inline-flex;
   min-width: 0;
@@ -6580,9 +6484,25 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   overflow: hidden;
 }
 
+.agent-gui-node__composer-menu-trigger[data-agent-model-reasoning-trigger="true"]:hover:not(
+    :disabled
+  ) {
+  color: var(--agent-gui-text-secondary);
+}
+
 .agent-gui-node__composer-menu-trigger[data-agent-model-reasoning-trigger="true"]
   > span:first-child {
   flex: 0 1 auto;
+}
+
+.agent-gui-node__composer-menu-trigger[data-agent-model-reasoning-trigger="true"]
+  > svg {
+  transition: transform 200ms ease;
+}
+
+.agent-gui-node__composer-menu-trigger[data-agent-model-reasoning-trigger="true"][data-state="open"]
+  > svg {
+  transform: rotate(180deg);
 }
 
 .agent-gui-node__composer-menu-trigger[data-permission-tone="accent"],
@@ -6675,6 +6595,13 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--agent-gui-text-primary);
   font-size: 13px;
   line-height: 1.2;
+}
+
+.agent-gui-node__composer-menu-content[data-agent-composer-settings-layout="model-primary"]
+  .agent-gui-node__composer-menu-item,
+.agent-gui-node__composer-menu-content[data-agent-composer-settings-layout="model-submenu"]
+  .agent-gui-node__composer-menu-item {
+  padding-inline: 8px 10px;
 }
 
 .agent-gui-node__composer-menu-item-meta {

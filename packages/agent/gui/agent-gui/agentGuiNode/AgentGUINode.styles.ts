@@ -80,8 +80,6 @@ const styles = {
   detailHeader: "agent-gui-node__detail-header",
   detailHeaderPathInfo: "agent-gui-node__detail-header-path-info",
   detailHeaderStatus: "agent-gui-node__detail-header-status",
-  detailHeaderUsageChip: "agent-gui-node__detail-header-usage-chip",
-  detailHeaderCompactButton: "agent-gui-node__detail-header-compact-button",
   usageAlertBanner: "agent-gui-node__usage-alert-banner",
   usageAlertMessage: "agent-gui-node__usage-alert-message",
   usageAlertActions: "agent-gui-node__usage-alert-actions",

@@ -132,7 +132,11 @@ export const AppCard = memo(function AppCard({
       : app.primaryAction === "retry"
         ? copy.t("actions.retryApp")
         : app.primaryAction === "update"
-          ? copy.t("actions.updateApp")
+          ? app.availableVersion
+            ? copy.t("labels.updateAvailable", {
+                version: app.availableVersion
+              })
+            : copy.t("actions.updateApp")
           : copy.t("actions.openApp");
   const canExecutePrimaryAction = app.primaryAction !== "none";
   const canOpenFromCard = app.canOpen;
@@ -269,29 +273,6 @@ export const AppCard = memo(function AppCard({
               </span>
             ) : null}
           </div>
-          {app.updateAvailable && app.availableVersion ? (
-            <button
-              className={cn(
-                "mt-1 inline-flex max-w-full items-center rounded-[4px] bg-[color-mix(in_srgb,var(--state-warning)_12%,transparent)] px-2 py-0.5 text-[11px] leading-4 text-[var(--state-warning)] outline-none transition-colors hover:bg-[color-mix(in_srgb,var(--state-warning)_18%,transparent)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--state-warning)_42%,transparent)]",
-                app.canUpdate ? "cursor-pointer" : "cursor-default"
-              )}
-              disabled={!app.canUpdate}
-              title={copy.t("actions.updateApp")}
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                if (app.canUpdate) {
-                  void actions.updateApp?.(app.id, "badge_button");
-                }
-              }}
-            >
-              <span className="truncate">
-                {copy.t("labels.updateAvailable", {
-                  version: app.availableVersion
-                })}
-              </span>
-            </button>
-          ) : null}
           {app.description ? (
             <p className="mt-2 line-clamp-3 text-[13px] font-normal leading-[1.3] text-[var(--text-secondary)]">
               {app.description}

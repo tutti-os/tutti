@@ -59,6 +59,30 @@ test("workspace file manager arrange mode persists selected mode", () => {
   }
 });
 
+test("workspace file manager arrange mode ignores removed tags mode", () => {
+  const originalWindow = globalThis.window;
+
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: (key: string) =>
+          key === workspaceFileManagerArrangeModeStorageKey ? "tags" : null,
+        setItem: () => undefined
+      }
+    }
+  });
+
+  try {
+    assert.equal(readWorkspaceFileManagerArrangeMode(), "none");
+  } finally {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow
+    });
+  }
+});
+
 test("workspace file manager arrange mode sorts by name with directories first", () => {
   const entries = [
     createEntry({ name: "zeta.txt", path: "/workspace/zeta.txt" }),

@@ -96,10 +96,6 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 		return AgentModelListResult{}, fmt.Errorf("start codex app-server: %w", err)
 	}
 
-	waitDone := make(chan error, 1)
-	go func() {
-		waitDone <- cmd.Wait()
-	}()
 	stderrBuf := &truncatingBuffer{max: codexModelListMaxStderrBytes}
 	var stderrWG sync.WaitGroup
 	stderrWG.Add(1)
@@ -111,7 +107,7 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	defer func() {
 		_ = stdin.Close()
 		cancel()
-		<-waitDone
+		_ = cmd.Wait()
 		stderrWG.Wait()
 	}()
 
@@ -125,24 +121,10 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	if processCtx.Err() != nil {
 		return AgentModelListResult{}, fmt.Errorf("codex app-server model/list timed out: %w", processCtx.Err())
 	}
-	select {
-	case waitErr := <-waitDone:
-		waitDone = closedWaitChannel(waitErr)
-		if waitErr != nil {
-			return AgentModelListResult{}, fmt.Errorf("codex app-server exited before model/list response: %w: %s", waitErr, strings.TrimSpace(stderrBuf.String()))
-		}
-	default:
-	}
 	if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
 		return AgentModelListResult{}, fmt.Errorf("%w: %s", err, stderr)
 	}
 	return AgentModelListResult{}, err
-}
-
-func closedWaitChannel(err error) chan error {
-	ch := make(chan error, 1)
-	ch <- err
-	return ch
 }
 
 func writeCodexModelListRequests(stdin io.Writer) error {

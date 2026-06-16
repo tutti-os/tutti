@@ -261,11 +261,11 @@ test("resolveWorkspaceFileEntryIconUrl writes default application icon bytes for
   const cacheStore = createCacheStoreStub();
 
   const iconUrl = await resolveWorkspaceFileEntryIconUrl(
-    "/workspace/brief.pdf",
+    "/workspace/brief.docx",
     createInput({
       kind: "file",
-      name: "brief.pdf",
-      path: "/workspace/brief.pdf"
+      name: "brief.docx",
+      path: "/workspace/brief.docx"
     }),
     cacheStore,
     {
@@ -287,7 +287,7 @@ test("resolveWorkspaceFileEntryIconUrl writes default application icon bytes for
   assert.deepEqual(cacheStore.writes[0]!.key, {
     applicationPath: "/Applications/Preview.app",
     assetKind: "file-type-default-application-icon",
-    fileExtension: "pdf",
+    fileExtension: "docx",
     platform: "darwin"
   });
 });
@@ -333,11 +333,11 @@ test("resolveWorkspaceFileEntryIconUrl returns cached default application icon u
   let iconDataReads = 0;
 
   const iconUrl = await resolveWorkspaceFileEntryIconUrl(
-    "/workspace/brief.pdf",
+    "/workspace/brief.docx",
     createInput({
       kind: "file",
-      name: "brief.pdf",
-      path: "/workspace/brief.pdf"
+      name: "brief.docx",
+      path: "/workspace/brief.docx"
     }),
     cacheStore,
     {

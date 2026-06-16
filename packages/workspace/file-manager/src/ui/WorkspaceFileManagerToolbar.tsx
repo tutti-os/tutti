@@ -161,8 +161,7 @@ function LayoutModeToggle({
     { label: copy.t("arrangeDateAddedLabel"), mode: "dateAdded" },
     { label: copy.t("modifiedLabel"), mode: "modified" },
     { label: copy.t("arrangeCreatedLabel"), mode: "created" },
-    { label: copy.t("sizeLabel"), mode: "size" },
-    { label: copy.t("arrangeTagsLabel"), mode: "tags" }
+    { label: copy.t("sizeLabel"), mode: "size" }
   ];
 
   return (

@@ -13,8 +13,7 @@ export type WorkspaceFileManagerArrangeMode =
   | "dateAdded"
   | "modified"
   | "created"
-  | "size"
-  | "tags";
+  | "size";
 
 export const workspaceFileManagerArrangeModeStorageKey =
   "tutti.workspace-file-manager.arrange-mode";
@@ -29,8 +28,7 @@ const workspaceFileManagerArrangeModes =
     "dateAdded",
     "modified",
     "created",
-    "size",
-    "tags"
+    "size"
   ]);
 
 export function readWorkspaceFileManagerArrangeMode(): WorkspaceFileManagerArrangeMode {
@@ -112,10 +110,6 @@ export function sortWorkspaceFileEntriesForArrangeMode(
       case "size":
         return (
           compareSizeDescending(left, right) || compareEntryName(left, right)
-        );
-      case "tags":
-        return (
-          compareDirectoryFirst(left, right) || compareEntryName(left, right)
         );
     }
   });

@@ -251,6 +251,10 @@ test("card, dialog, dropdown, and toast surfaces avoid raw visual drift", () => 
         source,
         /CheckIcon className="text-\[var\(--tutti-purple\)\]"/
       );
+      assert.match(
+        source,
+        /ArrowRightIcon className="ml-auto text-\[var\(--text-tertiary\)\]"/
+      );
     }
   }
 });

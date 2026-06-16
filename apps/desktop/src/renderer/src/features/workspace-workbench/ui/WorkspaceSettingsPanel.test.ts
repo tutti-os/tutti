@@ -50,6 +50,13 @@ test("workspace settings general panel does not expose update preferences", () =
   assert.doesNotMatch(source, /app_update\.settings_rendered/);
 });
 
+test("workspace settings version value stays vertically centered", () => {
+  assert.match(
+    source,
+    /inline-flex h-5 cursor-default select-none items-center justify-end[\s\S]*font-mono text-\[13px\] leading-5/
+  );
+});
+
 test("workspace settings appearance panel owns visual settings", () => {
   assert.match(source, /WorkspaceAppearanceSettingsSection/);
   assert.match(source, /workspace\.settings\.appearance\.themeLabel/);

@@ -69,7 +69,7 @@ import {
 } from "../services/workspaceWallpaper";
 
 const workspaceSettingsSelectTriggerClass =
-  "w-full h-8 rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-[13px] font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 hover:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:!ring-0";
+  "w-full h-8 min-w-0 overflow-hidden rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-left text-[13px] font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 hover:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:!ring-0 *:data-[slot=select-value]:!block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:flex-1 *:data-[slot=select-value]:overflow-hidden *:data-[slot=select-value]:text-left *:data-[slot=select-value]:text-ellipsis *:data-[slot=select-value]:whitespace-nowrap";
 const workspaceSettingsSelectContentClass =
   "w-[var(--radix-select-trigger-width)] rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] px-1 text-[var(--text-primary)] shadow-[0_16px_40px_var(--shadow-elevated)] [--tutti-select-content-min-width:100%] !outline-none !ring-0";
 const workspaceSettingsInputClass =
@@ -1594,7 +1594,7 @@ function WorkspaceGeneralSettingsSection({
           </strong>
         </div>
         <button
-          className="m-0 cursor-default select-none rounded-[5px] border-0 bg-transparent p-0 text-right font-mono text-[13px] text-[var(--text-secondary)] outline-none focus-visible:outline-none max-[560px]:text-left"
+          className="m-0 inline-flex h-5 cursor-default select-none items-center justify-end rounded-[5px] border-0 bg-transparent p-0 text-right font-mono text-[13px] leading-5 text-[var(--text-secondary)] outline-none focus-visible:outline-none max-[560px]:justify-start max-[560px]:text-left"
           type="button"
           onClick={onVersionTap}
         >
