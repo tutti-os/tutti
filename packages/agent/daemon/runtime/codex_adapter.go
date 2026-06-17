@@ -1887,6 +1887,16 @@ func acpSystemNoticeFromAgentText(text string) (map[string]any, bool) {
 			"source":     "agent_message_chunk",
 		}, true
 	}
+	// ponytail: strings owned by @agentclientprotocol/claude-agent-acp binary
+	if strings.HasPrefix(normalized, "compacting...") {
+		return map[string]any{"kind": "agent_system_notice", "noticeKind": "context_compaction_in_progress", "title": "Compacting context…"}, true
+	}
+	if strings.Contains(normalized, "compacting completed") {
+		return map[string]any{"kind": "agent_system_notice", "noticeKind": "context_compaction_completed", "title": "Context compacted"}, true
+	}
+	if strings.HasPrefix(normalized, "compacting failed") {
+		return map[string]any{"kind": "agent_system_notice", "noticeKind": "context_compaction_failed", "title": "Compacting failed"}, true
+	}
 	return nil, false
 }
 

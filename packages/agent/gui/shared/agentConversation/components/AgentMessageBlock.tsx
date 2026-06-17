@@ -7,7 +7,7 @@ import {
   type JSX,
   type ReactNode
 } from "react";
-import { AlertTriangle, ChevronRight, Info } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Info, Loader2 } from "lucide-react";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import { Button } from "../../../app/renderer/components/ui/button";
 import { AgentPlanCard } from "./AgentPlanCard";
@@ -391,9 +391,23 @@ function AgentSystemNoticeMessage({
   "use memo";
   const notice = message.systemNotice;
   const detail = notice?.detail?.trim() ?? "";
+  const noticeKind = notice?.noticeKind ?? "";
   const isWarning =
     notice?.severity === "warning" || notice?.severity === "error";
-  const Icon = isWarning ? AlertTriangle : Info;
+  const Icon =
+    noticeKind === "context_compaction_in_progress"
+      ? Loader2
+      : noticeKind === "context_compaction_completed"
+        ? CheckCircle2
+        : isWarning
+          ? AlertTriangle
+          : Info;
+  const iconClass =
+    noticeKind === "context_compaction_in_progress"
+      ? "mt-0.5 shrink-0 animate-spin text-[var(--text-secondary)]"
+      : noticeKind === "context_compaction_completed"
+        ? "mt-0.5 shrink-0 text-[var(--state-success)]"
+        : "mt-0.5 shrink-0 text-[var(--state-warning)]";
   return (
     <section
       role={isWarning ? "status" : undefined}
@@ -404,7 +418,7 @@ function AgentSystemNoticeMessage({
           size={15}
           strokeWidth={2.1}
           aria-hidden="true"
-          className="mt-0.5 shrink-0 text-[var(--state-warning)]"
+          className={iconClass}
         />
         <div className="min-w-0 flex-1">
           <div className="font-medium text-[var(--text-primary)]">
@@ -465,6 +479,12 @@ function systemNoticeTitle(message: AgentMessageContentVM): string {
       return (
         notice.title || translate("agentHost.agentGui.systemNoticeWarning")
       );
+    case "context_compaction_in_progress":
+      return "Compacting context…";
+    case "context_compaction_completed":
+      return "Context compacted";
+    case "context_compaction_failed":
+      return notice?.title || "Compacting failed";
     default:
       return (
         notice?.title ||

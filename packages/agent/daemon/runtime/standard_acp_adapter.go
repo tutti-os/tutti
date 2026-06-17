@@ -2246,7 +2246,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 	case "user_message_chunk":
 		return nil
 	case "agent_message_chunk":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_message_chunk", config.provider == ProviderCodex); ok {
+		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_message_chunk", config.provider == ProviderCodex || config.provider == ProviderClaudeCode); ok {
 			return events
 		}
 		content := acpTextContent(params.Update["content"])

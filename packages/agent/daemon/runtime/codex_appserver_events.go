@@ -143,7 +143,7 @@ func (a *CodexAppServerAdapter) appServerNotificationEvents(
 			asString(params["fromModel"]), asString(params["toModel"]))
 		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", title, asString(params["reason"]))}
 	case appServerNotifyThreadCompacted:
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Context compacted.", "")}
+		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "context_compaction_completed", "Context compacted.", "")}
 	case appServerNotifyThreadGoalUpdated:
 		a.applyGoalUpdate(session.AgentSessionID, payloadObject(params["goal"]))
 		return nil
@@ -164,11 +164,12 @@ func (a *CodexAppServerAdapter) appServerNotificationEvents(
 // exitedReviewMode and contextCompaction ride the authoritative item/completed.
 var appServerNoticeItems = map[string]struct {
 	message         string
+	noticeKind      string
 	emitOnCompleted bool
 }{
 	"enteredReviewMode": {message: "Code review started.", emitOnCompleted: false},
 	"exitedReviewMode":  {message: "Code review finished.", emitOnCompleted: true},
-	"contextCompaction": {message: "Context compacted.", emitOnCompleted: true},
+	"contextCompaction": {message: "Context compacted.", noticeKind: "context_compaction_completed", emitOnCompleted: true},
 }
 
 func (a *CodexAppServerAdapter) appServerItemEvents(
@@ -188,7 +189,7 @@ func (a *CodexAppServerAdapter) appServerItemEvents(
 		if notice.emitOnCompleted != completed {
 			return nil
 		}
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", notice.message, "")}
+		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, firstNonEmpty(notice.noticeKind, "system_notice"), notice.message, "")}
 	}
 	switch itemType {
 	case "agentMessage":

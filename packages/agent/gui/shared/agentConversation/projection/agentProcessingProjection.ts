@@ -16,10 +16,13 @@ export function projectAgentProcessingRow(
   if (hasSpecificProgressRow(rows)) {
     return null;
   }
+  // ponytail: detect compact turn to suppress generic "processing" label
+  const lastPrompt = detail.turns.at(-1)?.userMessage?.body?.trim().toLowerCase() ?? "";
   return {
     kind: "processing",
     id: "processing",
     turnId: detail.turns.at(-1)?.id ?? null,
+    label: lastPrompt === "/compact" ? "Compacting context…" : null,
     occurredAtUnixMs:
       detail.session.updatedAtUnixMs ?? detail.session.createdAtUnixMs ?? null
   };

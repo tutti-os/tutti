@@ -883,6 +883,7 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 	command, args := splitSlashCommand(displayPrompt)
 	switch command {
 	case appServerSlashCompact:
+		emitEvents([]activityshared.Event{appServerSystemNoticeEvent(session, turnID, "context_compaction_in_progress", "Compacting context…", "")})
 		_, err := appSession.client.Call(ctx, appServerMethodThreadCompact, map[string]any{
 			"threadId": appSession.threadID,
 		}, a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
@@ -892,7 +893,6 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		}
 		emitTerminal(append(
 			normalizer.FinishCompleted(session, turnID),
-			appServerSystemNoticeEvent(session, turnID, "system_notice", "Context compaction started.", ""),
 			newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
 				"stopReason": "end_turn",
 			}),
