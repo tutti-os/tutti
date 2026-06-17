@@ -3253,8 +3253,9 @@ export function useAgentGUINodeController({
     }
     if (
       !hasExplicitOpenSessionRequest &&
-      suppressedHomeConversationIdRef.current ===
-        effectiveRequestedConversationId
+      (isComposerHomeRef.current ||
+        suppressedHomeConversationIdRef.current ===
+          effectiveRequestedConversationId)
     ) {
       return;
     }
