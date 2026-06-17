@@ -2,7 +2,6 @@
   "extends": "../../../packages/configs/tsconfig/base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
-    "baseUrl": ".",
     "types": ["node"]
   },
   "include": ["src/**/*", "tsup.config.ts"]

@@ -18,7 +18,7 @@
   },
   "scripts": {
     "build": "tsup --config tsup.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
     "@tutti-os/infra": "0.1.0"

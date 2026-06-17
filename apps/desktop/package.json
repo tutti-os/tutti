@@ -78,7 +78,7 @@
     "notify:release:feishu": "node scripts/send-release-feishu-card.mjs",
     "preview": "electron-vite preview",
     "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "node ../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.3",

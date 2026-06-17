@@ -2,13 +2,12 @@
   "extends": "../../packages/configs/tsconfig/base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
-    "baseUrl": ".",
     "jsx": "react-jsx",
     "types": ["node", "vite/client"],
     "paths": {
       "@app/renderer/*": ["../../packages/agent/gui/app/renderer/*"],
       "@contexts/*": ["../../packages/agent/gui/contexts/*"],
-      "@main/*": ["src/main/*"],
+      "@main/*": ["./src/main/*"],
       "@tutti-os/workspace-app-center": [
         "../../packages/workspace/app-center/src/index.ts"
       ],
@@ -57,8 +56,8 @@
       "@tutti-os/workspace-user-project/ui": [
         "../../packages/workspace/user-project/src/ui/index.ts"
       ],
-      "@preload/*": ["src/preload/*"],
-      "@renderer/*": ["src/renderer/src/*"],
+      "@preload/*": ["./src/preload/*"],
+      "@renderer/*": ["./src/renderer/src/*"],
       "@shared/contracts/dto": [
         "../../packages/agent/gui/shared/contracts/dto/index.ts"
       ],
@@ -73,7 +72,7 @@
       ],
       "@shared/types/*": ["../../packages/agent/gui/shared/types/*"],
       "@shared/utils/*": ["../../packages/agent/gui/shared/utils/*"],
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["./src/shared/*"]
     }
   },
   "include": ["electron.vite.config.ts", "src/**/*"]

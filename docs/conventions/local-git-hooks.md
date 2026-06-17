@@ -71,15 +71,25 @@ That full validation currently includes:
 - `pnpm test:go`
 
 The lint and typecheck steps in `check:full` should follow the repository's
-documented static-analysis scope. Historical migration snapshots that are kept
-outside a package `tsconfig.json` should be excluded by the shared lint
-baseline until they are promoted into active source.
+documented static-analysis scope: TypeScript linting uses Oxlint and workspace
+typechecking uses native TypeScript via `tsgo`.
 
 Rules:
 
 - `pre-push` should stay aligned with first-pass pull-request CI checks
 - slower cross-workspace validation belongs here rather than in `pre-commit`
 - if a check is too expensive for `pre-commit`, keep it in `pre-push` and CI
+
+## Changed-Aware Validation
+
+Use `pnpm check:changed` as the preferred local iteration check before running
+broader validation. It selects checks from the changed file set, runs
+independent lanes concurrently, prints compact summaries, and stores full logs
+under `.tmp/check-runs`.
+
+Failure output prints an 80-line tail by default. Use
+`pnpm check:changed -- --tail-lines <n>` when a larger or smaller tail is more
+useful; full logs remain in `.tmp/check-runs`.
 
 ## UI Boundary Enforcement
 

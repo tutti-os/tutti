@@ -32,7 +32,7 @@
   "scripts": {
     "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets",
     "test": "tsx --test \"./src/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
     "@tutti-os/ui-i18n-runtime": "workspace:*",

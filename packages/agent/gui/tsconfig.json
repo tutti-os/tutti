@@ -2,7 +2,6 @@
   "extends": "../../configs/tsconfig/base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
-    "baseUrl": ".",
     "jsx": "react-jsx",
     "paths": {
       "@tutti-os/workspace-file-manager": [

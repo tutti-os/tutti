@@ -24,6 +24,7 @@
     "check:api-generated": "node ./tools/scripts/generate-openapi.mjs --check",
     "check:agent-activity-runtime-boundaries": "node ./tools/scripts/check-agent-activity-runtime-boundaries.mjs",
     "check:defaults-generated": "node ./tools/scripts/generate-defaults.mjs --check",
+    "check:changed": "node ./tools/scripts/run-check-changed.mjs",
     "check:electron-runtime-boundaries": "node ./tools/scripts/check-electron-runtime-boundaries.mjs",
     "check:electron-runtime-boundaries:staged": "node ./tools/scripts/check-electron-runtime-boundaries.mjs --staged",
     "check:event-protocol-generated": "node ./tools/scripts/generate-event-protocol.mjs --check",
@@ -48,8 +49,12 @@
     "install:golangci-lint": "node ./tools/scripts/setup-dev.mjs --install=golangci-lint",
     "lint": "pnpm lint:ts && pnpm lint:go",
     "lint:go": "node ./tools/scripts/run-golangci-lint.mjs",
-    "lint:ts": "eslint . --cache --cache-location .cache/eslint/ --max-warnings=0",
+    "lint:ts": "oxlint . --deny-warnings",
     "lark:logs": "node ./tools/scripts/lark-log-tool.mjs",
+    "format": "pnpm format:code && pnpm format:assets",
+    "format:code": "oxfmt --write \"**/*.{ts,tsx,js,jsx,mjs,cjs}\"",
+    "format:assets": "prettier --write --config packages/configs/prettier/base.mjs \"**/*.{json,md,yml,yaml,css,html}\"",
+    "format:check": "oxfmt --check \"**/*.{ts,tsx,js,jsx,mjs,cjs}\" && prettier --check --config packages/configs/prettier/base.mjs \"**/*.{json,md,yml,yaml,css,html}\"",
     "prepare": "husky",
     "release:beta": "node ./tools/scripts/release-beta.mjs",
     "release:packages:apply-version": "node ./tools/scripts/apply-ci-package-release-version.mjs",
@@ -67,10 +72,14 @@
     "test:tools": "node --test ./tools/scripts/check-tutti-names.test.mjs ./tools/scripts/check-renderer-feature-boundaries.test.mjs ./tools/scripts/check-electron-runtime-boundaries.test.mjs ./tools/scripts/check-i18n.test.mjs ./tools/scripts/desktop-build-version.test.mjs ./tools/scripts/desktop-release-config.test.mjs ./tools/scripts/desktop-release-download-links.test.mjs ./tools/scripts/desktop-release-feishu-card.test.mjs ./tools/scripts/desktop-release-reservation.test.mjs ./tools/scripts/desktop-release-versioning.test.mjs ./tools/scripts/dev-web.test.mjs ./tools/scripts/generate-defaults.test.mjs ./tools/scripts/lark-log-tool.test.mjs ./tools/scripts/npm-release-packages.test.mjs ./tools/scripts/package-release-version.test.mjs ./tools/scripts/publish-packages.test.mjs ./tools/scripts/build-tutti-app-release.test.mjs ./tools/scripts/build-tutti-app-runtime-catalog.test.mjs",
     "test:go": "cd packages/workspace/files && go test ./... && cd ../../workbench/service && go test ./... && cd ../../../services/tuttid && go test ./... && cd ../../apps/cli && go test ./...",
     "test:ts": "pnpm --filter @tutti-os/desktop test && pnpm --filter @tutti-os/browser-node test && pnpm --filter @tutti-os/client-tuttid-ts test && pnpm --filter @tutti-os/workbench-snapshot test && pnpm --filter @tutti-os/workbench-surface test && pnpm --filter @tutti-os/workspace-file-preview test && pnpm --filter @tutti-os/workspace-file-manager test && pnpm test:tools",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "typecheck": "node ./tools/scripts/run-typecheck.mjs"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx,mjs,cjs,json,md,yml,yaml,css,html}": [
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+      "oxfmt --write",
+      "oxlint --fix --deny-warnings"
+    ],
+    "*.{json,md,yml,yaml,css,html}": [
       "prettier --write --config packages/configs/prettier/base.mjs"
     ],
     "*.go": [
@@ -80,11 +89,12 @@
   "devDependencies": {
     "@changesets/cli": "2.31.0",
     "@hey-api/openapi-ts": "0.97.2",
-    "@tutti-os/config-eslint": "workspace:*",
     "@tutti-os/ui-system": "workspace:*",
-    "eslint": "^10.4.0",
+    "@typescript/native-preview": "7.0.0-dev.20260617.2",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.5",
+    "oxfmt": "0.55.0",
+    "oxlint": "1.70.0",
     "prettier": "^3.8.3",
     "tsup": "8.5.1",
     "yaml": "^2.9.0"

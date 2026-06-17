@@ -23,7 +23,7 @@
   "scripts": {
     "build": "tsup --config tsup.config.ts",
     "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
     "@tutti-os/ui-i18n-runtime": "workspace:*",

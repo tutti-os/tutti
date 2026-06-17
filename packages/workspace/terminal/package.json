@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/styles dist/styles",
     "test": "node --test --experimental-strip-types ./src/**/*.test.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
     "@tutti-os/ui-i18n-runtime": "workspace:*",

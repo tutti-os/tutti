@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite dev",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "node ../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
     "@tutti-os/ui-system": "workspace:*",

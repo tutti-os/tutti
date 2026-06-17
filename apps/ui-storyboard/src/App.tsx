@@ -2588,7 +2588,9 @@ function ButtonStoryboard() {
                       </Button>
                     </td>
                     <td className="px-3 py-3">
-                      <span className={standardRuleStrongClass}>Primary</span> /
+                      <span className={standardRuleStrongClass}>
+                        Primary
+                      </span> /
                       icon 16px · icon/text gap 6px · 文本消费{" "}
                       <code>--text-inverted</code>。
                     </td>
@@ -2604,7 +2606,9 @@ function ButtonStoryboard() {
                       </Button>
                     </td>
                     <td className="px-3 py-3">
-                      <span className={standardRuleStrongClass}>Secondary</span>{" "}
+                      <span className={standardRuleStrongClass}>
+                        Secondary
+                      </span>{" "}
                       / icon 16px · icon/text gap 6px · 底色消费{" "}
                       <code>--transparency-block</code>。
                     </td>
@@ -2638,7 +2642,9 @@ function ButtonStoryboard() {
                       </Button>
                     </td>
                     <td className="px-3 py-3">
-                      <span className={standardRuleStrongClass}>Ghost</span> /
+                      <span className={standardRuleStrongClass}>
+                        Ghost
+                      </span> /
                       icon 16px · icon/text gap 6px · 默认透明底。
                     </td>
                   </tr>

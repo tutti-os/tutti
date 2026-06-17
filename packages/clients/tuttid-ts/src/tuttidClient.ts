@@ -1,5 +1,3 @@
-/* eslint-disable max-lines -- flat client registry that mirrors the generated
-   tuttid API surface; it grows one thin wrapper per endpoint. */
 import {
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,

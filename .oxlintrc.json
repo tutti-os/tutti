@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "typescript/no-floating-promises": "off",
+    "typescript/require-array-sort-compare": "off",
+    "unicorn/no-useless-fallback-in-spread": "off",
+    "unicorn/no-useless-spread": "off"
+  },
+  "env": {
+    "builtin": true
+  },
+  "ignorePatterns": [
+    "**/.git/**",
+    "**/.claude/**",
+    "**/.codex/**",
+    "**/.tutti-ui-system-dev/**",
+    "**/.turbo/**",
+    "**/dist/**",
+    "**/generated/**",
+    "**/node_modules/**",
+    "**/out/**",
+    "services/tuttid/builtin-apps/**",
+    "**/src/internal/ported-source/**",
+    "**/tsup.config.ts"
+  ]
+}

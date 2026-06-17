@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",

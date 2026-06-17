@@ -12,7 +12,7 @@ Static analysis should catch:
 
 It should not:
 
-- turn formatting concerns already handled by Prettier or `gofmt` into duplicate failures
+- turn formatting concerns already handled by Oxfmt, Prettier, or `gofmt` into duplicate failures
 - enforce broad stylistic preferences with weak product value
 - apply business-file limits to tests, generated code, or type-only surfaces
 
@@ -31,15 +31,12 @@ Repository entrypoints:
 
 ## TypeScript Baseline
 
-TypeScript linting uses ESLint flat config.
+TypeScript linting uses Oxlint.
 
 The current baseline includes:
 
-- ESLint recommended checks
-- type-aware TypeScript ESLint recommended checks for TypeScript files
+- Oxlint correctness checks
 - `noUncheckedIndexedAccess` in the shared TypeScript base config
-- unused-code enforcement with `_` escape hatches
-- consistent type-import enforcement
 
 Generated TypeScript is not linted by the human-authored TypeScript rule set. Generated output should be controlled through its generator and generation checks instead of hand-edited to satisfy repository lint style.
 
@@ -49,24 +46,24 @@ type-aware TypeScript lint target. Treat those directories as migration inputs,
 not as first-class analyzed source, until they are promoted into the active
 package seam.
 
-`packages/agent/gui` has a package-scoped temporary ESLint override while
-the carried Agent GUI renderer is being renamed and adapted to tutti-native
-host contracts. The override relaxes high-volume type-aware migration noise
-such as unsafe `any` flows, redundant broad string unions, and async test/mock
-idioms. Keep this exception package-scoped, keep `pnpm typecheck` and package
-tests authoritative during the migration, and remove the override once the
-package sheds the remaining TSH DTO and `roomId` compatibility layer.
-
 `exactOptionalPropertyTypes` is intentionally not part of the shared TypeScript baseline yet. The current generated `@hey-api/client-fetch` runtime emits optional properties with explicit `undefined` values that do not typecheck under that option, and the available generator settings do not remove those conflicts. Revisit this after changing the generator version or generated-client strategy.
-
-Test files may use narrow lint overrides for test-runner idioms such as top-level `test(...)` declarations and async mocks. These overrides should stay scoped to test files and should not weaken production-code rules.
 
 Every TypeScript workspace package that contains source files should provide:
 
 - a package-local `tsconfig.json` extending the repository TypeScript base config
-- a package-local `typecheck` script that runs `tsc --noEmit -p tsconfig.json`
+- a package-local `typecheck` script that runs the repository `tsgo` typecheck wrapper
 
 This keeps `pnpm typecheck` authoritative across desktop, shared clients, contracts, and UI packages instead of relying on incidental imports from another package to expose type errors.
+
+The wrapper runs native TypeScript with `--noEmit --incremental` and stores
+package `.tsbuildinfo` files under `.tmp/tsbuildinfo`. This keeps warm local
+typecheck runs fast without committing cache files.
+
+The root `pnpm typecheck` command uses a compact runner that executes package
+typechecks concurrently, prints only a short summary on success, and stores
+package logs under `.tmp/typecheck-runs`.
+
+TypeScript package `tsconfig.json` files must not use `baseUrl`; use explicit relative `paths` entries when aliases are needed so the configuration stays compatible with native TypeScript.
 
 The repository-specific UI boundary policy remains in `pnpm check:ui-boundaries`.
 

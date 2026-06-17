@@ -42,7 +42,7 @@
   "scripts": {
     "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/styles dist/styles src/metadata/components.json dist/metadata/components.json src/metadata/components.schema.json dist/metadata/components.schema.json",
     "dev:server": "tsx src/dev-server/server.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
     "@fontsource-variable/lexend": "^5.2.11",

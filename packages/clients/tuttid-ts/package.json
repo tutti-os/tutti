@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test --experimental-strip-types ./src/index.test.ts ./src/eventStreamClient.test.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "exports": {
     ".": "./src/index.ts"
