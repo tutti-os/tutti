@@ -896,8 +896,10 @@ function MarkdownCode({
   workspaceFileLinksEnabled?: boolean;
 }): JSX.Element {
   "use memo";
+  const isInsideLink = useContext(MarkdownLinkContext);
   const text = textFromReactNode(children).trim();
   const isLinkablePath =
+    !isInsideLink &&
     onLinkClick &&
     !className &&
     (isLocalAbsolutePath(text) ||

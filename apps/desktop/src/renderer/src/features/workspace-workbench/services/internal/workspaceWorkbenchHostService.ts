@@ -632,7 +632,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           dockIcons: {
             agents: dockIcons.agents,
             applications: dockIcons.applications,
-            appIconUrl: dockIcons.appIconUrl,
             browser: dockIcons.browser,
             files: createWorkspaceDockImageIcon(dockIcons.files),
             issue: dockIcons.issue,
@@ -763,8 +762,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
             captureWebviewPreview: captureBrowserPreview
               ? (nodeId) => captureBrowserPreview({ nodeId })
               : undefined,
-            i18n: input.appI18n,
-            resolveAppIconUrl: cached?.dockIcons.appIconUrl
+            i18n: input.appI18n
           })
         ),
         createWorkspaceLaunchpadDockEntry({

@@ -2,6 +2,7 @@ import type {
   RichTextTrigger,
   RichTextTriggerBoundary,
   RichTextTriggerConfig,
+  RichTextTriggerInsertResult,
   RichTextTriggerProvider,
   RichTextTriggerQueryInput,
   RichTextTriggerQueryMatch,
@@ -33,27 +34,40 @@ function normalizeProviderTriggerConfig(
   };
 }
 
-function normalizeOptionalThumbnailUrl(
+function normalizeOptionalIconUrl(
   value: string | null | undefined
 ): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
 }
 
-async function resolveItemThumbnailUrl<TItem>(
+function resolveInsertResultIconUrl(
+  insertResult: RichTextTriggerInsertResult
+): string | undefined {
+  if (insertResult.kind !== "mention") {
+    return undefined;
+  }
+  return normalizeOptionalIconUrl(insertResult.mention.presentation?.iconUrl);
+}
+
+async function resolveItemIconUrl<TItem>(
   provider: RichTextTriggerProvider<TItem>,
-  item: TItem
+  item: TItem,
+  insertResult: RichTextTriggerInsertResult
 ): Promise<string | undefined> {
-  if (!provider.getItemThumbnailUrl) {
-    return undefined;
+  if (provider.getItemIconUrl) {
+    try {
+      const iconUrl = normalizeOptionalIconUrl(
+        await Promise.resolve(provider.getItemIconUrl(item))
+      );
+      if (iconUrl) {
+        return iconUrl;
+      }
+    } catch {
+      return resolveInsertResultIconUrl(insertResult);
+    }
   }
-  try {
-    return normalizeOptionalThumbnailUrl(
-      await Promise.resolve(provider.getItemThumbnailUrl(item))
-    );
-  } catch {
-    return undefined;
-  }
+  return resolveInsertResultIconUrl(insertResult);
 }
 
 export function createRichTextTriggerRegistry(
@@ -101,17 +115,20 @@ export function createRichTextTriggerRegistry(
             return [];
           }
           return Promise.all(
-            items.map(async (item) => ({
-              providerId: provider.id,
-              trigger: input.trigger,
-              key: provider.getItemKey(item),
-              label: provider.getItemLabel(item),
-              subtitle: provider.getItemSubtitle?.(item) || undefined,
-              thumbnailUrl: await resolveItemThumbnailUrl(provider, item),
-              keywords: provider.getItemKeywords?.(item),
-              item,
-              insertResult: provider.toInsertResult(item)
-            }))
+            items.map(async (item) => {
+              const insertResult = provider.toInsertResult(item);
+              return {
+                providerId: provider.id,
+                trigger: input.trigger,
+                key: provider.getItemKey(item),
+                label: provider.getItemLabel(item),
+                subtitle: provider.getItemSubtitle?.(item) || undefined,
+                iconUrl: await resolveItemIconUrl(provider, item, insertResult),
+                keywords: provider.getItemKeywords?.(item),
+                item,
+                insertResult
+              };
+            })
           );
         })
     );

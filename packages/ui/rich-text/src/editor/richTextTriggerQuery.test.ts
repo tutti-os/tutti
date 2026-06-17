@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createRichTextTriggerRegistry } from "../plugins/triggerRegistry.ts";
 import {
+  createRichTextMentionInsertResult,
   createRichTextTriggerProvider,
   createRichTextTextInsertResult
 } from "../plugins/trigger.ts";
@@ -221,7 +222,7 @@ test("queryRichTextTriggerMatches returns empty results after abort", async () =
   assert.deepEqual(matches, []);
 });
 
-test("queryRichTextTriggerMatches resolves provider thumbnails", async () => {
+test("queryRichTextTriggerMatches resolves provider icons", async () => {
   const registry = createRichTextTriggerRegistry([
     createRichTextTriggerProvider({
       id: "workspace-app",
@@ -231,7 +232,7 @@ test("queryRichTextTriggerMatches resolves provider thumbnails", async () => {
       },
       getItemKey: (item) => item.appId,
       getItemLabel: (item) => item.label,
-      getItemThumbnailUrl: () => "tutti://workspace-apps/automation/icon.png",
+      getItemIconUrl: () => "tutti://workspace-apps/automation/icon.png",
       toInsertResult: (item) => createRichTextTextInsertResult(item.label)
     })
   ]);
@@ -246,7 +247,39 @@ test("queryRichTextTriggerMatches resolves provider thumbnails", async () => {
   assert.equal(matches.length, 1);
   assert.equal(matches[0]?.providerId, "workspace-app");
   assert.equal(
-    matches[0]?.thumbnailUrl,
+    matches[0]?.iconUrl,
     "tutti://workspace-apps/automation/icon.png"
   );
+});
+
+test("queryRichTextTriggerMatches reads mention presentation icon", async () => {
+  const registry = createRichTextTriggerRegistry([
+    createRichTextTriggerProvider({
+      id: "agent-session",
+      trigger: "@",
+      query() {
+        return [{ id: "session-1", label: "Codex run" }];
+      },
+      getItemKey: (item) => item.id,
+      getItemLabel: (item) => item.label,
+      toInsertResult: (item) =>
+        createRichTextMentionInsertResult({
+          entityId: item.id,
+          label: item.label,
+          presentation: {
+            iconUrl: "tutti://agents/codex.png"
+          }
+        })
+    })
+  ]);
+
+  const matches = await queryRichTextTriggerMatches(registry, {
+    context: {},
+    keyword: "codex",
+    maxResults: 5,
+    trigger: "@"
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.iconUrl, "tutti://agents/codex.png");
 });

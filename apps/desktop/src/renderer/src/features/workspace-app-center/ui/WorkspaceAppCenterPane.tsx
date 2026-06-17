@@ -136,11 +136,9 @@ const comingSoonWorkspaceAppDefinitions = [
 ] as const;
 
 export function WorkspaceAppCenterPane({
-  resolveAppIconUrl,
   restoredViewState = null,
   workspaceId
 }: {
-  resolveAppIconUrl?: (appId: string) => string | null;
   restoredViewState?: WorkspaceAppCenterViewState | null;
   workspaceId: string;
 }) {
@@ -267,7 +265,7 @@ export function WorkspaceAppCenterPane({
     return createAppCenterViewModel({
       apps: recommendedApps.map((app) =>
         toWorkspaceAppRecord(
-          withWorkspaceAppIconOverride(app, resolveAppIconUrl),
+          app,
           resolveWorkspaceAppCategory(app.appId, categoryLabels)
         )
       ),
@@ -289,9 +287,7 @@ export function WorkspaceAppCenterPane({
         .filter((app) => app.source === "generated")
         .map((app) => app.appId),
       runtimeStates: recommendedApps.map((app) =>
-        toWorkspaceAppRuntimeState(
-          withWorkspaceAppIconOverride(app, resolveAppIconUrl)
-        )
+        toWorkspaceAppRuntimeState(app)
       )
     });
   }, [
@@ -299,7 +295,6 @@ export function WorkspaceAppCenterPane({
     comingSoonApps,
     i18n,
     locale,
-    resolveAppIconUrl,
     state.apps,
     state.factoryJobs
   ]);
@@ -439,14 +434,6 @@ function withComingSoonWorkspaceApps(
   return remainingComingSoonApps.length > 0
     ? [...mergedApps, ...remainingComingSoonApps]
     : mergedApps;
-}
-
-function withWorkspaceAppIconOverride(
-  app: WorkspaceAppCenterApp,
-  resolveAppIconUrl?: (appId: string) => string | null
-): WorkspaceAppCenterApp {
-  const overrideIconUrl = resolveAppIconUrl?.(app.appId);
-  return overrideIconUrl ? { ...app, iconUrl: overrideIconUrl } : app;
 }
 
 function createWorkspaceAppCategoryLabels(i18n: {

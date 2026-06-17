@@ -16,6 +16,14 @@ function createBaseSessionProvider(): AgentContextMentionProvider<FakeSessionIte
     getItemLabel: (item) => item.meta.title ?? item.id,
     getItemSubtitle: (item) => item.meta.status ?? "",
     query: async () => [],
+    resolveMention: (identity) => ({
+      label: identity.label,
+      presentation: {
+        agentProviderId: "codex",
+        status: "working",
+        subtitle: "codex"
+      }
+    }),
     toInsertResult: (item) => ({
       kind: "mention",
       mention: {
@@ -68,6 +76,19 @@ test("agent session mention provider enriches presentation with avatars, partici
   assert.equal(presentation.participant, "wang jomes & Codex");
   assert.equal(presentation.agentIconUrl, "icon://codex");
   assert.equal(
+    provider.getItemIconUrl?.({
+      id: "session-1",
+      meta: {
+        agentName: "Codex",
+        initiatorName: "wang jomes",
+        provider: "codex",
+        status: "working",
+        title: "wang jomes & Codex hi"
+      }
+    }),
+    "icon://codex"
+  );
+  assert.equal(
     presentation.userAvatarPlaceholderUrl,
     "asset://user-avatar-placeholder.png"
   );
@@ -103,4 +124,36 @@ test("agent session mention provider omits status fields when status is absent",
   assert.equal(presentation.statusPulse, undefined);
   assert.equal(presentation.participant, "wang jomes & Codex");
   assert.equal(presentation.agentIconUrl, "icon://codex");
+});
+
+test("agent session mention provider restores derived presentation on resolve", async () => {
+  const provider = createDesktopAgentSessionMentionProvider({
+    baseProvider: createBaseSessionProvider(),
+    ...RESOLVERS
+  });
+
+  const resolved = await provider.resolveMention?.({
+    entityId: "session-1",
+    label: "wang jomes & Codex hi",
+    providerId: "agent-session",
+    scope: {
+      workspaceId: "workspace-1"
+    }
+  });
+
+  assert.deepEqual(resolved, {
+    label: "wang jomes & Codex hi",
+    presentation: {
+      agentProviderId: "codex",
+      agentIconUrl: "icon://codex",
+      iconUrl: "icon://codex",
+      participant: "codex",
+      status: "working",
+      statusDataStatus: "working",
+      statusLabel: "Working",
+      statusPulse: "true",
+      subtitle: "codex",
+      userAvatarPlaceholderUrl: "asset://user-avatar-placeholder.png"
+    }
+  });
 });

@@ -42,7 +42,6 @@ export interface DesktopWorkbenchContributionContext {
   dockIcons: {
     agents: Record<string, string>;
     applications: string;
-    appIconUrl: (appId: string) => string | null;
     browser: string;
     files: ReactNode;
     issue: string;

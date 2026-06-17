@@ -142,14 +142,14 @@ test("wrapDesktopFileMentionProviderWithDockFiles exposes dock preview thumbnail
   });
 
   assert.equal(
-    await provider.getItemThumbnailUrl?.({
+    await provider.getItemIconUrl?.({
       displayName: "README.md",
       path: "/workspace/README.md"
     }),
     null
   );
   assert.equal(
-    await provider.getItemThumbnailUrl?.({
+    await provider.getItemIconUrl?.({
       displayName: "diagram.png",
       path: "/workspace/diagram.png"
     }),

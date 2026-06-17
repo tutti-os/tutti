@@ -8,7 +8,6 @@ import type { DesktopAgentSessionStatusView } from "../providers/desktopAgentSes
 export interface RichTextAtServiceRegistrationInput {
   tuttidClient: TuttidClient;
   appCenterApps?: () => readonly WorkspaceAppCenterApp[];
-  resolveAppIconUrl?: (appId: string) => string | null;
   getLocale?: () => string;
   resolveAgentIconUrl?: (provider: string) => string;
   userAvatarPlaceholderUrl?: string;
@@ -24,7 +23,6 @@ export function registerRichTextAtServices(
   const service = new DesktopRichTextAtService({
     tuttidClient: input.tuttidClient,
     appCenterApps: input.appCenterApps,
-    resolveAppIconUrl: input.resolveAppIconUrl,
     getLocale: input.getLocale,
     resolveAgentIconUrl: input.resolveAgentIconUrl,
     userAvatarPlaceholderUrl: input.userAvatarPlaceholderUrl,

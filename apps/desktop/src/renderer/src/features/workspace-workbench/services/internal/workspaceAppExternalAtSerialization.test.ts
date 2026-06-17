@@ -59,6 +59,41 @@ test("serializes mention insert results", () => {
   );
 });
 
+test("serializes mention icon presentation as external thumbnail metadata", () => {
+  assert.deepEqual(
+    serializeWorkspaceAppExternalAtInsert(
+      mentionInsert({
+        entityId: "agent-codex",
+        label: "Codex",
+        scope: {
+          workspaceId: "workspace-1"
+        },
+        presentation: {
+          description: "Start a Codex session",
+          iconUrl: "tutti-asset://agent/codex.png",
+          subtitle: "Start a Codex session"
+        }
+      })
+    ),
+    {
+      kind: "mention",
+      mention: {
+        entityId: "agent-codex",
+        label: "Codex",
+        scope: {
+          workspaceId: "workspace-1"
+        },
+        presentation: {
+          description: "Start a Codex session",
+          iconUrl: "tutti-asset://agent/codex.png",
+          subtitle: "Start a Codex session",
+          thumbnailUrl: "tutti-asset://agent/codex.png"
+        }
+      }
+    }
+  );
+});
+
 test("does not pass legacy mention metadata through to external apps", () => {
   assert.deepEqual(
     serializeWorkspaceAppExternalAtInsert(
@@ -114,7 +149,7 @@ test("serializes rich text at matches without exposing raw item", () => {
     key: "README.md",
     label: "README.md",
     subtitle: "README.md",
-    thumbnailUrl: "tutti://workspace-apps/automation/icon.png",
+    iconUrl: "tutti://workspace-apps/automation/icon.png",
     item: {
       raw: true
     },
@@ -135,6 +170,45 @@ test("serializes rich text at matches without exposing raw item", () => {
       kind: "markdown-link",
       href: "README.md",
       label: "README.md"
+    }
+  });
+});
+
+test("serializes mention item id from insert identity for external restore", () => {
+  const match: RichTextTriggerQueryMatch = {
+    providerId: "workspace-app",
+    trigger: "@",
+    key: "app-key",
+    label: "Codex",
+    iconUrl: "tutti-asset://agent/codex.png",
+    item: {},
+    insertResult: {
+      kind: "mention",
+      mention: {
+        entityId: "agent-codex",
+        label: "Codex",
+        presentation: {
+          iconUrl: "tutti-asset://agent/codex.png"
+        }
+      }
+    }
+  };
+
+  assert.deepEqual(serializeWorkspaceAppExternalAtMatch(match), {
+    providerId: "workspace-app",
+    itemId: "agent-codex",
+    label: "Codex",
+    thumbnailUrl: "tutti-asset://agent/codex.png",
+    insert: {
+      kind: "mention",
+      mention: {
+        entityId: "agent-codex",
+        label: "Codex",
+        presentation: {
+          iconUrl: "tutti-asset://agent/codex.png",
+          thumbnailUrl: "tutti-asset://agent/codex.png"
+        }
+      }
     }
   });
 });

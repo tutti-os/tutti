@@ -1,6 +1,7 @@
 import { isTuttiExternalAtProviderId } from "@tutti-os/workspace-external-core/core";
 import type {
   TuttiExternalAtInsertResult,
+  TuttiExternalAtMentionPresentation,
   TuttiExternalAtProviderId,
   TuttiExternalAtQueryResult
 } from "@tutti-os/workspace-external-core/contracts";
@@ -20,12 +21,13 @@ export function serializeWorkspaceAppExternalAtMatch(
   if (!insert) {
     return null;
   }
+  const itemId = resolveWorkspaceAppExternalAtItemId(match, insert);
   return {
     providerId,
-    itemId: match.key,
+    itemId,
     label: match.label,
     ...(match.subtitle ? { subtitle: match.subtitle } : {}),
-    ...(match.thumbnailUrl ? { thumbnailUrl: match.thumbnailUrl } : {}),
+    ...(match.iconUrl ? { thumbnailUrl: match.iconUrl } : {}),
     insert
   };
 }
@@ -37,6 +39,16 @@ export function toExternalAtProviderId(
     return providerId;
   }
   return null;
+}
+
+function resolveWorkspaceAppExternalAtItemId(
+  match: RichTextTriggerQueryMatch,
+  insert: TuttiExternalAtInsertResult
+): string {
+  if (insert.kind === "mention") {
+    return insert.mention.entityId;
+  }
+  return match.key;
 }
 
 export function serializeWorkspaceAppExternalAtInsert(
@@ -52,7 +64,11 @@ export function serializeWorkspaceAppExternalAtInsert(
           label: mention.label,
           ...(mention.scope ? { scope: { ...mention.scope } } : {}),
           ...(mention.presentation
-            ? { presentation: { ...mention.presentation } }
+            ? {
+                presentation: serializeWorkspaceAppExternalAtPresentation(
+                  mention.presentation
+                )
+              }
             : {})
         }
       };
@@ -71,4 +87,20 @@ export function serializeWorkspaceAppExternalAtInsert(
     default:
       return null;
   }
+}
+
+function serializeWorkspaceAppExternalAtPresentation(
+  presentation: NonNullable<
+    Extract<
+      RichTextTriggerInsertResult,
+      { kind: "mention" }
+    >["mention"]["presentation"]
+  >
+): TuttiExternalAtMentionPresentation {
+  const iconUrl = presentation.iconUrl?.trim() ?? "";
+  const thumbnailUrl = presentation.thumbnailUrl?.trim() || iconUrl;
+  return {
+    ...presentation,
+    ...(thumbnailUrl ? { thumbnailUrl } : {})
+  };
 }

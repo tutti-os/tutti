@@ -5,6 +5,7 @@ import {
 } from "@tutti-os/agent-gui/context-mention-provider";
 import { normalizeAgentTitleText } from "@tutti-os/agent-gui/agent-title-text";
 import {
+  createRichTextMarkdownLinkInsertResult,
   createRichTextTriggerProvider,
   createRichTextMentionInsertResult
 } from "@tutti-os/ui-rich-text/plugins";
@@ -14,6 +15,12 @@ import type {
   RichTextMentionResolved,
   RichTextTriggerProvider
 } from "@tutti-os/ui-rich-text/types";
+import {
+  tuttiAgentAssetUrls,
+  tuttiFileAssetUrls,
+  tuttiFolderAssetUrls,
+  tuttiIssueAssetUrls
+} from "../../../../../../shared/tuttiAssetProtocol.ts";
 import type {
   DesktopRichTextAtCapability,
   DesktopRichTextTriggerProviderRequest,
@@ -41,8 +48,6 @@ export interface DesktopRichTextAtServiceDependencies {
    * in sync with app updates. Optional so non-desktop callers/tests stay raw.
    */
   appCenterApps?: () => readonly WorkspaceAppCenterApp[];
-  /** Resolve the bundled dock icon URL for an app id. */
-  resolveAppIconUrl?: (appId: string) => string | null;
   /** Active UI locale getter, read at query time so locale switches are picked up. */
   getLocale?: () => string;
   /** Resolve the rounded managed-agent icon URL for a session's provider. */
@@ -122,20 +127,6 @@ const RICH_TEXT_MENTION_PRESENTATION_KEYS = [
   "userAvatarPlaceholderUrl"
 ] as const satisfies readonly (keyof RichTextMentionPresentation)[];
 
-const agentClaudeCodeAppIconUrl = new URL(
-  "../../../../assets/workspace-canvas/dock/default/claudecode.png",
-  import.meta.url
-).href;
-const agentCodexAppIconUrl = new URL(
-  "../../../../assets/workspace-canvas/dock/default/codex.png",
-  import.meta.url
-).href;
-
-const agentWorkspaceAppIconUrls = new Map<string, string>([
-  ["agent-claude-code", agentClaudeCodeAppIconUrl],
-  ["agent-codex", agentCodexAppIconUrl]
-]);
-
 export class DesktopRichTextAtService implements IDesktopRichTextAtService {
   readonly _serviceBrand = undefined;
   private readonly contributors: readonly DesktopRichTextAtContributor[];
@@ -170,7 +161,7 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
     if (cacheKey !== null) {
       const cachedProviders = this.providerCache.get(cacheKey);
       if (cachedProviders) {
-        return cachedProviders;
+        return this.enrichProviders(cachedProviders, input);
       }
     }
 
@@ -208,7 +199,6 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
           apps: deps.appCenterApps?.() ?? [],
           baseProvider: provider as unknown as AgentContextMentionProvider,
           locale: deps.getLocale?.() ?? "",
-          resolveAppIconUrl: deps.resolveAppIconUrl,
           workspaceId: input.workspaceId
         });
       }
@@ -255,7 +245,7 @@ function createWorkspaceAppAtContributor(
           getItemKey: (item) => item.appId,
           getItemLabel: (item) => item.displayName,
           getItemSubtitle: (item) => item.description,
-          getItemThumbnailUrl: (item) => item.iconUrl,
+          getItemIconUrl: (item) => item.iconUrl,
           toInsertResult(item) {
             return createDesktopRichTextMentionInsertResult({
               entityId: item.appId,
@@ -380,11 +370,18 @@ function workspaceAppIconUrl(
   >["commands"][number],
   appId: string
 ): string | null {
-  return (
-    command.source.iconUrl?.trim() ||
-    agentWorkspaceAppIconUrls.get(appId) ||
-    null
-  );
+  return command.source.iconUrl?.trim() || workspaceAppDefaultIconUrl(appId);
+}
+
+function workspaceAppDefaultIconUrl(appId: string): string | null {
+  switch (appId.trim()) {
+    case "agent-claude-code":
+      return tuttiAgentAssetUrls.claudeCode;
+    case "agent-codex":
+      return tuttiAgentAssetUrls.codex;
+    default:
+      return null;
+  }
 }
 
 function workspaceAppMatchesKeyword(
@@ -543,35 +540,31 @@ function createWorkspaceFileAtContributor(
           getItemKey: (item) => item.path,
           getItemLabel: resolveWorkspaceFileLabel,
           getItemSubtitle: (item) => item.path.trim(),
+          getItemIconUrl: workspaceFileIconUrl,
           toInsertResult(item) {
-            const path = item.path.trim();
-            return createDesktopRichTextMentionInsertResult({
-              entityId: path,
-              label: resolveWorkspaceFileLabel(item),
-              scope: compactStringRecord({
-                workspaceId: input.workspaceId
-              }),
-              presentation: compactMentionPresentation({
-                subtitle: path
-              })
-            });
-          },
-          resolveMention(identity) {
-            const path = identity.entityId.trim();
-            if (!path) {
-              return null;
-            }
-            return {
-              label: identity.label,
-              presentation: compactMentionPresentation({
-                subtitle: path
-              })
-            };
+            return createRichTextMarkdownLinkInsertResult(
+              resolveWorkspaceFileLabel(item),
+              workspaceFileReferenceHref(item)
+            );
           }
         })
       ];
     }
   };
+}
+
+function workspaceFileReferenceHref(item: WorkspaceFileAtItem): string {
+  const path = item.path.trim();
+  if (item.kind === "directory" && path && !path.endsWith("/")) {
+    return `${path}/`;
+  }
+  return path;
+}
+
+function workspaceFileIconUrl(item: WorkspaceFileAtItem): string {
+  return item.kind === "directory"
+    ? tuttiFolderAssetUrls.default
+    : tuttiFileAssetUrls.default;
 }
 
 function createWorkspaceIssueAtContributor(
@@ -609,15 +602,23 @@ function createWorkspaceIssueAtContributor(
             if (searchInput.abortSignal?.aborted) {
               return [];
             }
-            return response.issues.map((issue) => ({
-              content: issue.content,
-              creatorDisplayName: issue.creatorDisplayName,
-              issueId: issue.issueId,
-              status: issue.status,
-              title: issue.title,
-              topicId: issue.topicId,
-              workspaceId: issue.workspaceId
-            }));
+            const items = response.issues.map(workspaceIssueAtItemFromIssue);
+            const issueId = workspaceIssueIdSearchKeyword(searchInput.keyword);
+            if (!issueId || items.some((item) => item.issueId === issueId)) {
+              return items;
+            }
+            const detail = await getWorkspaceIssueDetailSafely(
+              tuttidClient,
+              input.workspaceId,
+              issueId
+            );
+            if (!detail) {
+              return items;
+            }
+            if (searchInput.abortSignal?.aborted) {
+              return [];
+            }
+            return [workspaceIssueAtItemFromIssue(detail.issue), ...items];
           },
           getItemKey: (item) => item.issueId,
           getItemLabel: (item) => item.title,
@@ -626,6 +627,7 @@ function createWorkspaceIssueAtContributor(
               .map((value) => value?.trim() ?? "")
               .filter(Boolean)
               .join(" · "),
+          getItemIconUrl: () => tuttiIssueAssetUrls.default,
           toInsertResult(item) {
             return createDesktopRichTextMentionInsertResult({
               entityId: item.issueId,
@@ -636,6 +638,7 @@ function createWorkspaceIssueAtContributor(
               }),
               presentation: compactMentionPresentation({
                 description: item.content?.trim() ?? "",
+                iconUrl: tuttiIssueAssetUrls.default,
                 status: item.status?.trim() ?? ""
               })
             });
@@ -655,6 +658,7 @@ function createWorkspaceIssueAtContributor(
                 label: issue.title,
                 presentation: compactMentionPresentation({
                   description: issue.content,
+                  iconUrl: tuttiIssueAssetUrls.default,
                   status: issue.status
                 })
               };
@@ -664,6 +668,45 @@ function createWorkspaceIssueAtContributor(
       ];
     }
   };
+}
+
+async function getWorkspaceIssueDetailSafely(
+  tuttidClient: TuttidClient,
+  workspaceId: string,
+  issueId: string
+): Promise<Awaited<
+  ReturnType<TuttidClient["getWorkspaceIssueDetail"]>
+> | null> {
+  try {
+    return await tuttidClient.getWorkspaceIssueDetail(workspaceId, issueId);
+  } catch {
+    return null;
+  }
+}
+
+function workspaceIssueAtItemFromIssue(issue: {
+  content?: string | null;
+  creatorDisplayName?: string | null;
+  issueId: string;
+  status?: string | null;
+  title: string;
+  topicId: string;
+  workspaceId: string;
+}): WorkspaceIssueAtItem {
+  return {
+    content: issue.content,
+    creatorDisplayName: issue.creatorDisplayName,
+    issueId: issue.issueId,
+    status: issue.status,
+    title: issue.title,
+    topicId: issue.topicId,
+    workspaceId: issue.workspaceId
+  };
+}
+
+function workspaceIssueIdSearchKeyword(keyword: string): string | null {
+  const issueId = keyword.trim();
+  return /^issue-[A-Za-z0-9_-]+$/.test(issueId) ? issueId : null;
 }
 
 function createAgentSessionAtContributor(
@@ -724,6 +767,8 @@ function createAgentSessionAtContributor(
               entityId: item.id,
               label: resolveAgentSessionLabel(item),
               scope: compactStringRecord({
+                scope: item.scope,
+                userId: item.userId,
                 workspaceId: item.workspaceId
               }),
               presentation: compactMentionPresentation({
@@ -780,9 +825,19 @@ function resolveAgentSessionScope(
   currentUserId: string,
   userId: string
 ): NonNullable<AgentSessionAtItem["scope"]> {
-  return currentUserId && currentUserId !== userId
-    ? "collab_sessions"
-    : "my_sessions";
+  const normalizedCurrentUserId = currentUserId.trim();
+  const normalizedUserId = userId.trim();
+  if (
+    !normalizedCurrentUserId ||
+    !normalizedUserId ||
+    normalizedCurrentUserId === "local" ||
+    normalizedUserId === "local"
+  ) {
+    return "my_sessions";
+  }
+  return normalizedCurrentUserId === normalizedUserId
+    ? "my_sessions"
+    : "collab_sessions";
 }
 
 function resolveAgentSessionLabel(item: AgentSessionAtItem): string {

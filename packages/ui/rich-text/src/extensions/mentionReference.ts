@@ -63,6 +63,9 @@ export const MentionReference = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(MentionReferenceNodeView);
+    return ReactNodeViewRenderer(MentionReferenceNodeView, {
+      as: "span",
+      className: "inline-flex max-w-full align-baseline"
+    });
   }
 });

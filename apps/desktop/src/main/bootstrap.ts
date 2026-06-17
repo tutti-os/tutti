@@ -22,6 +22,10 @@ import { getSystemDesktopLocale } from "./desktopLocale";
 import { openDesktopWorkspaceAppFolder } from "./host/workspaceAppFolderAccess";
 import { openPerfMonitorDevToolsWindow } from "./windows/perfMonitorDevToolsWindow.ts";
 import { createTranslator } from "../shared/i18n/index.ts";
+import {
+  registerTuttiAssetProtocol,
+  registerTuttiAssetProtocolScheme
+} from "./host/tuttiAssetProtocol.ts";
 import { createWorkspaceFileIconCacheStore } from "./host/workspaceFileIconCacheStore.ts";
 import {
   registerWorkspaceFileIconProtocol,
@@ -33,6 +37,7 @@ function envFlagEnabled(value: string | undefined): boolean {
 }
 
 export async function bootstrapDesktopApp(): Promise<void> {
+  registerTuttiAssetProtocolScheme();
   registerWorkspaceFileIconProtocolScheme();
   initializeDesktopEnvironment({
     appVersion: app.getVersion(),
@@ -55,6 +60,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
   const workspaceFileIconCache = createWorkspaceFileIconCacheStore({
     directory: join(app.getPath("userData"), "workspace-file-icons")
   });
+  registerTuttiAssetProtocol();
   registerWorkspaceFileIconProtocol(workspaceFileIconCache);
   const desktopAppServices = await createDesktopAppServices({
     enableDevelopmentReloadShortcut: Boolean(rendererUrl) && !app.isPackaged,

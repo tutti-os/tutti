@@ -24,7 +24,6 @@ export interface CreateDesktopWorkspaceAppMentionProviderInput {
   readonly apps: readonly WorkspaceAppCenterApp[];
   readonly baseProvider: AgentContextMentionProvider;
   readonly locale: string;
-  readonly resolveAppIconUrl?: (appId: string) => string | null;
   readonly workspaceId: string;
 }
 
@@ -32,7 +31,6 @@ export function createDesktopWorkspaceAppMentionProvider({
   apps,
   baseProvider,
   locale,
-  resolveAppIconUrl,
   workspaceId
 }: CreateDesktopWorkspaceAppMentionProviderInput): AgentContextMentionProvider<DesktopWorkspaceAppMentionItem> {
   return {
@@ -41,7 +39,7 @@ export function createDesktopWorkspaceAppMentionProvider({
     getItemKey: (item) => item.appId,
     getItemLabel: (item) => item.displayName,
     getItemSubtitle: (item) => item.description,
-    getItemThumbnailUrl: (item) => item.iconUrl,
+    getItemIconUrl: (item) => item.iconUrl,
     async query(input) {
       const normalizedKeyword = normalizeSearchText(input.keyword);
       const baseItems = await Promise.resolve(
@@ -63,7 +61,6 @@ export function createDesktopWorkspaceAppMentionProvider({
             baseItem: item,
             baseProvider,
             locale,
-            resolveAppIconUrl,
             workspaceId
           })
         )
@@ -98,7 +95,6 @@ function workspaceAppToMentionItem(input: {
   baseItem: unknown;
   baseProvider: AgentContextMentionProvider;
   locale: string;
-  resolveAppIconUrl?: (appId: string) => string | null;
   workspaceId: string;
 }): DesktopWorkspaceAppMentionItem | null {
   const baseInsertResult = input.baseProvider.toInsertResult(input.baseItem);
@@ -149,7 +145,6 @@ function workspaceAppToMentionItem(input: {
       baseLabel ??
       appId,
     iconUrl:
-      normalizeText(input.resolveAppIconUrl?.(appId)) ??
       normalizeText(input.app?.iconUrl) ??
       normalizeText(input.app?.availableIconUrl) ??
       normalizeText(baseInsertResult.mention.presentation?.iconUrl) ??

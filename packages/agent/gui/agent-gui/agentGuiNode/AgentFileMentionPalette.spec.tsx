@@ -16,6 +16,7 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.agentGui.mentionFilterFile": "Files",
     "agentHost.agentGui.mentionFilterSession": "Sessions",
     "agentHost.agentGui.mentionGroupApps": "Apps",
+    "agentHost.agentGui.mentionEmptyMySessions": "暂无会话",
     "agentHost.agentGui.mentionGroupIssues": "事项",
     "agentHost.agentGui.mentionEmptyIssues": "暂无事项",
     "agentHost.agentGui.mentionFilterIssue": "事项",
@@ -23,6 +24,8 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.agentGui.fileMentionSwitchSelection": "切换选中",
     "agentHost.agentGui.contextPickerBrowseFileHint":
       "暂无已打开或 Agent 生成的文件，继续输入文件名可搜索本机文件",
+    "agentHost.agentGui.contextPickerBrowseSessionHint":
+      "输入内容以搜索我发起的 Agent 会话",
     "agentHost.agentGui.mentionFileSearchMoreHint":
       "继续输入文件名可搜索更多本机文件",
     "agentHost.agentGui.mentionGroupOpenedFiles": "我打开的文件",
@@ -618,6 +621,84 @@ describe("AgentFileMentionPalette", () => {
     expect(screen.getByText("loading")).toBeVisible();
     expect(screen.queryByTestId("agent-mention-loading-banner")).toBeNull();
     expect(screen.queryByText("没有匹配到文件")).toBeNull();
+  });
+
+  it("uses the session empty label instead of the file empty label in the session tab", () => {
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "results",
+      filter: "session",
+      categories: [],
+      groups: [],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey={null}
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="根据你输入的内容搜索工作区文件"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+        onCycleFilter={vi.fn()}
+        onMoveSelection={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("暂无会话")).toBeVisible();
+    expect(screen.queryByText("根据你输入的内容搜索工作区文件")).toBeNull();
+  });
+
+  it("uses the active session filter for browse hints even when highlight is stale", () => {
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "session",
+      categories: [
+        { id: "all", label: "All" },
+        { id: "file", label: "Files" },
+        { id: "session", label: "Sessions" }
+      ],
+      groups: [],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey="category:file"
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="根据你输入的内容搜索工作区文件"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+        onCycleFilter={vi.fn()}
+        onMoveSelection={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("输入内容以搜索我发起的 Agent 会话")).toBeVisible();
+    expect(
+      screen.queryByText(
+        "暂无已打开或 Agent 生成的文件，继续输入文件名可搜索本机文件"
+      )
+    ).toBeNull();
   });
 
   it("shows a keyboard browse hint when the file tab has no opened or generated files", () => {

@@ -79,11 +79,20 @@ type RichTextEditorTriggerQueryState = {
   to: number;
 };
 
-declare global {
-  interface Window {
-    __tuttiRichTextDebugLog?: (event: string, payload: unknown) => void;
-  }
-}
+const RICH_TEXT_MENTION_PRESENTATION_KEYS = [
+  "agentProviderId",
+  "agentIconUrl",
+  "iconUrl",
+  "thumbnailUrl",
+  "subtitle",
+  "description",
+  "participant",
+  "status",
+  "statusDataStatus",
+  "statusLabel",
+  "statusPulse",
+  "userAvatarPlaceholderUrl"
+] as const satisfies readonly (keyof RichTextMentionPresentation)[];
 
 export function RichTextTriggerEditor({
   value,
@@ -276,25 +285,11 @@ export function RichTextTriggerEditor({
 
     const updateQueryState = () => {
       const nextQuery = findEditorAtQuery(editor, activeTriggerConfigs);
-      logRichTextTriggerDebug("query-state", {
-        activeTriggerConfigs,
-        focused: editor.isFocused,
-        query: nextQuery,
-        selection: {
-          empty: editor.state.selection.empty,
-          from: editor.state.selection.from,
-          to: editor.state.selection.to
-        },
-        textBeforeCursor: readEditorTextBeforeCursor(editor)
-      });
       setQuery(nextQuery);
     };
 
     const updateFocus = () => {
       const nextFocused = editor.isFocused;
-      logRichTextTriggerDebug("focus-state", {
-        focused: nextFocused
-      });
       setIsFocused(nextFocused);
       updateQueryState();
     };
@@ -321,11 +316,6 @@ export function RichTextTriggerEditor({
     }
 
     if (query.keyword.length < minQueryLength) {
-      logRichTextTriggerDebug("query-skipped", {
-        minQueryLength,
-        query,
-        reason: "keyword-too-short"
-      });
       setMatches([]);
       setActiveIndex(0);
       setIsLoading(false);
@@ -334,11 +324,6 @@ export function RichTextTriggerEditor({
 
     const abortController = new AbortController();
     setIsLoading(true);
-    logRichTextTriggerDebug("query-start", {
-      maxResults,
-      minQueryLength,
-      query
-    });
 
     void queryRichTextTriggerMatches(registry, {
       abortSignal: abortController.signal,
@@ -359,16 +344,6 @@ export function RichTextTriggerEditor({
         if (abortController.signal.aborted) {
           return;
         }
-        logRichTextTriggerDebug("query-result", {
-          matchCount: nextMatches.length,
-          matches: nextMatches.map((match) => ({
-            key: match.key,
-            label: match.label,
-            providerId: match.providerId,
-            trigger: match.trigger
-          })),
-          query
-        });
         setMatches(nextMatches);
         setActiveIndex((current) =>
           nextMatches.length === 0
@@ -396,10 +371,6 @@ export function RichTextTriggerEditor({
 
   useLayoutEffect(() => {
     if (!editor || !query) {
-      logRichTextTriggerDebug("menu-point-cleared", {
-        hasEditor: Boolean(editor),
-        query
-      });
       setMenuPoint(null);
       return;
     }
@@ -410,16 +381,6 @@ export function RichTextTriggerEditor({
         x: coords.left,
         y: coords.bottom + menuOffset
       };
-      logRichTextTriggerDebug("menu-point", {
-        coords: {
-          bottom: coords.bottom,
-          left: coords.left,
-          right: coords.right,
-          top: coords.top
-        },
-        menuPoint: nextMenuPoint,
-        query
-      });
       setMenuPoint(nextMenuPoint);
     };
 
@@ -443,28 +404,6 @@ export function RichTextTriggerEditor({
   const isEmpty =
     !editor ||
     serializeRichTextDocumentToContent(editor.getJSON()).trim().length === 0;
-
-  useEffect(() => {
-    logRichTextTriggerDebug("menu-state", {
-      activeIndex,
-      canQueryTrigger,
-      isFocused,
-      isLoading,
-      isMenuOpen,
-      matchesLength: matches.length,
-      menuPoint,
-      query
-    });
-  }, [
-    activeIndex,
-    canQueryTrigger,
-    isFocused,
-    isLoading,
-    isMenuOpen,
-    matches.length,
-    menuPoint,
-    query
-  ]);
 
   const applyMatch = (match: RichTextTriggerQueryMatch) => {
     if (!editor || !query) {
@@ -582,7 +521,10 @@ export function RichTextTriggerEditor({
                 label={match.label}
                 selected={index === activeIndex}
                 subtitle={match.subtitle}
-                thumbnailUrl={match.thumbnailUrl}
+                iconUrl={match.iconUrl}
+                workspaceReferenceFileKind={getWorkspaceReferenceFileKind(
+                  match.insertResult
+                )}
                 onSelect={() => applyMatch(match)}
               />
             ))
@@ -606,25 +548,6 @@ function findEditorAtQuery(
     return null;
   }
   return query;
-}
-
-function readEditorTextBeforeCursor(editor: TiptapEditor): string | null {
-  const { selection } = editor.state;
-  if (!selection.empty) {
-    return null;
-  }
-
-  const { $from } = selection;
-  if (!$from.parent.isTextblock) {
-    return null;
-  }
-
-  return $from.parent.textBetween(0, $from.parentOffset, "\n", "\uFFFC");
-}
-
-function logRichTextTriggerDebug(event: string, payload: unknown): void {
-  console.info(`[tutti-rich-text-trigger] ${event}`, payload);
-  window.__tuttiRichTextDebugLog?.(event, payload);
 }
 
 function findEditorTriggerQuery(
@@ -691,6 +614,15 @@ function renderInsertResultAsEditorContent(
     default:
       return null;
   }
+}
+
+function getWorkspaceReferenceFileKind(
+  result: RichTextTriggerInsertResult
+): "file" | "folder" | undefined {
+  if (result.kind !== "markdown-link") {
+    return undefined;
+  }
+  return result.href.endsWith("/") ? "folder" : "file";
 }
 
 function collectHydratableMentionNodes(
@@ -811,13 +743,7 @@ function normalizeMentionPresentation(
   const source = value as Record<keyof RichTextMentionPresentation, unknown>;
   const next: RichTextMentionPresentation = {};
 
-  for (const key of [
-    "iconUrl",
-    "thumbnailUrl",
-    "subtitle",
-    "description",
-    "status"
-  ] as const) {
+  for (const key of RICH_TEXT_MENTION_PRESENTATION_KEYS) {
     const fieldValue = source[key];
     if (typeof fieldValue !== "string") {
       continue;

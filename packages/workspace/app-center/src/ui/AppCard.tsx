@@ -507,9 +507,9 @@ function AppCenterActionMenu({
               {item.icon}
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
               {item.attention ? (
-                <span
+                <i
                   aria-hidden="true"
-                  className="ml-2 size-1.5 flex-none rounded-full bg-[var(--state-danger)]"
+                  className="ml-2 block size-1.5 shrink-0 rounded-full bg-[var(--state-danger)] not-italic"
                 />
               ) : null}
             </DropdownMenuItem>

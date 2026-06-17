@@ -11,32 +11,15 @@ type DesktopWorkspaceAppIconSource = Pick<
   "appId" | "availableIconUrl" | "iconUrl"
 >;
 
-const desktopAgentLauncherWorkspaceAppIds = [
-  "agent-codex",
-  "agent-claude-code"
-] as const;
-
 export function resolveDesktopWorkspaceAppIconEntries(input: {
   apps: readonly DesktopWorkspaceAppIconSource[];
-  resolveAppIconUrl?: (appId: string) => string | null;
   workspaceId: string;
 }): DesktopWorkspaceAppIconEntry[] {
   const entriesByKey = new Map<string, DesktopWorkspaceAppIconEntry>();
   for (const app of input.apps) {
     addWorkspaceAppIconEntry(entriesByKey, {
       appId: app.appId,
-      iconUrl:
-        input.resolveAppIconUrl?.(app.appId) ??
-        app.iconUrl ??
-        app.availableIconUrl ??
-        null,
-      workspaceId: input.workspaceId
-    });
-  }
-  for (const appId of desktopAgentLauncherWorkspaceAppIds) {
-    addWorkspaceAppIconEntry(entriesByKey, {
-      appId,
-      iconUrl: input.resolveAppIconUrl?.(appId) ?? null,
+      iconUrl: app.iconUrl ?? app.availableIconUrl ?? null,
       workspaceId: input.workspaceId
     });
   }

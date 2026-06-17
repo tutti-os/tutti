@@ -44,32 +44,32 @@ function normalizeMentionPresentation(
   }
 
   const normalized: RichTextMentionPresentation = {};
-  const iconUrl = normalizeOptionalString(presentation.iconUrl);
-  const thumbnailUrl = normalizeOptionalString(presentation.thumbnailUrl);
-  const subtitle = normalizeOptionalString(presentation.subtitle);
-  const description = normalizeOptionalString(presentation.description);
-  const status = normalizeOptionalString(presentation.status);
-
-  if (iconUrl) {
-    normalized.iconUrl = iconUrl;
-  }
-  if (thumbnailUrl) {
-    normalized.thumbnailUrl = thumbnailUrl;
-  }
-  if (subtitle) {
-    normalized.subtitle = subtitle;
-  }
-  if (description) {
-    normalized.description = description;
-  }
-  if (status) {
-    normalized.status = status;
+  for (const key of richTextMentionPresentationKeys) {
+    const value = normalizeOptionalString(presentation[key]);
+    if (value) {
+      normalized[key] = value;
+    }
   }
 
   return Object.keys(normalized).length > 0
     ? Object.freeze(normalized)
     : undefined;
 }
+
+const richTextMentionPresentationKeys = [
+  "agentProviderId",
+  "agentIconUrl",
+  "iconUrl",
+  "thumbnailUrl",
+  "subtitle",
+  "description",
+  "participant",
+  "status",
+  "statusDataStatus",
+  "statusLabel",
+  "statusPulse",
+  "userAvatarPlaceholderUrl"
+] as const satisfies readonly (keyof RichTextMentionPresentation)[];
 
 export function createRichTextMentionAttrs(
   providerId: string,

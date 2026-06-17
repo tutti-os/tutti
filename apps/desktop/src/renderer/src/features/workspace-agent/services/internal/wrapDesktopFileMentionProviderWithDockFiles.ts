@@ -17,7 +17,7 @@ export function wrapDesktopFileMentionProviderWithDockFiles<TItem>(
     return provider;
   }
 
-  const thumbnailUrlByPath = new Map<string, string>();
+  const iconUrlByPath = new Map<string, string>();
 
   return {
     ...provider,
@@ -27,7 +27,7 @@ export function wrapDesktopFileMentionProviderWithDockFiles<TItem>(
       await hydrateDockFileThumbnails({
         dockFiles: allDockFiles,
         readDockPreview: options.readDockPreview,
-        thumbnailUrlByPath
+        iconUrlByPath
       });
 
       if (!keyword) {
@@ -50,12 +50,12 @@ export function wrapDesktopFileMentionProviderWithDockFiles<TItem>(
       });
       return merged;
     },
-    getItemThumbnailUrl(item) {
+    getItemIconUrl(item) {
       const path = provider.getItemKey(item);
       if (resolveAgentMentionFileVisualKind({ path }) !== "image") {
         return null;
       }
-      return thumbnailUrlByPath.get(path) ?? null;
+      return iconUrlByPath.get(path) ?? null;
     }
   };
 }
@@ -63,9 +63,9 @@ export function wrapDesktopFileMentionProviderWithDockFiles<TItem>(
 async function hydrateDockFileThumbnails(input: {
   dockFiles: readonly WorkbenchDockFileMentionItem[];
   readDockPreview?: WorkbenchDockPreviewCache["read"];
-  thumbnailUrlByPath: Map<string, string>;
+  iconUrlByPath: Map<string, string>;
 }): Promise<void> {
-  input.thumbnailUrlByPath.clear();
+  input.iconUrlByPath.clear();
   if (!input.readDockPreview) {
     return;
   }
@@ -77,14 +77,14 @@ async function hydrateDockFileThumbnails(input: {
           resolveAgentMentionFileVisualKind({ path: dockFile.path }) === "image"
       )
       .map(async (dockFile) => {
-        const thumbnailUrl = await input
+        const iconUrl = await input
           .readDockPreview?.(dockFile.previewCacheKey)
           .catch(() => null);
-        const normalizedThumbnailUrl = thumbnailUrl?.trim() ?? "";
-        if (!normalizedThumbnailUrl) {
+        const normalizedIconUrl = iconUrl?.trim() ?? "";
+        if (!normalizedIconUrl) {
           return;
         }
-        input.thumbnailUrlByPath.set(dockFile.path, normalizedThumbnailUrl);
+        input.iconUrlByPath.set(dockFile.path, normalizedIconUrl);
       })
   );
 }

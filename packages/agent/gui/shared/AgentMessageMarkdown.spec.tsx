@@ -191,6 +191,33 @@ describe("AgentMessageMarkdown", () => {
     expect(onLinkClick).toHaveBeenCalledWith("README.md");
   });
 
+  it("does not nest path links inside markdown links with inline code labels", () => {
+    const onLinkClick = vi.fn();
+    const { container } = render(
+      <AgentMessageMarkdown
+        content={
+          "已创建 [`AGENTS.md`](/Users/ryan/Documents/tutti/proj2/AGENTS.md)"
+        }
+        onLinkClick={onLinkClick}
+        workspaceLinkContext={{
+          workspaceRoot: "/Users/ryan/Documents/tutti/proj2",
+          basePath: "/Users/ryan/Documents/tutti/proj2",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    const link = screen.getByRole("link", { name: "AGENTS.md" });
+    expect(container.querySelectorAll("a")).toHaveLength(1);
+    expect(link.querySelector("code")).toHaveTextContent("AGENTS.md");
+
+    fireEvent.click(link);
+
+    expect(onLinkClick).toHaveBeenCalledWith(
+      "/Users/ryan/Documents/tutti/proj2/AGENTS.md"
+    );
+  });
+
   it("resolves workspace link actions when workspace context is provided", () => {
     const onLinkAction = vi.fn();
     render(

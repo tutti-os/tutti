@@ -59,7 +59,7 @@ export interface RichTextTriggerProvider<TItem = unknown> {
   getItemKey(item: TItem): string;
   getItemLabel(item: TItem): string;
   getItemSubtitle?(item: TItem): string | null | undefined;
-  getItemThumbnailUrl?(
+  getItemIconUrl?(
     item: TItem
   ): string | null | undefined | Promise<string | null | undefined>;
   getItemKeywords?(item: TItem): readonly string[] | undefined;
@@ -75,7 +75,7 @@ export interface RichTextTriggerQueryMatch<TItem = unknown> {
   key: string;
   label: string;
   subtitle?: string;
-  thumbnailUrl?: string;
+  iconUrl?: string;
   keywords?: readonly string[];
   item: TItem;
   insertResult: RichTextTriggerInsertResult;

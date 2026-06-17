@@ -28,7 +28,7 @@ import {
   workspaceAgentActivityStatusLabel
 } from "@tutti-os/agent-gui/agent-message-center";
 import { normalizeAgentActivityDisplayStatus } from "@tutti-os/agent-activity-core";
-import { createDefaultWorkspaceAppIconResolver } from "@renderer/features/workspace-workbench/services/workspaceAppIconStyle";
+import { tuttiAgentAssetUrls } from "../../../../../shared/tuttiAssetProtocol.ts";
 import { getActiveLocale } from "../../../i18n/runtime";
 import { INotificationService } from "@tutti-os/ui-notifications";
 import { createToastNotificationService } from "@renderer/lib/notificationService";
@@ -140,13 +140,11 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     reporterService,
     runtimeApi: desktopApi.runtime
   });
-  const resolveWorkspaceAppIconUrl = createDefaultWorkspaceAppIconResolver();
   registerRichTextAtServices(registry, {
     tuttidClient,
     appCenterApps: () => appCenterService.store.apps,
-    resolveAppIconUrl: resolveWorkspaceAppIconUrl,
     getLocale: getActiveLocale,
-    resolveAgentIconUrl: managedAgentRoundedIconUrl,
+    resolveAgentIconUrl: resolveWorkspaceRichTextAgentIconUrl,
     userAvatarPlaceholderUrl,
     resolveSessionStatusView: createDesktopAgentSessionStatusViewResolver({
       normalizeDisplayStatus: normalizeAgentActivityDisplayStatus,
@@ -194,4 +192,32 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     startupWorkspaceID: environment.startupWorkspaceID,
     workspaceAppExternalApi: desktopApi.workspaceAppExternal
   };
+}
+
+function resolveWorkspaceRichTextAgentIconUrl(provider: string | undefined) {
+  switch (normalizeWorkspaceRichTextAgentProvider(provider)) {
+    case "claude-code":
+      return tuttiAgentAssetUrls.claudeCode;
+    case "codex":
+      return tuttiAgentAssetUrls.codex;
+    default:
+      return managedAgentRoundedIconUrl(provider);
+  }
+}
+
+function normalizeWorkspaceRichTextAgentProvider(
+  provider: string | undefined
+): string {
+  const normalized =
+    provider
+      ?.trim()
+      .toLowerCase()
+      .replace(/[_\s]+/gu, "-") ?? "";
+  switch (normalized) {
+    case "claude":
+    case "claude-code":
+      return "claude-code";
+    default:
+      return normalized;
+  }
 }

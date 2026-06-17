@@ -890,12 +890,12 @@ export class AgentMentionSearchController {
         if (!mentionItem || mentionItem.kind !== "file") {
           return mentionItem;
         }
-        const thumbnailUrl = await Promise.resolve(
-          input.provider.getItemThumbnailUrl?.(item) ?? null
+        const iconUrl = await Promise.resolve(
+          input.provider.getItemIconUrl?.(item) ?? null
         ).catch(() => null);
         const resolvedThumbnailUrl = resolveAgentMentionFileThumbnailUrl({
           ...mentionItem,
-          thumbnailUrl
+          thumbnailUrl: iconUrl
         });
         if (!resolvedThumbnailUrl) {
           return mentionItem;
@@ -1363,9 +1363,17 @@ function mentionSessionScope(input: {
   if (rawScope === "my_sessions" || rawScope === "collab_sessions") {
     return rawScope;
   }
-  return input.userId && input.userId === input.currentUserId
-    ? "my_sessions"
-    : "collab_sessions";
+  const userId = input.userId?.trim() ?? "";
+  const currentUserId = input.currentUserId.trim();
+  if (
+    !userId ||
+    !currentUserId ||
+    userId === "local" ||
+    currentUserId === "local"
+  ) {
+    return "my_sessions";
+  }
+  return userId === currentUserId ? "my_sessions" : "collab_sessions";
 }
 
 function dirnameFromProviderWorkspaceFileHref(href: string): string {

@@ -1,14 +1,16 @@
 import * as React from "react";
+import type whyDidYouRender from "@welldone-software/why-did-you-render";
 
 const WHY_DID_YOU_RENDER_STORAGE_KEY = "tuttiWhyDidYouRender";
+type WhyDidYouRender = typeof whyDidYouRender;
 const whyDidYouRenderEnableSource = import.meta.env.DEV
   ? resolveWhyDidYouRenderEnableSource()
   : null;
 
 if (whyDidYouRenderEnableSource !== null) {
-  const { default: whyDidYouRender } =
+  const { default: registerWhyDidYouRender }: { default: WhyDidYouRender } =
     await import("@welldone-software/why-did-you-render");
-  whyDidYouRender(React, {
+  registerWhyDidYouRender(React, {
     collapseGroups: true,
     include: [/AgentGUI/u, /DesktopAgentGUI/u, /Workbench/u],
     logOwnerReasons: true,

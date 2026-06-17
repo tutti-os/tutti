@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
-import { createDefaultWorkspaceAppIconResolver } from "../../workspace-workbench/services/workspaceAppIconStyle.ts";
 import { createDesktopWorkspaceAppMentionProvider } from "./desktopWorkspaceAppMentionProvider.ts";
 
 test("workspace app mention provider uses localized Chinese app text", async () => {
@@ -96,12 +95,12 @@ test("workspace app mention provider falls back from regional locale to language
   assert.equal(provider.getItemLabel(items[0]!), "自动化");
 });
 
-test("workspace app mention provider prefers resolved built-in app icons", async () => {
+test("workspace app mention provider prefers App Center icons over base icons", async () => {
   const provider = createDesktopWorkspaceAppMentionProvider({
     apps: [
       createWorkspaceApp({
         appId: "automation",
-        iconUrl: "old-app-icon.png",
+        iconUrl: "app-center-icon.png",
         name: "Automation"
       })
     ],
@@ -113,8 +112,6 @@ test("workspace app mention provider prefers resolved built-in app icons", async
       }
     ]),
     locale: "en",
-    resolveAppIconUrl: (appId) =>
-      appId === "automation" ? "resolved-automation-icon.png" : null,
     workspaceId: "workspace-1"
   });
 
@@ -126,33 +123,34 @@ test("workspace app mention provider prefers resolved built-in app icons", async
   });
 
   const item = items[0];
-  assert.equal(item?.iconUrl, "resolved-automation-icon.png");
+  assert.equal(item?.iconUrl, "app-center-icon.png");
   assert.ok(item);
   const insertResult = provider.toInsertResult(item);
   assert.equal(insertResult.kind, "mention");
   assert.equal(
     insertResult.mention.presentation?.iconUrl,
-    "resolved-automation-icon.png"
+    "app-center-icon.png"
   );
 });
 
-test("workspace app mention provider resolves built-in agent app icons without App Center metadata", async () => {
+test("workspace app mention provider uses base icons without App Center metadata", async () => {
   const provider = createDesktopWorkspaceAppMentionProvider({
     apps: [],
     baseProvider: createBaseWorkspaceAppProvider([
       {
         appId: "agent-codex",
+        iconUrl: "tutti-asset://agent/codex.png",
         label: "Codex",
         scopes: "codex"
       },
       {
         appId: "agent-claude-code",
+        iconUrl: "tutti-asset://agent/claudecode.png",
         label: "Claude Code",
         scopes: "claude"
       }
     ]),
     locale: "en",
-    resolveAppIconUrl: createDefaultWorkspaceAppIconResolver(),
     workspaceId: "workspace-1"
   });
 
@@ -165,8 +163,8 @@ test("workspace app mention provider resolves built-in agent app icons without A
 
   const claude = items.find((item) => item.appId === "agent-claude-code");
   const codex = items.find((item) => item.appId === "agent-codex");
-  assert.match(claude?.iconUrl ?? "", /\/claudecode\.png$/u);
-  assert.match(codex?.iconUrl ?? "", /\/codex\.png$/u);
+  assert.equal(claude?.iconUrl, "tutti-asset://agent/claudecode.png");
+  assert.equal(codex?.iconUrl, "tutti-asset://agent/codex.png");
   assert.ok(codex);
   const insertResult = provider.toInsertResult(codex);
   assert.equal(insertResult.kind, "mention");

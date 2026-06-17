@@ -156,4 +156,68 @@ describe("agent gui workbench state", () => {
       lastActiveAgentSessionId: "session-1"
     });
   });
+
+  it("isolates multi-instance node state by workbench node id", () => {
+    const source = createAgentGuiWorkbenchNodeStateSource({
+      workspaceId: "workspace-1"
+    });
+    let notified = 0;
+    const unsubscribe =
+      source.externalStateSource.subscribe?.(() => {
+        notified += 1;
+      }) ?? (() => undefined);
+
+    source.writeNodeState({
+      instanceId: "agent-gui",
+      nodeId: "node-1",
+      state: {
+        lastActiveAgentSessionId: "session-1",
+        lastActiveConversationTitle: "First title"
+      },
+      typeId: "agent-gui"
+    });
+    source.writeNodeState({
+      instanceId: "agent-gui",
+      nodeId: "node-2",
+      state: {
+        lastActiveAgentSessionId: "session-2",
+        lastActiveConversationTitle: "Second title"
+      },
+      typeId: "agent-gui"
+    });
+    source.writeNodeState({
+      instanceId: "agent-gui",
+      nodeId: "node-2",
+      state: {
+        lastActiveAgentSessionId: "session-2",
+        lastActiveConversationTitle: "Second title"
+      },
+      typeId: "agent-gui"
+    });
+    unsubscribe();
+
+    expect(notified).toBe(2);
+    expect(
+      source.externalStateSource.getNodeState({
+        instanceId: "agent-gui",
+        nodeId: "node-1",
+        typeId: "agent-gui",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject({
+      lastActiveAgentSessionId: "session-1",
+      lastActiveConversationTitle: "First title"
+    });
+    expect(
+      source.externalStateSource.getNodeState({
+        instanceId: "agent-gui",
+        nodeId: "node-2",
+        typeId: "agent-gui",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject({
+      lastActiveAgentSessionId: "session-2",
+      lastActiveConversationTitle: "Second title"
+    });
+  });
 });

@@ -57,7 +57,7 @@ export type AgentContextMentionProvider<TItem = any> = Omit<
 > & {
   trigger: "@";
   toInsertResult: (item: TItem) => AgentContextMentionInsertResult;
-  getItemThumbnailUrl?: (
+  getItemIconUrl?: (
     item: TItem
   ) => string | null | undefined | Promise<string | null | undefined>;
 };

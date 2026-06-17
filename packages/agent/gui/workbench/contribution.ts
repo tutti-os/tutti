@@ -151,6 +151,7 @@ export function createAgentGuiWorkbenchContribution(
               onStateChange: (state) => {
                 nodeStateSource.writeNodeState({
                   instanceId: context.instanceId,
+                  nodeId: context.node.id,
                   state,
                   typeId: agentGuiWorkbenchTypeId
                 });
@@ -187,6 +188,7 @@ export function createAgentGuiWorkbenchContribution(
           const persistConversationRailCollapsed = (collapsed: boolean) => {
             nodeStateSource.writeNodeState({
               instanceId,
+              nodeId: node.id,
               state: {
                 ...workbenchState,
                 conversationRailCollapsed: collapsed

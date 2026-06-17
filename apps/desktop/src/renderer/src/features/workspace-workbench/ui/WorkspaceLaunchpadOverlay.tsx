@@ -185,13 +185,8 @@ export function WorkspaceLaunchpadOverlay({
   );
   const launchpadApps = useMemo(
     () =>
-      appCenterState.apps
-        .filter((app) => shouldShowWorkspaceApp(app.appId))
-        .map((app) => {
-          const overrideIconUrl = launchpadDockIcons.appIconUrl(app.appId);
-          return overrideIconUrl ? { ...app, iconUrl: overrideIconUrl } : app;
-        }),
-    [appCenterState.apps, launchpadDockIcons]
+      appCenterState.apps.filter((app) => shouldShowWorkspaceApp(app.appId)),
+    [appCenterState.apps]
   );
   const items = useMemo(
     () =>

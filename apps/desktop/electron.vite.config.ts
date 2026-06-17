@@ -78,6 +78,15 @@ const perfMonitorEnabled = envFlagEnabled(
   process.env.TUTTI_ENABLE_PERF_MONITOR
 );
 
+function createPerfMonitorPlugin(): PluginOption {
+  return PerfMonitorVitePlugin({
+    separate: true,
+    diffMode: "lite",
+    updateTrace: true,
+    commitTrace: true
+  });
+}
+
 const webkitBackdropFilterPattern =
   /^([ \t]*)-webkit-backdrop-filter:\s*([^;]+);(?!\n[ \t]*backdrop-filter:)/gm;
 
@@ -186,16 +195,7 @@ export default defineConfig({
       }),
       tailwindcss(),
       preserveUnprefixedBackdropFilterPlugin(),
-      ...(perfMonitorEnabled
-        ? [
-            PerfMonitorVitePlugin({
-              separate: true,
-              diffMode: "lite",
-              updateTrace: true,
-              commitTrace: true
-            })
-          ]
-        : [])
+      ...(perfMonitorEnabled ? [createPerfMonitorPlugin()] : [])
     ],
     resolve: {
       alias: aliases

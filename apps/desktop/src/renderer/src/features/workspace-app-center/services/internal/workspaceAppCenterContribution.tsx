@@ -64,7 +64,6 @@ export interface CreateWorkspaceAppCenterContributionInput {
   browserFeature: BrowserNodeFeature;
   i18n: I18nRuntime<string>;
   reporterService?: Pick<IReporterService, "trackEvents">;
-  resolveAppIconUrl?: (appId: string) => string | null;
   workspaceId: string;
 }
 
@@ -73,7 +72,6 @@ export function createWorkspaceAppCenterContribution({
   browserFeature,
   i18n,
   reporterService,
-  resolveAppIconUrl,
   workspaceId
 }: CreateWorkspaceAppCenterContributionInput): WorkbenchContribution {
   return {
@@ -86,7 +84,6 @@ export function createWorkspaceAppCenterContribution({
       createAppCenterNodeDefinition({
         i18n,
         reporterService,
-        resolveAppIconUrl,
         workspaceId
       }),
       createWorkspaceAppWebviewNodeDefinition({
@@ -113,7 +110,6 @@ export function createWorkspaceAppCenterDockEntries(input: {
     nodeId: string
   ) => Promise<string | null> | string | null;
   i18n: I18nRuntime<string>;
-  resolveAppIconUrl?: (appId: string) => string | null;
 }): WorkbenchHostDockEntry[] {
   return [
     createAppCenterDockEntry(input.i18n, input.appCenterIconUrl),
@@ -125,7 +121,6 @@ export function createWorkspaceAppCenterDockEntries(input: {
           captureWebviewPreview: input.captureWebviewPreview,
           index,
           launchEnabled: projection.launchEnabled,
-          overrideIconUrl: input.resolveAppIconUrl?.(projection.app.appId),
           state: projection.state
         })
       )
@@ -166,7 +161,6 @@ function createWorkspaceAppDockEntry(input: {
   ) => Promise<string | null> | string | null;
   index: number;
   launchEnabled: boolean;
-  overrideIconUrl?: string | null;
   state?: WorkbenchHostDockEntry["state"];
 }): WorkbenchHostDockEntry {
   const dockEntryId = workspaceAppDockEntryId(input.app.appId);
@@ -178,7 +172,7 @@ function createWorkspaceAppDockEntry(input: {
             input.captureWebviewPreview?.(node.id) ?? null
         }
       : {}),
-    icon: createWorkspaceAppDockIcon(input.app, input.overrideIconUrl),
+    icon: createWorkspaceAppDockIcon(input.app),
     id: dockEntryId,
     instanceMode: "single",
     label: appTitle,
@@ -207,11 +201,8 @@ function createWorkspaceAppDockEntry(input: {
   };
 }
 
-function createWorkspaceAppDockIcon(
-  app: WorkspaceAppCenterApp,
-  overrideIconUrl?: string | null
-): ReactNode {
-  const iconUrl = overrideIconUrl ?? app.iconUrl;
+function createWorkspaceAppDockIcon(app: WorkspaceAppCenterApp): ReactNode {
+  const iconUrl = app.iconUrl;
   if (iconUrl) {
     return createElement(
       "span",
@@ -232,7 +223,6 @@ function createWorkspaceAppDockIcon(
 function createAppCenterNodeDefinition(input: {
   i18n: I18nRuntime<string>;
   reporterService?: Pick<IReporterService, "trackEvents">;
-  resolveAppIconUrl?: (appId: string) => string | null;
   workspaceId: string;
 }): WorkbenchHostNodeDefinition<WorkspaceAppCenterViewState | null> {
   return {
@@ -244,7 +234,6 @@ function createAppCenterNodeDefinition(input: {
     renderBody: (context) => (
       <WorkspaceAppCenterPane
         restoredViewState={context.externalNodeState}
-        resolveAppIconUrl={input.resolveAppIconUrl}
         workspaceId={input.workspaceId}
       />
     ),

@@ -15,6 +15,12 @@ import type {
   AgentGuiWorkbenchWorkspaceState
 } from "./types.ts";
 
+type AgentGuiWorkbenchStateLookupRequest = Pick<
+  WorkbenchHostExternalStateLookupInput,
+  "instanceId" | "typeId"
+> &
+  Partial<Pick<WorkbenchHostExternalStateLookupInput, "nodeId">>;
+
 export function createDefaultAgentGuiWorkbenchNodeState(
   provider: AgentGuiWorkbenchProvider = "codex"
 ): AgentGuiWorkbenchNodeState {
@@ -25,6 +31,7 @@ export function createDefaultAgentGuiWorkbenchNodeState(
     conversationRailCollapsed: false,
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: null,
+    lastActiveConversationTitle: null,
     provider
   };
 }
@@ -117,6 +124,10 @@ export function normalizeAgentGuiWorkbenchNodeState(
       typeof state?.lastActiveAgentSessionId === "string"
         ? state.lastActiveAgentSessionId
         : null,
+    lastActiveConversationTitle:
+      typeof state?.lastActiveConversationTitle === "string"
+        ? state.lastActiveConversationTitle
+        : null,
     provider
   };
 }
@@ -135,6 +146,7 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
+    left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
     left.provider === right.provider
   );
 }
@@ -159,20 +171,16 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
     AgentGuiWorkbenchWorkspaceState
   >;
   readNodeState: (
-    request: Pick<
-      WorkbenchHostExternalStateLookupInput,
-      "instanceId" | "typeId"
-    >
+    request: AgentGuiWorkbenchStateLookupRequest
   ) => AgentGuiWorkbenchState | null;
   writeNodeState: (
-    request: Pick<
-      WorkbenchHostExternalStateLookupInput,
-      "instanceId" | "typeId"
-    > & { state: AgentGuiWorkbenchState }
+    request: AgentGuiWorkbenchStateLookupRequest & {
+      state: AgentGuiWorkbenchState;
+    }
   ) => void;
 } {
   const typeId = input.typeId ?? "agent-gui";
-  const nodeStateByInstanceId = new Map<string, AgentGuiWorkbenchState>();
+  const nodeStateByKey = new Map<string, AgentGuiWorkbenchState>();
   const listeners = new Set<() => void>();
 
   const notify = () => {
@@ -187,14 +195,18 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
         if (request.typeId !== typeId) {
           return null;
         }
-        const state = nodeStateByInstanceId.get(request.instanceId);
+        const state =
+          nodeStateByKey.get(agentGuiWorkbenchNodeStateKey(request)) ??
+          nodeStateByKey.get(agentGuiWorkbenchInstanceStateKey(request));
         return state ? { ...state } : null;
       },
       getSnapshotNodeState(request) {
         if (request.typeId !== typeId) {
           return null;
         }
-        const state = nodeStateByInstanceId.get(request.instanceId);
+        const state =
+          nodeStateByKey.get(agentGuiWorkbenchNodeStateKey(request)) ??
+          nodeStateByKey.get(agentGuiWorkbenchInstanceStateKey(request));
         return state ? { ...state } : null;
       },
       getWorkspaceState() {
@@ -213,19 +225,60 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
       if (request.typeId !== typeId) {
         return null;
       }
-      const state = nodeStateByInstanceId.get(request.instanceId);
+      const state =
+        nodeStateByKey.get(agentGuiWorkbenchNodeStateKey(request)) ??
+        nodeStateByKey.get(agentGuiWorkbenchInstanceStateKey(request));
       return state ? { ...state } : null;
     },
     writeNodeState(request) {
       if (request.typeId !== typeId) {
         return;
       }
-      nodeStateByInstanceId.set(request.instanceId, {
+      const key = agentGuiWorkbenchNodeStateKey(request);
+      const previous = nodeStateByKey.get(key);
+      const next = {
         ...normalizeAgentGuiWorkbenchState(request.state)
-      });
+      };
+      if (
+        request.nodeId &&
+        typeof request.state.lastActiveConversationTitle === "string"
+      ) {
+        next.lastActiveConversationTitle =
+          request.state.lastActiveConversationTitle;
+      }
+      nodeStateByKey.set(key, next);
+      if (previous && areAgentGuiWorkbenchMemoryStatesEqual(previous, next)) {
+        return;
+      }
       notify();
     }
   };
+}
+
+function areAgentGuiWorkbenchMemoryStatesEqual(
+  left: AgentGuiWorkbenchState,
+  right: AgentGuiWorkbenchState
+): boolean {
+  return (
+    areAgentGuiWorkbenchStatesEqual(left, right) &&
+    (left.lastActiveConversationTitle ?? null) ===
+      (right.lastActiveConversationTitle ?? null)
+  );
+}
+
+function agentGuiWorkbenchNodeStateKey(
+  request: Pick<WorkbenchHostExternalStateLookupInput, "instanceId"> &
+    Partial<Pick<WorkbenchHostExternalStateLookupInput, "nodeId">>
+): string {
+  return request.nodeId
+    ? `node:${request.nodeId}`
+    : agentGuiWorkbenchInstanceStateKey(request);
+}
+
+function agentGuiWorkbenchInstanceStateKey(
+  request: Pick<WorkbenchHostExternalStateLookupInput, "instanceId">
+): string {
+  return `instance:${request.instanceId}`;
 }
 
 function createDefaultAgentGuiWorkbenchState(): AgentGuiWorkbenchState {

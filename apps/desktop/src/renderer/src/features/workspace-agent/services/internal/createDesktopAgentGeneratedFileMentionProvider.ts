@@ -5,6 +5,10 @@ import {
 } from "@tutti-os/agent-gui/context-mention-provider";
 import { collectWorkspaceAgentGeneratedFiles } from "@tutti-os/agent-gui/workspace-agent-generated-files";
 import { createRichTextMarkdownLinkInsertResult } from "@tutti-os/ui-rich-text/plugins";
+import {
+  tuttiFileAssetUrls,
+  tuttiFolderAssetUrls
+} from "../../../../../../shared/tuttiAssetProtocol.ts";
 
 const { agentGeneratedFile: AGENT_GENERATED_FILE_PROVIDER_ID } =
   AGENT_CONTEXT_MENTION_PROVIDER_IDS;
@@ -73,6 +77,10 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
     getItemKey: (item) => item.path,
     getItemLabel: (item) => item.displayName,
     getItemSubtitle: (item) => item.path,
+    getItemIconUrl: (item) =>
+      item.path.endsWith("/")
+        ? tuttiFolderAssetUrls.default
+        : tuttiFileAssetUrls.default,
     toInsertResult(item) {
       return createRichTextMarkdownLinkInsertResult(
         item.displayName,

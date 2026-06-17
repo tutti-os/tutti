@@ -1,18 +1,21 @@
 import type { JSX, MouseEvent } from "react";
+import { FileIcon, FolderFilledIcon } from "@tutti-os/ui-system/icons";
 
 type RichTextTriggerMenuItemProps = {
+  iconUrl?: string;
   label: string;
   selected: boolean;
   subtitle?: string;
-  thumbnailUrl?: string;
+  workspaceReferenceFileKind?: "file" | "folder";
   onSelect: () => void;
 };
 
 export function RichTextTriggerMenuItem({
+  iconUrl,
   label,
   selected,
   subtitle,
-  thumbnailUrl,
+  workspaceReferenceFileKind,
   onSelect
 }: RichTextTriggerMenuItemProps): JSX.Element {
   return (
@@ -29,7 +32,10 @@ export function RichTextTriggerMenuItem({
         onSelect();
       }}
     >
-      <RichTextTriggerMenuThumbnail thumbnailUrl={thumbnailUrl} />
+      <RichTextTriggerMenuIcon
+        iconUrl={iconUrl}
+        workspaceReferenceFileKind={workspaceReferenceFileKind}
+      />
       <span className="flex min-w-0 flex-auto flex-col items-start gap-0.5">
         <span className="w-full overflow-hidden text-ellipsis whitespace-nowrap text-[13px] leading-5 font-semibold">
           {label}
@@ -44,27 +50,43 @@ export function RichTextTriggerMenuItem({
   );
 }
 
-function RichTextTriggerMenuThumbnail({
-  thumbnailUrl
+function RichTextTriggerMenuIcon({
+  iconUrl,
+  workspaceReferenceFileKind
 }: {
-  thumbnailUrl?: string;
+  iconUrl?: string;
+  workspaceReferenceFileKind?: "file" | "folder";
 }): JSX.Element {
-  const normalizedThumbnailUrl = thumbnailUrl?.trim() ?? "";
+  const normalizedIconUrl = iconUrl?.trim() ?? "";
+
+  if (workspaceReferenceFileKind) {
+    const Icon =
+      workspaceReferenceFileKind === "folder" ? FolderFilledIcon : FileIcon;
+    return (
+      <span
+        aria-hidden="true"
+        className="inline-grid size-4 flex-none place-items-center text-[var(--folder)]"
+        data-rich-text-trigger-icon="true"
+      >
+        <Icon className="size-4" />
+      </span>
+    );
+  }
 
   return (
     <span
       aria-hidden="true"
       className="inline-grid size-4 flex-none place-items-center overflow-hidden rounded bg-[var(--bg-block,var(--transparency-block))]"
-      data-rich-text-trigger-thumbnail="true"
+      data-rich-text-trigger-icon="true"
     >
-      {normalizedThumbnailUrl ? (
+      {normalizedIconUrl ? (
         <img
           alt=""
           className="block size-full object-cover object-center"
           decoding="async"
           draggable={false}
           loading="lazy"
-          src={normalizedThumbnailUrl}
+          src={normalizedIconUrl}
         />
       ) : (
         <span className="block size-3 rounded-[3px] bg-[var(--transparency-block)]" />

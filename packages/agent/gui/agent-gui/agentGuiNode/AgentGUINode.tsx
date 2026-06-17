@@ -34,6 +34,7 @@ import type {
 import { AgentGUINodeView, type AgentGUIViewLabels } from "./AgentGUINodeView";
 import {
   normalizeAgentGUIProviderIdentity,
+  resolveAgentGUIDockConversationTitle,
   resolveAgentGUIProviderDisplayLabel
 } from "./model/agentGuiProviderIdentity";
 import {
@@ -630,6 +631,9 @@ export const AgentGUINode = memo(function AgentGUINode({
   const windowAgentTitle =
     getAgentHostManagedToolchainAgentByName(activeProvider)?.label ??
     displayProviderLabel;
+  const activeConversationDockTitle = viewModel.activeConversation
+    ? resolveAgentGUIDockConversationTitle(viewModel.activeConversation)
+    : null;
   const labels = useMemo<AgentGUIViewLabels>(
     () => ({
       initialPlaceholder: t("agentHost.agentGui.initialPlaceholder", {
@@ -977,6 +981,42 @@ export const AgentGUINode = memo(function AgentGUINode({
     [t]
   );
   const windowTitle = windowAgentTitle || title;
+  useEffect(() => {
+    if (previewMode) {
+      return;
+    }
+    if (!viewModel.activeConversation) {
+      return;
+    }
+    const nextTitle = activeConversationDockTitle;
+    const previousTitle = state.lastActiveConversationTitle ?? null;
+    if (
+      nextTitle === null &&
+      previousTitle !== null &&
+      viewModel.activeConversation.id === state.lastActiveAgentSessionId
+    ) {
+      return;
+    }
+    if ((state.lastActiveConversationTitle ?? null) === nextTitle) {
+      return;
+    }
+    onUpdateNode((current) => {
+      if ((current.lastActiveConversationTitle ?? null) === nextTitle) {
+        return current;
+      }
+      return {
+        ...current,
+        lastActiveConversationTitle: nextTitle
+      };
+    });
+  }, [
+    activeConversationDockTitle,
+    onUpdateNode,
+    previewMode,
+    state.lastActiveAgentSessionId,
+    state.lastActiveConversationTitle,
+    viewModel.activeConversation
+  ]);
   const activeProbeProvider = activeProvider as AgentProvider;
   const activeAgentProbe = useMemo(
     () =>

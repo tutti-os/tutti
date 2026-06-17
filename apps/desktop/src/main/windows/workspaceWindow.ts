@@ -1,9 +1,10 @@
-import { BrowserWindow, app, shell } from "electron";
+import { BrowserWindow, app, session, shell } from "electron";
 import {
   installBrowserWebviewSecurity,
   isBrowserNodeWebviewAttach
 } from "@tutti-os/browser-node/electron-main";
 import { registerBrowserGuestWebContents } from "../browser/browserGuestRegistry";
+import { registerTuttiAssetProtocolForSession } from "../host/tuttiAssetProtocol.ts";
 import { registerWorkspaceAppGuestWebContents } from "../ipc/workspaceAppContext";
 import { resolveDesktopWindowBackgroundColor } from "../desktopTheme";
 import { getDesktopLogger } from "../logging";
@@ -84,13 +85,17 @@ export function createWorkspaceWindow(
     },
     openExternal: (url) => shell.openExternal(url),
     resolvePreload({ params }) {
+      const workspaceAppPartition = params.partition;
       if (
         options.workspaceAppPreloadPath &&
-        isWorkspaceAppSessionPartition(params.partition)
+        isWorkspaceAppSessionPartition(workspaceAppPartition)
       ) {
-        pendingWorkspaceAppGuestPartitions.push(params.partition);
+        registerTuttiAssetProtocolForSession(
+          session.fromPartition(workspaceAppPartition)
+        );
+        pendingWorkspaceAppGuestPartitions.push(workspaceAppPartition);
         logger.info("applying workspace app guest preload", {
-          partition: params.partition ?? null,
+          partition: workspaceAppPartition,
           preloadPath: options.workspaceAppPreloadPath,
           src: params.src ?? null
         });
@@ -217,6 +222,6 @@ function installWorkspaceWindowCloseRequest(
 
 function isWorkspaceAppSessionPartition(
   partition: string | undefined
-): boolean {
+): partition is string {
   return (partition ?? "").startsWith(workspaceAppBrowserPartitionPrefix);
 }

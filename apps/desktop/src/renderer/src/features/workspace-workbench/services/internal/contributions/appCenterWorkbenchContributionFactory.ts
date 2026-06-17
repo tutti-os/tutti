@@ -34,7 +34,6 @@ export const appCenterWorkbenchContributionFactory: DesktopWorkbenchContribution
             }),
             i18n: context.appI18n,
             reporterService: context.reporterService,
-            resolveAppIconUrl: context.dockIcons.appIconUrl,
             workspaceId: context.workspaceId
           })
         : null;

@@ -474,7 +474,7 @@ export function RichTextTriggerTextarea({
                 label={match.label}
                 selected={index === activeIndex}
                 subtitle={match.subtitle}
-                thumbnailUrl={match.thumbnailUrl}
+                iconUrl={match.iconUrl}
                 onSelect={() => applyMatch(match)}
               />
             ))

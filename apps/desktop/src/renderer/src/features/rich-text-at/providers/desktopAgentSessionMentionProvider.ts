@@ -3,6 +3,10 @@ import {
   type AgentContextMentionInsertResult,
   type AgentContextMentionProvider
 } from "@tutti-os/agent-gui/context-mention-provider";
+import type {
+  RichTextMentionIdentity,
+  RichTextMentionResolved
+} from "@tutti-os/ui-rich-text/types";
 
 export interface DesktopAgentSessionStatusView {
   /** Localized activity status label (e.g. "Working"). */
@@ -52,12 +56,89 @@ export function createDesktopAgentSessionMentionProvider({
   return {
     ...baseProvider,
     id: AGENT_CONTEXT_MENTION_PROVIDER_IDS.agentSession,
+    getItemIconUrl: (item) =>
+      resolveAgentSessionItemIconUrl(baseProvider.toInsertResult(item), {
+        resolveAgentIconUrl,
+        userAvatarPlaceholderUrl,
+        resolveStatusView
+      }),
     toInsertResult: (item) =>
       enrichAgentSessionInsertResult(baseProvider.toInsertResult(item), {
         resolveAgentIconUrl,
         userAvatarPlaceholderUrl,
         resolveStatusView
-      })
+      }),
+    ...(baseProvider.resolveMention
+      ? {
+          async resolveMention(identity) {
+            const resolved = await Promise.resolve(
+              baseProvider.resolveMention?.(identity)
+            );
+            return resolved
+              ? enrichAgentSessionResolvedMention(identity, resolved, {
+                  resolveAgentIconUrl,
+                  userAvatarPlaceholderUrl,
+                  resolveStatusView
+                })
+              : null;
+          }
+        }
+      : {})
+  };
+}
+
+function resolveAgentSessionItemIconUrl(
+  insertResult: AgentContextMentionInsertResult,
+  resolvers: Pick<
+    CreateDesktopAgentSessionMentionProviderInput,
+    "resolveAgentIconUrl" | "userAvatarPlaceholderUrl" | "resolveStatusView"
+  >
+): string | null {
+  const enriched = enrichAgentSessionInsertResult(insertResult, resolvers);
+  if (enriched.kind !== "mention") {
+    return null;
+  }
+  return (
+    enriched.mention.presentation?.agentIconUrl?.trim() ||
+    enriched.mention.presentation?.iconUrl?.trim() ||
+    null
+  );
+}
+
+function enrichAgentSessionResolvedMention(
+  identity: RichTextMentionIdentity,
+  resolved: RichTextMentionResolved,
+  resolvers: Pick<
+    CreateDesktopAgentSessionMentionProviderInput,
+    "resolveAgentIconUrl" | "userAvatarPlaceholderUrl" | "resolveStatusView"
+  >
+): RichTextMentionResolved {
+  const label = resolved.label?.trim() || identity.label.trim();
+  const sourceIdentity = identity as RichTextMentionIdentity & {
+    readonly presentation?: RichTextMentionResolved["presentation"];
+  };
+  const insertResult = enrichAgentSessionInsertResult(
+    {
+      kind: "mention",
+      mention: {
+        entityId: identity.entityId,
+        label,
+        scope: identity.scope,
+        presentation: {
+          ...(sourceIdentity.presentation ?? {}),
+          ...(resolved.presentation ?? {})
+        }
+      }
+    },
+    resolvers
+  );
+  if (insertResult.kind !== "mention") {
+    return resolved;
+  }
+  return {
+    ...resolved,
+    label,
+    presentation: insertResult.mention.presentation
   };
 }
 
@@ -78,13 +159,15 @@ function enrichAgentSessionInsertResult(
   const agentName = provider || insertResult.mention.label.trim();
   const status = presentation.status?.trim() ?? "";
   const statusView = status ? resolvers.resolveStatusView(status) : null;
+  const agentIconUrl = resolvers.resolveAgentIconUrl(provider || agentName);
   return {
     ...insertResult,
     mention: {
       ...insertResult.mention,
       presentation: {
         ...presentation,
-        agentIconUrl: resolvers.resolveAgentIconUrl(provider || agentName),
+        iconUrl: presentation.iconUrl?.trim() || agentIconUrl,
+        agentIconUrl,
         participant: participant || agentName,
         userAvatarPlaceholderUrl: resolvers.userAvatarPlaceholderUrl,
         ...(statusView

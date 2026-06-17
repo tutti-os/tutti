@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import {
+  tuttiAgentAssetUrls,
+  tuttiFileAssetUrls,
+  tuttiFolderAssetUrls
+} from "../../../../../../shared/tuttiAssetProtocol.ts";
 import { DesktopRichTextAtService } from "./desktopRichTextAtService.ts";
 
 test("desktop rich text @ service assembles workspace file providers by capability", async () => {
@@ -23,27 +28,40 @@ test("desktop rich text @ service assembles workspace file providers by capabili
           query: input.query,
           signal: requestOptions?.signal
         });
+        const entries = [
+          {
+            kind: "directory",
+            name: "issues",
+            path: "/Users/test/project/tutti/issues",
+            score: 100
+          },
+          {
+            kind: "directory",
+            name: "docs",
+            path: "/Users/test/project/tutti/docs",
+            score: 90
+          },
+          {
+            kind: "file",
+            name: "summary.md",
+            path: "/Users/test/project/tutti/issues/issue-1/tasks/task-1/runs/run-1/summary.md",
+            score: 80
+          },
+          {
+            kind: "file",
+            name: "README.md",
+            path: "/Users/test/project/tutti/README.md",
+            score: 1
+          }
+        ].filter((entry) => {
+          const query = input.query.toLowerCase();
+          return (
+            entry.name.toLowerCase().includes(query) ||
+            entry.path.toLowerCase().includes(query)
+          );
+        });
         return {
-          entries: [
-            {
-              kind: "directory",
-              name: "issues",
-              path: "/Users/test/project/tutti/issues",
-              score: 100
-            },
-            {
-              kind: "file",
-              name: "summary.md",
-              path: "/Users/test/project/tutti/issues/issue-1/tasks/task-1/runs/run-1/summary.md",
-              score: 80
-            },
-            {
-              kind: "file",
-              name: "README.md",
-              path: "/Users/test/project/tutti/README.md",
-              score: 1
-            }
-          ],
+          entries,
           root: "/Users/test/project/tutti",
           workspaceID: workspaceId
         };
@@ -82,18 +100,34 @@ test("desktop rich text @ service assembles workspace file providers by capabili
       path: "/Users/test/project/tutti/README.md"
     }
   ]);
+  assert.equal(provider.getItemIconUrl?.(items[0]), tuttiFileAssetUrls.default);
   assert.deepEqual(provider.toInsertResult(items[0]), {
-    kind: "mention",
-    mention: {
-      entityId: "/Users/test/project/tutti/README.md",
-      label: "README.md",
-      presentation: {
-        subtitle: "/Users/test/project/tutti/README.md"
-      },
-      scope: {
-        workspaceId: "workspace-1"
-      }
+    href: "/Users/test/project/tutti/README.md",
+    kind: "markdown-link",
+    label: "README.md"
+  });
+
+  const folderItems = await provider.query({
+    context: {},
+    keyword: "docs",
+    maxResults: 3,
+    trigger: "@"
+  });
+  assert.deepEqual(folderItems, [
+    {
+      displayName: "docs",
+      kind: "directory",
+      path: "/Users/test/project/tutti/docs"
     }
+  ]);
+  assert.equal(
+    provider.getItemIconUrl?.(folderItems[0]),
+    tuttiFolderAssetUrls.default
+  );
+  assert.deepEqual(provider.toInsertResult(folderItems[0]), {
+    href: "/Users/test/project/tutti/docs/",
+    kind: "markdown-link",
+    label: "docs"
   });
 });
 
@@ -144,6 +178,20 @@ test("desktop rich text @ service assembles workspace issue providers by capabil
           statusCounts: {},
           totalCount: 1
         };
+      },
+      async getWorkspaceIssueDetail(workspaceId: string, issueId: string) {
+        return {
+          issue: {
+            content: "Handle flaky login captcha",
+            creatorDisplayName: "Alice",
+            issueId,
+            status: "running",
+            title: "Login polish",
+            topicId: "topic-1",
+            workspaceId
+          },
+          tasks: []
+        };
       }
     } as unknown as TuttidClient
   });
@@ -173,6 +221,10 @@ test("desktop rich text @ service assembles workspace issue providers by capabil
       topicId: "topic-1"
     }
   ]);
+  assert.equal(
+    provider.getItemIconUrl?.(items[0]),
+    "tutti-asset://issue/default.png"
+  );
   assert.deepEqual(provider.toInsertResult(items[0]), {
     kind: "mention",
     mention: {
@@ -180,6 +232,7 @@ test("desktop rich text @ service assembles workspace issue providers by capabil
       label: "Login polish",
       presentation: {
         description: "Handle flaky login captcha",
+        iconUrl: "tutti-asset://issue/default.png",
         status: "running"
       },
       scope: {
@@ -188,6 +241,98 @@ test("desktop rich text @ service assembles workspace issue providers by capabil
       }
     }
   });
+  assert.deepEqual(
+    await provider.resolveMention?.({
+      entityId: "issue-1",
+      label: "Login polish",
+      providerId: "workspace-issue",
+      scope: {
+        topicId: "topic-1",
+        workspaceId: "workspace-1"
+      }
+    }),
+    {
+      label: "Login polish",
+      presentation: {
+        description: "Handle flaky login captcha",
+        iconUrl: "tutti-asset://issue/default.png",
+        status: "running"
+      }
+    }
+  );
+});
+
+test("desktop rich text @ service resolves workspace issue query by issue id", async () => {
+  const detailCalls: Array<{ issueId: string; workspaceId: string }> = [];
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceIssueTopics(workspaceId: string) {
+        return {
+          topics: [
+            {
+              isDefault: true,
+              summary: "",
+              title: "Default",
+              topicId: "topic-1",
+              workspaceId
+            }
+          ]
+        };
+      },
+      async listWorkspaceIssues(
+        workspaceId: string,
+        request?: { pageSize?: number; searchQuery?: string; topicId: string }
+      ) {
+        assert.equal(request?.searchQuery, "issue-restore-1");
+        return {
+          issues: [],
+          statusCounts: {},
+          totalCount: 0,
+          workspaceId
+        };
+      },
+      async getWorkspaceIssueDetail(workspaceId: string, issueId: string) {
+        detailCalls.push({ issueId, workspaceId });
+        return {
+          issue: {
+            content: "Restore icon",
+            creatorDisplayName: "Alice",
+            issueId,
+            status: "open",
+            title: "Restore issue icon",
+            topicId: "topic-1",
+            workspaceId
+          },
+          tasks: []
+        };
+      }
+    } as unknown as TuttidClient
+  });
+
+  const provider = service.getProviders({
+    capabilities: ["workspace-issue"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  })[0];
+  assert.ok(provider);
+
+  const items = await provider.query({
+    context: {},
+    keyword: "issue-restore-1",
+    maxResults: 5,
+    trigger: "@"
+  });
+
+  assert.deepEqual(detailCalls, [
+    { issueId: "issue-restore-1", workspaceId: "workspace-1" }
+  ]);
+  assert.equal(items.length, 1);
+  assert.equal(provider.getItemKey(items[0]), "issue-restore-1");
+  assert.equal(
+    provider.getItemIconUrl?.(items[0]),
+    "tutti-asset://issue/default.png"
+  );
 });
 
 test("desktop rich text @ service assembles agent session providers by capability", async () => {
@@ -243,7 +388,7 @@ test("desktop rich text @ service assembles agent session providers by capabilit
   const provider = providers[0];
   assert.ok(provider);
   const items = await provider.query({
-    context: {},
+    context: { metadata: { currentUserId: "account-user-1" } },
     keyword: "mentions",
     maxResults: 5,
     trigger: "@"
@@ -287,6 +432,8 @@ test("desktop rich text @ service assembles agent session providers by capabilit
         subtitle: "Codex"
       },
       scope: {
+        scope: "my_sessions",
+        userId: "local",
         workspaceId: "workspace-1"
       }
     }
@@ -452,8 +599,8 @@ test("desktop rich text @ service assembles provider agent mention apps from cap
   const codexItem = items[1];
   const claudeIconUrl = iconUrlFromProviderItem(claudeItem);
   const codexIconUrl = iconUrlFromProviderItem(codexItem);
-  assert.match(claudeIconUrl, /claudecode.*\.png$/u);
-  assert.match(codexIconUrl, /codex.*\.png$/u);
+  assert.equal(claudeIconUrl, tuttiAgentAssetUrls.claudeCode);
+  assert.equal(codexIconUrl, tuttiAgentAssetUrls.codex);
   assert.deepEqual(items, [
     {
       appId: "agent-claude-code",
@@ -466,7 +613,7 @@ test("desktop rich text @ service assembles provider agent mention apps from cap
         "Start a Claude Code agent session in the current workspace.",
       commandSummaries: ["Start a Claude Code agent session"],
       displayName: "Claude Code",
-      iconUrl: claudeIconUrl,
+      iconUrl: tuttiAgentAssetUrls.claudeCode,
       scopes: ["claude"],
       workspaceId: "workspace-1"
     },
@@ -480,7 +627,7 @@ test("desktop rich text @ service assembles provider agent mention apps from cap
       description: "Start a Codex agent session in the current workspace.",
       commandSummaries: ["Start a Codex agent session"],
       displayName: "Codex",
-      iconUrl: codexIconUrl,
+      iconUrl: tuttiAgentAssetUrls.codex,
       scopes: ["codex"],
       workspaceId: "workspace-1"
     }
@@ -492,7 +639,7 @@ test("desktop rich text @ service assembles provider agent mention apps from cap
       label: "Codex",
       presentation: {
         description: "Start a Codex agent session in the current workspace.",
-        iconUrl: codexIconUrl,
+        iconUrl: tuttiAgentAssetUrls.codex,
         subtitle: "Start a Codex agent session in the current workspace."
       },
       scope: {
@@ -652,6 +799,18 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
             }
           ]
         };
+      },
+      async getWorkspaceAgentSession(workspaceId: string, id: string) {
+        return {
+          createdAt: "2026-06-01T00:00:00Z",
+          cwd: null,
+          id,
+          provider: "codex",
+          status: "working",
+          title: "Codex run",
+          updatedAt: null,
+          workspaceId
+        };
       }
     } as unknown as TuttidClient,
     appCenterApps: () => [
@@ -659,6 +818,7 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
         appId: "app-weather",
         name: "Weather Desk",
         description: "Plan weather-sensitive work.",
+        iconUrl: "https://icons/weather.png",
         localizations: [
           {
             locale: "fr-FR",
@@ -668,8 +828,6 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
         ]
       } as never
     ],
-    resolveAppIconUrl: (appId) =>
-      appId === "app-weather" ? "https://icons/weather.png" : null,
     getLocale: () => "fr-FR",
     resolveAgentIconUrl: (provider) => `https://agents/${provider}.png`,
     userAvatarPlaceholderUrl: "https://avatars/placeholder.png",
@@ -721,6 +879,10 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
   const sessionInsert = sessionProvider.toInsertResult(sessionItems[0]);
   assert.equal(sessionInsert.kind, "mention");
   assert.equal(
+    sessionInsert.mention.presentation?.iconUrl,
+    "https://agents/codex.png"
+  );
+  assert.equal(
     sessionInsert.mention.presentation?.agentIconUrl,
     "https://agents/codex.png"
   );
@@ -731,6 +893,27 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
   assert.equal(sessionInsert.mention.presentation?.statusLabel, "Working");
   assert.equal(sessionInsert.mention.presentation?.statusDataStatus, "working");
   assert.equal(sessionInsert.mention.presentation?.statusPulse, "true");
+  const sessionResolved = await sessionProvider.resolveMention?.({
+    entityId: "session-1",
+    label: "Codex run",
+    providerId: "agent-session",
+    scope: {
+      workspaceId: "workspace-1"
+    }
+  });
+  assert.equal(
+    sessionResolved?.presentation?.iconUrl,
+    "https://agents/codex.png"
+  );
+  assert.equal(
+    sessionResolved?.presentation?.agentIconUrl,
+    "https://agents/codex.png"
+  );
+  assert.equal(
+    sessionResolved?.presentation?.userAvatarPlaceholderUrl,
+    "https://avatars/placeholder.png"
+  );
+  assert.equal(sessionResolved?.presentation?.statusLabel, "Working");
 });
 
 test("desktop rich text @ service returns no providers without requested capabilities", () => {
@@ -768,6 +951,58 @@ test("desktop rich text @ service reuses provider instances for the same request
 
   assert.equal(secondProviders, firstProviders);
   assert.equal(secondProviders[0], firstProviders[0]);
+});
+
+test("desktop rich text @ service enriches cached agent session providers", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceAgentSessions(workspaceId: string) {
+        return {
+          workspaceId,
+          sessions: [
+            {
+              createdAt: "2026-06-01T00:00:00Z",
+              cwd: null,
+              id: "session-1",
+              provider: "codex",
+              status: "working",
+              title: "Codex run",
+              updatedAt: null
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient,
+    resolveAgentIconUrl: (provider) => `https://agents/${provider}.png`,
+    userAvatarPlaceholderUrl: "https://avatars/placeholder.png",
+    resolveSessionStatusView: (status) => ({
+      dataStatus: status,
+      label: status,
+      pulse: false
+    })
+  });
+  const request = {
+    capabilities: ["agent-session"],
+    surface: "workspace-app-external",
+    target: "workspace-app",
+    workspaceId: "workspace-1"
+  } as const;
+
+  const firstProviders = service.getProviders(request);
+  const secondProviders = service.getProviders(request);
+  const items = await secondProviders[0]?.query({
+    context: {},
+    keyword: "",
+    maxResults: 5,
+    trigger: "@"
+  });
+
+  assert.equal(typeof firstProviders[0]?.getItemIconUrl, "function");
+  assert.equal(typeof secondProviders[0]?.getItemIconUrl, "function");
+  assert.equal(
+    await secondProviders[0]?.getItemIconUrl?.(items?.[0]),
+    "https://agents/codex.png"
+  );
 });
 
 test("desktop rich text @ service honors abort before provider search starts", async () => {

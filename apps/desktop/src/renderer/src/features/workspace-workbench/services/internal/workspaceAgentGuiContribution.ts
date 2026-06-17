@@ -57,7 +57,6 @@ export function createWorkspaceAgentGuiContribution(input: {
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedPaths"
   >;
-  resolveAppIconUrl?: (appId: string) => string | null;
   reporterService?: Pick<IReporterService, "trackEvents">;
   richTextAtService: IDesktopRichTextAtService;
   runtimeApi: DesktopRuntimeApi;
@@ -109,7 +108,6 @@ export function createWorkspaceAgentGuiContribution(input: {
       previewMode: options?.previewMode,
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
-      resolveAppIconUrl: input.resolveAppIconUrl,
       runtimeApi: input.runtimeApi,
       trackWorkspaceFileReferences:
         agentGUIWorkbenchHostInput.trackWorkspaceFileReferences,

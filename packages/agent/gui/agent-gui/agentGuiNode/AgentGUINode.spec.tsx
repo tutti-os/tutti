@@ -1011,6 +1011,180 @@ describe("AgentGUINode", () => {
     expect(windowTitle).toHaveTextContent("Codex");
   });
 
+  it("does not clear the dock conversation title while the active conversation is unavailable", () => {
+    const onUpdateNode =
+      vi.fn<
+        (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+      >();
+    mockViewModel = createViewModel({
+      activeConversation: null,
+      activeConversationId: "session-1"
+    });
+
+    renderAgentGUINode({
+      onUpdateNode,
+      state: {
+        provider: "codex",
+        lastActiveAgentSessionId: "session-1",
+        lastActiveConversationTitle: "Existing dock title",
+        conversationRailWidthPx: null
+      }
+    });
+
+    expect(onUpdateNode).not.toHaveBeenCalled();
+  });
+
+  it("does not clear the dock conversation title while the active conversation title is hydrating", () => {
+    const onUpdateNode =
+      vi.fn<
+        (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+      >();
+    mockViewModel = createViewModel({
+      activeConversation: {
+        id: "session-1",
+        provider: "codex",
+        title: "",
+        status: "ready",
+        cwd: "/workspace",
+        updatedAtUnixMs: 1
+      },
+      activeConversationId: "session-1"
+    });
+
+    renderAgentGUINode({
+      onUpdateNode,
+      state: {
+        provider: "codex",
+        lastActiveAgentSessionId: "session-1",
+        lastActiveConversationTitle: "Existing dock title",
+        conversationRailWidthPx: null
+      }
+    });
+
+    expect(onUpdateNode).not.toHaveBeenCalled();
+  });
+
+  it("syncs the dock conversation title when the active conversation has a title", () => {
+    const onUpdateNode =
+      vi.fn<
+        (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+      >();
+    const state: AgentGUINodeData = {
+      provider: "codex",
+      lastActiveAgentSessionId: "session-1",
+      lastActiveConversationTitle: "Existing dock title",
+      conversationRailWidthPx: null
+    };
+    mockViewModel = createViewModel({
+      activeConversation: {
+        id: "session-1",
+        provider: "codex",
+        title: "Fresh dock title",
+        status: "ready",
+        cwd: "/workspace",
+        updatedAtUnixMs: 1
+      },
+      activeConversationId: "session-1"
+    });
+
+    renderAgentGUINode({ onUpdateNode, state });
+
+    expect(onUpdateNode).toHaveBeenCalledTimes(1);
+    expect(onUpdateNode.mock.calls[0]?.[0](state)).toEqual({
+      ...state,
+      lastActiveConversationTitle: "Fresh dock title"
+    });
+  });
+
+  it("does not sync the dock conversation title in preview mode", () => {
+    const onUpdateNode =
+      vi.fn<
+        (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+      >();
+    mockViewModel = createViewModel({
+      activeConversation: {
+        id: "session-1",
+        provider: "codex",
+        title: "Fresh dock title",
+        status: "ready",
+        cwd: "/workspace",
+        updatedAtUnixMs: 1
+      },
+      activeConversationId: "session-1"
+    });
+
+    renderAgentGUINode({
+      onUpdateNode,
+      previewMode: true,
+      state: {
+        provider: "codex",
+        lastActiveAgentSessionId: "session-1",
+        lastActiveConversationTitle: null,
+        conversationRailWidthPx: null
+      }
+    });
+
+    expect(onUpdateNode).not.toHaveBeenCalled();
+  });
+
+  it("does not repeatedly sync the dock conversation title after parent state updates", () => {
+    const onUpdateNode =
+      vi.fn<
+        (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+      >();
+    const initialState: AgentGUINodeData = {
+      provider: "codex",
+      lastActiveAgentSessionId: "session-1",
+      lastActiveConversationTitle: "Existing dock title",
+      conversationRailWidthPx: null
+    };
+    mockViewModel = createViewModel({
+      activeConversation: {
+        id: "session-1",
+        provider: "codex",
+        title: "Fresh dock title",
+        status: "ready",
+        cwd: "/workspace",
+        updatedAtUnixMs: 1
+      },
+      activeConversationId: "session-1"
+    });
+
+    const rendered = renderAgentGUINode({ onUpdateNode, state: initialState });
+    const nextState = onUpdateNode.mock.calls[0]?.[0](initialState);
+    expect(nextState).toEqual({
+      ...initialState,
+      lastActiveConversationTitle: "Fresh dock title"
+    });
+    onUpdateNode.mockClear();
+
+    rendered.rerender(
+      <AgentGUINode
+        nodeId="agent-gui-1"
+        workspaceId="room-1"
+        currentUserId="user-1"
+        workspacePath="/workspace"
+        workspaceFileReferenceAdapter={createWorkspaceFileReferenceAdapter()}
+        agentSettings={{ avoidGroupingEdits: false }}
+        title="Codex"
+        state={nextState as AgentGUINodeData}
+        position={{ x: 0, y: 0 }}
+        width={720}
+        height={560}
+        desktopSize={{ width: 1200, height: 800 }}
+        onClose={vi.fn()}
+        onResize={vi.fn()}
+        onUpdateNode={onUpdateNode}
+        onShowMessage={vi.fn()}
+        managedAgentsState={createManagedAgentsState()}
+        contextMentionProviders={createAgentGUITestContextMentionProviders()}
+        isActive
+      />
+    );
+
+    expect(onUpdateNode).not.toHaveBeenCalled();
+  });
+
   it("unregisters agent probe demand when the Agent GUI closes", () => {
     const onAgentProbeDemandChange = vi.fn();
 
@@ -6513,6 +6687,7 @@ function renderAgentGUINode({
   width = 720,
   height = 560,
   embedded = false,
+  previewMode = false,
   isActive = true,
   workbenchWindowZIndex
 }: {
@@ -6549,6 +6724,7 @@ function renderAgentGUINode({
   width?: number;
   height?: number;
   embedded?: boolean;
+  previewMode?: boolean;
   isActive?: React.ComponentProps<typeof AgentGUINode>["isActive"];
   workbenchWindowZIndex?: number;
 } = {}): ReturnType<typeof render> {
@@ -6581,6 +6757,7 @@ function renderAgentGUINode({
       workspaceAppIcons={workspaceAppIcons}
       contextMentionProviders={createAgentGUITestContextMentionProviders()}
       embedded={embedded}
+      previewMode={previewMode}
       isActive={isActive}
     />
   );

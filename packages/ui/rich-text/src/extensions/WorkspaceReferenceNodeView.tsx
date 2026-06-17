@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX, type MouseEvent } from "react";
+import { useEffect, useState, type JSX, type PointerEvent } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import {
   MentionPill,
@@ -50,7 +50,7 @@ export function WorkspaceReferenceNodeView({
     };
   }, [editor]);
 
-  const handleRemove = (event: MouseEvent<HTMLButtonElement>) => {
+  const handleRemove = (event: PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     if (!editor.isEditable) {
@@ -80,7 +80,8 @@ export function WorkspaceReferenceNodeView({
               isEditable
                 ? {
                     "aria-label": removeActionAriaLabel,
-                    onMouseDown: handleRemove
+                    onPointerDown: handleRemove,
+                    tabIndex: -1
                   }
                 : undefined
             }

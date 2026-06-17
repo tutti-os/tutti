@@ -92,7 +92,6 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   contextMentionProviders: NonNullable<
     AgentGUIProps["contextMentionProviders"]
   >;
-  resolveAppIconUrl?: (appId: string) => string | null;
   runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   trackWorkspaceFileReferences?: AgentGUIProps["onWorkspaceFileReferencesAdded"];
   workspaceFileReferenceAdapter: NonNullable<
@@ -166,6 +165,35 @@ function withDesktopAgentGUIProviderComposerDefaults(
     },
     provider
   );
+}
+
+function mergeDesktopAgentGUIExternalWorkbenchState(
+  current: DesktopAgentGUINodeState,
+  workbenchState: DesktopAgentGUIWorkbenchState,
+  provider: DesktopAgentGUIProvider
+): DesktopAgentGUINodeState {
+  const next = normalizeDesktopAgentGUINodeState(
+    {
+      ...current,
+      ...workbenchState,
+      provider
+    },
+    provider
+  );
+
+  if (
+    current.lastActiveAgentSessionId &&
+    current.lastActiveAgentSessionId === next.lastActiveAgentSessionId &&
+    current.lastActiveConversationTitle &&
+    current.lastActiveConversationTitle !== next.lastActiveConversationTitle
+  ) {
+    return {
+      ...next,
+      lastActiveConversationTitle: current.lastActiveConversationTitle
+    };
+  }
+
+  return next;
 }
 
 function desktopAgentComposerDefaultsToComposerOverrides(
@@ -369,7 +397,6 @@ export function DesktopAgentGUIWorkbenchBody({
   onStateChange,
   previewMode = false,
   contextMentionProviders,
-  resolveAppIconUrl,
   runtimeApi,
   trackWorkspaceFileReferences,
   workspaceFileReferenceAdapter,
@@ -384,10 +411,9 @@ export function DesktopAgentGUIWorkbenchBody({
     () =>
       resolveDesktopWorkspaceAppIconEntries({
         apps: appCenterState.apps,
-        resolveAppIconUrl,
         workspaceId
       }),
-    [appCenterState.apps, resolveAppIconUrl, workspaceId]
+    [appCenterState.apps, workspaceId]
   );
   const workspaceAppMentionProvider = useMemo(() => {
     const baseProvider = contextMentionProviders.find(
@@ -399,17 +425,10 @@ export function DesktopAgentGUIWorkbenchBody({
           apps: appCenterState.apps,
           baseProvider,
           locale,
-          resolveAppIconUrl,
           workspaceId
         })
       : null;
-  }, [
-    appCenterState.apps,
-    locale,
-    resolveAppIconUrl,
-    contextMentionProviders,
-    workspaceId
-  ]);
+  }, [appCenterState.apps, locale, contextMentionProviders, workspaceId]);
   const resolveDockFiles = useCallback(
     () =>
       resolveWorkbenchDockFileMentionItems({
@@ -676,15 +695,15 @@ export function DesktopAgentGUIWorkbenchBody({
       });
     }
     setState((current) => {
-      const next = normalizeDesktopAgentGUINodeState(
-        {
-          ...current,
-          ...workbenchState,
-          provider
-        },
+      const next = mergeDesktopAgentGUIExternalWorkbenchState(
+        current,
+        workbenchState,
         provider
       );
-      return areDesktopAgentGUINodeStatesEqual(current, next) ? current : next;
+      if (areDesktopAgentGUINodeStatesEqual(current, next)) {
+        return current;
+      }
+      return next;
     });
   }, [
     context.instanceId,
