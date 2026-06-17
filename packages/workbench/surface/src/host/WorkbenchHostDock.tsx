@@ -17,11 +17,7 @@ import {
   ArrowRightIcon,
   Button,
   ChevronDownIcon,
-  ChevronUpIcon,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger
+  ChevronUpIcon
 } from "@tutti-os/ui-system";
 import type { WorkbenchDockContext } from "../react/types.ts";
 import {
@@ -1044,493 +1040,386 @@ export function WorkbenchHostDock({
               } as WorkbenchHostDockPlateStyle)
         }
       >
-        <TooltipProvider delayDuration={500}>
-          <div
-            ref={dockMeasureRef}
-            aria-label={i18n.t("dockLabel")}
-            className="desktop-dock"
-            data-dock-placement={dockPlacement}
-            data-desktop-dock-root="true"
-            data-scroll-overflow={
-              dockScrollState.hasOverflow ? "true" : undefined
-            }
-            data-scroll-backward={
-              dockScrollState.canScrollBackward ? "true" : undefined
-            }
-            data-scroll-forward={
-              dockScrollState.canScrollForward ? "true" : undefined
-            }
-            onPointerLeave={() => {
-              hoverPanelRestTargetRef.current = null;
-              clearHoverPanelOpenTimer();
-              closeHoverPanelImmediate();
-              handleDockPointerLeave();
-              flushPendingDockStateRefresh();
-            }}
-            onPointerMoveCapture={(event) => {
-              handleDockPointerTravel(event.clientX, event.clientY);
-            }}
-            role="toolbar"
-            style={
-              dockPlacement === "left"
-                ? { height: dockWidth }
-                : { width: dockWidth }
-            }
+        <div
+          ref={dockMeasureRef}
+          aria-label={i18n.t("dockLabel")}
+          className="desktop-dock"
+          data-dock-placement={dockPlacement}
+          data-desktop-dock-root="true"
+          data-scroll-overflow={
+            dockScrollState.hasOverflow ? "true" : undefined
+          }
+          data-scroll-backward={
+            dockScrollState.canScrollBackward ? "true" : undefined
+          }
+          data-scroll-forward={
+            dockScrollState.canScrollForward ? "true" : undefined
+          }
+          onPointerLeave={() => {
+            hoverPanelRestTargetRef.current = null;
+            clearHoverPanelOpenTimer();
+            closeHoverPanelImmediate();
+            handleDockPointerLeave();
+            flushPendingDockStateRefresh();
+          }}
+          onPointerMoveCapture={(event) => {
+            handleDockPointerTravel(event.clientX, event.clientY);
+          }}
+          role="toolbar"
+          style={
+            dockPlacement === "left"
+              ? { height: dockWidth }
+              : { width: dockWidth }
+          }
+        >
+          <span
+            className="desktop-dock__pointer-rail"
+            data-desktop-dock-pointer-rail="true"
+            aria-hidden
+          />
+          <button
+            aria-label={i18n.t(
+              dockPlacement === "left" ? "scrollDockUp" : "scrollDockLeft"
+            )}
+            className="desktop-dock__scroll-button desktop-dock__scroll-button--backward"
+            data-scroll-button="backward"
+            disabled={!dockScrollState.canScrollBackward}
+            onClick={() => scrollDockItems("backward")}
+            type="button"
           >
-            <span
-              className="desktop-dock__pointer-rail"
-              data-desktop-dock-pointer-rail="true"
-              aria-hidden
-            />
-            <button
-              aria-label={i18n.t(
-                dockPlacement === "left" ? "scrollDockUp" : "scrollDockLeft"
-              )}
-              className="desktop-dock__scroll-button desktop-dock__scroll-button--backward"
-              data-scroll-button="backward"
-              disabled={!dockScrollState.canScrollBackward}
-              onClick={() => scrollDockItems("backward")}
-              type="button"
-            >
-              {dockPlacement === "left" ? (
-                <ChevronUpIcon size={16} />
-              ) : (
-                <ArrowLeftIcon size={16} />
-              )}
-            </button>
-            <div ref={dockItemsRef} className="desktop-dock__items">
-              {presentDockItems.map((dockItem) => {
-                if (dockItem.item.kind === "separator") {
-                  return (
-                    <span
-                      ref={registerWallpaperToneElement(dockItem.key)}
-                      className="desktop-dock__separator"
-                      aria-hidden="true"
-                      data-presence={dockItem.presence}
-                      data-wallpaper-tone={wallpaperTones.get(dockItem.key)}
-                      key={dockItem.key}
-                    />
-                  );
-                }
+            {dockPlacement === "left" ? (
+              <ChevronUpIcon size={16} />
+            ) : (
+              <ArrowLeftIcon size={16} />
+            )}
+          </button>
+          <div ref={dockItemsRef} className="desktop-dock__items">
+            {presentDockItems.map((dockItem) => {
+              if (dockItem.item.kind === "separator") {
+                return (
+                  <span
+                    ref={registerWallpaperToneElement(dockItem.key)}
+                    className="desktop-dock__separator"
+                    aria-hidden="true"
+                    data-presence={dockItem.presence}
+                    data-wallpaper-tone={wallpaperTones.get(dockItem.key)}
+                    key={dockItem.key}
+                  />
+                );
+              }
 
-                if (dockItem.item.kind === "entry") {
-                  const resolvedEntry = dockItem.item.resolvedEntry;
-                  const { anchorKey, entry } = resolvedEntry;
-                  const currentPopup =
-                    activePopup?.entryId === entry.id ? activePopup : null;
-                  const instanceMode = resolveDockEntryInstanceMode(
-                    entry,
-                    nodeDefinitions
-                  );
-                  const clickResolution = resolveWorkbenchDockEntryClick({
-                    entry,
-                    instanceMode,
-                    matchedNodes: resolvedEntry.matchedNodes
-                  });
-                  const hasHoverPanel = dockEntryHasHoverPanel(entry);
-                  const dockButton = (
-                    <button
-                      aria-expanded={currentPopup ? true : undefined}
-                      aria-haspopup={
-                        clickResolution.kind === "open-popup"
-                          ? "dialog"
-                          : undefined
-                      }
-                      aria-label={i18n.t("launch", { title: entry.label })}
-                      aria-disabled={
-                        clickResolution.kind === "blocked" &&
-                        !resolvedEntry.hasMatchingNodes
-                      }
-                      className="desktop-dock__btn"
-                      data-interactive={
-                        clickResolution.kind === "blocked" &&
-                        !resolvedEntry.hasMatchingNodes
-                          ? "false"
-                          : "true"
-                      }
-                      title={entry.label}
-                      type="button"
-                      onPointerDown={() => {
-                        if (
-                          clickResolution.kind === "blocked" &&
-                          !resolvedEntry.hasMatchingNodes
-                        ) {
-                          return;
-                        }
-                        beginDockIconInteraction(anchorKey);
-                      }}
-                      onClick={(event) => {
-                        logWorkbenchDockDebug("dock.click", debugDiagnostics, {
-                          anchorKey,
-                          clickResolution,
-                          dockNodeState: resolvedEntry.dockNodeState,
-                          entryId: entry.id,
-                          instanceMode: instanceMode ?? null,
-                          matchedNodeCount: resolvedEntry.matchedNodes.length,
-                          matchedNodeIds: resolvedEntry.matchedNodes.map(
-                            (node) => node.id
-                          ),
-                          typeId: entry.typeId,
-                          workspaceId
-                        });
-                        switch (clickResolution.kind) {
-                          case "focus-node":
-                            closePopup();
-                            void Promise.resolve(
-                              onDockEntryClick?.({
-                                entryId: entry.id,
-                                host,
-                                nodeId: clickResolution.nodeId
-                              })
-                            ).catch(() => {});
-                            context.genie.launchNodeFromAnchor(
-                              anchorKey,
-                              clickResolution.nodeId,
-                              () => {
-                                host.focusNode(clickResolution.nodeId);
-                              }
-                            );
-                            return;
-                          case "open-popup": {
-                            const rect =
-                              event.currentTarget.getBoundingClientRect();
-                            logWorkbenchDockDebug(
-                              "dock.popup.toggle",
-                              debugDiagnostics,
-                              {
-                                anchorKey,
-                                entryId: entry.id,
-                                matchedNodeCount:
-                                  resolvedEntry.matchedNodes.length,
-                                nextOpen: currentPopup === null,
-                                typeId: entry.typeId,
-                                workspaceId
-                              }
-                            );
-                            setActivePopup((current) =>
-                              current?.entryId === entry.id
-                                ? null
-                                : {
-                                    anchorRect: {
-                                      height: rect.height,
-                                      left: rect.left,
-                                      top: rect.top,
-                                      width: rect.width
-                                    },
-                                    entryId: entry.id
-                                  }
-                            );
-                            return;
-                          }
-                          case "action":
-                            closePopup();
-                            void Promise.resolve(
-                              onDockEntryAction?.({
-                                actionId: clickResolution.actionId,
-                                entryId: entry.id,
-                                host
-                              })
-                            ).catch(() => {});
-                            return;
-                          case "launch":
-                            closePopup();
-                            context.genie.launchNodeFromAnchor(
-                              anchorKey,
-                              entry.id,
-                              () =>
-                                host.launchNode({
-                                  dockEntryId: entry.id,
-                                  payload: entry.launchPayload,
-                                  reason: "dock",
-                                  typeId: entry.typeId
-                                })
-                            );
-                            return;
-                          case "blocked":
-                            return;
-                        }
-                      }}
-                    >
-                      <span
-                        className="desktop-dock__icon-shell"
-                        data-desktop-dock-icon-shell="true"
-                        data-entry-state={entry.state?.kind ?? "enabled"}
-                        aria-hidden
-                      >
-                        <span className="desktop-dock__icon-content">
-                          {entry.icon}
-                        </span>
-                        {renderDockBadge(
-                          entry,
-                          resolvedEntry.matchedNodes.length
-                        )}
-                      </span>
-                    </button>
-                  );
-
-                  return (
-                    <span
-                      key={dockItem.key}
-                      ref={registerDockSlot(anchorKey)}
-                      className="desktop-dock__slot"
-                      data-attention-active={
-                        activeAttentionEntryIds.has(entry.id)
-                          ? "true"
-                          : undefined
-                      }
-                      data-desktop-dock-anchor-key={anchorKey}
-                      data-desktop-dock-slot="true"
-                      data-entry-state={entry.state?.kind ?? "enabled"}
-                      data-dock-hover-panel-entry-id={
-                        hasHoverPanel ? entry.id : undefined
-                      }
-                      data-icon-size={entry.iconSize ?? "default"}
-                      data-node-state={resolvedEntry.dockNodeState}
-                      data-popup-active={currentPopup ? "true" : undefined}
-                      data-presence={dockItem.presence}
-                      data-section-id={entry.sectionId}
-                      data-wallpaper-tone={wallpaperTones.get(anchorKey)}
-                      onBlur={(event) => {
-                        if (
-                          hasHoverPanel &&
-                          !event.currentTarget.contains(event.relatedTarget)
-                        ) {
-                          closeHoverPanelImmediate(entry.id);
-                        }
-                      }}
-                      onFocus={(event) => {
-                        if (hasHoverPanel) {
-                          showHoverPanel(
-                            entry.id,
-                            anchorKey,
-                            event.currentTarget
-                          );
-                        }
-                      }}
-                      onPointerEnter={() => {
-                        if (hasHoverPanel) {
-                          scheduleHoverPanelAfterRest(entry.id, anchorKey);
-                        }
-                      }}
-                      onPointerLeave={(event) => {
-                        if (!hasHoverPanel) {
-                          return;
-                        }
-                        const relatedTarget = event.relatedTarget;
-                        if (
-                          relatedTarget instanceof Node &&
-                          hoverPanelRef.current?.contains(relatedTarget)
-                        ) {
-                          return;
-                        }
-                        if (
-                          relatedTarget instanceof Node &&
-                          dockMeasureRef.current?.contains(relatedTarget)
-                        ) {
-                          scheduleHoverPanelAtPointAfterRest(
-                            event.clientX,
-                            event.clientY
-                          );
-                          return;
-                        }
-                        if (
-                          hoverPanelRestTargetRef.current?.anchorKey ===
-                          anchorKey
-                        ) {
-                          hoverPanelRestTargetRef.current = null;
-                        }
-                        clearHoverPanelOpenTimer();
-                        closeHoverPanelImmediate(entry.id);
-                        handleDockPointerLeave();
-                      }}
-                    >
-                      {hasHoverPanel ? (
-                        dockButton
-                      ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>{dockButton}</TooltipTrigger>
-                          <TooltipContent
-                            side={dockPlacement === "left" ? "right" : "top"}
-                            sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
-                          >
-                            {entry.label}
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                    </span>
-                  );
-                }
-
-                const slot = dockItem.item.slot;
-                if (slot.kind === "stack") {
-                  const stackPopupActive =
-                    activeMinimizedStackPopup !== null ? true : undefined;
-                  const stackButton = (
-                    <button
-                      aria-expanded={stackPopupActive}
-                      aria-haspopup="dialog"
-                      aria-label={i18n.t("minimizedWindows")}
-                      className="desktop-dock__btn desktop-dock__minimized-btn"
-                      data-interactive="true"
-                      title={i18n.t("minimizedWindows")}
-                      type="button"
-                      onPointerDown={() => {
-                        beginDockMinimizedInteraction();
-                      }}
-                      onClick={(event) => {
-                        setActivePopup(null);
-                        const rect =
-                          event.currentTarget.getBoundingClientRect();
-                        const dockRect =
-                          dockMeasureRef.current?.getBoundingClientRect();
-                        setActiveMinimizedStackPopup((current) =>
-                          current
-                            ? null
-                            : {
-                                dockRight: Math.max(
-                                  rect.right,
-                                  dockRect?.right ?? rect.right
-                                ),
-                                height: rect.height,
-                                left: rect.left,
-                                top: rect.top,
-                                width: rect.width
-                              }
-                        );
-                      }}
-                    >
-                      <span
-                        className="desktop-dock__minimized-stack-icon"
-                        data-desktop-dock-icon-shell="true"
-                        data-stack-folded={
-                          slot.nodes.length > 1 ? "true" : undefined
-                        }
-                        aria-hidden
-                      >
-                        {Array.from(
-                          {
-                            length:
-                              slot.nodes.length > 1
-                                ? 3
-                                : Math.min(slot.nodes.length, 1)
-                          },
-                          (_, index) => {
-                            const node = slot.nodes[index];
-                            if (index === 0 && node) {
-                              return (
-                                <WorkbenchHostDockMinimizedNodePreview
-                                  key={node.id}
-                                  capturePreview={captureMinimizedNodePreview}
-                                  className={`desktop-dock__minimized-stack-layer desktop-dock__minimized-stack-layer--${index}`}
-                                  dockPreviewCache={dockPreviewCache}
-                                  node={node}
-                                  workspaceId={workspaceId}
-                                />
-                              );
-                            }
-                            return (
-                              <span
-                                key={`${slot.anchorKey}-stack-back-${index}`}
-                                aria-hidden="true"
-                                className={`desktop-dock__minimized-preview desktop-dock__minimized-stack-layer desktop-dock__minimized-stack-layer--${index} desktop-dock__minimized-stack-layer-back`}
-                              />
-                            );
-                          }
-                        )}
-                        <span className="desktop-dock__count-badge">
-                          {slot.nodes.length}
-                        </span>
-                      </span>
-                    </button>
-                  );
-
-                  return (
-                    <span
-                      key={dockItem.key}
-                      ref={registerDockSlot(slot.anchorKey)}
-                      className="desktop-dock__slot desktop-dock__slot--minimized"
-                      data-desktop-dock-anchor-key={slot.anchorKey}
-                      data-desktop-dock-slot="true"
-                      data-node-state="minimized"
-                      data-popup-active={stackPopupActive}
-                      data-presence={dockItem.presence}
-                      data-section-id="minimized"
-                      data-stack-dispatching={
-                        stackDispatching ? "true" : undefined
-                      }
-                    >
-                      <Tooltip>
-                        <TooltipTrigger asChild>{stackButton}</TooltipTrigger>
-                        <TooltipContent
-                          side={dockPlacement === "left" ? "right" : "top"}
-                          sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
-                        >
-                          {i18n.t("minimizedWindows")}
-                        </TooltipContent>
-                      </Tooltip>
-                    </span>
-                  );
-                }
-
-                const node = slot.node;
+              if (dockItem.item.kind === "entry") {
+                const resolvedEntry = dockItem.item.resolvedEntry;
+                const { anchorKey, entry } = resolvedEntry;
+                const currentPopup =
+                  activePopup?.entryId === entry.id ? activePopup : null;
+                const instanceMode = resolveDockEntryInstanceMode(
+                  entry,
+                  nodeDefinitions
+                );
+                const clickResolution = resolveWorkbenchDockEntryClick({
+                  entry,
+                  instanceMode,
+                  matchedNodes: resolvedEntry.matchedNodes
+                });
+                const hasHoverPanel = dockEntryHasHoverPanel(entry);
                 const dockButton = (
                   <button
-                    aria-label={i18n.t("launch", { title: node.title })}
-                    className="desktop-dock__btn desktop-dock__minimized-btn"
-                    data-interactive="true"
-                    title={node.title}
+                    aria-expanded={currentPopup ? true : undefined}
+                    aria-haspopup={
+                      clickResolution.kind === "open-popup"
+                        ? "dialog"
+                        : undefined
+                    }
+                    aria-label={i18n.t("launch", { title: entry.label })}
+                    aria-disabled={
+                      clickResolution.kind === "blocked" &&
+                      !resolvedEntry.hasMatchingNodes
+                    }
+                    className="desktop-dock__btn"
+                    data-interactive={
+                      clickResolution.kind === "blocked" &&
+                      !resolvedEntry.hasMatchingNodes
+                        ? "false"
+                        : "true"
+                    }
+                    title={entry.label}
                     type="button"
                     onPointerDown={() => {
-                      const restoreIntent =
-                        resolveWorkbenchMinimizedDockRestoreIntent({
-                          nodeId: node.id,
-                          slots: minimizedDockSlots,
-                          source: {
-                            anchorKey: slot.anchorKey,
-                            kind: "node-slot"
-                          }
-                        });
-                      if (restoreIntent?.kind !== "node-slot") {
-                        clearCollapsingMinimizedLaunch(slot.anchorKey);
+                      if (
+                        clickResolution.kind === "blocked" &&
+                        !resolvedEntry.hasMatchingNodes
+                      ) {
                         return;
                       }
-                      beginDockMinimizedInteraction();
+                      beginDockIconInteraction(anchorKey);
                     }}
-                    onClick={() => {
-                      const restoreIntent =
-                        resolveWorkbenchMinimizedDockRestoreIntent({
-                          nodeId: node.id,
-                          slots: minimizedDockSlots,
-                          source: {
-                            anchorKey: slot.anchorKey,
-                            kind: "node-slot"
-                          }
-                        });
-                      if (restoreIntent?.kind !== "node-slot") {
-                        clearCollapsingMinimizedLaunch(slot.anchorKey);
-                        return;
-                      }
-                      closePopup();
-                      runDockMinimizedLaunchAfterCollapse(
-                        restoreIntent,
-                        (intent) => {
+                    onClick={(event) => {
+                      logWorkbenchDockDebug("dock.click", debugDiagnostics, {
+                        anchorKey,
+                        clickResolution,
+                        dockNodeState: resolvedEntry.dockNodeState,
+                        entryId: entry.id,
+                        instanceMode: instanceMode ?? null,
+                        matchedNodeCount: resolvedEntry.matchedNodes.length,
+                        matchedNodeIds: resolvedEntry.matchedNodes.map(
+                          (node) => node.id
+                        ),
+                        typeId: entry.typeId,
+                        workspaceId
+                      });
+                      switch (clickResolution.kind) {
+                        case "focus-node":
+                          closePopup();
+                          void Promise.resolve(
+                            onDockEntryClick?.({
+                              entryId: entry.id,
+                              host,
+                              nodeId: clickResolution.nodeId
+                            })
+                          ).catch(() => {});
                           context.genie.launchNodeFromAnchor(
-                            intent.anchorKey,
-                            intent.nodeId,
+                            anchorKey,
+                            clickResolution.nodeId,
                             () => {
-                              host.focusNode(intent.nodeId);
+                              host.focusNode(clickResolution.nodeId);
                             }
                           );
+                          return;
+                        case "open-popup": {
+                          const rect =
+                            event.currentTarget.getBoundingClientRect();
+                          logWorkbenchDockDebug(
+                            "dock.popup.toggle",
+                            debugDiagnostics,
+                            {
+                              anchorKey,
+                              entryId: entry.id,
+                              matchedNodeCount:
+                                resolvedEntry.matchedNodes.length,
+                              nextOpen: currentPopup === null,
+                              typeId: entry.typeId,
+                              workspaceId
+                            }
+                          );
+                          setActivePopup((current) =>
+                            current?.entryId === entry.id
+                              ? null
+                              : {
+                                  anchorRect: {
+                                    height: rect.height,
+                                    left: rect.left,
+                                    top: rect.top,
+                                    width: rect.width
+                                  },
+                                  entryId: entry.id
+                                }
+                          );
+                          return;
                         }
+                        case "action":
+                          closePopup();
+                          void Promise.resolve(
+                            onDockEntryAction?.({
+                              actionId: clickResolution.actionId,
+                              entryId: entry.id,
+                              host
+                            })
+                          ).catch(() => {});
+                          return;
+                        case "launch":
+                          closePopup();
+                          context.genie.launchNodeFromAnchor(
+                            anchorKey,
+                            entry.id,
+                            () =>
+                              host.launchNode({
+                                dockEntryId: entry.id,
+                                payload: entry.launchPayload,
+                                reason: "dock",
+                                typeId: entry.typeId
+                              })
+                          );
+                          return;
+                        case "blocked":
+                          return;
+                      }
+                    }}
+                  >
+                    <span
+                      className="desktop-dock__icon-shell"
+                      data-desktop-dock-icon-shell="true"
+                      data-entry-state={entry.state?.kind ?? "enabled"}
+                      aria-hidden
+                    >
+                      <span className="desktop-dock__icon-content">
+                        {entry.icon}
+                      </span>
+                      {renderDockBadge(
+                        entry,
+                        resolvedEntry.matchedNodes.length
+                      )}
+                    </span>
+                  </button>
+                );
+
+                return (
+                  <span
+                    key={dockItem.key}
+                    ref={registerDockSlot(anchorKey)}
+                    className="desktop-dock__slot"
+                    data-attention-active={
+                      activeAttentionEntryIds.has(entry.id) ? "true" : undefined
+                    }
+                    data-desktop-dock-anchor-key={anchorKey}
+                    data-desktop-dock-slot="true"
+                    data-entry-state={entry.state?.kind ?? "enabled"}
+                    data-dock-hover-panel-entry-id={
+                      hasHoverPanel ? entry.id : undefined
+                    }
+                    data-icon-size={entry.iconSize ?? "default"}
+                    data-node-state={resolvedEntry.dockNodeState}
+                    data-popup-active={currentPopup ? "true" : undefined}
+                    data-presence={dockItem.presence}
+                    data-section-id={entry.sectionId}
+                    data-wallpaper-tone={wallpaperTones.get(anchorKey)}
+                    onBlur={(event) => {
+                      if (
+                        hasHoverPanel &&
+                        !event.currentTarget.contains(event.relatedTarget)
+                      ) {
+                        closeHoverPanelImmediate(entry.id);
+                      }
+                    }}
+                    onFocus={(event) => {
+                      if (hasHoverPanel) {
+                        showHoverPanel(
+                          entry.id,
+                          anchorKey,
+                          event.currentTarget
+                        );
+                      }
+                    }}
+                    onPointerEnter={() => {
+                      if (hasHoverPanel) {
+                        scheduleHoverPanelAfterRest(entry.id, anchorKey);
+                      }
+                    }}
+                    onPointerLeave={(event) => {
+                      if (!hasHoverPanel) {
+                        return;
+                      }
+                      const relatedTarget = event.relatedTarget;
+                      if (
+                        relatedTarget instanceof Node &&
+                        hoverPanelRef.current?.contains(relatedTarget)
+                      ) {
+                        return;
+                      }
+                      if (
+                        relatedTarget instanceof Node &&
+                        dockMeasureRef.current?.contains(relatedTarget)
+                      ) {
+                        scheduleHoverPanelAtPointAfterRest(
+                          event.clientX,
+                          event.clientY
+                        );
+                        return;
+                      }
+                      if (
+                        hoverPanelRestTargetRef.current?.anchorKey === anchorKey
+                      ) {
+                        hoverPanelRestTargetRef.current = null;
+                      }
+                      clearHoverPanelOpenTimer();
+                      closeHoverPanelImmediate(entry.id);
+                      handleDockPointerLeave();
+                    }}
+                  >
+                    {dockButton}
+                  </span>
+                );
+              }
+
+              const slot = dockItem.item.slot;
+              if (slot.kind === "stack") {
+                const stackPopupActive =
+                  activeMinimizedStackPopup !== null ? true : undefined;
+                const stackButton = (
+                  <button
+                    aria-expanded={stackPopupActive}
+                    aria-haspopup="dialog"
+                    aria-label={i18n.t("minimizedWindows")}
+                    className="desktop-dock__btn desktop-dock__minimized-btn"
+                    data-interactive="true"
+                    title={i18n.t("minimizedWindows")}
+                    type="button"
+                    onPointerDown={() => {
+                      beginDockMinimizedInteraction();
+                    }}
+                    onClick={(event) => {
+                      setActivePopup(null);
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const dockRect =
+                        dockMeasureRef.current?.getBoundingClientRect();
+                      setActiveMinimizedStackPopup((current) =>
+                        current
+                          ? null
+                          : {
+                              dockRight: Math.max(
+                                rect.right,
+                                dockRect?.right ?? rect.right
+                              ),
+                              height: rect.height,
+                              left: rect.left,
+                              top: rect.top,
+                              width: rect.width
+                            }
                       );
                     }}
                   >
-                    <WorkbenchHostDockMinimizedNodePreview
-                      capturePreview={captureMinimizedNodePreview}
-                      dockPreviewCache={dockPreviewCache}
-                      node={node}
-                      workspaceId={workspaceId}
-                    />
+                    <span
+                      className="desktop-dock__minimized-stack-icon"
+                      data-desktop-dock-icon-shell="true"
+                      data-stack-folded={
+                        slot.nodes.length > 1 ? "true" : undefined
+                      }
+                      aria-hidden
+                    >
+                      {Array.from(
+                        {
+                          length:
+                            slot.nodes.length > 1
+                              ? 3
+                              : Math.min(slot.nodes.length, 1)
+                        },
+                        (_, index) => {
+                          const node = slot.nodes[index];
+                          if (index === 0 && node) {
+                            return (
+                              <WorkbenchHostDockMinimizedNodePreview
+                                key={node.id}
+                                capturePreview={captureMinimizedNodePreview}
+                                className={`desktop-dock__minimized-stack-layer desktop-dock__minimized-stack-layer--${index}`}
+                                dockPreviewCache={dockPreviewCache}
+                                node={node}
+                                workspaceId={workspaceId}
+                              />
+                            );
+                          }
+                          return (
+                            <span
+                              key={`${slot.anchorKey}-stack-back-${index}`}
+                              aria-hidden="true"
+                              className={`desktop-dock__minimized-preview desktop-dock__minimized-stack-layer desktop-dock__minimized-stack-layer--${index} desktop-dock__minimized-stack-layer-back`}
+                            />
+                          );
+                        }
+                      )}
+                      <span className="desktop-dock__count-badge">
+                        {slot.nodes.length}
+                      </span>
+                    </span>
                   </button>
                 );
 
@@ -1539,88 +1428,161 @@ export function WorkbenchHostDock({
                     key={dockItem.key}
                     ref={registerDockSlot(slot.anchorKey)}
                     className="desktop-dock__slot desktop-dock__slot--minimized"
-                    data-collapsing={
-                      collapsingMinimizedLaunchAnchorKeys.has(slot.anchorKey)
-                        ? "true"
-                        : undefined
-                    }
                     data-desktop-dock-anchor-key={slot.anchorKey}
                     data-desktop-dock-slot="true"
                     data-node-state="minimized"
+                    data-popup-active={stackPopupActive}
                     data-presence={dockItem.presence}
-                    data-promoted-from-stack={
-                      promotedNodeId === node.id ? "true" : undefined
-                    }
                     data-section-id="minimized"
+                    data-stack-dispatching={
+                      stackDispatching ? "true" : undefined
+                    }
                   >
-                    <Tooltip>
-                      <TooltipTrigger asChild>{dockButton}</TooltipTrigger>
-                      <TooltipContent
-                        side={dockPlacement === "left" ? "right" : "top"}
-                        sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
-                      >
-                        {node.title}
-                      </TooltipContent>
-                    </Tooltip>
+                    {stackButton}
                   </span>
                 );
-              })}
-            </div>
-            <button
-              aria-label={i18n.t(
-                dockPlacement === "left" ? "scrollDockDown" : "scrollDockRight"
-              )}
-              className="desktop-dock__scroll-button desktop-dock__scroll-button--forward"
-              data-scroll-button="forward"
-              disabled={!dockScrollState.canScrollForward}
-              onClick={() => scrollDockItems("forward")}
-              type="button"
-            >
-              {dockPlacement === "left" ? (
-                <ChevronDownIcon size={16} />
-              ) : (
-                <ArrowRightIcon size={16} />
-              )}
-            </button>
-            {activeHoverPanel ? (
-              <WorkbenchHostDockHoverPanel
-                entry={
-                  resolvedEntries.find(
-                    (entry) => entry.entry.id === activeHoverPanel.entryId
-                  )?.entry ?? null
-                }
-                host={host}
-                onDockEntryAction={onDockEntryAction}
-                pendingActionKeys={pendingActionKeys}
-                placement={dockPlacement}
-                hoverPanelRef={hoverPanelRef}
-                setPendingActionKeys={setPendingActionKeys}
-                state={activeHoverPanel}
-                onBlur={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget)) {
-                    closeHoverPanelImmediate(activeHoverPanel.entryId);
+              }
+
+              const node = slot.node;
+              const dockButton = (
+                <button
+                  aria-label={i18n.t("launch", { title: node.title })}
+                  className="desktop-dock__btn desktop-dock__minimized-btn"
+                  data-interactive="true"
+                  title={node.title}
+                  type="button"
+                  onPointerDown={() => {
+                    const restoreIntent =
+                      resolveWorkbenchMinimizedDockRestoreIntent({
+                        nodeId: node.id,
+                        slots: minimizedDockSlots,
+                        source: {
+                          anchorKey: slot.anchorKey,
+                          kind: "node-slot"
+                        }
+                      });
+                    if (restoreIntent?.kind !== "node-slot") {
+                      clearCollapsingMinimizedLaunch(slot.anchorKey);
+                      return;
+                    }
+                    beginDockMinimizedInteraction();
+                  }}
+                  onClick={() => {
+                    const restoreIntent =
+                      resolveWorkbenchMinimizedDockRestoreIntent({
+                        nodeId: node.id,
+                        slots: minimizedDockSlots,
+                        source: {
+                          anchorKey: slot.anchorKey,
+                          kind: "node-slot"
+                        }
+                      });
+                    if (restoreIntent?.kind !== "node-slot") {
+                      clearCollapsingMinimizedLaunch(slot.anchorKey);
+                      return;
+                    }
+                    closePopup();
+                    runDockMinimizedLaunchAfterCollapse(
+                      restoreIntent,
+                      (intent) => {
+                        context.genie.launchNodeFromAnchor(
+                          intent.anchorKey,
+                          intent.nodeId,
+                          () => {
+                            host.focusNode(intent.nodeId);
+                          }
+                        );
+                      }
+                    );
+                  }}
+                >
+                  <WorkbenchHostDockMinimizedNodePreview
+                    capturePreview={captureMinimizedNodePreview}
+                    dockPreviewCache={dockPreviewCache}
+                    node={node}
+                    workspaceId={workspaceId}
+                  />
+                </button>
+              );
+
+              return (
+                <span
+                  key={dockItem.key}
+                  ref={registerDockSlot(slot.anchorKey)}
+                  className="desktop-dock__slot desktop-dock__slot--minimized"
+                  data-collapsing={
+                    collapsingMinimizedLaunchAnchorKeys.has(slot.anchorKey)
+                      ? "true"
+                      : undefined
                   }
-                }}
-                onFocus={clearHoverPanelCloseTimer}
-                onPointerEnter={clearHoverPanelCloseTimer}
-                onPointerLeave={(event) => {
-                  const relatedTarget = event.relatedTarget;
-                  const anchorSlot = slotRefs.current.get(
-                    activeHoverPanel.anchorKey
-                  );
-                  if (
-                    relatedTarget instanceof Node &&
-                    anchorSlot?.contains(relatedTarget)
-                  ) {
-                    return;
+                  data-desktop-dock-anchor-key={slot.anchorKey}
+                  data-desktop-dock-slot="true"
+                  data-node-state="minimized"
+                  data-presence={dockItem.presence}
+                  data-promoted-from-stack={
+                    promotedNodeId === node.id ? "true" : undefined
                   }
-                  scheduleHoverPanelClose(activeHoverPanel.entryId);
-                  handleDockPointerLeave();
-                }}
-              />
-            ) : null}
+                  data-section-id="minimized"
+                >
+                  {dockButton}
+                </span>
+              );
+            })}
           </div>
-        </TooltipProvider>
+          <button
+            aria-label={i18n.t(
+              dockPlacement === "left" ? "scrollDockDown" : "scrollDockRight"
+            )}
+            className="desktop-dock__scroll-button desktop-dock__scroll-button--forward"
+            data-scroll-button="forward"
+            disabled={!dockScrollState.canScrollForward}
+            onClick={() => scrollDockItems("forward")}
+            type="button"
+          >
+            {dockPlacement === "left" ? (
+              <ChevronDownIcon size={16} />
+            ) : (
+              <ArrowRightIcon size={16} />
+            )}
+          </button>
+          {activeHoverPanel ? (
+            <WorkbenchHostDockHoverPanel
+              entry={
+                resolvedEntries.find(
+                  (entry) => entry.entry.id === activeHoverPanel.entryId
+                )?.entry ?? null
+              }
+              host={host}
+              onDockEntryAction={onDockEntryAction}
+              pendingActionKeys={pendingActionKeys}
+              placement={dockPlacement}
+              hoverPanelRef={hoverPanelRef}
+              setPendingActionKeys={setPendingActionKeys}
+              state={activeHoverPanel}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  closeHoverPanelImmediate(activeHoverPanel.entryId);
+                }
+              }}
+              onFocus={clearHoverPanelCloseTimer}
+              onPointerEnter={clearHoverPanelCloseTimer}
+              onPointerLeave={(event) => {
+                const relatedTarget = event.relatedTarget;
+                const anchorSlot = slotRefs.current.get(
+                  activeHoverPanel.anchorKey
+                );
+                if (
+                  relatedTarget instanceof Node &&
+                  anchorSlot?.contains(relatedTarget)
+                ) {
+                  return;
+                }
+                scheduleHoverPanelClose(activeHoverPanel.entryId);
+                handleDockPointerLeave();
+              }}
+            />
+          ) : null}
+        </div>
       </div>
       {popupEntry && activePopup ? (
         <WorkbenchHostDockPopup
@@ -2835,7 +2797,6 @@ const dockHoverPanelCloseDelayMs = 160;
 const dockHoverPanelHitSlopPx = 12;
 const dockHoverPanelBridgeSlopPx = 6;
 const dockHoverPanelPointerRestTolerancePx = 4;
-const DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET = 40;
 const dockWallpaperSampleCanvasMaxSizePx = 192;
 const dockWallpaperToneSampleCount = 7;
 const dockWallpaperDarkLuminanceThreshold = 132;
