@@ -7,7 +7,7 @@ import {
   TooltipTrigger
 } from "@tutti-os/ui-system/components";
 import { getWorkspaceReferencePresentation } from "./workspaceReferencePresentation.ts";
-import { defaultRichTextAtText } from "../editor/richTextAtText.ts";
+import { defaultRichTextTriggerText } from "../editor/richTextTriggerText.ts";
 
 const richTextWorkspaceReferencePillClassName = "max-w-[18rem]";
 
@@ -34,7 +34,7 @@ export function WorkspaceReferenceNodeView({
   const removeActionAriaLabel =
     typeof extensionOptions.removeActionAriaLabel === "string"
       ? extensionOptions.removeActionAriaLabel
-      : defaultRichTextAtText.removeReferenceActionLabel;
+      : defaultRichTextTriggerText.removeReferenceActionLabel;
 
   useEffect(() => {
     const syncEditable = () => {

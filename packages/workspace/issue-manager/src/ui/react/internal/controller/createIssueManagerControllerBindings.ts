@@ -1,4 +1,4 @@
-import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type { IssueManagerNodeState } from "../../../../contracts/index.ts";
 import type { IssueManagerFeature } from "../../../../core/index.ts";
 import type {
@@ -20,10 +20,10 @@ export function createIssueManagerControllerBindings(input: {
   feature: IssueManagerFeature;
   issueEditorMode: IssueManagerEditorMode;
   nodeState: IssueManagerNodeState;
-  onResolveRichTextAtProviders?: (input: {
+  onResolveRichTextTriggerProviders?: (input: {
     surface: "issue" | "task";
     workspaceId: string;
-  }) => readonly RichTextAtProvider[];
+  }) => readonly RichTextTriggerProvider[];
   taskEditorMode: IssueManagerEditorMode;
   workspaceId: string;
 }) {
@@ -33,7 +33,7 @@ export function createIssueManagerControllerBindings(input: {
     feature,
     issueEditorMode,
     nodeState,
-    onResolveRichTextAtProviders,
+    onResolveRichTextTriggerProviders,
     taskEditorMode,
     workspaceId
   } = input;
@@ -65,9 +65,9 @@ export function createIssueManagerControllerBindings(input: {
     reportIssueSearchUsage(query: string) {
       controllerSession.reportIssueSearchUsage(query);
     },
-    resolveRichTextAtProviders(surface: "issue" | "task") {
+    resolveRichTextTriggerProviders(surface: "issue" | "task") {
       return (
-        onResolveRichTextAtProviders?.({
+        onResolveRichTextTriggerProviders?.({
           surface,
           workspaceId
         }) ?? []

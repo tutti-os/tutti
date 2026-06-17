@@ -5,7 +5,7 @@ describe("renderer workspaceLinkActions wrapper", () => {
   it("re-exports the canonical workspace link actions", () => {
     expect(
       resolveWorkspaceMentionLinkAction({
-        href: "mention://workspace-app?workspaceId=workspace-1&appId=weather",
+        href: "mention://workspace-app/weather?workspaceId=workspace-1",
         source: "agent-markdown"
       })
     ).toEqual({

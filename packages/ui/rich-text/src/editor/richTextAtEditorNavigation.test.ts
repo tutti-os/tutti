@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { RichTextAtQueryMatch } from "../types/at.ts";
+import type { RichTextTriggerQueryMatch as RichTextAtQueryMatch } from "../types/trigger.ts";
 import {
   createRichTextAtEditorMatchEntry,
   findRichTextAtEditorEntryKeyForMatch,
@@ -90,6 +90,7 @@ test("findRichTextAtEditorEntryKeyForMatch returns panel-specific keys", () => {
 function testMatch(providerId: string, key: string): RichTextAtQueryMatch {
   return {
     providerId,
+    trigger: "@",
     key,
     label: key,
     item: { key },

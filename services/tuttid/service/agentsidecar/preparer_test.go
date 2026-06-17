@@ -58,7 +58,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 			{
 				Name: "app-factory",
 				Files: map[string]string{
-					"SKILL.md":                        "---\nname: app-factory\n---\nmention://workspace-app-factory\n",
+					"SKILL.md":                        "---\nname: app-factory\n---\nmention://workspace-app-factory/create\n",
 					"references/manifest-contract.md": "manifest contract",
 				},
 			},
@@ -221,7 +221,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err != nil {
 		t.Fatalf("app-factory skill missing: %v", err)
 	}
-	if !strings.Contains(string(appFactorySkill), "mention://workspace-app-factory") {
+	if !strings.Contains(string(appFactorySkill), "mention://workspace-app-factory/create") {
 		t.Fatalf("app-factory skill content = %q", string(appFactorySkill))
 	}
 	appFactoryReference, err := os.ReadFile(filepath.Join(codexHome, "skills", "app-factory", "references", "manifest-contract.md"))
@@ -657,9 +657,9 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Treat `mention://...` links as internal Tutti references") ||
 		!strings.Contains(string(systemPrompt), "Do not try to open `mention://...` links in a browser") ||
 		!strings.Contains(string(systemPrompt), "If no matching skill is visible") ||
-		!strings.Contains(string(systemPrompt), "`mention://workspace-issue?...`") ||
+		!strings.Contains(string(systemPrompt), "`mention://workspace-issue/<issueId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") ||
-		!strings.Contains(string(systemPrompt), "`mention://agent-session?...`") ||
+		!strings.Contains(string(systemPrompt), "`mention://agent-session/<sessionId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
@@ -707,8 +707,8 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 	if !strings.Contains(string(pluginSkill), "tutti issue list") ||
 		!strings.Contains(string(pluginSkill), "mention://agent-session") ||
-		!strings.Contains(string(pluginSkill), "`mention://workspace-issue?...` belongs to `issue-manager`") ||
-		!strings.Contains(string(pluginSkill), "`mention://workspace-app?...` belongs to `workspace-app`") {
+		!strings.Contains(string(pluginSkill), "`mention://workspace-issue/<issueId>?workspaceId=...` belongs to `issue-manager`") ||
+		!strings.Contains(string(pluginSkill), "`mention://workspace-app/<appId>?workspaceId=...` belongs to `workspace-app`") {
 		t.Fatalf("claude plugin skill content = %q", string(pluginSkill))
 	}
 	issuePluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "issue-manager", "SKILL.md"))

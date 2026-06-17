@@ -1,18 +1,12 @@
 export {
-  RichTextAtEditor,
-  type RichTextAtEditorPanelContext,
-  type RichTextAtEditorProps
-} from "./RichTextAtEditor.tsx";
-export type {
-  RichTextAtEditorNavigationActionEntry,
-  RichTextAtEditorNavigationEntry,
-  RichTextAtEditorNavigationMatchEntry
-} from "./richTextAtEditorNavigation.ts";
+  RichTextTriggerEditor,
+  type RichTextTriggerEditorProps
+} from "./RichTextTriggerEditor.tsx";
 export {
-  RichTextAtTextarea,
-  type RichTextAtTextareaProps
-} from "./RichTextAtTextarea.tsx";
-export { type RichTextAtTextOverrides } from "./richTextAtText.ts";
+  RichTextTriggerTextarea,
+  type RichTextTriggerTextareaProps
+} from "./RichTextTriggerTextarea.tsx";
+export { type RichTextTriggerTextOverrides } from "./richTextTriggerText.ts";
 export {
   RichTextMentionReadonly,
   type RichTextMentionReadonlyClickPayload,
@@ -23,3 +17,9 @@ export {
   type RichTextReadonlyContentProps,
   type RichTextReadonlyWorkspaceReference
 } from "./RichTextReadonlyContent.tsx";
+export {
+  findRichTextTriggerQuery,
+  isRichTextTriggerPrefixBoundary,
+  queryRichTextTriggerMatches,
+  type RichTextTriggerQueryState
+} from "./richTextTriggerQuery.ts";

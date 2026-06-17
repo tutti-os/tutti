@@ -47,100 +47,95 @@ Current refactor plan:
 4. Keep domain-specific reference protocols in their owning packages and only
    promote the generic rich-text seam here when it is truly host-agnostic.
 
-## Mention protocol draft
+## Mention Protocol
 
-The first stable plugin contract in this package is the `@` mention protocol.
+The stable `@` mention storage protocol is provider-agnostic:
+
+```md
+[@Label](mention://provider-id/entity-id?workspaceId=ws_1)
+```
 
 Boundary split:
 
 - the editor core owns trigger detection, selection state, keyboard handling,
   insertion lifecycle, and storage shape
-- the host plugin owns query behavior, suggestion copy, insert mapping, and
-  reverse resolution
+- the host trigger provider owns query behavior, suggestion copy, insert
+  mapping, and reverse resolution
 
 Stable stored attrs:
 
 ```ts
-type RichTextMentionAttrs = {
+interface RichTextMentionAttrs {
   trigger: "@";
-  plugin: string;
+  providerId: string;
   entityId: string;
   label: string;
-  href?: string;
-  kind?: string;
-  version?: string;
-  meta?: Readonly<Record<string, string>>;
-};
+  scope?: Readonly<Record<string, string>>;
+  presentation?: RichTextMentionPresentation;
+}
 ```
 
 Why this shape:
 
-- `plugin` identifies which host capability owns the token
+- `providerId` identifies which host capability owns the token
 - `entityId` is the durable identity and must not depend on visible copy
 - `label` is the last rendered fallback text so readonly and indexing can still
   work without a roundtrip
-- `href`, `kind`, `version`, and `meta` are optional extension points for host
-  routing and compatibility
+- `scope` holds short identity fields needed to locate the entity
+- `presentation` is editor-only display data and is not serialized to Markdown
 
-Plugin contract:
+Trigger provider contract:
 
 ```ts
-interface RichTextMentionPlugin<TItem = unknown, TResolved = unknown> {
+interface RichTextTriggerProvider<TItem = unknown> {
   id: string;
-  trigger?: "@";
+  trigger: RichTextTrigger;
+  boundary?: RichTextTriggerBoundary;
   query: (
-    input: RichTextMentionQueryInput
+    input: RichTextTriggerQueryInput
   ) => Promise<readonly TItem[]> | readonly TItem[];
   getItemKey: (item: TItem) => string;
   getItemLabel: (item: TItem) => string;
   getItemSubtitle?: (item: TItem) => string | null | undefined;
+  getItemThumbnailUrl?: (
+    item: TItem
+  ) => string | null | undefined | Promise<string | null | undefined>;
   getItemKeywords?: (item: TItem) => readonly string[] | undefined;
-  toMention: (item: TItem) => RichTextMentionInsert;
-  renderText?: (attrs: RichTextMentionAttrs) => string;
+  toInsertResult: (item: TItem) => RichTextTriggerInsertResult;
   resolveMention?: (
-    input: RichTextMentionResolveInput
-  ) =>
-    | Promise<RichTextResolvedMention<TResolved>>
-    | RichTextResolvedMention<TResolved>;
+    identity: RichTextMentionIdentity
+  ) => Promise<RichTextMentionResolved | null> | RichTextMentionResolved | null;
 }
 ```
 
 Interpretation:
 
-- `query` decides what `@` can mention
+- `query` decides what a trigger can mention
 - `getItemLabel` and `getItemSubtitle` decide the suggestion copy
-- `toMention` maps a chosen item into the stored attrs shape
-- `renderText` lets the host override readonly text such as `@Alice` vs
-  `@Alice Chen`
-- `resolveMention` maps stored attrs into a fixed display state plus an optional
-  resolved entity payload
+- `toInsertResult` maps a chosen item into a mention, markdown-link, or text
+  insertion
+- `resolveMention` restores editor-only label or presentation data from the
+  stored mention identity
 
-Display-state protocol:
+Mention data:
 
 ```ts
-type RichTextMentionRenderState = "active" | "missing" | "disabled" | "loading";
+interface RichTextMentionInsert {
+  entityId: string;
+  label: string;
+  scope?: Readonly<Record<string, string>>;
+  presentation?: RichTextMentionPresentation;
+}
 
-type RichTextResolvedMention<TResolved = unknown> = {
-  state: RichTextMentionRenderState;
+interface RichTextMentionResolved {
   label?: string;
-  tooltip?: string;
-  href?: string;
-  entity?: TResolved;
-};
+  presentation?: RichTextMentionPresentation;
+}
 ```
 
-Interpretation:
-
-- `active` means normal styling and normal interaction
-- `missing` means the original resource no longer exists and should render in a
-  muted non-interactive style
-- `disabled` means the resource still exists but the current host should not
-  allow normal interaction, for example because of permissions or product rules
-- `loading` is a temporary host-controlled resolution state
-
-This package intentionally keeps the public status model visual and generic.
-Business-specific reasons such as deleted, archived, forbidden, or offline stay
-inside the host plugin and collapse into one of the fixed render states above.
+Markdown serialization includes only `providerId`, `entityId`, `label`, and
+short `scope` fields. It does not serialize `presentation`, `href`, `kind`,
+`version`, or arbitrary metadata.
 
 Helpers now exported:
 
@@ -155,14 +150,12 @@ Helpers now exported:
 
 Runtime surfaces now exported:
 
-- `RichTextAtTextarea`
+- `RichTextTriggerTextarea`
 - `RichTextMentionReadonly`
 
 Current runtime behavior:
 
-- the registry aggregates multiple `@` plugins in declaration order
-- query results are flattened into a shared result shape with prebuilt mention
-  attrs
-- resolve falls back to `missing` when the plugin no longer exists
-- readonly rendering maps the resolved state into one fixed visual shape family
-  with overridable labels, tooltips, and click handling
+- the registry aggregates multiple trigger providers in declaration order
+- query results are flattened into a shared result shape
+- mention hydration uses `resolveMention` when the owning trigger provider is
+  available and keeps the label-only fallback when it is not

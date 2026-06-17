@@ -111,7 +111,7 @@ test("rejects feature UI direct access to the preload API", async () => {
 test("rejects feature service direct access to the preload API", async () => {
   const workspaceRoot = await createFixtureWorkspace({
     "features/workspace-launcher/services/internal/workspaceLauncherService.ts":
-      "void window.tutti.workspace.list();\n"
+      'void window.tutti.host.workspace.showWorkspace("workspace");\n'
   });
 
   const result = runBoundaryCheck(workspaceRoot);

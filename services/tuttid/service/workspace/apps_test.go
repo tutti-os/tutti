@@ -454,28 +454,8 @@ func TestAppCenterServiceInitializesBuiltinCatalogAndInstallState(t *testing.T) 
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	automationApp := findWorkspaceAppForTest(apps, "automation")
-	if len(apps) != 1 || automationApp == nil {
-		t.Fatalf("List() = %#v", apps)
-	}
-	if automationApp.Installation != nil || automationApp.Runtime.Status != workspacebiz.AppRuntimeStatusIdle {
-		t.Fatalf("automation app = %#v", automationApp)
-	}
-	automation, err := store.GetAppPackage(context.Background(), "automation")
-	if err != nil {
-		t.Fatalf("GetAppPackage(automation) error = %v", err)
-	}
-	if automation.Manifest.Author == nil || automation.Manifest.Author.Name != "Tutti" || len(automation.Manifest.Tags) != 2 || !strings.Contains(automation.ManifestJSON, `"tags"`) {
-		t.Fatalf("automation manifest = %#v, manifestJSON=%q", automation.Manifest, automation.ManifestJSON)
-	}
-	if iconURL := automation.IconDataURL(); iconURL == nil || !strings.HasPrefix(*iconURL, "data:image/png;base64,") {
-		t.Fatalf("automation icon data URL = %v", iconURL)
-	}
-	if _, err := os.Stat(filepath.Join(automation.PackageDir, "icon.png")); err != nil {
-		t.Fatalf("automation icon missing: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(automation.PackageDir, "tutti.cli.json")); err != nil {
-		t.Fatalf("automation cli manifest missing: %v", err)
+	if len(apps) != 0 {
+		t.Fatalf("List() = %#v, want no embedded apps", apps)
 	}
 }
 
@@ -498,8 +478,10 @@ func TestAppCenterServiceInitializesBuiltinPackagesWhenRemoteCatalogFails(t *tes
 	if err := service.InitBuiltinPackages(context.Background()); err != nil {
 		t.Fatalf("InitBuiltinPackages() error = %v", err)
 	}
-	if _, err := store.GetAppPackage(context.Background(), "automation"); err != nil {
-		t.Fatalf("GetAppPackage(automation) error = %v", err)
+	if packages, err := store.ListAppPackages(context.Background()); err != nil {
+		t.Fatalf("ListAppPackages() error = %v", err)
+	} else if len(packages) != 0 {
+		t.Fatalf("ListAppPackages() = %#v, want no embedded packages", packages)
 	}
 	state := service.CatalogLoadState()
 	if state.Status != workspacebiz.AppCatalogLoadStatusLoading && state.Status != workspacebiz.AppCatalogLoadStatusFailed {

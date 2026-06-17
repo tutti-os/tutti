@@ -1,17 +1,17 @@
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import {
-  AGENT_GUI_MENTION_PROVIDER_IDS,
-  type AgentRichTextAtProvider
-} from "@tutti-os/agent-gui/agent-rich-text-at-provider";
+  AGENT_CONTEXT_MENTION_PROVIDER_IDS,
+  type AgentContextMentionProvider
+} from "@tutti-os/agent-gui/context-mention-provider";
 import { collectWorkspaceAgentGeneratedFiles } from "@tutti-os/agent-gui/workspace-agent-generated-files";
 import { createRichTextMarkdownLinkInsertResult } from "@tutti-os/ui-rich-text/plugins";
 
 const { agentGeneratedFile: AGENT_GENERATED_FILE_PROVIDER_ID } =
-  AGENT_GUI_MENTION_PROVIDER_IDS;
+  AGENT_CONTEXT_MENTION_PROVIDER_IDS;
 
 const DEFAULT_SESSION_MESSAGE_PAGE_SIZE = 200;
 
-interface AgentGeneratedFileAtItem {
+interface AgentGeneratedFileMentionItem {
   displayName: string;
   path: string;
 }
@@ -22,9 +22,10 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
     "getSnapshot" | "listSessionMessages"
   >;
   workspaceId: string;
-}): AgentRichTextAtProvider<AgentGeneratedFileAtItem> {
+}): AgentContextMentionProvider<AgentGeneratedFileMentionItem> {
   return {
     id: AGENT_GENERATED_FILE_PROVIDER_ID,
+    trigger: "@",
     async query(searchInput) {
       if (searchInput.abortSignal?.aborted) {
         return [];

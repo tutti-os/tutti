@@ -1,20 +1,20 @@
 ---
 name: workspace-app
-description: Use for `mention://workspace-app?...` links to discover, inspect, or invoke CLI-enabled Tutti workspace app commands.
+description: Use for `mention://workspace-app/<appId>?workspaceId=...` links to discover, inspect, or invoke CLI-enabled Tutti workspace app commands.
 ---
 
 # Workspace App
 
-Use this skill when the current user turn contains one or more `mention://workspace-app?...` links.
+Use this skill when the current user turn contains one or more `mention://workspace-app/<appId>?workspaceId=...` links.
 
 Use the injected `tutti-cli` skill as the command reference for CLI syntax and available commands. This skill owns workspace app mention interpretation and decides how to use that CLI reference.
 
 ## Mention Contract
 
-Treat a `mention://workspace-app?...` link as the machine-readable source of truth for the referenced app. The mention uses `workspaceId` and `appId`.
+Treat a `mention://workspace-app/<appId>?workspaceId=...` link as the machine-readable source of truth for the referenced app. The mention uses the URL path as the app id and `workspaceId` as query scope.
 
+- URL path: target workspace app id.
 - `workspaceId`: workspace context for command discovery and invocation.
-- `appId`: target workspace app id.
 
 Do not infer app behavior from the mention label alone.
 

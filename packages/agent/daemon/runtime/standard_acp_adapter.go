@@ -959,11 +959,11 @@ func claudeCodeMentionRoutingDirective(text string) (string, []string) {
 
 func skillForMentionURI(uri string) string {
 	switch {
-	case strings.HasPrefix(uri, "mention://workspace-issue?"):
+	case strings.HasPrefix(uri, "mention://workspace-issue/"):
 		return "issue-manager"
-	case strings.HasPrefix(uri, "mention://workspace-app?"):
+	case strings.HasPrefix(uri, "mention://workspace-app/"):
 		return "workspace-app"
-	case strings.HasPrefix(uri, "mention://agent-session?"):
+	case strings.HasPrefix(uri, "mention://agent-session/"):
 		return "tutti-cli"
 	default:
 		return ""

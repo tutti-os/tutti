@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentGUIProps, AgentHostInputApi } from "@tutti-os/agent-gui";
+import type { AgentHostInputApi } from "@tutti-os/agent-gui";
 import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
-import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type {
   DesktopHostFilesApi,
   DesktopPlatformApi,
@@ -20,7 +20,7 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
   const agentHostApi = {
     meta: { workspaceId }
   } as unknown as AgentHostInputApi;
-  const richTextAtProviders = [createRichTextAtProvider("workspace-file")];
+  const richTextTriggerProviders = [createRichTextTriggerProvider("file")];
   const richTextAtRequests: unknown[] = [];
 
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
@@ -29,7 +29,7 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
     tuttidClient: createTuttidClient(),
     platformApi: createPlatformApi(),
     richTextAtService: createRichTextAtService({
-      providers: richTextAtProviders,
+      providers: richTextTriggerProviders,
       requests: richTextAtRequests
     }),
     runtimeApi: createRuntimeApi(),
@@ -38,7 +38,7 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
   });
 
   assert.equal(hostInput.agentHostApi, agentHostApi);
-  assert.equal(hostInput.richTextAtProviders, richTextAtProviders);
+  assert.equal(hostInput.contextMentionProviders[0]?.id, "file");
   assert.equal(
     typeof hostInput.workspaceFileReferenceAdapter.listDirectory,
     "function"
@@ -46,7 +46,7 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
   assert.deepEqual(richTextAtRequests, [
     {
       capabilities: [
-        "workspace-file",
+        "file",
         "workspace-issue",
         "agent-session",
         "workspace-app"
@@ -141,7 +141,7 @@ test("desktop agent GUI workbench host input tracks runtime prompt sends", async
     content: [
       {
         type: "text",
-        text: "/review [src/App.tsx](mention://workspace-file?path=src%2FApp.tsx)"
+        text: "/review [src/App.tsx](mention://file/src%2FApp.tsx?workspaceId=workspace-1)"
       }
     ]
   });
@@ -755,9 +755,10 @@ test("desktop agent GUI workbench host input forwards OpenClaw warmup through th
   );
 });
 
-function createRichTextAtProvider(id: string): RichTextAtProvider {
+function createRichTextTriggerProvider(id: string): RichTextTriggerProvider {
   return {
     id,
+    trigger: "@",
     getItemKey: () => "item-1",
     getItemLabel: () => "Item",
     query: () => [],
@@ -767,7 +768,7 @@ function createRichTextAtProvider(id: string): RichTextAtProvider {
 
 function createRichTextAtService(
   input: {
-    providers?: NonNullable<AgentGUIProps["richTextAtProviders"]>;
+    providers?: readonly RichTextTriggerProvider[];
     requests?: unknown[];
   } = {}
 ): IDesktopRichTextAtService {

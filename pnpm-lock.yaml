@@ -102,6 +102,9 @@ importers:
       "@tutti-os/workspace-app-center":
         specifier: workspace:*
         version: link:../../packages/workspace/app-center
+      "@tutti-os/workspace-external-core":
+        specifier: workspace:*
+        version: link:../../packages/workspace/external-core
       "@tutti-os/workspace-file-manager":
         specifier: workspace:*
         version: link:../../packages/workspace/file-manager
@@ -268,6 +271,9 @@ importers:
       "@tutti-os/workbench-surface":
         specifier: workspace:*
         version: link:../../workbench/surface
+      "@tutti-os/workspace-external-core":
+        specifier: workspace:*
+        version: link:../../workspace/external-core
       "@tutti-os/workspace-file-manager":
         specifier: workspace:*
         version: link:../../workspace/file-manager
@@ -669,6 +675,22 @@ importers:
         version: 5.9.3
 
   packages/workspace/app-release-tools: {}
+
+  packages/workspace/external-core:
+    dependencies:
+      "@tutti-os/workspace-file-reference":
+        specifier: workspace:*
+        version: link:../file-reference
+    devDependencies:
+      "@tutti-os/config-tsconfig":
+        specifier: workspace:*
+        version: link:../../configs/tsconfig
+      "@types/node":
+        specifier: ^24.0.1
+        version: 24.12.4
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   packages/workspace/file-manager:
     dependencies:

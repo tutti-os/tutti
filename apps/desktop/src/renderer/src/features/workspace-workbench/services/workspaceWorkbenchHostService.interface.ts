@@ -29,10 +29,12 @@ import type {
   WorkspaceWallpaperDisplayMode,
   WorkspaceWallpaperId
 } from "./workspaceWallpaper";
+import type { DesktopHostNotificationNavigationPayload } from "@shared/contracts/ipc";
 import type {
-  DesktopHostNotificationNavigationPayload,
-  DesktopWorkspaceOpenSettingsRequest
-} from "@shared/contracts/ipc";
+  TuttiExternalAtQueryInput,
+  TuttiExternalAtQueryResult
+} from "@tutti-os/workspace-external-core/contracts";
+import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 
 export type WorkspaceCustomWallpaperStatus = "idle" | "saving" | "removing";
 
@@ -103,12 +105,16 @@ export interface IWorkspaceWorkbenchHostService {
     themeAppearance: DesktopThemeAppearance;
     workspaceId: string;
   }): WorkspaceWorkbenchHostInput;
+  createWorkspaceAppExternalFileReferenceAdapter(
+    workspaceId: string
+  ): WorkspaceFileReferenceAdapter;
+  queryWorkspaceAppExternalAt(input: {
+    query: TuttiExternalAtQueryInput;
+    workspaceId: string;
+  }): Promise<TuttiExternalAtQueryResult[]>;
   onWindowCloseRequest(listener: () => void): () => void;
   onNotificationNavigate(
     listener: (payload: DesktopHostNotificationNavigationPayload) => void
-  ): () => void;
-  onOpenSettingsRequest(
-    listener: (request: DesktopWorkspaceOpenSettingsRequest) => void
   ): () => void;
   readWallpaperDisplayMode(workspaceId: string): WorkspaceWallpaperDisplayMode;
   readWallpaperId(workspaceId: string): WorkspaceWallpaperId;

@@ -202,7 +202,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	if appFactorySkill.Name != "app-factory" {
 		t.Fatalf("CreateSession extra skill name = %q, want app-factory", appFactorySkill.Name)
 	}
-	if !strings.Contains(appFactorySkill.Files["SKILL.md"], "mention://workspace-app-factory") {
+	if !strings.Contains(appFactorySkill.Files["SKILL.md"], "mention://workspace-app-factory/create") {
 		t.Fatalf("app factory skill missing mention contract: %q", appFactorySkill.Files["SKILL.md"])
 	}
 	if _, ok := appFactorySkill.Files["references/manifest-contract.md"]; !ok {
@@ -218,7 +218,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		t.Fatalf("initial content = %#v, want one text block", sessions.createInput.InitialContent)
 	}
 	prompt := sessions.createInput.InitialContent[0].Text
-	if !strings.HasPrefix(prompt, "[@Create App](mention://workspace-app-factory)") {
+	if !strings.HasPrefix(prompt, "[@Create App](mention://workspace-app-factory/create)") {
 		t.Fatalf("initial prompt should begin with factory mention:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, ") Create a weather app.") {
@@ -240,7 +240,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 			t.Fatalf("initial prompt should not include wrapper text %q:\n%s", forbidden, prompt)
 		}
 	}
-	if !strings.Contains(prompt, "[@Create App](mention://workspace-app-factory)") {
+	if !strings.Contains(prompt, "[@Create App](mention://workspace-app-factory/create)") {
 		t.Fatalf("initial prompt missing factory mention:\n%s", prompt)
 	}
 	for _, forbidden := range []string{

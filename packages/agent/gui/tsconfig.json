@@ -11,7 +11,10 @@
       "@tutti-os/workspace-file-manager/services": [
         "../../workspace/file-manager/src/services/index.ts"
       ],
-      "@tutti-os/workbench-surface": ["../../workbench/surface/src/index.ts"]
+      "@tutti-os/workbench-surface": ["../../workbench/surface/src/index.ts"],
+      "@tutti-os/workspace-external-core/contracts": [
+        "../../workspace/external-core/src/contracts/index.ts"
+      ]
     },
     "types": ["node", "react", "react-dom", "vite/client"]
   },

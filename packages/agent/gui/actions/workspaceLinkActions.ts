@@ -1,8 +1,5 @@
 import { resolveWebsiteNavigationUrl } from "../shared/utils/websiteUrl";
-import {
-  parseWorkspaceIssueMentionHref,
-  type WorkspaceIssueMentionMode
-} from "@tutti-os/workspace-issue-manager/core";
+import type { WorkspaceIssueMentionMode } from "@tutti-os/workspace-issue-manager/core";
 
 export type WorkspaceLinkActionSource =
   | "agent-markdown"
@@ -203,10 +200,7 @@ export function resolveWorkspaceMentionLinkAction({
   }
 
   const workspaceId = url.searchParams.get("workspaceId")?.trim() || "";
-  const targetId =
-    url.hostname === "workspace-app"
-      ? url.searchParams.get("appId")?.trim() || ""
-      : url.searchParams.get("id")?.trim() || "";
+  const targetId = decodeURIComponent(url.pathname.replace(/^\/+/, "")).trim();
   if (!workspaceId || !targetId) {
     return null;
   }
@@ -223,25 +217,20 @@ export function resolveWorkspaceMentionLinkAction({
   }
 
   if (url.hostname === "workspace-issue") {
-    const parsedIssueMention = parseWorkspaceIssueMentionHref(rawHref);
-    if (!parsedIssueMention) {
-      return null;
-    }
+    const mode = parseWorkspaceIssueMentionMode(url.searchParams.get("mode"));
+    const outputDir = url.searchParams.get("outputDir")?.trim() || "";
+    const runId = url.searchParams.get("runId")?.trim() || "";
+    const taskId = url.searchParams.get("taskId")?.trim() || "";
+    const topicId = url.searchParams.get("topicId")?.trim() || "";
     return {
       type: "open-workspace-issue",
-      workspaceId: parsedIssueMention.workspaceId,
-      issueId: parsedIssueMention.issueId,
-      ...(parsedIssueMention.mode ? { mode: parsedIssueMention.mode } : {}),
-      ...(parsedIssueMention.outputDir
-        ? { outputDir: parsedIssueMention.outputDir }
-        : {}),
-      ...(parsedIssueMention.runId ? { runId: parsedIssueMention.runId } : {}),
-      ...(parsedIssueMention.taskId
-        ? { taskId: parsedIssueMention.taskId }
-        : {}),
-      ...(parsedIssueMention.topicId
-        ? { topicId: parsedIssueMention.topicId }
-        : {}),
+      workspaceId,
+      issueId: targetId,
+      ...(mode ? { mode } : {}),
+      ...(outputDir ? { outputDir } : {}),
+      ...(runId ? { runId } : {}),
+      ...(taskId ? { taskId } : {}),
+      ...(topicId ? { topicId } : {}),
       source
     };
   }
@@ -256,6 +245,13 @@ export function resolveWorkspaceMentionLinkAction({
   }
 
   return null;
+}
+
+function parseWorkspaceIssueMentionMode(
+  value: string | null
+): WorkspaceIssueMentionMode | null {
+  const trimmed = value?.trim();
+  return trimmed === "breakdown" || trimmed === "execute" ? trimmed : null;
 }
 
 export function resolveWorkspaceLinkAction({

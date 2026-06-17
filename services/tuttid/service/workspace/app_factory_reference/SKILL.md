@@ -1,6 +1,6 @@
 ---
 name: tutti-workspace-app-factory
-description: "Create or repair a self-contained Tutti workspace app package from a user request. Use for mention://workspace-app-factory handoffs, Tutti workspace app generation, repair, validation, manifests, bootstrap scripts, package-local AGENTS.md, local HTTP runtimes, healthchecks, app assets, optional app-runtime Tutti CLI integration, and TUTTI_APP_* storage rules."
+description: "Create or repair a self-contained Tutti workspace app package from a user request. Use for mention://workspace-app-factory/create handoffs, Tutti workspace app generation, repair, validation, manifests, bootstrap scripts, package-local AGENTS.md, local HTTP runtimes, healthchecks, app assets, optional app-runtime Tutti CLI integration, and TUTTI_APP_* storage rules."
 ---
 
 # Tutti Workspace App Factory
@@ -13,7 +13,7 @@ Treat the current working directory as the factory job workspace. The app packag
 
 ## Mention Contract
 
-Treat a `mention://workspace-app-factory` link as the factory handoff. Before writing files, read `context.json` from the current working directory. Use its exact metadata, output rules, workspace context, and constraints as authoritative. Do not copy the context file into generated app outputs.
+Treat a `mention://workspace-app-factory/create` link as the factory handoff. Before writing files, read `context.json` from the current working directory. Use its exact metadata, output rules, workspace context, and constraints as authoritative. Do not copy the context file into generated app outputs.
 
 Before writing files, read these bundled references:
 

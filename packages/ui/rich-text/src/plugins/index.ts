@@ -1,11 +1,11 @@
 export {
-  createRichTextAtProvider,
   createRichTextMarkdownLinkInsertResult,
   createRichTextMentionInsertResult,
+  createRichTextTriggerProvider,
   createRichTextTextInsertResult,
-  renderRichTextAtInsertResult
-} from "./at.ts";
-export { createRichTextAtRegistry } from "./atRegistry.ts";
+  renderRichTextTriggerInsertResult
+} from "./trigger.ts";
+export { createRichTextTriggerRegistry } from "./triggerRegistry.ts";
 export {
   createRichTextMentionAttrs,
   createRichTextMentionPlugin,

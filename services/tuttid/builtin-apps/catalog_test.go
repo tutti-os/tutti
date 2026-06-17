@@ -11,7 +11,6 @@ import (
 	"time"
 
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
-	"github.com/tutti-os/tutti/services/tuttid/service/cli/appcli"
 )
 
 func TestCatalogLoadsRemoteAppsFromFile(t *testing.T) {
@@ -168,7 +167,7 @@ func TestCatalogRetriesRemoteURLFetch(t *testing.T) {
 	}
 }
 
-func TestCatalogKeepsEmbeddedAppsWhenRemoteURLFails(t *testing.T) {
+func TestCatalogReturnsEmptyEmbeddedCatalogWhenRemoteURLFails(t *testing.T) {
 	disableRemoteCatalogRetrySleepForTest(t)
 	t.Setenv(remoteCatalogFileEnv, "")
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -181,51 +180,16 @@ func TestCatalogKeepsEmbeddedAppsWhenRemoteURLFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Catalog() error = %v", err)
 	}
-	if app := findCatalogAppForTest(apps, "automation"); app == nil {
-		t.Fatalf("embedded automation app missing from catalog: %#v", apps)
-	} else if app.Manifest.CLI == nil || app.Manifest.CLI.Manifest != "tutti.cli.json" {
-		t.Fatalf("embedded automation cli manifest = %#v, want tutti.cli.json", app.Manifest.CLI)
+	if len(apps) != 0 {
+		t.Fatalf("Catalog() apps = %#v, want empty embedded catalog", apps)
 	}
 
 	snapshot := waitForCatalogStatusForTest(t, RemoteCatalogLoadStatusFailed)
 	if snapshot.RemoteCatalog.LastError == "" {
 		t.Fatal("remote catalog last error is empty, want failure details")
 	}
-	if app := findCatalogAppForTest(snapshot.Apps, "automation"); app == nil {
-		t.Fatalf("embedded automation app missing from failed snapshot: %#v", snapshot.Apps)
-	}
-}
-
-func TestEmbeddedAutomationCLIManifestIsValid(t *testing.T) {
-	t.Setenv(remoteCatalogURLEnv, "")
-
-	apps, err := Catalog()
-	if err != nil {
-		t.Fatalf("Catalog() error = %v", err)
-	}
-	app := findCatalogAppForTest(apps, "automation")
-	if app == nil {
-		t.Fatalf("embedded automation app missing from catalog: %#v", apps)
-	}
-	if app.Manifest.CLI == nil {
-		t.Fatal("embedded automation cli manifest is nil")
-	}
-	packageDir := t.TempDir()
-	if err := CopyTo(*app, packageDir); err != nil {
-		t.Fatalf("CopyTo() error = %v", err)
-	}
-	manifest, err := appcli.ReadManifest(filepath.Join(packageDir, app.Manifest.CLI.Manifest))
-	if err != nil {
-		t.Fatalf("ReadManifest() error = %v", err)
-	}
-	if manifest.Scope != "automation" || len(manifest.Commands) != 8 {
-		t.Fatalf("automation cli manifest = %#v, want scope automation with 8 commands", manifest)
-	}
-	if manifest.Documentation == nil || manifest.Documentation.File != "COMMANDS.md" {
-		t.Fatalf("automation cli documentation = %#v, want COMMANDS.md", manifest.Documentation)
-	}
-	if _, err := os.Stat(filepath.Join(packageDir, "COMMANDS.md")); err != nil {
-		t.Fatalf("automation command documentation missing from copied package: %v", err)
+	if len(snapshot.Apps) != 0 {
+		t.Fatalf("failed snapshot apps = %#v, want empty embedded catalog", snapshot.Apps)
 	}
 }
 
@@ -256,7 +220,7 @@ func TestRemoteCatalogURLDefaultsToPublishedCatalog(t *testing.T) {
 	}
 }
 
-func TestCatalogPrefersEmbeddedAppIDOverRemoteCatalog(t *testing.T) {
+func TestCatalogLoadsRemoteAutomationWhenProvidedByCatalog(t *testing.T) {
 	t.Setenv(remoteCatalogURLEnv, "")
 	catalogPath := filepath.Join(t.TempDir(), "catalog.json")
 	manifest := remoteCatalogManifestForTest("automation")
@@ -292,10 +256,10 @@ func TestCatalogPrefersEmbeddedAppIDOverRemoteCatalog(t *testing.T) {
 		}
 	}
 	if len(matchingApps) != 1 {
-		t.Fatalf("automation entries = %#v, want exactly one embedded entry", matchingApps)
+		t.Fatalf("automation entries = %#v, want exactly one remote entry", matchingApps)
 	}
-	if matchingApps[0].Distribution.Kind != DistributionEmbedded {
-		t.Fatalf("automation distribution = %#v, want embedded", matchingApps[0].Distribution)
+	if matchingApps[0].Distribution.Kind != DistributionRemote {
+		t.Fatalf("automation distribution = %#v, want remote", matchingApps[0].Distribution)
 	}
 }
 

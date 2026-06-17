@@ -104,8 +104,8 @@ describe("agentRichTextDocument", () => {
 
   it("round-trips session and issue mentions as typed mention nodes", () => {
     const prompt =
-      "继续看看 [@wang jomes · Codex · 看看项目有什么文件](mention://agent-session?workspaceId=room-1&id=session-1)\n" +
-      "再跟进 [@修复 room status 批量接口](mention://workspace-issue?workspaceId=room-1&id=issue-1)";
+      "继续看看 [@wang jomes · Codex · 看看项目有什么文件](mention://agent-session/session-1?workspaceId=room-1)\n" +
+      "再跟进 [@修复 room status 批量接口](mention://workspace-issue/issue-1?workspaceId=room-1)";
 
     expect(
       agentRichTextDocToPromptText(plainTextToAgentRichTextDoc(prompt))
@@ -122,7 +122,7 @@ describe("agentRichTextDocument", () => {
               type: "agentFileMention",
               attrs: {
                 kind: "session",
-                href: "mention://agent-session?workspaceId=room-1&id=session-1",
+                href: "mention://agent-session/session-1?workspaceId=room-1",
                 workspaceId: "room-1",
                 targetId: "session-1",
                 name: "wang jomes · Codex · 看看项目有什么文件",
@@ -138,7 +138,7 @@ describe("agentRichTextDocument", () => {
               type: "agentFileMention",
               attrs: {
                 kind: "workspace-issue",
-                href: "mention://workspace-issue?workspaceId=room-1&id=issue-1",
+                href: "mention://workspace-issue/issue-1?workspaceId=room-1",
                 workspaceId: "room-1",
                 targetId: "issue-1",
                 name: "修复 room status 批量接口",
@@ -153,7 +153,7 @@ describe("agentRichTextDocument", () => {
 
   it("round-trips workspace app factory mentions as typed mention nodes", () => {
     const prompt =
-      "[@Create App](mention://workspace-app-factory) Create a weather app.";
+      "[@Create App](mention://workspace-app-factory/create) Create a weather app.";
 
     expect(
       agentRichTextDocToPromptText(plainTextToAgentRichTextDoc(prompt))
@@ -169,9 +169,9 @@ describe("agentRichTextDocument", () => {
               type: "agentFileMention",
               attrs: {
                 kind: "workspace-app-factory",
-                href: "mention://workspace-app-factory",
+                href: "mention://workspace-app-factory/create",
                 workspaceId: "",
-                targetId: "",
+                targetId: "create",
                 jobId: "",
                 name: "Create App",
                 action: undefined,
@@ -197,7 +197,7 @@ describe("agentRichTextDocument", () => {
                 type: "agentFileMention",
                 attrs: {
                   kind: "workspace-app",
-                  href: "mention://workspace-app?workspaceId=room-1&appId=weather",
+                  href: "mention://workspace-app/weather?workspaceId=room-1",
                   workspaceId: "room-1",
                   targetId: "weather",
                   appId: "weather",
@@ -209,9 +209,7 @@ describe("agentRichTextDocument", () => {
           }
         ]
       })
-    ).toBe(
-      "[@Weather](mention://workspace-app?workspaceId=room-1&appId=weather)"
-    );
+    ).toBe("[@Weather](mention://workspace-app/weather?workspaceId=room-1)");
   });
 
   it("hydrates known skill triggers into skill token nodes", () => {

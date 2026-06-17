@@ -20,33 +20,108 @@ test("creates and parses a rich text mention href", () => {
   const mention = createRichTextMentionAttrs("user", {
     entityId: "u_123",
     label: "Alice Chen",
-    href: "/people/u_123",
-    kind: "person",
-    version: "v2",
-    meta: {
-      source: "workspace"
+    scope: {
+      workspaceId: "ws_1",
+      topicId: "topic_1",
+      empty: ""
     }
   });
 
   const href = createRichTextMentionHref(mention);
-  assert.equal(
-    href,
-    "mention://user/u_123?kind=person&link=%2Fpeople%2Fu_123&v=v2&meta.source=workspace"
-  );
+  assert.equal(href, "mention://user/u_123?topicId=topic_1&workspaceId=ws_1");
 
-  assert.deepEqual(parseRichTextMentionHref(href, mention.label), mention);
+  assert.deepEqual(parseRichTextMentionHref(href, "@Alice Chen"), {
+    trigger: "@",
+    providerId: "user",
+    entityId: "u_123",
+    label: "Alice Chen",
+    scope: {
+      topicId: "topic_1",
+      workspaceId: "ws_1"
+    }
+  });
+});
+
+test("serializes mention markdown with a normalized @ label", () => {
+  assert.equal(
+    createRichTextMentionMarkdown(
+      createRichTextMentionAttrs("workspace-app", {
+        entityId: "vibe-design",
+        label: "@Prototype Design",
+        scope: { workspaceId: "ws_1" }
+      })
+    ),
+    "[@Prototype Design](mention://workspace-app/vibe-design?workspaceId=ws_1)"
+  );
+});
+
+test("does not serialize legacy mention fields from scope", () => {
+  const mention = createRichTextMentionAttrs("provider", {
+    entityId: "entity",
+    label: "Entity",
+    scope: {
+      kind: "person",
+      link: "/people/entity",
+      "meta.foo": "bar",
+      version: "1",
+      workspaceId: "ws_1"
+    }
+  });
+
+  assert.equal(
+    createRichTextMentionHref(mention),
+    "mention://provider/entity?workspaceId=ws_1"
+  );
+});
+
+test("rejects legacy rich text mention href shapes", () => {
+  assert.equal(
+    parseRichTextMentionHref(
+      "mention://workspace-app?workspaceId=ws_1&appId=app_1",
+      "@App"
+    ),
+    null
+  );
+  assert.equal(
+    parseRichTextMentionHref(
+      "mention://workspace-issue?workspaceId=ws_1&id=issue_1",
+      "@Issue"
+    ),
+    null
+  );
+  assert.equal(
+    parseRichTextMentionHref(
+      "mention://agent-session?workspaceId=ws_1&id=session_1",
+      "@Session"
+    ),
+    null
+  );
+  assert.equal(
+    parseRichTextMentionHref(
+      "mention://provider/entity?link=%2Fpeople%2Fu_123",
+      "@Alice"
+    ),
+    null
+  );
+  assert.equal(
+    parseRichTextMentionHref("mention://provider/entity?meta.foo=bar", "@Foo"),
+    null
+  );
+  assert.equal(
+    parseRichTextMentionHref("mention://provider/entity?kind=person", "@Foo"),
+    null
+  );
 });
 
 test("serializes and extracts mention markdown from content", () => {
   const alice = createRichTextMentionAttrs("user", {
     entityId: "u_123",
     label: "Alice",
-    href: "/people/u_123"
+    scope: { workspaceId: "ws_1" }
   });
   const issue = createRichTextMentionAttrs("issue", {
     entityId: "issue-7",
-    label: "Issue 7",
-    kind: "issue"
+    label: "Issue 7"
   });
 
   const content = [
@@ -60,7 +135,7 @@ test("serializes and extracts mention markdown from content", () => {
   assert.deepEqual(extractRichTextMentionsFromContent(content), [alice, issue]);
   assert.equal(
     extractPlainTextFromContent(content),
-    "Please sync with Alice and Issue 7 today."
+    "Please sync with @Alice and @Issue 7 today."
   );
 });
 
@@ -77,10 +152,10 @@ test("removes only the targeted mention from content", () => {
 
   assert.equal(
     removeRichTextMentionFromContent(content, {
-      plugin: "user",
+      providerId: "user",
       entityId: "u_123"
     }),
-    "and [Bob](mention://user/u_456)"
+    "and [@Bob](mention://user/u_456)"
   );
 });
 

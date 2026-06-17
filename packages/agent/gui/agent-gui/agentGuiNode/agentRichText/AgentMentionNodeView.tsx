@@ -1,6 +1,5 @@
 import { useEffect, useState, type JSX, type MouseEvent } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
-import { buildWorkspaceIssueMentionHref } from "@tutti-os/workspace-issue-manager/core";
 import { MentionPill } from "@tutti-os/ui-system/components";
 import { CloseIcon } from "@tutti-os/ui-system/icons";
 import { useTranslation } from "../../../i18n/index";
@@ -60,38 +59,49 @@ function buildMentionHref(
   const workspaceId = attrString(attrs, "workspaceId").trim();
   const targetId = attrString(attrs, "targetId").trim();
   if (resource === "workspace-issue") {
-    return buildWorkspaceIssueMentionHref({
-      issueId: targetId,
+    return buildAgentGenericMentionHref(resource, targetId, {
+      topicId: attrString(attrs, "topicId").trim(),
       workspaceId
     });
   }
   if (resource === "workspace-app") {
     const appId = attrString(attrs, "appId").trim() || targetId;
-    const params = new URLSearchParams({ workspaceId, appId });
-    return `mention://${resource}?${params.toString()}`;
+    return buildAgentGenericMentionHref(resource, appId, { workspaceId });
   }
   if (resource === "workspace-app-factory") {
     const jobId = attrString(attrs, "jobId").trim() || targetId;
-    const params = new URLSearchParams();
-    const action = attrString(attrs, "action").trim();
-    const contextPath = attrString(attrs, "contextPath").trim();
-    if (workspaceId) {
-      params.set("workspaceId", workspaceId);
-    }
-    if (jobId) {
-      params.set("jobId", jobId);
-    }
-    if (action) {
-      params.set("action", action);
-    }
-    if (contextPath) {
-      params.set("contextPath", contextPath);
-    }
-    const query = params.toString();
-    return query ? `mention://${resource}?${query}` : `mention://${resource}`;
+    return buildAgentGenericMentionHref(resource, jobId || "create", {
+      action: attrString(attrs, "action").trim(),
+      contextPath: attrString(attrs, "contextPath").trim(),
+      workspaceId
+    });
   }
-  const params = new URLSearchParams({ workspaceId, id: targetId });
-  return `mention://${resource}?${params.toString()}`;
+  return buildAgentGenericMentionHref(resource, targetId, { workspaceId });
+}
+
+function buildAgentGenericMentionHref(
+  providerId: string,
+  entityId: string,
+  scope?: Readonly<Record<string, string | null | undefined>>
+): string {
+  const normalizedProviderId = providerId.trim();
+  const normalizedEntityId = entityId.trim();
+  if (!normalizedProviderId || !normalizedEntityId) {
+    return "";
+  }
+  const params = new URLSearchParams();
+  Object.entries(scope ?? {})
+    .map(([key, value]) => [key.trim(), value?.trim() ?? ""] as const)
+    .filter(([key, value]) => key && value)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .forEach(([key, value]) => {
+      params.set(key, value);
+    });
+  const query = params.toString();
+  const href = `mention://${encodeURIComponent(
+    normalizedProviderId
+  )}/${encodeURIComponent(normalizedEntityId)}`;
+  return query ? `${href}?${query}` : href;
 }
 
 function normalizeSessionTitle(value: string): string {

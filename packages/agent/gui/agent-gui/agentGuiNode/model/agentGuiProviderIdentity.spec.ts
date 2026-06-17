@@ -112,7 +112,7 @@ describe("agentGuiProviderIdentity", () => {
   it("humanizes mention markdown conversation titles", () => {
     expect(
       resolveAgentGUIConversationTitle(
-        "[@wang jomes & Codex hi](mention://agent-session?workspaceId=room-1&id=session-1)",
+        "[@wang jomes & Codex hi](mention://agent-session/session-1?workspaceId=room-1)",
         "codex"
       )
     ).toEqual({

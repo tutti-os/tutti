@@ -5,7 +5,7 @@ import {
   createRichTextI18nRuntime,
   richTextI18nResources
 } from "./richTextI18n.ts";
-import { resolveRichTextAtText } from "../editor/richTextAtText.ts";
+import { resolveRichTextTriggerText } from "../editor/richTextTriggerText.ts";
 
 test("rich text i18n runtime resolves package-local defaults", () => {
   const i18n = createRichTextI18nRuntime();
@@ -28,14 +28,14 @@ test("rich text i18n runtime follows merged host locale resources", () => {
   assert.equal(i18n.t("richTextAt.noMatches"), "没有匹配项");
 });
 
-test("resolveRichTextAtText prefers overrides over i18n defaults", () => {
+test("resolveRichTextTriggerText prefers overrides over i18n defaults", () => {
   const runtime = createI18nRuntime({
     dictionaries: [richTextI18nResources["zh-CN"]]
   });
   const i18n = createRichTextI18nRuntime(runtime);
 
   assert.deepEqual(
-    resolveRichTextAtText(
+    resolveRichTextTriggerText(
       {
         noMatchesLabel: "Nothing here"
       },

@@ -436,14 +436,14 @@ describe("AgentFileMentionPalette", () => {
           items: [
             {
               kind: "session",
-              href: "mention://agent-session?workspaceId=room-1&id=session-1&provider=codex",
+              href: "mention://agent-session/session-1?workspaceId=room-1",
               workspaceId: "room-1",
               targetId: "session-1",
-              name: "Alice & Custom Agent 看看目录",
+              name: "Alice & Codex 看看目录",
               title: "看看目录",
               scope: "my_sessions",
               initiatorName: "Alice",
-              agentName: "Custom Agent",
+              agentName: "Codex",
               status: "working"
             }
           ],
@@ -1208,7 +1208,7 @@ describe("AgentFileMentionPalette", () => {
           items: [
             {
               kind: "workspace-app",
-              href: "mention://workspace-app?appId=automation",
+              href: "mention://workspace-app/automation?workspaceId=room-1",
               workspaceId: "room-1",
               targetId: "automation",
               appId: "automation",

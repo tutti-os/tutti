@@ -10,7 +10,6 @@
     "./at-panel/model": "./src/at-panel/model.ts",
     "./core": "./src/core/index.ts",
     "./editor": "./src/editor/index.ts",
-    "./mention": "./src/mention/index.ts",
     "./plugins": "./src/plugins/index.ts",
     "./types": "./src/types/index.ts"
   },
@@ -77,10 +76,6 @@
         "types": "./dist/editor/index.d.ts",
         "import": "./dist/editor/index.js"
       },
-      "./mention": {
-        "types": "./dist/mention/index.d.ts",
-        "import": "./dist/mention/index.js"
-      },
       "./plugins": {
         "types": "./dist/plugins/index.d.ts",
         "import": "./dist/plugins/index.js"
@@ -104,9 +99,6 @@
         ],
         "editor": [
           "./dist/editor/index.d.ts"
-        ],
-        "mention": [
-          "./dist/mention/index.d.ts"
         ],
         "plugins": [
           "./dist/plugins/index.d.ts"

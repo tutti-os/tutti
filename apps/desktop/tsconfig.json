@@ -24,6 +24,15 @@
       "@tutti-os/workspace-app-center/ui": [
         "../../packages/workspace/app-center/src/ui/index.ts"
       ],
+      "@tutti-os/workspace-external-core": [
+        "../../packages/workspace/external-core/src/index.ts"
+      ],
+      "@tutti-os/workspace-external-core/contracts": [
+        "../../packages/workspace/external-core/src/contracts/index.ts"
+      ],
+      "@tutti-os/workspace-external-core/core": [
+        "../../packages/workspace/external-core/src/core/index.ts"
+      ],
       "@tutti-os/workspace-file-manager": [
         "../../packages/workspace/file-manager/src/index.ts"
       ],

@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
+import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type {
   AgentProviderStatus,
   TuttidClient,
@@ -41,7 +42,7 @@ import { resolveWorkspaceLinkAction } from "@contexts/workspace/presentation/ren
 import { requestWorkspaceBrowserLaunch } from "../workspaceBrowserLaunchCoordinator.ts";
 import { requestWorkspaceFilesLaunch } from "../workspaceFilesLaunchCoordinator.ts";
 import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaunchCoordinator.ts";
-import { createWorkspaceIssueManagerRichTextAtProviderRequestFromIdentity } from "./workspaceIssueManagerRichTextAtProviderRequest.ts";
+import { createWorkspaceIssueManagerRichTextTriggerProviderRequestFromIdentity } from "./workspaceIssueManagerRichTextTriggerProviderRequest.ts";
 import {
   resolveWorkspaceAgentGuiLabel,
   workspaceAgentGuiProviders
@@ -98,7 +99,12 @@ export function createWorkspaceIssueManagerContribution(input: {
     },
     mentionActionHandler: {
       openMention: async ({ mention }) => {
-        const href = mention.href?.trim() ?? "";
+        const href = createRichTextMentionHref({
+          providerId: mention.providerId,
+          entityId: mention.entityId,
+          label: mention.label,
+          scope: mention.scope
+        });
         if (!href) {
           return;
         }
@@ -200,18 +206,20 @@ export function createWorkspaceIssueManagerContribution(input: {
           workspaceAgentActivityService: input.workspaceAgentActivityService,
           workspaceId: input.workspaceId
         }),
-      resolveRichTextAtProviders: ({ surface, workspaceId }) =>
+      resolveRichTextTriggerProviders: ({ surface, workspaceId }) =>
         // The neutral `DesktopRichTextAtService` already emits the enriched
         // workspace-app (localized name/description + resolved icon) and
         // agent-session (provider icon + avatar + participant + status) providers,
         // so the issue-manager `@`-mention rows render identically to the agent
         // without this package importing any agent/desktop mention resolvers.
         input.richTextAtService.getProviders(
-          createWorkspaceIssueManagerRichTextAtProviderRequestFromIdentity({
-            currentUser: () => identityAdapter.currentUser(),
-            surface,
-            workspaceId
-          })
+          createWorkspaceIssueManagerRichTextTriggerProviderRequestFromIdentity(
+            {
+              currentUser: () => identityAdapter.currentUser(),
+              surface,
+              workspaceId
+            }
+          )
         )
     },
     typeId: defaultIssueManagerWorkbenchTypeId

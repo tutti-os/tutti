@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   draftForSlashCommand,
   filterSlashCommands,
-  getSlashCommandQuery,
   labelForSlashCommand,
   mergeSlashCommands,
   moveSlashCommandHighlight,
@@ -11,17 +10,6 @@ import {
 } from "./agentSlashCommands";
 
 describe("agentSlashCommands", () => {
-  it("extracts only a leading slash command query", () => {
-    expect(getSlashCommandQuery("/")).toBe("");
-    expect(getSlashCommandQuery("/we")).toBe("we");
-    expect(getSlashCommandQuery("   /we")).toBe("we");
-    expect(getSlashCommandQuery("/web query")).toBeNull();
-    expect(getSlashCommandQuery("hello/web")).toBeNull();
-    expect(getSlashCommandQuery("hello /re")).toBeNull();
-    expect(getSlashCommandQuery("hello\n/re")).toBeNull();
-    expect(getSlashCommandQuery("`/re`")).toBeNull();
-  });
-
   it("filters by command name prefix and description substring", () => {
     const commands = [
       { name: "web", description: "Search online" },

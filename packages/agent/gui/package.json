@@ -8,8 +8,9 @@
     ".": "./index.ts",
     "./agent-message-center": "./agent-message-center/index.ts",
     "./agent-conversation": "./agent-conversation/index.ts",
+    "./context-mention-palette": "./context-mention-palette/index.ts",
     "./plan-decision-ops": "./shared/agentConversation/planImplementation.ts",
-    "./agent-rich-text-at-provider": "./agent-gui/agentGuiNode/agentRichTextAtProvider.ts",
+    "./context-mention-provider": "./agent-gui/agentGuiNode/agentContextMentionProvider.ts",
     "./mention-file-presentation": "./agent-gui/shared/mentionFilePresentation.ts",
     "./agent-title-text": "./shared/utils/agentTitleText.ts",
     "./workspace-agent-generated-files": "./shared/workspaceAgentActivityListViewModel.ts",
@@ -40,10 +41,11 @@
     "@monaco-editor/react": "^4.7.0",
     "@tutti-os/agent-activity-core": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
-    "@tutti-os/ui-react-hooks": "workspace:*",
     "@tutti-os/ui-rich-text": "workspace:*",
+    "@tutti-os/ui-react-hooks": "workspace:*",
     "@tutti-os/ui-system": "workspace:*",
     "@tutti-os/workbench-surface": "workspace:*",
+    "@tutti-os/workspace-external-core": "workspace:*",
     "@tutti-os/workspace-file-manager": "workspace:*",
     "@tutti-os/workspace-file-reference": "workspace:*",
     "@tutti-os/workspace-issue-manager": "workspace:*",
@@ -100,13 +102,17 @@
         "types": "./dist/agent-conversation/index.d.ts",
         "import": "./dist/agent-conversation/index.js"
       },
+      "./context-mention-palette": {
+        "types": "./dist/context-mention-palette/index.d.ts",
+        "import": "./dist/context-mention-palette/index.js"
+      },
       "./plan-decision-ops": {
         "types": "./dist/plan-decision-ops.d.ts",
         "import": "./dist/plan-decision-ops.js"
       },
-      "./agent-rich-text-at-provider": {
-        "types": "./dist/agent-rich-text-at-provider.d.ts",
-        "import": "./dist/agent-rich-text-at-provider.js"
+      "./context-mention-provider": {
+        "types": "./dist/context-mention-provider.d.ts",
+        "import": "./dist/context-mention-provider.js"
       },
       "./mention-file-presentation": {
         "types": "./dist/mention-file-presentation.d.ts",
@@ -159,11 +165,14 @@
         "agent-conversation": [
           "./dist/agent-conversation/index.d.ts"
         ],
+        "context-mention-palette": [
+          "./dist/context-mention-palette/index.d.ts"
+        ],
         "plan-decision-ops": [
           "./dist/plan-decision-ops.d.ts"
         ],
-        "agent-rich-text-at-provider": [
-          "./dist/agent-rich-text-at-provider.d.ts"
+        "context-mention-provider": [
+          "./dist/context-mention-provider.d.ts"
         ],
         "mention-file-presentation": [
           "./dist/mention-file-presentation.d.ts"

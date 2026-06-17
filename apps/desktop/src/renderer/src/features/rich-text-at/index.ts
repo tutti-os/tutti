@@ -5,7 +5,7 @@ export {
 export {
   IDesktopRichTextAtService,
   type DesktopRichTextAtCapability,
-  type DesktopRichTextAtProviderRequest
+  type DesktopRichTextTriggerProviderRequest
 } from "./services/richTextAtService.interface";
 export {
   createDesktopWorkspaceAppMentionProvider,

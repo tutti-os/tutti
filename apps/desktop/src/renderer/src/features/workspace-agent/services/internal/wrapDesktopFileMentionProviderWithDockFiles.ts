@@ -1,18 +1,18 @@
-import { AGENT_GUI_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/agent-rich-text-at-provider";
-import type { AgentRichTextAtProvider } from "@tutti-os/agent-gui/agent-rich-text-at-provider";
+import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/context-mention-provider";
+import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import { resolveAgentMentionFileVisualKind } from "@tutti-os/agent-gui/mention-file-presentation";
 import type { WorkbenchDockPreviewCache } from "@tutti-os/workbench-surface";
-import type { WorkbenchDockFileAtItem } from "./resolveWorkbenchDockFileAtItems.ts";
+import type { WorkbenchDockFileMentionItem } from "./resolveWorkbenchDockFileMentionItems.ts";
 
-const { file: FILE_PROVIDER_ID } = AGENT_GUI_MENTION_PROVIDER_IDS;
+const { file: FILE_PROVIDER_ID } = AGENT_CONTEXT_MENTION_PROVIDER_IDS;
 
 export function wrapDesktopFileMentionProviderWithDockFiles<TItem>(
-  provider: AgentRichTextAtProvider<TItem>,
+  provider: AgentContextMentionProvider<TItem>,
   options: {
     readDockPreview?: WorkbenchDockPreviewCache["read"];
-    resolveDockFiles: () => readonly WorkbenchDockFileAtItem[];
+    resolveDockFiles: () => readonly WorkbenchDockFileMentionItem[];
   }
-): AgentRichTextAtProvider<TItem> {
+): AgentContextMentionProvider<TItem> {
   if (provider.id !== FILE_PROVIDER_ID) {
     return provider;
   }
@@ -61,7 +61,7 @@ export function wrapDesktopFileMentionProviderWithDockFiles<TItem>(
 }
 
 async function hydrateDockFileThumbnails(input: {
-  dockFiles: readonly WorkbenchDockFileAtItem[];
+  dockFiles: readonly WorkbenchDockFileMentionItem[];
   readDockPreview?: WorkbenchDockPreviewCache["read"];
   thumbnailUrlByPath: Map<string, string>;
 }): Promise<void> {
@@ -90,10 +90,10 @@ async function hydrateDockFileThumbnails(input: {
 }
 
 function filterDockFiles(
-  dockFiles: readonly WorkbenchDockFileAtItem[],
+  dockFiles: readonly WorkbenchDockFileMentionItem[],
   maxResults?: number,
   keyword?: string
-): WorkbenchDockFileAtItem[] {
+): WorkbenchDockFileMentionItem[] {
   const normalizedKeyword = keyword?.trim().toLowerCase() ?? "";
   const filtered = normalizedKeyword
     ? dockFiles.filter((item) =>
@@ -104,7 +104,7 @@ function filterDockFiles(
 }
 
 function matchesDockFileKeyword(
-  item: WorkbenchDockFileAtItem,
+  item: WorkbenchDockFileMentionItem,
   keyword: string
 ): boolean {
   const haystack = `${item.displayName}\n${item.path}`.toLowerCase();

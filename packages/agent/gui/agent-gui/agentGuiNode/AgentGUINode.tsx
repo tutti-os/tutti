@@ -58,7 +58,7 @@ import {
   resolveAgentGUIConversationRailMaxWidthPx,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./model/agentGuiRailLayout";
-import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
+import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type {
   AgentComposerGitBranchLoader,
@@ -139,7 +139,7 @@ export interface AgentGUINodeProps {
   workspaceAgentProbes?: WorkspaceDesktopAgentProbesState | null;
   onAgentProbeDemandChange?: WorkspaceDesktopAgentProbeDemandChange;
   managedAgentsState?: AgentHostManagedAgentsState | null;
-  richTextAtProviders?: readonly AgentRichTextAtProvider[];
+  contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   embedded?: boolean;
   previewMode?: boolean;
@@ -430,7 +430,7 @@ function areAgentGUINodePropsEqual(
     ) &&
     previous.onAgentProbeDemandChange === next.onAgentProbeDemandChange &&
     previous.managedAgentsState === next.managedAgentsState &&
-    previous.richTextAtProviders === next.richTextAtProviders &&
+    previous.contextMentionProviders === next.contextMentionProviders &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
     previous.embedded === next.embedded &&
     previous.previewMode === next.previewMode &&
@@ -476,7 +476,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   workspaceAgentProbes,
   onAgentProbeDemandChange,
   managedAgentsState,
-  richTextAtProviders,
+  contextMentionProviders,
   workspaceAppIcons,
   embedded = false,
   previewMode = false
@@ -1197,7 +1197,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
             onRequestGitBranches={onRequestGitBranches}
             workspaceFileReferenceCopy={workspaceFileReferenceCopy}
-            richTextAtProviders={richTextAtProviders}
+            contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={workspaceAppIcons}
           />
         );

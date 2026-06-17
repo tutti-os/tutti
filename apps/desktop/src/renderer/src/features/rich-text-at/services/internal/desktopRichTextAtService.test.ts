@@ -52,7 +52,7 @@ test("desktop rich text @ service assembles workspace file providers by capabili
   });
 
   const providers = service.getProviders({
-    capabilities: ["workspace-file"],
+    capabilities: ["file"],
     surface: "issue",
     target: "issue-manager",
     workspaceId: "workspace-1"
@@ -64,7 +64,8 @@ test("desktop rich text @ service assembles workspace file providers by capabili
   const items = await provider.query({
     context: {},
     keyword: "readme",
-    maxResults: 3
+    maxResults: 3,
+    trigger: "@"
   });
 
   assert.equal(searchCalls.length, 1);
@@ -82,9 +83,17 @@ test("desktop rich text @ service assembles workspace file providers by capabili
     }
   ]);
   assert.deepEqual(provider.toInsertResult(items[0]), {
-    href: "/Users/test/project/tutti/README.md",
-    kind: "markdown-link",
-    label: "README.md"
+    kind: "mention",
+    mention: {
+      entityId: "/Users/test/project/tutti/README.md",
+      label: "README.md",
+      presentation: {
+        subtitle: "/Users/test/project/tutti/README.md"
+      },
+      scope: {
+        workspaceId: "workspace-1"
+      }
+    }
   });
 });
 
@@ -152,7 +161,8 @@ test("desktop rich text @ service assembles workspace issue providers by capabil
   const items = await provider.query({
     context: {},
     keyword: "login",
-    maxResults: 5
+    maxResults: 5,
+    trigger: "@"
   });
 
   assert.deepEqual(listCalls, [
@@ -167,13 +177,12 @@ test("desktop rich text @ service assembles workspace issue providers by capabil
     kind: "mention",
     mention: {
       entityId: "issue-1",
-      href: "mention://workspace-issue?workspaceId=workspace-1&id=issue-1&topicId=topic-1",
-      kind: "workspace-issue",
       label: "Login polish",
-      meta: {
-        contentPreview: "Handle flaky login captcha",
-        creatorDisplayName: "Alice",
-        status: "running",
+      presentation: {
+        description: "Handle flaky login captcha",
+        status: "running"
+      },
+      scope: {
         topicId: "topic-1",
         workspaceId: "workspace-1"
       }
@@ -214,7 +223,7 @@ test("desktop rich text @ service assembles agent session providers by capabilit
               provider: "codex",
               status: "working",
               title:
-                "[@wang jomes & Codex hi](mention://agent-session?workspaceId=workspace-1&id=session-2)",
+                "[@wang jomes & Codex hi](mention://agent-session/session-2?workspaceId=workspace-1)",
               updatedAt: null
             }
           ]
@@ -236,7 +245,8 @@ test("desktop rich text @ service assembles agent session providers by capabilit
   const items = await provider.query({
     context: {},
     keyword: "mentions",
-    maxResults: 5
+    maxResults: 5,
+    trigger: "@"
   });
 
   assert.deepEqual(listCalls, [
@@ -258,7 +268,7 @@ test("desktop rich text @ service assembles agent session providers by capabilit
       sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
       status: "working",
       title:
-        "[@wang jomes & Codex hi](mention://agent-session?workspaceId=workspace-1&id=session-2)",
+        "[@wang jomes & Codex hi](mention://agent-session/session-2?workspaceId=workspace-1)",
       updatedAtUnixMs: 1780272000000,
       userId: "local",
       workspaceId: "workspace-1"
@@ -269,19 +279,14 @@ test("desktop rich text @ service assembles agent session providers by capabilit
     kind: "mention",
     mention: {
       entityId: "session-1",
-      href: "mention://agent-session?id=session-1&provider=codex&workspaceId=workspace-1",
-      kind: "agent-session",
       label: "@wang jomes & Codex hi",
-      meta: {
-        agentName: "Codex",
-        initiatorName: "local",
-        provider: "codex",
-        scope: "my_sessions",
-        sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
+      presentation: {
+        agentProviderId: "codex",
+        participant: "local & Codex",
         status: "working",
-        title: "@wang jomes & Codex hi",
-        updatedAtUnixMs: "1780272000000",
-        userId: "local",
+        subtitle: "Codex"
+      },
+      scope: {
         workspaceId: "workspace-1"
       }
     }
@@ -350,7 +355,8 @@ test("desktop rich text @ service assembles workspace app providers by capabilit
   const items = await provider.query({
     context: {},
     keyword: "weather",
-    maxResults: 5
+    maxResults: 5,
+    trigger: "@"
   });
 
   assert.deepEqual(listCalls, ["workspace-1"]);
@@ -372,18 +378,13 @@ test("desktop rich text @ service assembles workspace app providers by capabilit
     kind: "mention",
     mention: {
       entityId: "app-weather",
-      href: "mention://workspace-app?appId=app-weather&workspaceId=workspace-1",
-      kind: "workspace-app",
       label: "Weather Desk",
-      meta: {
-        appId: "app-weather",
-        commandCount: "2",
-        commandDescriptions: "Inspect weather forecasts.",
-        commandPaths: "weather forecast\nweather alerts",
-        commandSummaries: "Get a forecast\nList weather alerts",
+      presentation: {
         description: "Plan weather-sensitive work.",
         iconUrl: "data:image/png;base64,weather",
-        scopes: "weather",
+        subtitle: "Plan weather-sensitive work."
+      },
+      scope: {
         workspaceId: "workspace-1"
       }
     }
@@ -442,7 +443,8 @@ test("desktop rich text @ service assembles provider agent mention apps from cap
   const items = await provider.query({
     context: {},
     keyword: "agent",
-    maxResults: 5
+    maxResults: 5,
+    trigger: "@"
   });
 
   assert.equal(items.length, 2);
@@ -487,19 +489,13 @@ test("desktop rich text @ service assembles provider agent mention apps from cap
     kind: "mention",
     mention: {
       entityId: "agent-codex",
-      href: "mention://workspace-app?appId=agent-codex&workspaceId=workspace-1",
-      kind: "workspace-app",
       label: "Codex",
-      meta: {
-        appId: "agent-codex",
-        commandCount: "1",
-        commandDescriptions:
-          "Start a Codex agent session in the current workspace.",
-        commandPaths: "codex start",
-        commandSummaries: "Start a Codex agent session",
+      presentation: {
         description: "Start a Codex agent session in the current workspace.",
         iconUrl: codexIconUrl,
-        scopes: "codex",
+        subtitle: "Start a Codex agent session in the current workspace."
+      },
+      scope: {
         workspaceId: "workspace-1"
       }
     }
@@ -549,7 +545,8 @@ test("desktop rich text @ service falls back to app description for workspace ap
   const items = await provider.query({
     context: {},
     keyword: "recurring",
-    maxResults: 5
+    maxResults: 5,
+    trigger: "@"
   });
 
   const item = items[0] as
@@ -604,7 +601,8 @@ test("desktop rich text @ service prefers cli scope description for workspace ap
   const items = await provider.query({
     context: {},
     keyword: "automations",
-    maxResults: 5
+    maxResults: 5,
+    trigger: "@"
   });
 
   const item = items[0] as
@@ -692,16 +690,20 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
   const appItems = await appProvider.query({
     context: {},
     keyword: "",
-    maxResults: 5
+    maxResults: 5,
+    trigger: "@"
   });
   const appInsert = appProvider.toInsertResult(appItems[0]);
   assert.equal(appInsert.kind, "mention");
   assert.equal(appInsert.mention.label, "Bureau Météo");
   assert.equal(
-    appInsert.mention.meta?.description,
+    appInsert.mention.presentation?.description,
     "Planifiez selon la météo."
   );
-  assert.equal(appInsert.mention.meta?.iconUrl, "https://icons/weather.png");
+  assert.equal(
+    appInsert.mention.presentation?.iconUrl,
+    "https://icons/weather.png"
+  );
 
   const [sessionProvider] = service.getProviders({
     capabilities: ["agent-session"],
@@ -713,21 +715,22 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
   const sessionItems = await sessionProvider.query({
     context: {},
     keyword: "",
-    maxResults: 5
+    maxResults: 5,
+    trigger: "@"
   });
   const sessionInsert = sessionProvider.toInsertResult(sessionItems[0]);
   assert.equal(sessionInsert.kind, "mention");
   assert.equal(
-    sessionInsert.mention.meta?.agentIconUrl,
+    sessionInsert.mention.presentation?.agentIconUrl,
     "https://agents/codex.png"
   );
   assert.equal(
-    sessionInsert.mention.meta?.userAvatarPlaceholderUrl,
+    sessionInsert.mention.presentation?.userAvatarPlaceholderUrl,
     "https://avatars/placeholder.png"
   );
-  assert.equal(sessionInsert.mention.meta?.statusLabel, "Working");
-  assert.equal(sessionInsert.mention.meta?.statusDataStatus, "working");
-  assert.equal(sessionInsert.mention.meta?.statusPulse, "true");
+  assert.equal(sessionInsert.mention.presentation?.statusLabel, "Working");
+  assert.equal(sessionInsert.mention.presentation?.statusDataStatus, "working");
+  assert.equal(sessionInsert.mention.presentation?.statusPulse, "true");
 });
 
 test("desktop rich text @ service returns no providers without requested capabilities", () => {
@@ -751,13 +754,13 @@ test("desktop rich text @ service reuses provider instances for the same request
   });
 
   const firstProviders = service.getProviders({
-    capabilities: ["workspace-file"],
+    capabilities: ["file"],
     surface: "issue",
     target: "issue-manager",
     workspaceId: "workspace-1"
   });
   const secondProviders = service.getProviders({
-    capabilities: ["workspace-file"],
+    capabilities: ["file"],
     surface: "issue",
     target: "issue-manager",
     workspaceId: "workspace-1"
@@ -783,7 +786,7 @@ test("desktop rich text @ service honors abort before provider search starts", a
   });
 
   const [provider] = service.getProviders({
-    capabilities: ["workspace-file"],
+    capabilities: ["file"],
     surface: "issue",
     target: "issue-manager",
     workspaceId: "workspace-1"
@@ -796,7 +799,8 @@ test("desktop rich text @ service honors abort before provider search starts", a
     abortSignal: abortController.signal,
     context: {},
     keyword: "readme",
-    maxResults: 3
+    maxResults: 3,
+    trigger: "@"
   });
 
   assert.deepEqual(items, []);
@@ -823,7 +827,7 @@ test("desktop rich text @ service passes abort signals through to tuttid search"
   });
 
   const [provider] = service.getProviders({
-    capabilities: ["workspace-file"],
+    capabilities: ["file"],
     surface: "issue",
     target: "issue-manager",
     workspaceId: "workspace-1"
@@ -835,7 +839,8 @@ test("desktop rich text @ service passes abort signals through to tuttid search"
     abortSignal: abortController.signal,
     context: {},
     keyword: "readme",
-    maxResults: 3
+    maxResults: 3,
+    trigger: "@"
   });
 
   assert.equal(receivedSignal, abortController.signal);
@@ -847,14 +852,14 @@ test("desktop rich text @ service skips provider caching when metadata is presen
   });
 
   const firstProviders = service.getProviders({
-    capabilities: ["workspace-file"],
+    capabilities: ["file"],
     metadata: { session: "a" },
     surface: "issue",
     target: "issue-manager",
     workspaceId: "workspace-1"
   });
   const secondProviders = service.getProviders({
-    capabilities: ["workspace-file"],
+    capabilities: ["file"],
     metadata: { session: "b" },
     surface: "issue",
     target: "issue-manager",

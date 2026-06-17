@@ -99,7 +99,8 @@ export function createWorkspaceAgentGuiContribution(input: {
       onLinkAction: handleLinkAction,
       onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
-      richTextAtProviders: agentGUIWorkbenchHostInput.richTextAtProviders,
+      contextMentionProviders:
+        agentGUIWorkbenchHostInput.contextMentionProviders,
       resolveAppIconUrl: input.resolveAppIconUrl,
       runtimeApi: input.runtimeApi,
       trackWorkspaceFileReferences:

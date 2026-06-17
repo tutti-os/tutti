@@ -25,7 +25,6 @@ import type {
   DesktopHostFilesApi,
   DesktopHostNotificationsApi,
   DesktopHostWindowApi,
-  DesktopHostWorkspaceApi,
   DesktopPlatformApi,
   DesktopRuntimeApi,
   DesktopWallpaperApi
@@ -56,7 +55,9 @@ import {
   IWorkspaceAppCenterService,
   reportWorkspaceAppOpenedFromDockEntry
 } from "@renderer/features/workspace-app-center";
+import { createDesktopAgentGeneratedFileMentionProvider } from "@renderer/features/workspace-agent";
 import { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
+import { createDesktopWorkspaceFileReferenceAdapter } from "../../../workspace-file-manager/services/createDesktopWorkspaceFileReferenceAdapter.ts";
 import { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
 import { defaultWorkspaceWorkbenchContributionFactories } from "./contributions/defaultWorkspaceWorkbenchContributionFactories.ts";
 import { createWorkspaceWorkbenchContributionRegistryResult } from "./workspaceWorkbenchContributionRegistry.ts";
@@ -79,10 +80,7 @@ import { createWorkspaceDynamicDockSignature } from "./workspaceDynamicDockSigna
 import { createWorkspaceLaunchpadDockEntry } from "./workspaceLaunchpadDockEntry.ts";
 import { createDesktopWorkspaceDockPreviewCache } from "./desktopWorkspaceDockPreviewCache.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
-import type {
-  DesktopHostNotificationNavigationPayload,
-  DesktopWorkspaceOpenSettingsRequest
-} from "@shared/contracts/ipc";
+import type { DesktopHostNotificationNavigationPayload } from "@shared/contracts/ipc";
 import { SettingsCustomWallpaperClearedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-cleared/settingsCustomWallpaperClearedReporter.ts";
 import { SettingsCustomWallpaperUploadedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-uploaded/settingsCustomWallpaperUploadedReporter.ts";
 import {
@@ -94,6 +92,15 @@ import {
   resolveWorkspaceDockIconSet,
   type WorkspaceDockIconSet
 } from "../workspaceDockIconStyle.ts";
+import { createRichTextTriggerRegistry } from "@tutti-os/ui-rich-text/plugins";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
+import { tuttiExternalAtProviderIds } from "@tutti-os/workspace-external-core/core";
+import type {
+  TuttiExternalAtQueryInput,
+  TuttiExternalAtQueryResult
+} from "@tutti-os/workspace-external-core/contracts";
+import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
+import { serializeWorkspaceAppExternalAtMatch } from "./workspaceAppExternalAtSerialization.ts";
 
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
@@ -108,7 +115,6 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
   workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: WorkspaceAgentActivityService;
@@ -133,7 +139,6 @@ export interface WorkspaceWorkbenchHostExternalDependencies {
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -199,7 +204,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       hostFilesApi: externalDependencies.hostFilesApi,
       hostNotificationsApi: externalDependencies.hostNotificationsApi,
       hostWindowApi: externalDependencies.hostWindowApi,
-      hostWorkspaceApi: externalDependencies.hostWorkspaceApi,
       workspaceFileManagerService,
       workspaceUserProjectService,
       workspaceAgentActivityService,
@@ -232,10 +236,63 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     return this.dependencies.hostNotificationsApi.onNavigate(listener);
   }
 
-  onOpenSettingsRequest(
-    listener: (request: DesktopWorkspaceOpenSettingsRequest) => void
-  ): () => void {
-    return this.dependencies.hostWorkspaceApi.onOpenSettingsRequest(listener);
+  createWorkspaceAppExternalFileReferenceAdapter(
+    workspaceId: string
+  ): WorkspaceFileReferenceAdapter {
+    return createDesktopWorkspaceFileReferenceAdapter({
+      hostFilesApi: this.dependencies.hostFilesApi,
+      tuttidClient: this.dependencies.tuttidClient,
+      workspaceId
+    });
+  }
+
+  async queryWorkspaceAppExternalAt(input: {
+    query: TuttiExternalAtQueryInput;
+    workspaceId: string;
+  }): Promise<TuttiExternalAtQueryResult[]> {
+    const providerIds = new Set(
+      input.query.providers && input.query.providers.length > 0
+        ? input.query.providers
+        : tuttiExternalAtProviderIds
+    );
+    const richTextCapabilities = [...providerIds].filter(
+      (providerId) => providerId !== "agent-generated-file"
+    );
+    const providers: RichTextTriggerProvider[] = [
+      ...this.dependencies.richTextAtService.getProviders({
+        capabilities: richTextCapabilities,
+        surface: "workspace-app-external",
+        target: "workspace-app",
+        workspaceId: input.workspaceId
+      })
+    ];
+    if (providerIds.has("agent-generated-file")) {
+      const agentGeneratedFileProvider =
+        createDesktopAgentGeneratedFileMentionProvider({
+          agentActivityRuntime: this.dependencies.workspaceAgentActivityService,
+          workspaceId: input.workspaceId
+        });
+      providers.push({
+        ...agentGeneratedFileProvider,
+        trigger: "@"
+      });
+    }
+    const registry = createRichTextTriggerRegistry(providers);
+    const matches = await registry.query({
+      keyword: input.query.keyword,
+      maxResults: input.query.maxResults,
+      trigger: "@",
+      context: {
+        metadata: {
+          workspaceId: input.workspaceId
+        }
+      }
+    });
+    return matches
+      .map(serializeWorkspaceAppExternalAtMatch)
+      .filter(
+        (result): result is TuttiExternalAtQueryResult => result !== null
+      );
   }
 
   readWallpaperDisplayMode(workspaceId: string) {

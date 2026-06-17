@@ -96,7 +96,7 @@ describe("AgentQueuedPromptPanel", () => {
         queuedPrompts={[
           textQueuedPrompt(
             "queued-1",
-            "[@2046494774160003072 & Claude Code Claude Code](mention://agent-session?workspaceId=room-1&id=session-1)"
+            "[@2046494774160003072 & Claude Code Claude Code](mention://agent-session/session-1?workspaceId=room-1)"
           )
         ]}
         drainingQueuedPromptId={null}
@@ -124,7 +124,7 @@ describe("AgentQueuedPromptPanel", () => {
         queuedPrompts={[
           textQueuedPrompt(
             "queued-1",
-            "local & Codex [@AI Media Canvas](mention://workspace-app)?workspaceId=workspace-1&appId=ai-media-canvas"
+            "local & Codex [@AI Media Canvas](mention://workspace-app/ai-media-canvas?workspaceId=workspace-1)"
           )
         ]}
         drainingQueuedPromptId={null}
@@ -146,7 +146,7 @@ describe("AgentQueuedPromptPanel", () => {
     expect(mention).toHaveAttribute("data-agent-mention-kind", "workspace-app");
     expect(mention).toHaveAttribute(
       "data-agent-mention-href",
-      "mention://workspace-app?workspaceId=workspace-1&appId=ai-media-canvas"
+      "mention://workspace-app/ai-media-canvas?workspaceId=workspace-1"
     );
     expect(
       mention?.querySelector('[data-agent-mention-app-icon="true"] img')
@@ -203,7 +203,7 @@ describe("AgentQueuedPromptPanel", () => {
         queuedPrompts={[
           textQueuedPrompt(
             "queued-1",
-            "[@2046494774160003072 & Claude Code Claude Code](mention://agent-session?workspaceId=room-1&id=session-1)"
+            "[@2046494774160003072 & Claude Code Claude Code](mention://agent-session/session-1?workspaceId=room-1)"
           )
         ]}
         drainingQueuedPromptId={null}
@@ -222,7 +222,7 @@ describe("AgentQueuedPromptPanel", () => {
     fireEvent.click(mention as Element);
 
     expect(onLinkClick).toHaveBeenCalledWith(
-      "mention://agent-session?workspaceId=room-1&id=session-1"
+      "mention://agent-session/session-1?workspaceId=room-1"
     );
     expect(panel).toHaveAttribute("data-expanded", "false");
   });

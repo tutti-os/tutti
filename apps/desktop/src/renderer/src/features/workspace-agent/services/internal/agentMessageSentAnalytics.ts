@@ -58,5 +58,5 @@ function hasAgentMessageSlashCommand(prompt: string): boolean {
 }
 
 function hasAgentMessageFileMention(prompt: string): boolean {
-  return /mention:\/\/workspace-file|@\[[^\]]+\]\(/u.test(prompt);
+  return /mention:\/\/file\/|@\[[^\]]+\]\(/u.test(prompt);
 }

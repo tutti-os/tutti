@@ -3,7 +3,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { workspaceReferenceNodeName } from "./names.ts";
 import { WorkspaceReferenceNodeView } from "./WorkspaceReferenceNodeView.tsx";
 import { getWorkspaceReferencePresentation } from "./workspaceReferencePresentation.ts";
-import { defaultRichTextAtText } from "../editor/richTextAtText.ts";
+import { defaultRichTextTriggerText } from "../editor/richTextTriggerText.ts";
 
 export interface WorkspaceReferenceAttrs {
   kind: "file" | "folder";
@@ -15,7 +15,8 @@ export const WorkspaceReference = Node.create({
   name: workspaceReferenceNodeName,
   addOptions() {
     return {
-      removeActionAriaLabel: defaultRichTextAtText.removeReferenceActionLabel
+      removeActionAriaLabel:
+        defaultRichTextTriggerText.removeReferenceActionLabel
     };
   },
   group: "inline",

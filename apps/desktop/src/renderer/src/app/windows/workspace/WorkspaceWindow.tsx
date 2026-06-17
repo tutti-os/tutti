@@ -7,10 +7,12 @@ import { createWorkspaceWindowContainer } from "./createWorkspaceWindowContainer
 import { createDeferredWorkspaceContainerDispose } from "./deferredWorkspaceContainerDispose";
 
 export function WorkspaceWindow() {
-  const { container, environmentMode, startupWorkspaceID } = useMemo(
-    () => createWorkspaceWindowContainer(),
-    []
-  );
+  const {
+    container,
+    environmentMode,
+    startupWorkspaceID,
+    workspaceAppExternalApi
+  } = useMemo(() => createWorkspaceWindowContainer(), []);
   const containerDispose = useMemo(
     () => createDeferredWorkspaceContainerDispose(() => container.dispose()),
     [container]
@@ -34,6 +36,7 @@ export function WorkspaceWindow() {
         enableWindowCloseGuard={environmentMode === "desktop"}
         headerSlot={<AppUpdateStatus />}
         routeView={routeView}
+        workspaceAppExternalApi={workspaceAppExternalApi}
         workspaceID={workspaceID}
       />
       <AnalyticsDebugFloatingEntryGate />

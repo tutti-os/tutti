@@ -10,7 +10,6 @@ import type {
   DesktopHostFilesApi,
   DesktopHostNotificationsApi,
   DesktopHostWindowApi,
-  DesktopHostWorkspaceApi,
   DesktopPlatformApi,
   DesktopRuntimeApi,
   DesktopWallpaperApi
@@ -30,7 +29,6 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -55,7 +53,6 @@ export function registerWorkspaceWorkbenchServices(
         hostFilesApi: input.hostFilesApi,
         hostNotificationsApi: input.hostNotificationsApi,
         hostWindowApi: input.hostWindowApi,
-        hostWorkspaceApi: input.hostWorkspaceApi,
         tuttidClient: input.tuttidClient,
         platformApi: input.platformApi,
         reporterService: input.reporterService,

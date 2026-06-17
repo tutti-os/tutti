@@ -37,9 +37,9 @@ export {
 export {
   DEFAULT_RICH_TEXT_AT_PANEL_PAGE_SIZE,
   RICH_TEXT_AT_ALL_FILTER_ID,
-  buildDefaultRichTextAtProviderGroups,
+  buildDefaultRichTextTriggerProviderGroups,
   buildRichTextAtFilterTabs,
-  findRichTextAtProviderGroup,
+  findRichTextTriggerProviderGroup,
   groupRichTextAtMatches,
   normalizeAtPanelQuery,
   richTextAtGroupExpandCount
@@ -48,6 +48,6 @@ export type {
   RichTextAtFilterId,
   RichTextAtFilterTab,
   RichTextAtGroupId,
-  RichTextAtProviderGroup,
+  RichTextTriggerProviderGroup,
   RichTextAtSearchGroup
 } from "./types.ts";

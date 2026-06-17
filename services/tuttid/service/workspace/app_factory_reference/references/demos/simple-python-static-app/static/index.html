@@ -88,31 +88,22 @@
       }
 
       async function readHostLocale() {
-        const appContext = window.tutti?.appContext || window.tuttiAppContext;
-        if (!appContext) return null;
-        if (typeof appContext.get === "function") {
-          const context = await appContext.get();
+        const getContext = window.tuttiExternal?.app?.getContext;
+        if (typeof getContext !== "function") return null;
+        try {
+          const context = await getContext();
           return context?.locale || context?.language || null;
+        } catch {
+          return null;
         }
-        if (typeof appContext.locale === "string") return appContext.locale;
-        if (typeof appContext.language === "string") return appContext.language;
-        if (typeof appContext.getLocale === "function") {
-          return await appContext.getLocale();
-        }
-        return null;
       }
 
       function subscribeHostLocale(listener) {
-        const appContext = window.tutti?.appContext || window.tuttiAppContext;
-        if (typeof appContext?.subscribe === "function") {
-          return appContext.subscribe((context) => {
-            listener(context?.locale || context?.language || null);
-          });
-        }
-        if (typeof appContext?.onLocaleChanged === "function") {
-          return appContext.onLocaleChanged(listener);
-        }
-        return () => {};
+        const subscribe = window.tuttiExternal?.app?.subscribe;
+        if (typeof subscribe !== "function") return () => {};
+        return subscribe((context) => {
+          listener(context?.locale || context?.language || null);
+        });
       }
 
       function applyLocale(locale) {

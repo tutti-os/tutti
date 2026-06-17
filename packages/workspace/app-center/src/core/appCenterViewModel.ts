@@ -108,6 +108,8 @@ export function createAppCenterViewModel({
         status
       });
 
+      const iconUrl = resolveWorkspaceAppIconUrl(app);
+
       return {
         id: app.manifest.appId,
         installationId,
@@ -122,7 +124,14 @@ export function createAppCenterViewModel({
           : {}),
         ...(app.category?.trim() ? { category: app.category.trim() } : {}),
         updateAvailable: app.updateAvailable ?? false,
-        ...(app.manifest.icon ? { icon: app.manifest.icon } : {}),
+        ...(iconUrl
+          ? {
+              icon: {
+                type: "asset" as const,
+                src: iconUrl
+              }
+            }
+          : {}),
         tags: metadata.tags,
         installed,
         status,
@@ -316,6 +325,18 @@ function normalizeOptionalString(
 ): string | null {
   const normalized = value?.trim() ?? "";
   return normalized.length > 0 ? normalized : null;
+}
+
+function resolveWorkspaceAppIconUrl(app: WorkspaceAppRecord): string | null {
+  const manifestIconUrl = normalizeOptionalString(app.manifest.icon?.src);
+  if (manifestIconUrl && isResolvedIconUrl(manifestIconUrl)) {
+    return manifestIconUrl;
+  }
+  return normalizeOptionalString(app.availableIconUrl) ?? manifestIconUrl;
+}
+
+function isResolvedIconUrl(value: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/iu.test(value) || value.startsWith("/");
 }
 
 function resolvePrimaryAction(input: {

@@ -1,0 +1,52 @@
+{
+  "name": "@tutti-os/workspace-external-core",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contracts": "./src/contracts/index.ts",
+    "./core": "./src/core/index.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/workspace/external-core"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@tutti-os/workspace-file-reference": "workspace:*"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "typescript": "^5.8.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./contracts": {
+        "types": "./dist/contracts/index.d.ts",
+        "import": "./dist/contracts/index.js"
+      },
+      "./core": {
+        "types": "./dist/core/index.d.ts",
+        "import": "./dist/core/index.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  }
+}

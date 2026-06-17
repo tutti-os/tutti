@@ -1,14 +1,14 @@
-import type { RichTextAtQueryMatch } from "../types/at.ts";
+import type { RichTextTriggerQueryMatch as RichTextAtQueryMatch } from "../types/trigger.ts";
 import type {
   MentionPaletteGroup,
   MentionPaletteState
 } from "./mentionPaletteTypes.ts";
 import { groupRichTextAtMatches } from "./searchHelpers.ts";
-import type { RichTextAtProviderGroup } from "./types.ts";
+import type { RichTextTriggerProviderGroup } from "./types.ts";
 
 export function buildMentionPaletteState(input: {
   matches: readonly RichTextAtQueryMatch[];
-  providerGroups: readonly RichTextAtProviderGroup[];
+  providerGroups: readonly RichTextTriggerProviderGroup[];
   filterTabs: readonly { id: string; label: string }[];
   activeFilterId: string;
   expandedCounts: Record<string, number | undefined>;

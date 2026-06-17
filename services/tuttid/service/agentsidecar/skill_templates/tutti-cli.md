@@ -1,19 +1,19 @@
 ---
 name: tutti-cli
-description: Use for `mention://agent-session?...` links and as the fallback router or command reference for Tutti mentions: `mention://workspace-issue?...` -> `issue-manager`, `mention://workspace-app?...` -> `workspace-app`, and `mention://agent-session?...` -> `tutti-cli`.
+description: Use for `mention://agent-session/<sessionId>?workspaceId=...` links, Tutti CLI command syntax, and daemon context lookup when no more specific Tutti skill applies; also serves as the command reference for injected Tutti skills.
 ---
 
 # Tutti CLI
 
-Use this skill when you need the Tutti CLI command reference, need to inspect an AgentGUI session from a `mention://agent-session?...` link, or need to inspect workspace context through the local Tutti daemon and no more specific Tutti skill applies.
+Use this skill when you need the Tutti CLI command reference, need to inspect an AgentGUI session from a `mention://agent-session/<sessionId>?workspaceId=...` link, or need to inspect workspace context through the local Tutti daemon and no more specific Tutti skill applies.
 
 ## Mention Routing
 
 Tutti mention links are internal handoffs. Route them by URI kind before guessing from the display label:
 
-- `mention://workspace-issue?...` belongs to `issue-manager`. Use that skill first for inspection, execution, run reporting, and breakdown workflows.
-- `mention://workspace-app?...` belongs to `workspace-app`. Use that skill first for app discovery, inspection, and invocation.
-- `mention://agent-session?...` belongs to this `tutti-cli` skill. Start with `agent session-summary --session-id <session-id> --json`.
+- `mention://workspace-issue/<issueId>?workspaceId=...` belongs to `issue-manager`. Use that skill first for inspection, execution, run reporting, and breakdown workflows.
+- `mention://workspace-app/<appId>?workspaceId=...` belongs to `workspace-app`. Use that skill first for app discovery, inspection, and invocation.
+- `mention://agent-session/<sessionId>?workspaceId=...` belongs to this `tutti-cli` skill. Start with `agent session-summary --session-id <session-id> --json`.
 - Unknown `mention://...` links are still internal Tutti references. Do not open them with a browser, WebFetch, or web search; parse the URI and ask for clarification if no command or specific skill matches.
 
 If you are actively executing or breaking down a workspace issue handoff, prefer the dedicated `issue-manager` skill for workflow guidance and use this skill as the CLI reference it depends on.

@@ -3,7 +3,10 @@ import {
   mentionReferenceNodeName,
   workspaceReferenceNodeName
 } from "../extensions/names.ts";
-import type { RichTextMentionAttrs } from "../types/mention.ts";
+import type {
+  RichTextMentionAttrs,
+  RichTextMentionIdentity
+} from "../types/mention.ts";
 import {
   findRichTextMarkdownLinks,
   type RichTextMarkdownLinkMatch
@@ -28,7 +31,7 @@ export type RichTextDocument = JSONContent;
 const MARKDOWN_IMAGE_PATTERN = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
 const EXTERNAL_LINK_PREFIX = /^(?:[a-z]+:)?\/\//i;
 const MENTION_LINK_PREFIX = /^mention:\/\//i;
-const MENTION_META_PARAM_PREFIX = "meta.";
+const MENTION_LEGACY_QUERY_KEYS = new Set(["kind", "link", "v", "version"]);
 
 type LegacyJSONContentNode = {
   type?: string;
@@ -143,56 +146,59 @@ export function isRichTextMentionHref(href: string): boolean {
   return MENTION_LINK_PREFIX.test(href.trim());
 }
 
+function normalizeMentionLabel(value: string): string {
+  return value.trim().replace(/^@+/, "").trim();
+}
+
 function createMentionQueryParams(
-  mention: RichTextMentionAttrs
+  mention: RichTextMentionIdentity
 ): URLSearchParams {
   const params = new URLSearchParams();
-  if (mention.kind?.trim()) {
-    params.set("kind", mention.kind.trim());
-  }
-  if (mention.href?.trim()) {
-    params.set("link", mention.href.trim());
-  }
-  if (mention.version?.trim()) {
-    params.set("v", mention.version.trim());
-  }
-  for (const [key, value] of Object.entries(mention.meta ?? {})) {
+  for (const [key, value] of Object.entries(mention.scope ?? {}).sort(
+    ([left], [right]) => left.localeCompare(right)
+  )) {
     const nextKey = key.trim();
     const nextValue = value.trim();
-    if (!nextKey || !nextValue) {
+    if (
+      !nextKey ||
+      !nextValue ||
+      MENTION_LEGACY_QUERY_KEYS.has(nextKey) ||
+      nextKey.startsWith("meta.")
+    ) {
       continue;
     }
-    params.set(`${MENTION_META_PARAM_PREFIX}${nextKey}`, nextValue);
+    params.set(nextKey, nextValue);
   }
   return params;
 }
 
 export function createRichTextMentionHref(
-  mention: RichTextMentionAttrs
+  mention: RichTextMentionIdentity
 ): string {
-  const plugin = mention.plugin.trim();
+  const providerId = mention.providerId.trim();
   const entityId = mention.entityId.trim();
-  if (!plugin || !entityId) {
+  const label = normalizeMentionLabel(mention.label);
+  if (!providerId || !entityId || !label) {
     return "";
   }
 
   const params = createMentionQueryParams(mention);
   const queryString = params.toString();
-  const pathname = `${encodeURIComponent(plugin)}/${encodeURIComponent(entityId)}`;
+  const pathname = `${encodeURIComponent(providerId)}/${encodeURIComponent(entityId)}`;
   return queryString
     ? `mention://${pathname}?${queryString}`
     : `mention://${pathname}`;
 }
 
 export function createRichTextMentionMarkdown(
-  mention: RichTextMentionAttrs
+  mention: RichTextMentionIdentity
 ): string {
-  const label = mention.label.trim();
+  const label = normalizeMentionLabel(mention.label);
   const href = createRichTextMentionHref(mention);
   if (!label || !href) {
     return "";
   }
-  return `[${label}](${href})`;
+  return `[${escapeMarkdownLinkLabel(`@${label}`)}](${escapeMarkdownLinkHref(href)})`;
 }
 
 export function parseRichTextMentionHref(
@@ -206,37 +212,47 @@ export function parseRichTextMentionHref(
 
   try {
     const parsed = new URL(trimmedHref);
-    const plugin = decodeURIComponent(parsed.hostname).trim();
-    const entityId = decodeURIComponent(
-      parsed.pathname.replace(/^\/+/, "")
-    ).trim();
-    const nextLabel = label?.trim() ?? "";
+    const providerId = decodeURIComponent(parsed.hostname).trim();
+    const encodedEntityId = parsed.pathname.replace(/^\/+/, "");
+    const entityId = decodeURIComponent(encodedEntityId).trim();
+    const nextLabel = normalizeMentionLabel(label?.trim() ?? "");
 
-    if (!plugin || !entityId || !nextLabel) {
+    if (
+      !providerId ||
+      !encodedEntityId ||
+      encodedEntityId.includes("/") ||
+      !entityId ||
+      !nextLabel
+    ) {
       return null;
     }
 
-    const metaEntries = [...parsed.searchParams.entries()]
-      .filter(
-        ([key, value]) =>
-          key.startsWith(MENTION_META_PARAM_PREFIX) && value.trim().length > 0
-      )
-      .map(
-        ([key, value]) =>
-          [key.slice(MENTION_META_PARAM_PREFIX.length), value.trim()] as const
-      )
-      .filter(([key, value]) => key.trim().length > 0 && value.length > 0);
+    const scopeEntries: Array<readonly [string, string]> = [];
+    for (const [key, value] of parsed.searchParams.entries()) {
+      const scopeKey = key.trim();
+      const scopeValue = value.trim();
+      if (
+        !scopeKey ||
+        MENTION_LEGACY_QUERY_KEYS.has(scopeKey) ||
+        scopeKey.startsWith("meta.")
+      ) {
+        return null;
+      }
+      if (scopeValue) {
+        scopeEntries.push([scopeKey, scopeValue]);
+      }
+    }
 
-    return {
+    const mention: RichTextMentionRef = {
       trigger: "@",
-      plugin,
+      providerId,
       entityId,
-      label: nextLabel,
-      kind: parsed.searchParams.get("kind")?.trim() || undefined,
-      href: parsed.searchParams.get("link")?.trim() || undefined,
-      version: parsed.searchParams.get("v")?.trim() || undefined,
-      meta: metaEntries.length > 0 ? Object.fromEntries(metaEntries) : undefined
+      label: nextLabel
     };
+    if (scopeEntries.length > 0) {
+      mention.scope = Object.fromEntries(scopeEntries);
+    }
+    return mention;
   } catch {
     return null;
   }
@@ -328,7 +344,17 @@ export function extractRichTextMentionsFromContent(
     if (!mention) {
       continue;
     }
-    const mentionKey = `${mention.plugin}:${mention.entityId}`;
+    const mentionKey = [
+      mention.providerId,
+      mention.entityId,
+      JSON.stringify(
+        Object.fromEntries(
+          Object.entries(mention.scope ?? {}).sort(([left], [right]) =>
+            left.localeCompare(right)
+          )
+        )
+      )
+    ].join(":");
     if (refs.has(mentionKey)) {
       continue;
     }
@@ -340,11 +366,11 @@ export function extractRichTextMentionsFromContent(
 
 export function removeRichTextMentionFromContent(
   content: string,
-  mention: Pick<RichTextMentionAttrs, "plugin" | "entityId">
+  mention: Pick<RichTextMentionAttrs, "providerId" | "entityId">
 ): string {
-  const plugin = mention.plugin.trim();
+  const providerId = mention.providerId.trim();
   const entityId = mention.entityId.trim();
-  if (!plugin || !entityId) {
+  if (!providerId || !entityId) {
     return normalizeContentString(content);
   }
 
@@ -354,7 +380,7 @@ export function removeRichTextMentionFromContent(
     if (!parsedMention) {
       return match.source;
     }
-    return parsedMention.plugin === plugin &&
+    return parsedMention.providerId === providerId &&
       parsedMention.entityId === entityId
       ? ""
       : match.source;
@@ -574,25 +600,22 @@ function serializeRichTextInlineNodes(nodes: readonly JSONContent[]): string {
       if (node.type === mentionReferenceNodeName) {
         const attrs = node.attrs ?? {};
         const label = typeof attrs.label === "string" ? attrs.label.trim() : "";
-        const plugin =
-          typeof attrs.plugin === "string" ? attrs.plugin.trim() : "";
+        const providerId =
+          typeof attrs.providerId === "string" ? attrs.providerId.trim() : "";
         const entityId =
           typeof attrs.entityId === "string" ? attrs.entityId.trim() : "";
-        if (!label || !plugin || !entityId) {
+        if (!label || !providerId || !entityId) {
           return "";
         }
+        const scope =
+          attrs.scope && typeof attrs.scope === "object"
+            ? (attrs.scope as Record<string, string>)
+            : undefined;
         return createRichTextMentionMarkdown({
           entityId,
-          href: typeof attrs.href === "string" ? attrs.href : undefined,
-          kind: typeof attrs.kind === "string" ? attrs.kind : undefined,
           label,
-          meta:
-            attrs.meta && typeof attrs.meta === "object"
-              ? (attrs.meta as Record<string, string>)
-              : undefined,
-          plugin,
-          trigger: "@",
-          version: typeof attrs.version === "string" ? attrs.version : undefined
+          providerId,
+          scope
         });
       }
 

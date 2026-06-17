@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AGENT_GUI_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/agent-rich-text-at-provider";
-import type { AgentRichTextAtProvider } from "@tutti-os/agent-gui/agent-rich-text-at-provider";
-import { createRichTextAtProvider } from "@tutti-os/ui-rich-text/plugins";
+import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/context-mention-provider";
+import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import type { WorkbenchDockPreviewCacheKey } from "@tutti-os/workbench-surface";
 import { wrapDesktopFileMentionProviderWithDockFiles } from "./wrapDesktopFileMentionProviderWithDockFiles.ts";
 
-const { file: FILE_PROVIDER_ID } = AGENT_GUI_MENTION_PROVIDER_IDS;
+const { file: FILE_PROVIDER_ID } = AGENT_CONTEXT_MENTION_PROVIDER_IDS;
 
 const previewCacheKey: WorkbenchDockPreviewCacheKey = {
   instanceId: "path:readme",
@@ -17,10 +16,14 @@ const previewCacheKey: WorkbenchDockPreviewCacheKey = {
 };
 
 function createTestFileProvider(
-  query: AgentRichTextAtProvider<{ displayName: string; path: string }>["query"]
-): AgentRichTextAtProvider<{ displayName: string; path: string }> {
-  return createRichTextAtProvider({
+  query: AgentContextMentionProvider<{
+    displayName: string;
+    path: string;
+  }>["query"]
+): AgentContextMentionProvider<{ displayName: string; path: string }> {
+  return {
     id: FILE_PROVIDER_ID,
+    trigger: "@",
     query,
     getItemKey: (item) => item.path,
     getItemLabel: (item) => item.displayName,
@@ -29,7 +32,7 @@ function createTestFileProvider(
       href: item.path,
       label: item.displayName
     })
-  });
+  };
 }
 
 test("wrapDesktopFileMentionProviderWithDockFiles returns dock files for blank queries", async () => {
@@ -49,7 +52,8 @@ test("wrapDesktopFileMentionProviderWithDockFiles returns dock files for blank q
 
   const items = await provider.query({
     keyword: "",
-    context: {}
+    context: {},
+    trigger: "@"
   });
 
   assert.deepEqual(items, [
@@ -88,7 +92,8 @@ test("wrapDesktopFileMentionProviderWithDockFiles prioritizes matching dock file
 
   const items = await provider.query({
     keyword: "readme",
-    context: {}
+    context: {},
+    trigger: "@"
   });
 
   assert.deepEqual(items, [
@@ -132,7 +137,8 @@ test("wrapDesktopFileMentionProviderWithDockFiles exposes dock preview thumbnail
 
   await provider.query({
     keyword: "",
-    context: {}
+    context: {},
+    trigger: "@"
   });
 
   assert.equal(

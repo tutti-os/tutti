@@ -1,9 +1,9 @@
-import type { RichTextAtQueryMatch } from "../types/at.ts";
+import type { RichTextTriggerQueryMatch as RichTextAtQueryMatch } from "../types/trigger.ts";
 import type {
   RichTextAtFilterId,
   RichTextAtFilterTab,
   RichTextAtGroupId,
-  RichTextAtProviderGroup,
+  RichTextTriggerProviderGroup,
   RichTextAtSearchGroup
 } from "./types.ts";
 
@@ -14,10 +14,10 @@ export function normalizeAtPanelQuery(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-export function buildDefaultRichTextAtProviderGroups(input: {
+export function buildDefaultRichTextTriggerProviderGroups(input: {
   providers: readonly { id: string }[];
   labels?: Readonly<Record<string, string>>;
-}): RichTextAtProviderGroup[] {
+}): RichTextTriggerProviderGroup[] {
   return input.providers.map((provider) => ({
     id: provider.id,
     label: input.labels?.[provider.id] ?? provider.id,
@@ -28,7 +28,7 @@ export function buildDefaultRichTextAtProviderGroups(input: {
 
 export function buildRichTextAtFilterTabs(input: {
   allLabel: string;
-  groups: readonly RichTextAtProviderGroup[];
+  groups: readonly RichTextTriggerProviderGroup[];
   labels?: Readonly<Record<string, string>>;
 }): RichTextAtFilterTab[] {
   const seen = new Set<string>([RICH_TEXT_AT_ALL_FILTER_ID]);
@@ -54,8 +54,8 @@ export function buildRichTextAtFilterTabs(input: {
 
 export function filterGroupsForRichTextAtPanel(input: {
   filterId: RichTextAtFilterId;
-  groups: readonly RichTextAtProviderGroup[];
-}): readonly RichTextAtProviderGroup[] {
+  groups: readonly RichTextTriggerProviderGroup[];
+}): readonly RichTextTriggerProviderGroup[] {
   if (input.filterId === RICH_TEXT_AT_ALL_FILTER_ID) {
     return input.groups;
   }
@@ -67,7 +67,7 @@ export function filterGroupsForRichTextAtPanel(input: {
 export function groupRichTextAtMatches(input: {
   expandedCounts?: Readonly<Record<string, number | undefined>>;
   filterId: RichTextAtFilterId;
-  groups: readonly RichTextAtProviderGroup[];
+  groups: readonly RichTextTriggerProviderGroup[];
   matches: readonly RichTextAtQueryMatch[];
   pageSize?: number;
 }): RichTextAtSearchGroup[] {
@@ -111,9 +111,9 @@ export function richTextAtGroupExpandCount(
   return Math.min(pageSize, remaining);
 }
 
-export function findRichTextAtProviderGroup(
-  groups: readonly RichTextAtProviderGroup[],
+export function findRichTextTriggerProviderGroup(
+  groups: readonly RichTextTriggerProviderGroup[],
   groupId: RichTextAtGroupId
-): RichTextAtProviderGroup | undefined {
+): RichTextTriggerProviderGroup | undefined {
   return groups.find((group) => group.id === groupId);
 }

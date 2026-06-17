@@ -2465,7 +2465,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           cwd: "/repo",
           effectiveStatus: "working",
           title:
-            "[@wang jomes & Codex hi](mention://agent-session?workspaceId=room-1&id=session-1)"
+            "[@wang jomes & Codex hi](mention://agent-session/session-1?workspaceId=room-1)"
         }
       ]
     };

@@ -58,7 +58,9 @@ import {
   isDesktopManagedAgentProvider,
   projectDesktopManagedAgentsState
 } from "../services/internal/desktopManagedAgentProviders.ts";
-import { resolveWorkbenchDockFileAtItems } from "../services/internal/resolveWorkbenchDockFileAtItems.ts";
+import { createDesktopWorkspaceAppMentionProvider } from "../../rich-text-at/providers/desktopWorkspaceAppMentionProvider.ts";
+import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/context-mention-provider";
+import { resolveWorkbenchDockFileMentionItems } from "../services/internal/resolveWorkbenchDockFileMentionItems.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "../services/internal/createDesktopAgentGeneratedFileMentionProvider.ts";
 import { resolveDesktopWorkspaceAppIconEntries } from "../services/internal/desktopWorkspaceAppIcons.ts";
 import { wrapDesktopFileMentionProviderWithDockFiles } from "../services/internal/wrapDesktopFileMentionProviderWithDockFiles.ts";
@@ -87,7 +89,9 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
   previewMode?: boolean;
-  richTextAtProviders: NonNullable<AgentGUIProps["richTextAtProviders"]>;
+  contextMentionProviders: NonNullable<
+    AgentGUIProps["contextMentionProviders"]
+  >;
   resolveAppIconUrl?: (appId: string) => string | null;
   runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   trackWorkspaceFileReferences?: AgentGUIProps["onWorkspaceFileReferencesAdded"];
@@ -222,7 +226,7 @@ export function DesktopAgentGUIWorkbenchBody({
   onLinkAction,
   onStateChange,
   previewMode = false,
-  richTextAtProviders,
+  contextMentionProviders,
   resolveAppIconUrl,
   runtimeApi,
   trackWorkspaceFileReferences,
@@ -243,9 +247,30 @@ export function DesktopAgentGUIWorkbenchBody({
       }),
     [appCenterState.apps, resolveAppIconUrl, workspaceId]
   );
+  const workspaceAppMentionProvider = useMemo(() => {
+    const baseProvider = contextMentionProviders.find(
+      (provider) =>
+        provider.id === AGENT_CONTEXT_MENTION_PROVIDER_IDS.workspaceApp
+    );
+    return baseProvider
+      ? createDesktopWorkspaceAppMentionProvider({
+          apps: appCenterState.apps,
+          baseProvider,
+          locale,
+          resolveAppIconUrl,
+          workspaceId
+        })
+      : null;
+  }, [
+    appCenterState.apps,
+    locale,
+    resolveAppIconUrl,
+    contextMentionProviders,
+    workspaceId
+  ]);
   const resolveDockFiles = useCallback(
     () =>
-      resolveWorkbenchDockFileAtItems({
+      resolveWorkbenchDockFileMentionItems({
         host: context.host,
         workspaceId
       }),
@@ -259,21 +284,28 @@ export function DesktopAgentGUIWorkbenchBody({
       }),
     [agentActivityRuntime, workspaceId]
   );
-  const effectiveRichTextAtProviders = useMemo(
+  const effectiveContextMentionProviders = useMemo(
     () => [
-      ...richTextAtProviders.map((provider) =>
-        wrapDesktopFileMentionProviderWithDockFiles(provider, {
-          readDockPreview: dockPreviewCache.read.bind(dockPreviewCache),
-          resolveDockFiles
-        })
-      ),
-      agentGeneratedFileMentionProvider
+      ...contextMentionProviders
+        .filter(
+          (provider) =>
+            provider.id !== AGENT_CONTEXT_MENTION_PROVIDER_IDS.workspaceApp
+        )
+        .map((provider) =>
+          wrapDesktopFileMentionProviderWithDockFiles(provider, {
+            readDockPreview: dockPreviewCache.read.bind(dockPreviewCache),
+            resolveDockFiles
+          })
+        ),
+      agentGeneratedFileMentionProvider,
+      ...(workspaceAppMentionProvider ? [workspaceAppMentionProvider] : [])
     ],
     [
       agentGeneratedFileMentionProvider,
       dockPreviewCache,
       resolveDockFiles,
-      richTextAtProviders
+      contextMentionProviders,
+      workspaceAppMentionProvider
     ]
   );
   const managedAgentsState = useDesktopManagedAgentsState(
@@ -727,7 +759,7 @@ export function DesktopAgentGUIWorkbenchBody({
       onWorkspaceFileReferencesAdded={trackWorkspaceFileReferences}
       position={DESKTOP_AGENT_GUI_POSITION}
       previewMode={previewMode}
-      richTextAtProviders={effectiveRichTextAtProviders}
+      contextMentionProviders={effectiveContextMentionProviders}
       state={state}
       title={context.node.title}
       width={frame.width}

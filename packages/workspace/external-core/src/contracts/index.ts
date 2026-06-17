@@ -1,0 +1,109 @@
+import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
+
+export const TUTTI_EXTERNAL_AT_PROVIDER_IDS = {
+  agentGeneratedFile: "agent-generated-file",
+  agentSession: "agent-session",
+  file: "file",
+  workspaceApp: "workspace-app",
+  workspaceIssue: "workspace-issue"
+} as const;
+
+export type TuttiExternalAtProviderId =
+  (typeof TUTTI_EXTERNAL_AT_PROVIDER_IDS)[keyof typeof TUTTI_EXTERNAL_AT_PROVIDER_IDS];
+
+export const tuttiExternalAtProviderIds = [
+  TUTTI_EXTERNAL_AT_PROVIDER_IDS.file,
+  TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceIssue,
+  TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceApp,
+  TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentSession,
+  TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentGeneratedFile
+] as const satisfies readonly TuttiExternalAtProviderId[];
+
+export interface TuttiExternalAtQueryInput {
+  keyword: string;
+  maxResults?: number;
+  providers?: readonly TuttiExternalAtProviderId[];
+}
+
+export interface TuttiExternalAtQueryResult {
+  providerId: TuttiExternalAtProviderId;
+  itemId: string;
+  label: string;
+  subtitle?: string;
+  thumbnailUrl?: string | null;
+  insert: TuttiExternalAtInsertResult;
+}
+
+export interface TuttiExternalAtMentionPresentation {
+  agentProviderId?: string;
+  agentIconUrl?: string;
+  iconUrl?: string;
+  thumbnailUrl?: string;
+  subtitle?: string;
+  description?: string;
+  participant?: string;
+  status?: string;
+  statusDataStatus?: string;
+  statusLabel?: string;
+  statusPulse?: string;
+  userAvatarPlaceholderUrl?: string;
+}
+
+export type TuttiExternalAtInsertResult =
+  | {
+      kind: "mention";
+      mention: {
+        entityId: string;
+        label: string;
+        scope?: Record<string, string>;
+        presentation?: TuttiExternalAtMentionPresentation;
+      };
+    }
+  | {
+      kind: "markdown-link";
+      label: string;
+      href: string;
+    }
+  | {
+      kind: "text";
+      text: string;
+    };
+
+export interface TuttiExternalFileSelectInput {
+  multiple?: boolean;
+}
+
+export type TuttiExternalFileSelectResult = WorkspaceFileReference[];
+
+export interface TuttiExternalBridge {
+  app: {
+    getContext(): Promise<unknown>;
+    subscribe(listener: (context: unknown) => void): () => void;
+  };
+  at: {
+    query(
+      input: TuttiExternalAtQueryInput
+    ): Promise<TuttiExternalAtQueryResult[]>;
+  };
+  files: {
+    select(
+      input?: TuttiExternalFileSelectInput
+    ): Promise<TuttiExternalFileSelectResult>;
+  };
+}
+
+export type TuttiExternalRendererRequest =
+  | {
+      appId: string;
+      input: TuttiExternalAtQueryInput;
+      operation: "at.query";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: TuttiExternalFileSelectInput;
+      operation: "files.select";
+      requestId: string;
+      workspaceId: string;
+    };

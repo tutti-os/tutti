@@ -124,7 +124,7 @@ func appFactoryMentionDescription(job workspacebiz.AppFactoryJob) appFactoryMent
 }
 
 func buildAppFactoryMentionMarkdown() string {
-	return "[@Create App](mention://workspace-app-factory)"
+	return "[@Create App](mention://workspace-app-factory/create)"
 }
 
 func quoteFactoryPromptContextValue(value string) string {

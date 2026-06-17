@@ -761,7 +761,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
           item={createTestCardItem({
             provider: "claude-code",
             lastAgentMessageSummary:
-              "继续 [Claude 会话](mention://agent-session?workspaceId=workspace-1&id=session-2)"
+              "继续 [Claude 会话](mention://agent-session/session-2?workspaceId=workspace-1)"
           })}
           isSubmitting={false}
           onLinkAction={onLinkAction}

@@ -991,22 +991,8 @@ function WorkspaceSettingsTrigger({
   workspace: WorkspaceSummary;
 }) {
   const { t } = useTranslation();
-  const workbenchHostService = useWorkspaceWorkbenchHostService();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
-
-  useEffect(() => {
-    return workbenchHostService.onOpenSettingsRequest((request) => {
-      settingsService.openPanel(
-        { id: workspace.id },
-        {
-          pane: request.pane,
-          provider: request.provider,
-          section: request.section ?? "general"
-        }
-      );
-    });
-  }, [settingsService, workbenchHostService, workspace.id]);
 
   return (
     <>

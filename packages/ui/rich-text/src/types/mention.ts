@@ -25,11 +25,45 @@ export interface RichTextMentionResolveInput {
   context: RichTextMentionPluginContext;
 }
 
+export interface RichTextMentionIdentity {
+  providerId: string;
+  entityId: string;
+  label: string;
+  scope?: Readonly<Record<string, string>>;
+}
+
+export interface RichTextMentionPresentation {
+  agentProviderId?: string;
+  agentIconUrl?: string;
+  iconUrl?: string;
+  thumbnailUrl?: string;
+  subtitle?: string;
+  description?: string;
+  participant?: string;
+  status?: string;
+  statusDataStatus?: string;
+  statusLabel?: string;
+  statusPulse?: string;
+  userAvatarPlaceholderUrl?: string;
+}
+
+export interface RichTextMentionInsert {
+  entityId: string;
+  label: string;
+  scope?: Readonly<Record<string, string>>;
+  presentation?: RichTextMentionPresentation;
+}
+
+export interface RichTextMentionResolved {
+  label?: string;
+  presentation?: RichTextMentionPresentation;
+}
+
 export interface RichTextResolvedMention<TResolved = unknown> {
   state: RichTextMentionRenderState;
   label?: string;
   tooltip?: string;
-  href?: string;
+  presentation?: RichTextMentionPresentation;
   entity?: TResolved;
 }
 
@@ -37,29 +71,14 @@ export interface RichTextResolvedMentionView<TResolved = unknown> {
   state: RichTextMentionRenderState;
   label: string;
   tooltip?: string;
-  href?: string;
+  presentation?: RichTextMentionPresentation;
   entity?: TResolved;
   interactive: boolean;
 }
 
-export interface RichTextMentionInsert {
-  entityId: string;
-  label: string;
-  href?: string | null;
-  kind?: string | null;
-  version?: string | null;
-  meta?: Readonly<Record<string, string>> | null;
-}
-
-export interface RichTextMentionAttrs {
+export interface RichTextMentionAttrs extends RichTextMentionIdentity {
   trigger: "@";
-  plugin: string;
-  entityId: string;
-  label: string;
-  href?: string;
-  kind?: string;
-  version?: string;
-  meta?: Readonly<Record<string, string>>;
+  presentation?: RichTextMentionPresentation;
 }
 
 export interface RichTextMentionPlugin<TItem = unknown, TResolved = unknown> {

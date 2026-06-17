@@ -33,7 +33,7 @@ test("desktop issue-manager agent runner opens execute prompt as an agent draft"
   assert.match(capturedPrompt, /Handle this issue reference/);
   assert.match(
     capturedPrompt,
-    /\[@Plan migration \/ Port renderer\]\(mention:\/\/workspace-issue\?workspaceId=workspace-1&id=issue-1&mode=execute&topicId=topic-1&taskId=task-1\)/
+    /\[@Plan migration \/ Port renderer\]\(mention:\/\/workspace-issue\/issue-1\?workspaceId=workspace-1&topicId=topic-1&mode=execute&taskId=task-1\)/
   );
   assert.doesNotMatch(capturedPrompt, /runId=/);
   assert.doesNotMatch(capturedPrompt, /outputDir=/);
@@ -158,7 +158,7 @@ test("desktop issue-manager agent breakdown launcher opens breakdown prompt as a
   );
   assert.match(
     capturedLaunch?.draftPrompt ?? "",
-    /mention:\/\/workspace-issue\?workspaceId=workspace-1&id=issue-1&mode=breakdown&topicId=topic-1/
+    /mention:\/\/workspace-issue\/issue-1\?workspaceId=workspace-1&topicId=topic-1&mode=breakdown/
   );
   assert.equal(capturedLaunch?.provider, "gemini");
   assert.equal(capturedLaunch?.userProjectPath, "/Users/example/project/tutti");

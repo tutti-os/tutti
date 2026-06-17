@@ -205,20 +205,6 @@ export function createHostDesktopApi(): DesktopHostApi {
       }
     },
     workspace: {
-      onOpenSettingsRequest(listener): () => void {
-        const handler = (_event: IpcRendererEvent, payload: unknown) =>
-          listener(payload as Parameters<typeof listener>[0]);
-        ipcRenderer.on(
-          desktopIpcChannels.appContext.openSettingsRequested,
-          handler
-        );
-        return () => {
-          ipcRenderer.removeListener(
-            desktopIpcChannels.appContext.openSettingsRequested,
-            handler
-          );
-        };
-      },
       openWorkspaceAppFolder(input): Promise<void> {
         return invokeDesktopApi(
           desktopIpcChannels.host.workspace.openWorkspaceAppFolder,

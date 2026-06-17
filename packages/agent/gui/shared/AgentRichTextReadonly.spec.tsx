@@ -9,7 +9,7 @@ describe("AgentRichTextReadonly", () => {
     const { container } = render(
       <AgentRichTextReadonly
         value={
-          "Run [@Weather](mention://workspace-app?workspaceId=workspace-1&appId=weather)"
+          "Run [@Weather](mention://workspace-app/weather?workspaceId=workspace-1)"
         }
         workspaceAppIcons={[
           {
@@ -33,7 +33,7 @@ describe("AgentRichTextReadonly", () => {
     expect(mention).toHaveTextContent("Weather");
     expect(mention).toHaveAttribute(
       "data-agent-mention-href",
-      "mention://workspace-app?workspaceId=workspace-1&appId=weather"
+      "mention://workspace-app/weather?workspaceId=workspace-1"
     );
     expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
     expect(mention?.querySelector("img")).toHaveAttribute("src", iconUrl);
@@ -42,7 +42,7 @@ describe("AgentRichTextReadonly", () => {
   it("renders workspace app factory markdown as a mention token", async () => {
     const { container } = render(
       <AgentRichTextReadonly
-        value={"[@Create App](mention://workspace-app-factory)"}
+        value={"[@Create App](mention://workspace-app-factory/create)"}
       />
     );
 
@@ -60,9 +60,11 @@ describe("AgentRichTextReadonly", () => {
     expect(mention).toHaveTextContent("Create App");
     expect(mention).toHaveAttribute(
       "data-agent-mention-href",
-      "mention://workspace-app-factory"
+      "mention://workspace-app-factory/create"
     );
-    expect(container).not.toHaveTextContent("mention://workspace-app-factory");
+    expect(container).not.toHaveTextContent(
+      "mention://workspace-app-factory/create"
+    );
   });
 
   it("renders known skill triggers as skill tokens", async () => {

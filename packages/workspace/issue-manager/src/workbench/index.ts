@@ -1,5 +1,5 @@
 import { createElement, type ReactNode } from "react";
-import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type {
   WorkbenchContribution,
   WorkbenchFrame,
@@ -60,10 +60,10 @@ export interface CreateIssueManagerWorkbenchNodeDefinitionInput {
     state: IssueManagerNodeState;
     workspaceState: IssueManagerExternalWorkspaceState;
   }) => void;
-  resolveRichTextAtProviders?: (input: {
+  resolveRichTextTriggerProviders?: (input: {
     surface: "issue" | "task";
     workspaceId: string;
-  }) => readonly RichTextAtProvider[];
+  }) => readonly RichTextTriggerProvider[];
   renderLatestRunStatus?: IssueManagerLatestRunStatusRenderer;
   service?: IssueManagerControllerService;
   title?: string;
@@ -107,7 +107,7 @@ export function createIssueManagerWorkbenchNodeDefinition<
   feature,
   frame = defaultIssueManagerNodeFrame,
   onStateChange,
-  resolveRichTextAtProviders,
+  resolveRichTextTriggerProviders,
   renderLatestRunStatus,
   service,
   title,
@@ -142,7 +142,7 @@ export function createIssueManagerWorkbenchNodeDefinition<
               })
           : undefined,
         renderLatestRunStatus,
-        resolveRichTextAtProviders,
+        resolveRichTextTriggerProviders,
         service,
         state: context.externalNodeState,
         workspaceId: context.externalWorkspaceState.workspaceId ?? ""

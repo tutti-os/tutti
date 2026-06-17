@@ -44,18 +44,20 @@ import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-p
 import {
   clampSlashCommandHighlight,
   filterSlashCommands,
-  getSlashCommandQuery,
   labelForSlashCommand,
   moveSlashCommandHighlight
 } from "./model/agentSlashCommands";
 import {
-  draftForProviderSkill,
-  filterProviderSkills,
-  getProviderSkillQueryMatch,
   labelForProviderSkill,
   skillDescriptionForDisplay,
   skillTriggerForPrefix
 } from "./model/agentSkillOptions";
+import {
+  draftForProviderSkillTrigger,
+  filterProviderSkillsForTrigger,
+  getAgentComposerTriggerQueryMatch,
+  getPromptStartSlashCommandQuery
+} from "./model/agentComposerTriggerQueries";
 import {
   agentComposerDraftHasContent,
   agentComposerDraftToPromptContent,
@@ -125,7 +127,7 @@ import {
   resolveWorkspaceLinkAction,
   type WorkspaceLinkAction
 } from "../../actions/workspaceLinkActions";
-import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
+import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import { hasWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
 import {
   AgentReviewBranchController,
@@ -302,7 +304,7 @@ export interface AgentComposerProps {
     | (() => Promise<WorkspaceFileReference[]>)
     | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
-  richTextAtProviders?: readonly AgentRichTextAtProvider[];
+  contextMentionProviders?: readonly AgentContextMentionProvider[];
 }
 
 export interface AgentComposerGitBranches {
@@ -356,7 +358,8 @@ const MENTION_PALETTE_MIN_HEIGHT_PX = 280;
 const MENTION_PALETTE_MAX_HEIGHT_PX = 320;
 const MENTION_PALETTE_GAP_PX = 8;
 const MENTION_PALETTE_VIEWPORT_PADDING_PX = 8;
-const EMPTY_RICH_TEXT_AT_PROVIDERS: readonly AgentRichTextAtProvider[] = [];
+const EMPTY_CONTEXT_MENTION_PROVIDERS: readonly AgentContextMentionProvider[] =
+  [];
 const EMPTY_PROMPT_TIPS: readonly AgentComposerPromptTip[] = [];
 const EMPTY_PROVIDER_SKILLS: readonly AgentGUIProviderSkillOption[] = [];
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
@@ -946,7 +949,7 @@ export function AgentComposer({
   onLinkAction,
   onRequestWorkspaceReferences = null,
   onRequestGitBranches = null,
-  richTextAtProviders = EMPTY_RICH_TEXT_AT_PROVIDERS
+  contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS
 }: AgentComposerProps): React.JSX.Element {
   "use memo";
   const draftPrompt = draftContent.prompt;
@@ -1003,14 +1006,11 @@ export function AgentComposer({
   const lastComposerFocusRequestRef = useRef<number | null>(null);
   const autoMentionHighlightedKeyRef = useRef<string | null>(null);
   const [isPromptTipOverflowing, setIsPromptTipOverflowing] = useState(false);
-  const slashQuery = getSlashCommandQuery(paletteDraftPrompt);
+  const slashQuery = getPromptStartSlashCommandQuery(paletteDraftPrompt);
   const promptBeforeSelection =
     editorHandleRef.current?.getPromptTextBeforeSelection() ?? "";
   const skillQueryDraft = promptBeforeSelection || paletteDraftPrompt;
-  const skillQueryMatch = getProviderSkillQueryMatch({
-    draft: skillQueryDraft,
-    provider
-  });
+  const skillQueryMatch = getAgentComposerTriggerQueryMatch(skillQueryDraft);
   const resolvedSlashCommands = useMemo(
     () =>
       resolveSlashCommandsForProvider({
@@ -1039,7 +1039,7 @@ export function AgentComposer({
     () =>
       skillQueryMatch === null
         ? []
-        : filterProviderSkills({
+        : filterProviderSkillsForTrigger({
             skills: availableSkills,
             query: skillQueryMatch.query,
             triggerPrefix: skillQueryMatch.prefix
@@ -1167,7 +1167,7 @@ export function AgentComposer({
 
   useEffect(() => {
     const controller = new AgentMentionSearchController({
-      richTextAtProviders
+      contextMentionProviders
     });
     mentionControllerRef.current = controller;
     const unsubscribe = controller.subscribe(setMentionSearchState);
@@ -1176,7 +1176,7 @@ export function AgentComposer({
       controller.dispose();
       mentionControllerRef.current = null;
     };
-  }, [richTextAtProviders]);
+  }, [contextMentionProviders]);
 
   useEffect(() => {
     draftPromptRef.current = draftPrompt;
@@ -1351,7 +1351,11 @@ export function AgentComposer({
           : null;
       const nextDraft =
         replacedDraft ??
-        draftForProviderSkill(skill, draftPromptRef.current, skillQueryMatch);
+        draftForProviderSkillTrigger({
+          skill,
+          currentDraft: draftPromptRef.current,
+          match: skillQueryMatch
+        });
       draftPromptRef.current = nextDraft;
       setPaletteDraftPrompt(nextDraft);
       onDraftContentChange({ ...draftContent, prompt: nextDraft });

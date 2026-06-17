@@ -19,7 +19,6 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
-//go:embed automation/COMMANDS.md automation/bootstrap.sh automation/icon.png automation/tutti.app.json automation/tutti.cli.json automation/server.py automation/locales/zh-CN/manifest.json automation/static
 var files embed.FS
 
 type App struct {
@@ -107,19 +106,7 @@ func RefreshRemoteCatalog() (CatalogSnapshot, error) {
 }
 
 func snapshot(refreshRemote bool) (CatalogSnapshot, error) {
-	automation, err := readBuiltinManifest("automation")
-	if err != nil {
-		return CatalogSnapshot{}, err
-	}
-	apps := []App{
-		{
-			Manifest:  automation,
-			SourceDir: "automation",
-			Distribution: Distribution{
-				Kind: DistributionEmbedded,
-			},
-		},
-	}
+	apps := []App{}
 
 	source := currentRemoteCatalogSource()
 	remote, err := remoteCatalogSnapshot(source, refreshRemote)
@@ -201,18 +188,6 @@ func modeForBuiltinFile(relativePath string) os.FileMode {
 		return 0o755
 	}
 	return 0o644
-}
-
-func readBuiltinManifest(sourceDir string) (workspacebiz.AppManifest, error) {
-	data, err := files.ReadFile(filepath.Join(sourceDir, "tutti.app.json"))
-	if err != nil {
-		return workspacebiz.AppManifest{}, fmt.Errorf("read builtin app manifest: %w", err)
-	}
-	manifest, _, err := workspacebiz.ParseAppManifestJSON(data)
-	if err != nil {
-		return workspacebiz.AppManifest{}, err
-	}
-	return manifest, nil
 }
 
 type remoteCatalogSourceKind string

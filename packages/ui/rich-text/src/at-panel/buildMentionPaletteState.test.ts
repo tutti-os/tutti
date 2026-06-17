@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildMentionPaletteState } from "./buildMentionPaletteState.ts";
-import type { RichTextAtQueryMatch } from "../types/at.ts";
-import type { RichTextAtProviderGroup } from "./types.ts";
+import type { RichTextTriggerQueryMatch as RichTextAtQueryMatch } from "../types/trigger.ts";
+import type { RichTextTriggerProviderGroup } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -11,6 +11,7 @@ import type { RichTextAtProviderGroup } from "./types.ts";
 function makeMatch(providerId: string, key: string): RichTextAtQueryMatch {
   return {
     providerId,
+    trigger: "@",
     key: `${providerId}:${key}`,
     label: key,
     item: { key },
@@ -18,13 +19,13 @@ function makeMatch(providerId: string, key: string): RichTextAtQueryMatch {
   };
 }
 
-const GROUP_FILES: RichTextAtProviderGroup = {
+const GROUP_FILES: RichTextTriggerProviderGroup = {
   id: "files",
   label: "Files",
   providerIds: ["file"]
 };
 
-const GROUP_ISSUES: RichTextAtProviderGroup = {
+const GROUP_ISSUES: RichTextTriggerProviderGroup = {
   id: "issues",
   label: "Issues",
   providerIds: ["workspace-issue"]

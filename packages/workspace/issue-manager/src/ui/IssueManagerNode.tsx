@@ -54,7 +54,7 @@ export function IssueManagerNode({
   openRequest,
   onStateChange,
   renderLatestRunStatus,
-  resolveRichTextAtProviders,
+  resolveRichTextTriggerProviders,
   service,
   state,
   workspaceId
@@ -66,7 +66,7 @@ export function IssueManagerNode({
       nodeId,
       openSource,
       onStateChange,
-      resolveRichTextAtProviders,
+      resolveRichTextTriggerProviders,
       service,
       state,
       workspaceId

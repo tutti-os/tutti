@@ -10,7 +10,7 @@ import {
 describe("buildAgentSessionMentionHref", () => {
   it("builds an agent session mention href", () => {
     expect(buildAgentSessionMentionHref("workspace-1", "session-1")).toBe(
-      "mention://agent-session?workspaceId=workspace-1&id=session-1"
+      "mention://agent-session/session-1?workspaceId=workspace-1"
     );
   });
 });
@@ -18,11 +18,11 @@ describe("buildAgentSessionMentionHref", () => {
 describe("buildAgentWorkspaceIssueMentionHref", () => {
   it("builds a workspace issue mention href", () => {
     expect(buildAgentWorkspaceIssueMentionHref("workspace-1", "issue-1")).toBe(
-      "mention://workspace-issue?workspaceId=workspace-1&id=issue-1"
+      "mention://workspace-issue/issue-1?workspaceId=workspace-1"
     );
   });
 
-  it("includes hidden issue context when provided", () => {
+  it("includes issue scope when provided", () => {
     expect(
       buildAgentWorkspaceIssueMentionHref("workspace-1", "issue-1", {
         mode: "execute",
@@ -31,7 +31,7 @@ describe("buildAgentWorkspaceIssueMentionHref", () => {
         topicId: "topic-1"
       })
     ).toBe(
-      "mention://workspace-issue?workspaceId=workspace-1&id=issue-1&mode=execute&topicId=topic-1&taskId=task-1&runId=run-1"
+      "mention://workspace-issue/issue-1?topicId=topic-1&workspaceId=workspace-1"
     );
   });
 });
@@ -39,7 +39,7 @@ describe("buildAgentWorkspaceIssueMentionHref", () => {
 describe("buildAgentWorkspaceAppFactoryMentionHref", () => {
   it("builds a workspace app factory mention href", () => {
     expect(buildAgentWorkspaceAppFactoryMentionHref()).toBe(
-      "mention://workspace-app-factory"
+      "mention://workspace-app-factory/create"
     );
   });
 });
@@ -90,10 +90,10 @@ describe("parseAgentMentionMarkdown", () => {
     });
   });
 
-  it("accepts workspaceId query params for session mentions", () => {
+  it("accepts generic session mention hrefs", () => {
     expect(
       parseAgentMentionMarkdown(
-        "[@Session](mention://agent-session?workspaceId=workspace-1&id=session-1)"
+        "[@Session](mention://agent-session/session-1?workspaceId=workspace-1)"
       )
     ).toMatchObject({
       item: {
@@ -105,17 +105,48 @@ describe("parseAgentMentionMarkdown", () => {
     });
   });
 
-  it("hydrates workspace app factory mentions without query params", () => {
+  it("rejects legacy query-only provider mention hrefs", () => {
     expect(
       parseAgentMentionMarkdown(
-        "[@Create App](mention://workspace-app-factory)"
+        "[@Session](mention://agent-session?workspaceId=workspace-1&id=session-1)"
+      )
+    ).toBeNull();
+    expect(
+      parseAgentMentionMarkdown(
+        "[@Issue](mention://workspace-issue?workspaceId=workspace-1&id=issue-1)"
+      )
+    ).toBeNull();
+    expect(
+      parseAgentMentionMarkdown(
+        "[@App](mention://workspace-app?workspaceId=workspace-1&appId=app-1)"
+      )
+    ).toBeNull();
+  });
+
+  it("rejects old serialized mention fields", () => {
+    expect(
+      parseAgentMentionMarkdown(
+        "[@App](mention://workspace-app/app-1?workspaceId=workspace-1&link=https%3A%2F%2Fexample.com)"
+      )
+    ).toBeNull();
+    expect(
+      parseAgentMentionMarkdown(
+        "[@App](mention://workspace-app/app-1?workspaceId=workspace-1&meta.iconUrl=icon.png)"
+      )
+    ).toBeNull();
+  });
+
+  it("hydrates workspace app factory mentions with an entity path", () => {
+    expect(
+      parseAgentMentionMarkdown(
+        "[@Create App](mention://workspace-app-factory/create)"
       )
     ).toMatchObject({
       item: {
         kind: "workspace-app-factory",
-        href: "mention://workspace-app-factory",
+        href: "mention://workspace-app-factory/create",
         workspaceId: "",
-        targetId: "",
+        targetId: "create",
         jobId: "",
         name: "Create App"
       }
@@ -165,7 +196,7 @@ describe("attrsToMentionItem", () => {
       workspaceId: "",
       targetId: "",
       jobId: "",
-      href: "mention://workspace-app-factory"
+      href: "mention://workspace-app-factory/create"
     });
   });
 

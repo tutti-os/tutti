@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
-import type { RichTextMentionAttrs } from "@tutti-os/ui-rich-text/types";
+import type {
+  RichTextMentionAttrs,
+  RichTextTriggerProvider
+} from "@tutti-os/ui-rich-text/types";
 import type { WorkspaceUserProjectService } from "@tutti-os/workspace-user-project/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type {
@@ -49,10 +51,10 @@ export interface UseIssueManagerControllerInput {
   feature: IssueManagerFeature;
   openSource?: IssueManagerOpenSource;
   onStateChange?: (state: IssueManagerNodeState) => void;
-  resolveRichTextAtProviders?: (input: {
+  resolveRichTextTriggerProviders?: (input: {
     surface: IssueManagerRichTextSurface;
     workspaceId: string;
-  }) => readonly RichTextAtProvider[];
+  }) => readonly RichTextTriggerProvider[];
   service?: IssueManagerControllerService;
   state?: Partial<IssueManagerNodeState> | null;
   workspaceId: string;
@@ -101,9 +103,9 @@ export interface IssueManagerController {
     status: "completed" | "not_started"
   ) => Promise<void>;
   setSelectedTaskStatus: (status: "completed" | "not_started") => Promise<void>;
-  resolveRichTextAtProviders: (
+  resolveRichTextTriggerProviders: (
     surface: IssueManagerRichTextSurface
-  ) => readonly RichTextAtProvider[];
+  ) => readonly RichTextTriggerProvider[];
   selectIssue: (issueId: string | null) => void;
   selectTask: (taskId: string | null) => void;
   selectTopic: (topicId: string) => void;
@@ -149,7 +151,7 @@ export function useIssueManagerController({
   feature,
   openSource,
   onStateChange,
-  resolveRichTextAtProviders,
+  resolveRichTextTriggerProviders,
   service,
   state,
   workspaceId
@@ -221,7 +223,7 @@ export function useIssueManagerController({
     feature,
     issueEditorMode,
     nodeState,
-    onResolveRichTextAtProviders: resolveRichTextAtProviders,
+    onResolveRichTextTriggerProviders: resolveRichTextTriggerProviders,
     taskEditorMode,
     workspaceId
   });

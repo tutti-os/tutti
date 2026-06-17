@@ -6,7 +6,7 @@ import {
   normalizeAtPanelQuery,
   richTextAtGroupExpandCount
 } from "./searchHelpers.ts";
-import type { RichTextAtQueryMatch } from "../types/at.ts";
+import type { RichTextTriggerQueryMatch as RichTextAtQueryMatch } from "../types/trigger.ts";
 
 test("normalizeAtPanelQuery compacts whitespace", () => {
   assert.equal(normalizeAtPanelQuery("  hello   world "), "hello world");
@@ -67,6 +67,7 @@ test("groupRichTextAtMatches groups by provider and pages visible items", () => 
 function match(providerId: string, key: string): RichTextAtQueryMatch {
   return {
     providerId,
+    trigger: "@",
     key: `${providerId}:${key}`,
     label: key,
     item: { key },

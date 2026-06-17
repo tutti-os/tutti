@@ -24,17 +24,26 @@ import type {
   BrowserNodeShowDevToolsContextMenuInput,
   BrowserNodeUnregisterGuestInput
 } from "@tutti-os/browser-node";
+import type {
+  TuttiExternalAtQueryInput,
+  TuttiExternalAtQueryResult,
+  TuttiExternalFileSelectInput,
+  TuttiExternalFileSelectResult,
+  TuttiExternalRendererRequest
+} from "@tutti-os/workspace-external-core/contracts";
 
 export const desktopIpcChannels = {
   appContext: {
     changed: "workspace-app-context:changed",
     diagnostic: "workspace-app-context:diagnostic",
     get: "workspace-app-context:get",
-    openSettings: "workspace-app-settings:open",
-    openSettingsRequested: "workspace-app-settings:open-requested",
-    openUrl: "workspace-app:open-url",
-    requestManagedCredentialGrant:
-      "workspace-app-managed-credentials:request-grant"
+    openUrl: "workspace-app:open-url"
+  },
+  appExternal: {
+    atQuery: "workspace-app-at:query",
+    filesSelect: "workspace-app-files:select",
+    rendererRequest: "workspace-app-external:renderer-request",
+    rendererResponse: "workspace-app-external:renderer-response"
   },
   browser: {
     activate: "browser:activate",
@@ -255,38 +264,6 @@ export interface DesktopWorkspaceAppContext {
   workspaceId?: string;
 }
 
-export type DesktopManagedModelProviderID = "agnes" | "openai" | "anthropic";
-
-export interface DesktopManagedModel {
-  id: string;
-  name: string;
-  provider: DesktopManagedModelProviderID;
-}
-
-export interface DesktopManagedModelGrantRequest {
-  appId?: string;
-  contextToken?: string;
-  installationId?: string;
-  nonce?: string;
-  providers?: DesktopManagedModelProviderID[];
-  scopes?: string[];
-  state?: string;
-  workspaceId?: string;
-}
-
-export interface DesktopManagedModelGrantResult {
-  grantCode: string;
-  expiresAt: string;
-  providers: DesktopManagedModelProviderID[];
-  models: DesktopManagedModel[];
-}
-
-export interface DesktopWorkspaceOpenSettingsRequest {
-  pane: "managed-models";
-  provider?: DesktopManagedModelProviderID;
-  section: "apps";
-}
-
 export interface DesktopBackendConfig {
   accessToken: string;
   baseUrl: string;
@@ -389,6 +366,18 @@ export type DesktopIpcResult<TResult> =
   | DesktopIpcSuccess<TResult>
   | DesktopIpcFailure;
 
+export type DesktopWorkspaceAppExternalRendererResult =
+  | TuttiExternalAtQueryResult[]
+  | TuttiExternalFileSelectResult;
+
+export interface DesktopWorkspaceAppExternalRendererResponse {
+  requestId: string;
+  result: DesktopIpcResult<DesktopWorkspaceAppExternalRendererResult>;
+}
+
+export type DesktopWorkspaceAppExternalRendererRequest =
+  TuttiExternalRendererRequest;
+
 export const desktopDeveloperLogKinds = ["daemon", "desktop"] as const;
 
 export type DesktopDeveloperLogKind = (typeof desktopDeveloperLogKinds)[number];
@@ -473,10 +462,8 @@ export type { BrowserNodeEvent };
 
 export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appContext.get]: undefined;
-  [desktopIpcChannels.appContext
-    .openSettings]: DesktopWorkspaceOpenSettingsRequest;
-  [desktopIpcChannels.appContext
-    .requestManagedCredentialGrant]: DesktopManagedModelGrantRequest;
+  [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryInput;
+  [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectInput;
   [desktopIpcChannels.browser.activate]: BrowserNodeActivationInput;
   [desktopIpcChannels.browser.capturePreview]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.close]: BrowserNodeNodeIdInput;
@@ -558,9 +545,8 @@ export interface DesktopInvokePayloadByChannel {
 
 export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.appContext.get]: DesktopWorkspaceAppContext;
-  [desktopIpcChannels.appContext.openSettings]: void;
-  [desktopIpcChannels.appContext
-    .requestManagedCredentialGrant]: DesktopManagedModelGrantResult;
+  [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryResult[];
+  [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectResult;
   [desktopIpcChannels.browser.activate]: void;
   [desktopIpcChannels.browser.capturePreview]: string | null;
   [desktopIpcChannels.browser.close]: void;

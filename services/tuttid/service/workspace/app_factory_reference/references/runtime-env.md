@@ -27,7 +27,7 @@ Opening App Center may silently preload the managed runtime when uninstalled app
 
 Prefer a small local server with Python standard library or Node built-ins. Avoid startup-time dependency installation. If build or install steps are necessary, put them in executable `prepare.sh`, not `bootstrap.sh`. `prepare.sh` may use the managed runtime variables for dependency installation and build commands. `bootstrap.sh` should only launch the already prepared app server.
 
-## Browser App Context
+## Browser External Context
 
 Workspace apps should not encode locale or theme in their launch URL query.
 
@@ -35,35 +35,26 @@ When an app needs localized in-app copy, read the current locale from the option
 
 ```js
 async function readHostLocale() {
-  const appContext = window.tutti?.appContext || window.tuttiAppContext;
-  if (!appContext) return null;
-  if (typeof appContext.get === "function") {
-    const context = await appContext.get();
+  const getContext = window.tuttiExternal?.app?.getContext;
+  if (typeof getContext !== "function") return null;
+  try {
+    const context = await getContext();
     return context?.locale || context?.language || null;
+  } catch {
+    return null;
   }
-  if (typeof appContext.locale === "string") return appContext.locale;
-  if (typeof appContext.language === "string") return appContext.language;
-  if (typeof appContext.getLocale === "function") {
-    return await appContext.getLocale();
-  }
-  return null;
 }
 
 function subscribeHostLocale(listener) {
-  const appContext = window.tutti?.appContext || window.tuttiAppContext;
-  if (typeof appContext?.subscribe === "function") {
-    return appContext.subscribe((context) => {
-      listener(context?.locale || context?.language || null);
-    });
-  }
-  if (typeof appContext?.onLocaleChanged === "function") {
-    return appContext.onLocaleChanged(listener);
-  }
-  return () => {};
+  const subscribe = window.tuttiExternal?.app?.subscribe;
+  if (typeof subscribe !== "function") return () => {};
+  return subscribe((context) => {
+    listener(context?.locale || context?.language || null);
+  });
 }
 ```
 
-`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. Provider lists, default provider, and agent composer options are not part of browser app context; use `TUTTI_CLI` for those capabilities. The context is optional so generated apps continue to run in a normal browser during development.
+`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. Provider lists, default provider, and agent composer options are not part of browser external context; use `TUTTI_CLI` for those capabilities. The context is optional so generated apps continue to run in a normal browser during development.
 
 For theme, use CSS media queries and `matchMedia`:
 

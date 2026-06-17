@@ -1414,7 +1414,7 @@ function normalizePlainIssueMentionTitleContent(content: string): string {
     return content;
   }
 
-  return `[@${escapeMarkdownLinkLabel(label)}](mention://workspace-issue?source=plain-title)`;
+  return content;
 }
 
 function normalizeMentionMarkdownLinks(content: string): string {
@@ -1453,15 +1453,11 @@ function normalizePlainSessionMentionTitle(content: string): string {
     }
 
     const userLabel = trimmed.slice(1, separatorIndex).trim();
-    const summary = trimmed.slice(separatorIndex + separator.length).trim();
     if (!userLabel) {
       continue;
     }
 
-    const mentionLabel = [userLabel, agentLabel, summary]
-      .filter(Boolean)
-      .join(" · ");
-    return `[@${escapeMarkdownLinkLabel(mentionLabel)}](mention://agent-session?source=plain-title)`;
+    return content;
   }
 
   return content;
@@ -1520,11 +1516,18 @@ function parseMentionLink(
   ) {
     return null;
   }
+  if (hasLegacyMentionQueryParams(url)) {
+    return null;
+  }
+  const entityId = decodeURIComponent(url.pathname.replace(/^\/+/, "")).trim();
+  if (!entityId) {
+    return null;
+  }
   const label =
     rawLabel.trim().replace(/^@+/, "").trim() ||
     (kind === "workspace-app-factory" ? appFactoryFallbackLabel : "");
   if (kind === "workspace-app" || kind === "workspace-app-factory") {
-    const appId = url.searchParams.get("appId")?.trim() || "";
+    const appId = kind === "workspace-app" ? entityId : "";
     const workspaceId = url.searchParams.get("workspaceId")?.trim() || "";
     return {
       kind,
@@ -1558,6 +1561,20 @@ function parseMentionLink(
     participant: sessionLabel.participant,
     summary: sessionLabel.summary
   };
+}
+
+function hasLegacyMentionQueryParams(url: URL): boolean {
+  return [...url.searchParams.keys()].some(
+    (key) =>
+      key === "appId" ||
+      key === "id" ||
+      key === "kind" ||
+      key === "link" ||
+      key === "provider" ||
+      key === "v" ||
+      key === "version" ||
+      key.startsWith("meta.")
+  );
 }
 
 function resolveWorkspaceAppMentionIconUrl(input: {

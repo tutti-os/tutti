@@ -1,4 +1,4 @@
-import type { RichTextAtQueryMatch } from "../types/at.ts";
+import type { RichTextTriggerQueryMatch as RichTextAtQueryMatch } from "../types/trigger.ts";
 
 export interface RichTextAtEditorNavigationMatchEntry {
   key: string;

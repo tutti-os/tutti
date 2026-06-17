@@ -52,7 +52,7 @@ export interface AgentMentionPaletteEntry {
   item?: AgentContextMentionItem;
 }
 
-interface AgentFileMentionPaletteProps {
+export interface AgentFileMentionPaletteProps {
   state: AgentMentionSearchState;
   highlightedKey: string | null;
   label: string;
@@ -298,6 +298,9 @@ export function AgentFileMentionPalette({
     />
   );
 }
+
+export const AgentContextMentionPalette = AgentFileMentionPalette;
+export type AgentContextMentionPaletteProps = AgentFileMentionPaletteProps;
 
 /**
  * Map a controller group onto the shared shell group, layering in the

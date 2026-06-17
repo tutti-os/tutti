@@ -1,4 +1,8 @@
 import type { AgentSessionCommand } from "../../../shared/agentSessionTypes";
+import {
+  draftForSlashCommandTrigger,
+  getPromptStartSlashCommandQuery
+} from "./agentComposerTriggerQueries";
 
 export interface SlashCommandSearchItem {
   aliases?: readonly string[];
@@ -21,13 +25,13 @@ export interface SlashCommandInvocation {
 export function getSlashCommandQueryMatch(
   draft: string
 ): SlashCommandQueryMatch | null {
-  const match = /^(\s*)\/([^\s]*)$/.exec(draft);
-  if (!match) {
+  const query = getPromptStartSlashCommandQuery(draft);
+  if (query === null) {
     return null;
   }
   return {
-    query: match[2] ?? "",
-    prefix: match[1] ?? ""
+    query,
+    prefix: /^(\s*)/.exec(draft)?.[1] ?? ""
   };
 }
 
@@ -130,9 +134,10 @@ export function draftForSlashCommand(
   command: AgentSessionCommand,
   currentDraft = ""
 ): string {
-  const commandDraft = `/${command.name.trim()} `;
-  const match = getSlashCommandQueryMatch(currentDraft);
-  return match ? `${match.prefix}${commandDraft}` : commandDraft;
+  return draftForSlashCommandTrigger({
+    commandName: command.name,
+    currentDraft
+  });
 }
 
 export function promptForSlashCommand(command: AgentSessionCommand): string {

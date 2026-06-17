@@ -13,6 +13,7 @@
       "@tutti-os/workspace-issue-manager",
       "@tutti-os/workspace-user-project",
       "@tutti-os/workspace-app-center",
+      "@tutti-os/workspace-external-core",
       "@tutti-os/workspace-terminal",
       "@tutti-os/agent-activity-core",
       "@tutti-os/agent-gui",

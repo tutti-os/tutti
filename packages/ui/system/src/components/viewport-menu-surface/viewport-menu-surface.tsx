@@ -417,11 +417,11 @@ const ViewportMenuSurface = React.forwardRef<
       className={className}
       data-slot="viewport-menu-surface"
       style={{
-        ...style,
         position: "fixed",
         top: resolvedPlacement.position.top,
         left: resolvedPlacement.position.left,
-        zIndex: "var(--z-popover)"
+        zIndex: "var(--z-popover)",
+        ...style
       }}
       onClick={(event) => {
         if (stopEventPropagation) {

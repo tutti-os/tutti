@@ -60,7 +60,7 @@ export function createRichTextMentionRegistry(
   async function resolve(
     input: RichTextMentionResolveInput
   ): Promise<RichTextResolvedMentionView> {
-    const plugin = pluginMap.get(input.mention.plugin);
+    const plugin = pluginMap.get(input.mention.providerId);
     if (!plugin) {
       return resolveRichTextMentionView(input.mention, {
         state: "missing"

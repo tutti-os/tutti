@@ -579,7 +579,7 @@ test("desktop agent host api tracks agent session lifecycle events", async () =>
     content: [
       {
         type: "text",
-        text: "/review [src/App.tsx](mention://workspace-file?path=src%2FApp.tsx)"
+        text: "/review [src/App.tsx](mention://file/src%2FApp.tsx?workspaceId=workspace-1)"
       }
     ]
   });

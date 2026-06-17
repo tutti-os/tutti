@@ -1,4 +1,4 @@
-import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type { ReactNode } from "react";
 import type {
   IssueManagerFileReference,
@@ -29,10 +29,10 @@ export interface UseIssueManagerNodeViewInput {
   nodeId: string;
   openSource?: IssueManagerOpenSource;
   onStateChange?: (state: IssueManagerNodeState) => void;
-  resolveRichTextAtProviders?: (input: {
+  resolveRichTextTriggerProviders?: (input: {
     surface: IssueManagerRichTextSurface;
     workspaceId: string;
-  }) => readonly RichTextAtProvider[];
+  }) => readonly RichTextTriggerProvider[];
   service?: IssueManagerControllerService;
   state?: Partial<IssueManagerNodeState> | null;
   workspaceId: string;
@@ -44,7 +44,7 @@ export function useIssueManagerNodeView({
   nodeId,
   openSource,
   onStateChange,
-  resolveRichTextAtProviders,
+  resolveRichTextTriggerProviders,
   service,
   state,
   workspaceId
@@ -54,7 +54,7 @@ export function useIssueManagerNodeView({
     feature,
     openSource,
     onStateChange,
-    resolveRichTextAtProviders,
+    resolveRichTextTriggerProviders,
     service,
     state,
     workspaceId

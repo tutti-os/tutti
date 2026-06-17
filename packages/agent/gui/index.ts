@@ -18,10 +18,10 @@ export {
   shouldAutoCollapseAgentGUIConversationRail
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
 export {
-  AGENT_GUI_MENTION_PROVIDER_IDS,
-  type AgentGUIMentionProviderId,
-  type AgentRichTextAtProvider
-} from "./agent-gui/agentGuiNode/agentRichTextAtProvider";
+  AGENT_CONTEXT_MENTION_PROVIDER_IDS,
+  type AgentContextMentionProviderId,
+  type AgentContextMentionProvider
+} from "./agent-gui/agentGuiNode/agentContextMentionProvider";
 export { AgentActivityHostProvider } from "./agentActivityHost";
 export type { AgentActivityHostProviderProps } from "./agentActivityHost";
 export {

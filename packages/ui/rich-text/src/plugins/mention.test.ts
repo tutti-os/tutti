@@ -8,27 +8,34 @@ import {
 test("resolveRichTextMentionView does not expose stored href without explicit resolution", () => {
   const mention = createRichTextMentionAttrs("user", {
     entityId: "u_123",
-    href: "/people/u_123",
-    label: "Alice"
+    label: "Alice",
+    presentation: {
+      iconUrl: "https://example.test/alice.png"
+    }
   });
 
   const view = resolveRichTextMentionView(mention);
 
   assert.equal(view.state, "active");
-  assert.equal(view.href, undefined);
+  assert.deepEqual(view.presentation, {
+    iconUrl: "https://example.test/alice.png"
+  });
 });
 
-test("resolveRichTextMentionView keeps explicit resolved href", () => {
+test("resolveRichTextMentionView keeps explicit resolved presentation", () => {
   const mention = createRichTextMentionAttrs("user", {
     entityId: "u_123",
-    href: "/people/u_123",
     label: "Alice"
   });
 
   const view = resolveRichTextMentionView(mention, {
-    href: "/profiles/u_123",
+    presentation: {
+      subtitle: "Design"
+    },
     state: "active"
   });
 
-  assert.equal(view.href, "/profiles/u_123");
+  assert.deepEqual(view.presentation, {
+    subtitle: "Design"
+  });
 });

@@ -18,7 +18,7 @@ test("workspace issue mention helpers round-trip canonical issue context", () =>
 
   assert.equal(
     href,
-    "mention://workspace-issue?workspaceId=workspace-1&id=issue-1&mode=execute&topicId=topic-1&taskId=task-1&runId=run-1&outputDir=%2Fworkspace%2Fissues%2Fissue-1%2Ftasks%2Ftask-1%2Fruns%2Frun-1"
+    "mention://workspace-issue/issue-1?workspaceId=workspace-1&topicId=topic-1&mode=execute&taskId=task-1&runId=run-1&outputDir=%2Fworkspace%2Fissues%2Fissue-1%2Ftasks%2Ftask-1%2Fruns%2Frun-1"
   );
   assert.deepEqual(parseWorkspaceIssueMentionHref(href), {
     issueId: "issue-1",
@@ -45,7 +45,25 @@ test("workspace issue mention parser ignores non-canonical or incomplete mention
     null
   );
   assert.equal(
-    parseWorkspaceIssueMentionHref("mention://workspace-issue?workspaceId=ws"),
+    parseWorkspaceIssueMentionHref(
+      "mention://workspace-issue?workspaceId=ws&id=issue-1"
+    ),
+    null
+  );
+  assert.equal(
+    parseWorkspaceIssueMentionHref(
+      "mention://workspace-issue/issue-1?workspaceId=ws&meta.status=running"
+    ),
+    null
+  );
+  assert.equal(
+    parseWorkspaceIssueMentionHref("mention://workspace-issue/issue-1"),
+    null
+  );
+  assert.equal(
+    parseWorkspaceIssueMentionHref(
+      "mention://workspace-issue/issue-1?workspaceId=ws&link=%2Fissues%2Fissue-1"
+    ),
     null
   );
 });

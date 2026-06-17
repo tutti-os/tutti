@@ -472,8 +472,8 @@ describe("AgentRichTextEditor", () => {
     render(
       <AgentRichTextEditor
         value={
-          "继续 [@wang jomes · Codex · @README.md 看看项目文件](mention://agent-session?workspaceId=room-1&id=session-1) " +
-          "再处理 [@修复 room status 批量接口](mention://workspace-issue?workspaceId=room-1&id=issue-1)"
+          "继续 [@wang jomes · Codex · @README.md 看看项目文件](mention://agent-session/session-1?workspaceId=room-1) " +
+          "再处理 [@修复 room status 批量接口](mention://workspace-issue/issue-1?workspaceId=room-1)"
         }
         disabled={false}
         placeholder="Prompt"
@@ -532,8 +532,8 @@ describe("AgentRichTextEditor", () => {
       <AgentGuiI18nProvider locale="zh-CN">
         <AgentRichTextEditor
           value={
-            "继续 [@wang jomes · Codex · @README.md 看看项目文件](mention://agent-session?workspaceId=room-1&id=session-1) " +
-            "再处理 [@修复 room status 批量接口](mention://workspace-issue?workspaceId=room-1&id=issue-1)"
+            "继续 [@wang jomes · Codex · @README.md 看看项目文件](mention://agent-session/session-1?workspaceId=room-1) " +
+            "再处理 [@修复 room status 批量接口](mention://workspace-issue/issue-1?workspaceId=room-1)"
           }
           disabled={false}
           placeholder="Prompt"
@@ -564,8 +564,8 @@ describe("AgentRichTextEditor", () => {
     render(
       <AgentRichTextEditor
         value={
-          "继续 [@wang jomes · Codex · Current issue](mention://agent-session?workspaceId=room-1&id=session-1) " +
-          "再处理 [@修复 room status 批量接口](mention://workspace-issue?workspaceId=room-1&id=issue-1)"
+          "继续 [@wang jomes · Codex · Current issue](mention://agent-session/session-1?workspaceId=room-1) " +
+          "再处理 [@修复 room status 批量接口](mention://workspace-issue/issue-1?workspaceId=room-1)"
         }
         disabled={false}
         placeholder="Prompt"
@@ -598,8 +598,8 @@ describe("AgentRichTextEditor", () => {
     const rendered = render(
       <AgentRichTextEditor
         value={
-          "继续 [@wang jomes · Codex · Current issue](mention://agent-session?workspaceId=room-1&id=session-1) " +
-          "再处理 [@修复 room status 批量接口](mention://workspace-issue?workspaceId=room-1&id=issue-1)"
+          "继续 [@wang jomes · Codex · Current issue](mention://agent-session/session-1?workspaceId=room-1) " +
+          "再处理 [@修复 room status 批量接口](mention://workspace-issue/issue-1?workspaceId=room-1)"
         }
         disabled={true}
         placeholder="Prompt"
@@ -617,8 +617,8 @@ describe("AgentRichTextEditor", () => {
     rendered.rerender(
       <AgentRichTextEditor
         value={
-          "继续 [@wang jomes · Codex · Current issue](mention://agent-session?workspaceId=room-1&id=session-1) " +
-          "再处理 [@修复 room status 批量接口](mention://workspace-issue?workspaceId=room-1&id=issue-1)"
+          "继续 [@wang jomes · Codex · Current issue](mention://agent-session/session-1?workspaceId=room-1) " +
+          "再处理 [@修复 room status 批量接口](mention://workspace-issue/issue-1?workspaceId=room-1)"
         }
         disabled={false}
         placeholder="Prompt"
@@ -636,8 +636,8 @@ describe("AgentRichTextEditor", () => {
     rendered.rerender(
       <AgentRichTextEditor
         value={
-          "继续 [@wang jomes · Codex · Current issue](mention://agent-session?workspaceId=room-1&id=session-1) " +
-          "再处理 [@修复 room status 批量接口](mention://workspace-issue?workspaceId=room-1&id=issue-1)"
+          "继续 [@wang jomes · Codex · Current issue](mention://agent-session/session-1?workspaceId=room-1) " +
+          "再处理 [@修复 room status 批量接口](mention://workspace-issue/issue-1?workspaceId=room-1)"
         }
         disabled={true}
         placeholder="Prompt"
@@ -657,7 +657,7 @@ describe("AgentRichTextEditor", () => {
     const onChange = vi.fn();
     render(
       <AgentRichTextEditor
-        value="[@wang jomes · Codex · Current issue](mention://agent-session?workspaceId=room-1&id=session-1) "
+        value="[@wang jomes · Codex · Current issue](mention://agent-session/session-1?workspaceId=room-1) "
         disabled={false}
         placeholder="Prompt"
         removeMentionLabel="Remove mention"
@@ -719,7 +719,7 @@ describe("AgentRichTextEditor", () => {
     const appId = "app_665a8448-a202-41a6-96ab-de4f4194c0a6";
     render(
       <AgentRichTextEditor
-        value={`[@天气查询](mention://workspace-app?appId=${appId}&workspaceId=workspace-1)`}
+        value={`[@天气查询](mention://workspace-app/${appId}?workspaceId=workspace-1)`}
         disabled={false}
         placeholder="Prompt"
         onChange={vi.fn()}
@@ -741,7 +741,7 @@ describe("AgentRichTextEditor", () => {
     expect(appMention).not.toHaveTextContent(appId);
     expect(appMention).toHaveAttribute(
       "data-agent-mention-href",
-      `mention://workspace-app?appId=${appId}&workspaceId=workspace-1`
+      `mention://workspace-app/${appId}?workspaceId=workspace-1`
     );
     expect(
       appMention?.querySelector(
@@ -867,7 +867,7 @@ describe("AgentRichTextEditor", () => {
     act(() => {
       suggestionState?.command({
         kind: "workspace-app",
-        href: "mention://workspace-app?appId=vibe-design&workspaceId=workspace-1",
+        href: "mention://workspace-app/vibe-design?workspaceId=workspace-1",
         workspaceId: "workspace-1",
         targetId: "vibe-design",
         appId: "vibe-design",
@@ -914,7 +914,7 @@ describe("AgentRichTextEditor", () => {
         [
           '<a data-agent-file-mention="true"',
           ' data-agent-mention-kind="workspace-app"',
-          ' data-agent-mention-href="mention://workspace-app?appId=daily-product-radar&amp;workspaceId=workspace-1"',
+          ' data-agent-mention-href="mention://workspace-app/daily-product-radar?workspaceId=workspace-1"',
           ' data-agent-mention-icon-url="tutti://workspace-apps/daily-product-radar/icon.png">',
           "Daily Product Radar",
           "</a>"
@@ -943,7 +943,7 @@ describe("AgentRichTextEditor", () => {
     const onChange = vi.fn();
     render(
       <AgentRichTextEditor
-        value="Use [@Vibe Design](mention://workspace-app?appId=vibe-design&workspaceId=workspace-1) now"
+        value="Use [@Vibe Design](mention://workspace-app/vibe-design?workspaceId=workspace-1) now"
         disabled={false}
         placeholder="Prompt"
         removeMentionLabel="Remove mention"
@@ -971,8 +971,8 @@ describe("AgentRichTextEditor", () => {
     render(
       <AgentRichTextEditor
         value={
-          "[@AI Media Canvas](mention://workspace-app?appId=ai-media-canvas&workspaceId=workspace-1)" +
-          "[@Vibe Design](mention://workspace-app?appId=vibe-design&workspaceId=workspace-1)"
+          "[@AI Media Canvas](mention://workspace-app/ai-media-canvas?workspaceId=workspace-1)" +
+          "[@Vibe Design](mention://workspace-app/vibe-design?workspaceId=workspace-1)"
         }
         disabled={false}
         placeholder="Prompt"
@@ -1056,7 +1056,7 @@ describe("AgentRichTextEditor", () => {
     const onLinkClick = vi.fn();
     render(
       <AgentRichTextEditor
-        value="继续 [@wang jomes · Codex · 看看项目文件](mention://agent-session?workspaceId=room-1&id=session-1)"
+        value="继续 [@wang jomes · Codex · 看看项目文件](mention://agent-session/session-1?workspaceId=room-1)"
         disabled={false}
         placeholder="Prompt"
         onChange={vi.fn()}
@@ -1069,13 +1069,13 @@ describe("AgentRichTextEditor", () => {
     const mention = editor.querySelector('[data-agent-file-mention="true"]');
     expect(mention).toHaveAttribute(
       "data-agent-mention-href",
-      "mention://agent-session?workspaceId=room-1&id=session-1"
+      "mention://agent-session/session-1?workspaceId=room-1"
     );
 
     fireEvent.click(mention as Element);
 
     expect(onLinkClick).toHaveBeenCalledWith(
-      "mention://agent-session?workspaceId=room-1&id=session-1"
+      "mention://agent-session/session-1?workspaceId=room-1"
     );
   });
 

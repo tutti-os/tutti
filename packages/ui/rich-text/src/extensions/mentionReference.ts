@@ -5,13 +5,11 @@ import { MentionReferenceNodeView } from "./MentionReferenceNodeView.tsx";
 
 export interface MentionReferenceAttrs {
   entityId: string;
-  href?: string;
-  kind?: string;
   label: string;
-  meta?: Readonly<Record<string, string>>;
-  plugin: string;
+  presentation?: Readonly<Record<string, string>>;
+  providerId: string;
+  scope?: Readonly<Record<string, string>>;
   trigger: "@";
-  version?: string;
 }
 
 export const MentionReference = Node.create({
@@ -26,26 +24,20 @@ export const MentionReference = Node.create({
       entityId: {
         default: ""
       },
-      href: {
-        default: null
-      },
-      kind: {
-        default: null
-      },
       label: {
         default: ""
       },
-      meta: {
+      presentation: {
         default: null
       },
-      plugin: {
+      providerId: {
         default: ""
+      },
+      scope: {
+        default: null
       },
       trigger: {
         default: "@"
-      },
-      version: {
-        default: null
       }
     };
   },
@@ -57,6 +49,7 @@ export const MentionReference = Node.create({
   renderHTML({ HTMLAttributes }) {
     const label =
       typeof HTMLAttributes.label === "string" ? HTMLAttributes.label : "";
+    const displayLabel = label.trim().replace(/^@+/, "").trim();
 
     return [
       "span",
@@ -65,7 +58,7 @@ export const MentionReference = Node.create({
         class:
           "inline-flex max-w-full items-center overflow-hidden rounded-md bg-transparency-block px-1.5 py-0.5 align-baseline text-[13px] font-medium text-[var(--text-primary)]"
       }),
-      `@${label}`
+      displayLabel ? `@${displayLabel}` : ""
     ];
   },
 

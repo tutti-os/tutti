@@ -1,19 +1,20 @@
 ---
 name: issue-manager
-description: Use for `mention://workspace-issue?...` links and Tutti issue/task inspection, execution, run reporting, or breakdown workflows.
+description: Use for `mention://workspace-issue/<issueId>?workspaceId=...` links and Tutti issue/task inspection, execution, run reporting, or breakdown workflows.
 ---
 
 # Issue Manager
 
-Use this skill when the user asks you to execute, inspect, or break down a Tutti workspace issue, especially when the handoff contains one or more `mention://workspace-issue?...` links.
+Use this skill when the user asks you to execute, inspect, or break down a Tutti workspace issue, especially when the handoff contains one or more `mention://workspace-issue/<issueId>?workspaceId=...` links.
 
 Use the injected `tutti-cli` skill as the command reference for the CLI syntax and available commands. This skill owns the issue workflow semantics and decides how to use that CLI reference.
 
 ## Mention Contract
 
-Treat a `mention://workspace-issue?...` link as the machine-readable source of truth for issue handoff context. The mention always uses `workspaceId` and `id` for issue identity and may also include `topicId`, `taskId`, `runId`, legacy `outputDir`, and `mode`.
+Treat a `mention://workspace-issue/<issueId>?workspaceId=...` link as the machine-readable source of truth for issue handoff context. The mention uses the URL path as the issue id and the query string for scope and workflow context. It must include `workspaceId` and may also include `topicId`, `taskId`, `runId`, legacy `outputDir`, and `mode`.
 
-- `id`: issue id.
+- URL path: issue id, for example `mention://workspace-issue/issue-123?workspaceId=workspace-1`.
+- `workspaceId`: workspace id.
 - `topicId`: topic id for additional background lookup when the issue or task detail is not enough.
 - `taskId`: legacy or manually authored field that targets a specific task under the issue. New AgentGUI execution handoffs omit it so issue-level execution can decide the correct task workflow.
 - `runId`: legacy handoff field. New AgentGUI execution handoffs should not include it; if it appears, inspect it as historical context only and still follow the execution rules below unless the user explicitly asks for manual control-plane inspection.

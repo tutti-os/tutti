@@ -3,7 +3,9 @@ import type {
   AgentGUIProps,
   AgentHostInputApi
 } from "@tutti-os/agent-gui";
+import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type {
   DesktopHostFilesApi,
   DesktopPlatformApi,
@@ -22,7 +24,9 @@ import type { IWorkspaceUserProjectService } from "../../workspace-user-project/
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
-  richTextAtProviders: NonNullable<AgentGUIProps["richTextAtProviders"]>;
+  contextMentionProviders: NonNullable<
+    AgentGUIProps["contextMentionProviders"]
+  >;
   trackWorkspaceFileReferences: (input: {
     provider?: string | null;
     references: readonly WorkspaceFileReference[];
@@ -107,17 +111,19 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   return {
     agentActivityRuntime,
     agentHostApi: resolvedAgentHostApi,
-    richTextAtProviders: richTextAtService.getProviders({
-      capabilities: [
-        "workspace-file",
-        "workspace-issue",
-        "agent-session",
-        "workspace-app"
-      ],
-      surface: "composer",
-      target: "agent-gui",
-      workspaceId
-    }),
+    contextMentionProviders: richTextAtService
+      .getProviders({
+        capabilities: [
+          "file",
+          "workspace-issue",
+          "agent-session",
+          "workspace-app"
+        ],
+        surface: "composer",
+        target: "agent-gui",
+        workspaceId
+      })
+      .map(richTextTriggerProviderToContextMentionProvider),
     trackWorkspaceFileReferences: (input) =>
       workspaceFileReferenceTracker.track(input),
     workspaceFileReferenceAdapter: createDesktopWorkspaceFileReferenceAdapter({
@@ -142,5 +148,14 @@ export function createDesktopAgentGUIWorkbenchHostInput({
         currentBranch: result.currentBranch ?? null
       };
     }
+  };
+}
+
+function richTextTriggerProviderToContextMentionProvider(
+  provider: RichTextTriggerProvider
+): AgentContextMentionProvider {
+  return {
+    ...provider,
+    trigger: "@"
   };
 }

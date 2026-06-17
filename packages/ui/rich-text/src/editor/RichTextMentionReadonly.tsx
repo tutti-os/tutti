@@ -117,7 +117,7 @@ export function RichTextMentionReadonly<TResolved = unknown>({
       `tutti-rich-text-mention--${view.state}`,
       className
     ),
-    "data-plugin": mention.plugin,
+    "data-provider-id": mention.providerId,
     "data-state": view.state,
     style: {
       ...baseStyle,
@@ -125,20 +125,6 @@ export function RichTextMentionReadonly<TResolved = unknown>({
     },
     title: elementTitle
   } as const;
-
-  if (view.interactive && view.href) {
-    return (
-      <a
-        {...sharedProps}
-        href={view.href}
-        onClick={(event) => {
-          handleClick(event);
-        }}
-      >
-        {label}
-      </a>
-    );
-  }
 
   if (view.interactive && onClick) {
     return (

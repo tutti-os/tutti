@@ -24,16 +24,17 @@ import {
 import { agentMentionFilterLabel } from "./AgentMentionLabels";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 import {
+  buildAgentGenericMentionHref,
   buildAgentSessionMentionHref,
   buildAgentWorkspaceAppMentionHref,
   buildAgentWorkspaceIssueMentionHref,
   normalizeAgentSessionMentionTitle
 } from "./agentRichText/agentFileMentionExtension";
 import type {
-  AgentRichTextAtInsertResult,
-  AgentRichTextAtProvider
-} from "./agentRichTextAtProvider";
-import { AGENT_GUI_MENTION_PROVIDER_IDS } from "./agentRichTextAtProvider";
+  AgentContextMentionInsertResult,
+  AgentContextMentionProvider
+} from "./agentContextMentionProvider";
+import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "./agentContextMentionProvider";
 import type {
   MentionPaletteGroup,
   MentionPaletteState
@@ -62,7 +63,7 @@ export type AgentMentionSearchState =
   MentionPaletteState<AgentContextMentionItem>;
 
 interface AgentMentionSearchControllerOptions {
-  richTextAtProviders?: readonly AgentRichTextAtProvider[];
+  contextMentionProviders?: readonly AgentContextMentionProvider[];
   debounceMs?: number;
   fileLimit?: number;
   issueLimit?: number;
@@ -98,12 +99,12 @@ const {
   file: FILE_PROVIDER_ID,
   workspaceApp: WORKSPACE_APP_PROVIDER_ID,
   workspaceIssue: WORKSPACE_ISSUE_PROVIDER_ID
-} = AGENT_GUI_MENTION_PROVIDER_IDS;
+} = AGENT_CONTEXT_MENTION_PROVIDER_IDS;
 
 export class AgentMentionSearchController {
-  private readonly richTextAtProviders: ReadonlyMap<
+  private readonly contextMentionProviders: ReadonlyMap<
     string,
-    AgentRichTextAtProvider
+    AgentContextMentionProvider
   >;
   private readonly debounceMs: number;
   private readonly fileLimit: number;
@@ -151,8 +152,8 @@ export class AgentMentionSearchController {
   };
 
   constructor(options: AgentMentionSearchControllerOptions) {
-    this.richTextAtProviders = new Map(
-      (options.richTextAtProviders ?? []).map((provider) => [
+    this.contextMentionProviders = new Map(
+      (options.contextMentionProviders ?? []).map((provider) => [
         provider.id,
         provider
       ])
@@ -852,7 +853,7 @@ export class AgentMentionSearchController {
   }
 
   private async queryProviderMentionItems(input: {
-    provider: AgentRichTextAtProvider;
+    provider: AgentContextMentionProvider;
     workspaceId: string;
     currentUserId: string;
     query: string;
@@ -863,6 +864,7 @@ export class AgentMentionSearchController {
       keyword: input.query,
       maxResults: input.limit,
       abortSignal: input.abortSignal,
+      trigger: "@",
       context: {
         metadata: {
           currentUserId: input.currentUserId,
@@ -917,7 +919,7 @@ export class AgentMentionSearchController {
     query: string;
     limit: number;
   }): Promise<AgentContextMentionItem[]> {
-    const provider = this.richTextAtProviders.get(input.providerId);
+    const provider = this.contextMentionProviders.get(input.providerId);
     return queryAgentMentionProviderWithDiagnostics({
       diagnosticNow: this.diagnosticNow,
       diagnostics: input.diagnostics,
@@ -1233,7 +1235,7 @@ function textMatchScore(
 function providerItemToAgentMentionItem(input: {
   currentUserId: string;
   providerId: string;
-  insertResult: AgentRichTextAtInsertResult;
+  insertResult: AgentContextMentionInsertResult;
   label: string;
   subtitle: string;
   workspaceId: string;
@@ -1262,101 +1264,100 @@ function providerItemToAgentMentionItem(input: {
   if (!targetId) {
     return null;
   }
-  const kind = mention.kind?.trim() || input.providerId;
-  const workspaceId = mention.meta?.workspaceId?.trim() || input.workspaceId;
-  if (kind === WORKSPACE_ISSUE_PROVIDER_ID) {
+  const scope = normalizeMentionScope(mention.scope);
+  const presentation = mention.presentation ?? {};
+  const workspaceId = scope.workspaceId || input.workspaceId;
+  if (
+    input.providerId === FILE_PROVIDER_ID ||
+    input.providerId === AGENT_GENERATED_FILE_PROVIDER_ID
+  ) {
+    return {
+      kind: "file",
+      href: buildAgentGenericMentionHref(input.providerId, targetId, scope),
+      path: targetId,
+      name: label,
+      entryKind: targetId.endsWith("/") ? "directory" : "unknown",
+      directoryPath: dirnameFromProviderWorkspaceFileHref(targetId),
+      thumbnailUrl: presentation.thumbnailUrl?.trim() || undefined
+    };
+  }
+  if (input.providerId === WORKSPACE_ISSUE_PROVIDER_ID) {
     return {
       kind: "workspace-issue",
-      href:
-        mention.href?.trim() ||
-        buildAgentWorkspaceIssueMentionHref(workspaceId, targetId),
+      href: buildAgentWorkspaceIssueMentionHref(workspaceId, targetId, {
+        topicId: scope.topicId
+      }),
       workspaceId,
       targetId,
+      topicId: scope.topicId,
       name: label,
       title: label,
-      status: mention.meta?.status?.trim() || undefined,
+      status: presentation.status?.trim() || undefined,
       contentPreview:
-        compactText(mention.meta?.contentPreview) ||
+        compactText(presentation.description) ||
         compactText(input.subtitle) ||
         undefined
     };
   }
-  if (kind === WORKSPACE_APP_PROVIDER_ID) {
-    const appId = mention.meta?.appId?.trim() || targetId;
+  if (input.providerId === WORKSPACE_APP_PROVIDER_ID) {
+    const appId = targetId;
     return {
       kind: "workspace-app",
-      href:
-        mention.href?.trim() ||
-        buildAgentWorkspaceAppMentionHref(workspaceId, appId),
+      href: buildAgentWorkspaceAppMentionHref(workspaceId, appId),
       workspaceId,
       targetId: appId,
       appId,
       name: label,
       description:
-        compactText(mention.meta?.description) ||
+        compactText(presentation.description) ||
+        compactText(presentation.subtitle) ||
         compactText(input.subtitle) ||
         undefined,
-      iconUrl: mention.meta?.iconUrl?.trim() || undefined
+      iconUrl: presentation.iconUrl?.trim() || undefined
     };
   }
-  if (kind === AGENT_SESSION_PROVIDER_ID || kind === "session") {
-    const provider = mention.meta?.provider?.trim() || "";
-    const agentName = mention.meta?.agentName?.trim() || provider;
-    const userId = mention.meta?.userId?.trim() || "";
-    const initiatorName = normalizeSessionInitiatorDisplayName(
-      mention.meta?.initiatorName?.trim() || userId
-    );
-    const initiatorAvatarUrl = mention.meta?.initiatorAvatarUrl?.trim() || "";
-    const scope = mentionSessionScope({
-      currentUserId: input.currentUserId,
-      rawScope: mention.meta?.scope,
-      userId
-    });
-    const title =
-      normalizeAgentSessionMentionTitle(mention.meta?.title?.trim() || label) ||
-      label;
-    const inputPreview = mention.meta?.inputPreview?.trim() || "";
+  if (input.providerId === AGENT_SESSION_PROVIDER_ID) {
+    const agentName = presentation.subtitle?.trim() || "";
+    const title = normalizeAgentSessionMentionTitle(label) || label;
+    const description = compactText(presentation.description);
     const summaryPreview =
-      mention.meta?.summaryPreview?.trim() ||
-      compactText(input.subtitle) ||
-      undefined;
-    const updatedAtUnixMs = numberFromString(mention.meta?.updatedAtUnixMs);
+      description || compactText(input.subtitle) || undefined;
     return {
       kind: "session",
-      href:
-        mention.href?.trim() ||
-        buildAgentSessionMentionHref(workspaceId, targetId, provider),
+      href: buildAgentSessionMentionHref(workspaceId, targetId),
       workspaceId,
       targetId,
-      name:
-        initiatorName || agentName
-          ? `${initiatorName}${
-              initiatorName && agentName ? " & " : ""
-            }${agentName} ${title}`.trim()
-          : label,
+      name: label,
       title,
-      scope,
-      initiatorName,
-      ...(initiatorAvatarUrl ? { initiatorAvatarUrl } : {}),
+      scope: mentionSessionScope({
+        currentUserId: input.currentUserId,
+        rawScope: scope.scope,
+        userId: scope.userId
+      }),
+      initiatorName: "",
       agentName,
-      status: mention.meta?.status?.trim() || undefined,
-      inputPreview: inputPreview || undefined,
-      summaryPreview,
-      updatedAtUnixMs: updatedAtUnixMs ?? undefined
+      status: presentation.status?.trim() || undefined,
+      inputPreview: description || undefined,
+      summaryPreview
     };
   }
   return null;
 }
 
-function normalizeSessionInitiatorDisplayName(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.toLowerCase() === "local" ? "User" : trimmed;
+function normalizeMentionScope(
+  scope?: Readonly<Record<string, string>>
+): Partial<Record<string, string>> {
+  return Object.fromEntries(
+    Object.entries(scope ?? {})
+      .map(([key, value]) => [key.trim(), value.trim()] as const)
+      .filter(([key, value]) => key.length > 0 && value.length > 0)
+  );
 }
 
 function mentionSessionScope(input: {
   currentUserId: string;
   rawScope: string | undefined;
-  userId: string;
+  userId?: string;
 }): Extract<AgentContextMentionItem, { kind: "session" }>["scope"] {
   const rawScope = input.rawScope?.trim() ?? "";
   if (rawScope === "my_sessions" || rawScope === "collab_sessions") {
@@ -1365,15 +1366,6 @@ function mentionSessionScope(input: {
   return input.userId && input.userId === input.currentUserId
     ? "my_sessions"
     : "collab_sessions";
-}
-
-function numberFromString(value: string | undefined): number | null {
-  const trimmed = value?.trim() ?? "";
-  if (!trimmed) {
-    return null;
-  }
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function dirnameFromProviderWorkspaceFileHref(href: string): string {

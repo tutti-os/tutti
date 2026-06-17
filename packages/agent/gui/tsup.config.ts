@@ -7,8 +7,9 @@ export default defineConfig({
     index: "index.ts",
     "agent-message-center/index": "agent-message-center/index.ts",
     "agent-conversation/index": "agent-conversation/index.ts",
-    "agent-rich-text-at-provider":
-      "agent-gui/agentGuiNode/agentRichTextAtProvider.ts",
+    "context-mention-palette/index": "context-mention-palette/index.ts",
+    "context-mention-provider":
+      "agent-gui/agentGuiNode/agentContextMentionProvider.ts",
     "agent-title-text": "shared/utils/agentTitleText.ts",
     "i18n/index": "i18n/index.ts",
     "mention-file-presentation": "agent-gui/shared/mentionFilePresentation.ts",

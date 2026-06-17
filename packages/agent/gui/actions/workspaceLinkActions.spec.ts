@@ -106,7 +106,7 @@ describe("resolveWorkspaceMentionLinkAction", () => {
   it("parses canonical workspace-issue mention context", () => {
     expect(
       resolveWorkspaceMentionLinkAction({
-        href: "mention://workspace-issue?workspaceId=workspace-1&id=issue-1&mode=execute&topicId=topic-1&taskId=task-1&runId=run-1&outputDir=%2Fworkspace%2Fissues%2Fissue-1",
+        href: "mention://workspace-issue/issue-1?workspaceId=workspace-1&mode=execute&topicId=topic-1&taskId=task-1&runId=run-1&outputDir=%2Fworkspace%2Fissues%2Fissue-1",
         source: "agent-markdown"
       })
     ).toEqual({
@@ -125,7 +125,7 @@ describe("resolveWorkspaceMentionLinkAction", () => {
   it("parses workspace-app mention context", () => {
     expect(
       resolveWorkspaceMentionLinkAction({
-        href: "mention://workspace-app?workspaceId=workspace-1&appId=weather",
+        href: "mention://workspace-app/weather?workspaceId=workspace-1",
         source: "agent-markdown"
       })
     ).toEqual({
@@ -134,5 +134,14 @@ describe("resolveWorkspaceMentionLinkAction", () => {
       appId: "weather",
       source: "agent-markdown"
     });
+  });
+
+  it("rejects legacy query-only workspace mention context", () => {
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://workspace-issue?workspaceId=workspace-1&id=issue-1",
+        source: "agent-markdown"
+      })
+    ).toBeNull();
   });
 });

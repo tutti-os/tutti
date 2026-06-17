@@ -1,14 +1,14 @@
 import { createDecorator } from "@tutti-os/infra/di";
-import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 
 export type DesktopRichTextAtCapability =
-  | "workspace-file"
+  | "file"
   | "workspace-app"
   | "workspace-issue"
   | "agent-session"
   | (string & {});
 
-export interface DesktopRichTextAtProviderRequest {
+export interface DesktopRichTextTriggerProviderRequest {
   capabilities: readonly DesktopRichTextAtCapability[];
   metadata?: Readonly<Record<string, unknown>>;
   surface: string;
@@ -20,8 +20,8 @@ export interface IDesktopRichTextAtService {
   readonly _serviceBrand: undefined;
 
   getProviders(
-    input: DesktopRichTextAtProviderRequest
-  ): readonly RichTextAtProvider[];
+    input: DesktopRichTextTriggerProviderRequest
+  ): readonly RichTextTriggerProvider[];
 }
 
 export const IDesktopRichTextAtService =

@@ -1,20 +1,15 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type {
   DesktopIpcResult,
-  DesktopManagedModelGrantRequest,
-  DesktopManagedModelGrantResult,
-  DesktopWorkspaceOpenSettingsRequest,
   DesktopWorkspaceAppContext
 } from "../../shared/contracts/ipc";
+import { createWorkspaceAppExternalBridge } from "./workspaceAppExternalBridge.ts";
 import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
 
 const appContextChannels = {
   changed: "workspace-app-context:changed",
   diagnostic: "workspace-app-context:diagnostic",
-  get: "workspace-app-context:get",
-  openSettings: "workspace-app-settings:open",
-  requestManagedCredentialGrant:
-    "workspace-app-managed-credentials:request-grant"
+  get: "workspace-app-context:get"
 } as const;
 
 installWorkspaceAppLinkInterception({
@@ -36,21 +31,9 @@ installWorkspaceAppLinkInterception({
 
 export interface WorkspaceAppHostContext {
   get(): Promise<DesktopWorkspaceAppContext>;
-  getLocale(): Promise<string>;
   subscribe(
     listener: (context: DesktopWorkspaceAppContext) => void
   ): () => void;
-  onLocaleChanged(listener: (locale: string) => void): () => void;
-}
-
-export interface WorkspaceAppManagedCredentialsBridge {
-  requestGrant(
-    input: DesktopManagedModelGrantRequest
-  ): Promise<DesktopManagedModelGrantResult>;
-}
-
-export interface WorkspaceAppWorkspaceBridge {
-  openSettings(input: DesktopWorkspaceOpenSettingsRequest): Promise<void>;
 }
 
 const contextListeners = new Set<
@@ -77,10 +60,6 @@ const appContext: WorkspaceAppHostContext = {
       pendingContext = null;
     }
   },
-  async getLocale() {
-    const context = await appContext.get();
-    return context.locale;
-  },
   subscribe(listener) {
     contextListeners.add(listener);
     void appContext
@@ -99,33 +78,15 @@ const appContext: WorkspaceAppHostContext = {
     return () => {
       contextListeners.delete(listener);
     };
-  },
-  onLocaleChanged(listener) {
-    return appContext.subscribe((context) => {
-      listener(context.locale);
-    });
   }
 };
 
-const managedCredentials: WorkspaceAppManagedCredentialsBridge = {
-  requestGrant(input) {
-    if (!globalThis.navigator.userActivation?.isActive) {
-      throw new Error(
-        "Managed credential authorization requires a user action."
-      );
-    }
-    return invokeWorkspaceApp(
-      appContextChannels.requestManagedCredentialGrant,
-      input
-    );
-  }
-};
-
-const workspace: WorkspaceAppWorkspaceBridge = {
-  openSettings(input) {
-    return invokeWorkspaceApp(appContextChannels.openSettings, input);
-  }
-};
+const tuttiExternal = createWorkspaceAppExternalBridge({
+  appContext,
+  invoke: invokeWorkspaceApp,
+  isUserActivationActive: () =>
+    globalThis.navigator.userActivation?.isActive === true
+});
 
 ipcRenderer.on(
   appContextChannels.changed,
@@ -186,12 +147,7 @@ function isWorkspaceAppContext(
   );
 }
 
-contextBridge.exposeInMainWorld("tuttiAppContext", appContext);
-contextBridge.exposeInMainWorld("tutti", {
-  appContext,
-  managedCredentials,
-  workspace
-});
+contextBridge.exposeInMainWorld("tuttiExternal", tuttiExternal);
 
 function sendDiagnostic(
   event: string,

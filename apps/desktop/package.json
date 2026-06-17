@@ -99,6 +99,7 @@
     "@tutti-os/ui-system": "workspace:*",
     "@tutti-os/workbench-snapshot": "workspace:*",
     "@tutti-os/workbench-surface": "workspace:*",
+    "@tutti-os/workspace-external-core": "workspace:*",
     "@tutti-os/workspace-file-reference": "workspace:*",
     "@tutti-os/workspace-file-manager": "workspace:*",
     "@tutti-os/workspace-file-preview": "workspace:*",

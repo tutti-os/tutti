@@ -108,7 +108,7 @@ import {
   groupConversations
 } from "./agentGuiNodeViewConversation";
 import styles from "./AgentGUINode.styles";
-import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
+import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 
 const AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX = 24;
 
@@ -403,7 +403,7 @@ interface AgentGUINodeViewProps {
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
-  richTextAtProviders?: readonly AgentRichTextAtProvider[];
+  contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
 }
 
@@ -769,7 +769,7 @@ export function AgentGUINodeView({
   workspaceFileReferenceAdapter = null,
   workspaceFileReferenceCopy = null,
   onRequestGitBranches = null,
-  richTextAtProviders,
+  contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
@@ -1062,7 +1062,7 @@ export function AgentGUINodeView({
             onAgentProviderLogin={onAgentProviderLogin}
             onRequestWorkspaceReferences={requestWorkspaceReferences}
             onRequestGitBranches={onRequestGitBranches}
-            richTextAtProviders={richTextAtProviders}
+            contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={effectiveWorkspaceAppIcons}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
           />
@@ -1099,7 +1099,7 @@ interface AgentGUIDetailPaneProps {
     | (() => Promise<WorkspaceFileReference[]>)
     | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
-  richTextAtProviders?: readonly AgentRichTextAtProvider[];
+  contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
 }
 
@@ -1185,7 +1185,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
   onRequestGitBranches,
-  richTextAtProviders,
+  contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUIDetailPaneProps): React.JSX.Element {
   "use memo";
@@ -1692,7 +1692,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onLinkAction: stableLinkAction,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
       onRequestGitBranches: stableRequestGitBranches,
-      richTextAtProviders
+      contextMentionProviders
     }),
     [
       canQueueWhileBusy,
@@ -1708,7 +1708,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.promptTips,
       composerActivePrompt,
       editQueuedPrompt,
-      richTextAtProviders,
+      contextMentionProviders,
       removeQueuedPrompt,
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
@@ -1996,7 +1996,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               onLinkAction: stableLinkAction,
               onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
               onRequestGitBranches: stableRequestGitBranches,
-              richTextAtProviders
+              contextMentionProviders
             }}
           />
         ) : (

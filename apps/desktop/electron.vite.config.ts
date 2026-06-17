@@ -17,6 +17,15 @@ const aliases = {
   "@tutti-os/workspace-file-manager": resolve(
     "../../packages/workspace/file-manager/src/index.ts"
   ),
+  "@tutti-os/workspace-external-core/contracts": resolve(
+    "../../packages/workspace/external-core/src/contracts/index.ts"
+  ),
+  "@tutti-os/workspace-external-core/core": resolve(
+    "../../packages/workspace/external-core/src/core/index.ts"
+  ),
+  "@tutti-os/workspace-external-core": resolve(
+    "../../packages/workspace/external-core/src/index.ts"
+  ),
   "@preload": resolve("src/preload"),
   "@renderer": resolve("src/renderer/src"),
   "@shared/contracts/dto": resolve(
@@ -42,6 +51,7 @@ const externalizeRuntimeDeps = externalizeDepsPlugin({
     "@tutti-os/ui-i18n-runtime",
     "@tutti-os/ui-system",
     "@tutti-os/workspace-file-manager",
+    "@tutti-os/workspace-external-core",
     "@tutti-os/workspace-file-preview",
     "ws"
   ]

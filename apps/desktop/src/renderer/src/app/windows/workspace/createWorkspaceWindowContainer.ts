@@ -43,11 +43,13 @@ import { resolveDesktopEnvironment } from "@renderer/platform/desktop/resolveDes
 import { createDesktopTuttidEventStreamClient } from "@renderer/platform/tuttid/createDesktopTuttidEventStreamClient";
 import { createDesktopTuttidClient } from "@renderer/platform/tuttid/createDesktopTuttidClient";
 import { startDesktopDaemonConnectionAnalytics } from "@renderer/platform/tuttid/desktopDaemonConnectionAnalytics";
+import type { DesktopWorkspaceAppExternalHostApi } from "@preload/types";
 
 export interface WorkspaceWindowContainerResult {
   container: InstantiationService;
   environmentMode: "desktop" | "web";
   startupWorkspaceID: string | null;
+  workspaceAppExternalApi?: DesktopWorkspaceAppExternalHostApi;
 }
 
 export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult {
@@ -180,7 +182,6 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     hostFilesApi: desktopApi.host.files,
     hostNotificationsApi: desktopApi.host.notifications,
     hostWindowApi: desktopApi.host.window,
-    hostWorkspaceApi: desktopApi.host.workspace,
     tuttidClient,
     platformApi: desktopApi.platform,
     reporterService,
@@ -190,6 +191,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   return {
     container: new InstantiationService(registry.makeCollection()),
     environmentMode: environment.mode,
-    startupWorkspaceID: environment.startupWorkspaceID
+    startupWorkspaceID: environment.startupWorkspaceID,
+    workspaceAppExternalApi: desktopApi.workspaceAppExternal
   };
 }

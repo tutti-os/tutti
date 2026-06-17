@@ -1,7 +1,7 @@
 import type {
-  RichTextAtInsertResult,
-  RichTextAtQueryMatch
-} from "../types/at.ts";
+  RichTextTriggerInsertResult,
+  RichTextTriggerQueryMatch as RichTextAtQueryMatch
+} from "../types/trigger.ts";
 
 export type RichTextAtFilterId = string;
 export type RichTextAtGroupId = string;
@@ -11,7 +11,7 @@ export interface RichTextAtFilterTab {
   label: string;
 }
 
-export interface RichTextAtProviderGroup {
+export interface RichTextTriggerProviderGroup {
   id: RichTextAtGroupId;
   label: string;
   providerIds: readonly string[];
@@ -25,13 +25,13 @@ export interface RichTextAtPanelReferenceItem {
   label: string;
   subtitle?: string;
   thumbnailUrl?: string | null;
-  insertResult: RichTextAtInsertResult;
+  insertResult: RichTextTriggerInsertResult;
 }
 
 export interface RichTextAtPanelMatch<
   TItem = unknown
 > extends RichTextAtQueryMatch<TItem> {
-  thumbnailUrl?: string | null;
+  thumbnailUrl?: string;
   referenceItems?: readonly RichTextAtPanelReferenceItem[];
   referenceItemsLoading?: boolean;
   referenceNextCursor?: string | null;

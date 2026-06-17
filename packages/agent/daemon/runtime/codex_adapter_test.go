@@ -1012,7 +1012,7 @@ func TestPromptTitleSnippetHumanizesMentionMarkdownBeforeTruncation(t *testing.T
 	t.Parallel()
 
 	got := promptTitleSnippet(
-		"[@wang jomes & Codex hi](mention://session?roomId=room-1&id=session-1)",
+		"[@wang jomes & Codex hi](mention://agent-session/session-1?workspaceId=room-1)",
 	)
 
 	if got != "@wang jomes & Codex hi" {

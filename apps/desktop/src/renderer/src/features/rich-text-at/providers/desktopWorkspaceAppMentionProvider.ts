@@ -1,14 +1,14 @@
 import {
-  AGENT_GUI_MENTION_PROVIDER_IDS,
-  type AgentRichTextAtInsertResult,
-  type AgentRichTextAtProvider
-} from "@tutti-os/agent-gui/agent-rich-text-at-provider";
+  AGENT_CONTEXT_MENTION_PROVIDER_IDS,
+  type AgentContextMentionInsertResult,
+  type AgentContextMentionProvider
+} from "@tutti-os/agent-gui/context-mention-provider";
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 
 export interface DesktopWorkspaceAppMentionItem {
   readonly appId: string;
   readonly baseItem: unknown;
-  readonly baseInsertResult: AgentRichTextAtInsertResult;
+  readonly baseInsertResult: AgentContextMentionInsertResult;
   readonly commandCount: string;
   readonly commandDescriptions: string;
   readonly commandPaths: string;
@@ -22,7 +22,7 @@ export interface DesktopWorkspaceAppMentionItem {
 
 export interface CreateDesktopWorkspaceAppMentionProviderInput {
   readonly apps: readonly WorkspaceAppCenterApp[];
-  readonly baseProvider: AgentRichTextAtProvider;
+  readonly baseProvider: AgentContextMentionProvider;
   readonly locale: string;
   readonly resolveAppIconUrl?: (appId: string) => string | null;
   readonly workspaceId: string;
@@ -34,9 +34,10 @@ export function createDesktopWorkspaceAppMentionProvider({
   locale,
   resolveAppIconUrl,
   workspaceId
-}: CreateDesktopWorkspaceAppMentionProviderInput): AgentRichTextAtProvider<DesktopWorkspaceAppMentionItem> {
+}: CreateDesktopWorkspaceAppMentionProviderInput): AgentContextMentionProvider<DesktopWorkspaceAppMentionItem> {
   return {
-    id: AGENT_GUI_MENTION_PROVIDER_IDS.workspaceApp,
+    id: AGENT_CONTEXT_MENTION_PROVIDER_IDS.workspaceApp,
+    trigger: "@",
     getItemKey: (item) => item.appId,
     getItemLabel: (item) => item.displayName,
     getItemSubtitle: (item) => item.description,
@@ -78,20 +79,15 @@ export function createDesktopWorkspaceAppMentionProvider({
       kind: "mention",
       mention: {
         entityId: item.appId,
-        href: buildWorkspaceAppMentionHref(item),
-        kind: "workspace-app",
         label: item.displayName,
-        meta: {
-          appId: item.appId,
-          commandCount: item.commandCount,
-          commandDescriptions: item.commandDescriptions,
-          commandPaths: item.commandPaths,
-          commandSummaries: item.commandSummaries,
+        scope: compactStringRecord({
+          workspaceId: item.workspaceId
+        }),
+        presentation: compactMentionPresentation({
           description: item.description,
           iconUrl: item.iconUrl ?? "",
-          scopes: item.scopes,
-          workspaceId: item.workspaceId
-        }
+          subtitle: item.description
+        })
       }
     })
   };
@@ -100,7 +96,7 @@ export function createDesktopWorkspaceAppMentionProvider({
 function workspaceAppToMentionItem(input: {
   app: WorkspaceAppCenterApp | undefined;
   baseItem: unknown;
-  baseProvider: AgentRichTextAtProvider;
+  baseProvider: AgentContextMentionProvider;
   locale: string;
   resolveAppIconUrl?: (appId: string) => string | null;
   workspaceId: string;
@@ -109,9 +105,7 @@ function workspaceAppToMentionItem(input: {
   if (baseInsertResult.kind !== "mention") {
     return null;
   }
-  const appId =
-    baseInsertResult.mention.meta?.appId?.trim() ||
-    baseInsertResult.mention.entityId.trim();
+  const appId = baseInsertResult.mention.entityId.trim();
   if (!appId) {
     return null;
   }
@@ -119,11 +113,15 @@ function workspaceAppToMentionItem(input: {
     input.baseProvider.getItemLabel(input.baseItem)
   );
   const baseDescription = normalizeText(
-    baseInsertResult.mention.meta?.description
+    baseInsertResult.mention.presentation?.description
+  );
+  const basePresentationSubtitle = normalizeText(
+    baseInsertResult.mention.presentation?.subtitle
   );
   const baseSubtitle = normalizeText(
     input.baseProvider.getItemSubtitle?.(input.baseItem)
   );
+  const baseObject = objectRecord(input.baseItem);
   const localization = input.app
     ? findWorkspaceAppLocalization(input.app, input.locale)
     : null;
@@ -131,16 +129,18 @@ function workspaceAppToMentionItem(input: {
     appId,
     baseItem: input.baseItem,
     baseInsertResult,
-    commandCount: baseInsertResult.mention.meta?.commandCount?.trim() ?? "",
-    commandDescriptions:
-      baseInsertResult.mention.meta?.commandDescriptions?.trim() ?? "",
-    commandPaths: baseInsertResult.mention.meta?.commandPaths?.trim() ?? "",
-    commandSummaries:
-      baseInsertResult.mention.meta?.commandSummaries?.trim() ?? "",
+    commandCount: readBaseItemString(baseObject, "commandCount"),
+    commandDescriptions: readBaseItemStringList(
+      baseObject,
+      "commandDescriptions"
+    ),
+    commandPaths: readBaseItemStringList(baseObject, "commandPaths"),
+    commandSummaries: readBaseItemStringList(baseObject, "commandSummaries"),
     description:
       normalizeText(localization?.description) ??
       normalizeText(input.app?.description) ??
       baseDescription ??
+      basePresentationSubtitle ??
       baseSubtitle ??
       "",
     displayName:
@@ -152,9 +152,9 @@ function workspaceAppToMentionItem(input: {
       normalizeText(input.resolveAppIconUrl?.(appId)) ??
       normalizeText(input.app?.iconUrl) ??
       normalizeText(input.app?.availableIconUrl) ??
-      normalizeText(baseInsertResult.mention.meta?.iconUrl) ??
+      normalizeText(baseInsertResult.mention.presentation?.iconUrl) ??
       null,
-    scopes: baseInsertResult.mention.meta?.scopes?.trim() ?? "",
+    scopes: readBaseItemStringList(baseObject, "scopes"),
     workspaceId: input.workspaceId
   };
 }
@@ -203,15 +203,6 @@ function matchesWorkspaceAppMentionKeyword(
   ].some((value) => normalizeSearchText(value).includes(normalizedKeyword));
 }
 
-function buildWorkspaceAppMentionHref(
-  item: DesktopWorkspaceAppMentionItem
-): string {
-  const params = new URLSearchParams();
-  params.set("appId", item.appId);
-  params.set("workspaceId", item.workspaceId);
-  return `mention://workspace-app?${params.toString()}`;
-}
-
 function normalizeLocale(value: string | null | undefined): string | null {
   const normalized = value?.trim().replace(/_/gu, "-").toLowerCase() ?? "";
   return normalized.length > 0 ? normalized : null;
@@ -227,15 +218,70 @@ function normalizeText(value: string | null | undefined): string | null {
 }
 
 function workspaceAppIdFromProviderItem(
-  provider: AgentRichTextAtProvider,
+  provider: AgentContextMentionProvider,
   item: unknown
 ): string {
   const insertResult = provider.toInsertResult(item);
   if (insertResult.kind !== "mention") {
     return "";
   }
-  return (
-    insertResult.mention.meta?.appId?.trim() ||
-    insertResult.mention.entityId.trim()
-  );
+  return insertResult.mention.entityId.trim();
+}
+
+function compactStringRecord(
+  record: Readonly<Record<string, string | null | undefined>>
+): Readonly<Record<string, string>> | undefined {
+  const entries = Object.entries(record)
+    .map(([key, value]) => [key.trim(), value?.trim() ?? ""] as const)
+    .filter(([key, value]) => key.length > 0 && value.length > 0);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function compactMentionPresentation(presentation: {
+  description?: string;
+  iconUrl?: string;
+  subtitle?: string;
+}):
+  | NonNullable<
+      Extract<
+        AgentContextMentionInsertResult,
+        { kind: "mention" }
+      >["mention"]["presentation"]
+    >
+  | undefined {
+  const entries = Object.entries(presentation)
+    .map(([key, value]) => [key.trim(), value?.trim() ?? ""] as const)
+    .filter(([key, value]) => key.length > 0 && value.length > 0);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function objectRecord(value: unknown): Readonly<Record<string, unknown>> {
+  return value && typeof value === "object"
+    ? (value as Readonly<Record<string, unknown>>)
+    : {};
+}
+
+function readBaseItemString(
+  item: Readonly<Record<string, unknown>>,
+  key: string
+): string {
+  const value = item[key];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readBaseItemStringList(
+  item: Readonly<Record<string, unknown>>,
+  key: string
+): string {
+  const value = item[key];
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+      .filter((entry) => entry.length > 0)
+      .join("\n");
+  }
+  return typeof value === "string" ? value.trim() : "";
 }

@@ -1908,7 +1908,7 @@ func TestClaudeCodeAdapterExecPrependsMentionRoutingDirective(t *testing.T) {
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	prompt := "[@User & Codex story](mention://agent-session?id=session-1&provider=codex&workspaceId=workspace-1) 这里有什么内容？"
+	prompt := "[@User & Codex story](mention://agent-session/session-1?workspaceId=workspace-1&provider=codex) 这里有什么内容？"
 
 	events, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-mention", func([]activityshared.Event) {}, nil)
 	if err != nil {
@@ -1917,7 +1917,7 @@ func TestClaudeCodeAdapterExecPrependsMentionRoutingDirective(t *testing.T) {
 
 	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
 	if !strings.Contains(text, "Claude Code mention handoff routing for this user turn") ||
-		!strings.Contains(text, `Skill(skill="tutti-cli", args="mention://agent-session?id=session-1&provider=codex&workspaceId=workspace-1")`) ||
+		!strings.Contains(text, `Skill(skill="tutti-cli", args="mention://agent-session/session-1?workspaceId=workspace-1&provider=codex")`) ||
 		!strings.Contains(text, "Do not say you cannot read the mention") ||
 		!strings.Contains(text, "User prompt:\n"+prompt) {
 		t.Fatalf("prompt text = %q, want Claude mention routing directive and original prompt", text)
@@ -1939,7 +1939,7 @@ func TestStandardACPAdapterExecDoesNotPrependClaudeMentionRoutingForGemini(t *te
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	prompt := "[@User & Codex story](mention://agent-session?id=session-1&provider=codex&workspaceId=workspace-1) 这里有什么内容？"
+	prompt := "[@User & Codex story](mention://agent-session/session-1?workspaceId=workspace-1&provider=codex) 这里有什么内容？"
 
 	if _, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-mention", func([]activityshared.Event) {}, nil); err != nil {
 		t.Fatalf("Exec: %v", err)

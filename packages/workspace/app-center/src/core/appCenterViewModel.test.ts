@@ -119,6 +119,60 @@ describe("createAppCenterViewModel", () => {
     assert.deepEqual(viewModel.apps[0]?.tags, ["自动化", "工作区"]);
   });
 
+  it("uses resolved app icon urls instead of relative manifest icon paths", () => {
+    const viewModel = createAppCenterViewModel({
+      apps: [
+        {
+          availableIconUrl: "https://cdn.example.test/apps/automation/icon.png",
+          install: null,
+          manifest: {
+            appId: "automation",
+            description: "Schedule workspace automation.",
+            icon: {
+              type: "asset",
+              src: "icon.png"
+            },
+            runtime: {
+              bootstrap: "bootstrap.sh",
+              healthcheckPath: "/"
+            },
+            schemaVersion: workspaceAppManifestSchemaVersion,
+            name: "Automation",
+            version: "0.1.0"
+          }
+        },
+        {
+          availableIconUrl: "https://cdn.example.test/apps/vibe/icon.png",
+          install: { appId: "vibe-design" },
+          manifest: {
+            appId: "vibe-design",
+            description: "Design app.",
+            icon: {
+              type: "asset",
+              src: "tutti-workspace-app://icons/vibe.png"
+            },
+            runtime: {
+              bootstrap: "bootstrap.sh",
+              healthcheckPath: "/"
+            },
+            schemaVersion: workspaceAppManifestSchemaVersion,
+            name: "Vibe Design",
+            version: "0.1.0"
+          }
+        }
+      ]
+    });
+
+    assert.equal(
+      viewModel.apps.find((app) => app.id === "automation")?.icon?.src,
+      "https://cdn.example.test/apps/automation/icon.png"
+    );
+    assert.equal(
+      viewModel.apps.find((app) => app.id === "vibe-design")?.icon?.src,
+      "tutti-workspace-app://icons/vibe.png"
+    );
+  });
+
   it("keeps coming soon apps disabled even when localized tags differ", () => {
     const viewModel = createAppCenterViewModel({
       apps: [
