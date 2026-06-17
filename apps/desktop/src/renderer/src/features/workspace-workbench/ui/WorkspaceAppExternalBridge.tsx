@@ -19,6 +19,7 @@ import type { DesktopWorkspaceAppExternalRendererRequest } from "@shared/contrac
 import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-core/contracts";
 import { useTranslation } from "@renderer/i18n";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
+import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -70,6 +71,7 @@ export function WorkspaceAppExternalBridge({
   workspaceId
 }: WorkspaceAppExternalBridgeProps): ReactElement | null {
   const hostService = useWorkspaceWorkbenchHostService();
+  const { service: settingsService } = useWorkspaceSettingsService();
   const { t } = useTranslation();
   const [pendingFileSelect, setPendingFileSelect] =
     useState<PendingFileSelect | null>(null);
@@ -132,9 +134,22 @@ export function WorkspaceAppExternalBridge({
         case "files.open":
           await openFile(request.input);
           return undefined;
+        case "settings.open":
+          settingsService.openPanel(
+            { id: workspaceId },
+            {
+              ...(request.input.provider || request.input.tab === "models"
+                ? { pane: "managed-models" }
+                : {}),
+              ...(request.input.provider
+                ? { provider: request.input.provider }
+                : {})
+            }
+          );
+          return undefined;
       }
     },
-    [hostService, openFile, openFileSelect, workspaceId]
+    [hostService, openFile, openFileSelect, settingsService, workspaceId]
   );
 
   useEffect(() => {

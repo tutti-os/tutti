@@ -14,13 +14,20 @@ import {
   type DesktopWorkspaceAppContext
 } from "../../shared/contracts/ipc";
 import {
+  isTuttiExternalManagedAiModelProviderId,
   normalizeTuttiExternalAtQueryInput,
   normalizeTuttiExternalFileOpenInput,
-  normalizeTuttiExternalFileSelectInput
+  normalizeTuttiExternalFileSelectInput,
+  normalizeTuttiExternalPermissionRequestInput,
+  normalizeTuttiExternalSettingsOpenInput
 } from "@tutti-os/workspace-external-core/core";
 import type {
   TuttiExternalAtQueryResult,
-  TuttiExternalFileSelectResult
+  TuttiExternalFileSelectResult,
+  TuttiExternalManagedAiModel,
+  TuttiExternalManagedAiModelProviderId,
+  TuttiExternalPermissionRequestInput,
+  TuttiExternalPermissionRequestResult
 } from "@tutti-os/workspace-external-core/contracts";
 import type { DesktopLocale } from "../../shared/i18n";
 import type { DesktopHostPreferencesState } from "../desktopHostPreferences";
@@ -129,6 +136,28 @@ export function registerWorkspaceAppContextIpc(
         appId: context.appID,
         input,
         operation: "files.open",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.permissionsRequest,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalPermissionRequestInput(payload);
+      return requestManagedAiModelPermission(endpoint, context, input);
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.settingsOpen,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalSettingsOpenInput(payload);
+      return requestWorkspaceAppExternalRenderer<void>(context, {
+        appId: context.appID,
+        input,
+        operation: "settings.open",
         requestId: randomUUID(),
         workspaceId: context.workspaceID
       });
@@ -248,6 +277,115 @@ function requestWorkspaceAppExternalRenderer<
       desktopIpcChannels.appExternal.rendererRequest,
       request
     );
+  });
+}
+
+async function requestManagedAiModelPermission(
+  endpoint: DesktopDaemonEndpoint,
+  context: WorkspaceAppGuestContext,
+  input: TuttiExternalPermissionRequestInput
+): Promise<TuttiExternalPermissionRequestResult> {
+  const baseUrl = resolveDesktopDaemonBaseUrl(endpoint);
+  const issuer = new URL(baseUrl).origin;
+  const installationId = `${context.workspaceID}:${context.appID}`;
+  const contextToken = createWorkspaceAppContextToken(endpoint, context, {
+    installationId,
+    issuer
+  });
+  const response = await fetch(
+    new URL(
+      `/v1/workspaces/${encodeURIComponent(context.workspaceID)}/apps/${encodeURIComponent(context.appID)}/managed-model-grants`,
+      baseUrl
+    ),
+    {
+      body: JSON.stringify({
+        contextToken,
+        nonce: input.nonce,
+        providers: input.providers ?? [],
+        scopes: input.scopes,
+        state: input.state
+      }),
+      headers: {
+        Authorization: `Bearer ${endpoint.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+  if (!response.ok) {
+    const message = await readManagedAiModelGrantError(response);
+    throw new Error(message);
+  }
+  const payload: unknown = await response.json();
+  return normalizeManagedAiModelPermissionResponse(payload);
+}
+
+async function readManagedAiModelGrantError(
+  response: Response
+): Promise<string> {
+  try {
+    const payload: unknown = await response.json();
+    if (isRecord(payload) && typeof payload.error === "string") {
+      return payload.error;
+    }
+    if (isRecord(payload) && typeof payload.message === "string") {
+      return payload.message;
+    }
+  } catch {
+    // Keep the status fallback when the daemon does not return JSON.
+  }
+  return `Managed AI model permission request failed with status ${response.status}.`;
+}
+
+function normalizeManagedAiModelPermissionResponse(
+  value: unknown
+): TuttiExternalPermissionRequestResult {
+  if (!isRecord(value) || typeof value.grantCode !== "string") {
+    throw new Error("Managed AI model permission response is invalid.");
+  }
+  return {
+    code: value.grantCode,
+    ...(typeof value.expiresAt === "string"
+      ? { expiresAt: value.expiresAt }
+      : {}),
+    ...(Array.isArray(value.models)
+      ? { models: normalizeManagedAiModels(value.models) }
+      : {}),
+    ...(Array.isArray(value.providers)
+      ? { providers: normalizeManagedAiModelProviderIds(value.providers) }
+      : {})
+  };
+}
+
+function normalizeManagedAiModels(
+  values: unknown[]
+): TuttiExternalManagedAiModel[] {
+  return values.map((value) => {
+    if (
+      !isRecord(value) ||
+      typeof value.id !== "string" ||
+      !isTuttiExternalManagedAiModelProviderId(value.provider)
+    ) {
+      throw new Error("Managed AI model permission response model is invalid.");
+    }
+    return {
+      id: value.id,
+      ...(typeof value.name === "string" ? { name: value.name } : {}),
+      provider: value.provider
+    };
+  });
+}
+
+function normalizeManagedAiModelProviderIds(
+  values: unknown[]
+): TuttiExternalManagedAiModelProviderId[] {
+  return values.map((value) => {
+    if (!isTuttiExternalManagedAiModelProviderId(value)) {
+      throw new Error(
+        "Managed AI model permission response provider is invalid."
+      );
+    }
+    return value;
   });
 }
 
@@ -371,6 +509,10 @@ function isWorkspaceAppDiagnosticPayload(
   value: unknown
 ): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isWorkspaceAppOpenUrlPayload(

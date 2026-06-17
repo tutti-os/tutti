@@ -5,7 +5,10 @@ import type {
   TuttiExternalBridge,
   TuttiExternalFileOpenInput,
   TuttiExternalFileSelectInput,
-  TuttiExternalFileSelectResult
+  TuttiExternalFileSelectResult,
+  TuttiExternalPermissionRequestInput,
+  TuttiExternalPermissionRequestResult,
+  TuttiExternalSettingsOpenInput
 } from "@tutti-os/workspace-external-core/contracts";
 
 export interface WorkspaceAppExternalBridgeDependencies {
@@ -22,7 +25,9 @@ export interface WorkspaceAppExternalBridgeDependencies {
 export const workspaceAppExternalChannels = {
   atQuery: "workspace-app-at:query",
   filesOpen: "workspace-app-files:open",
-  filesSelect: "workspace-app-files:select"
+  filesSelect: "workspace-app-files:select",
+  permissionsRequest: "workspace-app-permissions:request",
+  settingsOpen: "workspace-app-settings:open"
 } as const;
 
 export function createWorkspaceAppExternalBridge(
@@ -64,6 +69,30 @@ export function createWorkspaceAppExternalBridge(
         return dependencies.invoke<void>(
           workspaceAppExternalChannels.filesOpen,
           input
+        );
+      }
+    },
+    permissions: {
+      request(input: TuttiExternalPermissionRequestInput) {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "permissions.request"
+        );
+        return dependencies.invoke<TuttiExternalPermissionRequestResult>(
+          workspaceAppExternalChannels.permissionsRequest,
+          input
+        );
+      }
+    },
+    settings: {
+      open(input?: TuttiExternalSettingsOpenInput) {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "settings.open"
+        );
+        return dependencies.invoke<void>(
+          workspaceAppExternalChannels.settingsOpen,
+          input ?? {}
         );
       }
     }

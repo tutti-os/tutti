@@ -8,3 +8,5 @@ Contracts and host-agnostic helpers for the workspace app external bridge.
 - `at.query()` for host-provided mention candidates.
 - `files.select()` for user-activated workspace file picking.
 - `files.open()` for user-activated host opening/revealing of a known workspace file path.
+- `permissions.request()` for user-activated host permission grants such as managed AI model access.
+- `settings.open()` for user-activated host settings navigation, including the managed models tab.

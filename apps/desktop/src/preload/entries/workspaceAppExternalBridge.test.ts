@@ -226,6 +226,125 @@ test("workspace app external bridge invokes file open with activation", async ()
   ]);
 });
 
+test("workspace app external bridge requires activation for permission request", () => {
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  assert.throws(
+    () =>
+      bridge.permissions.request({
+        nonce: "nonce-1",
+        permission: "managed-ai-models",
+        scopes: ["model:invoke"],
+        state: "state-1"
+      }),
+    /permissions\.request requires a user action/
+  );
+});
+
+test("workspace app external bridge invokes permission request with activation", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => true,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return { code: "grant-code-1" } as TResult;
+    }
+  });
+
+  assert.deepEqual(
+    await bridge.permissions.request({
+      nonce: "nonce-1",
+      permission: "managed-ai-models",
+      providers: ["openai"],
+      scopes: ["model:invoke"],
+      state: "state-1"
+    }),
+    { code: "grant-code-1" }
+  );
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.permissionsRequest,
+      payload: {
+        nonce: "nonce-1",
+        permission: "managed-ai-models",
+        providers: ["openai"],
+        scopes: ["model:invoke"],
+        state: "state-1"
+      }
+    }
+  ]);
+});
+
+test("workspace app external bridge requires activation for settings open", () => {
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  assert.throws(
+    () => bridge.settings.open({ tab: "models" }),
+    /settings\.open requires a user action/
+  );
+});
+
+test("workspace app external bridge invokes settings open with activation", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => true,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return undefined as TResult;
+    }
+  });
+
+  await bridge.settings.open({ provider: "openai", tab: "models" });
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.settingsOpen,
+      payload: { provider: "openai", tab: "models" }
+    }
+  ]);
+});
+
 test("requireUserActivation throws only when inactive", () => {
   assert.doesNotThrow(() => requireUserActivation(true, "files.select"));
   assert.throws(

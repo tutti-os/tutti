@@ -4,9 +4,12 @@ import {
   normalizeTuttiExternalAtQueryInput,
   normalizeTuttiExternalFileOpenInput,
   normalizeTuttiExternalFileSelectInput,
+  normalizeTuttiExternalPermissionRequestInput,
+  normalizeTuttiExternalSettingsOpenInput,
   tuttiExternalAtDefaultMaxResults,
   tuttiExternalAtMaxResultsLimit,
-  tuttiExternalAtProviderIds
+  tuttiExternalAtProviderIds,
+  tuttiExternalManagedAiModelProviderIds
 } from "./index.ts";
 
 test("normalizes at query defaults", () => {
@@ -91,4 +94,90 @@ test("rejects invalid file open input", () => {
     () => normalizeTuttiExternalFileOpenInput({ path: "README.md", mode: "x" }),
     /mode is unsupported/
   );
+});
+
+test("normalizes managed AI model permission requests", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalPermissionRequestInput({
+      nonce: " nonce-1 ",
+      permission: "managed-ai-models",
+      providers: ["openai", "openai", "anthropic"],
+      scopes: [" model:invoke ", "model:invoke"],
+      state: " state-1 "
+    }),
+    {
+      nonce: "nonce-1",
+      permission: "managed-ai-models",
+      providers: ["openai", "anthropic"],
+      scopes: ["model:invoke"],
+      state: "state-1"
+    }
+  );
+});
+
+test("rejects invalid managed AI model permission requests", () => {
+  assert.throws(
+    () =>
+      normalizeTuttiExternalPermissionRequestInput({
+        nonce: "nonce-1",
+        permission: "managed-credentials",
+        scopes: ["model:invoke"],
+        state: "state-1"
+      }),
+    /permission is unsupported/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalPermissionRequestInput({
+        nonce: "nonce-1",
+        permission: "managed-ai-models",
+        scopes: [],
+        state: "state-1"
+      }),
+    /scopes must not be empty/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalPermissionRequestInput({
+        nonce: "nonce-1",
+        permission: "managed-ai-models",
+        providers: ["not-supported"],
+        scopes: ["model:invoke"],
+        state: "state-1"
+      }),
+    /provider is unsupported/
+  );
+});
+
+test("normalizes settings open input", () => {
+  assert.deepEqual(normalizeTuttiExternalSettingsOpenInput(undefined), {});
+  assert.deepEqual(
+    normalizeTuttiExternalSettingsOpenInput({
+      provider: "openai",
+      tab: "models"
+    }),
+    {
+      provider: "openai",
+      tab: "models"
+    }
+  );
+});
+
+test("rejects invalid settings open input", () => {
+  assert.throws(
+    () => normalizeTuttiExternalSettingsOpenInput({ tab: "credentials" }),
+    /tab is unsupported/
+  );
+  assert.throws(
+    () => normalizeTuttiExternalSettingsOpenInput({ provider: "codex" }),
+    /provider is unsupported/
+  );
+});
+
+test("keeps the managed AI model provider set explicit", () => {
+  assert.deepEqual(tuttiExternalManagedAiModelProviderIds, [
+    "agnes",
+    "openai",
+    "anthropic"
+  ]);
 });

@@ -83,6 +83,41 @@ export interface TuttiExternalFileOpenInput {
   sizeBytes?: number | null;
 }
 
+export const tuttiExternalManagedAiModelProviderIds = [
+  "agnes",
+  "openai",
+  "anthropic"
+] as const;
+
+export type TuttiExternalManagedAiModelProviderId =
+  (typeof tuttiExternalManagedAiModelProviderIds)[number];
+
+export interface TuttiExternalManagedAiModel {
+  id: string;
+  name?: string;
+  provider: TuttiExternalManagedAiModelProviderId;
+}
+
+export interface TuttiExternalPermissionRequestInput {
+  permission: "managed-ai-models";
+  nonce: string;
+  providers?: readonly TuttiExternalManagedAiModelProviderId[];
+  scopes: readonly string[];
+  state: string;
+}
+
+export interface TuttiExternalPermissionRequestResult {
+  code: string;
+  expiresAt?: string;
+  models?: readonly TuttiExternalManagedAiModel[];
+  providers?: readonly TuttiExternalManagedAiModelProviderId[];
+}
+
+export interface TuttiExternalSettingsOpenInput {
+  provider?: TuttiExternalManagedAiModelProviderId;
+  tab?: "models";
+}
+
 export interface TuttiExternalBridge {
   app: {
     getContext(): Promise<unknown>;
@@ -98,6 +133,14 @@ export interface TuttiExternalBridge {
       input?: TuttiExternalFileSelectInput
     ): Promise<TuttiExternalFileSelectResult>;
     open(input: TuttiExternalFileOpenInput): Promise<void>;
+  };
+  permissions: {
+    request(
+      input: TuttiExternalPermissionRequestInput
+    ): Promise<TuttiExternalPermissionRequestResult>;
+  };
+  settings: {
+    open(input?: TuttiExternalSettingsOpenInput): Promise<void>;
   };
 }
 
@@ -120,6 +163,13 @@ export type TuttiExternalRendererRequest =
       appId: string;
       input: TuttiExternalFileOpenInput;
       operation: "files.open";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: TuttiExternalSettingsOpenInput;
+      operation: "settings.open";
       requestId: string;
       workspaceId: string;
     };

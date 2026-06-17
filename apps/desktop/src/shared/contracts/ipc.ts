@@ -30,7 +30,10 @@ import type {
   TuttiExternalFileOpenInput,
   TuttiExternalFileSelectInput,
   TuttiExternalFileSelectResult,
-  TuttiExternalRendererRequest
+  TuttiExternalPermissionRequestInput,
+  TuttiExternalPermissionRequestResult,
+  TuttiExternalRendererRequest,
+  TuttiExternalSettingsOpenInput
 } from "@tutti-os/workspace-external-core/contracts";
 
 export const desktopIpcChannels = {
@@ -44,8 +47,10 @@ export const desktopIpcChannels = {
     atQuery: "workspace-app-at:query",
     filesOpen: "workspace-app-files:open",
     filesSelect: "workspace-app-files:select",
+    permissionsRequest: "workspace-app-permissions:request",
     rendererRequest: "workspace-app-external:renderer-request",
-    rendererResponse: "workspace-app-external:renderer-response"
+    rendererResponse: "workspace-app-external:renderer-response",
+    settingsOpen: "workspace-app-settings:open"
   },
   browser: {
     activate: "browser:activate",
@@ -468,6 +473,9 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryInput;
   [desktopIpcChannels.appExternal.filesOpen]: TuttiExternalFileOpenInput;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectInput;
+  [desktopIpcChannels.appExternal
+    .permissionsRequest]: TuttiExternalPermissionRequestInput;
+  [desktopIpcChannels.appExternal.settingsOpen]: TuttiExternalSettingsOpenInput;
   [desktopIpcChannels.browser.activate]: BrowserNodeActivationInput;
   [desktopIpcChannels.browser.capturePreview]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.close]: BrowserNodeNodeIdInput;
@@ -552,6 +560,9 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryResult[];
   [desktopIpcChannels.appExternal.filesOpen]: void;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectResult;
+  [desktopIpcChannels.appExternal
+    .permissionsRequest]: TuttiExternalPermissionRequestResult;
+  [desktopIpcChannels.appExternal.settingsOpen]: void;
   [desktopIpcChannels.browser.activate]: void;
   [desktopIpcChannels.browser.capturePreview]: string | null;
   [desktopIpcChannels.browser.close]: void;
