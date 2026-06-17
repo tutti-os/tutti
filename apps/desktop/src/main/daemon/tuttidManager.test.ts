@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   isLikelyTuttidProcess,
+  resolveBrowserMcpDaemonEnv,
   resolveLaunchSpec,
   resolveManagedDaemonProcessEnv
 } from "./tuttidManager.ts";
@@ -41,6 +42,92 @@ test("resolveLaunchSpec prefers the development tuttid binary when present", asy
 
     assert.equal(got.command, binaryPath);
     assert.deepEqual(got.args, []);
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveBrowserMcpDaemonEnv is a no-op in development (daemon uses npx)", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_BROWSER_MCP_COMMAND;
+    const got = resolveBrowserMcpDaemonEnv({
+      isPackaged: false,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveBrowserMcpDaemonEnv respects an explicit operator override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    process.env.TUTTI_BROWSER_MCP_COMMAND = "/custom/mcp";
+    const got = resolveBrowserMcpDaemonEnv({
+      isPackaged: true,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveBrowserMcpDaemonEnv respects an explicit args override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_BROWSER_MCP_COMMAND;
+    process.env.TUTTI_BROWSER_MCP_ARGS =
+      '["--browserUrl","http://127.0.0.1:9222"]';
+    const got = resolveBrowserMcpDaemonEnv({
+      isPackaged: true,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveBrowserMcpDaemonEnv falls back to npx when the vendored bundle is absent", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_BROWSER_MCP_COMMAND;
+    const got = resolveBrowserMcpDaemonEnv({
+      isPackaged: true,
+      resourcesPath: join(tmpdir(), "tutti-resources-missing")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveBrowserMcpDaemonEnv points the daemon at a vendored bundle when present", async () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_BROWSER_MCP_COMMAND;
+    const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-resources-"));
+    const entry = join(
+      resourcesPath,
+      "bin",
+      "browser-mcp",
+      "node_modules",
+      "chrome-devtools-mcp",
+      "build",
+      "src",
+      "bin",
+      "chrome-devtools-mcp.js"
+    );
+    await mkdir(dirname(entry), { recursive: true });
+    await writeFile(entry, "// stub\n");
+
+    const got = resolveBrowserMcpDaemonEnv({ isPackaged: true, resourcesPath });
+    assert.deepEqual(got, {
+      TUTTI_BROWSER_MCP_ENTRY_PATH: entry
+    });
   } finally {
     restoreEnv(previousEnv);
   }

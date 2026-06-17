@@ -135,12 +135,7 @@ func sessionValue(session agentservice.Session) map[string]any {
 		value["title"] = *session.Title
 	}
 	if session.Settings != nil {
-		value["settings"] = map[string]any{
-			"model":            session.Settings.Model,
-			"permissionModeId": session.Settings.PermissionModeID,
-			"planMode":         session.Settings.PlanMode,
-			"reasoningEffort":  session.Settings.ReasoningEffort,
-		}
+		value["settings"] = agentservice.ComposerSettingsToMap(*session.Settings)
 	}
 	value["permissionConfig"] = permissionConfigValue(session.PermissionConfig)
 	return value

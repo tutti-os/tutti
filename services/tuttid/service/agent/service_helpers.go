@@ -76,10 +76,7 @@ func cloneComposerSettingsPointer(settings *ComposerSettings) *ComposerSettings 
 		return nil
 	}
 	cloned := *settings
-	if strings.TrimSpace(cloned.Model) == "" &&
-		strings.TrimSpace(cloned.PermissionModeID) == "" &&
-		strings.TrimSpace(cloned.ReasoningEffort) == "" &&
-		!cloned.PlanMode {
+	if composerSettingsIsEmpty(cloned) {
 		return nil
 	}
 	return &cloned
@@ -94,15 +91,6 @@ func cloneComposerSettingsPointerValue(settings *ComposerSettings) ComposerSetti
 		return ComposerSettings{}
 	}
 	return *settings
-}
-
-func composerSettingsFromPayload(payload map[string]any) ComposerSettings {
-	return ComposerSettings{
-		Model:            payloadString(payload, "model"),
-		PermissionModeID: payloadString(payload, "permissionModeId"),
-		PlanMode:         payloadBool(payload, "planMode"),
-		ReasoningEffort:  payloadString(payload, "reasoningEffort"),
-	}
 }
 
 func normalizeRuntimeContextForProvider(

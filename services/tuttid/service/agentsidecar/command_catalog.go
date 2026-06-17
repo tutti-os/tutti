@@ -68,7 +68,7 @@ func relevantRuntimeCommands(cliName string, capabilities []cliservice.Capabilit
 
 func runtimeCommandFromCapability(cliName string, capability cliservice.Capability) (runtimeCommand, bool) {
 	id := strings.TrimSpace(capability.ID)
-	if capability.Source.Kind != cliservice.CapabilitySourceApp && !strings.HasPrefix(id, "issue-manager.") && !strings.HasPrefix(id, "agent-context.") {
+	if capability.Source.Kind != cliservice.CapabilitySourceApp && !strings.HasPrefix(id, "issue-manager.") && !strings.HasPrefix(id, "agent-context.") && !strings.HasPrefix(id, "browser.") {
 		return runtimeCommand{}, false
 	}
 	path := commandPath(capability.Path)
@@ -137,6 +137,14 @@ func commandExampleSuffix(id string) string {
 		return " --json"
 	case "issue-manager.issue.run.complete", "issue-manager.issue.task.run.complete":
 		return " --summary <summary> --outputs '[{\"path\":\"<artifact-path>\"}]' --json"
+	case "browser.navigate":
+		return " --url <url>"
+	case "browser.click":
+		return " --uid <uid>"
+	case "browser.fill":
+		return " --uid <uid> --value <text>"
+	case "browser.eval":
+		return " --script '() => document.title'"
 	default:
 		return ""
 	}

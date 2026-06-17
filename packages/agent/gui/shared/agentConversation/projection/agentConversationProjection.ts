@@ -9,18 +9,15 @@ import type {
 } from "../contracts/agentConversationVM";
 import type {
   AgentMessageContentVM,
-  AgentMessageRowVM,
-  AgentThinkingContentVM
+  AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 import {
   buildAgentTurnSequenceItems,
-  computeAgentToolGroups,
-  projectAgentSingleToolRow,
-  projectAgentToolGroupRowFromGroup,
-  type AgentTurnSequenceItemVM
+  computeAgentToolGroups
 } from "./agentToolGroupingProjection";
+import { projectTurnRows } from "./agentTurnRowProjection";
 import { projectAgentProcessingRow } from "./agentProcessingProjection";
 import {
   projectAgentTurnSummaryRowForTurn,
@@ -659,90 +656,7 @@ function projectTurnAgentRows(
     options
   );
   const skippedIndices = new Set([...groupedIndices, ...suppressedIndices]);
-  const rows: AgentTranscriptRowVM[] = [];
-  let pendingThinking: AgentThinkingContentVM[] = [];
-
-  const flushThinking = () => {
-    if (pendingThinking.length === 0) {
-      return;
-    }
-    rows.push({
-      kind: "message",
-      id: `message:thinking:${turn.id}:${pendingThinking.map((thinking) => thinking.id).join("+")}`,
-      turnId: turn.id,
-      speaker: "assistant",
-      messages: [],
-      thinking: [...pendingThinking],
-      occurredAtUnixMs:
-        pendingThinking.at(-1)?.occurredAtUnixMs ??
-        pendingThinking[0]?.occurredAtUnixMs ??
-        null
-    });
-    pendingThinking = [];
-  };
-
-  for (let index = 0; index < sequence.length; index += 1) {
-    const item = sequence[index];
-    if (!item) {
-      continue;
-    }
-    const group = groups.get(index);
-    if (group) {
-      flushThinking();
-      rows.push(projectAgentToolGroupRowFromGroup(turn.id, group));
-      index = group.endIndex;
-      continue;
-    }
-    if (skippedIndices.has(index)) {
-      continue;
-    }
-    if (item.kind === "thinking") {
-      const next = nextUngroupedSequenceItem(
-        sequence,
-        skippedIndices,
-        index + 1
-      );
-      if (next?.kind === "assistant-message") {
-        pendingThinking.push(item.thinking);
-        continue;
-      }
-      pendingThinking.push(item.thinking);
-      flushThinking();
-      continue;
-    }
-    if (item.kind === "assistant-message") {
-      rows.push({
-        kind: "message",
-        id: `message:assistant:${item.message.id}`,
-        turnId: item.message.turnId,
-        speaker: "assistant",
-        messages: [item.message],
-        thinking: [...pendingThinking],
-        occurredAtUnixMs: item.message.occurredAtUnixMs
-      });
-      pendingThinking = [];
-      continue;
-    }
-    flushThinking();
-    rows.push(projectAgentSingleToolRow(item.call, turn.id));
-  }
-
-  flushThinking();
-  return rows;
-}
-
-function nextUngroupedSequenceItem(
-  sequence: readonly AgentTurnSequenceItemVM[],
-  groupedIndices: ReadonlySet<number>,
-  startIndex: number
-): AgentTurnSequenceItemVM | null {
-  for (let index = startIndex; index < sequence.length; index += 1) {
-    if (groupedIndices.has(index)) {
-      continue;
-    }
-    return sequence[index] ?? null;
-  }
-  return null;
+  return projectTurnRows(sequence, groups, skippedIndices, turn.id);
 }
 
 function selectPendingApproval(

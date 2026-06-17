@@ -118,6 +118,42 @@ describe("AgentRichTextEditor", () => {
     expect(editor).toHaveTextContent("/compact");
   });
 
+  it("renders known capability triggers as atomic prompt tokens", async () => {
+    const capabilityProps = {
+      availableCapabilities: [
+        {
+          capability: "browserUse",
+          label: "浏览器",
+          name: "browser",
+          trigger: "/browser"
+        }
+      ]
+    };
+
+    render(
+      <AgentRichTextEditor
+        {...capabilityProps}
+        value="Use /browser and /compact"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    const capabilityToken = editor.querySelector(
+      '[data-agent-capability-token="true"]'
+    );
+    expect(capabilityToken).not.toBeNull();
+    expect(capabilityToken).toHaveTextContent("浏览器");
+    expect(capabilityToken).toHaveAttribute(
+      "data-agent-capability-trigger",
+      "/browser"
+    );
+    expect(editor).toHaveTextContent("/compact");
+  });
+
   it("emits prompt text when pasting known skill trigger tokens", async () => {
     const onChange = vi.fn();
     render(

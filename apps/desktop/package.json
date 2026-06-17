@@ -23,6 +23,10 @@
       {
         "from": "build/tutti",
         "to": "bin"
+      },
+      {
+        "from": "build/browser-mcp",
+        "to": "bin/browser-mcp"
       }
     ],
     "publish": [

@@ -96,6 +96,19 @@ export function isPlaceholderThinkingBody(body: string): boolean {
   return normalized === "..." || normalized === "…";
 }
 
+// Codex review reasoning summaries lead with a bold section title, e.g.
+// "**Considering workspace registration order**\n\nI'm looking at...". Hide
+// the title in /review process prose; keep the body paragraph.
+const reviewProcessSummaryTitlePattern = /^\*\*(.+?)\*\*(?:\r?\n\s*)?/;
+
+export function stripReviewProcessSummaryTitle(body: string): string {
+  const match = body.match(reviewProcessSummaryTitlePattern);
+  if (!match) {
+    return body;
+  }
+  return body.slice(match[0].length).trimStart();
+}
+
 export function normalizedMessageBody(body: string): string {
   return body.trim().replace(/\s+/g, " ");
 }

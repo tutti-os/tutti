@@ -20,14 +20,43 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	if !slices.Contains(codex, "compact") || !slices.Contains(codex, "skills") {
 		t.Fatalf("codex defaults = %v", codex)
 	}
-	if got := composerProviderCapabilities("gemini"); len(got) != 1 || got[0] != "interrupt" {
-		t.Fatalf("gemini defaults = %v, want [interrupt]", got)
+	// Browser use is delivered as a default MCP server to every provider, so it
+	// is advertised by default alongside the per-provider capabilities.
+	for _, provider := range []string{"claude-code", "codex", "gemini", "openclaw"} {
+		if got := composerProviderCapabilities(provider); !slices.Contains(got, "browserUse") {
+			t.Fatalf("%s defaults = %v, missing browserUse", provider, got)
+		}
 	}
-	if got := composerProviderCapabilities("openclaw"); len(got) != 1 || got[0] != "interrupt" {
-		t.Fatalf("openclaw defaults = %v, want [interrupt]", got)
+	if got := composerProviderCapabilities("gemini"); !slices.Contains(got, "interrupt") {
+		t.Fatalf("gemini defaults = %v, missing interrupt", got)
+	}
+	if got := composerProviderCapabilities("openclaw"); !slices.Contains(got, "interrupt") {
+		t.Fatalf("openclaw defaults = %v, missing interrupt", got)
 	}
 	if got := composerProviderCapabilities("unknown"); got != nil {
 		t.Fatalf("unknown provider defaults = %v, want nil", got)
+	}
+}
+
+func TestClampComposerBrowserUseForProvider(t *testing.T) {
+	t.Parallel()
+	truePtr := true
+	falsePtr := false
+	// Default (nil) resolves to on for a supported provider.
+	if !clampComposerBrowserUseForProvider("claude-code", nil) {
+		t.Fatal("claude-code nil browserUse should default on")
+	}
+	// Explicit opt-out is honored.
+	if clampComposerBrowserUseForProvider("claude-code", &falsePtr) {
+		t.Fatal("claude-code explicit false should be off")
+	}
+	// Explicit opt-in stays on.
+	if !clampComposerBrowserUseForProvider("codex", &truePtr) {
+		t.Fatal("codex explicit true should be on")
+	}
+	// Unknown provider (no advertised capability) is forced off even when requested.
+	if clampComposerBrowserUseForProvider("unknown", &truePtr) {
+		t.Fatal("unknown provider should clamp browserUse off")
 	}
 }
 

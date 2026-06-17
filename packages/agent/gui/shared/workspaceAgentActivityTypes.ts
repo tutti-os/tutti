@@ -13,6 +13,7 @@ export interface WorkspaceAgentActivityComposerSettings {
   reasoningEffort?: string | null;
   speed?: string | null;
   planMode?: boolean;
+  browserUse?: boolean;
   permissionModeId?: string | null;
 }
 

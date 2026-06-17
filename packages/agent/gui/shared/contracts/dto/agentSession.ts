@@ -42,6 +42,7 @@ export interface AgentHostAgentSessionComposerSettings {
   reasoningEffort?: AgentHostAgentSessionReasoningEffort | null;
   speed?: AgentHostAgentSessionSpeed | null;
   planMode?: boolean;
+  browserUse?: boolean;
   permissionModeId?: string | null;
 }
 

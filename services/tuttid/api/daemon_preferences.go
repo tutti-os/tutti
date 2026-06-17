@@ -117,6 +117,33 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}, nil
 	}
 
+	browserUseConnectionMode := preferencesbiz.DefaultDesktopBrowserUseConnectionMode
+	if request.Body.Preferences.BrowserUseConnectionMode != nil {
+		browserUseConnectionMode = strings.TrimSpace(string(*request.Body.Preferences.BrowserUseConnectionMode))
+		if browserUseConnectionMode == "" {
+			return tuttigenerated.PutDesktopPreferences400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.InvalidRequest(
+						apierrors.ReasonMissingDesktopBrowserUseConnectionMode,
+						apierrors.WithDeveloperMessage("desktop browser use connection mode is required when provided"),
+						apierrors.WithParams(map[string]any{"field": "preferences.browserUseConnectionMode"}),
+					),
+				),
+			}, nil
+		}
+		if !preferencesbiz.IsDesktopBrowserUseConnectionMode(browserUseConnectionMode) {
+			return tuttigenerated.PutDesktopPreferences400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.InvalidRequest(
+						apierrors.ReasonUnsupportedDesktopBrowserUseConnectionMode,
+						apierrors.WithDeveloperMessage("desktop browser use connection mode is unsupported"),
+						apierrors.WithParams(map[string]any{"field": "preferences.browserUseConnectionMode"}),
+					),
+				),
+			}, nil
+		}
+	}
+
 	locale := strings.TrimSpace(string(request.Body.Preferences.Locale))
 	if locale == "" {
 		return tuttigenerated.PutDesktopPreferences400JSONResponse{
@@ -241,14 +268,15 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromGenerated(
 			request.Body.Preferences.AgentComposerDefaultsByProvider,
 		),
-		DefaultAgentProvider: defaultAgentProvider,
-		DockIconStyle:        dockIconStyle,
-		DockPlacement:        dockPlacement,
-		Locale:               locale,
-		SleepPreventionMode:  sleepPreventionMode,
-		ThemeSource:          themeSource,
-		UpdateChannel:        updateChannel,
-		UpdatePolicy:         updatePolicy,
+		BrowserUseConnectionMode: browserUseConnectionMode,
+		DefaultAgentProvider:     defaultAgentProvider,
+		DockIconStyle:            dockIconStyle,
+		DockPlacement:            dockPlacement,
+		Locale:                   locale,
+		SleepPreventionMode:      sleepPreventionMode,
+		ThemeSource:              themeSource,
+		UpdateChannel:            updateChannel,
+		UpdatePolicy:             updatePolicy,
 	})
 	if err != nil {
 		return tuttigenerated.PutDesktopPreferences502JSONResponse{

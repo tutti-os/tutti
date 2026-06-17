@@ -61,6 +61,9 @@ function createHostServices(): DesktopHostServices {
       getDefaultAgentProvider() {
         return "codex";
       },
+      getBrowserUseConnectionMode() {
+        return "isolated";
+      },
       getDockIconStyle() {
         return "default";
       },

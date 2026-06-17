@@ -3,18 +3,20 @@ package preferences
 import agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 
 const (
-	DefaultDesktopDefaultAgentProvider = agentproviderbiz.Codex
-	DefaultDesktopDockIconStyle        = "default"
-	DefaultDesktopDockPlacement        = "bottom"
-	DefaultDesktopLocale               = "en"
-	DefaultDesktopSleepPreventionMode  = "never"
-	DefaultDesktopThemeSource          = "dark"
-	DefaultDesktopUpdateChannel        = "rc"
-	DefaultDesktopUpdatePolicy         = "prompt"
+	DefaultDesktopDefaultAgentProvider     = agentproviderbiz.Codex
+	DefaultDesktopDockIconStyle            = "default"
+	DefaultDesktopDockPlacement            = "bottom"
+	DefaultDesktopBrowserUseConnectionMode = "isolated"
+	DefaultDesktopLocale                   = "en"
+	DefaultDesktopSleepPreventionMode      = "never"
+	DefaultDesktopThemeSource              = "dark"
+	DefaultDesktopUpdateChannel            = "rc"
+	DefaultDesktopUpdatePolicy             = "prompt"
 )
 
 type DesktopPreferences struct {
 	AgentComposerDefaultsByProvider map[string]AgentComposerDefaults
+	BrowserUseConnectionMode        string
 	DefaultAgentProvider            string
 	DockIconStyle                   string
 	DockPlacement                   string
@@ -35,6 +37,7 @@ type AgentComposerDefaults struct {
 func DefaultDesktopPreferences() DesktopPreferences {
 	return DesktopPreferences{
 		AgentComposerDefaultsByProvider: map[string]AgentComposerDefaults{},
+		BrowserUseConnectionMode:        DefaultDesktopBrowserUseConnectionMode,
 		DefaultAgentProvider:            DefaultDesktopDefaultAgentProvider,
 		DockIconStyle:                   DefaultDesktopDockIconStyle,
 		DockPlacement:                   DefaultDesktopDockPlacement,
@@ -86,6 +89,15 @@ func IsDesktopThemeSource(value string) bool {
 func IsDesktopSleepPreventionMode(value string) bool {
 	switch value {
 	case "never", "whileAgentRunning", "always":
+		return true
+	default:
+		return false
+	}
+}
+
+func IsDesktopBrowserUseConnectionMode(value string) bool {
+	switch value {
+	case "isolated", "autoConnect":
 		return true
 	default:
 		return false

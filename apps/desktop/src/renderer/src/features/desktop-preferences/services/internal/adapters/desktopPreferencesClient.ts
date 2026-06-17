@@ -220,6 +220,7 @@ function createPreferencesKey(
 ): string {
   return [
     stableAgentComposerDefaultsKey(preferences.agentComposerDefaultsByProvider),
+    preferences.browserUseConnectionMode ?? "isolated",
     preferences.defaultAgentProvider,
     preferences.dockIconStyle,
     preferences.dockPlacement,
@@ -236,6 +237,8 @@ function preferencesEqual(
   return (
     stableAgentComposerDefaultsKey(left.agentComposerDefaultsByProvider) ===
       stableAgentComposerDefaultsKey(right.agentComposerDefaultsByProvider) &&
+    (left.browserUseConnectionMode ?? "isolated") ===
+      (right.browserUseConnectionMode ?? "isolated") &&
     left.defaultAgentProvider === right.defaultAgentProvider &&
     left.dockIconStyle === right.dockIconStyle &&
     left.dockPlacement === right.dockPlacement &&

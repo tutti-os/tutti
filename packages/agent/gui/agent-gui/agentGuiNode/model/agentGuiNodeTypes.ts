@@ -91,6 +91,9 @@ export interface AgentGUIComposerSettingsVM {
     reasoningEffort: AgentSessionReasoningEffort | null;
     speed: AgentSessionSpeed | null;
     planMode: boolean;
+    // Optional like permissionModeId: the controller always sets it, fixtures
+    // and consumers default an unset value to on.
+    browserUse?: boolean;
     permissionModeId?: string | null;
   };
   effectivePlanMode?: boolean;
@@ -99,6 +102,7 @@ export interface AgentGUIComposerSettingsVM {
   supportsSpeed: boolean;
   supportsPermissionMode?: boolean;
   supportsPlanMode: boolean;
+  supportsBrowser?: boolean;
   isSettingsLoading: boolean;
   modelUnavailable: boolean;
   reasoningUnavailable: boolean;

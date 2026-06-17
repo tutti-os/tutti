@@ -367,6 +367,58 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
     expect(assistantRows[1]?.messages[0]?.body).toBe("Done.");
   });
 
+  it("maps review-process thinking timeline items to assistant message rows", () => {
+    const detail = buildCanonicalWorkspaceAgentDetailView({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      timelineItems: [
+        {
+          id: 1,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          turnId: "turn-review",
+          seq: 1,
+          eventId: "event-1",
+          actorType: "user",
+          actorId: "user-1",
+          itemType: "message.user",
+          role: "user",
+          content: "/review",
+          occurredAtUnixMs: 1,
+          createdAtUnixMs: 1
+        },
+        {
+          id: 2,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          turnId: "turn-review",
+          seq: 2,
+          eventId: "event-2",
+          actorType: "agent",
+          actorId: "codex",
+          itemType: "message.assistant_thinking",
+          role: "assistant_thinking",
+          status: "completed",
+          content:
+            "**Considering workspace registration order**\n\nInspecting the auth flow.",
+          payload: { messageKind: "review-process" },
+          occurredAtUnixMs: 2,
+          createdAtUnixMs: 2
+        }
+      ]
+    });
+
+    expect(detail.turns[0]?.agentItems).toEqual([
+      expect.objectContaining({
+        kind: "message",
+        message: expect.objectContaining({
+          body: "Inspecting the auth flow."
+        })
+      })
+    ]);
+  });
+
   it("does not append processing after a terminal assistant message even if the session patch is still working", () => {
     const completedReplyTimelineItems: AgentHostWorkspaceAgentTimelineItem[] = [
       timelineItems()[0]!,

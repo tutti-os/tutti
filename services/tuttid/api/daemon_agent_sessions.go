@@ -20,6 +20,8 @@ type AgentSessionService interface {
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
 	ReadAttachment(context.Context, string, string, string) (agentservice.PromptAttachment, error)
+	ListGitBranches(context.Context, string, string) (agentservice.GitBranches, error)
+	ListGitBranchesForPath(context.Context, string, string) (agentservice.GitBranches, error)
 	Delete(context.Context, string, string) (bool, error)
 	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.Session, error)
@@ -123,6 +125,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		Model:            request.Body.Model,
 		PermissionModeID: request.Body.PermissionModeId,
 		PlanMode:         request.Body.PlanMode,
+		BrowserUse:       request.Body.BrowserUse,
 		Provider:         string(request.Body.Provider),
 		ReasoningEffort:  request.Body.ReasoningEffort,
 		Speed:            request.Body.Speed,
@@ -279,6 +282,48 @@ func (api DaemonAPI) ReadWorkspaceAgentSessionAttachment(ctx context.Context, re
 	}, nil
 }
 
+func (api DaemonAPI) ListWorkspaceAgentSessionGitBranches(ctx context.Context, request tuttigenerated.ListWorkspaceAgentSessionGitBranchesRequestObject) (tuttigenerated.ListWorkspaceAgentSessionGitBranchesResponseObject, error) {
+	if api.AgentSessionService == nil {
+		return tuttigenerated.ListWorkspaceAgentSessionGitBranches503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
+		}, nil
+	}
+	branches, err := api.AgentSessionService.ListGitBranches(ctx, string(request.WorkspaceID), string(request.AgentSessionID))
+	if err != nil {
+		return writeListWorkspaceAgentSessionGitBranchesError(err), nil
+	}
+	response := tuttigenerated.ListWorkspaceAgentSessionGitBranches200JSONResponse{Branches: branches.Branches}
+	if response.Branches == nil {
+		response.Branches = []string{}
+	}
+	if branches.CurrentBranch != "" {
+		current := branches.CurrentBranch
+		response.CurrentBranch = &current
+	}
+	return response, nil
+}
+
+func (api DaemonAPI) ListWorkspaceGitBranches(ctx context.Context, request tuttigenerated.ListWorkspaceGitBranchesRequestObject) (tuttigenerated.ListWorkspaceGitBranchesResponseObject, error) {
+	if api.AgentSessionService == nil {
+		return tuttigenerated.ListWorkspaceGitBranches503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
+		}, nil
+	}
+	branches, err := api.AgentSessionService.ListGitBranchesForPath(ctx, string(request.WorkspaceID), request.Params.WorkingDirectory)
+	if err != nil {
+		return writeListWorkspaceGitBranchesError(err), nil
+	}
+	response := tuttigenerated.ListWorkspaceGitBranches200JSONResponse{Branches: branches.Branches}
+	if response.Branches == nil {
+		response.Branches = []string{}
+	}
+	if branches.CurrentBranch != "" {
+		current := branches.CurrentBranch
+		response.CurrentBranch = &current
+	}
+	return response, nil
+}
+
 func (api DaemonAPI) UpdateWorkspaceAgentSessionSettings(ctx context.Context, request tuttigenerated.UpdateWorkspaceAgentSessionSettingsRequestObject) (tuttigenerated.UpdateWorkspaceAgentSessionSettingsResponseObject, error) {
 	if api.AgentSessionService == nil {
 		return tuttigenerated.UpdateWorkspaceAgentSessionSettings503JSONResponse{
@@ -366,6 +411,7 @@ func composerSettingsFromGenerated(settings tuttigenerated.AgentSessionComposerS
 		Model:            optionalStringValue(settings.Model),
 		PermissionModeID: optionalStringValue(settings.PermissionModeId),
 		PlanMode:         settings.PlanMode != nil && *settings.PlanMode,
+		BrowserUse:       settings.BrowserUse,
 		ReasoningEffort:  optionalStringValue(settings.ReasoningEffort),
 		Speed:            optionalStringValue(settings.Speed),
 	}
@@ -422,6 +468,7 @@ func composerSettingsPatchFromGenerated(settings tuttigenerated.AgentSessionComp
 		Model:            settings.Model,
 		PermissionModeID: settings.PermissionModeId,
 		PlanMode:         settings.PlanMode,
+		BrowserUse:       settings.BrowserUse,
 		ReasoningEffort:  settings.ReasoningEffort,
 		Speed:            settings.Speed,
 	}
@@ -512,13 +559,17 @@ func generatedComposerConfigOption(config agentservice.ComposerConfigOption) tut
 }
 
 func generatedAgentSessionComposerSettings(settings agentservice.ComposerSettings) tuttigenerated.AgentSessionComposerSettings {
-	return tuttigenerated.AgentSessionComposerSettings{
+	result := tuttigenerated.AgentSessionComposerSettings{
 		Model:            optionalStringPointer(strings.TrimSpace(settings.Model)),
 		PermissionModeId: optionalStringPointer(strings.TrimSpace(settings.PermissionModeID)),
 		PlanMode:         boolPointer(settings.PlanMode),
 		ReasoningEffort:  optionalStringPointer(strings.TrimSpace(settings.ReasoningEffort)),
 		Speed:            optionalStringPointer(strings.TrimSpace(settings.Speed)),
 	}
+	if settings.BrowserUse != nil {
+		result.BrowserUse = settings.BrowserUse
+	}
+	return result
 }
 
 func generatedPermissionConfig(config agentservice.PermissionConfig) tuttigenerated.PermissionConfig {

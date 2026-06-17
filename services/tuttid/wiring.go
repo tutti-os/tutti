@@ -16,9 +16,11 @@ import (
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
+	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	appclicli "github.com/tutti-os/tutti/services/tuttid/service/cli/appcli"
 	agentcontextcli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/agentcontext"
+	browsercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/browser"
 	diagnosticscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/diagnostics"
 	issuemanagercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/issuemanager"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
@@ -35,6 +37,7 @@ type tuttiWiring struct {
 	appCenterService  *workspaceservice.AppCenterService
 	workspaceStore    *workspacedata.SQLiteStore
 	analyticsReporter reporterservice.Reporter
+	browserService    *browsersvc.Service
 }
 
 type analyticsDebugEventPublisher struct {
@@ -123,7 +126,12 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	}
 
 	w.workspaceStore = workspaceStore
-	api, appCenterService, err := buildDaemonAPI(ctx, workspaceStore, nil)
+	// Browser use is delivered through the daemon-owned `tutti browser` CLI;
+	// the service owns a chrome-devtools-mcp subprocess per workspace.
+	if agentsidecarservice.BrowserUseDefaultEnabled() {
+		w.browserService = browsersvc.NewService(workspaceStore)
+	}
+	api, appCenterService, err := buildDaemonAPI(ctx, workspaceStore, nil, w.browserService)
 	if err != nil {
 		return err
 	}
@@ -163,7 +171,7 @@ func openWorkspaceStore(ctx context.Context) (*workspacedata.SQLiteStore, error)
 	return workspaceStore, nil
 }
 
-func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, error) {
+func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, error) {
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
 	issueStore, _ := store.(workspaceissues.Store)
 	preferencesStore, _ := store.(workspacedata.PreferencesStore)
@@ -275,7 +283,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			issueService.RunReconcileQueue.Enqueue(workspace.ID)
 		}
 	}
-	cliRegistry, err := cliservice.NewRegistryFromProviders(
+	cliProviders := []cliservice.Provider{
 		diagnosticscli.NewProvider(),
 		issuemanagercli.NewProvider(workspaceService, issueService),
 		agentcontextcli.NewProviderWithLaunchPublisher(
@@ -284,7 +292,11 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			eventstreamservice.AgentGUILaunchPublisher{Service: events},
 			preferences,
 		),
-	)
+	}
+	if browserService != nil {
+		cliProviders = append(cliProviders, browsercli.NewProvider(workspaceService, browserService))
+	}
+	cliRegistry, err := cliservice.NewRegistryFromProviders(cliProviders...)
 	if err != nil {
 		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("create cli registry: %w", err)
 	}
@@ -328,6 +340,9 @@ func (w *tuttiWiring) Close() error {
 
 	if w.appCenterService != nil && w.appCenterService.Runner != nil {
 		w.appCenterService.Runner.StopAll(context.Background())
+	}
+	if w.browserService != nil {
+		w.browserService.Close()
 	}
 	var closeErr error
 	if w.analyticsReporter != nil {

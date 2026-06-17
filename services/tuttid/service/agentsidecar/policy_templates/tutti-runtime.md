@@ -7,7 +7,7 @@ Available injected skills:
 - `tutti-cli`: global CLI reference for workspace-wide issues, tasks, topics, and `mention://agent-session?...` session inspection.
 - `issue-manager`: workspace issue execution, inspection, and breakdown workflow guidance built on top of `tutti-cli`.
 - `workspace-app`: workspace app mention discovery, inspection, and invocation guidance built on top of `tutti-cli`.
-- Provider-native skill names may be namespaced. When a Tutti skill name appears without a description, this runtime policy is still authoritative for what the skill does and when to use it.
+  {{BROWSER_USE_SKILL_LINES}}- Provider-native skill names may be namespaced. When a Tutti skill name appears without a description, this runtime policy is still authoritative for what the skill does and when to use it.
 
 Critical mention routing:
 
@@ -37,7 +37,7 @@ Tutti mention handoffs:
 - For `mention://workspace-issue?...`, use `issue-manager`.
 - For `mention://workspace-app?...`, use `workspace-app`.
 - For `mention://agent-session?...`, use `tutti-cli`.
-- Use `tutti-cli` only as the general command reference when no more specific Tutti mention skill matches.
+  {{BROWSER_USE_HANDOFF_LINES}}- Use `tutti-cli` only as the general command reference when no more specific Tutti mention skill matches.
 - Treat `mention://...` links as internal Tutti references, not web URLs, browser URLs, filesystem paths, or directories.
 - Do not try to open `mention://...` links in a browser or search `/workspace` for them.
 - Do not open `mention://...` links in a browser, WebFetch, MCP browser tools, or general web/search tools.

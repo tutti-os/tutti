@@ -6,6 +6,7 @@ import { createDesktopPreferencesStore } from "./desktopPreferencesStore.ts";
 import {
   desktopAgentComposerDefaultsByProviderEqual,
   defaultDesktopAgentProvider,
+  defaultDesktopBrowserUseConnectionMode,
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
   defaultDesktopSleepPreventionMode,
@@ -17,6 +18,7 @@ import {
   type DesktopAgentComposerDefaults,
   type DesktopAgentComposerDefaultsByProvider,
   type DesktopAgentProvider,
+  type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
   type DesktopSleepPreventionMode,
@@ -46,6 +48,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     this.dependencies = dependencies;
     this.store = createDesktopPreferencesStore({
       agentComposerDefaultsByProvider: {},
+      browserUseConnectionMode: defaultDesktopBrowserUseConnectionMode,
       defaultAgentProvider: defaultDesktopAgentProvider,
       dockIconStyle: defaultDesktopDockIconStyle,
       dockPlacement:
@@ -95,6 +98,37 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     } finally {
       if (this.store.changingDefaultAgentProvider === provider) {
         this.store.changingDefaultAgentProvider = null;
+      }
+    }
+  }
+
+  async setBrowserUseConnectionMode(
+    mode: DesktopBrowserUseConnectionMode
+  ): Promise<DesktopBrowserUseConnectionMode> {
+    if (this.store.changingBrowserUseConnectionMode === mode) {
+      return mode;
+    }
+
+    const previousMode = this.store.browserUseConnectionMode;
+    this.store.changingBrowserUseConnectionMode = mode;
+    this.store.browserUseConnectionMode = mode;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            browserUseConnectionMode: mode
+          })
+        });
+      return (
+        authoritativePreferences.browserUseConnectionMode ??
+        defaultDesktopBrowserUseConnectionMode
+      );
+    } catch (error) {
+      this.store.browserUseConnectionMode = previousMode;
+      throw error;
+    } finally {
+      if (this.store.changingBrowserUseConnectionMode === mode) {
+        this.store.changingBrowserUseConnectionMode = null;
       }
     }
   }
@@ -367,6 +401,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
 
   private applyPreferences(preferences: {
     agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
+    browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
     defaultAgentProvider: DesktopAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
@@ -380,6 +415,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       normalizeDesktopAgentComposerDefaultsByProvider(
         preferences.agentComposerDefaultsByProvider
       );
+    this.store.browserUseConnectionMode =
+      preferences.browserUseConnectionMode ??
+      defaultDesktopBrowserUseConnectionMode;
     this.store.defaultAgentProvider = preferences.defaultAgentProvider;
     this.store.dockIconStyle = preferences.dockIconStyle;
     this.store.dockPlacement = preferences.dockPlacement;
@@ -393,6 +431,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   private currentPreferences(
     overrides: Partial<{
       agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+      browserUseConnectionMode: DesktopBrowserUseConnectionMode;
       defaultAgentProvider: DesktopAgentProvider;
       dockIconStyle: DesktopDockIconStyle;
       dockPlacement: DesktopDockPlacement;
@@ -404,6 +443,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     }> = {}
   ): {
     agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+    browserUseConnectionMode: DesktopBrowserUseConnectionMode;
     defaultAgentProvider: DesktopAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
@@ -419,6 +459,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
           overrides.agentComposerDefaultsByProvider ??
             this.store.agentComposerDefaultsByProvider
         ),
+      browserUseConnectionMode:
+        overrides.browserUseConnectionMode ??
+        this.store.browserUseConnectionMode,
       defaultAgentProvider:
         overrides.defaultAgentProvider ?? this.store.defaultAgentProvider,
       dockIconStyle: overrides.dockIconStyle ?? this.store.dockIconStyle,

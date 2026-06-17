@@ -473,6 +473,22 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.SubmitWorkspaceAgentInteractive(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListWorkspaceAgentSessionGitBranches(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/git-branches", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListWorkspaceGitBranches(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
+import type { RichTextMentionAttrs } from "@tutti-os/ui-rich-text/types";
 import type { WorkspaceUserProjectService } from "@tutti-os/workspace-user-project/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type {
@@ -84,6 +85,7 @@ export interface IssueManagerController {
   nodeState: IssueManagerNodeState;
   notification: IssueManagerNotificationState | null;
   openAgentSession: (run: IssueManagerRun) => Promise<void>;
+  openMention: (mention: RichTextMentionAttrs) => Promise<void>;
   openReference: (reference: IssueManagerFileReference) => Promise<void>;
   providerOptions: readonly IssueManagerAgentProviderOption[];
   executionDirectoryProjectService: WorkspaceUserProjectService | null;
@@ -290,6 +292,12 @@ export function useIssueManagerController({
     isRunningTask,
     nodeState,
     notification,
+    async openMention(mention) {
+      await feature.mentionActionHandler?.openMention({
+        mention,
+        workspaceId
+      });
+    },
     providerOptions,
     executionDirectoryProjectService:
       feature.executionDirectoryPicker?.service ?? null,

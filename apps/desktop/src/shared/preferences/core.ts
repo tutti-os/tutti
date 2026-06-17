@@ -10,6 +10,17 @@ export type DesktopDockIconStyle = (typeof desktopDockIconStyles)[number];
 
 export const defaultDesktopDockIconStyle: DesktopDockIconStyle = "default";
 
+export const desktopBrowserUseConnectionModes = [
+  "isolated",
+  "autoConnect"
+] as const;
+
+export type DesktopBrowserUseConnectionMode =
+  (typeof desktopBrowserUseConnectionModes)[number];
+
+export const defaultDesktopBrowserUseConnectionMode: DesktopBrowserUseConnectionMode =
+  "isolated";
+
 export function readInitialDockPlacementFromLocation(
   locationSearch?: string
 ): DesktopDockPlacement {
@@ -38,6 +49,17 @@ export function isDesktopDockIconStyle(
   return (
     typeof value === "string" &&
     desktopDockIconStyles.includes(value as DesktopDockIconStyle)
+  );
+}
+
+export function isDesktopBrowserUseConnectionMode(
+  value: unknown
+): value is DesktopBrowserUseConnectionMode {
+  return (
+    typeof value === "string" &&
+    desktopBrowserUseConnectionModes.includes(
+      value as DesktopBrowserUseConnectionMode
+    )
   );
 }
 

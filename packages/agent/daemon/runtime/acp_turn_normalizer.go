@@ -19,9 +19,20 @@ type acpTurnNormalizer struct {
 	thinkingMessageID         string
 	thinkingContent           strings.Builder
 	thinkingSegmentCompleted  bool
+	thinkingMessageKind       string
 	toolItemIDs               map[string]string
 	toolCallsSeen             map[string]bool
 	pendingToolCalls          map[string]pendingToolCallSnapshot
+}
+
+// SetThinkingPresentation tags thinking snapshots with an optional messageKind
+// and adjusts streaming behavior. Review inline turns use messageKind
+// review-process so the GUI renders reasoning as direct prose.
+func (n *acpTurnNormalizer) SetThinkingPresentation(messageKind string) {
+	if n == nil {
+		return
+	}
+	n.thinkingMessageKind = strings.TrimSpace(messageKind)
 }
 
 func newACPTurnNormalizer() *acpTurnNormalizer {
@@ -55,6 +66,11 @@ func (n *acpTurnNormalizer) AppendThinkingChunk(session Session, turnID string, 
 		n.thinkingSegmentCompleted = false
 	}
 	_, _ = n.thinkingContent.WriteString(chunk)
+	if n.thinkingMessageKind == "review-process" {
+		// Codex summaryTextDelta often streams word-sized tokens without spaces.
+		// Defer emission until item/completed supplies the authoritative summary.
+		return nil
+	}
 	return []activityshared.Event{n.thinkingSnapshotEvent(session, turnID, messageStreamStateStreaming)}
 }
 
@@ -99,6 +115,41 @@ func (n *acpTurnNormalizer) Finish(session Session, turnID string, streamState s
 		n.assistantSegmentCompleted = true
 	}
 	return events
+}
+
+// hasStreamingThinkingSegment reports whether an in-flight thinking segment is
+// still accumulating chunks (e.g. from reasoning textDelta) and has not been
+// finalized yet.
+func (n *acpTurnNormalizer) hasStreamingThinkingSegment() bool {
+	return n != nil &&
+		n.thinkingMessageID != "" &&
+		n.thinkingContent.Len() > 0 &&
+		!n.thinkingSegmentCompleted
+}
+
+// FinalizeThinkingItem closes out the thinking segment for a reasoning
+// item/completed payload. When reasoning already streamed as textDelta chunks
+// the content is buffered, so it only finalizes; for inline delivery (no
+// deltas, e.g. /review) it seeds the segment from fullText first. This keeps
+// streaming and inline reasoning from double-appending and makes each reasoning
+// item render as exactly one finalized thinking row.
+func (n *acpTurnNormalizer) FinalizeThinkingItem(session Session, turnID string, fullText string) []activityshared.Event {
+	if n == nil {
+		return nil
+	}
+	if fullText != "" {
+		if n.thinkingMessageID == "" || n.thinkingSegmentCompleted {
+			n.thinkingMessageID = newID()
+			n.thinkingContent.Reset()
+			n.thinkingSegmentCompleted = false
+		}
+		// item/completed summary is authoritative; replace streamed word-token deltas.
+		n.thinkingContent.Reset()
+		_, _ = n.thinkingContent.WriteString(fullText)
+	} else if !n.hasStreamingThinkingSegment() {
+		return nil
+	}
+	return n.Finish(session, turnID, messageStreamStateCompleted)
 }
 
 func (n *acpTurnNormalizer) FinishCompleted(session Session, turnID string) []activityshared.Event {
@@ -325,9 +376,13 @@ func (n *acpTurnNormalizer) thinkingSnapshotEvent(session Session, turnID string
 	case messageStreamStateFailed:
 		status = messageStreamStateFailed
 	}
-	return newTurnActivityEventWithID(session, n.thinkingMessageID, EventMessage, turnID, status, RoleAssistantThinking, n.thinkingContent.String(), map[string]any{
+	metadata := map[string]any{
 		"messageId":   n.thinkingMessageID,
 		"contentMode": messageContentModeSnapshot,
 		"streamState": status,
-	})
+	}
+	if messageKind := strings.TrimSpace(n.thinkingMessageKind); messageKind != "" {
+		metadata["messageKind"] = messageKind
+	}
+	return newTurnActivityEventWithID(session, n.thinkingMessageID, EventMessage, turnID, status, RoleAssistantThinking, n.thinkingContent.String(), metadata)
 }

@@ -41,6 +41,7 @@
     "@tutti-os/agent-activity-core": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
     "@tutti-os/ui-react-hooks": "workspace:*",
+    "@tutti-os/ui-rich-text": "workspace:*",
     "@tutti-os/ui-system": "workspace:*",
     "@tutti-os/workbench-surface": "workspace:*",
     "@tutti-os/workspace-file-manager": "workspace:*",

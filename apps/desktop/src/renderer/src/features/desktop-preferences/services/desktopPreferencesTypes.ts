@@ -2,6 +2,7 @@ import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentProvider,
+  DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
   DesktopSleepPreventionMode,
@@ -12,6 +13,7 @@ import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 
 export interface DesktopPreferencesStoreState {
   changingDefaultAgentProvider: DesktopAgentProvider | null;
+  changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
   changingDockIconStyle: DesktopDockIconStyle | null;
   changingDockPlacement: DesktopDockPlacement | null;
   changingLocale: DesktopLocale | null;
@@ -20,6 +22,7 @@ export interface DesktopPreferencesStoreState {
   changingUpdateChannel: DesktopUpdateChannel | null;
   changingUpdatePolicy: DesktopUpdatePolicy | null;
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  browserUseConnectionMode: DesktopBrowserUseConnectionMode;
   defaultAgentProvider: DesktopAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
@@ -32,6 +35,7 @@ export interface DesktopPreferencesStoreState {
 
 export interface DesktopPreferencesReadableStoreState {
   readonly changingDefaultAgentProvider: DesktopAgentProvider | null;
+  readonly changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
   readonly changingDockIconStyle: DesktopDockIconStyle | null;
   readonly changingDockPlacement: DesktopDockPlacement | null;
   readonly changingLocale: DesktopLocale | null;
@@ -40,6 +44,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingUpdateChannel: DesktopUpdateChannel | null;
   readonly changingUpdatePolicy: DesktopUpdatePolicy | null;
   readonly agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  readonly browserUseConnectionMode: DesktopBrowserUseConnectionMode;
   readonly defaultAgentProvider: DesktopAgentProvider;
   readonly dockIconStyle: DesktopDockIconStyle;
   readonly dockPlacement: DesktopDockPlacement;

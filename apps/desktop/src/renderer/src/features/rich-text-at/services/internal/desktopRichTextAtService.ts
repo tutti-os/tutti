@@ -7,12 +7,21 @@ import {
   createRichTextMarkdownLinkInsertResult,
   createRichTextMentionInsertResult
 } from "@tutti-os/ui-rich-text/plugins";
-import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
+import type {
+  RichTextAtProvider,
+  RichTextAtQueryInput
+} from "@tutti-os/ui-rich-text/types";
+import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import type {
   DesktopRichTextAtCapability,
   DesktopRichTextAtProviderRequest,
   IDesktopRichTextAtService
 } from "../richTextAtService.interface";
+import { createDesktopWorkspaceAppMentionProvider } from "../../providers/desktopWorkspaceAppMentionProvider.ts";
+import {
+  createDesktopAgentSessionMentionProvider,
+  type DesktopAgentSessionStatusView
+} from "../../providers/desktopAgentSessionMentionProvider.ts";
 
 interface DesktopRichTextAtContributor {
   capability: DesktopRichTextAtCapability;
@@ -23,6 +32,24 @@ interface DesktopRichTextAtContributor {
 
 export interface DesktopRichTextAtServiceDependencies {
   tuttidClient: TuttidClient;
+  /**
+   * Live getter for the workspace App Center app snapshot. Read at query time so
+   * the enriched `workspace-app` provider keeps localized name/description + icon
+   * in sync with app updates. Optional so non-desktop callers/tests stay raw.
+   */
+  appCenterApps?: () => readonly WorkspaceAppCenterApp[];
+  /** Resolve the bundled dock icon URL for an app id. */
+  resolveAppIconUrl?: (appId: string) => string | null;
+  /** Active UI locale getter, read at query time so locale switches are picked up. */
+  getLocale?: () => string;
+  /** Resolve the rounded managed-agent icon URL for a session's provider. */
+  resolveAgentIconUrl?: (provider: string) => string;
+  /** The bundled user-avatar placeholder asset URL. */
+  userAvatarPlaceholderUrl?: string;
+  /** Resolve a session's raw status into the display-ready activity status view. */
+  resolveSessionStatusView?: (
+    status: string
+  ) => DesktopAgentSessionStatusView | null;
 }
 
 interface WorkspaceFileAtItem {
@@ -94,12 +121,14 @@ const agentWorkspaceAppIconUrls = new Map<string, string>([
 export class DesktopRichTextAtService implements IDesktopRichTextAtService {
   readonly _serviceBrand = undefined;
   private readonly contributors: readonly DesktopRichTextAtContributor[];
+  private readonly dependencies: DesktopRichTextAtServiceDependencies;
   private readonly providerCache = new Map<
     string,
     readonly RichTextAtProvider[]
   >();
 
   constructor(dependencies: DesktopRichTextAtServiceDependencies) {
+    this.dependencies = dependencies;
     this.contributors = [
       createWorkspaceFileAtContributor(dependencies.tuttidClient),
       createWorkspaceIssueAtContributor(dependencies.tuttidClient),
@@ -120,23 +149,104 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
       input.metadata === undefined
         ? createProviderCacheKey(input, requestedCapabilities)
         : null;
+    let baseProviders: readonly RichTextAtProvider[] | undefined;
     if (cacheKey !== null) {
-      const cachedProviders = this.providerCache.get(cacheKey);
-      if (cachedProviders) {
-        return cachedProviders;
+      baseProviders = this.providerCache.get(cacheKey);
+    }
+    if (!baseProviders) {
+      baseProviders = this.contributors.flatMap((contributor) =>
+        requestedCapabilities.has(contributor.capability)
+          ? contributor.getProviders(input)
+          : []
+      );
+      if (cacheKey !== null) {
+        this.providerCache.set(cacheKey, baseProviders);
       }
     }
+    // Enrich AFTER the cache so the enriched providers read the live app/locale
+    // snapshot per query (the wrapper modules capture apps/locale at construction).
+    const enrichedProviders = this.enrichProviders(baseProviders, input);
+    return withRichTextAtRequestMetadata(enrichedProviders, input.metadata);
+  }
 
-    const providers = this.contributors.flatMap((contributor) =>
-      requestedCapabilities.has(contributor.capability)
-        ? contributor.getProviders(input)
-        : []
-    );
-    if (cacheKey !== null) {
-      this.providerCache.set(cacheKey, providers);
+  private enrichProviders(
+    providers: readonly RichTextAtProvider[],
+    input: DesktopRichTextAtProviderRequest
+  ): readonly RichTextAtProvider[] {
+    const deps = this.dependencies;
+    const canEnrichApp =
+      deps.appCenterApps !== undefined && deps.getLocale !== undefined;
+    const canEnrichSession =
+      deps.resolveAgentIconUrl !== undefined &&
+      deps.userAvatarPlaceholderUrl !== undefined &&
+      deps.resolveSessionStatusView !== undefined;
+    if (!canEnrichApp && !canEnrichSession) {
+      return providers;
     }
+    return providers.map((provider): RichTextAtProvider => {
+      if (canEnrichApp && provider.id === WORKSPACE_APP_PROVIDER_ID) {
+        const enrichedAppProvider = createDesktopWorkspaceAppMentionProvider({
+          apps: deps.appCenterApps?.() ?? [],
+          baseProvider: provider,
+          locale: deps.getLocale?.() ?? "",
+          resolveAppIconUrl: deps.resolveAppIconUrl,
+          workspaceId: input.workspaceId
+        });
+        // The wrapped provider is typed RichTextAtProvider<DesktopWorkspaceAppMentionItem>,
+        // which tsc rejects against RichTextAtProvider<unknown> (contravariant
+        // getItemKey); the cast bridges that variance.
+        return enrichedAppProvider as unknown as RichTextAtProvider;
+      }
+      if (canEnrichSession && provider.id === AGENT_SESSION_PROVIDER_ID) {
+        return createDesktopAgentSessionMentionProvider({
+          baseProvider: provider,
+          resolveAgentIconUrl: deps.resolveAgentIconUrl!,
+          userAvatarPlaceholderUrl: deps.userAvatarPlaceholderUrl!,
+          resolveStatusView: deps.resolveSessionStatusView!
+        });
+      }
+      return provider;
+    });
+  }
+}
+
+function withRichTextAtRequestMetadata(
+  providers: readonly RichTextAtProvider[],
+  metadata: Readonly<Record<string, unknown>> | undefined
+): readonly RichTextAtProvider[] {
+  if (!metadata) {
     return providers;
   }
+  return providers.map((provider) => ({
+    ...provider,
+    query: (input) =>
+      provider.query(withRichTextAtQueryMetadata(input, metadata)),
+    ...(provider.getItemReferenceItems
+      ? {
+          getItemReferenceItems: (item, input) =>
+            provider.getItemReferenceItems?.(
+              item,
+              withRichTextAtQueryMetadata(input, metadata)
+            ) ?? []
+        }
+      : {})
+  }));
+}
+
+function withRichTextAtQueryMetadata(
+  input: RichTextAtQueryInput,
+  metadata: Readonly<Record<string, unknown>>
+): RichTextAtQueryInput {
+  return {
+    ...input,
+    context: {
+      ...input.context,
+      metadata: {
+        ...metadata,
+        ...(input.context.metadata ?? {})
+      }
+    }
+  };
 }
 
 function createWorkspaceAppAtContributor(
@@ -491,6 +601,7 @@ function createWorkspaceIssueAtContributor(
               label: item.title,
               meta: {
                 contentPreview: item.content?.trim() ?? "",
+                creatorDisplayName: item.creatorDisplayName?.trim() ?? "",
                 status: item.status?.trim() ?? "",
                 topicId: item.topicId,
                 workspaceId: item.workspaceId

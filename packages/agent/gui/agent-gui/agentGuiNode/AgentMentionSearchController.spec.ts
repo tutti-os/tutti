@@ -360,6 +360,24 @@ describe("AgentMentionSearchController", () => {
     void setAgentGuiI18nTestLocale("en");
   });
 
+  it("localizes browse filter categories using the active locale at emit time", () => {
+    // Regression: browse category labels used to be frozen to the default ("en")
+    // runtime because they were computed once at module load. They must reflect
+    // the active agent GUI locale when a state is emitted.
+    setAgentGuiI18nTestLocale("zh-CN");
+    const controller = new AgentMentionSearchController({});
+    const states: { categories: readonly { id: string; label: string }[] }[] =
+      [];
+    controller.subscribe((state) => states.push(state));
+
+    const categories = states.at(-1)?.categories ?? [];
+    const labelById = new Map(categories.map((c) => [c.id, c.label]));
+
+    expect(labelById.get("app")).toBe("应用");
+    expect(labelById.get("session")).toBe("会话");
+    expect(labelById.get("all")).toBe("全部");
+  });
+
   it("prefetches the browse overview for blank queries including dock files", async () => {
     const queryFiles = vi.fn().mockResolvedValue({
       workspaceId: "room-1",

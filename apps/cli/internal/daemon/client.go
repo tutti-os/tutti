@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -19,6 +21,7 @@ type Client struct {
 }
 
 const (
+	defaultClientTimeout    = 60 * time.Second
 	healthPath              = "/v1/health"
 	cliCapabilitiesPath     = "/v1/cli/capabilities"
 	cliCommandInvokePattern = "/v1/cli/commands/{commandID}/invoke"
@@ -100,7 +103,7 @@ func NewClient(endpoint Endpoint) (*Client, error) {
 		baseURL: baseURL,
 		token:   endpoint.Token,
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: defaultClientTimeout,
 		},
 	}, nil
 }
@@ -163,7 +166,7 @@ func (client *Client) DoJSON(ctx context.Context, method string, path string, bo
 
 	response, err := client.httpClient.Do(request)
 	if err != nil {
-		return fmt.Errorf("daemon is not reachable")
+		return daemonRequestError(err)
 	}
 	defer response.Body.Close()
 
@@ -188,6 +191,16 @@ func (client *Client) DoJSON(ctx context.Context, method string, path string, bo
 		return fmt.Errorf("decode daemon response: %w", err)
 	}
 	return nil
+}
+
+func daemonRequestError(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("daemon request canceled")
+	}
+	if errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err) {
+		return fmt.Errorf("daemon request timed out")
+	}
+	return fmt.Errorf("daemon is not reachable")
 }
 
 func urlPathEscape(value string) string {

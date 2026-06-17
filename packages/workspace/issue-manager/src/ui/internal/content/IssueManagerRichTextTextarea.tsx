@@ -5,6 +5,10 @@ import type {
   IssueManagerController,
   IssueManagerRichTextSurface
 } from "../../react/index.ts";
+import {
+  IssueManagerMentionPanel,
+  useIssueManagerMentionPanelController
+} from "./IssueManagerMentionPanel.tsx";
 
 const issueManagerRichTextTextareaBaseClassName =
   "min-h-20 w-full rounded-[8px] border border-transparent bg-[var(--transparency-block)] p-3 text-[13px] font-normal leading-[1.3] text-[var(--text-primary)] transition-[background-color,border-color,color] outline-none shadow-none placeholder:text-[var(--text-placeholder)] hover:bg-[var(--transparency-hover)] focus:bg-[var(--transparency-hover)] focus-visible:border-transparent focus-visible:bg-[var(--transparency-hover)] focus-visible:ring-0 disabled:cursor-not-allowed disabled:bg-[var(--transparency-block)] disabled:text-[var(--text-disabled)] disabled:opacity-100 aria-invalid:border-[var(--state-danger)] aria-invalid:bg-[var(--transparency-block)] aria-invalid:hover:bg-[var(--transparency-hover)] aria-invalid:focus:bg-[var(--transparency-hover)] aria-invalid:focus-visible:bg-[var(--transparency-hover)] aria-invalid:ring-0 aria-invalid:shadow-none";
@@ -31,6 +35,7 @@ export function IssueManagerRichTextTextarea({
     () => controller.resolveRichTextAtProviders(surface),
     [controller, surface]
   );
+  const mentionPanel = useIssueManagerMentionPanelController(controller);
   const showReferenceAction = controller.canReferenceWorkspaceFiles;
   const [focusSignal, setFocusSignal] = useState(0);
   const previousValueRef = useRef(value);
@@ -55,7 +60,8 @@ export function IssueManagerRichTextTextarea({
     <RichTextAtEditor
       focusSignal={focusSignal}
       maxResults={8}
-      minQueryLength={1}
+      minQueryLength={0}
+      onCycleFilter={mentionPanel.cycleFilter}
       providers={providers}
       textOverrides={{
         loadingLabel: controller.copy.t("richTextAt.loading"),
@@ -73,6 +79,18 @@ export function IssueManagerRichTextTextarea({
         showReferenceAction && "pb-11"
       )}
       placeholder={placeholder}
+      renderPanel={(context) => (
+        <IssueManagerMentionPanel
+          activeFilterId={mentionPanel.activeFilterId}
+          context={context}
+          controller={controller}
+          expandedCounts={mentionPanel.expandedCounts}
+          panelConfig={mentionPanel.config}
+          onCycleFilter={mentionPanel.cycleFilter}
+          onExpandGroup={mentionPanel.expandGroup}
+          onSelectFilter={mentionPanel.setActiveFilterId}
+        />
+      )}
       value={value}
       onChange={onChange}
       overlay={

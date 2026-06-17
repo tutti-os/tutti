@@ -58,6 +58,24 @@ test("queryRichTextAtMatches returns empty results when a provider throws", asyn
   assert.deepEqual(matches, []);
 });
 
+test("queryRichTextAtMatches preserves max results per provider", async () => {
+  const registry = createRichTextAtRegistry([
+    createTestIdProvider("files", ["a", "b"]),
+    createTestIdProvider("sessions", ["session"])
+  ]);
+
+  const matches = await queryRichTextAtMatches(registry, {
+    context: {},
+    keyword: "",
+    maxResults: 1
+  });
+
+  assert.deepEqual(
+    matches.map((match) => `${match.providerId}:${match.key}`),
+    ["files:a", "sessions:session"]
+  );
+});
+
 test("queryRichTextAtMatches returns empty results after abort", async () => {
   const registry = createRichTextAtRegistry([
     createRichTextAtProvider({
@@ -84,3 +102,29 @@ test("queryRichTextAtMatches returns empty results after abort", async () => {
   const matches = await matchesPromise;
   assert.deepEqual(matches, []);
 });
+
+function createTestIdProvider(
+  providerId: string,
+  itemIds: readonly string[]
+): RichTextAtProvider {
+  return {
+    id: providerId,
+    query: () => itemIds.map((id) => ({ id })),
+    getItemKey: (item) => richTextAtQueryTestItemId(item),
+    getItemLabel: (item) => richTextAtQueryTestItemId(item),
+    toInsertResult: (item) =>
+      createRichTextTextInsertResult(richTextAtQueryTestItemId(item))
+  };
+}
+
+function richTextAtQueryTestItemId(item: unknown): string {
+  if (
+    typeof item === "object" &&
+    item !== null &&
+    "id" in item &&
+    typeof (item as { id?: unknown }).id === "string"
+  ) {
+    return (item as { id: string }).id;
+  }
+  throw new TypeError("Expected a rich text @ query test item with an id");
+}

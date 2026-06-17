@@ -7,7 +7,10 @@ import type {
   IssueManagerFileReference
 } from "@tutti-os/workspace-issue-manager/contracts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import { createIssueManagerFeature } from "@tutti-os/workspace-issue-manager";
+import {
+  createIssueManagerFeature,
+  type CreateIssueManagerFeatureInput
+} from "@tutti-os/workspace-issue-manager";
 import type { DesktopHostFilesApi } from "@preload/types";
 import {
   createDesktopIssueManagerAgentBreakdownLauncher,
@@ -24,6 +27,7 @@ import { createDesktopIssueManagerShareAdapter } from "./internal/adapters/deskt
 import type { IReporterService } from "../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../workspace-user-project";
 export { createDesktopIssueManagerNodeStateSource } from "./internal/desktopIssueManagerNodeState.ts";
+export { createDesktopIssueManagerIdentityAdapter };
 
 export function createDesktopIssueManagerFeature(input: {
   agentProviderOptions?: IssueManagerAgentProviderOptionsAdapter;
@@ -38,6 +42,7 @@ export function createDesktopIssueManagerFeature(input: {
   openWorkspaceFileManager?: (
     reference: IssueManagerFileReference
   ) => Promise<boolean> | boolean;
+  mentionActionHandler?: CreateIssueManagerFeatureInput["mentionActionHandler"];
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
   workspaceUserProjectService: IWorkspaceUserProjectService;
@@ -92,6 +97,7 @@ export function createDesktopIssueManagerFeature(input: {
     fileAdapter,
     i18n: input.i18n,
     identityAdapter: createDesktopIssueManagerIdentityAdapter(),
+    mentionActionHandler: input.mentionActionHandler,
     shareAdapter: createDesktopIssueManagerShareAdapter(),
     ui: {
       showInviteCollaborator: false

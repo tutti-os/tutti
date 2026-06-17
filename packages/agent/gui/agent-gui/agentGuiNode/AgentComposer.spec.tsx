@@ -158,7 +158,52 @@ vi.mock("./AgentComposerSettingsMenus", () => ({
 }));
 
 vi.mock("./AgentSlashCommandPalette", () => ({
-  AgentSlashCommandPalette: () => null
+  AgentSlashCommandPalette: ({
+    capabilitiesGroupLabel,
+    commandsGroupLabel,
+    entries,
+    onSelect,
+    onSelectCapability,
+    onSelectSkill,
+    skillsGroupLabel
+  }: {
+    capabilitiesGroupLabel?: string;
+    commandsGroupLabel: string;
+    entries: any[];
+    onSelect: (command: any) => void;
+    onSelectCapability?: (capability: any) => void;
+    onSelectSkill: (skill: any) => void;
+    skillsGroupLabel: string;
+  }) => (
+    <div data-testid="mock-slash-palette">
+      {entries.some((entry) => entry.type === "command") ? (
+        <div>{commandsGroupLabel}</div>
+      ) : null}
+      {entries.some((entry) => entry.type === "capability") ? (
+        <div>{capabilitiesGroupLabel}</div>
+      ) : null}
+      {entries.some((entry) => entry.type === "skill") ? (
+        <div>{skillsGroupLabel}</div>
+      ) : null}
+      {entries.map((entry) => (
+        <button
+          key={entry.key}
+          type="button"
+          onClick={() => {
+            if (entry.type === "command") {
+              onSelect(entry.command);
+            } else if (entry.type === "capability") {
+              onSelectCapability?.(entry.capability);
+            } else {
+              onSelectSkill(entry.skill);
+            }
+          }}
+        >
+          {entry.label}
+        </button>
+      ))}
+    </div>
+  )
 }));
 
 vi.mock("./AgentInteractivePromptSurface", () => ({
@@ -269,6 +314,195 @@ describe("AgentComposer", () => {
     // plan capability alone, with the plan label wired through.
     const dropdown = screen.getByTestId("agent-permission-mode-dropdown");
     expect(dropdown).toHaveAttribute("data-plan-mode-label", "Plan");
+  });
+
+  it("does not render the browser-use footer toggle when supported", () => {
+    const onSettingsChange = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsBrowser: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={onSettingsChange}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Browser use" })
+    ).not.toBeInTheDocument();
+    expect(onSettingsChange).not.toHaveBeenCalled();
+  });
+
+  it("exposes browser-use through the slash capability group", async () => {
+    const onDraftContentChange = vi.fn();
+    const onSettingsChange = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/浏览")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          draftSettings: {
+            model: null,
+            reasoningEffort: null,
+            speed: null,
+            planMode: false,
+            browserUse: false,
+            permissionModeId: "preset"
+          },
+          supportsBrowser: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={onSettingsChange}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("能力");
+    const browserCapability = within(palette).getByRole("button", {
+      name: "浏览器"
+    });
+
+    fireEvent.click(browserCapability);
+
+    expect(onDraftContentChange).toHaveBeenCalledWith(createDraft("/browser "));
+    expect(screen.getByRole("textbox")).toHaveValue("/browser ");
+    expect(onSettingsChange).toHaveBeenCalledWith({ browserUse: true });
+  });
+
+  it("submits browser capability tokens through the tutti browser-use handoff", () => {
+    const onSubmit = vi.fn();
+    const onSettingsChange = vi.fn();
+    const { container } = render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/browser inspect this page")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsBrowser: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={onSettingsChange}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.submit(container.querySelector("form")!);
+
+    expect(onSettingsChange).toHaveBeenCalledWith({ browserUse: true });
+    expect(onSubmit).toHaveBeenCalledWith([
+      {
+        type: "text",
+        text: expect.stringMatching(/browser-use[\s\S]*inspect this page/)
+      }
+    ]);
+  });
+
+  it("matches the browser-use slash capability by its English alias", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/browser")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsBrowser: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(
+      within(palette).getByRole("button", { name: "浏览器" })
+    ).toBeTruthy();
   });
 
   it("renders the permission dropdown while plan mode is enabled", () => {
@@ -459,6 +693,54 @@ describe("AgentComposer", () => {
     expect(onDraftContentChange).toHaveBeenCalledWith(createDraft(""));
     expect(onSettingsChange).not.toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("submits goal slash commands to Codex and Claude Code runtimes", () => {
+    for (const provider of ["codex", "claude-code"] as const) {
+      const onDraftContentChange = vi.fn();
+      const onSubmit = vi.fn();
+      const { container, unmount } = render(
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider={provider}
+          draftContent={createDraft("/goal ship the review picker")}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={onDraftContentChange}
+          onSettingsChange={vi.fn()}
+          onSubmit={onSubmit}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+      );
+
+      fireEvent.submit(container.querySelector("form")!);
+
+      expect(onSubmit).toHaveBeenCalledWith([
+        { type: "text", text: "/goal ship the review picker" }
+      ]);
+      expect(onDraftContentChange).toHaveBeenCalledWith(createDraft(""));
+      unmount();
+    }
   });
 
   it("clears the visible draft immediately after a normal prompt submit", () => {
@@ -1796,6 +2078,111 @@ describe("AgentComposer", () => {
     fireEvent.submit(container.querySelector("form")!);
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it.each(["codex", "claude-code"] as const)(
+    "opens the %s review picker and submits the chosen target",
+    (provider) => {
+      const onSubmit = vi.fn();
+      const { container } = render(
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider={provider}
+          slashStatus={{ agentSessionId: "agent-session-1", limits: [] }}
+          draftContent={createDraft("/review")}
+          availableCommands={
+            [
+              { name: "review" }
+            ] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={vi.fn()}
+          onSettingsChange={vi.fn()}
+          onSubmit={onSubmit}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+      );
+
+      fireEvent.submit(container.querySelector("form")!);
+      expect(
+        screen.getByTestId("agent-gui-review-picker-panel")
+      ).toBeInTheDocument();
+      expect(onSubmit).not.toHaveBeenCalled();
+
+      // Selecting the "uncommitted changes" scope submits a bare /review.
+      fireEvent.click(screen.getByText("未提交的更改"));
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+      expect(onSubmit.mock.calls[0]?.[0]).toEqual([
+        { type: "text", text: "/review" }
+      ]);
+    }
+  );
+
+  it.each(["codex", "claude-code"] as const)(
+    "submits %s /review <text> as a custom review without opening the picker",
+    (provider) => {
+      const onSubmit = vi.fn();
+      const { container } = render(
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider={provider}
+          slashStatus={{ agentSessionId: "agent-session-1", limits: [] }}
+          draftContent={createDraft("/review check the auth flow")}
+          availableCommands={
+            [
+              { name: "review" }
+            ] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={vi.fn()}
+          onSettingsChange={vi.fn()}
+          onSubmit={onSubmit}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+      );
+
+      fireEvent.submit(container.querySelector("form")!);
+      expect(
+        screen.queryByTestId("agent-gui-review-picker-panel")
+      ).not.toBeInTheDocument();
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    }
+  );
 });
 
 function createComposerSettings(
@@ -1861,6 +2248,8 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     planModeOnLabel: "开启",
     planModeOffLabel: "关闭",
     planUnavailable: "计划不可用",
+    browserUseCapabilityLabel: "浏览器",
+    browserUseCapabilityDescription: "让 Agent 使用浏览器。",
     queuedLabel: "排队",
     sendQueuedPromptNext: "下一条发送",
     editQueuedPrompt: "编辑",
@@ -1871,6 +2260,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     slashCommandPalette: "斜杠命令",
     skillPickerPalette: "技能",
     slashPaletteCommandsGroup: "命令",
+    slashPaletteCapabilitiesGroup: "能力",
     slashPaletteSkillsGroup: "技能",
     slashStatusTitle: "Status",
     slashStatusSession: "Session",
@@ -1908,6 +2298,24 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     fileMentionTabHint: "Tab 提示",
     removeMention: "移除引用",
     addReference: "添加引用",
-    referenceWorkspaceFiles: "引用空间文件"
+    referenceWorkspaceFiles: "引用空间文件",
+    reviewPicker: {
+      title: "代码审查",
+      targetLabel: "审查范围",
+      searchPlaceholder: "搜索",
+      noResults: "无匹配结果",
+      uncommitted: "未提交的更改",
+      baseBranch: "与分支比较",
+      commit: "指定提交",
+      custom: "自定义说明",
+      branchLabel: "基准分支",
+      branchPlaceholder: "选择分支",
+      branchLoading: "正在加载分支…",
+      branchEmpty: "未找到分支",
+      commitPlaceholder: "提交 SHA",
+      customPlaceholder: "描述要审查的内容",
+      submit: "开始审查",
+      cancel: "取消"
+    }
   };
 }

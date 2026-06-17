@@ -568,7 +568,7 @@ describe("AgentTranscriptView", () => {
     expect(screen.getByText("http://0.0.0.0:4173")).toBeTruthy();
   });
 
-  it("keeps only the latest trailing tool while the session is still active and shows the processing row", async () => {
+  it("keeps completed trailing tools visible while the session is still active and shows the processing row", async () => {
     render(
       <AgentTranscriptView
         conversation={projectAgentConversationVM(
@@ -652,12 +652,12 @@ describe("AgentTranscriptView", () => {
       />
     );
 
-    expect(screen.queryByText("Edit file")).toBeNull();
+    expect(screen.getByText("Edit file")).toBeTruthy();
     expect(screen.getByText("Write file")).toBeTruthy();
     expect(screen.getByText("Planning next moves")).toBeTruthy();
   });
 
-  it("shows only the latest tool from an unfinalized tail tool chain", () => {
+  it("keeps every completed tool of an unfinalized tail chain visible", () => {
     const calls = [
       {
         id: "call:1",
@@ -730,8 +730,8 @@ describe("AgentTranscriptView", () => {
       />
     );
 
-    expect(screen.queryByText("Read page A")).toBeNull();
-    expect(screen.queryByText("Read page B")).toBeNull();
+    expect(screen.getByText("Read page A")).toBeTruthy();
+    expect(screen.getByText("Read page B")).toBeTruthy();
     expect(screen.getByText("Read page C")).toBeTruthy();
   });
 

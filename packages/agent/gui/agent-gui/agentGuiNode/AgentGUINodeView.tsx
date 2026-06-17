@@ -82,6 +82,7 @@ import { AgentSessionChrome } from "./AgentSessionChrome";
 import {
   AgentComposer,
   formatSlashStatusTokenCount,
+  type AgentComposerGitBranchLoader,
   type AgentComposerProps,
   type AgentComposerPromptTip,
   type AgentComposerSlashStatusLimit,
@@ -282,7 +283,10 @@ export interface AgentGUIViewLabels {
   slashCommandPalette: string;
   skillPickerPalette: string;
   slashPaletteCommandsGroup: string;
+  slashPaletteCapabilitiesGroup: string;
   slashPaletteSkillsGroup: string;
+  browserUseCapabilityLabel: string;
+  browserUseCapabilityDescription: string;
   slashStatusTitle: string;
   slashStatusSession: string;
   slashStatusBaseUrl: string;
@@ -334,6 +338,7 @@ export interface AgentGUIViewLabels {
   openclawGatewayRetry: string;
   promptTipsPrefix: string;
   promptTips: readonly AgentComposerPromptTip[];
+  reviewPicker: AgentComposerProps["labels"]["reviewPicker"];
 }
 
 interface AgentGUINodeViewProps {
@@ -396,6 +401,7 @@ interface AgentGUINodeViewProps {
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
+  onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
   richTextAtProviders?: readonly AgentRichTextAtProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -762,6 +768,7 @@ export function AgentGUINodeView({
   workspaceUserProjectI18n,
   workspaceFileReferenceAdapter = null,
   workspaceFileReferenceCopy = null,
+  onRequestGitBranches = null,
   richTextAtProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
@@ -1038,6 +1045,7 @@ export function AgentGUINodeView({
             onLinkAction={onLinkAction}
             onAgentProviderLogin={onAgentProviderLogin}
             onRequestWorkspaceReferences={requestWorkspaceReferences}
+            onRequestGitBranches={onRequestGitBranches}
             richTextAtProviders={richTextAtProviders}
             workspaceAppIcons={effectiveWorkspaceAppIcons}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
@@ -1074,6 +1082,7 @@ interface AgentGUIDetailPaneProps {
   onRequestWorkspaceReferences?:
     | (() => Promise<WorkspaceFileReference[]>)
     | null;
+  onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   richTextAtProviders?: readonly AgentRichTextAtProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
 }
@@ -1159,6 +1168,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onLinkAction,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
+  onRequestGitBranches,
   richTextAtProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUIDetailPaneProps): React.JSX.Element {
@@ -1473,7 +1483,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       slashCommandPalette: labels.slashCommandPalette,
       skillPickerPalette: labels.skillPickerPalette,
       slashPaletteCommandsGroup: labels.slashPaletteCommandsGroup,
+      slashPaletteCapabilitiesGroup: labels.slashPaletteCapabilitiesGroup,
       slashPaletteSkillsGroup: labels.slashPaletteSkillsGroup,
+      browserUseCapabilityLabel: labels.browserUseCapabilityLabel,
+      browserUseCapabilityDescription: labels.browserUseCapabilityDescription,
       slashStatusTitle: labels.slashStatusTitle,
       slashStatusSession: labels.slashStatusSession,
       slashStatusBaseUrl: labels.slashStatusBaseUrl,
@@ -1494,6 +1507,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       projectLocked: labels.projectLocked,
       projectMissingDescription: labels.projectMissingDescription,
       promptTipsPrefix: labels.promptTipsPrefix,
+      reviewPicker: labels.reviewPicker,
       ...interactivePromptLabels
     }),
     [
@@ -1523,6 +1537,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.projectLocked,
       labels.projectMissingDescription,
       labels.promptTipsPrefix,
+      labels.reviewPicker,
       labels.queuedLabel,
       labels.queuedPromptMoreActions,
       labels.referenceWorkspaceFiles,
@@ -1541,6 +1556,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.send,
       labels.sendQueuedPromptNext,
       labels.slashCommandPalette,
+      labels.browserUseCapabilityDescription,
+      labels.browserUseCapabilityLabel,
+      labels.slashPaletteCapabilitiesGroup,
       labels.slashPaletteCommandsGroup,
       labels.slashPaletteSkillsGroup,
       labels.slashStatusClose,
@@ -1593,6 +1611,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const stableRequestWorkspaceReferences = useOptionalStableEventCallback(
     onRequestWorkspaceReferences
   );
+  const stableRequestGitBranches =
+    useOptionalStableEventCallback(onRequestGitBranches);
   const authLogin = useOptionalStableEventCallback(onAgentProviderLogin);
   const submitBottomDockInteractivePrompt = useCallback(
     (input: {
@@ -1655,6 +1675,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSubmitInteractivePrompt: submitInteractivePrompt,
       onLinkAction: stableLinkAction,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
+      onRequestGitBranches: stableRequestGitBranches,
       richTextAtProviders
     }),
     [
@@ -1682,6 +1703,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       submitInteractivePrompt,
       submitPrompt,
       stableLinkAction,
+      stableRequestGitBranches,
       stableRequestWorkspaceReferences,
       updateComposerSettings,
       updateDraftContent,
@@ -1957,6 +1979,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               onSubmitInteractivePrompt: submitInteractivePrompt,
               onLinkAction: stableLinkAction,
               onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
+              onRequestGitBranches: stableRequestGitBranches,
               richTextAtProviders
             }}
           />

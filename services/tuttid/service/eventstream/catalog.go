@@ -259,6 +259,7 @@ func (e *ValidationError) Error() string {
 type desktopPreferencesMutationPayload struct {
 	Preferences struct {
 		AgentComposerDefaultsByProvider desktopAgentComposerDefaultsByProviderPayload `json:"agentComposerDefaultsByProvider"`
+		BrowserUseConnectionMode        string                                        `json:"browserUseConnectionMode,omitempty"`
 		DefaultAgentProvider            string                                        `json:"defaultAgentProvider"`
 		DockIconStyle                   string                                        `json:"dockIconStyle"`
 		DockPlacement                   string                                        `json:"dockPlacement"`
@@ -377,6 +378,7 @@ type workspaceIssueUpdatedPayload struct {
 
 type desktopPreferencesSettingsPayload struct {
 	AgentComposerDefaultsByProvider desktopAgentComposerDefaultsByProviderPayload `json:"agentComposerDefaultsByProvider"`
+	BrowserUseConnectionMode        string                                        `json:"browserUseConnectionMode,omitempty"`
 	DefaultAgentProvider            string                                        `json:"defaultAgentProvider"`
 	DockIconStyle                   string                                        `json:"dockIconStyle"`
 	DockPlacement                   string                                        `json:"dockPlacement"`
@@ -430,6 +432,10 @@ func validateDesktopPreferencesUpdateRequestedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopDockPlacement(decoded.DockPlacement) {
 		return fmt.Errorf("preferences.dockPlacement is unsupported")
+	}
+	if decoded.BrowserUseConnectionMode != "" &&
+		!preferencesbiz.IsDesktopBrowserUseConnectionMode(decoded.BrowserUseConnectionMode) {
+		return fmt.Errorf("preferences.browserUseConnectionMode is unsupported")
 	}
 	if decoded.DefaultAgentProvider == "" {
 		return fmt.Errorf("preferences.defaultAgentProvider is required")
@@ -486,6 +492,10 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopDockPlacement(decoded.Preferences.DockPlacement) {
 		return fmt.Errorf("preferences.dockPlacement is unsupported")
+	}
+	if decoded.Preferences.BrowserUseConnectionMode != "" &&
+		!preferencesbiz.IsDesktopBrowserUseConnectionMode(decoded.Preferences.BrowserUseConnectionMode) {
+		return fmt.Errorf("preferences.browserUseConnectionMode is unsupported")
 	}
 	if decoded.Preferences.DefaultAgentProvider == "" {
 		return fmt.Errorf("preferences.defaultAgentProvider is required")

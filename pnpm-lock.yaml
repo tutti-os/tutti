@@ -75,6 +75,9 @@ importers:
       "@tutti-os/config-tsconfig":
         specifier: workspace:*
         version: link:../../packages/configs/tsconfig
+      "@tutti-os/infra":
+        specifier: 0.1.0
+        version: 0.1.0(react@19.2.6)
       "@tutti-os/ui-i18n-runtime":
         specifier: workspace:*
         version: link:../../packages/ui/i18n-runtime
@@ -132,9 +135,6 @@ importers:
       "@vitejs/plugin-react":
         specifier: ^4.5.2
         version: 4.7.0(vite@6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0))
-      "@tutti-os/infra":
-        specifier: 0.1.0
-        version: 0.1.0(react@19.2.6)
       babel-plugin-react-compiler:
         specifier: ^1.0.0
         version: 1.0.0
@@ -259,6 +259,9 @@ importers:
       "@tutti-os/ui-react-hooks":
         specifier: workspace:*
         version: link:../../ui/react-hooks
+      "@tutti-os/ui-rich-text":
+        specifier: workspace:*
+        version: link:../../ui/rich-text
       "@tutti-os/ui-system":
         specifier: workspace:*
         version: link:../../ui/system
@@ -3916,6 +3919,23 @@ packages:
       "@tiptap/core": 3.23.6
       "@tiptap/pm": 3.23.6
 
+  "@tutti-os/infra@0.1.0":
+    resolution:
+      {
+        integrity: sha512-lywyLaQq+qTA+OizLZrjsZd6miidybpXph99BPg9bWIZcDE2T2Ux0vfTYj+yGGGB3kF6+bz1ZQf56tXKl9IdPw==
+      }
+    peerDependencies:
+      axios: ">=1.5.0"
+      lodash-es: ^4
+      react: ">=18.2.0"
+    peerDependenciesMeta:
+      axios:
+        optional: true
+      lodash-es:
+        optional: true
+      react:
+        optional: true
+
   "@types/aria-query@5.0.4":
     resolution:
       {
@@ -4320,23 +4340,6 @@ packages:
         integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==
       }
 
-  "@tutti-os/infra@0.1.0":
-    resolution:
-      {
-        integrity: sha512-lywyLaQq+qTA+OizLZrjsZd6miidybpXph99BPg9bWIZcDE2T2Ux0vfTYj+yGGGB3kF6+bz1ZQf56tXKl9IdPw==
-      }
-    peerDependencies:
-      axios: ">=1.5.0"
-      lodash-es: ^4
-      react: ">=18.2.0"
-    peerDependenciesMeta:
-      axios:
-        optional: true
-      lodash-es:
-        optional: true
-      react:
-        optional: true
-
   abbrev@4.0.0:
     resolution:
       {
@@ -4630,12 +4633,6 @@ packages:
       }
     engines: { node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7 }
     hasBin: true
-
-  buffer-crc32@0.2.13:
-    resolution:
-      {
-        integrity: sha512-VO9Ht/+p3SN7SKWqcrgEzjGbRSJYTx+Q1pTQC0wrWqHx0vpJraQ6GtHx8tvcg1rlK1byhU5gccxgOgj7B0TDkQ==
-      }
 
   buffer-crc32@1.0.0:
     resolution:
@@ -5626,12 +5623,6 @@ packages:
     resolution:
       {
         integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==
-      }
-
-  fd-slicer@1.1.0:
-    resolution:
-      {
-        integrity: sha512-cE1qsB/VwyQozZ+q1dGxR8LBYNZeofhEdUNGSMbQD3Gw2lAzX9Zb3uIU6Ebc/Fmyjo9AWWfnn0AUCHqtevs/8g==
       }
 
   fdir@6.5.0:
@@ -10975,6 +10966,10 @@ snapshots:
       "@tiptap/core": 3.23.6(@tiptap/pm@3.23.6)
       "@tiptap/pm": 3.23.6
 
+  "@tutti-os/infra@0.1.0(react@19.2.6)":
+    optionalDependencies:
+      react: 19.2.6
+
   "@types/aria-query@5.0.4": {}
 
   "@types/babel__core@7.20.5":
@@ -11260,10 +11255,6 @@ snapshots:
 
   "@xterm/xterm@6.0.0": {}
 
-  "@tutti-os/infra@0.1.0(react@19.2.6)":
-    optionalDependencies:
-      react: 19.2.6
-
   abbrev@4.0.0: {}
 
   acorn-jsx@5.3.2(acorn@8.16.0):
@@ -11433,8 +11424,6 @@ snapshots:
       electron-to-chromium: 1.5.360
       node-releases: 2.0.44
       update-browserslist-db: 1.2.3(browserslist@4.28.2)
-
-  buffer-crc32@0.2.13: {}
 
   buffer-crc32@1.0.0: {}
 
@@ -12122,10 +12111,6 @@ snapshots:
   fastq@1.20.1:
     dependencies:
       reusify: 1.1.0
-
-  fd-slicer@1.1.0:
-    dependencies:
-      pend: 1.2.0
 
   fdir@6.5.0(picomatch@4.0.4):
     optionalDependencies:

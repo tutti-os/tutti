@@ -1,5 +1,11 @@
 import type { AgentSessionCommand } from "../../../shared/agentSessionTypes";
 
+export interface SlashCommandSearchItem {
+  aliases?: readonly string[];
+  description?: string;
+  name: string;
+}
+
 interface SlashCommandQueryMatch {
   query: string;
   prefix: string;
@@ -29,10 +35,10 @@ export function getSlashCommandQuery(draft: string): string | null {
   return getSlashCommandQueryMatch(draft)?.query ?? null;
 }
 
-export function filterSlashCommands(
-  commands: readonly AgentSessionCommand[],
+export function filterSlashCommands<T extends SlashCommandSearchItem>(
+  commands: readonly T[],
   query: string
-): AgentSessionCommand[] {
+): T[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
     return [...commands];
@@ -40,8 +46,13 @@ export function filterSlashCommands(
   return commands.filter((command) => {
     const name = command.name.trim().toLowerCase();
     const description = command.description?.trim().toLowerCase() ?? "";
+    const aliases = command.aliases ?? [];
     return (
-      name.startsWith(normalizedQuery) || description.includes(normalizedQuery)
+      name.startsWith(normalizedQuery) ||
+      aliases.some((alias) =>
+        alias.trim().toLowerCase().startsWith(normalizedQuery)
+      ) ||
+      description.includes(normalizedQuery)
     );
   });
 }

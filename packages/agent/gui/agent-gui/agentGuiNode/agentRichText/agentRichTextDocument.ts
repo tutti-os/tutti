@@ -6,8 +6,13 @@ import {
 } from "./agentFileMentionExtension";
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import { parseAgentSkillToken } from "./agentSkillTokenExtension";
+import {
+  parseAgentCapabilityToken,
+  type AgentCapabilityTokenOption
+} from "./agentCapabilityTokenExtension";
 
 export interface AgentRichTextDocumentOptions {
+  capabilities?: readonly AgentCapabilityTokenOption[];
   skills?: readonly AgentGUIProviderSkillOption[];
 }
 
@@ -51,6 +56,21 @@ function createParagraphFromText(
         attrs: parsedMention.item
       });
       index = parsedMention.end;
+      continue;
+    }
+
+    const parsedCapabilityToken = parseAgentCapabilityToken(
+      text,
+      index,
+      options.capabilities
+    );
+    if (parsedCapabilityToken) {
+      flushTextBuffer();
+      content.push({
+        type: "agentCapabilityToken",
+        attrs: parsedCapabilityToken.attrs
+      });
+      index = parsedCapabilityToken.end;
       continue;
     }
 
@@ -123,6 +143,9 @@ function nodeToPromptText(node: JSONContent): string {
     return formatAgentMentionMarkdown(attrsToMentionItem(node.attrs ?? {}));
   }
   if (node.type === "agentSkillToken") {
+    return typeof node.attrs?.trigger === "string" ? node.attrs.trigger : "";
+  }
+  if (node.type === "agentCapabilityToken") {
     return typeof node.attrs?.trigger === "string" ? node.attrs.trigger : "";
   }
   if (node.type === "hardBreak") {

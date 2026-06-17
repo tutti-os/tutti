@@ -34,6 +34,14 @@ test("workspace settings general panel lists language before default provider", 
   );
 });
 
+test("workspace settings general panel owns browser-use connection mode", () => {
+  assert.match(
+    source,
+    /function WorkspaceGeneralSettingsSection[\s\S]*workspace\.settings\.general\.browserUseConnectionModeLabel[\s\S]*workspace\.settings\.general\.browserUseConnectionModeOptions\.autoConnect[\s\S]*workspace\.settings\.general\.preventSleepLabel/
+  );
+  assert.match(source, /changeBrowserUseConnectionMode/);
+});
+
 test("workspace settings general panel does not expose update preferences", () => {
   assert.doesNotMatch(source, /WorkspaceUpdateSettingsSection/);
   assert.doesNotMatch(source, /workspace\.settings\.general\.updateTitle/);

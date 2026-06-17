@@ -26,7 +26,7 @@ import { AgentVerticalScrollArea } from "../shared/AgentVerticalScrollArea";
 import { managedAgentRoundedIconUrl } from "../shared/managedAgentIcons";
 import { workspaceAgentActivityStatusLabel } from "../shared/workspaceAgentActivityStatusLabel";
 import { workspaceAgentProviderLabel } from "../shared/workspaceAgentProviderLabel";
-import userAvatarPlaceholderUrl from "../app/renderer/assets/icons/user-avatar-placeholder.png";
+import { userAvatarPlaceholderUrl } from "../shared/userAvatarPlaceholder";
 import type { WorkspaceLinkAction } from "../actions/workspaceLinkActions";
 import {
   isWaitingMessageCenterItem,

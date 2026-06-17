@@ -1525,6 +1525,68 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/git-branches:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceGitBranches
+      tags:
+        - agent-session
+      summary: List git branches for a workspace working directory
+      parameters:
+        - in: query
+          name: workingDirectory
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Git branches for the working directory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionGitBranchesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    get:
+      operationId: listWorkspaceAgentSessionGitBranches
+      tags:
+        - agent-session
+      summary: List git branches for the agent session working directory
+      responses:
+        "200":
+          description: Git branches for the agent session working directory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionGitBranchesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/cancel:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -2960,6 +3022,11 @@ components:
       enum:
         - default
         - flat
+    DesktopBrowserUseConnectionMode:
+      type: string
+      enum:
+        - isolated
+        - autoConnect
     DesktopPreferences:
       type: object
       additionalProperties: false
@@ -2976,6 +3043,8 @@ components:
       properties:
         agentComposerDefaultsByProvider:
           $ref: "#/components/schemas/DesktopAgentComposerDefaultsByProvider"
+        browserUseConnectionMode:
+          $ref: "#/components/schemas/DesktopBrowserUseConnectionMode"
         defaultAgentProvider:
           $ref: "#/components/schemas/WorkspaceAgentProvider"
         dockIconStyle:
@@ -4060,6 +4129,9 @@ components:
         planMode:
           type: boolean
           nullable: true
+        browserUse:
+          type: boolean
+          nullable: true
         reasoningEffort:
           type: string
           nullable: true
@@ -4678,6 +4750,9 @@ components:
         planMode:
           type: boolean
           nullable: true
+        browserUse:
+          type: boolean
+          nullable: true
         visible:
           type: boolean
           nullable: true
@@ -4737,6 +4812,18 @@ components:
         name:
           type: string
         data:
+          type: string
+    WorkspaceAgentSessionGitBranchesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - branches
+      properties:
+        branches:
+          type: array
+          items:
+            type: string
+        currentBranch:
           type: string
     UserProject:
       type: object

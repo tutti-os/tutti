@@ -10,6 +10,8 @@ coverage/
 .pnpm-store/
 .cache/
 .superpowers/
+.claude/
+.agents/
 docs/superpowers/
 __pycache__/
 *.py[cod]
@@ -37,6 +39,7 @@ __pycache__/
 apps/desktop/build/tuttid/
 apps/desktop/build/tuttid-dev/
 apps/desktop/build/tutti/
+apps/desktop/build/browser-mcp/
 apps/cli/build/
 
 /tuttid

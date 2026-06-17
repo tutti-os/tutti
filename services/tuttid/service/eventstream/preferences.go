@@ -28,14 +28,15 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			AgentComposerDefaultsByProvider: desktopAgentComposerDefaultsByProviderPayloadFromBiz(
 				preferences.AgentComposerDefaultsByProvider,
 			),
-			DefaultAgentProvider: preferences.DefaultAgentProvider,
-			DockIconStyle:        preferences.DockIconStyle,
-			DockPlacement:        preferences.DockPlacement,
-			Locale:               preferences.Locale,
-			SleepPreventionMode:  preferences.SleepPreventionMode,
-			ThemeSource:          preferences.ThemeSource,
-			UpdateChannel:        preferences.UpdateChannel,
-			UpdatePolicy:         preferences.UpdatePolicy,
+			BrowserUseConnectionMode: preferences.BrowserUseConnectionMode,
+			DefaultAgentProvider:     preferences.DefaultAgentProvider,
+			DockIconStyle:            preferences.DockIconStyle,
+			DockPlacement:            preferences.DockPlacement,
+			Locale:                   preferences.Locale,
+			SleepPreventionMode:      preferences.SleepPreventionMode,
+			ThemeSource:              preferences.ThemeSource,
+			UpdateChannel:            preferences.UpdateChannel,
+			UpdatePolicy:             preferences.UpdatePolicy,
 		},
 	})
 	if err != nil {
@@ -57,6 +58,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 
 		_, err = mutator.Put(ctx, preferencesservice.PutInput{
 			AgentComposerDefaultsByProvider: decoded.AgentComposerDefaultsByProvider,
+			BrowserUseConnectionMode:        decoded.BrowserUseConnectionMode,
 			DefaultAgentProvider:            decoded.DefaultAgentProvider,
 			DockIconStyle:                   decoded.DockIconStyle,
 			DockPlacement:                   decoded.DockPlacement,
@@ -75,6 +77,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 
 type decodedDesktopPreferencesMutationPayload struct {
 	AgentComposerDefaultsByProvider map[string]preferencesbiz.AgentComposerDefaults
+	BrowserUseConnectionMode        string
 	DefaultAgentProvider            string
 	DockIconStyle                   string
 	DockPlacement                   string
@@ -94,14 +97,15 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromPayload(
 			decoded.Preferences.AgentComposerDefaultsByProvider,
 		),
-		DefaultAgentProvider: decoded.Preferences.DefaultAgentProvider,
-		DockIconStyle:        decoded.Preferences.DockIconStyle,
-		DockPlacement:        decoded.Preferences.DockPlacement,
-		Locale:               decoded.Preferences.Locale,
-		SleepPreventionMode:  decoded.Preferences.SleepPreventionMode,
-		ThemeSource:          decoded.Preferences.ThemeSource,
-		UpdateChannel:        decoded.Preferences.UpdateChannel,
-		UpdatePolicy:         decoded.Preferences.UpdatePolicy,
+		BrowserUseConnectionMode: decoded.Preferences.BrowserUseConnectionMode,
+		DefaultAgentProvider:     decoded.Preferences.DefaultAgentProvider,
+		DockIconStyle:            decoded.Preferences.DockIconStyle,
+		DockPlacement:            decoded.Preferences.DockPlacement,
+		Locale:                   decoded.Preferences.Locale,
+		SleepPreventionMode:      decoded.Preferences.SleepPreventionMode,
+		ThemeSource:              decoded.Preferences.ThemeSource,
+		UpdateChannel:            decoded.Preferences.UpdateChannel,
+		UpdatePolicy:             decoded.Preferences.UpdatePolicy,
 	}, nil
 }
 

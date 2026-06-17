@@ -933,6 +933,53 @@ func TestDefaultPreparerGeminiUsesSessionScopedHome(t *testing.T) {
 	}
 }
 
+func TestCodexPreparerSkipsUserBrowserSkillWhenBrowserUseEnabled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", "browser", "SKILL.md"), "---\nname: browser\n---\nExternal browser\n")
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", "caveman", "SKILL.md"), "---\nname: caveman\n---\nCaveman mode\n")
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "codex",
+		Cwd:            cwd,
+		BrowserUse:     true,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "skills", "browser")); !os.IsNotExist(err) {
+		t.Fatalf("external browser skill should be omitted when browser-use is enabled, err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "skills", "caveman")); err != nil {
+		t.Fatalf("unrelated user skill should still be exposed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "skills", "browser-use", "SKILL.md")); err != nil {
+		t.Fatalf("browser-use skill missing: %v", err)
+	}
+	codexAgents, err := os.ReadFile(filepath.Join(codexHome, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("codex AGENTS.md missing: %v", err)
+	}
+	if !strings.Contains(string(codexAgents), "`browser-use`") {
+		t.Fatalf("codex AGENTS.md content = %q, want browser-use policy", string(codexAgents))
+	}
+}
+
 func envValue(env []string, key string) string {
 	prefix := key + "="
 	for _, item := range env {

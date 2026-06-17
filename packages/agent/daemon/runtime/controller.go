@@ -396,6 +396,10 @@ func normalizeSessionSettings(settings *SessionSettings, provider string, defaul
 	normalized.ReasoningEffort = strings.TrimSpace(settings.ReasoningEffort)
 	normalized.Speed = strings.TrimSpace(settings.Speed)
 	normalized.PlanMode = settings.PlanMode
+	if settings.BrowserUse != nil {
+		value := *settings.BrowserUse
+		normalized.BrowserUse = &value
+	}
 	if mode := strings.TrimSpace(settings.PermissionModeID); mode != "" {
 		normalized.PermissionModeID = normalizePermissionModeIDWithFallback(provider, mode, defaultPermissionModeID)
 	}
@@ -734,6 +738,10 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 	}
 	if input.Settings.PlanMode != nil {
 		settings.PlanMode = *input.Settings.PlanMode
+	}
+	if input.Settings.BrowserUse != nil {
+		value := *input.Settings.BrowserUse
+		settings.BrowserUse = &value
 	}
 	permissionChanged := false
 	if input.Settings.PermissionModeID != nil {
@@ -1120,12 +1128,49 @@ func sessionSettingsPayload(settings *SessionSettings) map[string]any {
 	if settings == nil {
 		return nil
 	}
-	return map[string]any{
+	payload := map[string]any{
 		"model":            strings.TrimSpace(settings.Model),
 		"permissionModeId": strings.TrimSpace(settings.PermissionModeID),
 		"planMode":         settings.PlanMode,
 		"reasoningEffort":  strings.TrimSpace(settings.ReasoningEffort),
 	}
+	if settings.BrowserUse != nil {
+		payload["browserUse"] = *settings.BrowserUse
+	}
+	return payload
+}
+
+func sessionSettingsFromPayload(payload map[string]any) *SessionSettings {
+	if len(payload) == 0 {
+		return nil
+	}
+	settings := &SessionSettings{
+		Model:            strings.TrimSpace(payloadStringValue(payload, "model")),
+		PermissionModeID: strings.TrimSpace(payloadStringValue(payload, "permissionModeId")),
+		PlanMode:         payloadBoolValue(payload, "planMode"),
+		ReasoningEffort:  strings.TrimSpace(payloadStringValue(payload, "reasoningEffort")),
+	}
+	if value, ok := payload["browserUse"].(bool); ok {
+		settings.BrowserUse = &value
+	}
+	if strings.TrimSpace(settings.Model) == "" &&
+		strings.TrimSpace(settings.PermissionModeID) == "" &&
+		strings.TrimSpace(settings.ReasoningEffort) == "" &&
+		!settings.PlanMode &&
+		settings.BrowserUse == nil {
+		return nil
+	}
+	return settings
+}
+
+func payloadStringValue(payload map[string]any, key string) string {
+	value, _ := payload[key].(string)
+	return value
+}
+
+func payloadBoolValue(payload map[string]any, key string) bool {
+	value, _ := payload[key].(bool)
+	return value
 }
 
 func runtimeContextString(runtimeContext map[string]any, key string) string {

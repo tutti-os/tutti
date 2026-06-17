@@ -2,6 +2,7 @@ import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentProvider,
+  DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
   DesktopSleepPreventionMode,
@@ -14,6 +15,7 @@ import type { DesktopPreferencesStoreState } from "../desktopPreferencesTypes.ts
 
 export function createDesktopPreferencesStore(input: {
   agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
+  browserUseConnectionMode: DesktopBrowserUseConnectionMode;
   defaultAgentProvider: DesktopAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
@@ -25,6 +27,7 @@ export function createDesktopPreferencesStore(input: {
 }): DesktopPreferencesStoreState {
   return proxy({
     changingDefaultAgentProvider: null,
+    changingBrowserUseConnectionMode: null,
     changingDockIconStyle: null,
     changingDockPlacement: null,
     changingLocale: null,
@@ -34,6 +37,7 @@ export function createDesktopPreferencesStore(input: {
     changingUpdatePolicy: null,
     agentComposerDefaultsByProvider:
       input.agentComposerDefaultsByProvider ?? {},
+    browserUseConnectionMode: input.browserUseConnectionMode,
     defaultAgentProvider: input.defaultAgentProvider,
     dockIconStyle: input.dockIconStyle,
     dockPlacement: input.dockPlacement,

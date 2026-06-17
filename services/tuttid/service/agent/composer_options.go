@@ -6,6 +6,7 @@ import (
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 )
 
 type PermissionModeSemantic string
@@ -50,8 +51,11 @@ type ComposerSettings struct {
 	Model            string
 	PermissionModeID string
 	PlanMode         bool
-	ReasoningEffort  string
-	Speed            string
+	// BrowserUse is tri-state: nil means "use the default" (on), so the
+	// composer can distinguish an explicit opt-out from an unset value.
+	BrowserUse      *bool
+	ReasoningEffort string
+	Speed           string
 }
 
 type ComposerOptionsInput struct {
@@ -89,6 +93,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Model:            strings.TrimSpace(input.Settings.Model),
 		PermissionModeID: strings.TrimSpace(input.Settings.PermissionModeID),
 		PlanMode:         input.Settings.PlanMode,
+		BrowserUse:       input.Settings.BrowserUse,
 		ReasoningEffort:  strings.TrimSpace(input.Settings.ReasoningEffort),
 		Speed:            strings.TrimSpace(input.Settings.Speed),
 	})
@@ -135,18 +140,26 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 // adapter-reported runtimeContext.capabilities takes precedence (GUI-side
 // resolution). Keys mirror packages/agent/daemon/runtime/capabilities.go.
 func composerProviderCapabilities(provider string) []string {
+	var capabilities []string
 	switch agentprovider.Normalize(provider) {
 	case agentprovider.ClaudeCode:
-		return []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"}
+		capabilities = []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"}
 	case agentprovider.Codex:
 		// planMode pre-session optimism: the adapter re-negotiates at session
 		// start (collaborationMode/list) and drops it for older binaries.
-		return []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"}
+		capabilities = []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"}
 	case agentprovider.Gemini, agentprovider.Hermes, agentprovider.Nexight, agentprovider.OpenClaw:
-		return []string{"interrupt"}
+		capabilities = []string{"interrupt"}
 	default:
 		return nil
 	}
+	// Browser use is delivered as a default MCP server to every provider, so the
+	// composer advertises it up front when enabled. Live sessions re-report it
+	// from session env (runtime adapters), which takes precedence in the GUI.
+	if agentsidecarservice.BrowserUseDefaultEnabled() {
+		capabilities = append(capabilities, "browserUse")
+	}
+	return capabilities
 }
 
 func resolveComposerEffectiveSettings(
@@ -172,6 +185,10 @@ func resolveComposerEffectiveSettings(
 	}
 	if requested.ReasoningEffort != "" {
 		effective.ReasoningEffort = requested.ReasoningEffort
+	}
+	if requested.BrowserUse != nil {
+		value := *requested.BrowserUse
+		effective.BrowserUse = &value
 	}
 	if requested.Speed != "" {
 		effective.Speed = requested.Speed
@@ -307,8 +324,29 @@ func clampComposerPlanModeForProvider(provider string, planMode bool) bool {
 // composerProviderSupportsPlanMode mirrors the static capability defaults so
 // the daemon clamps plan mode for providers that never negotiate it.
 func composerProviderSupportsPlanMode(provider string) bool {
-	for _, capability := range composerProviderCapabilities(provider) {
-		if capability == "planMode" {
+	return composerProviderSupportsCapability(provider, "planMode")
+}
+
+// clampComposerBrowserUseForProvider resolves the tri-state browser-use toggle
+// to a concrete bool. Browser use defaults on (nil request → on) but is forced
+// off for providers that never advertise the capability.
+func clampComposerBrowserUseForProvider(provider string, browserUse *bool) bool {
+	if !composerProviderSupportsBrowserUse(agentprovider.Normalize(provider)) {
+		return false
+	}
+	// nil means "use the default" (on).
+	return browserUse == nil || *browserUse
+}
+
+// composerProviderSupportsBrowserUse mirrors the static capability defaults so
+// the daemon clamps browser use for providers that never advertise it.
+func composerProviderSupportsBrowserUse(provider string) bool {
+	return composerProviderSupportsCapability(provider, "browserUse")
+}
+
+func composerProviderSupportsCapability(provider string, capability string) bool {
+	for _, advertised := range composerProviderCapabilities(provider) {
+		if advertised == capability {
 			return true
 		}
 	}

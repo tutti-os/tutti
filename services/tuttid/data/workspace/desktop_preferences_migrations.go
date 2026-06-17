@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS desktop_preferences (
   locale TEXT NOT NULL,
   theme_source TEXT NOT NULL,
   sleep_prevention_mode TEXT NOT NULL DEFAULT 'never',
+  browser_use_connection_mode TEXT NOT NULL DEFAULT 'isolated',
   update_channel TEXT NOT NULL DEFAULT 'stable',
   update_policy TEXT NOT NULL DEFAULT 'prompt',
   updated_at_unix_ms INTEGER NOT NULL
@@ -250,6 +251,38 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 `, schemaMigrationDesktopPreferencesAgentComposerDefaultsV1, now)
 	if err != nil {
 		return fmt.Errorf("migrate workspace database for desktop agent composer defaults: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesBrowserUseConnectionModeV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesBrowserUseConnectionModeV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	hasBrowserUseConnectionMode, err := s.hasColumn(ctx, "desktop_preferences", "browser_use_connection_mode")
+	if err != nil {
+		return err
+	}
+	if !hasBrowserUseConnectionMode {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN browser_use_connection_mode TEXT NOT NULL DEFAULT 'isolated';`); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop browser use connection mode: %w", err)
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesBrowserUseConnectionModeV1, now)
+	if err != nil {
+		return fmt.Errorf("migrate workspace database for desktop browser use connection mode: %w", err)
 	}
 
 	return nil

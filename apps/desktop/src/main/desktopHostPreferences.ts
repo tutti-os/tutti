@@ -5,6 +5,8 @@ import type {
   PutDesktopPreferencesRequest
 } from "@tutti-os/client-tuttid-ts";
 import {
+  defaultDesktopBrowserUseConnectionMode,
+  isDesktopBrowserUseConnectionMode,
   normalizeDesktopAgentComposerDefaultsByProvider,
   type DesktopAgentComposerDefaultsByProvider,
   defaultDesktopAgentProvider,
@@ -14,6 +16,7 @@ import {
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
   type DesktopAgentProvider,
+  type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
   type DesktopSleepPreventionMode,
@@ -32,6 +35,7 @@ const updateChannelDefaultMigrationID = "desktop-update-channel-default-rc-v1";
 
 export interface DesktopHostPreferencesState {
   getAgentComposerDefaultsByProvider(): DesktopAgentComposerDefaultsByProvider;
+  getBrowserUseConnectionMode(): DesktopBrowserUseConnectionMode;
   getDefaultAgentProvider(): DesktopAgentProvider;
   getDockIconStyle(): DesktopDockIconStyle;
   getDockPlacement(): DesktopDockPlacement;
@@ -43,6 +47,7 @@ export interface DesktopHostPreferencesState {
   subscribe(listener: () => void): () => void;
   sync(input: {
     agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
+    browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
     defaultAgentProvider?: DesktopAgentProvider;
     dockIconStyle?: DesktopDockIconStyle;
     dockPlacement?: DesktopDockPlacement;
@@ -72,6 +77,11 @@ export async function createDesktopHostPreferencesState(
     normalizeDesktopAgentComposerDefaultsByProvider(
       initialPreferences.agentComposerDefaultsByProvider
     );
+  let browserUseConnectionMode = isDesktopBrowserUseConnectionMode(
+    initialPreferences.browserUseConnectionMode
+  )
+    ? initialPreferences.browserUseConnectionMode
+    : defaultDesktopBrowserUseConnectionMode;
   let defaultAgentProvider = initialPreferences.defaultAgentProvider;
   let dockIconStyle = initialPreferences.dockIconStyle;
   let dockPlacement = initialPreferences.dockPlacement;
@@ -85,6 +95,9 @@ export async function createDesktopHostPreferencesState(
   return {
     getAgentComposerDefaultsByProvider() {
       return agentComposerDefaultsByProvider;
+    },
+    getBrowserUseConnectionMode() {
+      return browserUseConnectionMode;
     },
     getDefaultAgentProvider() {
       return defaultAgentProvider;
@@ -119,6 +132,7 @@ export async function createDesktopHostPreferencesState(
     sync(input) {
       const previousAgentComposerDefaultsByProvider =
         agentComposerDefaultsByProvider;
+      const previousBrowserUseConnectionMode = browserUseConnectionMode;
       const previousDefaultAgentProvider = defaultAgentProvider;
       const previousDockIconStyle = dockIconStyle;
       const previousDockPlacement = dockPlacement;
@@ -132,6 +146,9 @@ export async function createDesktopHostPreferencesState(
           normalizeDesktopAgentComposerDefaultsByProvider(
             input.agentComposerDefaultsByProvider
           );
+      }
+      if (input.browserUseConnectionMode) {
+        browserUseConnectionMode = input.browserUseConnectionMode;
       }
       if (input.defaultAgentProvider) {
         defaultAgentProvider = input.defaultAgentProvider;
@@ -160,6 +177,7 @@ export async function createDesktopHostPreferencesState(
       if (
         agentComposerDefaultsByProvider !==
           previousAgentComposerDefaultsByProvider ||
+        browserUseConnectionMode !== previousBrowserUseConnectionMode ||
         defaultAgentProvider !== previousDefaultAgentProvider ||
         dockIconStyle !== previousDockIconStyle ||
         dockPlacement !== previousDockPlacement ||
@@ -193,6 +211,7 @@ async function resolveInitialDesktopPreferences(
       await options.tuttidClient.putDesktopPreferences({
         preferences: {
           agentComposerDefaultsByProvider: {},
+          browserUseConnectionMode: defaultDesktopBrowserUseConnectionMode,
           defaultAgentProvider: defaultDesktopAgentProvider,
           dockIconStyle: defaultDesktopDockIconStyle,
           dockPlacement: defaultDesktopDockPlacement,
@@ -210,6 +229,7 @@ async function resolveInitialDesktopPreferences(
     });
     return {
       agentComposerDefaultsByProvider: {},
+      browserUseConnectionMode: defaultDesktopBrowserUseConnectionMode,
       defaultAgentProvider: defaultDesktopAgentProvider,
       dockIconStyle: defaultDesktopDockIconStyle,
       dockPlacement: defaultDesktopDockPlacement,

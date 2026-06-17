@@ -28,6 +28,10 @@
         "openclaw": { "$ref": "#/$defs/agentComposerDefaults" }
       }
     },
+    "browserUseConnectionMode": {
+      "type": "string",
+      "enum": ["isolated", "autoConnect"]
+    },
     "defaultAgentProvider": {
       "type": "string",
       "enum": [

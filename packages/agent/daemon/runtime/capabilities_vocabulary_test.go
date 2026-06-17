@@ -35,6 +35,7 @@ func TestCapabilityVocabularyMatchesTypeScript(t *testing.T) {
 		CapabilityRateLimits,
 		CapabilityPlanMode,
 		CapabilityInterrupt,
+		CapabilityBrowserUse,
 	}
 	sort.Strings(got)
 	sort.Strings(want)

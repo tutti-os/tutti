@@ -539,6 +539,8 @@ function createDependenciesStub(): {
       cancelWorkspaceAgentSessionWithResult: fail,
       sendWorkspaceAgentSessionInput: fail,
       readWorkspaceAgentSessionAttachment: fail,
+      listWorkspaceAgentSessionGitBranches: fail,
+      listWorkspaceGitBranches: fail,
       updateWorkspaceAgentSessionSettings: fail,
       updateWorkspaceAgentSessionPin: fail,
       submitWorkspaceAgentInteractive: fail,

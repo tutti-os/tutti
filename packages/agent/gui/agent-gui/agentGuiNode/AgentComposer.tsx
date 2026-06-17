@@ -31,8 +31,14 @@ import {
 } from "../../app/renderer/components/ui/tooltip";
 import type { AgentConversationPromptVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import { cn } from "../../app/renderer/lib/utils";
-import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
+import {
+  AddIcon,
+  menuItemClassName,
+  Select,
+  SelectTrigger
+} from "@tutti-os/ui-system";
 import { X } from "lucide-react";
+import { makeAtPanelKeyDown } from "@tutti-os/ui-rich-text/at-panel";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import {
@@ -61,6 +67,9 @@ import {
   resolveSlashCommandsForProvider,
   resolveSlashCommandSelectionEffect,
   resolveSlashCommandSubmitEffect,
+  resolveTuttiBrowserUseSubmitEffect,
+  type AgentSlashCommand,
+  type AgentSlashCommandCapability,
   type SlashCommandSelectionEffect
 } from "./model/agentSlashCommandProviderPolicy";
 import {
@@ -95,6 +104,7 @@ import {
 } from "./agentRichText/agentRichTextPromptImages";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto/agentSession";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
+import type { AgentCapabilityTokenOption } from "./agentRichText/agentCapabilityTokenExtension";
 import {
   AgentMentionSearchController,
   type AgentMentionFilterId,
@@ -117,6 +127,10 @@ import {
 } from "../../actions/workspaceLinkActions";
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
 import { hasWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
+import {
+  AgentReviewBranchController,
+  type AgentReviewBranchState
+} from "./AgentReviewBranchController";
 
 export interface AgentComposerProps {
   workspaceId: string;
@@ -184,6 +198,8 @@ export interface AgentComposerProps {
     planModeOnLabel: string;
     planModeOffLabel: string;
     planUnavailable: string;
+    browserUseCapabilityLabel: string;
+    browserUseCapabilityDescription: string;
     queuedLabel: string;
     sendQueuedPromptNext: string;
     editQueuedPrompt: string;
@@ -194,6 +210,7 @@ export interface AgentComposerProps {
     slashCommandPalette: string;
     skillPickerPalette: string;
     slashPaletteCommandsGroup: string;
+    slashPaletteCapabilitiesGroup: string;
     slashPaletteSkillsGroup: string;
     slashStatusTitle: string;
     slashStatusSession: string;
@@ -235,6 +252,24 @@ export interface AgentComposerProps {
     projectLocked: string;
     projectMissingDescription: string;
     promptTipsPrefix: string;
+    reviewPicker: {
+      title: string;
+      targetLabel: string;
+      searchPlaceholder: string;
+      noResults: string;
+      uncommitted: string;
+      baseBranch: string;
+      commit: string;
+      custom: string;
+      branchLabel: string;
+      branchPlaceholder: string;
+      branchLoading: string;
+      branchEmpty: string;
+      commitPlaceholder: string;
+      customPlaceholder: string;
+      submit: string;
+      cancel: string;
+    };
   };
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   onDraftContentChange: (draftContent: AgentComposerDraft) => void;
@@ -247,6 +282,7 @@ export interface AgentComposerProps {
     reasoningEffort?: string | null;
     speed?: string | null;
     planMode?: boolean;
+    browserUse?: boolean;
     permissionModeId?: string | null;
   }) => void;
   onSubmit: (content: AgentPromptContentBlock[]) => void;
@@ -265,8 +301,19 @@ export interface AgentComposerProps {
   onRequestWorkspaceReferences?:
     | (() => Promise<WorkspaceFileReference[]>)
     | null;
+  onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   richTextAtProviders?: readonly AgentRichTextAtProvider[];
 }
+
+export interface AgentComposerGitBranches {
+  branches: readonly string[];
+  currentBranch?: string | null;
+}
+
+export type AgentComposerGitBranchLoader = (input: {
+  agentSessionId?: string | null;
+  workingDirectory?: string | null;
+}) => Promise<AgentComposerGitBranches>;
 
 export interface AgentComposerPromptTip {
   id: string;
@@ -526,6 +573,332 @@ function AgentSlashStatusPanel({
   );
 }
 
+type ReviewStage = "root" | "base" | "commit" | "custom";
+
+interface ReviewMenuEntry {
+  key: string;
+  label: string;
+  description?: string;
+  disabled?: boolean;
+  onSelect: () => void;
+}
+
+const reviewMenuStyles = {
+  panel:
+    "agent-gui-node__slash-status-panel nodrag flex max-h-[280px] flex-col gap-1 overflow-hidden [-webkit-app-region:no-drag]",
+  search:
+    "nodrag h-8 w-full shrink-0 rounded-[6px] border-0 bg-transparent px-2.5 text-[11px] leading-4 text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus-visible:outline-none [-webkit-app-region:no-drag]",
+  list: "flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto",
+  option: cn(
+    menuItemClassName,
+    "nodrag min-h-9 w-full min-w-0 justify-start overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left hover:bg-[var(--transparency-block)] focus:bg-[var(--transparency-block)] focus-visible:outline-none data-[highlighted]:bg-[var(--transparency-block)] active:bg-[var(--transparency-active)] disabled:pointer-events-none disabled:opacity-50"
+  ),
+  copy: "flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden leading-[16px]",
+  name: "min-w-0 shrink-0 truncate text-[11px] font-semibold text-[var(--text-primary)]",
+  description:
+    "min-w-0 flex-1 truncate text-[11px] font-normal text-[var(--text-secondary)]",
+  message:
+    "select-none px-2.5 py-2 text-[11px] leading-4 text-[var(--text-secondary)]"
+};
+
+// A staged, searchable command menu (root scopes -> branch/commit/custom),
+// mirroring the slash-command palette interaction instead of nested dropdowns.
+function AgentReviewPickerPanel({
+  labels,
+  onRequestGitBranches,
+  onSubmitReview,
+  onClose
+}: {
+  labels: AgentComposerProps["labels"]["reviewPicker"];
+  onRequestGitBranches?: (() => Promise<AgentComposerGitBranches>) | null;
+  onSubmitReview: (command: string) => void;
+  onClose: () => void;
+}): React.JSX.Element {
+  const [stage, setStage] = useState<ReviewStage>("root");
+  const [query, setQuery] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const highlightedOptionRef = useRef<HTMLButtonElement | null>(null);
+
+  // The controller owns all branch-load orchestration (lazy load, in-flight
+  // de-duplication, caching, loading/error state). It is created inside the
+  // subscribe effect (and held in a ref) rather than in `useState`, mirroring
+  // AgentMentionSearchController: a persisted instance disposed on effect
+  // cleanup would stay permanently disposed after React StrictMode's
+  // mount -> cleanup -> remount cycle, so `ensureLoaded` would never run.
+  const reviewBranchControllerRef = useRef<AgentReviewBranchController | null>(
+    null
+  );
+  const [branchState, setBranchState] = useState<AgentReviewBranchState>({
+    status: "idle",
+    branches: [],
+    currentBranch: null,
+    error: null
+  });
+
+  useEffect(() => {
+    const controller = new AgentReviewBranchController();
+    reviewBranchControllerRef.current = controller;
+    const unsubscribe = controller.subscribe(setBranchState);
+    return () => {
+      unsubscribe();
+      controller.dispose();
+      reviewBranchControllerRef.current = null;
+    };
+  }, []);
+
+  // Keep the controller pointed at the current loader and trigger a lazy load
+  // once the user drills into the base-branch stage.
+  useEffect(() => {
+    const controller = reviewBranchControllerRef.current;
+    if (!controller) {
+      return;
+    }
+    controller.setLoader(onRequestGitBranches ?? null);
+    if (stage === "base") {
+      controller.ensureLoaded();
+    }
+  }, [onRequestGitBranches, stage]);
+
+  // Keep focus in the search field as the user drills between stages.
+  useEffect(() => {
+    searchInputRef.current?.focus();
+  }, [stage]);
+
+  const submit = useCallback(
+    (command: string): void => {
+      onSubmitReview(command);
+    },
+    [onSubmitReview]
+  );
+
+  const goToStage = useCallback((next: ReviewStage): void => {
+    setStage(next);
+    setQuery("");
+    setHighlightedIndex(0);
+  }, []);
+
+  const goBackToRoot = useCallback((): void => {
+    setStage("root");
+    setQuery("");
+    setHighlightedIndex(0);
+  }, []);
+
+  const trimmedQuery = query.trim();
+  const normalizedQuery = trimmedQuery.toLowerCase();
+
+  const entries = useMemo<ReviewMenuEntry[]>(() => {
+    if (stage === "root") {
+      const options: ReviewMenuEntry[] = [
+        {
+          key: "uncommitted",
+          label: labels.uncommitted,
+          onSelect: () => submit("/review")
+        },
+        {
+          key: "base",
+          label: labels.baseBranch,
+          onSelect: () => goToStage("base")
+        },
+        {
+          key: "commit",
+          label: labels.commit,
+          onSelect: () => goToStage("commit")
+        },
+        {
+          key: "custom",
+          label: labels.custom,
+          onSelect: () => goToStage("custom")
+        }
+      ];
+      if (normalizedQuery === "") {
+        return options;
+      }
+      return options.filter((option) =>
+        option.label.toLowerCase().includes(normalizedQuery)
+      );
+    }
+    if (stage === "base") {
+      const branches =
+        normalizedQuery === ""
+          ? branchState.branches
+          : branchState.branches.filter((name) =>
+              name.toLowerCase().includes(normalizedQuery)
+            );
+      return branches.map((name) => ({
+        key: `branch:${name}`,
+        label: name,
+        onSelect: () => submit(`/review base:${name}`)
+      }));
+    }
+    // commit / custom: the search box doubles as the free-text input; the single
+    // confirm entry submits the typed value when non-empty.
+    const prefix = stage === "commit" ? "commit" : "custom";
+    return [
+      {
+        key: `${prefix}-confirm`,
+        label: labels.submit,
+        description: trimmedQuery || undefined,
+        disabled: trimmedQuery === "",
+        onSelect: () => {
+          if (trimmedQuery !== "") {
+            submit(`/review ${prefix}:${trimmedQuery}`);
+          }
+        }
+      }
+    ];
+  }, [
+    stage,
+    normalizedQuery,
+    trimmedQuery,
+    branchState.branches,
+    labels.uncommitted,
+    labels.baseBranch,
+    labels.commit,
+    labels.custom,
+    labels.submit,
+    submit,
+    goToStage
+  ]);
+
+  const safeHighlightedIndex =
+    entries.length === 0 ? -1 : Math.min(highlightedIndex, entries.length - 1);
+
+  // Keep the highlighted entry visible while navigating a long list with the
+  // arrow keys (e.g. many branches).
+  useEffect(() => {
+    highlightedOptionRef.current?.scrollIntoView({ block: "nearest" });
+  }, [safeHighlightedIndex]);
+
+  const searchPlaceholder =
+    stage === "base"
+      ? labels.branchPlaceholder
+      : stage === "commit"
+        ? labels.commitPlaceholder
+        : stage === "custom"
+          ? labels.customPlaceholder
+          : labels.searchPlaceholder;
+
+  // Shown in place of the list when there are no entries (branch loading /
+  // empty repo / no search matches).
+  let emptyMessage = labels.noResults;
+  if (stage === "base") {
+    if (branchState.status === "loading") {
+      emptyMessage = labels.branchLoading;
+    } else if (branchState.branches.length === 0) {
+      emptyMessage = labels.branchEmpty;
+    }
+  }
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>): void => {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setHighlightedIndex((current) =>
+          entries.length === 0 ? 0 : Math.min(current + 1, entries.length - 1)
+        );
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setHighlightedIndex((current) => Math.max(current - 1, 0));
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        const entry = entries[safeHighlightedIndex];
+        if (entry && !entry.disabled) {
+          entry.onSelect();
+        }
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (stage === "root") {
+          onClose();
+        } else {
+          goBackToRoot();
+        }
+        return;
+      }
+      if (event.key === "Backspace" && query === "" && stage !== "root") {
+        event.preventDefault();
+        goBackToRoot();
+      }
+    },
+    [entries, safeHighlightedIndex, stage, query, onClose, goBackToRoot]
+  );
+
+  return (
+    <section
+      className={reviewMenuStyles.panel}
+      data-testid="agent-gui-review-picker-panel"
+      role="dialog"
+      aria-label={labels.title}
+    >
+      <input
+        ref={searchInputRef}
+        type="search"
+        className={reviewMenuStyles.search}
+        value={query}
+        placeholder={searchPlaceholder}
+        aria-label={searchPlaceholder}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setHighlightedIndex(0);
+        }}
+        onKeyDown={handleKeyDown}
+      />
+      <div
+        className={reviewMenuStyles.list}
+        role="listbox"
+        aria-label={labels.title}
+      >
+        {entries.length === 0 ? (
+          <div className={reviewMenuStyles.message}>{emptyMessage}</div>
+        ) : (
+          entries.map((entry, index) => {
+            const isHighlighted = index === safeHighlightedIndex;
+            return (
+              <button
+                key={entry.key}
+                ref={isHighlighted ? highlightedOptionRef : null}
+                type="button"
+                className={cn(
+                  reviewMenuStyles.option,
+                  isHighlighted && "bg-[var(--transparency-block)]"
+                )}
+                role="option"
+                aria-selected={isHighlighted}
+                data-highlighted={isHighlighted ? "" : undefined}
+                disabled={entry.disabled}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  if (!entry.disabled) {
+                    entry.onSelect();
+                  }
+                }}
+              >
+                <span className={reviewMenuStyles.copy}>
+                  <span className={reviewMenuStyles.name}>{entry.label}</span>
+                  {entry.description ? (
+                    <span className={reviewMenuStyles.description}>
+                      {entry.description}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function AgentComposer({
   workspaceId,
   workspacePath,
@@ -572,12 +945,14 @@ export function AgentComposer({
   onSubmitInteractivePrompt,
   onLinkAction,
   onRequestWorkspaceReferences = null,
+  onRequestGitBranches = null,
   richTextAtProviders = EMPTY_RICH_TEXT_AT_PROVIDERS
 }: AgentComposerProps): React.JSX.Element {
   "use memo";
   const draftPrompt = draftContent.prompt;
   const draftImages = draftContent.images;
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
+  const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mentionHighlightedKey, setMentionHighlightedKey] = useState<
     string | null
@@ -642,9 +1017,16 @@ export function AgentComposer({
         provider,
         commands: availableCommands,
         hasCompactableContext,
-        compactSupported
+        compactSupported,
+        browserSupported: Boolean(composerSettings.supportsBrowser)
       }),
-    [availableCommands, compactSupported, hasCompactableContext, provider]
+    [
+      availableCommands,
+      compactSupported,
+      composerSettings.supportsBrowser,
+      hasCompactableContext,
+      provider
+    ]
   );
   const filteredCommands = useMemo(
     () =>
@@ -664,15 +1046,40 @@ export function AgentComposer({
           }),
     [availableSkills, skillQueryMatch]
   );
+  const availableCapabilities = useMemo<AgentCapabilityTokenOption[]>(
+    () =>
+      composerSettings.supportsBrowser
+        ? [
+            {
+              capability: "browserUse",
+              label: labels.browserUseCapabilityLabel,
+              name: "browser",
+              trigger: "/browser"
+            }
+          ]
+        : [],
+    [composerSettings.supportsBrowser, labels.browserUseCapabilityLabel]
+  );
   const slashPaletteEntries = useMemo<AgentSlashPaletteEntry[]>(() => {
     const commandEntries: AgentSlashPaletteEntry[] = filteredCommands.map(
-      (command) => ({
-        type: "command",
-        key: `command:${command.name}`,
-        label: labelForSlashCommand(command),
-        ...(command.description ? { description: command.description } : {}),
-        command
-      })
+      (command) => {
+        if (isSlashCommandCapability(command)) {
+          return {
+            type: "capability",
+            key: `capability:${command.capability}`,
+            label: labels.browserUseCapabilityLabel,
+            description: labels.browserUseCapabilityDescription,
+            capability: command
+          };
+        }
+        return {
+          type: "command",
+          key: `command:${command.name}`,
+          label: labelForSlashCommand(command),
+          ...(command.description ? { description: command.description } : {}),
+          command
+        };
+      }
     );
     const skillEntries: AgentSlashPaletteEntry[] = filteredSkills.map(
       (skill) => {
@@ -689,7 +1096,13 @@ export function AgentComposer({
       }
     );
     return [...commandEntries, ...skillEntries];
-  }, [filteredCommands, filteredSkills, skillQueryMatch?.prefix]);
+  }, [
+    filteredCommands,
+    filteredSkills,
+    labels.browserUseCapabilityDescription,
+    labels.browserUseCapabilityLabel,
+    skillQueryMatch?.prefix
+  ]);
   const showFileMentionPalette =
     !disabled && isPaletteOpen && fileMentionSuggestion !== null;
   const showSlashPalette =
@@ -791,16 +1204,60 @@ export function AgentComposer({
     setIsSlashStatusPanelOpen(false);
   }, []);
 
+  const settingsControlsDisabled =
+    isSendingTurn || isSubmittingPrompt || showStopButton;
+
+  const closeReviewPicker = useCallback((): void => {
+    setIsReviewPickerOpen(false);
+  }, []);
+
+  const submitReviewCommand = useCallback(
+    (command: string): void => {
+      setIsReviewPickerOpen(false);
+      clearSlashCommandDraft();
+      onSubmit(textPromptContent(command));
+    },
+    [clearSlashCommandDraft, onSubmit]
+  );
+
+  // Bind the branch loader to this composer's session so the picker can fetch
+  // branches without the caller having to know the active agent session id.
+  const reviewBranchLoader = useMemo(() => {
+    if (!onRequestGitBranches) {
+      return null;
+    }
+    // Prefer the live agent session (its daemon-resolved cwd); fall back to the
+    // selected project path so the review picker still lists branches in the
+    // empty-hero composer before any session exists.
+    if (slashStatusAgentSessionId) {
+      return () =>
+        onRequestGitBranches({ agentSessionId: slashStatusAgentSessionId });
+    }
+    if (selectedProjectPath) {
+      return () =>
+        onRequestGitBranches({ workingDirectory: selectedProjectPath });
+    }
+    return null;
+  }, [onRequestGitBranches, selectedProjectPath, slashStatusAgentSessionId]);
+
   const executeSlashCommandEffect = useCallback(
     (effect: SlashCommandSelectionEffect): void => {
       if (effect.kind === "submitPrompt") {
         clearSlashCommandDraft();
+        if (effect.enableBrowserUse && !settingsControlsDisabled) {
+          onSettingsChange({ browserUse: true });
+        }
         onSubmit(textPromptContent(effect.prompt));
         return;
       }
       if (effect.kind === "showStatus") {
         clearSlashCommandDraft();
         setIsSlashStatusPanelOpen((current) => !current);
+        return;
+      }
+      if (effect.kind === "showReviewPicker") {
+        clearSlashCommandDraft();
+        setIsReviewPickerOpen(true);
         return;
       }
       if (effect.kind === "blockCommand") {
@@ -812,6 +1269,17 @@ export function AgentComposer({
         onSettingsChange({
           planMode: !composerSettings.draftSettings.planMode
         });
+        return;
+      }
+      if (effect.kind === "enableBrowserUse") {
+        const nextDraft = effect.draft;
+        draftPromptRef.current = nextDraft;
+        setPaletteDraftPrompt(nextDraft);
+        onDraftContentChange({ ...draftContent, prompt: nextDraft });
+        setIsPaletteOpen(false);
+        if (!settingsControlsDisabled) {
+          onSettingsChange({ browserUse: true });
+        }
         return;
       }
       if (effect.kind === "toggleSpeed") {
@@ -842,7 +1310,8 @@ export function AgentComposer({
       draftContent,
       onDraftContentChange,
       onSettingsChange,
-      onSubmit
+      onSubmit,
+      settingsControlsDisabled
     ]
   );
 
@@ -851,6 +1320,18 @@ export function AgentComposer({
       const selectionEffect = resolveSlashCommandSelectionEffect({
         provider,
         command,
+        currentDraft: draftPromptRef.current
+      });
+      executeSlashCommandEffect(selectionEffect);
+    },
+    [executeSlashCommandEffect, provider]
+  );
+
+  const selectCapability = useCallback(
+    (capability: AgentSlashCommandCapability): void => {
+      const selectionEffect = resolveSlashCommandSelectionEffect({
+        provider,
+        command: capability,
         currentDraft: draftPromptRef.current
       });
       executeSlashCommandEffect(selectionEffect);
@@ -896,6 +1377,15 @@ export function AgentComposer({
     }
     if (draftImages.length > 0 && !promptImagesSupported) {
       onPromptImagesUnsupported?.();
+      return;
+    }
+    const browserUseEffect = resolveTuttiBrowserUseSubmitEffect({
+      browserSupported: Boolean(composerSettings.supportsBrowser),
+      commands: resolvedSlashCommands,
+      draft: nextPrompt
+    });
+    if (browserUseEffect) {
+      executeSlashCommandEffect(browserUseEffect);
       return;
     }
     const slashCommandEffect = resolveSlashCommandSubmitEffect({
@@ -964,6 +1454,8 @@ export function AgentComposer({
         const activeEntry = slashPaletteEntries[activeHighlight];
         if (activeEntry?.type === "command") {
           selectCommand(activeEntry.command);
+        } else if (activeEntry?.type === "capability") {
+          selectCapability(activeEntry.capability);
         } else if (activeEntry?.type === "skill") {
           selectSkill(activeEntry.skill);
         }
@@ -1069,62 +1561,43 @@ export function AgentComposer({
       }
       const focusableEntries =
         flattenAgentMentionPaletteEntries(mentionSearchState);
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        moveFileMentionSelection(1);
-        return true;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        moveFileMentionSelection(-1);
-        return true;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeFileMentionPalette();
-        return true;
-      }
-      if (event.key === "Tab") {
-        event.preventDefault();
-        cycleFileMentionFilter(event.shiftKey ? -1 : 1);
-        return true;
-      }
-      if (event.key === "Enter") {
-        event.preventDefault();
-        const activeEntry = focusableEntries.find(
-          (entry) => entry.key === mentionHighlightedKey
-        );
-        if (!activeEntry) {
-          const highlightedCategoryId = mentionHighlightedKey?.startsWith(
-            "category:"
-          )
-            ? mentionHighlightedKey.slice("category:".length)
-            : null;
-          if (
-            highlightedCategoryId &&
-            mentionSearchState.categories.some(
-              (category) => category.id === highlightedCategoryId
+      return makeAtPanelKeyDown({
+        close: closeFileMentionPalette,
+        commitSelection: () => {
+          const activeEntry = focusableEntries.find(
+            (entry) => entry.key === mentionHighlightedKey
+          );
+          if (!activeEntry) {
+            const highlightedCategoryId = mentionHighlightedKey?.startsWith(
+              "category:"
             )
-          ) {
-            mentionControllerRef.current?.setFilter(
-              highlightedCategoryId as AgentMentionFilterId
-            );
+              ? mentionHighlightedKey.slice("category:".length)
+              : null;
+            if (
+              highlightedCategoryId &&
+              mentionSearchState.categories.some(
+                (category) => category.id === highlightedCategoryId
+              )
+            ) {
+              mentionControllerRef.current?.setFilter(
+                highlightedCategoryId as AgentMentionFilterId
+              );
+            }
+            return;
           }
-          return true;
-        }
-        if (activeEntry.type === "category" && activeEntry.categoryId) {
-          mentionControllerRef.current?.setFilter(activeEntry.categoryId);
-        } else if (activeEntry.type === "expand" && activeEntry.groupId) {
-          mentionControllerRef.current?.expandGroup(activeEntry.groupId);
-        } else if (activeEntry.type === "item" && activeEntry.item) {
-          selectFileMention(activeEntry.item);
-        }
-        return true;
-      }
-      return false;
+          if (activeEntry.type === "category" && activeEntry.categoryId) {
+            mentionControllerRef.current?.setFilter(activeEntry.categoryId);
+          } else if (activeEntry.type === "expand" && activeEntry.groupId) {
+            mentionControllerRef.current?.expandGroup(activeEntry.groupId);
+          } else if (activeEntry.type === "item" && activeEntry.item) {
+            selectFileMention(activeEntry.item);
+          }
+        },
+        cycleFilter: cycleFileMentionFilter,
+        moveSelection: moveFileMentionSelection
+      })(event);
     },
     [
-      fileMentionSuggestion,
       closeFileMentionPalette,
       cycleFileMentionFilter,
       mentionHighlightedKey,
@@ -1772,8 +2245,6 @@ export function AgentComposer({
         ? "loading"
         : "send";
   const sendButtonBusy = isSendingTurn && !isQueueMode;
-  const settingsControlsDisabled =
-    isSendingTurn || isSubmittingPrompt || shouldShowStopButton;
   const activePromptRequestId = activePrompt?.requestId ?? null;
   const [dismissedPromptRequestId, setDismissedPromptRequestId] = useState<
     string | null
@@ -1973,6 +2444,14 @@ export function AgentComposer({
             onClose={closeSlashStatusPanel}
           />
         ) : null}
+        {isReviewPickerOpen ? (
+          <AgentReviewPickerPanel
+            labels={labels.reviewPicker}
+            onRequestGitBranches={reviewBranchLoader}
+            onSubmitReview={submitReviewCommand}
+            onClose={closeReviewPicker}
+          />
+        ) : null}
         <div
           ref={inputShellRef}
           className={cn(inputShellClassName, "relative")}
@@ -2032,6 +2511,7 @@ export function AgentComposer({
                   onChange={handleDraftChange}
                   onSubmit={submitCurrentPrompt}
                   availableSkills={availableSkills}
+                  availableCapabilities={availableCapabilities}
                   removeMentionLabel={labels.removeMention}
                   onKeyDownForPalette={handlePaletteKeyDown}
                   onFileMentionSuggestionChange={
@@ -2105,9 +2585,13 @@ export function AgentComposer({
                           : labels.slashCommandPalette
                       }
                       commandsGroupLabel={labels.slashPaletteCommandsGroup}
+                      capabilitiesGroupLabel={
+                        labels.slashPaletteCapabilitiesGroup
+                      }
                       skillsGroupLabel={labels.slashPaletteSkillsGroup}
                       onHighlightChange={setHighlightedIndex}
                       onSelect={selectCommand}
+                      onSelectCapability={selectCapability}
                       onSelectSkill={selectSkill}
                     />
                   </div>,
@@ -2296,6 +2780,12 @@ export function AgentComposer({
       </div>
     </form>
   );
+}
+
+function isSlashCommandCapability(
+  command: AgentSlashCommand
+): command is AgentSlashCommandCapability {
+  return "kind" in command && command.kind === "capability";
 }
 
 function useStableEventCallback<Args extends unknown[], Result>(

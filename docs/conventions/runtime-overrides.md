@@ -87,6 +87,14 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTI_ACP_TOOL_DEBUG`       | This document                                   | Enables verbose migrated ACP tool-call normalization diagnostics.                       |
 | `TUTTI_WORKSPACE_ID`         | This document                                   | Supplies a workspace id to migrated agent context readers when no input id is provided. |
 
+## Browser MCP
+
+| Variable                       | Owner document                          | Purpose                                                                                                            |
+| ------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `TUTTI_BROWSER_MCP_COMMAND`    | [Troubleshooting](./troubleshooting.md) | Overrides the command used by tuttid to launch `chrome-devtools-mcp`.                                              |
+| `TUTTI_BROWSER_MCP_ARGS`       | [Troubleshooting](./troubleshooting.md) | Overrides the full argument list for `chrome-devtools-mcp`; desktop browser-mode preferences are ignored when set. |
+| `TUTTI_BROWSER_MCP_ENTRY_PATH` | [Troubleshooting](./troubleshooting.md) | Internal packaged-desktop handoff pointing tuttid at the vendored `chrome-devtools-mcp` entry script.              |
+
 ## Review Questions
 
 When adding or changing an override, ask:

@@ -29,6 +29,7 @@ import {
   readWorkspaceFileDropEntries
 } from "../../terminalNode/workspaceFileDrop";
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
+import type { AgentCapabilityTokenOption } from "./agentCapabilityTokenExtension";
 import {
   imageFilesFromDataTransfer,
   readAgentRichTextPromptImages,
@@ -44,6 +45,7 @@ export interface AgentRichTextEditorProps {
   onChange: (value: string) => void;
   onSubmit: () => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
+  availableCapabilities?: readonly AgentCapabilityTokenOption[];
   submitOnEnter?: boolean;
   enableFileMentionSuggestions?: boolean;
   onKeyDownForPalette?: (event: KeyboardEvent) => boolean;
@@ -184,6 +186,7 @@ export const AgentRichTextEditor = forwardRef<
     className,
     onChange,
     onSubmit,
+    availableCapabilities = [],
     availableSkills = [],
     submitOnEnter = true,
     enableFileMentionSuggestions = true,
@@ -216,6 +219,7 @@ export const AgentRichTextEditor = forwardRef<
   const placeholderRef = useRef(placeholder);
   const removeMentionLabelRef = useRef(removeMentionLabel);
   const availableSkillsRef = useRef(availableSkills);
+  const availableCapabilitiesRef = useRef(availableCapabilities);
   const scrollFrameRef = useRef<number | null>(null);
 
   const scheduleSelectionScroll = (targetEditor: Editor): void => {
@@ -251,7 +255,8 @@ export const AgentRichTextEditor = forwardRef<
             onFileMentionSuggestionKeyDownRef.current?.(event) ?? false,
           removeActionAriaLabel: removeMentionLabelRef.current
         },
-        { skills: availableSkillsRef.current }
+        { skills: availableSkillsRef.current },
+        { capabilities: availableCapabilitiesRef.current }
       ),
       createAgentRichTextPlaceholderExtension(() => placeholderRef.current)
     ],
@@ -270,12 +275,14 @@ export const AgentRichTextEditor = forwardRef<
   placeholderRef.current = placeholder;
   removeMentionLabelRef.current = removeMentionLabel;
   availableSkillsRef.current = availableSkills;
+  availableCapabilitiesRef.current = availableCapabilities;
 
   const editor = useEditor({
     immediatelyRender: false,
     editable: !disabled,
     extensions,
     content: plainTextToAgentRichTextDoc(value, {
+      capabilities: availableCapabilities,
       skills: availableSkills
     }),
     editorProps: {
@@ -347,6 +354,7 @@ export const AgentRichTextEditor = forwardRef<
           }
           currentEditor.commands.insertContent(
             plainTextToAgentRichTextInlineContent(text, {
+              capabilities: availableCapabilitiesRef.current,
               skills: availableSkillsRef.current
             })
           );
@@ -570,6 +578,7 @@ export const AgentRichTextEditor = forwardRef<
           .insertContentAt(
             { from, to },
             plainTextToAgentRichTextInlineContent(text, {
+              capabilities: availableCapabilitiesRef.current,
               skills: availableSkillsRef.current
             })
           )
@@ -600,6 +609,7 @@ export const AgentRichTextEditor = forwardRef<
       return;
     }
     const nextDoc = plainTextToAgentRichTextDoc(value, {
+      capabilities: availableCapabilities,
       skills: availableSkills
     });
     if (JSON.stringify(editor.getJSON()) === JSON.stringify(nextDoc)) {
@@ -609,7 +619,7 @@ export const AgentRichTextEditor = forwardRef<
     editor.commands.setContent(nextDoc, { emitUpdate: false });
     editor.commands.setTextSelection(editor.state.doc.content.size);
     lastEmittedPromptRef.current = value;
-  }, [availableSkills, editor, value]);
+  }, [availableCapabilities, availableSkills, editor, value]);
 
   return (
     <div className="relative min-w-0" onKeyDownCapture={handleKeyDownCapture}>

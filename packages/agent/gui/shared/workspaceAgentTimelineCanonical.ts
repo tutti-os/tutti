@@ -24,6 +24,7 @@ import {
   messageRole,
   messageStatusKind,
   normalizedMessageBody,
+  stripReviewProcessSummaryTitle,
   thinkingStatusKind
 } from "./workspaceAgentTimelineMessageHelpers";
 
@@ -93,6 +94,29 @@ export function buildCanonicalWorkspaceAgentDetailView({
     }
 
     if (role === "thinking" && body) {
+      const payload = normalizedPayload(item.payload);
+      if (payload?.messageKind === "review-process") {
+        const status = firstPresentString(
+          item.status,
+          stringRecordValue(payload, "status")
+        );
+        const statusKind = messageStatusKind(status);
+        const message = withSourceTimelineItems(
+          {
+            id: itemId(item),
+            body: stripReviewProcessSummaryTitle(body),
+            ...(status ? { status } : {}),
+            ...(statusKind ? { statusKind } : {}),
+            turnId,
+            occurredAtUnixMs:
+              item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null
+          },
+          [item]
+        );
+        turn.agentMessages.push(message);
+        turn.agentItems.push({ kind: "message", message });
+        continue;
+      }
       if (isPlaceholderThinkingBody(body)) {
         continue;
       }

@@ -43,6 +43,40 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Browser CLI cold start timeout looks like an unreachable daemon
+
+- Symptom:
+  An agent runs a command such as `tutti-dev browser list-pages` and gets
+  `daemon is not reachable`, but desktop and daemon logs show `tuttid` is
+  running and a Chrome or browser-use process may still appear.
+- Quick checks:
+  Confirm the listener file under the active `TUTTI_STATE_DIR` has a live
+  address and token, then run `tutti-dev status --json`. If status succeeds
+  but the browser command fails after roughly the CLI client timeout, inspect
+  whether the first browser command is lazily starting `chrome-devtools-mcp` or
+  another browser backend. For browser backend overrides, inspect
+  `TUTTI_BROWSER_MCP_COMMAND`, `TUTTI_BROWSER_MCP_ARGS`, and the packaged
+  desktop's internal `TUTTI_BROWSER_MCP_ENTRY_PATH` handoff.
+- Root cause:
+  Browser commands can do a cold start on first use. The daemon may launch the
+  browser backend while the CLI HTTP request is still waiting for the daemon to
+  finish the tool call. If the CLI client times out first and collapses every
+  transport error into `daemon is not reachable`, the message describes the
+  timeout incorrectly instead of the daemon's actual reachability.
+- Fix:
+  Keep the CLI daemon client timeout long enough for browser backend cold
+  starts, and report request timeouts separately from connection failures.
+  Avoid treating a visible browser window as proof that the browser tool call
+  has completed.
+- Validation:
+  Add CLI client tests for the default timeout and timeout-specific error
+  message. For a live smoke test, verify `tutti-dev status --json` succeeds and
+  then run the browser command again after the first cold start settles.
+- References:
+  [client.go](../../apps/cli/internal/daemon/client.go)
+  [session.go](../../services/tuttid/service/browser/session.go)
+  [command.go](../../services/tuttid/service/browser/command.go)
+
 ### Malformed user skill frontmatter breaks skill discovery
 
 - Symptom:

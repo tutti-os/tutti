@@ -111,17 +111,12 @@ func (p Provider) composerDefaultsForProvider(ctx context.Context, provider stri
 
 func composerOptionsValue(options agentservice.ComposerOptions) map[string]any {
 	return map[string]any{
-		"provider": options.Provider,
-		"effectiveSettings": map[string]any{
-			"model":            options.EffectiveSettings.Model,
-			"permissionModeId": options.EffectiveSettings.PermissionModeID,
-			"planMode":         options.EffectiveSettings.PlanMode,
-			"reasoningEffort":  options.EffectiveSettings.ReasoningEffort,
-		},
-		"modelConfig":      composerConfigOptionValue(options.ModelConfig),
-		"permissionConfig": permissionConfigValue(options.PermissionConfig),
-		"reasoningConfig":  composerConfigOptionValue(options.ReasoningConfig),
-		"runtimeContext":   options.RuntimeContext,
+		"provider":          options.Provider,
+		"effectiveSettings": agentservice.ComposerSettingsToMap(options.EffectiveSettings),
+		"modelConfig":       composerConfigOptionValue(options.ModelConfig),
+		"permissionConfig":  permissionConfigValue(options.PermissionConfig),
+		"reasoningConfig":   composerConfigOptionValue(options.ReasoningConfig),
+		"runtimeContext":    options.RuntimeContext,
 	}
 }
 

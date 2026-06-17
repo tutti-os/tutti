@@ -64,7 +64,14 @@ type scriptedAppServerConnection struct {
 	turnStartRelease             chan struct{}
 	commandApproval              bool
 	userInputRequest             bool
+	reviewInline                 bool          // stream review output as inline reasoning/command items
+	reviewInlineSummaryDelta     bool          // stream review reasoning via summaryTextDelta with empty completed summary
+	reviewHang                   bool          // respond to review/start but never complete the turn
+	reviewStartEntered           chan struct{} // closed once review/start has responded
 	approvalResponse             map[string]any
+	goal                         map[string]any
+	goalStartsTurn               bool
+	goalCleared                  bool
 	closeOnce                    sync.Once
 }
 
@@ -126,6 +133,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 		var message struct {
 			ID     json.RawMessage `json:"id"`
 			Method string          `json:"method"`
+			Params map[string]any  `json:"params"`
 			Result json.RawMessage `json:"result"`
 			Error  json.RawMessage `json:"error"`
 		}
@@ -391,7 +399,71 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"id":     message.ID,
 				"result": map[string]any{"thread": map[string]any{"id": "codex-thread-1"}},
 			})
+		case appServerMethodThreadGoalSet:
+			c.mu.Lock()
+			previousGoal := clonePayload(c.goal)
+			goalStartsTurn := c.goalStartsTurn
+			goal := map[string]any{
+				"threadId":        "codex-thread-1",
+				"objective":       firstNonEmpty(asString(message.Params["objective"]), asString(previousGoal["objective"])),
+				"status":          firstNonEmpty(asString(message.Params["status"]), "active"),
+				"tokensUsed":      int64(0),
+				"timeUsedSeconds": int64(0),
+				"createdAt":       int64(1750000000),
+				"updatedAt":       int64(1750000001),
+			}
+			if tokenBudget, ok := acpInt64Value(message.Params["tokenBudget"]); ok {
+				goal["tokenBudget"] = tokenBudget
+			}
+			c.goal = clonePayload(goal)
+			c.mu.Unlock()
+			c.sendJSON(map[string]any{
+				"id":     message.ID,
+				"result": map[string]any{"goal": goal},
+			})
+			if goalStartsTurn && strings.TrimSpace(asString(message.Params["objective"])) != "" {
+				c.notify(appServerNotifyTurnStarted, map[string]any{
+					"threadId": "codex-thread-1",
+					"turn":     map[string]any{"id": "turn-goal", "status": "inProgress", "items": []any{}},
+				})
+				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
+					"threadId": "codex-thread-1", "turnId": "turn-goal", "itemId": "item-goal", "delta": "I'll work on the goal.",
+				})
+				c.notify(appServerNotifyTurnCompleted, map[string]any{
+					"threadId": "codex-thread-1",
+					"turn": map[string]any{
+						"id":     "turn-goal",
+						"status": "completed",
+						"items": []any{
+							map[string]any{"type": "agentMessage", "id": "item-goal", "text": "I'll work on the goal."},
+						},
+					},
+				})
+			}
+		case appServerMethodThreadGoalGet:
+			c.mu.Lock()
+			goal := clonePayload(c.goal)
+			c.mu.Unlock()
+			c.sendJSON(map[string]any{
+				"id":     message.ID,
+				"result": map[string]any{"goal": goal},
+			})
+		case appServerMethodThreadGoalClear:
+			c.mu.Lock()
+			c.goal = nil
+			c.goalCleared = true
+			c.mu.Unlock()
+			c.sendJSON(map[string]any{
+				"id":     message.ID,
+				"result": map[string]any{"cleared": true},
+			})
 		case appServerMethodReviewStart:
+			c.mu.Lock()
+			reviewInline := c.reviewInline
+			reviewInlineSummaryDelta := c.reviewInlineSummaryDelta
+			reviewHang := c.reviewHang
+			reviewStartEntered := c.reviewStartEntered
+			c.mu.Unlock()
 			c.sendJSON(map[string]any{
 				"id": message.ID,
 				"result": map[string]any{
@@ -399,6 +471,59 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					"turn":           map[string]any{"id": "turn-review", "status": "inProgress", "items": []any{}},
 				},
 			})
+			if reviewStartEntered != nil {
+				close(reviewStartEntered)
+			}
+			if reviewHang {
+				// Leave the review turn in flight so the caller can cancel it.
+				continue
+			}
+			if reviewInline {
+				// Inline delivery: reasoning and command output arrive as
+				// item/started + item/completed (no agentMessageDelta), the
+				// way a real /review turn streams.
+				c.notify(appServerNotifyItemStarted, map[string]any{
+					"threadId": "codex-thread-1", "turnId": "turn-review",
+					"item": map[string]any{"type": "reasoning", "id": "item-think", "status": "inProgress", "summary": []any{}, "content": []any{}},
+				})
+				if reviewInlineSummaryDelta {
+					for _, delta := range []string{"Inspecting", "the", "auth", "flow."} {
+						c.notify(appServerNotifyReasoningSummary, map[string]any{
+							"threadId": "codex-thread-1", "turnId": "turn-review",
+							"itemId": "item-think", "summaryIndex": 0, "delta": delta,
+						})
+					}
+					c.notify(appServerNotifyItemCompleted, map[string]any{
+						"threadId": "codex-thread-1", "turnId": "turn-review",
+						"item": map[string]any{"type": "reasoning", "id": "item-think", "status": "completed", "summary": []any{"Inspecting the auth flow."}, "content": []any{}},
+					})
+				} else {
+					c.notify(appServerNotifyItemCompleted, map[string]any{
+						"threadId": "codex-thread-1", "turnId": "turn-review",
+						"item": map[string]any{"type": "reasoning", "id": "item-think", "status": "completed", "summary": []any{"Inspecting the auth flow."}, "content": []any{}},
+					})
+				}
+				c.notify(appServerNotifyItemStarted, map[string]any{
+					"threadId": "codex-thread-1", "turnId": "turn-review",
+					"item": map[string]any{"type": "commandExecution", "id": "item-cmd", "command": "rg verifyToken", "cwd": "/workspace", "status": "inProgress"},
+				})
+				c.notify(appServerNotifyItemCompleted, map[string]any{
+					"threadId": "codex-thread-1", "turnId": "turn-review",
+					"item": map[string]any{"type": "commandExecution", "id": "item-cmd", "command": "rg verifyToken", "cwd": "/workspace", "status": "completed", "aggregatedOutput": "auth.go:42", "exitCode": 0},
+				})
+				c.notify(appServerNotifyTurnCompleted, map[string]any{
+					"threadId": "codex-thread-1",
+					"turn": map[string]any{
+						"id": "turn-review", "status": "completed",
+						"items": []any{
+							map[string]any{"type": "reasoning", "id": "item-think", "summary": []any{"Inspecting the auth flow."}, "content": []any{}},
+							map[string]any{"type": "commandExecution", "id": "item-cmd", "command": "rg verifyToken", "status": "completed", "exitCode": 0},
+							map[string]any{"type": "agentMessage", "id": "item-review", "text": "Found one issue."},
+						},
+					},
+				})
+				continue
+			}
 			c.notify(appServerNotifyAgentMessageDelta, map[string]any{
 				"threadId": "codex-thread-1", "turnId": "turn-review", "itemId": "item-review", "delta": "Found one issue.",
 			})
@@ -573,8 +698,8 @@ func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T
 	if asString(config["model_reasoning_effort"]) != "xhigh" {
 		t.Fatalf("thread/start config = %#v, want model_reasoning_effort=xhigh", config)
 	}
-	if asString(config["model_reasoning_summary"]) != "none" {
-		t.Fatalf("thread/start config = %#v, want reasoning summary disabled for spark model", config)
+	if asString(config["model_reasoning_summary"]) != "auto" {
+		t.Fatalf("thread/start config = %#v, want reasoning summaries enabled for inline review on spark", config)
 	}
 }
 
@@ -642,6 +767,32 @@ func TestCodexAppServerAdapterResume(t *testing.T) {
 	}
 	if !adapter.CanResume(session) {
 		t.Fatalf("CanResume = false, want true")
+	}
+}
+
+func TestCodexAppServerAdapterResumeEmitsCommandSnapshot(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	var snapshots []AgentSessionCommandSnapshot
+	adapter.SetCommandSnapshotSink(func(snapshot AgentSessionCommandSnapshot) {
+		snapshots = append(snapshots, snapshot)
+	})
+	session := testAppServerSession()
+	session.ProviderSessionID = "codex-thread-1"
+
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if len(snapshots) == 0 {
+		t.Fatalf("Resume emitted no command snapshot; review/undo would be missing on resumed sessions")
+	}
+	names := agentSessionCommandNames(snapshots[len(snapshots)-1].Commands)
+	for _, want := range []string{"review", "compact", "undo"} {
+		if !containsString(names, want) {
+			t.Fatalf("resume snapshot commands = %#v, want %q", names, want)
+		}
 	}
 }
 
@@ -1180,6 +1331,9 @@ func TestCodexAppServerAdapterSlashReview(t *testing.T) {
 	if asString(target["type"]) != "custom" || asString(target["instructions"]) != "check the auth flow" {
 		t.Fatalf("review target = %#v", target)
 	}
+	if asString(review["summary"]) != "auto" {
+		t.Fatalf("review/start summary = %q, want auto", review["summary"])
+	}
 	var assistantText string
 	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
 		if event.Payload.Role == activityshared.MessageRoleAssistant {
@@ -1191,6 +1345,192 @@ func TestCodexAppServerAdapterSlashReview(t *testing.T) {
 	}
 	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
 		t.Fatalf("review turn completed events = %d, want 1", len(completed))
+	}
+}
+
+func TestCodexAppServerAdapterSlashReviewInlineReasoning(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.reviewInline = true
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/review check the auth flow",
+	}}, "", "turn-local-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	// Inline reasoning items must surface as finalized thinking so they break
+	// the otherwise-unbroken tool-call streak in the GUI.
+	thinking := activityMessagesWithRole(events, activityshared.MessageRoleAssistantThinking)
+	sawReasoningText := false
+	for _, event := range thinking {
+		if event.Payload.Metadata["messageKind"] != "review-process" {
+			t.Fatalf("thinking messageKind = %#v, want review-process", event.Payload.Metadata["messageKind"])
+		}
+		if strings.Contains(event.Payload.Content, "Inspecting the auth flow.") {
+			sawReasoningText = true
+		}
+	}
+	if !sawReasoningText {
+		t.Fatalf("expected reasoning to surface as thinking, got %#v", thinking)
+	}
+
+	// Reasoning streamed and finalized exactly once (no double-append).
+	if strings.Count(lastThinkingContent(thinking), "Inspecting the auth flow.") != 1 {
+		t.Fatalf("reasoning text duplicated in thinking: %q", lastThinkingContent(thinking))
+	}
+
+	assistantText := ""
+	for _, event := range activityMessagesWithRole(events, activityshared.MessageRoleAssistant) {
+		assistantText = event.Payload.Content
+	}
+	if assistantText != "Found one issue." {
+		t.Fatalf("review assistant message = %q", assistantText)
+	}
+
+	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
+		t.Fatalf("review turn completed events = %d, want 1", len(completed))
+	}
+}
+
+func TestAppServerReasoningText(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		item map[string]any
+		want string
+	}{
+		{
+			name: "string summary array",
+			item: map[string]any{
+				"summary": []any{"Inspecting the auth flow."},
+			},
+			want: "Inspecting the auth flow.",
+		},
+		{
+			name: "plain string summary",
+			item: map[string]any{
+				"summary": "Inspecting the auth flow.",
+			},
+			want: "Inspecting the auth flow.",
+		},
+		{
+			name: "object summary sections",
+			item: map[string]any{
+				"summary": []any{map[string]any{"text": "Inspecting the auth flow."}},
+			},
+			want: "Inspecting the auth flow.",
+		},
+		{
+			name: "top-level text fallback",
+			item: map[string]any{
+				"summary": []any{},
+				"content": []any{},
+				"text":    "Inspecting the auth flow.",
+			},
+			want: "Inspecting the auth flow.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := appServerReasoningText(tt.item); got != tt.want {
+				t.Fatalf("appServerReasoningText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAppServerReasoningDeltaTextPreservesWhitespace(t *testing.T) {
+	t.Parallel()
+
+	if got := appServerReasoningDeltaText(map[string]any{"delta": "Need "}); got != "Need " {
+		t.Fatalf("delta text = %q, want trailing space preserved", got)
+	}
+	if got := appServerReasoningDeltaText(map[string]any{"text": "still "}); got != "still " {
+		t.Fatalf("fallback text = %q, want trailing space preserved", got)
+	}
+	if got := appServerReasoningDeltaText(map[string]any{"text": " more"}); got != " more" {
+		t.Fatalf("text fallback = %q, want leading space preserved", got)
+	}
+}
+
+func TestCodexAppServerAdapterSlashReviewInlineReasoningSummaryDelta(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.reviewInline = true
+	transport.conn.reviewInlineSummaryDelta = true
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/review check the auth flow",
+	}}, "", "turn-local-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	thinking := activityMessagesWithRole(events, activityshared.MessageRoleAssistantThinking)
+	if len(thinking) == 0 {
+		t.Fatalf("expected streamed reasoning to surface as thinking, got none")
+	}
+	finalContent := thinking[len(thinking)-1].Payload.Content
+	if finalContent != "Inspecting the auth flow." {
+		t.Fatalf("thinking content = %q, want authoritative completed summary text", finalContent)
+	}
+	if thinking[len(thinking)-1].Payload.Metadata["messageKind"] != "review-process" {
+		t.Fatalf("messageKind = %#v, want review-process", thinking[len(thinking)-1].Payload.Metadata["messageKind"])
+	}
+}
+
+func lastThinkingContent(thinking []activityshared.Event) string {
+	content := ""
+	for _, event := range thinking {
+		content = event.Payload.Content
+	}
+	return content
+}
+
+func TestCodexAppServerAdapterSlashReviewCancel(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.reviewHang = true
+	entered := make(chan struct{})
+	transport.conn.reviewStartEntered = entered
+
+	ctx, cancel := context.WithCancel(context.Background())
+	type execResult struct {
+		events []activityshared.Event
+		err    error
+	}
+	resultCh := make(chan execResult, 1)
+	go func() {
+		events, err := adapter.Exec(ctx, session, []PromptContentBlock{{
+			Type: "text", Text: "/review",
+		}}, "", "turn-local-1", nil, nil)
+		resultCh <- execResult{events: events, err: err}
+	}()
+
+	<-entered
+	cancel()
+	res := <-resultCh
+	if res.err != nil {
+		t.Fatalf("Exec: %v", res.err)
+	}
+
+	// A canceled review must report as canceled (interrupted), not failed,
+	// mirroring a normal turn.
+	if failed := eventsOfType(res.events, activityshared.EventTurnFailed); len(failed) != 0 {
+		t.Fatalf("canceled review emitted %d turn.failed events, want 0", len(failed))
+	}
+	sawCanceled := false
+	for _, event := range eventsOfType(res.events, activityshared.EventTurnCompleted) {
+		if event.Payload.TurnOutcome == string(activityshared.TurnOutcomeInterrupted) {
+			sawCanceled = true
+		}
+	}
+	if !sawCanceled {
+		t.Fatalf("canceled review missing interrupted turn outcome: %#v", res.events)
 	}
 }
 
@@ -1206,6 +1546,217 @@ func TestCodexAppServerAdapterSlashReviewDefaultsToUncommitted(t *testing.T) {
 	review := appServerRequestParams(t, transport.conn, appServerMethodReviewStart)
 	if asString(payloadObject(review["target"])["type"]) != "uncommittedChanges" {
 		t.Fatalf("review target = %#v, want uncommittedChanges", review["target"])
+	}
+}
+
+func TestCodexAppServerAdapterSlashGoalSetsObjective(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.goalStartsTurn = true
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal ship the review picker",
+	}}, "", "turn-local-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	goalSet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalSet)
+	if asString(goalSet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/set params = %#v", goalSet)
+	}
+	if asString(goalSet["objective"]) != "ship the review picker" {
+		t.Fatalf("goal objective = %#v", goalSet)
+	}
+	if asString(goalSet["status"]) != "active" {
+		t.Fatalf("goal status = %#v, want active", goalSet)
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(requests) != 0 {
+		t.Fatalf("turn/start should not run for /goal")
+	}
+	var assistantText string
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Role == activityshared.MessageRoleAssistant {
+			assistantText = event.Payload.Content
+		}
+		if event.Payload.Metadata["kind"] == "agent_system_notice" {
+			t.Fatalf("goal objective should stream app-server turn instead of local-only notice: %#v", event)
+		}
+	}
+	if assistantText != "I'll work on the goal." {
+		t.Fatalf("goal assistant message = %q", assistantText)
+	}
+	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
+		t.Fatalf("goal turn completed events = %d, want 1", len(completed))
+	}
+}
+
+func TestCodexAppServerAdapterSlashGoalReadsCurrentGoal(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.mu.Lock()
+	transport.conn.goal = map[string]any{
+		"threadId":        "codex-thread-1",
+		"objective":       "finish tests",
+		"status":          "active",
+		"tokensUsed":      int64(12),
+		"timeUsedSeconds": int64(3),
+		"createdAt":       int64(1750000000),
+		"updatedAt":       int64(1750000001),
+	}
+	transport.conn.mu.Unlock()
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	goalGet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalGet)
+	if asString(goalGet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/get params = %#v", goalGet)
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(requests) != 0 {
+		t.Fatalf("turn/start should not run for bare /goal")
+	}
+}
+
+func TestCodexAppServerAdapterSlashGoalObjectiveMayStartWithStatusWord(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.goalStartsTurn = true
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal complete support for goal commands",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	goalSet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalSet)
+	if asString(goalSet["objective"]) != "complete support for goal commands" {
+		t.Fatalf("goal objective = %#v", goalSet)
+	}
+	if asString(goalSet["status"]) != "active" {
+		t.Fatalf("goal status = %#v, want active", goalSet)
+	}
+}
+
+func TestCodexAppServerAdapterSlashGoalStatusAndClear(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal blocked",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec blocked: %v", err)
+	}
+	goalSet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalSet)
+	if asString(goalSet["status"]) != "blocked" {
+		t.Fatalf("goal status params = %#v, want blocked", goalSet)
+	}
+	if _, hasObjective := goalSet["objective"]; hasObjective {
+		t.Fatalf("status-only goal update should omit objective: %#v", goalSet)
+	}
+
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal clear",
+	}}, "", "turn-local-2", nil, nil); err != nil {
+		t.Fatalf("Exec clear: %v", err)
+	}
+	goalClear := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalClear)
+	if asString(goalClear["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/clear params = %#v", goalClear)
+	}
+	transport.conn.mu.Lock()
+	cleared := transport.conn.goalCleared
+	transport.conn.mu.Unlock()
+	if !cleared {
+		t.Fatalf("scripted app-server goal was not cleared")
+	}
+}
+
+func TestAppServerReviewTargetParsing(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		args string
+		want map[string]any
+	}{
+		{name: "empty", args: "", want: map[string]any{"type": "uncommittedChanges"}},
+		{name: "blank", args: "   ", want: map[string]any{"type": "uncommittedChanges"}},
+		{name: "base branch", args: "base:main", want: map[string]any{"type": "baseBranch", "branch": "main"}},
+		{name: "base branch slashes", args: "base:feature/x", want: map[string]any{"type": "baseBranch", "branch": "feature/x"}},
+		{name: "commit", args: "commit:abc123", want: map[string]any{"type": "commit", "sha": "abc123"}},
+		{name: "custom keyword", args: "custom:check the auth flow", want: map[string]any{"type": "custom", "instructions": "check the auth flow"}},
+		{name: "free text stays custom", args: "check the auth flow", want: map[string]any{"type": "custom", "instructions": "check the auth flow"}},
+		// Collision guard: free text starting with a keyword but no colon must
+		// not be parsed as a structured target.
+		{name: "base no colon", args: "base our error handling", want: map[string]any{"type": "custom", "instructions": "base our error handling"}},
+		// Unknown keyword before a colon falls back to a full custom prompt.
+		{name: "unknown keyword colon", args: "fix the bug: it crashes", want: map[string]any{"type": "custom", "instructions": "fix the bug: it crashes"}},
+		// Empty payload after a keyword falls back to custom.
+		{name: "base empty", args: "base:", want: map[string]any{"type": "custom", "instructions": "base:"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := appServerReviewTarget(tc.args)
+			if len(got) != len(tc.want) {
+				t.Fatalf("target = %#v, want %#v", got, tc.want)
+			}
+			for key, want := range tc.want {
+				if asString(got[key]) != want {
+					t.Fatalf("target[%q] = %v, want %v", key, got[key], want)
+				}
+			}
+		})
+	}
+}
+
+func TestCodexAppServerAdapterReviewBannersEmitOnce(t *testing.T) {
+	t.Parallel()
+
+	adapter := &CodexAppServerAdapter{}
+	session := Session{Provider: "codex", AgentSessionID: "agent-review", RoomID: "room-review"}
+
+	countNotice := func(itemType, wantTitle string) int {
+		// Real app-server streams both item/started and item/completed for
+		// review/compaction items; the banner must appear exactly once.
+		normalizer := newACPTurnNormalizer()
+		item := map[string]any{"type": itemType, "id": "item-1"}
+		events := adapter.appServerItemEvents(session, "turn-review", item, false, normalizer)
+		events = append(events, adapter.appServerItemEvents(session, "turn-review", item, true, normalizer)...)
+		count := 0
+		for _, event := range events {
+			if event.Payload.Content == wantTitle {
+				count++
+			}
+		}
+		return count
+	}
+
+	if got := countNotice("enteredReviewMode", "Code review started."); got != 1 {
+		t.Fatalf("entered review banners = %d, want exactly 1", got)
+	}
+	if got := countNotice("exitedReviewMode", "Code review finished."); got != 1 {
+		t.Fatalf("exited review banners = %d, want exactly 1", got)
+	}
+	if got := countNotice("contextCompaction", "Context compacted."); got != 1 {
+		t.Fatalf("context compaction banners = %d, want exactly 1", got)
+	}
+}
+
+func TestCodexAppServerAdapterSlashReviewBaseBranch(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/review base:main",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	review := appServerRequestParams(t, transport.conn, appServerMethodReviewStart)
+	target := payloadObject(review["target"])
+	if asString(target["type"]) != "baseBranch" || asString(target["branch"]) != "main" {
+		t.Fatalf("review target = %#v, want baseBranch main", target)
 	}
 }
 
@@ -1274,7 +1825,7 @@ func TestCodexAppServerAdapterSessionStateIncludesModelsAccountAndRateLimits(t *
 		t.Fatalf("capabilities = %#v", capabilities)
 	}
 	commands, _ := state.RuntimeContext["commands"].([]string)
-	if !containsString(commands, "review") || !containsString(commands, "compact") || !containsString(commands, "undo") {
+	if !containsString(commands, "review") || !containsString(commands, "compact") || !containsString(commands, "undo") || !containsString(commands, "goal") {
 		t.Fatalf("commands = %#v", commands)
 	}
 }
@@ -1288,7 +1839,7 @@ func TestCodexAppServerAdapterSessionCommandSnapshot(t *testing.T) {
 		t.Fatalf("SessionCommandSnapshot not available")
 	}
 	names := agentSessionCommandNames(snapshot.Commands)
-	for _, want := range []string{"review", "compact", "undo"} {
+	for _, want := range []string{"review", "compact", "undo", "goal"} {
 		if !containsString(names, want) {
 			t.Fatalf("commands = %#v, want %q", names, want)
 		}

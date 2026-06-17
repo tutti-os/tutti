@@ -2856,6 +2856,37 @@
       "description": "Utility for merging conditional class names with Tailwind conflict resolution.",
       "useCases": ["Component class composition", "Consumer style overrides"],
       "migrationHints": []
+    },
+    {
+      "id": "keyboard-filled-alias-icon",
+      "layer": "base",
+      "name": "KeyboardFilledIcon",
+      "export": "KeyboardFilledIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Filled system icon for keyboard input. Alias of KeyboardIcon for the shared mention palette.",
+      "useCases": ["Mention palette empty states", "Keyboard shortcut hints"],
+      "migrationHints": [],
+      "iconVariant": "filled"
+    },
+    {
+      "id": "folder-failed-filled-alias-icon",
+      "layer": "base",
+      "name": "FolderFailedFilledIcon",
+      "export": "FolderFailedFilledIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Filled system icon for folders in a failed or error state. Alias of FolderFailedIcon for the shared mention palette.",
+      "useCases": [
+        "Empty states for failed folder lookups",
+        "Error states in directory views"
+      ],
+      "migrationHints": [],
+      "iconVariant": "filled"
     }
   ]
 }

@@ -157,6 +157,7 @@ type RuntimeStartInput struct {
 	PermissionModeID string
 	Model            string
 	PlanMode         bool
+	BrowserUse       *bool
 	ReasoningEffort  string
 	Speed            string
 	Visible          *bool
@@ -227,6 +228,7 @@ type ComposerSettingsPatch struct {
 	Model            *string
 	PermissionModeID *string
 	PlanMode         *bool
+	BrowserUse       *bool
 	ReasoningEffort  *string
 	Speed            *string
 }
@@ -246,6 +248,7 @@ type CreateSessionInput struct {
 	PermissionModeID     *string
 	Model                *string
 	PlanMode             *bool
+	BrowserUse           *bool
 	ReasoningEffort      *string
 	Speed                *string
 	Visible              *bool

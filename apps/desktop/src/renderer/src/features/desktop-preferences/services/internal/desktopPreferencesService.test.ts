@@ -25,6 +25,7 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
         initialized: true,
         preferences: {
           agentComposerDefaultsByProvider: {},
+          browserUseConnectionMode: "isolated",
           defaultAgentProvider: "codex",
 
           dockIconStyle: "default",
@@ -81,6 +82,7 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
       initialized: false,
       preferences: {
         agentComposerDefaultsByProvider: {},
+        browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
 
         dockIconStyle: "default",
@@ -146,6 +148,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
 
       dockIconStyle: "default",
@@ -162,6 +165,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
 
     dockIconStyle: "default",
@@ -233,6 +237,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
 
       dockIconStyle: "default",
@@ -257,6 +262,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
 
     dockIconStyle: "default",
@@ -345,6 +351,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
 
       dockIconStyle: "default",
@@ -360,6 +367,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
 
     dockIconStyle: "default",
@@ -398,6 +406,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
 
       dockIconStyle: "default",
@@ -413,6 +422,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
 
     dockIconStyle: "default",
@@ -458,6 +468,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
 
       dockIconStyle: "default",
@@ -473,6 +484,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
 
     dockIconStyle: "default",
@@ -496,6 +508,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
       initialized: true,
       preferences: {
         agentComposerDefaultsByProvider: {},
+        browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
 
         dockIconStyle: "default",
@@ -511,6 +524,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
       initialized: true,
       preferences: {
         agentComposerDefaultsByProvider: {},
+        browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
 
         dockIconStyle: "default",
@@ -594,6 +608,7 @@ test("DesktopPreferencesService remembers agent composer defaults per provider",
         reasoningEffort: "high"
       }
     },
+    browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
 
     dockIconStyle: "default",
@@ -683,6 +698,7 @@ function createDesktopPreferencesClient(
       initialized: true,
       preferences: {
         agentComposerDefaultsByProvider: {},
+        browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
 
         dockIconStyle: "default",

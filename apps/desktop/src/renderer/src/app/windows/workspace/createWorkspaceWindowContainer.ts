@@ -9,7 +9,10 @@ import {
 } from "@renderer/features/analytics";
 import { registerAppUpdateServices } from "@renderer/features/app-update";
 import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences";
-import { registerRichTextAtServices } from "@renderer/features/rich-text-at";
+import {
+  createDesktopAgentSessionStatusViewResolver,
+  registerRichTextAtServices
+} from "@renderer/features/rich-text-at";
 import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent";
 import { registerWorkspaceAppCenterServices } from "@renderer/features/workspace-app-center";
 import { registerWorkspaceCatalogServices } from "@renderer/features/workspace-catalog";
@@ -19,6 +22,14 @@ import {
   createAgentProviderTerminalCommandRunner,
   registerWorkspaceWorkbenchServices
 } from "@renderer/features/workspace-workbench";
+import {
+  managedAgentRoundedIconUrl,
+  userAvatarPlaceholderUrl,
+  workspaceAgentActivityStatusLabel
+} from "@tutti-os/agent-gui/agent-message-center";
+import { normalizeAgentActivityDisplayStatus } from "@tutti-os/agent-activity-core";
+import { createDefaultWorkspaceAppIconResolver } from "@renderer/features/workspace-workbench/services/workspaceAppIconStyle";
+import { getActiveLocale } from "../../../i18n/runtime";
 import { INotificationService } from "@tutti-os/ui-notifications";
 import { createToastNotificationService } from "@renderer/lib/notificationService";
 import {
@@ -119,8 +130,26 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     platformApi: desktopApi.platform,
     reporterService
   });
+  const appCenterService = registerWorkspaceAppCenterServices(registry, {
+    eventStreamClient: tuttidEventStreamClient,
+    hostFilesApi: desktopApi.host.files,
+    hostWorkspaceApi: desktopApi.host.workspace,
+    tuttidClient,
+    reporterService,
+    runtimeApi: desktopApi.runtime
+  });
+  const resolveWorkspaceAppIconUrl = createDefaultWorkspaceAppIconResolver();
   registerRichTextAtServices(registry, {
-    tuttidClient
+    tuttidClient,
+    appCenterApps: () => appCenterService.store.apps,
+    resolveAppIconUrl: resolveWorkspaceAppIconUrl,
+    getLocale: getActiveLocale,
+    resolveAgentIconUrl: managedAgentRoundedIconUrl,
+    userAvatarPlaceholderUrl,
+    resolveSessionStatusView: createDesktopAgentSessionStatusViewResolver({
+      normalizeDisplayStatus: normalizeAgentActivityDisplayStatus,
+      statusLabel: workspaceAgentActivityStatusLabel
+    })
   });
   const workspaceUserProjectService = registerWorkspaceUserProjectServices(
     registry,
@@ -142,14 +171,6 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       desktopApi.runtime
     ),
     workspaceUserProjectService
-  });
-  registerWorkspaceAppCenterServices(registry, {
-    eventStreamClient: tuttidEventStreamClient,
-    hostFilesApi: desktopApi.host.files,
-    hostWorkspaceApi: desktopApi.host.workspace,
-    tuttidClient,
-    reporterService,
-    runtimeApi: desktopApi.runtime
   });
   registerWorkspaceWorkbenchServices(registry, {
     browserApi: desktopApi.browser,

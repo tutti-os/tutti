@@ -13,6 +13,7 @@ const (
 	CapabilityRateLimits = "rateLimits"
 	CapabilityPlanMode   = "planMode"
 	CapabilityInterrupt  = "interrupt"
+	CapabilityBrowserUse = "browserUse"
 )
 
 // standardACPCapabilities derives the canonical capability list for ACP
@@ -27,6 +28,7 @@ func standardACPCapabilities(provider string, promptImage bool, state acpLiveSta
 			CapabilityRateLimits,
 			CapabilityPlanMode,
 			CapabilityInterrupt,
+			"review",
 		}
 		if promptImage {
 			capabilities = append([]string{CapabilityImageInput}, capabilities...)

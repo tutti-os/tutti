@@ -105,6 +105,13 @@ prepare_packaged_daemon() {
   )
 }
 
+prepare_browser_mcp() {
+  # Vendors a pinned chrome-devtools-mcp into build/browser-mcp so packaged
+  # browser use never fetches it over the network at runtime. The daemon
+  # launcher (resolveBrowserMcpDaemonEnv) points the daemon at the bundle.
+  node "${ROOT_DIR}/apps/desktop/scripts/vendor-browser-mcp.mjs"
+}
+
 run_pnpm_build() {
   pnpm build
 }
@@ -158,6 +165,7 @@ case "${VARIANT}" in
   unpack|mac|mac-unsigned|mac-signed|win|linux)
     release_timing_log "variant=${VARIANT} status=start"
     run_timed_phase "prepare_packaged_daemon" prepare_packaged_daemon
+    run_timed_phase "prepare_browser_mcp" prepare_browser_mcp
     (
       cd "${APP_DIR}"
       run_timed_phase "resolve_desktop_build_version" resolve_desktop_build_version

@@ -358,12 +358,12 @@ test("WorkspaceSettingsService records an inline test result without a toast", a
       client: createWorkspaceSettingsClient({
         listManagedModelProviders: async () => [
           {
-          baseUrl: "https://api.openai.com/v1",
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "openai"
-        }
+            baseUrl: "https://api.openai.com/v1",
+            enabled: true,
+            hasApiKey: true,
+            models: [],
+            provider: "openai"
+          }
         ]
       })
     },
@@ -496,12 +496,12 @@ test("WorkspaceSettingsService records a save failure inline without a toast", a
       client: createWorkspaceSettingsClient({
         listManagedModelProviders: async () => [
           {
-          baseUrl: "https://api.openai.com/v1",
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "openai"
-        }
+            baseUrl: "https://api.openai.com/v1",
+            enabled: true,
+            hasApiKey: true,
+            models: [],
+            provider: "openai"
+          }
         ],
         putManagedModelProvider: async () => {
           throw new Error("nope");
@@ -531,12 +531,12 @@ test("WorkspaceSettingsService still toasts when a provider toggle fails", async
       client: createWorkspaceSettingsClient({
         listManagedModelProviders: async () => [
           {
-          baseUrl: "https://api.openai.com/v1",
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "openai"
-        }
+            baseUrl: "https://api.openai.com/v1",
+            enabled: true,
+            hasApiKey: true,
+            models: [],
+            provider: "openai"
+          }
         ],
         putManagedModelProvider: async () => {
           throw new Error("nope");
@@ -891,6 +891,7 @@ function createWorkspaceSettingsClient(
 
 function createDesktopPreferencesService(input: {
   onSetDefaultAgentProvider?: IDesktopPreferencesService["setDefaultAgentProvider"];
+  onSetBrowserUseConnectionMode?: IDesktopPreferencesService["setBrowserUseConnectionMode"];
   onSetDockIconStyle?: IDesktopPreferencesService["setDockIconStyle"];
   onSetDockPlacement?: IDesktopPreferencesService["setDockPlacement"];
   onSetLocale?: IDesktopPreferencesService["setLocale"];
@@ -904,6 +905,8 @@ function createDesktopPreferencesService(input: {
     _serviceBrand: undefined,
     store: input.state,
     rememberAgentComposerDefaults: async () => {},
+    setBrowserUseConnectionMode:
+      input.onSetBrowserUseConnectionMode ?? (async (mode) => mode),
     setDefaultAgentProvider:
       input.onSetDefaultAgentProvider ?? (async (provider) => provider),
     setDockIconStyle: input.onSetDockIconStyle ?? (async (style) => style),
@@ -924,6 +927,8 @@ function createPreferencesState(
 ): DesktopPreferencesReadableStoreState {
   return {
     agentComposerDefaultsByProvider: {},
+    browserUseConnectionMode: "isolated",
+    changingBrowserUseConnectionMode: null,
     changingDefaultAgentProvider: null,
     changingDockIconStyle: null,
     changingDockPlacement: null,

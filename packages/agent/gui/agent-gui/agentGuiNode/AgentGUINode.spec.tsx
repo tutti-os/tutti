@@ -2746,6 +2746,7 @@ describe("AgentGUINode", () => {
           reasoningEffort: "high",
           speed: null,
           planMode: false,
+          browserUse: true,
           permissionModeId: "auto"
         },
         supportsModel: true,
@@ -6801,6 +6802,7 @@ function createViewModel(
         reasoningEffort: null,
         speed: null,
         planMode: false,
+        browserUse: true,
         permissionModeId: "preset"
       },
       supportsModel: true,

@@ -248,4 +248,42 @@ describe("agentRichTextDocument", () => {
       ]
     });
   });
+
+  it("hydrates known capability triggers into capability token nodes", () => {
+    const prompt = "Use /browser and keep /compact";
+    const richTextOptions = {
+      capabilities: [
+        {
+          capability: "browserUse",
+          label: "浏览器",
+          name: "browser",
+          trigger: "/browser"
+        }
+      ]
+    };
+    const doc = plainTextToAgentRichTextDoc(prompt, richTextOptions);
+
+    expect(agentRichTextDocToPromptText(doc)).toBe(prompt);
+    expect(doc).toEqual({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Use " },
+            {
+              type: "agentCapabilityToken",
+              attrs: {
+                capability: "browserUse",
+                label: "浏览器",
+                name: "browser",
+                trigger: "/browser"
+              }
+            },
+            { type: "text", text: " and keep /compact" }
+          ]
+        }
+      ]
+    });
+  });
 });

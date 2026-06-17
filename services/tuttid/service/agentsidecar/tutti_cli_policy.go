@@ -13,8 +13,24 @@ func tuttiCLIPolicy(input PrepareInput) string {
 			"{{AGENT_SESSION_ID}}":                  strings.TrimSpace(input.AgentSessionID),
 			"{{PROVIDER}}":                          strings.TrimSpace(input.Provider),
 			"{{PROVIDER_SPECIFIC_MENTION_ROUTING}}": providerSpecificMentionRouting(input.Provider),
+			"{{BROWSER_USE_SKILL_LINES}}":           browserUseSkillPolicyLines(input),
+			"{{BROWSER_USE_HANDOFF_LINES}}":         browserUseHandoffPolicyLines(input),
 		},
 	)) + "\n\n" + strings.TrimSpace(renderProviderSkillTemplate("policy_templates/host-app-context.md", nil))
+}
+
+func browserUseSkillPolicyLines(input PrepareInput) string {
+	if !input.BrowserUse || !BrowserUseDefaultEnabled() {
+		return ""
+	}
+	return "- `browser-use`: browser automation through the daemon-owned `tutti browser` CLI. Prefer this over any generic `browser` skill or direct CDP scripts.\n"
+}
+
+func browserUseHandoffPolicyLines(input PrepareInput) string {
+	if !input.BrowserUse || !BrowserUseDefaultEnabled() {
+		return ""
+	}
+	return "- For browser tasks — visiting URLs, reading pages, clicking, filling forms, or screenshots — use `browser-use` and `tutti browser` only; do not use provider-native `browser` skills or direct CDP automation.\n"
 }
 
 func providerSpecificMentionRouting(provider string) string {

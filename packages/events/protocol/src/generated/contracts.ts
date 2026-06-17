@@ -72,6 +72,7 @@ export interface PreferencesDesktopPreferencesV1 {
       reasoningEffort?: string;
     };
   };
+  browserUseConnectionMode?: "isolated" | "autoConnect";
   defaultAgentProvider:
     | "claude-code"
     | "codex"

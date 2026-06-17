@@ -296,6 +296,7 @@ export function IssueManagerTaskDrawerReadBody({
         content={taskContent}
         emptyLabel={copy.t("messages.taskContentEmpty")}
         label={copy.t("labels.description")}
+        onMentionAction={controller.openMention}
         onOpen={controller.openReference}
         variant="plain"
       />

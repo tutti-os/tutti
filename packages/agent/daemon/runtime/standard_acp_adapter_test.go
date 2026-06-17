@@ -1556,6 +1556,65 @@ func TestClaudeCodeAdapterStartAppliesDefaultMode(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeAdapterStartExposesReviewCommandBaseline(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-review")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	snapshot, ok := adapter.SessionCommandSnapshot(session)
+	if !ok {
+		t.Fatal("SessionCommandSnapshot ok=false, want Claude Code review baseline")
+	}
+	names := agentSessionCommandNames(snapshot.Commands)
+	for _, want := range []string{"review", "compact"} {
+		if !containsString(names, want) {
+			t.Fatalf("commands = %#v, want %q", names, want)
+		}
+	}
+
+	state := adapter.SessionState(session)
+	commands, _ := state.RuntimeContext["commands"].([]string)
+	for _, want := range []string{"review", "compact"} {
+		if !containsString(commands, want) {
+			t.Fatalf("runtime context commands = %#v, want %q", commands, want)
+		}
+	}
+	capabilities, _ := state.RuntimeContext["capabilities"].([]string)
+	if !containsString(capabilities, "review") {
+		t.Fatalf("capabilities = %#v, want review", capabilities)
+	}
+}
+
+func TestClaudeCodeAdapterResumeExposesReviewCommandBaseline(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-review-resume")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "persisted-claude-session-id"
+
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+
+	snapshot, ok := adapter.SessionCommandSnapshot(session)
+	if !ok {
+		t.Fatal("SessionCommandSnapshot ok=false, want Claude Code review baseline")
+	}
+	names := agentSessionCommandNames(snapshot.Commands)
+	for _, want := range []string{"review", "compact"} {
+		if !containsString(names, want) {
+			t.Fatalf("commands = %#v, want %q", names, want)
+		}
+	}
+}
+
 func TestClaudeCodeAdapterStartAppliesPlanMode(t *testing.T) {
 	t.Parallel()
 
@@ -2530,10 +2589,9 @@ func TestControllerPublishesIdleStandardACPCommandUpdatesAfterStart(t *testing.T
 			if !ok {
 				t.Fatalf("event data = %#v, want AgentSessionCommandSnapshot", event.Data)
 			}
-			if len(snapshot.Commands) != 1 || snapshot.Commands[0].Name != "web" {
-				t.Fatalf("command snapshot = %#v, want web command", snapshot)
+			if len(snapshot.Commands) == 1 && snapshot.Commands[0].Name == "web" {
+				return
 			}
-			return
 		case <-deadline:
 			t.Fatal("idle available_commands_update was not published")
 		}

@@ -1450,8 +1450,6 @@ func TestAppCenterServiceStartEnabledReturnsErrorForMissingNonRemotePackage(t *t
 }
 
 func TestAppCenterServiceStartEnabledDoesNotBlockOtherAppsWhenRemoteBuiltinPackageIsMissing(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 	localDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
 		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,

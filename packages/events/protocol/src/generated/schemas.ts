@@ -114,6 +114,10 @@ export const preferencesDesktopPreferencesSchema = {
         }
       }
     },
+    browserUseConnectionMode: {
+      type: "string",
+      enum: ["isolated", "autoConnect"]
+    },
     defaultAgentProvider: {
       type: "string",
       enum: ["claude-code", "codex", "nexight", "gemini", "hermes", "openclaw"]
@@ -974,6 +978,10 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             }
           }
         },
+        browserUseConnectionMode: {
+          type: "string",
+          enum: ["isolated", "autoConnect"]
+        },
         defaultAgentProvider: {
           type: "string",
           enum: [
@@ -1156,6 +1164,10 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               }
             }
           }
+        },
+        browserUseConnectionMode: {
+          type: "string",
+          enum: ["isolated", "autoConnect"]
         },
         defaultAgentProvider: {
           type: "string",

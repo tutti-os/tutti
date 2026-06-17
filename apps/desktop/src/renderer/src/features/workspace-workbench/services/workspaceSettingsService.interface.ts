@@ -3,6 +3,7 @@ import type { DesktopDeveloperLogKind } from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentProvider,
+  DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
   DesktopSleepPreventionMode,
@@ -53,6 +54,9 @@ export interface IWorkspaceSettingsService {
     enabled: boolean
   ): Promise<void>;
   changeDefaultAgentProvider(provider: DesktopAgentProvider): Promise<void>;
+  changeBrowserUseConnectionMode(
+    mode: DesktopBrowserUseConnectionMode
+  ): Promise<void>;
   changeDockIconStyle(style: DesktopDockIconStyle): Promise<void>;
   changeDockPlacement(placement: DesktopDockPlacement): Promise<void>;
   changeLocale(nextLocale: DesktopLocale): Promise<void>;

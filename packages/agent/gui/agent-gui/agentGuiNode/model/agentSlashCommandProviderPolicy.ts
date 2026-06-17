@@ -1,5 +1,9 @@
 import type { AgentSessionCommand } from "../../../shared/agentSessionTypes";
 import {
+  buildTuttiBrowserUseSubmitPrompt,
+  parseTuttiBrowserUseInvocation
+} from "./agentBrowserUseSubmit";
+import {
   draftForSlashCommand,
   mergeSlashCommands,
   parseSlashCommandInvocation,
@@ -7,6 +11,17 @@ import {
 } from "./agentSlashCommands";
 
 export type AgentSlashCommandProvider = "codex" | "claude-code" | string;
+
+export interface AgentSlashCommandCapability {
+  aliases?: readonly string[];
+  capability: "browserUse";
+  kind: "capability";
+  name: string;
+}
+
+export type AgentSlashCommand =
+  | AgentSessionCommand
+  | AgentSlashCommandCapability;
 
 export type SlashCommandSelectionEffect =
   | {
@@ -16,12 +31,20 @@ export type SlashCommandSelectionEffect =
   | {
       kind: "submitPrompt";
       prompt: string;
+      enableBrowserUse?: boolean;
     }
   | {
       kind: "showStatus";
     }
   | {
       kind: "togglePlanMode";
+    }
+  | {
+      kind: "enableBrowserUse";
+      draft: string;
+    }
+  | {
+      kind: "showReviewPicker";
     }
   | {
       kind: "toggleSpeed";
@@ -32,43 +55,89 @@ export type SlashCommandSelectionEffect =
 
 interface ResolveSlashCommandSelectionEffectInput {
   provider: AgentSlashCommandProvider;
-  command: AgentSessionCommand;
+  command: AgentSlashCommand;
   currentDraft: string;
 }
 
 interface ResolveSlashCommandSubmitEffectInput {
   provider: AgentSlashCommandProvider;
-  commands: readonly AgentSessionCommand[];
+  commands: readonly AgentSlashCommand[];
   draft: string;
 }
 
-const CODEX_IMMEDIATE_SLASH_COMMANDS = new Set(["init", "compact"]);
-const PROVIDER_NATIVE_IMMEDIATE_COMMANDS = new Set(["compact"]);
-const LOCAL_STATUS_COMMANDS = new Set(["status"]);
+interface ProviderSlashPolicy {
+  /** Commands submitted immediately on selection instead of filling a draft. */
+  immediateCommands: ReadonlySet<string>;
+  /** Commands that open the shared review target picker when invoked bare. */
+  reviewPickerCommands: ReadonlySet<string>;
+  /** Commands surfaced when the agent advertises none of its own. */
+  fallbackCommands: readonly AgentSessionCommand[];
+}
+
+const REVIEW_COMMAND = "review";
+// `compact` is locally handled and submitted immediately for every provider.
+const UNIVERSAL_IMMEDIATE_COMMANDS = new Set(["compact"]);
+// Commands blocked or handled locally across the ACP providers below.
+const ACP_BLOCKED_COMMANDS = new Set(["plan"]);
+const ACP_LOCAL_STATUS_COMMANDS = new Set(["status"]);
 // `/fast` toggles the orthogonal speed dimension locally rather than reaching
 // the agent as a prompt; supported for codex and claude-code.
-const LOCAL_TOGGLE_SPEED_COMMANDS = new Set(["fast"]);
-const CLAUDE_CODE_PROVIDER_NATIVE_COMMANDS = new Set([
-  "compact",
-  "context",
-  "usage"
-]);
-const CODEX_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
+const ACP_LOCAL_TOGGLE_SPEED_COMMANDS = new Set(["fast"]);
+const ACP_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   { name: "compact" },
   { name: "status" },
-  { name: "fast" }
+  { name: "fast" },
+  { name: "goal" }
+];
+const CODEX_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
+  ...ACP_FALLBACK_COMMANDS,
+  { name: REVIEW_COMMAND }
 ];
 const CLAUDE_CODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
-  { name: "compact" },
-  { name: "status" },
-  { name: "fast" }
+  ...ACP_FALLBACK_COMMANDS,
+  { name: REVIEW_COMMAND }
 ];
+const BROWSER_USE_CAPABILITY_COMMAND: AgentSlashCommandCapability = {
+  kind: "capability",
+  capability: "browserUse",
+  name: "browser",
+  aliases: ["浏览器"]
+};
+
+const PROVIDER_SLASH_POLICY: Record<
+  "codex" | "claude-code",
+  ProviderSlashPolicy
+> = {
+  codex: {
+    immediateCommands: new Set(["init", "compact"]),
+    reviewPickerCommands: new Set([REVIEW_COMMAND]),
+    fallbackCommands: CODEX_FALLBACK_COMMANDS
+  },
+  "claude-code": {
+    immediateCommands: new Set(["compact", "context", "usage"]),
+    reviewPickerCommands: new Set([REVIEW_COMMAND]),
+    fallbackCommands: CLAUDE_CODE_FALLBACK_COMMANDS
+  }
+};
+
+function providerSlashPolicy(
+  provider: AgentSlashCommandProvider
+): ProviderSlashPolicy | undefined {
+  return provider === "codex" || provider === "claude-code"
+    ? PROVIDER_SLASH_POLICY[provider]
+    : undefined;
+}
+
+function isACPProvider(provider: AgentSlashCommandProvider): boolean {
+  return provider === "codex" || provider === "claude-code";
+}
 
 export function resolveSlashCommandsForProvider({
   provider,
   commands,
   hasCompactableContext = true,
-  compactSupported
+  compactSupported,
+  browserSupported = false
 }: {
   provider: AgentSlashCommandProvider;
   commands: readonly AgentSessionCommand[];
@@ -79,8 +148,9 @@ export function resolveSlashCommandsForProvider({
    * keeps the legacy `hasCompactableContext` behavior.
    */
   compactSupported?: boolean | null;
-}): AgentSessionCommand[] {
-  return mergeSlashCommands(
+  browserSupported?: boolean;
+}): AgentSlashCommand[] {
+  const commandEntries = mergeSlashCommands(
     filterUnavailableSlashCommands(commands, {
       compactSupported,
       hasCompactableContext,
@@ -92,6 +162,10 @@ export function resolveSlashCommandsForProvider({
       provider
     })
   );
+  if (!browserSupported) {
+    return commandEntries;
+  }
+  return [...commandEntries, BROWSER_USE_CAPABILITY_COMMAND];
 }
 
 export function resolveSlashCommandSelectionEffect({
@@ -99,6 +173,12 @@ export function resolveSlashCommandSelectionEffect({
   command,
   currentDraft
 }: ResolveSlashCommandSelectionEffectInput): SlashCommandSelectionEffect {
+  if (isBrowserUseCapability(command)) {
+    return {
+      kind: "enableBrowserUse",
+      draft: draftForSlashCommand(command, currentDraft)
+    };
+  }
   const commandName = normalizedCommandName(command);
   if (isBlockedSlashCommand(provider, commandName)) {
     return { kind: "blockCommand" };
@@ -109,13 +189,12 @@ export function resolveSlashCommandSelectionEffect({
   if (isLocalStatusCommand(provider, commandName)) {
     return { kind: "showStatus" };
   }
-  if (isProviderNativeImmediateCommand(provider, commandName)) {
-    return {
-      kind: "submitPrompt",
-      prompt: promptForSlashCommand(command)
-    };
+  // Picking codex `/review` from the palette never carries args (the palette
+  // closes once a space is typed), so always open the target picker.
+  if (isReviewPickerCommand(provider, commandName)) {
+    return { kind: "showReviewPicker" };
   }
-  if (isCodexImmediateSlashCommand(provider, command)) {
+  if (isImmediateCommand(provider, commandName)) {
     return {
       kind: "submitPrompt",
       prompt: promptForSlashCommand(command)
@@ -124,6 +203,31 @@ export function resolveSlashCommandSelectionEffect({
   return {
     kind: "fillDraft",
     draft: draftForSlashCommand(command, currentDraft)
+  };
+}
+
+export function resolveTuttiBrowserUseSubmitEffect(input: {
+  browserSupported: boolean;
+  commands: readonly AgentSlashCommand[];
+  draft: string;
+}): SlashCommandSelectionEffect | null {
+  if (!input.browserSupported) {
+    return null;
+  }
+  const invocation = parseTuttiBrowserUseInvocation(input.draft);
+  if (!invocation) {
+    return null;
+  }
+  const command = input.commands.find((candidate) =>
+    slashCommandMatchesInvocation(candidate, invocation.commandName)
+  );
+  if (!command || !isBrowserUseCapability(command)) {
+    return null;
+  }
+  return {
+    kind: "submitPrompt",
+    prompt: buildTuttiBrowserUseSubmitPrompt(invocation.args),
+    enableBrowserUse: true
   };
 }
 
@@ -139,12 +243,13 @@ export function resolveSlashCommandSubmitEffect({
   if (isBlockedSlashCommand(provider, invocation.commandName)) {
     return { kind: "blockCommand" };
   }
-  const command = commands.find(
-    (candidate) =>
-      candidate.name.trim().toLowerCase() ===
-      invocation.commandName.toLowerCase()
+  const command = commands.find((candidate) =>
+    slashCommandMatchesInvocation(candidate, invocation.commandName)
   );
   if (!command) {
+    return null;
+  }
+  if (isBrowserUseCapability(command)) {
     return null;
   }
   const commandName = normalizedCommandName(command);
@@ -154,10 +259,12 @@ export function resolveSlashCommandSubmitEffect({
   if (isLocalStatusCommand(provider, commandName)) {
     return { kind: "showStatus" };
   }
-  if (
-    isProviderNativeImmediateCommand(provider, commandName) ||
-    isCodexImmediateSlashCommand(provider, command)
-  ) {
+  // Bare `/review` opens the target picker; `/review <text>` keeps the legacy
+  // behavior of submitting the text straight through as a custom review.
+  if (isReviewPickerCommand(provider, commandName)) {
+    return invocation.args.trim() === "" ? { kind: "showReviewPicker" } : null;
+  }
+  if (isImmediateCommand(provider, commandName)) {
     return {
       kind: "submitPrompt",
       prompt: invocation.normalizedPrompt
@@ -171,41 +278,32 @@ function isBlockedSlashCommand(
   commandName: string
 ): boolean {
   return (
-    (provider === "codex" || provider === "claude-code") &&
-    commandName.trim().toLowerCase() === "plan"
+    isACPProvider(provider) &&
+    ACP_BLOCKED_COMMANDS.has(commandName.trim().toLowerCase())
   );
 }
 
-function isCodexImmediateSlashCommand(
+function isReviewPickerCommand(
   provider: AgentSlashCommandProvider,
-  command: AgentSessionCommand
+  commandName: string
 ): boolean {
-  if (provider !== "codex") {
-    return false;
-  }
-  return CODEX_IMMEDIATE_SLASH_COMMANDS.has(command.name.trim().toLowerCase());
+  return (
+    providerSlashPolicy(provider)?.reviewPickerCommands.has(commandName) ??
+    false
+  );
 }
 
 function fallbackCommandsForProvider(
   provider: AgentSlashCommandProvider
 ): readonly AgentSessionCommand[] {
-  if (provider === "codex") {
-    return CODEX_FALLBACK_COMMANDS;
-  }
-  if (provider === "claude-code") {
-    return CLAUDE_CODE_FALLBACK_COMMANDS;
-  }
-  return [];
+  return providerSlashPolicy(provider)?.fallbackCommands ?? [];
 }
 
 function isLocalStatusCommand(
   provider: AgentSlashCommandProvider,
   commandName: string
 ): boolean {
-  return (
-    (provider === "codex" || provider === "claude-code") &&
-    LOCAL_STATUS_COMMANDS.has(commandName)
-  );
+  return isACPProvider(provider) && ACP_LOCAL_STATUS_COMMANDS.has(commandName);
 }
 
 function isLocalToggleSpeedCommand(
@@ -213,26 +311,48 @@ function isLocalToggleSpeedCommand(
   commandName: string
 ): boolean {
   return (
-    (provider === "codex" || provider === "claude-code") &&
-    LOCAL_TOGGLE_SPEED_COMMANDS.has(commandName)
+    isACPProvider(provider) && ACP_LOCAL_TOGGLE_SPEED_COMMANDS.has(commandName)
   );
 }
 
-function isProviderNativeImmediateCommand(
+function isImmediateCommand(
   provider: AgentSlashCommandProvider,
   commandName: string
 ): boolean {
-  if (PROVIDER_NATIVE_IMMEDIATE_COMMANDS.has(commandName)) {
+  if (UNIVERSAL_IMMEDIATE_COMMANDS.has(commandName)) {
     return true;
   }
   return (
-    provider === "claude-code" &&
-    CLAUDE_CODE_PROVIDER_NATIVE_COMMANDS.has(commandName)
+    providerSlashPolicy(provider)?.immediateCommands.has(commandName) ?? false
   );
 }
 
-function normalizedCommandName(command: AgentSessionCommand): string {
+function normalizedCommandName(command: { name: string }): string {
   return command.name.trim().toLowerCase();
+}
+
+function isBrowserUseCapability(
+  command: AgentSlashCommand
+): command is AgentSlashCommandCapability {
+  return (
+    "kind" in command &&
+    command.kind === "capability" &&
+    command.capability === "browserUse"
+  );
+}
+
+function slashCommandMatchesInvocation(
+  command: AgentSlashCommand,
+  commandName: string
+): boolean {
+  const normalizedInvocation = commandName.trim().toLowerCase();
+  if (normalizedCommandName(command) === normalizedInvocation) {
+    return true;
+  }
+  const aliases = "aliases" in command ? (command.aliases ?? []) : [];
+  return aliases.some(
+    (alias) => alias.trim().toLowerCase() === normalizedInvocation
+  );
 }
 
 function filterUnavailableSlashCommands(
@@ -246,8 +366,8 @@ function filterUnavailableSlashCommands(
   return commands.filter((command) => {
     const commandName = normalizedCommandName(command);
     if (
-      (input.provider === "codex" || input.provider === "claude-code") &&
-      commandName === "plan"
+      isACPProvider(input.provider) &&
+      ACP_BLOCKED_COMMANDS.has(commandName)
     ) {
       return false;
     }

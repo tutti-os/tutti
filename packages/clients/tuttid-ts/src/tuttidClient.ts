@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- flat client registry that mirrors the generated
+   tuttid API surface; it grows one thin wrapper per endpoint. */
 import {
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
@@ -57,6 +59,8 @@ import {
   checkWorkspaceTerminalCloseGuard,
   readWorkspaceFilePreview,
   readWorkspaceAgentSessionAttachment,
+  listWorkspaceAgentSessionGitBranches,
+  listWorkspaceGitBranches,
   removeWorkspaceIssueContextRef,
   removeWorkspaceIssueTaskContextRef,
   resizeWorkspaceTerminal,
@@ -692,6 +696,24 @@ export function createTuttidClient(
         response,
         "Read workspace agent session attachment failed."
       );
+    },
+    async listWorkspaceAgentSessionGitBranches(workspaceID, agentSessionID) {
+      const response = await listWorkspaceAgentSessionGitBranches({
+        client,
+        path: { agentSessionID, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "List workspace agent session git branches failed."
+      );
+    },
+    async listWorkspaceGitBranches(workspaceID, workingDirectory) {
+      const response = await listWorkspaceGitBranches({
+        client,
+        path: { workspaceID },
+        query: { workingDirectory }
+      });
+      return unwrapData(response, "List workspace git branches failed.");
     },
     async updateWorkspaceAgentSessionSettings(
       workspaceID,

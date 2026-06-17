@@ -172,6 +172,7 @@ test("desktop rich text @ service assembles workspace issue providers by capabil
       label: "Login polish",
       meta: {
         contentPreview: "Handle flaky login captcha",
+        creatorDisplayName: "Alice",
         status: "running",
         topicId: "topic-1",
         workspaceId: "workspace-1"
@@ -613,6 +614,120 @@ test("desktop rich text @ service prefers cli scope description for workspace ap
   assert.equal(item.displayName, "Automation");
   assert.equal(item.description, "Manage automations.");
   assert.equal(provider.getItemSubtitle?.(item), "Manage automations.");
+});
+
+test("desktop rich text @ service emits enriched app + session meta when enrichment deps supplied", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listCliCapabilities() {
+        return {
+          commands: [
+            {
+              id: "app.app-weather.weather.forecast",
+              description: "Inspect weather forecasts.",
+              path: ["weather", "forecast"],
+              summary: "Get a forecast",
+              output: { defaultMode: "json", json: true, table: null },
+              source: {
+                appId: "app-weather",
+                appDescription: "Weather app manifest description.",
+                appName: "Weather Desk",
+                cliDescription: "Plan weather-sensitive work.",
+                kind: "app"
+              }
+            }
+          ]
+        };
+      },
+      async listWorkspaceAgentSessions(workspaceId: string) {
+        return {
+          workspaceId,
+          sessions: [
+            {
+              createdAt: "2026-06-01T00:00:00Z",
+              cwd: null,
+              id: "session-1",
+              provider: "codex",
+              status: "working",
+              title: "Codex run",
+              updatedAt: null
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient,
+    appCenterApps: () => [
+      {
+        appId: "app-weather",
+        name: "Weather Desk",
+        description: "Plan weather-sensitive work.",
+        localizations: [
+          {
+            locale: "fr-FR",
+            name: "Bureau Météo",
+            description: "Planifiez selon la météo."
+          }
+        ]
+      } as never
+    ],
+    resolveAppIconUrl: (appId) =>
+      appId === "app-weather" ? "https://icons/weather.png" : null,
+    getLocale: () => "fr-FR",
+    resolveAgentIconUrl: (provider) => `https://agents/${provider}.png`,
+    userAvatarPlaceholderUrl: "https://avatars/placeholder.png",
+    resolveSessionStatusView: (status) => ({
+      dataStatus: status,
+      label: status === "working" ? "Working" : status,
+      pulse: status === "working"
+    })
+  });
+
+  const [appProvider] = service.getProviders({
+    capabilities: ["workspace-app"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(appProvider);
+  const appItems = await appProvider.query({
+    context: {},
+    keyword: "",
+    maxResults: 5
+  });
+  const appInsert = appProvider.toInsertResult(appItems[0]);
+  assert.equal(appInsert.kind, "mention");
+  assert.equal(appInsert.mention.label, "Bureau Météo");
+  assert.equal(
+    appInsert.mention.meta?.description,
+    "Planifiez selon la météo."
+  );
+  assert.equal(appInsert.mention.meta?.iconUrl, "https://icons/weather.png");
+
+  const [sessionProvider] = service.getProviders({
+    capabilities: ["agent-session"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(sessionProvider);
+  const sessionItems = await sessionProvider.query({
+    context: {},
+    keyword: "",
+    maxResults: 5
+  });
+  const sessionInsert = sessionProvider.toInsertResult(sessionItems[0]);
+  assert.equal(sessionInsert.kind, "mention");
+  assert.equal(
+    sessionInsert.mention.meta?.agentIconUrl,
+    "https://agents/codex.png"
+  );
+  assert.equal(
+    sessionInsert.mention.meta?.userAvatarPlaceholderUrl,
+    "https://avatars/placeholder.png"
+  );
+  assert.equal(sessionInsert.mention.meta?.statusLabel, "Working");
+  assert.equal(sessionInsert.mention.meta?.statusDataStatus, "working");
+  assert.equal(sessionInsert.mention.meta?.statusPulse, "true");
 });
 
 test("desktop rich text @ service returns no providers without requested capabilities", () => {

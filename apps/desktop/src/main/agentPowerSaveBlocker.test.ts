@@ -272,6 +272,9 @@ function createFakePreferences(
     getDefaultAgentProvider() {
       return "codex";
     },
+    getBrowserUseConnectionMode() {
+      return "isolated";
+    },
     getDockIconStyle() {
       return "default";
     },

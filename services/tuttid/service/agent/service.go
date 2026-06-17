@@ -132,6 +132,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			provider,
 			value(input.ReasoningEffort),
 		),
+		BrowserUse: input.BrowserUse,
 		Speed: normalizeSpeedForProvider(
 			provider,
 			value(input.Speed),
@@ -205,6 +206,7 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 		Title:            value(input.Title),
 		PermissionModeID: value(input.PermissionModeID),
 		PlanMode:         clampComposerPlanModeForProvider(provider, valueBool(input.PlanMode)),
+		BrowserUse:       clampComposerBrowserUseForProvider(provider, input.BrowserUse),
 		Model:            clampComposerModelForProvider(provider, value(input.Model)),
 		ReasoningEffort: normalizeReasoningEffortForProvider(
 			provider,
@@ -270,6 +272,32 @@ func (s *Service) ReadAttachment(ctx context.Context, workspaceID string, agentS
 		return PromptAttachment{}, ErrSessionNotFound
 	}
 	return store.ReadAttachment(workspaceID, agentSessionID, attachmentID)
+}
+
+func (s *Service) ListGitBranches(ctx context.Context, workspaceID string, agentSessionID string) (GitBranches, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return GitBranches{}, ErrInvalidArgument
+	}
+	session, err := s.get(ctx, workspaceID, agentSessionID, false)
+	if err != nil {
+		return GitBranches{}, err
+	}
+	return listGitBranches(ctx, session.Cwd)
+}
+
+// ListGitBranchesForPath lists local git branches for a workspace working
+// directory before any agent session exists (e.g. the empty-hero composer's
+// selected project path). It mirrors the graceful degradation of the
+// session-scoped path: a non-git or missing directory yields an empty result.
+func (*Service) ListGitBranchesForPath(ctx context.Context, workspaceID string, workingDirectory string) (GitBranches, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	workingDirectory = strings.TrimSpace(workingDirectory)
+	if workspaceID == "" || workingDirectory == "" {
+		return GitBranches{}, ErrInvalidArgument
+	}
+	return listGitBranches(ctx, workingDirectory)
 }
 
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, reconcileStaleTurn bool) (Session, error) {
@@ -761,36 +789,6 @@ func isRuntimeActiveTurnStatus(status string) bool {
 }
 
 func (s *Service) prepareRuntimeForResume(ctx context.Context, session PersistedSession) (preparedRuntime, error) {
-	input := CreateSessionInput{
-		AgentSessionID: strings.TrimSpace(session.ID),
-		Provider:       strings.TrimSpace(session.Provider),
-	}
-	if title := strings.TrimSpace(session.Title); title != "" {
-		input.Title = &title
-	}
-	if model := strings.TrimSpace(session.Settings.Model); model != "" {
-		input.Model = &model
-	}
-	if permissionModeID := strings.TrimSpace(session.Settings.PermissionModeID); permissionModeID != "" {
-		normalizedPermissionModeID := normalizePermissionModeIDForProvider(input.Provider, permissionModeID)
-		input.PermissionModeID = &normalizedPermissionModeID
-	}
-	if session.Settings.PlanMode {
-		input.PlanMode = boolPointer(true)
-	}
-	if reasoningEffort := strings.TrimSpace(session.Settings.ReasoningEffort); reasoningEffort != "" {
-		normalizedReasoningEffort := normalizeReasoningEffortForProvider(
-			strings.TrimSpace(session.Provider),
-			reasoningEffort,
-		)
-		input.ReasoningEffort = &normalizedReasoningEffort
-	}
-	if speed := strings.TrimSpace(session.Settings.Speed); speed != "" {
-		normalizedSpeed := normalizeSpeedForProvider(
-			strings.TrimSpace(session.Provider),
-			speed,
-		)
-		input.Speed = &normalizedSpeed
-	}
+	input := createSessionInputFromPersisted(session)
 	return s.prepareRuntime(ctx, strings.TrimSpace(session.WorkspaceID), strings.TrimSpace(session.Cwd), input)
 }

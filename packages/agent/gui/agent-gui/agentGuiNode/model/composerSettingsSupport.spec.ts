@@ -100,7 +100,8 @@ describe("composerSettingsSupportFromOptions", () => {
       reasoning: false,
       speed: false,
       permission: false,
-      plan: false
+      plan: false,
+      browser: false
     });
   });
 

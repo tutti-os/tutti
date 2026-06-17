@@ -9,6 +9,7 @@ export interface AgentComposerSettingsSupport {
   speed: boolean;
   permission: boolean;
   plan: boolean;
+  browser: boolean;
 }
 
 /**
@@ -29,6 +30,11 @@ export function composerSettingsSupportFromOptions(
     permission: composerOptions?.permissionConfig?.configurable ?? false,
     plan:
       resolveAgentActivityCapability("planMode", {
+        composerOptions,
+        sessionRuntimeContext
+      }) === true,
+    browser:
+      resolveAgentActivityCapability("browserUse", {
         composerOptions,
         sessionRuntimeContext
       }) === true

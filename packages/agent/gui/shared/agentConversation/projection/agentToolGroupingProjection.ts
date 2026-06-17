@@ -326,6 +326,12 @@ function findActiveTailSuppressedToolIndices(
 }
 
 function isSuppressingActiveTailTool(call: AgentToolCallVM): boolean {
+  // Only an actively running tail tool collapses the tools before it into a
+  // single live row. Once the latest tail tool has finished, the completed
+  // tools stay visible instead of vanishing behind it.
+  if (call.statusKind !== "working" && call.statusKind !== "waiting") {
+    return false;
+  }
   switch (call.rendererKind) {
     case "approval":
     case "ask-user":

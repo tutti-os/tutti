@@ -2988,6 +2988,294 @@ describe("useAgentGUINodeController", () => {
     ).toBe(true);
   });
 
+  describe("effective plan mode contract", () => {
+    // Contract: the composer's plan-mode indicator (effectivePlanMode) reflects
+    // the agent's most-recent real plan transition (Enter/ExitPlanMode tool
+    // calls), falling back to the stored session setting when there is no
+    // transition. These exercise the derivation with the support gate
+    // explicitly OPEN (supportsPlanMode === true) — the only path where the VM
+    // exposes the derived value. The suppressed-when-unsupported half of the
+    // contract is covered by the gated tests above.
+    function renderPlanModeController({
+      timelineItems,
+      sessionPlanMode,
+      sessionUpdatedAtUnixMs
+    }: {
+      timelineItems: ReturnType<typeof timelineToolCall>[];
+      sessionPlanMode: boolean;
+      sessionUpdatedAtUnixMs: number;
+    }) {
+      installAgentHostApi({
+        list: vi.fn(async () => ({
+          presences: [],
+          sessions: [
+            workspaceAgentSession("session-1", {
+              provider: "codex",
+              title: "Codex"
+            })
+          ]
+        })),
+        listSessionTimeline: vi.fn(async () => ({ timelineItems })),
+        subscribeEvents: vi.fn(() => vi.fn()),
+        getComposerOptions: vi.fn(async () => ({
+          provider: "codex",
+          modelConfig: { configurable: true, options: [] },
+          reasoningConfig: { configurable: true, options: [] },
+          runtimeContext: { capabilities: ["planMode"] }
+        })),
+        getState: vi.fn(async () =>
+          agentSessionState("session-1", {
+            provider: "codex",
+            settings: { planMode: sessionPlanMode, permissionModeId: "auto" },
+            runtimeContext: { capabilities: ["planMode"] },
+            updatedAtUnixMs: sessionUpdatedAtUnixMs
+          })
+        )
+      });
+      return renderHook(() =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData("session-1", "codex"),
+          onDataChange: vi.fn()
+        })
+      );
+    }
+
+    it("reflects the agent's latest EnterPlanMode transition over a stale 'off' session setting", async () => {
+      const { result } = renderPlanModeController({
+        timelineItems: [
+          timelineToolCall({
+            agentSessionId: "session-1",
+            callId: "call-enter",
+            name: "EnterPlanMode",
+            status: "completed",
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessionPlanMode: false,
+        sessionUpdatedAtUnixMs: 10
+      });
+
+      await waitFor(() => {
+        expect(result.current.viewModel.composerSettings.supportsPlanMode).toBe(
+          true
+        );
+      });
+      // Gate open: the newer EnterPlanMode transition wins over stored false.
+      expect(result.current.viewModel.composerSettings.effectivePlanMode).toBe(
+        true
+      );
+    });
+
+    it("clears the indicator on a newer ExitPlanMode even when the session still stores planMode:true", async () => {
+      const { result } = renderPlanModeController({
+        timelineItems: [
+          timelineToolCall({
+            agentSessionId: "session-1",
+            callId: "call-exit",
+            name: "ExitPlanMode",
+            status: "completed",
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessionPlanMode: true,
+        sessionUpdatedAtUnixMs: 10
+      });
+
+      await waitFor(() => {
+        expect(result.current.viewModel.composerSettings.supportsPlanMode).toBe(
+          true
+        );
+      });
+      expect(result.current.viewModel.composerSettings.effectivePlanMode).toBe(
+        false
+      );
+    });
+
+    it("falls back to the stored session plan setting when the timeline has no plan transition", async () => {
+      const { result } = renderPlanModeController({
+        timelineItems: [],
+        sessionPlanMode: true,
+        sessionUpdatedAtUnixMs: 10
+      });
+
+      await waitFor(() => {
+        expect(result.current.viewModel.composerSettings.supportsPlanMode).toBe(
+          true
+        );
+      });
+      expect(result.current.viewModel.composerSettings.effectivePlanMode).toBe(
+        true
+      );
+    });
+  });
+
+  describe("browser use contract", () => {
+    // Contract: browser use is a per-session toggle that defaults ON for
+    // providers advertising the browserUse capability, is unsupported (hidden)
+    // otherwise, reflects a stored opt-out, and sends the chosen value to the
+    // daemon (which then injects or omits the browser MCP).
+    function renderBrowserUseController({
+      advertiseCapability,
+      storedBrowserUse
+    }: {
+      advertiseCapability: boolean;
+      storedBrowserUse?: boolean;
+    }) {
+      const capability = advertiseCapability
+        ? { capabilities: ["browserUse"] }
+        : {};
+      installAgentHostApi({
+        list: vi.fn(async () => ({
+          presences: [],
+          sessions: [
+            workspaceAgentSession("session-1", {
+              provider: "codex",
+              title: "Codex"
+            })
+          ]
+        })),
+        listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+        subscribeEvents: vi.fn(() => vi.fn()),
+        getComposerOptions: vi.fn(async () => ({
+          provider: "codex",
+          modelConfig: { configurable: true, options: [] },
+          reasoningConfig: { configurable: true, options: [] },
+          runtimeContext: { ...capability }
+        })),
+        getState: vi.fn(async () =>
+          agentSessionState("session-1", {
+            provider: "codex",
+            settings: {
+              permissionModeId: "auto",
+              ...(storedBrowserUse === undefined
+                ? {}
+                : { browserUse: storedBrowserUse })
+            },
+            runtimeContext: { ...capability }
+          })
+        )
+      });
+      return renderHook(() =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData("session-1", "codex"),
+          onDataChange: vi.fn()
+        })
+      );
+    }
+
+    it("exposes browser use as supported and on by default when the provider advertises the capability", async () => {
+      const { result } = renderBrowserUseController({
+        advertiseCapability: true
+      });
+      await waitFor(() => {
+        expect(result.current.viewModel.composerSettings.supportsBrowser).toBe(
+          true
+        );
+      });
+      expect(
+        result.current.viewModel.composerSettings.draftSettings.browserUse
+      ).toBe(true);
+    });
+
+    it("marks browser use unsupported when the provider does not advertise the capability", async () => {
+      const { result } = renderBrowserUseController({
+        advertiseCapability: false
+      });
+      await waitFor(() => {
+        expect(
+          result.current.viewModel.composerSettings.isSettingsLoading
+        ).toBe(false);
+      });
+      expect(
+        result.current.viewModel.composerSettings.supportsBrowser ?? false
+      ).toBe(false);
+    });
+
+    it("reflects a stored browser-use opt-out", async () => {
+      const { result } = renderBrowserUseController({
+        advertiseCapability: true,
+        storedBrowserUse: false
+      });
+      await waitFor(() => {
+        expect(result.current.viewModel.composerSettings.supportsBrowser).toBe(
+          true
+        );
+      });
+      expect(
+        result.current.viewModel.composerSettings.draftSettings.browserUse
+      ).toBe(false);
+    });
+
+    it("sends an explicit browser-use opt-out through to the daemon", async () => {
+      const updateSettings = vi.fn(async () => ({
+        settings: { browserUse: false, permissionModeId: "auto" }
+      }));
+      installAgentHostApi({
+        list: vi.fn(async () => ({
+          presences: [],
+          sessions: [
+            workspaceAgentSession("session-1", {
+              provider: "codex",
+              title: "Codex"
+            })
+          ]
+        })),
+        listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+        subscribeEvents: vi.fn(() => vi.fn()),
+        updateSettings,
+        getComposerOptions: vi.fn(async () => ({
+          provider: "codex",
+          modelConfig: { configurable: true, options: [] },
+          reasoningConfig: { configurable: true, options: [] },
+          runtimeContext: { capabilities: ["browserUse"] }
+        })),
+        getState: vi.fn(async () =>
+          agentSessionState("session-1", {
+            provider: "codex",
+            settings: { permissionModeId: "auto" },
+            runtimeContext: { capabilities: ["browserUse"] }
+          })
+        )
+      });
+      const { result } = renderHook(() =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData("session-1", "codex"),
+          onDataChange: vi.fn()
+        })
+      );
+      await waitFor(() => {
+        expect(result.current.viewModel.composerSettings.supportsBrowser).toBe(
+          true
+        );
+      });
+
+      act(() => {
+        result.current.actions.updateComposerSettings({ browserUse: false });
+      });
+
+      await waitFor(() => {
+        expect(updateSettings).toHaveBeenCalledTimes(1);
+      });
+      expect(updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          settings: expect.objectContaining({ browserUse: false })
+        })
+      );
+    });
+  });
+
   it("maps waiting aliases from streamed state patches to waiting conversations", async () => {
     let activityListener:
       | ((event: AgentHostAgentActivityStreamEvent) => void)
@@ -6361,6 +6649,9 @@ describe("useAgentGUINodeController", () => {
             speed: null,
             // Sent as-is; tuttid clamps planMode for codex at session create.
             planMode: true,
+            // Browser use defaults on and is sent as-is; the daemon clamps per
+            // provider support.
+            browserUse: true,
             permissionModeId: "full-access"
           }
         })

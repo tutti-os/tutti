@@ -45,7 +45,10 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
-  it("only projects the latest tool from an unfinalized tail tool chain", () => {
+  const tailChainConversation = (latestTail: {
+    status: string;
+    statusKind: "completed" | "working" | "waiting";
+  }) => {
     const calls = [
       {
         id: "call:1",
@@ -72,8 +75,8 @@ describe("projectAgentConversationVM", () => {
         name: "Read web page",
         toolName: "web_fetch",
         callType: "tool",
-        status: "Completed",
-        statusKind: "completed" as const,
+        status: latestTail.status,
+        statusKind: latestTail.statusKind,
         summary: "https://example.com/c",
         payload: null
       }
@@ -102,8 +105,7 @@ describe("projectAgentConversationVM", () => {
         ]
       })
     );
-
-    const toolRows = conversation.rows.filter(
+    return conversation.rows.filter(
       (
         row
       ): row is Extract<
@@ -111,6 +113,30 @@ describe("projectAgentConversationVM", () => {
         { kind: "tool-group" }
       > => row.kind === "tool-group"
     );
+  };
+
+  it("keeps completed tail tools visible instead of collapsing to the latest", () => {
+    // Session still working, but the latest tail tool has finished: every
+    // completed tool stays visible as its own row rather than vanishing.
+    const toolRows = tailChainConversation({
+      status: "Completed",
+      statusKind: "completed"
+    });
+
+    expect(toolRows.map((row) => row.calls[0]?.id)).toEqual([
+      "call:1",
+      "call:2",
+      "call:3"
+    ]);
+    expect(toolRows.every((row) => row.grouped === false)).toBe(true);
+  });
+
+  it("collapses the tail to a single live row while the latest tail tool runs", () => {
+    // The latest tail tool is still active: keep showing only the live row.
+    const toolRows = tailChainConversation({
+      status: "Running",
+      statusKind: "working"
+    });
 
     expect(toolRows).toHaveLength(1);
     expect(toolRows[0]?.grouped).toBe(false);

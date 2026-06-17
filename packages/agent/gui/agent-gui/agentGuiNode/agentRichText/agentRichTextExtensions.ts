@@ -5,6 +5,10 @@ import {
   type AgentFileMentionExtensionOptions
 } from "./agentFileMentionExtension";
 import {
+  createAgentCapabilityTokenExtension,
+  type AgentCapabilityTokenExtensionOptions
+} from "./agentCapabilityTokenExtension";
+import {
   createAgentSkillTokenExtension,
   type AgentSkillTokenExtensionOptions
 } from "./agentSkillTokenExtension";
@@ -33,17 +37,20 @@ function createAgentPromptStarterKit(): Extensions[0] {
 
 export function createAgentRichTextInputExtensions(
   fileMentionOptions?: AgentFileMentionExtensionOptions,
-  skillTokenOptions?: AgentSkillTokenExtensionOptions
+  skillTokenOptions?: AgentSkillTokenExtensionOptions,
+  capabilityTokenOptions?: AgentCapabilityTokenExtensionOptions
 ): Extensions {
   return [
     createAgentPromptStarterKit(),
     createAgentFileMentionExtension(fileMentionOptions),
+    createAgentCapabilityTokenExtension(capabilityTokenOptions),
     createAgentSkillTokenExtension(skillTokenOptions)
   ];
 }
 
 export function createAgentRichTextReadonlyExtensions(
-  skillTokenOptions?: AgentSkillTokenExtensionOptions
+  skillTokenOptions?: AgentSkillTokenExtensionOptions,
+  capabilityTokenOptions?: AgentCapabilityTokenExtensionOptions
 ): Extensions {
   return [
     createAgentPromptStarterKit(),
@@ -51,6 +58,7 @@ export function createAgentRichTextReadonlyExtensions(
       enableSuggestions: false,
       renderAsLink: true
     }),
+    createAgentCapabilityTokenExtension(capabilityTokenOptions),
     createAgentSkillTokenExtension(skillTokenOptions)
   ];
 }

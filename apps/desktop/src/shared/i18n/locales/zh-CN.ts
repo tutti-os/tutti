@@ -252,6 +252,20 @@ export const zhCN = {
           "用于新的 App Factory 任务、Issue 任务，以及读取宿主默认值的工作区应用",
         defaultAgentProviderLabel: "默认 Provider",
         defaultAgentProviderSaveFailed: "暂时无法更新默认 Provider。",
+        browserUseConnectionModeDescription:
+          "选择 Agent 执行网页任务时控制哪个浏览器：你电脑上的 Chrome，或由 Tutti 单独启动的浏览器。",
+        browserUseConnectionModeLabel: "浏览器连接",
+        browserUseConnectionModeOptions: {
+          autoConnect: "复用我的 Chrome",
+          isolated: "独立浏览器"
+        },
+        browserUseConnectionModeOptionHints: {
+          autoConnect:
+            "让 Agent 直接控制你电脑上正在使用的 Chrome。需先在 Chrome 的 chrome://inspect/#remote-debugging 中开启远程调试。更改会在下一次浏览器会话启动时生效。",
+          isolated:
+            "由 Tutti 单独启动一个浏览器供 Agent 使用，不影响你日常使用的 Chrome。更改会在下一次浏览器会话启动时生效。"
+        },
+        browserUseConnectionModeSaveFailed: "暂时无法更新浏览器连接设置。",
         languageDescription: "会立刻应用到所有已打开窗口，并在重启后继续生效",
         languageLabel: "语言",
         languageOptions: {

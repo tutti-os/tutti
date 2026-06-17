@@ -21,6 +21,7 @@ type Service struct {
 
 type PutInput struct {
 	AgentComposerDefaultsByProvider map[string]preferencesbiz.AgentComposerDefaults
+	BrowserUseConnectionMode        string
 	DefaultAgentProvider            string
 	DockIconStyle                   string
 	DockPlacement                   string
@@ -46,6 +47,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 
 	preferences, err := s.Store.PutDesktopPreferences(ctx, preferencesbiz.DesktopPreferences{
 		AgentComposerDefaultsByProvider: normalizeAgentComposerDefaultsByProvider(input.AgentComposerDefaultsByProvider),
+		BrowserUseConnectionMode:        normalizeBrowserUseConnectionMode(input.BrowserUseConnectionMode),
 		DefaultAgentProvider:            agentproviderbiz.Normalize(input.DefaultAgentProvider),
 		DockIconStyle:                   strings.TrimSpace(input.DockIconStyle),
 		DockPlacement:                   strings.TrimSpace(input.DockPlacement),
@@ -63,6 +65,14 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		_ = s.Publisher.PublishDesktopPreferencesUpdated(ctx, preferences)
 	}
 	return preferences, nil
+}
+
+func normalizeBrowserUseConnectionMode(value string) string {
+	normalized := strings.TrimSpace(value)
+	if preferencesbiz.IsDesktopBrowserUseConnectionMode(normalized) {
+		return normalized
+	}
+	return preferencesbiz.DefaultDesktopBrowserUseConnectionMode
 }
 
 func normalizeAgentComposerDefaultsByProvider(input map[string]preferencesbiz.AgentComposerDefaults) map[string]preferencesbiz.AgentComposerDefaults {

@@ -83,11 +83,13 @@ func (a *CodexAppServerAdapter) appServerNotificationEvents(
 			return nil
 		}
 		return normalizer.AppendAssistantChunk(session, turnID, asStringRaw(params["delta"]))
+	case appServerNotifyReasoningSummaryPart, appServerNotifyThreadSettingsUpdated:
+		return nil
 	case appServerNotifyReasoningDelta, appServerNotifyReasoningSummary:
 		if normalizer == nil {
 			return nil
 		}
-		return normalizer.AppendThinkingChunk(session, turnID, asStringRaw(params["delta"]))
+		return normalizer.AppendThinkingChunk(session, turnID, appServerReasoningDeltaText(params))
 	case appServerNotifyItemStarted:
 		return a.appServerItemEvents(session, turnID, payloadObject(params["item"]), false, normalizer)
 	case appServerNotifyItemCompleted:
@@ -142,12 +144,31 @@ func (a *CodexAppServerAdapter) appServerNotificationEvents(
 		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", title, asString(params["reason"]))}
 	case appServerNotifyThreadCompacted:
 		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Context compacted.", "")}
+	case appServerNotifyThreadGoalUpdated:
+		a.applyGoalUpdate(session.AgentSessionID, payloadObject(params["goal"]))
+		return nil
+	case appServerNotifyThreadGoalCleared:
+		a.applyGoalClear(session.AgentSessionID)
+		return nil
 	case appServerNotifyThreadStarted:
 		return nil
 	default:
 		_ = emitCommands
 		return nil
 	}
+}
+
+// appServerNoticeItems maps review/compaction thread items to a one-line
+// system-notice banner. emitOnCompleted selects which lifecycle event carries
+// the banner: enteredReviewMode rides item/started (it always fires), while
+// exitedReviewMode and contextCompaction ride the authoritative item/completed.
+var appServerNoticeItems = map[string]struct {
+	message         string
+	emitOnCompleted bool
+}{
+	"enteredReviewMode": {message: "Code review started.", emitOnCompleted: false},
+	"exitedReviewMode":  {message: "Code review finished.", emitOnCompleted: true},
+	"contextCompaction": {message: "Context compacted.", emitOnCompleted: true},
 }
 
 func (a *CodexAppServerAdapter) appServerItemEvents(
@@ -160,7 +181,16 @@ func (a *CodexAppServerAdapter) appServerItemEvents(
 	if len(item) == 0 || normalizer == nil {
 		return nil
 	}
-	switch asString(item["type"]) {
+	itemType := asString(item["type"])
+	// Review/compaction items stream both item/started and item/completed.
+	// Gate each banner to a single lifecycle event so the GUI shows it once.
+	if notice, ok := appServerNoticeItems[itemType]; ok {
+		if notice.emitOnCompleted != completed {
+			return nil
+		}
+		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", notice.message, "")}
+	}
+	switch itemType {
 	case "agentMessage":
 		if !completed {
 			return nil
@@ -192,14 +222,16 @@ func (a *CodexAppServerAdapter) appServerItemEvents(
 			},
 		))
 		return events
-	case "reasoning", "userMessage", "hookPrompt":
+	case "reasoning":
+		if !completed {
+			return nil
+		}
+		// Surface review/inline reasoning as a finalized thinking row. The
+		// normalizer dedupes against any reasoning that already streamed as
+		// textDelta chunks, so this is safe for both delivery modes.
+		return normalizer.FinalizeThinkingItem(session, turnID, appServerReasoningText(item))
+	case "userMessage", "hookPrompt":
 		return nil
-	case "enteredReviewMode":
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Code review started.", "")}
-	case "exitedReviewMode":
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Code review finished.", "")}
-	case "contextCompaction":
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Context compacted.", "")}
 	default:
 		update, ok := appServerItemToolCallUpdate(item, completed)
 		if !ok {
@@ -448,6 +480,29 @@ func (a *CodexAppServerAdapter) applyAccountUpdate(agentSessionID string, params
 	if planType := asString(params["planType"]); planType != "" {
 		appSession.account["planType"] = planType
 	}
+}
+
+func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[string]any) {
+	if len(goal) == 0 {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return
+	}
+	appSession.goal = clonePayload(goal)
+}
+
+func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return
+	}
+	appSession.goal = nil
 }
 
 func appServerRateLimitQuotas(snapshot map[string]any) []map[string]any {
@@ -858,6 +913,18 @@ func appServerAnswerValues(value any) []string {
 
 // --- request parameter builders ---
 
+// appServerThreadReasoningSummaryConfig selects the thread-level reasoning
+// summary mode for codex app-server. Inline /review turns interleave readable
+// reasoning via summaryTextDelta; the legacy ACP adapter disables summaries for
+// spark, but app-server review still needs them.
+func appServerThreadReasoningSummaryConfig(model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" || codexACPModelDisablesReasoningSummary(model) {
+		return "auto"
+	}
+	return ""
+}
+
 func appServerThreadStartParams(session Session, cwd string) map[string]any {
 	settings := session.SettingsValue()
 	params := map[string]any{
@@ -870,7 +937,7 @@ func appServerThreadStartParams(session Session, cwd string) map[string]any {
 	if reasoning := codexACPReasoningEffortValue(settings.ReasoningEffort); reasoning != "" {
 		config["model_reasoning_effort"] = reasoning
 	}
-	if summary := codexACPReasoningSummaryOverride(settings.Model); summary != "" {
+	if summary := appServerThreadReasoningSummaryConfig(settings.Model); summary != "" {
 		config[codexACPConfigModelReasoningSummary] = summary
 	}
 	if serviceTier := codexServiceTierValue(settings.Speed); serviceTier != "" {
@@ -976,15 +1043,87 @@ func appServerUserInput(content []PromptContentBlock) []map[string]any {
 	return out
 }
 
-func appServerReviewTarget(args string) map[string]any {
+func appServerGoalSlashRequest(args string, threadID string) (string, map[string]any) {
+	params := map[string]any{"threadId": threadID}
 	args = strings.TrimSpace(args)
 	if args == "" {
-		return map[string]any{"type": "uncommittedChanges"}
+		return appServerMethodThreadGoalGet, params
 	}
-	return map[string]any{
-		"type":         "custom",
-		"instructions": args,
+	if strings.EqualFold(args, "clear") {
+		return appServerMethodThreadGoalClear, params
 	}
+	if status := appServerGoalStatus(args); status != "" {
+		params["status"] = status
+		return appServerMethodThreadGoalSet, params
+	}
+	params["objective"] = args
+	params["status"] = "active"
+	return appServerMethodThreadGoalSet, params
+}
+
+func appServerGoalStatus(value string) string {
+	normalized := strings.ToLower(strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.TrimSpace(value)))
+	switch normalized {
+	case "active":
+		return "active"
+	case "pause", "paused":
+		return "paused"
+	case "block", "blocked":
+		return "blocked"
+	case "usagelimited":
+		return "usageLimited"
+	case "budgetlimited":
+		return "budgetLimited"
+	case "done", "complete", "completed":
+		return "complete"
+	default:
+		return ""
+	}
+}
+
+func appServerGoalFromResult(result json.RawMessage) map[string]any {
+	if len(result) == 0 {
+		return nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(result, &payload); err != nil {
+		return nil
+	}
+	return payloadObject(payload["goal"])
+}
+
+func appServerGoalNoticeEvent(session Session, turnID string, method string, result json.RawMessage) *activityshared.Event {
+	switch method {
+	case appServerMethodThreadGoalClear:
+		event := appServerSystemNoticeEvent(session, turnID, "system_notice", "Goal cleared.", "")
+		return &event
+	case appServerMethodThreadGoalGet:
+		goal := appServerGoalFromResult(result)
+		if len(goal) == 0 {
+			event := appServerSystemNoticeEvent(session, turnID, "system_notice", "No active goal.", "")
+			return &event
+		}
+		event := appServerSystemNoticeEvent(session, turnID, "system_notice", "Current goal: "+asStringRaw(goal["objective"]), appServerGoalStatusDetail(goal))
+		return &event
+	case appServerMethodThreadGoalSet:
+		goal := appServerGoalFromResult(result)
+		detail := appServerGoalStatusDetail(goal)
+		event := appServerSystemNoticeEvent(session, turnID, "system_notice", "Goal updated.", detail)
+		return &event
+	default:
+		return nil
+	}
+}
+
+func appServerGoalStatusDetail(goal map[string]any) string {
+	status := strings.TrimSpace(asString(goal["status"]))
+	if status == "" {
+		return ""
+	}
+	if objective := strings.TrimSpace(asStringRaw(goal["objective"])); objective != "" {
+		return "status: " + status + "\nobjective: " + objective
+	}
+	return "status: " + status
 }
 
 func splitSlashCommand(prompt string) (string, string) {
@@ -1149,6 +1288,7 @@ func appServerTurnTerminalEvents(
 func codexAppServerCommands() []AgentSessionCommand {
 	return []AgentSessionCommand{
 		{Name: "review", Description: "Review code changes", InputHint: "instructions (optional)"},
+		{Name: "goal", Description: "Show or update the thread goal", InputHint: "objective, status, or clear"},
 		{Name: "compact", Description: "Compact the conversation context"},
 		{Name: "undo", Description: "Drop the last turn from the conversation"},
 	}
@@ -1164,6 +1304,7 @@ func codexAppServerCapabilities(planMode bool) []string {
 		CapabilityTokenUsage,
 		"steer",
 		"review",
+		"goal",
 		"rollback",
 		"fork",
 		"perTurnModelOverride",
@@ -1291,4 +1432,90 @@ func truthyBool(value any) bool {
 func asStringRaw(value any) string {
 	typed, _ := value.(string)
 	return typed
+}
+
+// appServerReasoningText pulls the human-readable text out of a completed
+// `reasoning` thread item. Per the Codex app-server schema, the ThreadItem
+// reasoning variant is {id, summary, content} where summary and content are
+// usually string arrays. Some app-server versions also stream reasoning via
+// summaryTextDelta/textDelta and may emit completed items before those arrays
+// are populated, so callers should still handle streaming deltas.
+func appServerReasoningText(item map[string]any) string {
+	if text := reasoningSectionsText(item["summary"]); text != "" {
+		return text
+	}
+	if text := reasoningSectionsText(item["content"]); text != "" {
+		return text
+	}
+	return firstNonEmpty(asStringRaw(item["text"]), asString(item["text"]))
+}
+
+// appServerReasoningDeltaText reads a reasoning delta payload. Most app-server
+// versions use `delta`, but some event shapes expose the chunk as `text`.
+// Streaming chunks must preserve their leading/trailing whitespace (e.g. a
+// "Need " token followed by "context.") so concatenated reasoning text keeps
+// word boundaries; do not trim here.
+func appServerReasoningDeltaText(params map[string]any) string {
+	if delta := asStringRaw(params["delta"]); delta != "" {
+		return delta
+	}
+	return asStringRaw(params["text"])
+}
+
+// reasoningSectionsText joins the non-empty sections of a reasoning
+// summary/content value, separating sections with a blank line.
+func reasoningSectionsText(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case []string:
+		return joinReasoningSectionTexts(typed)
+	case []any:
+		parts := make([]string, 0, len(typed))
+		for _, raw := range typed {
+			if text := reasoningSectionText(raw); text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "\n\n")
+	default:
+		return ""
+	}
+}
+
+func joinReasoningSectionTexts(values []string) string {
+	var b strings.Builder
+	for _, value := range values {
+		text := asStringRaw(value)
+		if text == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(text)
+	}
+	return b.String()
+}
+
+func reasoningSectionText(raw any) string {
+	if text := asStringRaw(raw); text != "" {
+		return text
+	}
+	item, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	return firstNonEmpty(
+		asStringRaw(item["text"]),
+		asStringRaw(item["summary_text"]),
+		asStringRaw(item["summaryText"]),
+		asStringRaw(item["summary"]),
+		asStringRaw(item["content"]),
+		asString(item["text"]),
+		asString(item["summary_text"]),
+		asString(item["summaryText"]),
+		asString(item["summary"]),
+		asString(item["content"]),
+	)
 }

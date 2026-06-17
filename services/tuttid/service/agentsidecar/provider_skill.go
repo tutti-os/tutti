@@ -11,6 +11,7 @@ import (
 const tuttiSkillName = "tutti-cli"
 const issueManagerSkillName = "issue-manager"
 const workspaceAppSkillName = "workspace-app"
+const browserUseSkillName = "browser-use"
 
 //go:embed skill_templates/*.md policy_templates/*.md
 var providerSkillTemplates embed.FS
@@ -50,6 +51,13 @@ func workspaceAppSkill(input PrepareInput) string {
 	)
 }
 
+func browserUseSkill(_ PrepareInput) string {
+	return renderProviderSkillTemplate(
+		"skill_templates/browser-use.md",
+		map[string]string{},
+	)
+}
+
 func renderProviderSkillTemplate(path string, replacements map[string]string) string {
 	content, err := providerSkillTemplates.ReadFile(path)
 	if err != nil {
@@ -80,6 +88,14 @@ func providerSkills(input PrepareInput) []providerSkillSpec {
 			baseName: workspaceAppSkillName,
 			files:    map[string]string{"SKILL.md": workspaceAppSkill(input)},
 		},
+	}
+	// Browser use is a daemon-owned `tutti browser` CLI; inject its skill only
+	// when enabled for this session (capability gate).
+	if input.BrowserUse && BrowserUseDefaultEnabled() {
+		skills = append(skills, providerSkillSpec{
+			baseName: browserUseSkillName,
+			files:    map[string]string{"SKILL.md": browserUseSkill(input)},
+		})
 	}
 	for _, extra := range input.ExtraSkills {
 		skills = append(skills, providerSkillSpec{

@@ -8,6 +8,7 @@ import (
 func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences) tuttigenerated.DesktopPreferences {
 	return tuttigenerated.DesktopPreferences{
 		AgentComposerDefaultsByProvider: generatedAgentComposerDefaultsByProvider(value.AgentComposerDefaultsByProvider),
+		BrowserUseConnectionMode:        generatedBrowserUseConnectionModePointer(value.BrowserUseConnectionMode),
 		DefaultAgentProvider:            tuttigenerated.WorkspaceAgentProvider(value.DefaultAgentProvider),
 		DockIconStyle:                   tuttigenerated.DesktopDockIconStyle(value.DockIconStyle),
 		DockPlacement:                   tuttigenerated.DesktopDockPlacement(value.DockPlacement),
@@ -17,6 +18,14 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		UpdateChannel:                   tuttigenerated.DesktopUpdateChannel(value.UpdateChannel),
 		UpdatePolicy:                    tuttigenerated.DesktopUpdatePolicy(value.UpdatePolicy),
 	}
+}
+
+func generatedBrowserUseConnectionModePointer(value string) *tuttigenerated.DesktopBrowserUseConnectionMode {
+	if value == "" {
+		return nil
+	}
+	mode := tuttigenerated.DesktopBrowserUseConnectionMode(value)
+	return &mode
 }
 
 func GeneratedDesktopPreferencesStateResponseFromBiz(value preferencesbiz.DesktopPreferences) tuttigenerated.DesktopPreferencesStateResponse {

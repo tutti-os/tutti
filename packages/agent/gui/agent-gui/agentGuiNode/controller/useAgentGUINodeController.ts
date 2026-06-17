@@ -6064,7 +6064,9 @@ export function useAgentGUINodeController({
         const merged = {
           ...previousSettings,
           ...supportedNextSettings,
-          planMode: supportedNextSettings.planMode ?? previousSettings.planMode
+          planMode: supportedNextSettings.planMode ?? previousSettings.planMode,
+          browserUse:
+            supportedNextSettings.browserUse ?? previousSettings.browserUse
         };
         draftSettingsBySessionIdRef.current = {
           ...draftSettingsBySessionIdRef.current,
@@ -6104,6 +6106,7 @@ export function useAgentGUINodeController({
           sessionSettings?.reasoningEffort ?? currentDefaults.reasoningEffort,
         speed: sessionSettings?.speed ?? currentDefaults.speed,
         planMode: sessionSettings?.planMode ?? currentDefaults.planMode,
+        browserUse: sessionSettings?.browserUse ?? currentDefaults.browserUse,
         permissionModeId:
           sessionSettings?.permissionModeId ?? currentDefaults.permissionModeId
       };
@@ -6123,6 +6126,9 @@ export function useAgentGUINodeController({
             : baseDefaultsFromSession.speed,
         planMode:
           supportedNextSettings.planMode ?? baseDefaultsFromSession.planMode,
+        browserUse:
+          supportedNextSettings.browserUse ??
+          baseDefaultsFromSession.browserUse,
         permissionModeId:
           supportedNextSettings.permissionModeId !== undefined
             ? supportedNextSettings.permissionModeId
@@ -6168,6 +6174,8 @@ export function useAgentGUINodeController({
           latestPlanModeStateFromTimelineItems(activeTimelineItems),
         fallbackPlanMode: sessionSettings?.planMode ?? false
       });
+      const nextBrowserUse = supportedNextSettings.browserUse;
+      const currentBrowserUse = sessionSettings?.browserUse ?? true;
       const sessionSettingsPatch: AgentSessionComposerSettings = {};
 
       if (nextModel !== undefined && nextModel !== currentModel) {
@@ -6184,6 +6192,12 @@ export function useAgentGUINodeController({
       }
       if (nextPlanMode !== undefined && nextPlanMode !== currentPlanMode) {
         sessionSettingsPatch.planMode = nextPlanMode;
+      }
+      if (
+        nextBrowserUse !== undefined &&
+        nextBrowserUse !== currentBrowserUse
+      ) {
+        sessionSettingsPatch.browserUse = nextBrowserUse;
       }
       if (
         nextPermission &&
@@ -7666,6 +7680,7 @@ export function useAgentGUINodeController({
         reasoningEffort: draftReasoningEffort,
         speed: draftSpeed,
         planMode: Boolean(draftSettings.planMode),
+        browserUse: draftSettings.browserUse ?? true,
         permissionModeId: normalizePermissionModeId(
           draftSettings.permissionModeId
         )
@@ -7674,6 +7689,7 @@ export function useAgentGUINodeController({
       supportsModel: composerSupport.model,
       supportsReasoningEffort: composerSupport.reasoning,
       supportsSpeed: composerSupport.speed,
+      supportsBrowser: composerSupport.browser,
       supportsPermissionMode,
       supportsPlanMode: composerSupport.plan,
       isSettingsLoading,

@@ -5890,6 +5890,24 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding: 0 10px;
   font-size: 13px;
   color: var(--agent-gui-text-primary);
+  cursor: pointer;
+  transition:
+    opacity 120ms ease,
+    background 120ms ease;
+}
+
+.agent-gui-node__composer-toggle:hover:not(:disabled) {
+  background: var(--agent-gui-surface-strong, var(--agent-gui-surface-muted));
+}
+
+/* Off state: dim the control so the on/off choice reads at a glance. */
+.agent-gui-node__composer-toggle[aria-pressed="false"] {
+  opacity: 0.4;
+}
+
+.agent-gui-node__composer-toggle:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .agent-gui-node__composer-queued-prompt-list {

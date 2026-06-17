@@ -15,6 +15,7 @@ import {
 import { getWorkspaceReferencePresentation } from "../extensions/workspaceReferencePresentation.ts";
 import { RichTextMentionReadonly } from "./RichTextMentionReadonly.tsx";
 import { buildRichTextReadonlyInlineSegments } from "./richTextReadonlyContentModel.ts";
+import type { RichTextMentionAttrs } from "../types/mention.ts";
 
 export interface RichTextReadonlyWorkspaceReference {
   kind: "file" | "folder";
@@ -26,6 +27,7 @@ export interface RichTextReadonlyContentProps {
   value: string;
   className?: string;
   paragraphClassName?: string;
+  onMentionAction?: (mention: RichTextMentionAttrs) => void | Promise<void>;
   onOpenWorkspaceReference?: (
     reference: RichTextReadonlyWorkspaceReference
   ) => void | Promise<void>;
@@ -38,6 +40,7 @@ export function RichTextReadonlyContent({
   value,
   className,
   paragraphClassName,
+  onMentionAction,
   onOpenWorkspaceReference
 }: RichTextReadonlyContentProps): JSX.Element | null {
   const normalizedValue = normalizeRichTextContent(value).trim();
@@ -58,7 +61,11 @@ export function RichTextReadonlyContent({
           className={cn("whitespace-pre-wrap", paragraphClassName)}
           key={`${paragraphIndex}:${paragraph}`}
         >
-          {renderReadonlyInlineMarkdown(paragraph, onOpenWorkspaceReference)}
+          {renderReadonlyInlineMarkdown(
+            paragraph,
+            onOpenWorkspaceReference,
+            onMentionAction
+          )}
         </p>
       ))}
     </div>
@@ -69,7 +76,8 @@ function renderReadonlyInlineMarkdown(
   content: string,
   onOpenWorkspaceReference?: (
     reference: RichTextReadonlyWorkspaceReference
-  ) => void | Promise<void>
+  ) => void | Promise<void>,
+  onMentionAction?: (mention: RichTextMentionAttrs) => void | Promise<void>
 ): JSX.Element[] {
   const parts: JSX.Element[] = [];
   const segments = buildRichTextReadonlyInlineSegments(content);
@@ -85,6 +93,7 @@ function renderReadonlyInlineMarkdown(
         href={segment.href}
         key={`link:${index}:${segment.href}`}
         label={segment.label}
+        onMentionAction={onMentionAction}
         onOpenWorkspaceReference={onOpenWorkspaceReference}
       />
     );
@@ -96,10 +105,12 @@ function renderReadonlyInlineMarkdown(
 function RichTextReadonlyInlineLink({
   href,
   label,
+  onMentionAction,
   onOpenWorkspaceReference
 }: {
   href: string;
   label: string;
+  onMentionAction?: (mention: RichTextMentionAttrs) => void | Promise<void>;
   onOpenWorkspaceReference?: (
     reference: RichTextReadonlyWorkspaceReference
   ) => void | Promise<void>;
@@ -108,7 +119,18 @@ function RichTextReadonlyInlineLink({
   const mention = parseRichTextMentionHref(trimmedHref, label);
 
   if (mention) {
-    return <RichTextMentionReadonly mention={mention} />;
+    return (
+      <RichTextMentionReadonly
+        mention={mention}
+        onClick={
+          onMentionAction
+            ? ({ mention }) => {
+                void onMentionAction(mention);
+              }
+            : undefined
+        }
+      />
+    );
   }
 
   if (!trimmedHref) {

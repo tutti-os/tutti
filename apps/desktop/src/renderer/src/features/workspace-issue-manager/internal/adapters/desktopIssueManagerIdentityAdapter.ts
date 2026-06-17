@@ -1,6 +1,13 @@
-import type { IssueManagerIdentityAdapter } from "@tutti-os/workspace-issue-manager/contracts";
+import type {
+  IssueManagerIdentityAdapter,
+  IssueManagerIdentityProfile
+} from "@tutti-os/workspace-issue-manager/contracts";
 
-export function createDesktopIssueManagerIdentityAdapter(): IssueManagerIdentityAdapter {
+export interface DesktopIssueManagerIdentityAdapter extends IssueManagerIdentityAdapter {
+  currentUser(): IssueManagerIdentityProfile;
+}
+
+export function createDesktopIssueManagerIdentityAdapter(): DesktopIssueManagerIdentityAdapter {
   return {
     currentUser() {
       return {

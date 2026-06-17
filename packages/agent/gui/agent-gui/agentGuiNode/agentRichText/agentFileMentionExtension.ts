@@ -2,13 +2,26 @@ import { mergeAttributes, Node, type Editor, type Range } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import Suggestion, { exitSuggestion } from "@tiptap/suggestion";
-import { buildWorkspaceIssueMentionHref } from "@tutti-os/workspace-issue-manager/core";
+import {
+  buildAgentSessionMentionHref,
+  buildAgentWorkspaceAppFactoryMentionHref,
+  buildAgentWorkspaceAppMentionHref,
+  buildAgentWorkspaceIssueMentionHref,
+  parseMentionItemFromHref
+} from "@tutti-os/ui-rich-text/mention";
 import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
-import { translate } from "../../../i18n/index";
 import { AgentMentionNodeView } from "./AgentMentionNodeView";
+
+export {
+  buildAgentSessionMentionHref,
+  buildAgentWorkspaceAppFactoryMentionHref,
+  buildAgentWorkspaceAppMentionHref,
+  buildAgentWorkspaceIssueMentionHref,
+  parseAgentMentionMarkdown
+} from "@tutti-os/ui-rich-text/mention";
 
 export type AgentFileMentionKind = "file" | "directory" | "unknown";
 export type AgentMentionFileNavigationAction =
@@ -398,80 +411,6 @@ export function createAgentFileMentionExtension(
   });
 }
 
-export function buildAgentSessionMentionHref(
-  workspaceId: string,
-  agentSessionId: string,
-  provider?: string | null
-): string {
-  const params = workspaceMentionSearchParams(workspaceId, agentSessionId);
-  const normalizedProvider = provider?.trim() ?? "";
-  if (normalizedProvider) {
-    params.set("provider", normalizedProvider);
-  }
-  return `mention://agent-session?${params.toString()}`;
-}
-
-export function buildAgentWorkspaceIssueMentionHref(
-  workspaceId: string,
-  issueId: string,
-  input?: {
-    mode?: "breakdown" | "execute";
-    outputDir?: string | null;
-    runId?: string | null;
-    taskId?: string | null;
-    topicId?: string | null;
-  }
-): string {
-  return buildWorkspaceIssueMentionHref({
-    issueId,
-    mode: input?.mode,
-    outputDir: input?.outputDir,
-    runId: input?.runId,
-    taskId: input?.taskId,
-    topicId: input?.topicId,
-    workspaceId
-  });
-}
-
-export function buildAgentWorkspaceAppMentionHref(
-  workspaceId: string,
-  appId: string
-): string {
-  const params = new URLSearchParams({
-    workspaceId: workspaceId.trim(),
-    appId: appId.trim()
-  });
-  return `mention://workspace-app?${params.toString()}`;
-}
-
-export function buildAgentWorkspaceAppFactoryMentionHref(
-  workspaceId?: string | null,
-  jobId?: string | null,
-  input?: { action?: string | null; contextPath?: string | null }
-): string {
-  const params = new URLSearchParams();
-  const trimmedWorkspaceId = workspaceId?.trim() ?? "";
-  const trimmedJobId = jobId?.trim() ?? "";
-  const action = input?.action?.trim() ?? "";
-  const contextPath = input?.contextPath?.trim() ?? "";
-  if (trimmedWorkspaceId) {
-    params.set("workspaceId", trimmedWorkspaceId);
-  }
-  if (trimmedJobId) {
-    params.set("jobId", trimmedJobId);
-  }
-  if (action) {
-    params.set("action", action);
-  }
-  if (contextPath) {
-    params.set("contextPath", contextPath);
-  }
-  const query = params.toString();
-  return query
-    ? `mention://workspace-app-factory?${query}`
-    : "mention://workspace-app-factory";
-}
-
 export function normalizeAgentSessionMentionTitle(value: string): string {
   const trimmed = value.trim();
   const withoutMentionPrefix = trimmed.replace(/^@+/, "").trim();
@@ -497,169 +436,6 @@ export function formatAgentMentionMarkdown(
 ): string {
   const labelPrefix = "@";
   return `[${labelPrefix}${escapeMarkdownLinkLabel(item.name)}](${escapeMarkdownLinkTarget(item.href)})`;
-}
-
-export function parseAgentMentionMarkdown(
-  value: string,
-  start = 0
-): ParsedAgentMentionMarkdown | null {
-  if (!value.startsWith("[", start)) {
-    return null;
-  }
-
-  let index = start + 1;
-  const prefixedMention = value[index] === "@";
-  if (prefixedMention) {
-    index += 1;
-  }
-  let name = "";
-  while (index < value.length) {
-    const current = value[index];
-    if (current === "\\") {
-      const escaped = value[index + 1];
-      if (escaped === "\\" || escaped === "[" || escaped === "]") {
-        name += escaped;
-        index += 2;
-        continue;
-      }
-      name += current;
-      index += 1;
-      continue;
-    }
-    if (current === "]") {
-      break;
-    }
-    name += current;
-    index += 1;
-  }
-
-  if (value[index] !== "]" || value[index + 1] !== "(") {
-    return null;
-  }
-
-  index += 2;
-  let href = "";
-  while (index < value.length) {
-    const current = value[index];
-    if (current === "\\") {
-      const escaped = value[index + 1];
-      if (escaped === "\\" || escaped === ")") {
-        href += escaped;
-        index += 2;
-        continue;
-      }
-      href += current;
-      index += 1;
-      continue;
-    }
-    if (current === ")") {
-      const item = parseMentionItemFromHref({ name, href });
-      if (!item) {
-        return null;
-      }
-      if (item.kind !== "file" && !prefixedMention) {
-        return null;
-      }
-      return {
-        item,
-        end: index + 1
-      };
-    }
-    href += current;
-    index += 1;
-  }
-
-  return null;
-}
-
-function parseMentionItemFromHref(input: {
-  name: string;
-  href: string;
-}): AgentContextMentionItem | null {
-  const href = input.href.trim();
-  if (!href) {
-    return null;
-  }
-  if (!href.startsWith("mention://")) {
-    return {
-      kind: "file",
-      href,
-      path: href,
-      name: input.name,
-      entryKind: isLocalDirectoryMentionHref(href) ? "directory" : "unknown",
-      directoryPath: dirnameFromPath(href)
-    };
-  }
-
-  let url: URL;
-  try {
-    url = new URL(href);
-  } catch {
-    return null;
-  }
-  const resource = url.hostname.trim().toLowerCase();
-  const workspaceId = workspaceIdFromMentionUrl(url);
-  const targetId =
-    resource === "workspace-app"
-      ? (url.searchParams.get("appId")?.trim() ?? "")
-      : resource === "workspace-app-factory"
-        ? (url.searchParams.get("jobId")?.trim() ?? "")
-        : (url.searchParams.get("id")?.trim() ?? "");
-  if (resource !== "workspace-app-factory" && (!workspaceId || !targetId)) {
-    return null;
-  }
-  if (resource === "agent-session") {
-    return {
-      kind: "session",
-      href,
-      workspaceId,
-      targetId,
-      name: input.name,
-      title: input.name,
-      scope: "collab_sessions",
-      initiatorName: "",
-      agentName: ""
-    };
-  }
-  if (resource === "workspace-issue") {
-    return {
-      kind: "workspace-issue",
-      href,
-      workspaceId,
-      targetId,
-      name: input.name,
-      title: input.name
-    };
-  }
-  if (resource === "workspace-app") {
-    return {
-      kind: "workspace-app",
-      href,
-      workspaceId,
-      targetId,
-      appId: targetId,
-      name: input.name
-    };
-  }
-  if (resource === "workspace-app-factory") {
-    return {
-      kind: "workspace-app-factory",
-      href,
-      workspaceId,
-      targetId,
-      jobId: targetId,
-      name:
-        input.name ||
-        translate("agentHost.agentGui.workspaceAppFactoryMentionFallback"),
-      action: url.searchParams.get("action")?.trim() || undefined,
-      contextPath: url.searchParams.get("contextPath")?.trim() || undefined
-    };
-  }
-  return null;
-}
-
-function isLocalDirectoryMentionHref(href: string): boolean {
-  return href.endsWith("/") && !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(href);
 }
 
 function mentionItemToAttrs(
@@ -727,17 +503,6 @@ function mentionItemToAttrs(
     status: item.status ?? "",
     contentPreview: item.contentPreview ?? ""
   };
-}
-
-function workspaceMentionSearchParams(
-  workspaceId: string,
-  targetId: string
-): URLSearchParams {
-  const normalizedWorkspaceId = workspaceId.trim();
-  return new URLSearchParams({
-    workspaceId: normalizedWorkspaceId,
-    id: targetId
-  });
 }
 
 function workspaceMentionAttrs(
@@ -921,10 +686,6 @@ function parseAgentMentionHTMLElementAttrs(
     href,
     ...(iconUrl ? { iconUrl } : {})
   };
-}
-
-function workspaceIdFromMentionUrl(url: URL): string {
-  return url.searchParams.get("workspaceId")?.trim() ?? "";
 }
 
 function normalizeMentionKind(value: unknown): AgentMentionKind {

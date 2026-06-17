@@ -63,14 +63,16 @@ type stubAppCenterService struct {
 }
 
 type stubAgentSessionService struct {
-	composerOptionsFn func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
-	createFn          func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
-	deleteFn          func(context.Context, string, string) (bool, error)
-	listFn            func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
-	listMessagesFn    func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
-	readAttachmentFn  func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
-	updatePinFn       func(context.Context, string, string, bool) (agentservice.Session, error)
-	updateSettingsFn  func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
+	composerOptionsFn        func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
+	createFn                 func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	deleteFn                 func(context.Context, string, string) (bool, error)
+	listFn                   func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
+	listMessagesFn           func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
+	readAttachmentFn         func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
+	listGitBranchesFn        func(context.Context, string, string) (agentservice.GitBranches, error)
+	listGitBranchesForPathFn func(context.Context, string, string) (agentservice.GitBranches, error)
+	updatePinFn              func(context.Context, string, string, bool) (agentservice.Session, error)
+	updateSettingsFn         func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
 }
 
 func (stubAppCenterService) Add(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
@@ -195,6 +197,20 @@ func (s stubAgentSessionService) ReadAttachment(ctx context.Context, workspaceID
 		return s.readAttachmentFn(ctx, workspaceID, agentSessionID, attachmentID)
 	}
 	return agentservice.PromptAttachment{}, nil
+}
+
+func (s stubAgentSessionService) ListGitBranches(ctx context.Context, workspaceID string, agentSessionID string) (agentservice.GitBranches, error) {
+	if s.listGitBranchesFn != nil {
+		return s.listGitBranchesFn(ctx, workspaceID, agentSessionID)
+	}
+	return agentservice.GitBranches{}, nil
+}
+
+func (s stubAgentSessionService) ListGitBranchesForPath(ctx context.Context, workspaceID string, workingDirectory string) (agentservice.GitBranches, error) {
+	if s.listGitBranchesForPathFn != nil {
+		return s.listGitBranchesForPathFn(ctx, workspaceID, workingDirectory)
+	}
+	return agentservice.GitBranches{}, nil
 }
 
 func (s stubAgentSessionService) Delete(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {

@@ -503,6 +503,18 @@ export function createDesktopTuttidClient(
         attachmentID
       );
     },
+    async listWorkspaceAgentSessionGitBranches(workspaceID, agentSessionID) {
+      return (await resolveClient()).listWorkspaceAgentSessionGitBranches(
+        workspaceID,
+        agentSessionID
+      );
+    },
+    async listWorkspaceGitBranches(workspaceID, workingDirectory) {
+      return (await resolveClient()).listWorkspaceGitBranches(
+        workspaceID,
+        workingDirectory
+      );
+    },
     async updateWorkspaceAgentSessionSettings(
       workspaceID,
       agentSessionID,
