@@ -711,6 +711,47 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/{appID}/references/search:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAppID"
+    post:
+      operationId: searchWorkspaceAppReferences
+      tags:
+        - app-center
+      summary: Search file references exposed by one running workspace app
+      description: >
+        Proxies a recursive reference search request to a running workspace app
+        and returns daemon-resolved file references ordered by relevance. Unlike
+        the list filterText, search spans the whole app reference tree and never
+        returns groups. Workspace app runtimes return scoped locations to the
+        daemon; this public daemon API returns absolute file paths that desktop
+        clients can use as ordinary file links.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppReferenceSearchRequest"
+      responses:
+        "200":
+          description: Workspace app reference search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppReferenceSearchResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceAppNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/apps/{appID}/export:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -2036,6 +2077,35 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/files/recent:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceRecentFiles
+      tags:
+        - workspace
+      summary: List the workspace's recently accessed entries, most-recent first
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceFileRecentLimit"
+      responses:
+        "200":
+          description: Workspace recent files listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceFileDirectoryResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceFileNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/files/tree-snapshot:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -2501,6 +2571,15 @@ components:
         type: integer
         minimum: 1
         maximum: 50
+        default: 30
+    WorkspaceFileRecentLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
         default: 30
     WorkspaceFileSearchKinds:
       name: includeKinds
@@ -3285,8 +3364,11 @@ components:
       additionalProperties: false
       required:
         - listSupported
+        - searchSupported
       properties:
         listSupported:
+          type: boolean
+        searchSupported:
           type: boolean
     AppReferenceKind:
       type: string
@@ -3361,6 +3443,56 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AppReferenceListItem"
+        nextCursor:
+          type: string
+          nullable: true
+          maxLength: 2048
+    AppReferenceSearchRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 200
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+        cursor:
+          type: string
+          nullable: true
+          maxLength: 2048
+        kinds:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppReferenceKind"
+        timeRange:
+          $ref: "#/components/schemas/AppReferenceListTimeRange"
+    AppReferenceSearchResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - appId
+        - items
+        - nextCursor
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        appId:
+          type: string
+          minLength: 1
+        items:
+          type: array
+          description: >
+            Flat, relevance-ordered list of file references. Search never
+            returns group items.
+          items:
+            $ref: "#/components/schemas/AppReferenceListReferenceItem"
         nextCursor:
           type: string
           nullable: true

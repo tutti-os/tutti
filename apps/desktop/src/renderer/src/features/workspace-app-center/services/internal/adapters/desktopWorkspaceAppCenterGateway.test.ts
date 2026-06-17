@@ -1187,7 +1187,10 @@ function createWorkspaceApp(overrides: Partial<WorkspaceApp>): WorkspaceApp {
     windowMinHeight: null,
     windowMinWidth: null,
     ...overrides,
-    references: overrides.references ?? { listSupported: false }
+    references: overrides.references ?? {
+      listSupported: false,
+      searchSupported: false
+    }
   };
 }
 

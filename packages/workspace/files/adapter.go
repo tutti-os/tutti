@@ -24,3 +24,10 @@ type FileAdapter interface {
 type DirectoryTreePrefetchPolicy interface {
 	ShouldPrefetchDirectory(root WorkspaceRoot, path LogicalPath) bool
 }
+
+// RecentFilesLister is an optional FileAdapter capability: enumerate the
+// workspace's recently accessed entries (most-recent first). Adapters that do
+// not implement it (e.g. non-macOS hosts) are treated as "no recent files".
+type RecentFilesLister interface {
+	ListRecent(ctx context.Context, root WorkspaceRoot, limit int) (DirectoryListing, error)
+}

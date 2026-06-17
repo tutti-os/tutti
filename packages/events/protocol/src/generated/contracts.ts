@@ -146,6 +146,7 @@ export interface WorkspaceWorkspaceAppV1 {
   windowMinHeight: number | null;
   references: {
     listSupported: boolean;
+    searchSupported: boolean;
   };
   installProgress?: Record<string, unknown> | null;
 }

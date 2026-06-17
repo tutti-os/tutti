@@ -31,6 +31,8 @@ export interface ReferenceNode {
   hasChildren?: boolean;
   /** 可选数量,如 app group 的 referenceCount。 */
   childCount?: number | null;
+  /** 可选图标(data URL / 远程 URL),如应用产物源的 app 图标;有则替代默认文件夹图标。 */
+  iconUrl?: string | null;
   sizeBytes?: number | null;
   mtimeMs?: number | null;
   mimeType?: string | null;
@@ -53,6 +55,11 @@ export interface ListChildrenResult {
   entries: ReferenceNode[];
   /** null/undefined 表示无更多。 */
   nextCursor?: string | null;
+  /**
+   * 源已自行排序、picker 不应再重排时置 true(如「最近访问」按访问时间倒序)。
+   * 缺省/false:picker 首屏按 folder 在前 + 名称排序。
+   */
+  ordered?: boolean;
 }
 
 export interface SearchInput {
@@ -110,6 +117,13 @@ export interface ReferenceSourceService {
 
   /** 动态可用性。如:无支持 references 的 app 时应用产物源返回 false。 */
   isAvailable(scope: ReferenceScope): boolean | Promise<boolean>;
+
+  /**
+   * 可选:源自带的左栏二级分组(固定「位置」),返回顺序即展示顺序。
+   * 返回时 picker 直接用这些节点作为二级分组,不再从源根推导。
+   * 缺省:picker 取源根下的 folder 作为分组(navigable 源默认行为)。
+   */
+  listSidebarGroups?(scope: ReferenceScope): ReferenceNode[];
 
   listChildren(
     scope: ReferenceScope,

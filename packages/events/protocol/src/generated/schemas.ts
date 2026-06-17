@@ -405,9 +405,12 @@ export const workspaceWorkspaceAppSchema = {
     references: {
       type: "object",
       additionalProperties: false,
-      required: ["listSupported"],
+      required: ["listSupported", "searchSupported"],
       properties: {
         listSupported: {
+          type: "boolean"
+        },
+        searchSupported: {
           type: "boolean"
         }
       }
@@ -1385,9 +1388,12 @@ export const workspaceAppUpdatedPayloadSchema = {
         references: {
           type: "object",
           additionalProperties: false,
-          required: ["listSupported"],
+          required: ["listSupported", "searchSupported"],
           properties: {
             listSupported: {
+              type: "boolean"
+            },
+            searchSupported: {
               type: "boolean"
             }
           }

@@ -166,6 +166,46 @@ func (api DaemonAPI) GetWorkspaceFileTreeSnapshot(
 	), nil
 }
 
+func (api DaemonAPI) ListWorkspaceRecentFiles(
+	ctx context.Context,
+	request tuttigenerated.ListWorkspaceRecentFilesRequestObject,
+) (tuttigenerated.ListWorkspaceRecentFilesResponseObject, error) {
+	if api.FileService == nil {
+		return tuttigenerated.ListWorkspaceRecentFiles503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: serviceUnavailableError(
+				apierrors.WorkspaceFileServiceUnavailable(apierrors.WithDeveloperMessage("workspace file service is unavailable")),
+			),
+		}, nil
+	}
+
+	workspaceID := strings.TrimSpace(string(request.WorkspaceID))
+	if workspaceID == "" {
+		return tuttigenerated.ListWorkspaceRecentFiles400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.MissingWorkspaceID(
+					apierrors.WithDeveloperMessage("workspace id is required"),
+					apierrors.WithParams(map[string]any{"field": "workspaceId"}),
+				),
+			),
+		}, nil
+	}
+
+	limit := 0
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	listing, err := api.FileService.ListRecent(ctx, workspaceID, workspacefiles.RecentListInput{
+		Limit: limit,
+	})
+	if err != nil {
+		return writeListWorkspaceRecentFilesError(err), nil
+	}
+
+	return tuttigenerated.ListWorkspaceRecentFiles200JSONResponse(
+		workspaceapi.GeneratedFileDirectoryResponseFromDomain(listing),
+	), nil
+}
+
 func (api DaemonAPI) SearchWorkspaceFiles(
 	ctx context.Context,
 	request tuttigenerated.SearchWorkspaceFilesRequestObject,

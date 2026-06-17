@@ -115,7 +115,7 @@ describe("validateWorkspaceAppManifest", () => {
     );
   });
 
-  it("rejects unsupported reference endpoints", () => {
+  it("accepts a reference search endpoint", () => {
     const result = validateWorkspaceAppManifest({
       schemaVersion: workspaceAppManifestSchemaVersion,
       appId: "demo",
@@ -132,10 +132,58 @@ describe("validateWorkspaceAppManifest", () => {
       }
     });
 
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.manifest?.references, {
+      listEndpoint: "/references/list",
+      searchEndpoint: "/references/search"
+    });
+  });
+
+  it("rejects a reference search endpoint with query or fragment", () => {
+    const result = validateWorkspaceAppManifest({
+      schemaVersion: workspaceAppManifestSchemaVersion,
+      appId: "demo",
+      name: "Demo",
+      description: "Demo app",
+      runtime: {
+        bootstrap: "bootstrap.sh",
+        healthcheckPath: "/"
+      },
+      version: "1.0.0",
+      references: {
+        listEndpoint: "/references/list",
+        searchEndpoint: "/references/search?query=main"
+      }
+    });
+
     assert.equal(result.valid, false);
     assert.deepEqual(
       result.issues.map((issue) => issue.path),
       ["$.references.searchEndpoint"]
+    );
+  });
+
+  it("rejects unsupported reference endpoints", () => {
+    const result = validateWorkspaceAppManifest({
+      schemaVersion: workspaceAppManifestSchemaVersion,
+      appId: "demo",
+      name: "Demo",
+      description: "Demo app",
+      runtime: {
+        bootstrap: "bootstrap.sh",
+        healthcheckPath: "/"
+      },
+      version: "1.0.0",
+      references: {
+        listEndpoint: "/references/list",
+        unknownEndpoint: "/references/unknown"
+      }
+    });
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(
+      result.issues.map((issue) => issue.path),
+      ["$.references.unknownEndpoint"]
     );
   });
 

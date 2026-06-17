@@ -222,6 +222,7 @@ func TestDaemonAPIGeneratedRoutesInstallWorkspaceAppPassesRestartOption(t *testi
 type stubWorkspaceAppCenterService struct {
 	installWithOptionsFn func(context.Context, string, string, workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error)
 	listReferencesFn     func(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error)
+	searchReferencesFn   func(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceListResult, error)
 }
 
 func (stubWorkspaceAppCenterService) Add(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
@@ -260,6 +261,13 @@ func (s stubWorkspaceAppCenterService) ListReferences(ctx context.Context, works
 		return workspacebiz.AppReferenceListResult{}, nil
 	}
 	return s.listReferencesFn(ctx, workspaceID, appID, input)
+}
+
+func (s stubWorkspaceAppCenterService) SearchReferences(ctx context.Context, workspaceID string, appID string, input workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceListResult, error) {
+	if s.searchReferencesFn == nil {
+		return workspacebiz.AppReferenceListResult{}, nil
+	}
+	return s.searchReferencesFn(ctx, workspaceID, appID, input)
 }
 
 func (stubWorkspaceAppCenterService) List(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {

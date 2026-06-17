@@ -178,6 +178,9 @@ type ServerInterface interface {
 	// List file references exposed by one running workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/list)
 	ListWorkspaceAppReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
+	// Search file references exposed by one running workspace app
+	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/search)
+	SearchWorkspaceAppReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
 	// Retry one failed installed workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/retry)
 	RetryWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
@@ -214,6 +217,9 @@ type ServerInterface interface {
 	// Write UTF-8 text content to one workspace file
 	// (PUT /v1/workspaces/{workspaceID}/files/file/text)
 	WriteWorkspaceFileText(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
+	// List the workspace's recently accessed entries, most-recent first
+	// (GET /v1/workspaces/{workspaceID}/files/recent)
+	ListWorkspaceRecentFiles(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceRecentFilesParams)
 	// Search workspace files by logical path
 	// (GET /v1/workspaces/{workspaceID}/files/search)
 	SearchWorkspaceFiles(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params SearchWorkspaceFilesParams)
@@ -2248,6 +2254,47 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceAppReferences(w http.ResponseWri
 	handler.ServeHTTP(w, r)
 }
 
+// SearchWorkspaceAppReferences operation middleware
+func (siw *ServerInterfaceWrapper) SearchWorkspaceAppReferences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "appID" -------------
+	var appID WorkspaceAppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", r.PathValue("appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchWorkspaceAppReferences(w, r, workspaceID, appID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RetryWorkspaceApp operation middleware
 func (siw *ServerInterfaceWrapper) RetryWorkspaceApp(w http.ResponseWriter, r *http.Request) {
 
@@ -2695,6 +2742,54 @@ func (siw *ServerInterfaceWrapper) WriteWorkspaceFileText(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.WriteWorkspaceFileText(w, r, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkspaceRecentFiles operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkspaceRecentFiles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWorkspaceRecentFilesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkspaceRecentFiles(w, r, workspaceID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4873,6 +4968,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/install", wrapper.InstallWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/launch", wrapper.LaunchWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/references/list", wrapper.ListWorkspaceAppReferences)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/references/search", wrapper.SearchWorkspaceAppReferences)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/retry", wrapper.RetryWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/rollback", wrapper.RollbackWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uninstall", wrapper.UninstallWorkspaceApp)
@@ -4885,6 +4981,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/file", wrapper.CreateWorkspaceFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/file/preview", wrapper.ReadWorkspaceFilePreview)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/file/text", wrapper.WriteWorkspaceFileText)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/recent", wrapper.ListWorkspaceRecentFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/search", wrapper.SearchWorkspaceFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/tree-snapshot", wrapper.GetWorkspaceFileTreeSnapshot)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/upload", wrapper.UploadWorkspaceFiles)
@@ -10656,6 +10753,124 @@ func (response ListWorkspaceAppReferences503JSONResponse) VisitListWorkspaceAppR
 	return err
 }
 
+type SearchWorkspaceAppReferencesRequestObject struct {
+	WorkspaceID WorkspaceID    `json:"workspaceID"`
+	AppID       WorkspaceAppID `json:"appID"`
+	Body        *SearchWorkspaceAppReferencesJSONRequestBody
+}
+
+type SearchWorkspaceAppReferencesResponseObject interface {
+	VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error
+}
+
+type SearchWorkspaceAppReferences200JSONResponse AppReferenceSearchResponse
+
+func (response SearchWorkspaceAppReferences200JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceAppReferences400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response SearchWorkspaceAppReferences400JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceAppReferences401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response SearchWorkspaceAppReferences401JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceAppReferences404JSONResponse struct {
+	WorkspaceAppNotFoundErrorJSONResponse
+}
+
+func (response SearchWorkspaceAppReferences404JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceAppReferences405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response SearchWorkspaceAppReferences405JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceAppReferences502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response SearchWorkspaceAppReferences502JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceAppReferences503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response SearchWorkspaceAppReferences503JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RetryWorkspaceAppRequestObject struct {
 	WorkspaceID WorkspaceID    `json:"workspaceID"`
 	AppID       WorkspaceAppID `json:"appID"`
@@ -12050,6 +12265,123 @@ type WriteWorkspaceFileText503JSONResponse struct {
 }
 
 func (response WriteWorkspaceFileText503JSONResponse) VisitWriteWorkspaceFileTextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceRecentFilesRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Params      ListWorkspaceRecentFilesParams
+}
+
+type ListWorkspaceRecentFilesResponseObject interface {
+	VisitListWorkspaceRecentFilesResponse(w http.ResponseWriter) error
+}
+
+type ListWorkspaceRecentFiles200JSONResponse WorkspaceFileDirectoryResponse
+
+func (response ListWorkspaceRecentFiles200JSONResponse) VisitListWorkspaceRecentFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceRecentFiles400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ListWorkspaceRecentFiles400JSONResponse) VisitListWorkspaceRecentFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceRecentFiles401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListWorkspaceRecentFiles401JSONResponse) VisitListWorkspaceRecentFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceRecentFiles404JSONResponse struct {
+	WorkspaceFileNotFoundErrorJSONResponse
+}
+
+func (response ListWorkspaceRecentFiles404JSONResponse) VisitListWorkspaceRecentFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceRecentFiles405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListWorkspaceRecentFiles405JSONResponse) VisitListWorkspaceRecentFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceRecentFiles502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ListWorkspaceRecentFiles502JSONResponse) VisitListWorkspaceRecentFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceRecentFiles503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListWorkspaceRecentFiles503JSONResponse) VisitListWorkspaceRecentFilesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -17282,6 +17614,9 @@ type StrictServerInterface interface {
 	// List file references exposed by one running workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/list)
 	ListWorkspaceAppReferences(ctx context.Context, request ListWorkspaceAppReferencesRequestObject) (ListWorkspaceAppReferencesResponseObject, error)
+	// Search file references exposed by one running workspace app
+	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/search)
+	SearchWorkspaceAppReferences(ctx context.Context, request SearchWorkspaceAppReferencesRequestObject) (SearchWorkspaceAppReferencesResponseObject, error)
 	// Retry one failed installed workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/retry)
 	RetryWorkspaceApp(ctx context.Context, request RetryWorkspaceAppRequestObject) (RetryWorkspaceAppResponseObject, error)
@@ -17318,6 +17653,9 @@ type StrictServerInterface interface {
 	// Write UTF-8 text content to one workspace file
 	// (PUT /v1/workspaces/{workspaceID}/files/file/text)
 	WriteWorkspaceFileText(ctx context.Context, request WriteWorkspaceFileTextRequestObject) (WriteWorkspaceFileTextResponseObject, error)
+	// List the workspace's recently accessed entries, most-recent first
+	// (GET /v1/workspaces/{workspaceID}/files/recent)
+	ListWorkspaceRecentFiles(ctx context.Context, request ListWorkspaceRecentFilesRequestObject) (ListWorkspaceRecentFilesResponseObject, error)
 	// Search workspace files by logical path
 	// (GET /v1/workspaces/{workspaceID}/files/search)
 	SearchWorkspaceFiles(ctx context.Context, request SearchWorkspaceFilesRequestObject) (SearchWorkspaceFilesResponseObject, error)
@@ -19052,6 +19390,42 @@ func (sh *strictHandler) ListWorkspaceAppReferences(w http.ResponseWriter, r *ht
 	}
 }
 
+// SearchWorkspaceAppReferences operation middleware
+func (sh *strictHandler) SearchWorkspaceAppReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID) {
+	var request SearchWorkspaceAppReferencesRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AppID = appID
+
+	var body SearchWorkspaceAppReferencesJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchWorkspaceAppReferences(ctx, request.(SearchWorkspaceAppReferencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchWorkspaceAppReferences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchWorkspaceAppReferencesResponseObject); ok {
+		if err := validResponse.VisitSearchWorkspaceAppReferencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RetryWorkspaceApp operation middleware
 func (sh *strictHandler) RetryWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID) {
 	var request RetryWorkspaceAppRequestObject
@@ -19434,6 +19808,33 @@ func (sh *strictHandler) WriteWorkspaceFileText(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(WriteWorkspaceFileTextResponseObject); ok {
 		if err := validResponse.VisitWriteWorkspaceFileTextResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListWorkspaceRecentFiles operation middleware
+func (sh *strictHandler) ListWorkspaceRecentFiles(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceRecentFilesParams) {
+	var request ListWorkspaceRecentFilesRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkspaceRecentFiles(ctx, request.(ListWorkspaceRecentFilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkspaceRecentFiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkspaceRecentFilesResponseObject); ok {
+		if err := validResponse.VisitListWorkspaceRecentFilesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

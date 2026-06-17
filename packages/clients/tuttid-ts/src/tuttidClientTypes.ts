@@ -6,6 +6,8 @@ import type {
   AgentProviderActionRunResponse,
   AppReferenceListRequest,
   AppReferenceListResponse,
+  AppReferenceSearchRequest,
+  AppReferenceSearchResponse,
   AgentProviderStatusListResponse,
   CancelWorkspaceAgentSessionResponse,
   CliCapabilitiesResponse,
@@ -271,6 +273,11 @@ export interface TuttidClient {
     appID: string,
     request: AppReferenceListRequest
   ): Promise<AppReferenceListResponse>;
+  searchWorkspaceAppReferences(
+    workspaceID: string,
+    appID: string,
+    request: AppReferenceSearchRequest
+  ): Promise<AppReferenceSearchResponse>;
   refreshWorkspaceAppCatalog(
     workspaceID: string
   ): Promise<WorkspaceAppListResponse>;
@@ -407,6 +414,13 @@ export interface TuttidClient {
       includeHidden?: boolean;
       path?: string;
     }
+  ): Promise<WorkspaceFileDirectoryResponse>;
+  listWorkspaceRecentFiles(
+    workspaceID: string,
+    request?: {
+      limit?: number;
+    },
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceFileDirectoryResponse>;
   getWorkspaceFileTreeSnapshot(
     workspaceID: string,

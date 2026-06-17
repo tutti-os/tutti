@@ -13,6 +13,7 @@ Before finishing:
 - The server binds `127.0.0.1:$TUTTI_APP_PORT` or `$TUTTI_APP_HOST:$TUTTI_APP_PORT`.
 - The healthcheck endpoint returns a 2xx response.
 - If `tutti.app.json` declares `references.listEndpoint`, that endpoint accepts JSON `POST` requests with optional `parentGroupId`, `filterText`, `cursor`, `timeRange`, and returns direct group/reference items using `location`, not host absolute `path`.
+- If `tutti.app.json` declares `references.searchEndpoint`, that endpoint accepts JSON `POST` requests with a required `query` plus optional `cursor`, `limit`, `kinds`, `timeRange`, and returns a flat, relevance-ordered list of reference items (no group items) using `location`, not host absolute `path`.
 - Durable app data is written only under `TUTTI_APP_DATA_DIR`.
 - Runtime scratch data is written only under `TUTTI_APP_RUNTIME_DIR`.
 - Logs are written only under `TUTTI_APP_LOG_DIR`.

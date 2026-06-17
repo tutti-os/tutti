@@ -67,12 +67,21 @@ export interface ReferenceSourcePickerController {
   setActiveSource(sourceId: string): void;
   /** 确保某节点(null=当前源根)的子节点已加载(抽屉式导航进入用,不切换展开态)。 */
   ensureChildren(node: ReferenceNode | null): void;
+  /** 确保指定源的根层级已加载(左栏可同时展开多源时,为非 active 源预载分组)。 */
+  ensureSourceRoot(sourceId: string): void;
   toggleNode(node: ReferenceNode): void;
   loadMore(node: ReferenceNode | null): void;
   setSearchQuery(query: string): void;
   toggleSelection(node: ReferenceNode): void;
   clearSelection(): void;
-  confirm(): SelectedReference[];
+  /**
+   * 选中归一。文件 → 单条;文件夹按所属源区分:
+   *  - 本地(非 navigable)源:保持单条 folder 引用(filesystem 路径与目录一一对应);
+   *  - app/issue(navigable)源:其文件夹下文件在 filesystem 里不一定落在该目录路径下,
+   *    故递归 listChildren 枚举,展开成多条文件引用。
+   * 含异步枚举,故返回 Promise;结果按 path 去重、保序。
+   */
+  confirm(): Promise<SelectedReference[]>;
 }
 
 export interface CreateReferenceSourcePickerControllerInput {
@@ -227,9 +236,12 @@ export function createReferenceSourcePickerController(
       // 首次加载则整体排序(folder 在前、按名)。
       const prior =
         snapshot.bySource[sourceId]?.childrenByKey[key]?.entries ?? [];
+      // 源声明已排序(如「最近访问」按访问时间倒序)时保留其顺序,不再重排。
       const entries = options.append
         ? appendReferencePage(prior, result.entries)
-        : sortReferenceNodes(result.entries);
+        : result.ordered
+          ? [...result.entries]
+          : sortReferenceNodes(result.entries);
       setChildrenState(sourceId, key, {
         entries,
         nextCursor: result.nextCursor ?? null,
@@ -357,6 +369,40 @@ export function createReferenceSourcePickerController(
     }
   };
 
+  /**
+   * 递归枚举文件夹下的所有文件节点(app/issue 源专用:文件夹引用需展开成逐个文件)。
+   * 走 listChildren + cursor 分页,深入子文件夹;按 nodeRefKey 去重兼防环。不设数量上限。
+   */
+  const collectFolderFiles = async (
+    folder: ReferenceNode
+  ): Promise<ReferenceNode[]> => {
+    const files: ReferenceNode[] = [];
+    const seen = new Set<string>();
+    const walk = async (node: ReferenceNode): Promise<void> => {
+      let cursor: string | null = null;
+      do {
+        const result = await aggregator.listChildren(scope, node.ref, {
+          cursor
+        });
+        for (const entry of result.entries) {
+          const key = nodeRefKey(entry.ref);
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          if (entry.kind === "folder") {
+            await walk(entry);
+          } else {
+            files.push(entry);
+          }
+        }
+        cursor = result.nextCursor ?? null;
+      } while (cursor);
+    };
+    await walk(folder);
+    return files;
+  };
+
   const scheduleSearch = (sourceId: string, query: string) => {
     clearSearchTimer();
     if (!retained || !query) {
@@ -429,6 +475,15 @@ export function createReferenceSourcePickerController(
         void loadChildren(sourceId, node, { append: false });
       }
     },
+    ensureSourceRoot(sourceId) {
+      if (
+        !sourceId ||
+        !snapshot.tabs.some((tab) => tab.sourceId === sourceId)
+      ) {
+        return;
+      }
+      ensureRootLoaded(sourceId);
+    },
     toggleNode(node) {
       if (node.kind !== "folder") {
         return;
@@ -477,9 +532,7 @@ export function createReferenceSourcePickerController(
       }
     },
     toggleSelection(node) {
-      if (node.kind !== "file") {
-        return;
-      }
+      // 文件与文件夹都可作为引用选中(文件夹的展开在 confirm 时按源处理)。
       const key = nodeRefKey(node.ref);
       setSnapshot((current) => {
         const exists = current.selection.some(
@@ -496,10 +549,36 @@ export function createReferenceSourcePickerController(
     clearSelection() {
       setSnapshot({ selection: [] });
     },
-    confirm() {
-      return snapshot.selection.map((node) =>
-        aggregator.resolveSelection(node)
-      );
+    async confirm() {
+      const resolved: SelectedReference[] = [];
+      const seenPaths = new Set<string>();
+      const push = (ref: SelectedReference) => {
+        if (seenPaths.has(ref.path)) {
+          return;
+        }
+        seenPaths.add(ref.path);
+        resolved.push(ref);
+      };
+      for (const node of snapshot.selection) {
+        if (node.kind !== "folder") {
+          push(aggregator.resolveSelection(node));
+          continue;
+        }
+        const navigable =
+          aggregator.getLoadedSource(node.ref.sourceId)?.capabilities
+            .navigable ?? false;
+        if (!navigable) {
+          // 本地源:文件夹保持单条引用(目录路径在 filesystem 里有效)。
+          push(aggregator.resolveSelection(node));
+          continue;
+        }
+        // app/issue 源:文件夹下文件不一定落在该目录路径,递归枚举展开成逐个文件引用。
+        const files = await collectFolderFiles(node);
+        for (const fileNode of files) {
+          push(aggregator.resolveSelection(fileNode));
+        }
+      }
+      return resolved;
     }
   };
 }

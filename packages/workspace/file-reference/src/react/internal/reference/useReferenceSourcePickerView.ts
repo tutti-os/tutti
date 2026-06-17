@@ -7,6 +7,7 @@ import type {
   WorkspaceFileReference
 } from "../../../contracts/index.ts";
 import {
+  WORKSPACE_ROOT_GROUP_NODE_ID,
   nodeRefKey,
   selectedReferenceToWorkspaceFileReference
 } from "../../../core/index.ts";
@@ -23,14 +24,9 @@ import {
 
 export type { WorkspaceFileManagerArrangeMode };
 
-/**
- * 本地(非 navigable)源左栏二级里合成的「工作区根」节点 nodeId。
- * 选中它 = 回到源根(navigateToRoot),右侧展示根级树(含根目录散文件)。
- * 用 sentinel 而非真实路径:选中走 navigateToRoot 而非 ensureChildren,避免打后端。
- */
-export const WORKSPACE_ROOT_GROUP_NODE_ID = "__workspace_root__";
+export { WORKSPACE_ROOT_GROUP_NODE_ID } from "../../../core/index.ts";
 
-/** 本地源「工作区根」二级节点展示名。 */
+/** 本地源「工作区根」二级节点展示名(仅源未自带分组时的回退用)。 */
 const WORKSPACE_ROOT_GROUP_LABEL = "工作区";
 
 export interface UseReferenceSourcePickerViewInput {
@@ -68,6 +64,11 @@ export function useReferenceSourcePickerView({
   const [focusedNode, setFocusedNode] = useState<ReferenceNode | null>(null);
   const [arrangeMode, setArrangeMode] =
     useState<WorkspaceFileManagerArrangeMode>("none");
+  // 左栏一级源的展开态(可多源同时展开)。缺省:仅首个 active 源展开(见 seed effect)。
+  const [expandedSources, setExpandedSources] = useState<
+    Record<string, boolean>
+  >({});
+  const expandSeededRef = useRef(false);
 
   // 复用 file-manager 的排序能力:把 ReferenceNode 映射成 WorkspaceFileEntry 排序后映射回。
   const sortNodes = useCallback(
@@ -105,6 +106,8 @@ export function useReferenceSourcePickerView({
     controller.open();
     setBreadcrumbBySource({});
     setFocusedNode(null);
+    setExpandedSources({});
+    expandSeededRef.current = false;
     autoEnteredSourcesRef.current = new Set();
     return () => {
       controller.close();
@@ -134,7 +137,6 @@ export function useReferenceSourcePickerView({
     activeTabState.searchQuery.trim() !== "";
 
   const currentChildren = activeTabState?.childrenByKey[currentKey];
-  const rootChildren = activeTabState?.childrenByKey[ROOT_CHILDREN_KEY];
 
   // 浏览态内容区:当前选中二级节点(currentNode,本地根时为 null → 源根)的子节点,
   // 递归就地展开成文件树。搜索态:扁平搜索结果。
@@ -147,25 +149,44 @@ export function useReferenceSourcePickerView({
     [activeTabState?.searchEntries, sortNodes]
   );
 
-  // 左栏二级分组:所有源都取源根下的 folder。
-  // 本地(非 navigable)源额外在最前合成「工作区根」入口,保住根级散文件可达。
-  const sidebarGroups = useMemo<ReferenceNode[]>(() => {
-    if (!activeSourceId) {
-      return [];
+  // 每个源的左栏二级分组(左栏可多源同时展开,故按源全量计算):
+  //  - 源自带分组(listSidebarGroups,如本地源的 最近访问/下载/文稿/桌面/个人)优先;
+  //  - 否则取该源根下的 folder;非 navigable 源额外合成「工作区根」入口保住根级散文件可达。
+  // 依赖 snapshot.tabs(getLoadedSource 在 tabs 加载后才有值)与 snapshot.bySource(根加载)。
+  const sidebarGroupsBySource = useMemo<Record<string, ReferenceNode[]>>(() => {
+    const result: Record<string, ReferenceNode[]> = {};
+    for (const tab of snapshot.tabs) {
+      const sourceId = tab.sourceId;
+      const provided = aggregator
+        .getLoadedSource(sourceId)
+        ?.listSidebarGroups?.(scope);
+      if (provided && provided.length > 0) {
+        result[sourceId] = provided;
+        continue;
+      }
+      const root =
+        snapshot.bySource[sourceId]?.childrenByKey[ROOT_CHILDREN_KEY];
+      const folders = (root?.entries ?? []).filter(
+        (node) => node.kind === "folder"
+      );
+      if (tab.capabilities.navigable) {
+        result[sourceId] = folders;
+      } else {
+        const workspaceRoot: ReferenceNode = {
+          ref: { sourceId, nodeId: WORKSPACE_ROOT_GROUP_NODE_ID },
+          kind: "folder",
+          displayName: WORKSPACE_ROOT_GROUP_LABEL
+        };
+        result[sourceId] = [workspaceRoot, ...folders];
+      }
     }
-    const folders = (rootChildren?.entries ?? []).filter(
-      (node) => node.kind === "folder"
-    );
-    if (capabilities?.navigable) {
-      return folders;
-    }
-    const workspaceRoot: ReferenceNode = {
-      ref: { sourceId: activeSourceId, nodeId: WORKSPACE_ROOT_GROUP_NODE_ID },
-      kind: "folder",
-      displayName: WORKSPACE_ROOT_GROUP_LABEL
-    };
-    return [workspaceRoot, ...folders];
-  }, [activeSourceId, capabilities?.navigable, rootChildren?.entries]);
+    return result;
+  }, [snapshot.tabs, snapshot.bySource, aggregator, scope]);
+
+  // active 源的二级分组(供自动进入首组、选中高亮等复用)。
+  const sidebarGroups = activeSourceId
+    ? (sidebarGroupsBySource[activeSourceId] ?? [])
+    : [];
 
   // 当前选中的二级分组 key(本地根选中时 = 合成「工作区根」节点的 key)。
   const selectedGroupKey =
@@ -188,26 +209,27 @@ export function useReferenceSourcePickerView({
 
   const enterFolder = useCallback(
     (node: ReferenceNode) => {
+      const sourceId = node.ref.sourceId;
       if (
         node.kind !== "folder" ||
-        !activeSourceId ||
+        !sourceId ||
         node.ref.nodeId === WORKSPACE_ROOT_GROUP_NODE_ID
       ) {
         return;
       }
       controller.ensureChildren(node);
       setBreadcrumbBySource((current) => {
-        const stack = current[activeSourceId] ?? [];
+        const stack = current[sourceId] ?? [];
         const index = stack.findIndex(
           (item) => nodeRefKey(item.ref) === nodeRefKey(node.ref)
         );
         const nextStack =
           index >= 0 ? stack.slice(0, index + 1) : [...stack, node];
-        return { ...current, [activeSourceId]: nextStack };
+        return { ...current, [sourceId]: nextStack };
       });
       setFocusedNode(null);
     },
-    [activeSourceId, controller]
+    [controller]
   );
 
   // 切到可逐层进入的源(如「应用」)时,默认进入第一个分组(app),
@@ -241,6 +263,19 @@ export function useReferenceSourcePickerView({
     enterFolder
   ]);
 
+  // 首次有 active 源时,默认展开它(其余源保持收起,用户可再独立展开)。
+  useEffect(() => {
+    if (!open || expandSeededRef.current || !activeSourceId) {
+      return;
+    }
+    expandSeededRef.current = true;
+    setExpandedSources((current) =>
+      current[activeSourceId] != null
+        ? current
+        : { ...current, [activeSourceId]: true }
+    );
+  }, [open, activeSourceId]);
+
   const navigateToBreadcrumb = useCallback(
     (index: number) => {
       if (!activeSourceId) {
@@ -257,28 +292,61 @@ export function useReferenceSourcePickerView({
     [activeSourceId, breadcrumbBySource, controller]
   );
 
-  const navigateToRoot = useCallback(() => {
-    if (!activeSourceId) {
-      return;
-    }
-    setBreadcrumbBySource((current) => ({ ...current, [activeSourceId]: [] }));
-    controller.ensureChildren(null);
-    setFocusedNode(null);
-  }, [activeSourceId, controller]);
-
-  // 选中左栏二级分组:合成「工作区根」→ 回源根;其余 → 进入该目录。
-  const selectGroup = useCallback(
-    (node: ReferenceNode) => {
-      if (!activeSourceId) {
+  const navigateToRoot = useCallback(
+    (sourceId?: string) => {
+      const sid = sourceId ?? activeSourceId;
+      if (!sid) {
         return;
       }
+      setBreadcrumbBySource((current) => ({ ...current, [sid]: [] }));
+      controller.ensureSourceRoot(sid);
+      setFocusedNode(null);
+    },
+    [activeSourceId, controller]
+  );
+
+  // 选中左栏二级分组:先切到该分组所属源(右侧内容随之切换),
+  // 再:合成「工作区根」→ 回源根;其余 → 进入该目录。
+  const selectGroup = useCallback(
+    (node: ReferenceNode) => {
+      const sourceId = node.ref.sourceId;
+      if (!sourceId) {
+        return;
+      }
+      if (sourceId !== snapshot.activeSourceId) {
+        controller.setActiveSource(sourceId);
+      }
       if (node.ref.nodeId === WORKSPACE_ROOT_GROUP_NODE_ID) {
-        navigateToRoot();
+        navigateToRoot(sourceId);
         return;
       }
       enterFolder(node);
     },
-    [activeSourceId, enterFolder, navigateToRoot]
+    [controller, snapshot.activeSourceId, enterFolder, navigateToRoot]
+  );
+
+  // 一级源展开态:缺省仅 active 源展开(seed effect);其余可独立切换、同时展开。
+  const isSourceExpanded = useCallback(
+    (sourceId: string) => expandedSources[sourceId] ?? false,
+    [expandedSources]
+  );
+
+  const toggleSourceExpanded = useCallback(
+    (sourceId: string) => {
+      const willExpand = !(expandedSources[sourceId] ?? false);
+      setExpandedSources((current) => ({
+        ...current,
+        [sourceId]: !(current[sourceId] ?? false)
+      }));
+      // 展开非自带分组的源时预载其根,以便其二级分组就绪。
+      if (
+        willExpand &&
+        !aggregator.getLoadedSource(sourceId)?.listSidebarGroups
+      ) {
+        controller.ensureSourceRoot(sourceId);
+      }
+    },
+    [aggregator, controller, expandedSources]
   );
 
   const isSelected = useCallback(
@@ -289,11 +357,21 @@ export function useReferenceSourcePickerView({
     [snapshot.selection]
   );
 
-  const confirm = useCallback(() => {
-    const selected: SelectedReference[] = controller.confirm();
-    onConfirm(selected.map(selectedReferenceToWorkspaceFileReference));
-    onClose();
-  }, [controller, onClose, onConfirm]);
+  // app/issue 源的文件夹引用需异步递归枚举展开,故 confirm 异步;期间置 isConfirming 防重复提交。
+  const [isConfirming, setIsConfirming] = useState(false);
+  const confirm = useCallback(async () => {
+    if (isConfirming) {
+      return;
+    }
+    setIsConfirming(true);
+    try {
+      const selected: SelectedReference[] = await controller.confirm();
+      onConfirm(selected.map(selectedReferenceToWorkspaceFileReference));
+      onClose();
+    } finally {
+      setIsConfirming(false);
+    }
+  }, [controller, isConfirming, onClose, onConfirm]);
 
   return {
     tabs: snapshot.tabs,
@@ -312,6 +390,9 @@ export function useReferenceSourcePickerView({
     breadcrumb,
     currentNode,
     sidebarGroups,
+    sidebarGroupsBySource,
+    isSourceExpanded,
+    toggleSourceExpanded,
     selectedGroupKey,
     arrangeMode,
     setArrangeMode,
@@ -334,6 +415,7 @@ export function useReferenceSourcePickerView({
     toggleSelection: (node: ReferenceNode) => controller.toggleSelection(node),
     loadMore: () => controller.loadMore(currentNode),
     isSelected,
-    confirm
+    confirm,
+    isConfirming
   };
 }

@@ -39,7 +39,8 @@ export function createAppReferenceListBackend(
           items: apps.map((app) => ({
             type: "group",
             id: `${APP_MARKER}${app.appId}`,
-            displayName: app.displayName?.trim() || app.appId
+            displayName: app.displayName?.trim() || app.appId,
+            iconUrl: app.iconUrl
           })),
           nextCursor: null
         };
@@ -60,6 +61,46 @@ export function createAppReferenceListBackend(
       return {
         items: response.items.map((item) => appItemToProtocol(appId, item)),
         nextCursor: response.nextCursor ?? null
+      };
+    },
+
+    // 源级搜索:app 引用是 per-app 的,daemon 搜索接口也是 per-app,
+    // 故跨所有「声明 searchEndpoint(searchSupported)」的 app 并行搜索后合并。
+    // 各 app 内部已按相关性排序;v1 按 app 顺序拼接,不做跨 app 全局重排,不分页。
+    async search(
+      scope: ReferenceScope,
+      { query, limit }
+    ): Promise<ReferenceListResult> {
+      const apps = (
+        await listReferenceSupportingApps(tuttidClient, scope)
+      ).filter((app) => app.references.searchSupported);
+      if (apps.length === 0) {
+        return { items: [], nextCursor: null };
+      }
+      const perApp = await Promise.all(
+        apps.map(async (app) => {
+          try {
+            const response = await tuttidClient.searchWorkspaceAppReferences(
+              scope.workspaceId,
+              app.appId,
+              {
+                query,
+                ...(limit == null ? {} : { limit }),
+                kinds: ["file"]
+              }
+            );
+            return response.items.map((item) =>
+              appItemToProtocol(app.appId, item)
+            );
+          } catch {
+            return [];
+          }
+        })
+      );
+      const items = perApp.flat();
+      return {
+        items: limit == null ? items : items.slice(0, limit),
+        nextCursor: null
       };
     }
   };

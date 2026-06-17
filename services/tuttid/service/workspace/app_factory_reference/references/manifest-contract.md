@@ -21,7 +21,8 @@ Create `tutti.app.json` in the package root with this shape:
     "manifest": "tutti.cli.json"
   },
   "references": {
-    "listEndpoint": "/tutti/references/list"
+    "listEndpoint": "/tutti/references/list",
+    "searchEndpoint": "/tutti/references/search"
   },
   "window": {
     "minimizeBehavior": "keep-mounted",
@@ -47,6 +48,8 @@ Rules:
 - `cli.manifest` must be a relative package path to a `tutti.app.cli.v1` manifest, usually `tutti.cli.json`.
 - `references` is optional. Include it only when the app exposes browsable file references.
 - `references.listEndpoint` must be a relative URL path that starts with `/` and has no scheme, host, query, hash, or percent-encoded characters.
+- `references.searchEndpoint` is optional and declares that the app provides recursive search over its references. Include it when references should be searchable; omit it when the app can only list and per-level filter them.
+- When `references.searchEndpoint` is present, Tutti marks the app as searchable and shows the picker search box for it. The endpoint must satisfy the same URL constraints as `listEndpoint`. Without it, the picker offers only the per-level `filterText` filtering of `listEndpoint`, never a global search.
 - v1 references may only return groups and file references. File references must use `kind: "file"` and a `location` object. Tutti resolves the location to a filesystem path; apps must not emit host absolute paths.
 - `location.type` must be `app-data-relative` for files under the app data directory or `app-package-relative` for files under the immutable app package directory.
 - `location.path` must be a non-empty relative path using `/` separators. It must not contain a scheme, drive prefix, leading slash, NUL, or any `..` segment.
@@ -150,3 +153,61 @@ Response:
 - `nextCursor` is optional; omit it or return `null` when there is no next page.
 - File `displayName`, `description`, `sizeBytes`, `mtimeMs`, `mimeType`, and `score` are optional. `score` must be between `0` and `1` when present.
 - Apps must return `location`, not an absolute `path`. Tutti resolves valid locations to absolute paths before exposing results to desktop clients.
+
+## Reference Search Runtime Protocol
+
+When `references.searchEndpoint` is present, the app server must implement a JSON `POST` endpoint at that path. Unlike `filterText` on the list endpoint, search is **recursive across the app's entire reference tree** and is not scoped to a single group.
+
+Request:
+
+```json
+{
+  "query": "quarterly report",
+  "limit": 20,
+  "cursor": "opaque-next-page-token",
+  "kinds": ["file"],
+  "timeRange": {
+    "fromMs": 1710000000000,
+    "toMs": 1710259200000
+  }
+}
+```
+
+- `query` is required, non-empty, and already trimmed by Tutti. Match it recursively across all groups and nested references; never restrict it to the root or a single `parentGroupId`.
+- There is no `parentGroupId`: search always spans the whole app.
+- `limit` is clamped by Tutti to `1..50`.
+- `cursor` is optional and opaque to Tutti.
+- v1 only sends `kinds: ["file"]`.
+- `timeRange` is optional with the same inclusive `mtimeMs` semantics as the list protocol.
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "type": "reference",
+      "reference": {
+        "kind": "file",
+        "displayName": "Q4-Report.md",
+        "description": "Optional short context",
+        "location": {
+          "type": "app-data-relative",
+          "path": "reports/Q4-Report.md"
+        },
+        "sizeBytes": 1234,
+        "mtimeMs": 1710000000000,
+        "mimeType": "text/markdown",
+        "score": 0.92
+      }
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+- `items` is required and must contain only reference items. Do not return `group` items from search; results are a flat ranked list of insertable file references.
+- Return results ordered by descending relevance and set `score` (`0..1`) so Tutti can preserve your ranking. When `score` is omitted Tutti keeps the returned order.
+- Each reference item must include a valid file reference with a `location`; the same `location` rules and host-path prohibition as the list protocol apply.
+- `nextCursor` is optional; omit it or return `null` when there is no next page.
+- Return an empty `items` array (not an error) when nothing matches.

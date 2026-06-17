@@ -184,7 +184,7 @@ function validateManifestReferences(references, sourceLabel) {
     throw new Error(`${sourceLabel} references must be an object`);
   }
   const unsupportedKey = Object.keys(references).find(
-    (key) => key !== "listEndpoint"
+    (key) => key !== "listEndpoint" && key !== "searchEndpoint"
   );
   if (unsupportedKey) {
     throw new Error(
@@ -199,6 +199,17 @@ function validateManifestReferences(references, sourceLabel) {
     throw new Error(
       `${sourceLabel}.references.listEndpoint must be a relative URL path without query or fragment`
     );
+  }
+  if (references.searchEndpoint !== undefined) {
+    const searchEndpoint = requireNonEmpty(
+      references.searchEndpoint,
+      `${sourceLabel}.references.searchEndpoint`
+    );
+    if (!isRelativeURLPath(searchEndpoint)) {
+      throw new Error(
+        `${sourceLabel}.references.searchEndpoint must be a relative URL path without query or fragment`
+      );
+    }
   }
 }
 

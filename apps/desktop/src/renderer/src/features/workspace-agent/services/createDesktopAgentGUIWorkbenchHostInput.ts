@@ -30,6 +30,7 @@ import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
 import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
+import { translate } from "../../../i18n/appRuntime.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
@@ -131,19 +132,19 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     createStaticReferenceSourceRegistry([
       createWorkspaceFileReferenceSource({
         adapter: workspaceFileReferenceAdapter,
-        label: "本地",
+        label: translate("workspace.referenceSources.localSourceLabel"),
         order: 0
       }),
       createAppArtifactReferenceSource({
         tuttidClient,
         adapter: workspaceFileReferenceAdapter,
-        label: "应用",
+        label: translate("workspace.referenceSources.appSourceLabel"),
         order: 1
       }),
       createIssueReferenceSource({
         tuttidClient,
         adapter: workspaceFileReferenceAdapter,
-        label: "议题",
+        label: translate("workspace.referenceSources.issueSourceLabel"),
         order: 2
       })
     ])

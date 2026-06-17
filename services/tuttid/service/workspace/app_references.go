@@ -62,6 +62,38 @@ func (s *AppCenterService) ListReferences(ctx context.Context, workspaceID strin
 	return result, nil
 }
 
+func (s *AppCenterService) SearchReferences(ctx context.Context, workspaceID string, appID string, input workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceListResult, error) {
+	if _, err := s.workspaceSummary(ctx, workspaceID); err != nil {
+		return workspacebiz.AppReferenceListResult{}, err
+	}
+
+	appPackage, installation, err := s.installedPackage(ctx, workspaceID, appID)
+	if err != nil {
+		return workspacebiz.AppReferenceListResult{}, err
+	}
+	if !installation.Enabled || !appPackage.ReferenceSearchSupported() {
+		return workspacebiz.AppReferenceListResult{}, nil
+	}
+
+	runtimeState := s.runner().State(workspaceID, appPackage.AppID)
+	if runtimeState.Status != workspacebiz.AppRuntimeStatusRunning || runtimeState.LaunchURL == nil || strings.TrimSpace(*runtimeState.LaunchURL) == "" {
+		return workspacebiz.AppReferenceListResult{}, nil
+	}
+
+	endpointURL, err := appReferenceListURL(*runtimeState.LaunchURL, appPackage.Manifest.References.SearchEndpoint)
+	if err != nil {
+		slog.Warn("workspace app reference search endpoint invalid", "workspaceId", workspaceID, "appId", appPackage.AppID, "error", err)
+		return workspacebiz.AppReferenceListResult{}, nil
+	}
+
+	result, err := s.searchAppRuntimeReferences(ctx, endpointURL, appPackage, workspaceID, input)
+	if err != nil {
+		slog.Warn("workspace app reference search failed", "workspaceId", workspaceID, "appId", appPackage.AppID, "error", err)
+		return workspacebiz.AppReferenceListResult{}, nil
+	}
+	return result, nil
+}
+
 func (s *AppCenterService) listAppRuntimeReferences(ctx context.Context, endpointURL string, appPackage workspacebiz.AppPackage, workspaceID string, input workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
 	payload := appRuntimeReferenceListRequest{
 		FilterText: trimRunes(strings.TrimSpace(input.FilterText), appReferenceTextMaxRunes),
@@ -90,9 +122,46 @@ func (s *AppCenterService) listAppRuntimeReferences(ctx context.Context, endpoin
 	if err != nil {
 		return workspacebiz.AppReferenceListResult{}, err
 	}
-	listCtx, cancel := context.WithTimeout(ctx, appReferenceListTimeout)
+	return s.requestAppRuntimeReferencePage(ctx, endpointURL, body, appPackage, workspaceID, payload.Limit, false)
+}
+
+func (s *AppCenterService) searchAppRuntimeReferences(ctx context.Context, endpointURL string, appPackage workspacebiz.AppPackage, workspaceID string, input workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceListResult, error) {
+	query := trimRunes(strings.TrimSpace(input.Query), appReferenceTextMaxRunes)
+	if query == "" {
+		return workspacebiz.AppReferenceListResult{}, nil
+	}
+	payload := appRuntimeReferenceSearchRequest{
+		Query: query,
+		Limit: normalizeAppReferenceListLimit(input.Limit),
+	}
+	if cursor := trimRunes(strings.TrimSpace(input.Cursor), appReferenceCursorMaxRunes); cursor != "" {
+		payload.Cursor = cursor
+	}
+	if input.TimeRange != nil {
+		payload.TimeRange = &appRuntimeReferenceListTimeRange{
+			FromMs: input.TimeRange.FromMs,
+			ToMs:   input.TimeRange.ToMs,
+		}
+	}
+	if len(input.Kinds) > 0 {
+		if !appReferenceKindsIncludeFile(input.Kinds) {
+			return workspacebiz.AppReferenceListResult{}, nil
+		}
+		payload.Kinds = []string{string(workspacebiz.AppReferenceKindFile)}
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return workspacebiz.AppReferenceListResult{}, err
+	}
+	// Search results are a flat, relevance-ordered file list; drop any group items defensively.
+	return s.requestAppRuntimeReferencePage(ctx, endpointURL, body, appPackage, workspaceID, payload.Limit, true)
+}
+
+func (s *AppCenterService) requestAppRuntimeReferencePage(ctx context.Context, endpointURL string, body []byte, appPackage workspacebiz.AppPackage, workspaceID string, limit int, referenceOnly bool) (workspacebiz.AppReferenceListResult, error) {
+	requestCtx, cancel := context.WithTimeout(ctx, appReferenceListTimeout)
 	defer cancel()
-	request, err := http.NewRequestWithContext(listCtx, http.MethodPost, endpointURL, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpointURL, bytes.NewReader(body))
 	if err != nil {
 		return workspacebiz.AppReferenceListResult{}, err
 	}
@@ -106,7 +175,7 @@ func (s *AppCenterService) listAppRuntimeReferences(ctx context.Context, endpoin
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return workspacebiz.AppReferenceListResult{}, fmt.Errorf("app reference list returned status %d", response.StatusCode)
+		return workspacebiz.AppReferenceListResult{}, fmt.Errorf("app reference request returned status %d", response.StatusCode)
 	}
 
 	decoder := json.NewDecoder(io.LimitReader(response.Body, appReferenceListMaxBytes))
@@ -123,11 +192,14 @@ func (s *AppCenterService) listAppRuntimeReferences(ctx context.Context, endpoin
 	for index, rawItem := range raw.Items {
 		item, ok := decodeAppRuntimeReferenceListItem(rawItem, validator)
 		if !ok {
-			slog.Warn("workspace app reference list item dropped", "workspaceId", workspaceID, "appId", appPackage.AppID, "index", index)
+			slog.Warn("workspace app reference item dropped", "workspaceId", workspaceID, "appId", appPackage.AppID, "index", index)
+			continue
+		}
+		if referenceOnly && item.AppReferenceListItemType() != workspacebiz.AppReferenceListItemTypeReference {
 			continue
 		}
 		items = append(items, item)
-		if len(items) >= payload.Limit {
+		if len(items) >= limit {
 			break
 		}
 	}
@@ -145,6 +217,14 @@ type appRuntimeReferenceListRequest struct {
 	Cursor        string                            `json:"cursor,omitempty"`
 	Kinds         []string                          `json:"kinds,omitempty"`
 	TimeRange     *appRuntimeReferenceListTimeRange `json:"timeRange,omitempty"`
+}
+
+type appRuntimeReferenceSearchRequest struct {
+	Query     string                            `json:"query"`
+	Limit     int                               `json:"limit"`
+	Cursor    string                            `json:"cursor,omitempty"`
+	Kinds     []string                          `json:"kinds,omitempty"`
+	TimeRange *appRuntimeReferenceListTimeRange `json:"timeRange,omitempty"`
 }
 
 type appRuntimeReferenceListTimeRange struct {

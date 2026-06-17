@@ -120,6 +120,16 @@ export const zhCN = {
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用"
     },
+    referenceSources: {
+      appSourceLabel: "应用",
+      issueSourceLabel: "议题",
+      localSourceLabel: "本地",
+      sidebarDesktop: "桌面",
+      sidebarDocuments: "文稿",
+      sidebarDownloads: "下载",
+      sidebarPersonal: "个人",
+      sidebarRecent: "最近访问"
+    },
     agentMessageCenter: {
       openAria: "打开 Agent 消息",
       promptConstraintHeader: "约束",

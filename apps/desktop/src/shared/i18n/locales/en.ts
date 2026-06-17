@@ -123,6 +123,16 @@ export const en = {
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable"
     },
+    referenceSources: {
+      appSourceLabel: "Apps",
+      issueSourceLabel: "Issues",
+      localSourceLabel: "Local",
+      sidebarDesktop: "Desktop",
+      sidebarDocuments: "Documents",
+      sidebarDownloads: "Downloads",
+      sidebarPersonal: "Home",
+      sidebarRecent: "Recent"
+    },
     agentMessageCenter: {
       openAria: "Open agent messages",
       promptConstraintHeader: "Constraint",

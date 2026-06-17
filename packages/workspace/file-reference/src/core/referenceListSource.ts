@@ -5,6 +5,8 @@ import type {
   ReferenceScope,
   ReferenceSourceCapabilities,
   ReferenceSourceService,
+  SearchInput,
+  SearchResult,
   SelectedReference
 } from "../contracts/referenceSource.ts";
 import type {
@@ -25,6 +27,8 @@ export interface ReferenceListGroup {
   id: string;
   displayName: string;
   referenceCount?: number | null;
+  /** 可选分组图标(data URL / 远程 URL),如应用产物源的 app 图标。 */
+  iconUrl?: string | null;
 }
 
 export interface ReferenceListFile {
@@ -56,11 +60,27 @@ export interface ReferenceListResult {
   nextCursor?: string | null;
 }
 
+/** 递归搜索请求(跨整源,非当前层 filter)。 */
+export interface ReferenceListSearchRequest {
+  query: string;
+  cursor?: string | null;
+  limit?: number;
+  signal?: AbortSignal;
+}
+
 /** 各源自治的取数适配器:把自家数据映射成统一协议。 */
 export interface ReferenceListBackend {
   list(
     scope: ReferenceScope,
     request: ReferenceListRequest
+  ): Promise<ReferenceListResult>;
+  /**
+   * 可选:递归搜索。实现即代表该源支持全局搜索(对应 capabilities.searchable)。
+   * 返回 flat reference items(协议层不返回 group)。
+   */
+  search?(
+    scope: ReferenceScope,
+    request: ReferenceListSearchRequest
   ): Promise<ReferenceListResult>;
 }
 
@@ -88,7 +108,7 @@ export function createReferenceListSource(
     return { path: decodeSegment(FILE_PREFIX, node.ref.nodeId), kind: "file" };
   }
 
-  return {
+  const service: ReferenceSourceService = {
     metadata: { id: sourceId, label, order: input.order ?? 0 },
     capabilities,
     isAvailable,
@@ -140,6 +160,28 @@ export function createReferenceListSource(
       };
     }
   };
+
+  // 仅当 backend 实现了递归搜索时才暴露 search,与 capabilities.searchable 保持一致。
+  const backendSearch = backend.search?.bind(backend);
+  if (backendSearch) {
+    service.search = async (
+      scope: ReferenceScope,
+      input: SearchInput
+    ): Promise<SearchResult> => {
+      const result = await backendSearch(scope, {
+        query: input.query,
+        cursor: input.cursor ?? null,
+        ...(input.limit == null ? {} : { limit: input.limit }),
+        ...(input.signal ? { signal: input.signal } : {})
+      });
+      return {
+        entries: result.items.map((item) => itemToNode(sourceId, item)),
+        nextCursor: result.nextCursor ?? null
+      };
+    };
+  }
+
+  return service;
 }
 
 function itemToNode(sourceId: string, item: ReferenceListItem): ReferenceNode {
@@ -151,7 +193,8 @@ function itemToNode(sourceId: string, item: ReferenceListItem): ReferenceNode {
       hasChildren: true,
       ...(item.referenceCount == null
         ? {}
-        : { childCount: item.referenceCount })
+        : { childCount: item.referenceCount }),
+      ...(item.iconUrl ? { iconUrl: item.iconUrl } : {})
     };
   }
   const reference = item.reference;

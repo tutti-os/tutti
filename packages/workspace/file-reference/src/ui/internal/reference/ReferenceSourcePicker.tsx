@@ -1,4 +1,12 @@
-import { useEffect, useId, useState, type JSX, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type JSX,
+  type ReactNode,
+  type RefObject
+} from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowRightIcon,
@@ -9,17 +17,13 @@ import {
   CardHeader,
   CardTitle,
   CheckIcon,
-  ChevronDownIcon,
   CloseIcon,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
   FileIcon,
   FolderFilledIcon,
   Input,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
   ScrollArea,
   SearchIcon,
   Spinner,
@@ -33,10 +37,7 @@ import type {
 } from "../../../contracts/index.ts";
 import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAggregator.ts";
 import { nodeRefKey } from "../../../core/index.ts";
-import {
-  useReferenceSourcePickerView,
-  type WorkspaceFileManagerArrangeMode
-} from "../../../react/internal/reference/useReferenceSourcePickerView.ts";
+import { useReferenceSourcePickerView } from "../../../react/internal/reference/useReferenceSourcePickerView.ts";
 
 export interface ReferenceSourcePickerProps {
   aggregator: ReferenceSourceAggregator;
@@ -57,20 +58,50 @@ const L = {
   previewHierarchy: "所属层级",
   reference: "引用",
   loadMore: "加载更多",
-  emptyPreview: "选择一个文件查看详情",
-  sort: "排序",
-  sortNone: "无",
-  sortName: "名称",
-  sortKind: "种类",
-  sortApplication: "应用程序",
-  sortLastOpened: "上次打开日期",
-  sortDateAdded: "添加日期",
-  sortModified: "修改时间",
-  sortCreated: "创建日期",
-  sortSize: "大小"
+  emptyPreview: "选择一个文件查看详情"
 };
 
 type PickerView = ReturnType<typeof useReferenceSourcePickerView>;
+
+/** react-resizable-panels 命令式句柄(只用到 resize)。 */
+type ResizablePanelHandle = { resize: (size: number) => void };
+
+/**
+ * 双击分割线:把 panel 自动适配到内容自然宽度。
+ * 量 `[data-autofit-label]`(truncate 元素的 scrollWidth = 完整文本宽度)的最右边缘,
+ * 加上尾部控件/内边距,折算成占整体宽度的百分比;resize 内部会按 minSize 再做夹取。
+ */
+function autoFitPanelWidth(
+  groupEl: HTMLElement | null,
+  contentEl: HTMLElement | null,
+  panel: ResizablePanelHandle | null,
+  trailingPx: number
+): void {
+  if (!groupEl || !contentEl || !panel) {
+    return;
+  }
+  const groupWidth = groupEl.clientWidth;
+  if (groupWidth <= 0) {
+    return;
+  }
+  const contentLeft = contentEl.getBoundingClientRect().left;
+  const labels = contentEl.querySelectorAll<HTMLElement>(
+    "[data-autofit-label]"
+  );
+  let maxRight = 0;
+  labels.forEach((label) => {
+    const right =
+      label.getBoundingClientRect().left - contentLeft + label.scrollWidth;
+    if (right > maxRight) {
+      maxRight = right;
+    }
+  });
+  if (maxRight <= 0) {
+    return;
+  }
+  const naturalWidth = maxRight + trailingPx;
+  panel.resize(Math.min(80, (naturalWidth / groupWidth) * 100));
+}
 
 export function ReferenceSourcePicker({
   aggregator,
@@ -89,11 +120,32 @@ export function ReferenceSourcePicker({
     onConfirm
   });
 
+  // 三栏可拖拽 + 双击自动适配:layoutRef 量整体宽度,content/panel ref 用于双击适配。
+  const layoutRef = useRef<HTMLDivElement | null>(null);
+  const sidebarContentRef = useRef<HTMLDivElement | null>(null);
+  const middleContentRef = useRef<HTMLDivElement | null>(null);
+  const sidebarPanelRef = useRef<ResizablePanelHandle | null>(null);
+  const middlePanelRef = useRef<ResizablePanelHandle | null>(null);
+
   if (!open) {
     return null;
   }
 
   const hasSelectedGroup = view.selectedGroupKey != null;
+  const fitSidebar = () =>
+    autoFitPanelWidth(
+      layoutRef.current,
+      sidebarContentRef.current,
+      sidebarPanelRef.current,
+      36
+    );
+  const fitMiddle = () =>
+    autoFitPanelWidth(
+      layoutRef.current,
+      middleContentRef.current,
+      middlePanelRef.current,
+      56
+    );
 
   const dialog = (
     <div
@@ -125,94 +177,139 @@ export function ReferenceSourcePicker({
           </div>
         </CardHeader>
 
-        <CardContent className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)] grid-rows-1 gap-0 overflow-hidden border-t border-[var(--line-1)] p-0">
-          <section className="flex min-h-0 border-r border-[var(--line-1)]">
-            <SourceSidebar view={view} />
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="flex items-center gap-2 border-b border-[var(--line-1)] p-3">
-                <div className="relative flex-1">
-                  <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
-                  <Input
-                    className="pl-9"
-                    placeholder={copy.t("referencePicker.searchPlaceholder")}
-                    value={view.searchQuery}
-                    onChange={(event) =>
-                      view.setSearchQuery(event.target.value)
-                    }
-                  />
-                </div>
-                <SortMenu
-                  value={view.arrangeMode}
-                  onChange={view.setArrangeMode}
-                />
-              </div>
-              <ScrollArea className="min-h-0 flex-1">
-                <div className="flex flex-col gap-[2px] p-3">
-                  {view.isLoading ? (
-                    <Feedback>
-                      <Spinner size={16} />
-                    </Feedback>
-                  ) : view.isSearch ? (
-                    // 搜索:扁平结果
-                    view.searchResults.length === 0 ? (
-                      <Feedback>
-                        {copy.t("referencePicker.emptyDirectory")}
-                      </Feedback>
-                    ) : (
-                      view.searchResults.map((node) => (
-                        <SearchResultRow
-                          key={nodeRefKey(node.ref)}
-                          focused={isFocused(view.focusedNode, node)}
-                          node={node}
-                          selected={view.isSelected(node)}
-                          onFocus={view.setFocusedNode}
-                          onToggle={view.toggleSelection}
-                        />
-                      ))
-                    )
-                  ) : !hasSelectedGroup ? (
-                    <Feedback>{L.selectGroupHint}</Feedback>
-                  ) : view.currentEntries.length === 0 ? (
-                    <Feedback>
-                      {copy.t("referencePicker.emptyDirectory")}
-                    </Feedback>
-                  ) : (
-                    // 浏览:就地递归展开树(复刻 agent 引用面板文件树交互)
-                    view.currentEntries.map((node) => (
-                      <TreeNodeRow
-                        key={nodeRefKey(node.ref)}
-                        copy={copy}
-                        depth={0}
-                        node={node}
-                        view={view}
+        <CardContent className="flex min-h-0 flex-1 overflow-hidden border-t border-[var(--line-1)] p-0">
+          <div ref={layoutRef} className="flex min-h-0 flex-1">
+            <ResizablePanelGroup
+              className="min-h-0 flex-1"
+              orientation="horizontal"
+              // 三栏初始占比 2:5:3。v4 在三面板下 `defaultSize` 初始布局会因注册时序被忽略而回退等分,
+              // 这里用 `defaultLayout`(按 panel id 指定 flexGrow 权重)作为权威初始布局。
+              defaultLayout={{ sidebar: 2, middle: 5, preview: 3 }}
+            >
+              <ResizablePanel
+                id="sidebar"
+                className="min-h-0 border-r border-[var(--line-1)]"
+                defaultSize={20}
+                minSize="180px"
+                panelRef={(handle) => {
+                  sidebarPanelRef.current = handle;
+                }}
+              >
+                <SourceSidebar contentRef={sidebarContentRef} view={view} />
+              </ResizablePanel>
+              <ResizableHandle
+                disableDoubleClick
+                withHandle
+                onDoubleClick={fitSidebar}
+              />
+              <ResizablePanel
+                id="middle"
+                className="min-h-0"
+                defaultSize={50}
+                minSize="260px"
+                panelRef={(handle) => {
+                  middlePanelRef.current = handle;
+                }}
+              >
+                <div className="flex h-full min-h-0 flex-col">
+                  <div className="flex items-center gap-2 border-b border-[var(--line-1)] p-3">
+                    <div className="relative flex-1">
+                      <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+                      <Input
+                        className="pl-9"
+                        placeholder={copy.t(
+                          "referencePicker.searchPlaceholder"
+                        )}
+                        value={view.searchQuery}
+                        onChange={(event) =>
+                          view.setSearchQuery(event.target.value)
+                        }
                       />
-                    ))
-                  )}
-                  {view.hasMore && hasSelectedGroup && !view.isSearch ? (
-                    <Button
-                      className="mt-1 w-full"
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                      onClick={view.loadMore}
+                    </div>
+                  </div>
+                  <ScrollArea className="min-h-0 flex-1">
+                    <div
+                      ref={middleContentRef}
+                      className="flex flex-col gap-[2px] p-3"
                     >
-                      {L.loadMore}
-                    </Button>
-                  ) : null}
+                      {view.isLoading ? (
+                        <Feedback>
+                          <Spinner size={16} />
+                        </Feedback>
+                      ) : view.isSearch ? (
+                        // 搜索:扁平结果
+                        view.searchResults.length === 0 ? (
+                          <Feedback>
+                            {copy.t("referencePicker.emptyDirectory")}
+                          </Feedback>
+                        ) : (
+                          view.searchResults.map((node) => (
+                            <SearchResultRow
+                              key={nodeRefKey(node.ref)}
+                              focused={isFocused(view.focusedNode, node)}
+                              node={node}
+                              selected={view.isSelected(node)}
+                              onFocus={view.setFocusedNode}
+                              onToggle={view.toggleSelection}
+                            />
+                          ))
+                        )
+                      ) : !hasSelectedGroup ? (
+                        <Feedback>{L.selectGroupHint}</Feedback>
+                      ) : view.currentEntries.length === 0 ? (
+                        <Feedback>
+                          {copy.t("referencePicker.emptyDirectory")}
+                        </Feedback>
+                      ) : (
+                        // 浏览:就地递归展开树(复刻 agent 引用面板文件树交互)
+                        view.currentEntries.map((node) => (
+                          <TreeNodeRow
+                            key={nodeRefKey(node.ref)}
+                            copy={copy}
+                            depth={0}
+                            node={node}
+                            view={view}
+                          />
+                        ))
+                      )}
+                      {view.hasMore && hasSelectedGroup && !view.isSearch ? (
+                        <Button
+                          className="mt-1 w-full"
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                          onClick={view.loadMore}
+                        >
+                          {L.loadMore}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </ScrollArea>
                 </div>
-              </ScrollArea>
-            </div>
-          </section>
-
-          <PreviewInfoPane
-            node={view.focusedNode}
-            sourceLabel={view.activeTabLabel}
-            hierarchy={view.breadcrumb}
-            onReference={view.toggleSelection}
-            referenced={
-              view.focusedNode ? view.isSelected(view.focusedNode) : false
-            }
-          />
+              </ResizablePanel>
+              <ResizableHandle
+                disableDoubleClick
+                withHandle
+                onDoubleClick={fitMiddle}
+              />
+              <ResizablePanel
+                id="preview"
+                className="min-h-0 border-l border-[var(--line-1)]"
+                defaultSize={30}
+                minSize="200px"
+              >
+                <PreviewInfoPane
+                  node={view.focusedNode}
+                  sourceLabel={view.activeTabLabel}
+                  hierarchy={view.breadcrumb}
+                  onReference={view.toggleSelection}
+                  referenced={
+                    view.focusedNode ? view.isSelected(view.focusedNode) : false
+                  }
+                />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </div>
         </CardContent>
 
         <Footer
@@ -222,9 +319,10 @@ export function ReferenceSourcePicker({
             count: view.selectionCount
           })}
           disabled={view.selectionCount === 0}
+          loading={view.isConfirming}
           selection={view.selection}
           onClose={onClose}
-          onConfirm={view.confirm}
+          onConfirm={() => void view.confirm()}
         />
       </Card>
     </div>
@@ -236,86 +334,31 @@ export function ReferenceSourcePicker({
   return createPortal(dialog, document.body);
 }
 
-function SortMenu({
-  value,
-  onChange
-}: {
-  value: WorkspaceFileManagerArrangeMode;
-  onChange: (mode: WorkspaceFileManagerArrangeMode) => void;
-}): JSX.Element {
-  const options: Array<{
-    label: string;
-    mode: WorkspaceFileManagerArrangeMode;
-  }> = [
-    { label: L.sortNone, mode: "none" },
-    { label: L.sortName, mode: "name" },
-    { label: L.sortKind, mode: "kind" },
-    { label: L.sortApplication, mode: "application" },
-    { label: L.sortLastOpened, mode: "lastOpened" },
-    { label: L.sortDateAdded, mode: "dateAdded" },
-    { label: L.sortModified, mode: "modified" },
-    { label: L.sortCreated, mode: "created" },
-    { label: L.sortSize, mode: "size" }
-  ];
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          aria-label={L.sort}
-          className="shrink-0 gap-1 text-[var(--text-secondary)]"
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          {L.sort}
-          <ChevronDownIcon className="size-3.5" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="min-w-[180px] px-1 py-1"
-        style={{ zIndex: "var(--z-panel-popover)" }}
-      >
-        <DropdownMenuRadioGroup
-          value={value}
-          onValueChange={(next) =>
-            onChange(next as WorkspaceFileManagerArrangeMode)
-          }
-        >
-          {options.map((option, index) => (
-            <div key={option.mode}>
-              {index === 1 ? <DropdownMenuSeparator /> : null}
-              <DropdownMenuRadioItem
-                className="h-8 text-sm font-normal"
-                value={option.mode}
-              >
-                {option.label}
-              </DropdownMenuRadioItem>
-            </div>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 /**
  * 左侧两级分栏(类 macOS Finder 边栏):
- * 一级 = 各引用源(本地/应用/issue),手风琴式展开;二级 = 该源根下的目录分组。
+ * 一级 = 各引用源(本地/应用/issue),可多源同时展开;二级 = 该源根下的目录分组。
  */
-function SourceSidebar({ view }: { view: PickerView }): JSX.Element {
+function SourceSidebar({
+  view,
+  contentRef
+}: {
+  view: PickerView;
+  contentRef: RefObject<HTMLDivElement | null>;
+}): JSX.Element {
   return (
-    <ScrollArea className="min-h-0 w-52 shrink-0 border-r border-[var(--line-1)]">
-      <div className="flex flex-col gap-0.5 p-2">
+    <ScrollArea className="h-full min-h-0 w-full">
+      <div ref={contentRef} className="flex flex-col gap-0.5 p-2">
         <p className="px-2 py-1 text-[11px] font-semibold text-[var(--text-tertiary)]">
           {L.sourceColumn}
         </p>
         {view.tabs.map((tab) => {
           const active = tab.sourceId === view.activeSourceId;
+          const expanded = view.isSourceExpanded(tab.sourceId);
+          const groups = view.sidebarGroupsBySource[tab.sourceId] ?? [];
           return (
             <div key={tab.sourceId} className="flex flex-col gap-0.5">
               <button
-                aria-expanded={active}
+                aria-expanded={expanded}
                 className={cn(
                   "flex items-center gap-1.5 rounded-[6px] px-2 py-1.5 text-left text-[13px] font-semibold transition-colors hover:bg-transparency-block",
                   active
@@ -323,24 +366,26 @@ function SourceSidebar({ view }: { view: PickerView }): JSX.Element {
                     : "text-[var(--text-secondary)]"
                 )}
                 type="button"
-                onClick={() => view.setActiveSource(tab.sourceId)}
+                onClick={() => view.toggleSourceExpanded(tab.sourceId)}
               >
                 <ArrowRightIcon
                   className={cn(
                     "size-3 shrink-0 text-[var(--text-tertiary)] transition-transform",
-                    active && "rotate-90"
+                    expanded && "rotate-90"
                   )}
                 />
-                <span className="truncate">{tab.label}</span>
+                <span className="truncate" data-autofit-label>
+                  {tab.label}
+                </span>
               </button>
-              {active ? (
+              {expanded ? (
                 <div className="flex flex-col gap-0.5">
-                  {view.sidebarGroups.length === 0 ? (
+                  {groups.length === 0 ? (
                     <p className="px-2 py-1.5 pl-7 text-[12px] text-[var(--text-tertiary)]">
                       {view.isLoadingTabs ? "…" : ""}
                     </p>
                   ) : (
-                    view.sidebarGroups.map((group) => {
+                    groups.map((group) => {
                       const key = nodeRefKey(group.ref);
                       const selected = key === view.selectedGroupKey;
                       return (
@@ -355,8 +400,19 @@ function SourceSidebar({ view }: { view: PickerView }): JSX.Element {
                           type="button"
                           onClick={() => view.selectGroup(group)}
                         >
-                          <FolderFilledIcon className="size-4 shrink-0 text-[var(--rich-text-folder)]" />
-                          <span className="min-w-0 flex-1 truncate">
+                          {group.iconUrl ? (
+                            <img
+                              alt=""
+                              className="size-4 shrink-0 rounded-[3px] object-cover"
+                              src={group.iconUrl}
+                            />
+                          ) : (
+                            <FolderFilledIcon className="size-4 shrink-0 text-[var(--rich-text-folder)]" />
+                          )}
+                          <span
+                            className="min-w-0 flex-1 truncate"
+                            data-autofit-label
+                          >
                             {group.displayName}
                           </span>
                           {group.childCount != null ? (
@@ -457,7 +513,7 @@ function PreviewInfoPane({
   onReference: (node: ReferenceNode) => void;
 }): JSX.Element {
   return (
-    <aside className="flex min-h-0 flex-col bg-[var(--background-fronted)]">
+    <aside className="flex h-full min-h-0 w-full flex-col bg-[var(--background-fronted)]">
       {node ? (
         <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
           <div className="grid aspect-[3/2] w-full place-items-center rounded-[8px] border border-[var(--line-2,var(--border-2))] bg-[var(--transparency-block)]">
@@ -534,6 +590,7 @@ function Footer({
   confirmLabel,
   countLabel,
   disabled,
+  loading = false,
   selection,
   onClose,
   onConfirm
@@ -542,6 +599,7 @@ function Footer({
   confirmLabel: string;
   countLabel: string;
   disabled: boolean;
+  loading?: boolean;
   selection: readonly ReferenceNode[];
   onClose: () => void;
   onConfirm: () => void;
@@ -565,7 +623,12 @@ function Footer({
         <Button type="button" variant="secondary" onClick={onClose}>
           {cancelLabel}
         </Button>
-        <Button disabled={disabled} type="button" onClick={onConfirm}>
+        <Button
+          disabled={disabled || loading}
+          type="button"
+          onClick={onConfirm}
+        >
+          {loading ? <Spinner className="text-current" size={14} /> : null}
           {confirmLabel}
         </Button>
       </div>
@@ -581,7 +644,9 @@ function Feedback({ children }: { children: ReactNode }): JSX.Element {
   );
 }
 
-const TREE_INDENT = 24;
+// 每级缩进 = 箭头列宽(20px)+ 间距(8px)。文件没有箭头列,因此其图标恰好落在
+// 父文件夹图标的正下方;更深层级仍逐级缩进以体现层级关系。
+const TREE_INDENT = 28;
 const TREE_COLLAPSE_DURATION_MS = 200;
 
 function isFocused(
@@ -665,7 +730,7 @@ function TreeNodeRow({
     <div>
       <div
         className={cn(
-          "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[6px] py-1.5 pr-1 transition-colors",
+          "flex items-center gap-2 rounded-[6px] py-1.5 pr-1 transition-colors",
           focused || selected
             ? "bg-transparency-block"
             : "hover:bg-transparency-block"
@@ -686,11 +751,9 @@ function TreeNodeRow({
               )}
             />
           </button>
-        ) : (
-          <span className="block size-5 shrink-0" />
-        )}
+        ) : null}
         <button
-          className="flex min-w-0 items-center gap-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
           type="button"
           onClick={() => {
             view.setFocusedNode(node);
@@ -704,7 +767,10 @@ function TreeNodeRow({
           ) : (
             <FileIcon className="size-4 shrink-0 text-[var(--text-tertiary)]" />
           )}
-          <span className="truncate text-[13px] text-[var(--text-primary)]">
+          <span
+            className="truncate text-[13px] text-[var(--text-primary)]"
+            data-autofit-label
+          >
             {node.displayName}
           </span>
         </button>

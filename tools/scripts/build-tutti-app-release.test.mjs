@@ -221,13 +221,26 @@ test("validateManifest accepts references list endpoints", () => {
   assert.doesNotThrow(() => validateManifest(manifest));
 });
 
+test("validateManifest accepts references search endpoints", () => {
+  const manifest = manifestForTest("references-app");
+  manifest.references = {
+    listEndpoint: "/references/list",
+    searchEndpoint: "/references/search"
+  };
+
+  assert.doesNotThrow(() => validateManifest(manifest));
+});
+
 test("validateManifest rejects unsupported references fields", () => {
   const manifest = manifestForTest("references-app");
-  manifest.references = { searchEndpoint: "/references/search" };
+  manifest.references = {
+    listEndpoint: "/references/list",
+    unknownEndpoint: "/references/unknown"
+  };
 
   assert.throws(
     () => validateManifest(manifest),
-    /references\.searchEndpoint is unsupported/
+    /references\.unknownEndpoint is unsupported/
   );
 });
 
@@ -245,6 +258,24 @@ test("validateManifest rejects invalid references list endpoints", () => {
     assert.throws(
       () => validateManifest(manifest),
       /references\.listEndpoint must be a relative URL path/
+    );
+  }
+});
+
+test("validateManifest rejects invalid references search endpoints", () => {
+  for (const searchEndpoint of [
+    "references/search",
+    "//example.test/references",
+    "https://example.test/references",
+    "/references?query=1",
+    "/references#section"
+  ]) {
+    const manifest = manifestForTest("references-app");
+    manifest.references = { listEndpoint: "/references/list", searchEndpoint };
+
+    assert.throws(
+      () => validateManifest(manifest),
+      /references\.searchEndpoint must be a relative URL path/
     );
   }
 });

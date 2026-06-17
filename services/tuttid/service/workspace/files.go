@@ -25,6 +25,14 @@ func (s FileService) ListDirectory(
 	return s.domainService().ListDirectory(ctx, workspaceID, input)
 }
 
+func (s FileService) ListRecent(
+	ctx context.Context,
+	workspaceID string,
+	input workspacefiles.RecentListInput,
+) (workspacefiles.DirectoryListing, error) {
+	return s.domainService().ListRecent(ctx, workspaceID, input)
+}
+
 func (s FileService) GetDirectoryTreeSnapshot(
 	ctx context.Context,
 	workspaceID string,

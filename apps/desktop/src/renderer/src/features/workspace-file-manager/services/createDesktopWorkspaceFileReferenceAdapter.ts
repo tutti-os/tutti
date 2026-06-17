@@ -54,6 +54,14 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
         rootPath: response.root
       };
     },
+    async listRecentReferences({ limit = 30, signal, workspaceId }) {
+      const response = await tuttidClient.listWorkspaceRecentFiles(
+        workspaceId,
+        { limit },
+        { signal }
+      );
+      return response.entries.map((entry) => mapFileReferenceEntry(entry));
+    },
     async openReference(reference) {
       const trimmedPath = reference.path.trim();
       if (trimmedPath === "~" || trimmedPath.startsWith("~/")) {

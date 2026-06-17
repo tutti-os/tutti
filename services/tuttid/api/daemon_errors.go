@@ -407,6 +407,24 @@ func writeListWorkspaceFileDirectoryError(err error) tuttigenerated.ListWorkspac
 	}
 }
 
+func writeListWorkspaceRecentFilesError(err error) tuttigenerated.ListWorkspaceRecentFilesResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound, tuttigenerated.WorkspaceFileNotFound:
+		return tuttigenerated.ListWorkspaceRecentFiles404JSONResponse{
+			WorkspaceFileNotFoundErrorJSONResponse: workspaceFileNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.ListWorkspaceRecentFiles400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.ListWorkspaceRecentFiles502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
 func writeCreateWorkspaceFileDirectoryError(err error) tuttigenerated.CreateWorkspaceFileDirectoryResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {

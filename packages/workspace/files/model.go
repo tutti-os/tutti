@@ -61,6 +61,12 @@ type DirectoryListInput struct {
 	Path          string
 }
 
+// RecentListInput drives the "recently accessed" listing. The listing is a
+// flat set of entries (files and folders) ordered most-recently-used first.
+type RecentListInput struct {
+	Limit int
+}
+
 type DirectoryTreePrefetchState string
 
 const (

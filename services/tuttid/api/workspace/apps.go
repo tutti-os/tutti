@@ -80,6 +80,34 @@ func GeneratedAppReferenceListResultFromBiz(workspaceID string, appID string, re
 	}
 }
 
+func GeneratedAppReferenceSearchResultFromBiz(workspaceID string, appID string, result workspacebiz.AppReferenceListResult) tuttigenerated.AppReferenceSearchResponse {
+	return tuttigenerated.AppReferenceSearchResponse{
+		WorkspaceId: workspaceID,
+		AppId:       appID,
+		Items:       generatedAppReferenceSearchItemsFromBiz(result.Items),
+		NextCursor:  result.NextCursor,
+	}
+}
+
+func generatedAppReferenceSearchItemsFromBiz(items []workspacebiz.AppReferenceListItem) []tuttigenerated.AppReferenceListReferenceItem {
+	result := make([]tuttigenerated.AppReferenceListReferenceItem, 0, len(items))
+	for _, item := range items {
+		referenceItem, ok := item.(workspacebiz.AppReferenceListReferenceItem)
+		if !ok {
+			continue
+		}
+		reference, ok := generatedAppReferenceFromBiz(referenceItem.Reference)
+		if !ok {
+			continue
+		}
+		result = append(result, tuttigenerated.AppReferenceListReferenceItem{
+			Type:      tuttigenerated.AppReferenceListReferenceItemTypeReference,
+			Reference: reference,
+		})
+	}
+	return result
+}
+
 func GeneratedAppLocalizationsFromBiz(localizations []workspacebiz.AppManifestLocalization) []tuttigenerated.WorkspaceAppLocalization {
 	result := make([]tuttigenerated.WorkspaceAppLocalization, 0, len(localizations))
 	for _, localization := range localizations {
@@ -103,7 +131,8 @@ func GeneratedAppCatalogLoadStateFromBiz(state workspacebiz.AppCatalogLoadState)
 
 func generatedAppReferencesStateFromBiz(app workspacebiz.WorkspaceApp) tuttigenerated.WorkspaceAppReferencesState {
 	return tuttigenerated.WorkspaceAppReferencesState{
-		ListSupported: app.Package.ReferenceListSupported(),
+		ListSupported:   app.Package.ReferenceListSupported(),
+		SearchSupported: app.Package.ReferenceSearchSupported(),
 	}
 }
 

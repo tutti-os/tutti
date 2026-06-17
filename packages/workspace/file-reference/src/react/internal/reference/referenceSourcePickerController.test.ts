@@ -8,6 +8,7 @@ import type {
   SearchResult,
   SelectedReference
 } from "../../../contracts/referenceSource.ts";
+import type { ReferenceSourceService } from "../../../contracts/referenceSource.ts";
 import type {
   ReferenceSourceAggregator,
   ReferenceSourceTab
@@ -37,6 +38,8 @@ interface FakeOptions {
   tabs: ReferenceSourceTab[];
   children: Record<string, ListChildrenResult>; // key = `${sourceId}:${nodeId}`
   search?: Record<string, SearchResult>; // key = `${sourceId}:${query}`
+  /** navigable=true 的源(app/issue):confirm 时文件夹递归展开成文件。 */
+  navigable?: Record<string, boolean>;
 }
 
 function fakeAggregator(options: FakeOptions): ReferenceSourceAggregator {
@@ -64,7 +67,12 @@ function fakeAggregator(options: FakeOptions): ReferenceSourceAggregator {
     resolveSelection(node): SelectedReference {
       return { path: node.ref.nodeId, kind: node.kind };
     },
-    getLoadedSource: () => undefined
+    getLoadedSource: (sourceId: string) =>
+      options.navigable?.[sourceId]
+        ? ({
+            capabilities: { navigable: true }
+          } as unknown as ReferenceSourceService)
+        : undefined
   };
 }
 
@@ -248,16 +256,50 @@ test("跨 tab 选中累积,confirm 归一为 SelectedReference[]", async () => {
   await flush();
   controller.toggleSelection(file("workspace-file", "/a.md"));
   controller.toggleSelection(file("app-artifact", "app:x|ref:enc"));
-  // folder 不可选
+  // 本地源(非 navigable)文件夹:保持单条 folder 引用。
   controller.toggleSelection(folder("workspace-file", "/dir"));
-  const selected = controller.confirm();
+  const selected = await controller.confirm();
   assert.deepEqual(selected, [
     { path: "/a.md", kind: "file" },
-    { path: "app:x|ref:enc", kind: "file" }
+    { path: "app:x|ref:enc", kind: "file" },
+    { path: "/dir", kind: "folder" }
   ]);
-  // 再次 toggle 取消
+  // 再次 toggle 取消文件
   controller.toggleSelection(file("workspace-file", "/a.md"));
-  assert.equal(controller.confirm().length, 1);
+  assert.equal((await controller.confirm()).length, 2);
+});
+
+test("app/issue 源文件夹:confirm 递归枚举展开成逐个文件引用", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      navigable: { "app-artifact": true },
+      children: {
+        // 文件夹 g:1 下:子文件夹 g:2 + 文件 f:a
+        "app-artifact:g:1": {
+          entries: [folder("app-artifact", "g:2"), file("app-artifact", "f:a")],
+          nextCursor: null
+        },
+        // 子文件夹 g:2 下:文件 f:b、f:c
+        "app-artifact:g:2": {
+          entries: [file("app-artifact", "f:b"), file("app-artifact", "f:c")],
+          nextCursor: null
+        }
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+  controller.toggleSelection(folder("app-artifact", "g:1"));
+  const selected = await controller.confirm();
+  // 递归深入子文件夹,文件夹本身不入选,只产出文件;顺序为遍历序。
+  assert.deepEqual(
+    selected.map((ref) => ref.path),
+    ["f:b", "f:c", "f:a"]
+  );
+  assert.ok(selected.every((ref) => ref.kind === "file"));
 });
 
 test("close 后丢弃迟到的浏览结果", async () => {

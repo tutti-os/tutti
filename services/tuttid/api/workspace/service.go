@@ -33,6 +33,7 @@ type AppCenterService interface {
 	InstallWithOptions(context.Context, string, string, workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error)
 	Launch(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
 	ListReferences(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error)
+	SearchReferences(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceListResult, error)
 	List(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
 	CatalogLoadState() workspacebiz.AppCatalogLoadState
 	RefreshCatalog(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
@@ -48,6 +49,7 @@ type AppCenterService interface {
 type FileService interface {
 	ResolveWorkspaceRoot(context.Context, string) (workspacefiles.WorkspaceRoot, error)
 	ListDirectory(context.Context, string, workspacefiles.DirectoryListInput) (workspacefiles.DirectoryListing, error)
+	ListRecent(context.Context, string, workspacefiles.RecentListInput) (workspacefiles.DirectoryListing, error)
 	GetDirectoryTreeSnapshot(context.Context, string, workspacefiles.DirectoryTreeSnapshotInput) (workspacefiles.DirectoryTreeSnapshot, error)
 	CreateFile(context.Context, string, string) (workspacefiles.FileEntry, error)
 	ReadFile(context.Context, string, string, int64) (workspacefiles.FileContent, error)

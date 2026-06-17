@@ -48,6 +48,7 @@ import {
   listWorkspaceAgentSessions,
   listWorkspaceTerminals,
   listWorkspaceFileDirectory,
+  listWorkspaceRecentFiles,
   listWorkspaces,
   copyWorkspaceFileEntry,
   moveWorkspaceFileEntry,
@@ -526,6 +527,15 @@ export function createTuttidClient(
         query: request
       });
       return unwrapData(response, "Workspace file directory request failed.");
+    },
+    async listWorkspaceRecentFiles(workspaceID, request, requestOptions) {
+      const response = await listWorkspaceRecentFiles({
+        client,
+        path: { workspaceID },
+        query: request,
+        ...requestOptions
+      });
+      return unwrapData(response, "Workspace recent files request failed.");
     },
     async getWorkspaceFileTreeSnapshot(workspaceID, request) {
       const response = await getWorkspaceFileTreeSnapshot({

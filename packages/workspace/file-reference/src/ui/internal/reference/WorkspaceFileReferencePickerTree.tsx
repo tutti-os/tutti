@@ -22,7 +22,8 @@ import {
   type WorkspaceFileReferenceDirectoryState
 } from "../../../react/index.ts";
 
-const workspaceFileReferenceTreeIndent = 24;
+// 每级缩进 = 箭头列宽(20px)+ 间距(8px),使子级文件图标对齐到父文件夹图标下方。
+const workspaceFileReferenceTreeIndent = 28;
 const workspaceFileReferenceTreeCollapseDurationMs = 200;
 
 export function WorkspaceFileReferencePickerBrowserPane({
@@ -236,7 +237,7 @@ function WorkspaceFileReferencePickerTreeEntry({
     <div>
       <div
         className={cn(
-          "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[6px] py-1.5 pr-1 pl-2 transition-colors",
+          "flex items-center gap-2 rounded-[6px] py-1.5 pr-1 transition-colors",
           "nodrag [-webkit-app-region:no-drag]",
           focused || selected
             ? "bg-transparency-block"
@@ -263,11 +264,9 @@ function WorkspaceFileReferencePickerTreeEntry({
               )}
             />
           </button>
-        ) : (
-          <span className="block size-5 shrink-0" />
-        )}
+        ) : null}
         <button
-          className="nodrag flex min-w-0 items-center gap-2 text-left [-webkit-app-region:no-drag]"
+          className="nodrag flex min-w-0 flex-1 items-center gap-2 text-left [-webkit-app-region:no-drag]"
           type="button"
           onClick={(event) => {
             event.stopPropagation();
@@ -292,7 +291,7 @@ function WorkspaceFileReferencePickerTreeEntry({
           size="icon-sm"
           type="button"
           variant="ghost"
-          className="nodrag [-webkit-app-region:no-drag]"
+          className="nodrag shrink-0 [-webkit-app-region:no-drag]"
           onClick={(event) => {
             event.stopPropagation();
             onFocusPath(entry.path);

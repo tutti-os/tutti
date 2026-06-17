@@ -54,6 +54,9 @@ function createTransportClient(
     async listWorkspaceAppReferences() {
       throw new Error("not used");
     },
+    async searchWorkspaceAppReferences() {
+      throw new Error("not used");
+    },
     async installWorkspaceApp() {
       throw new Error("not used");
     },
@@ -306,6 +309,14 @@ function createTransportClient(
       const path = request?.path ?? "/workspace";
       return {
         directoryPath: path,
+        entries: [],
+        root: "/workspace",
+        workspaceId: workspaceID
+      };
+    },
+    async listWorkspaceRecentFiles(workspaceID) {
+      return {
+        directoryPath: "/workspace",
         entries: [],
         root: "/workspace",
         workspaceId: workspaceID

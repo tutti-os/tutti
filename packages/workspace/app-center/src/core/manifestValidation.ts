@@ -240,7 +240,7 @@ function validateReferences(
   }
 
   const unsupportedKey = Object.keys(value).find(
-    (key) => key !== "listEndpoint"
+    (key) => key !== "listEndpoint" && key !== "searchEndpoint"
   );
   if (unsupportedKey) {
     issues.push({
@@ -260,6 +260,20 @@ function validateReferences(
       path: "$.references.listEndpoint"
     });
     return undefined;
+  }
+
+  if (value.searchEndpoint !== undefined) {
+    const searchEndpoint = readOptionalString(value.searchEndpoint);
+    if (!searchEndpoint || !isRelativeUrlPath(searchEndpoint)) {
+      issues.push({
+        code: "manifest.references",
+        message:
+          "references.searchEndpoint must be a relative URL path without query or fragment.",
+        path: "$.references.searchEndpoint"
+      });
+      return undefined;
+    }
+    return { listEndpoint, searchEndpoint };
   }
 
   return { listEndpoint };

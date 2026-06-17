@@ -15,6 +15,7 @@ export interface WorkspaceAppManifestRuntime {
 
 export interface WorkspaceAppManifestReferences {
   readonly listEndpoint: string;
+  readonly searchEndpoint?: string;
 }
 
 export type WorkspaceAppManifestWindowMinimizeBehavior =

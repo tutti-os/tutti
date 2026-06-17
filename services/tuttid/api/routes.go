@@ -708,6 +708,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.GetWorkspaceFileTreeSnapshot(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/files/recent", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListWorkspaceRecentFiles(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/files/search", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)

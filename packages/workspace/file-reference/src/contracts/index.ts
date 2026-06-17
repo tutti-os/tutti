@@ -70,6 +70,12 @@ export interface WorkspaceFileReferenceAdapter {
   listDirectory?(
     input: WorkspaceFileReferenceScope & { path?: string | null }
   ): Promise<WorkspaceFileReferenceDirectoryListing>;
+  listRecentReferences?(
+    input: WorkspaceFileReferenceScope & {
+      limit?: number;
+      signal?: AbortSignal;
+    }
+  ): Promise<WorkspaceFileReference[]>;
   openReference?(reference: WorkspaceFileReference): Promise<void> | void;
   readReferencePreview?(
     input: WorkspaceFileReferenceScope & { reference: WorkspaceFileReference }

@@ -28,8 +28,9 @@ export function createAppArtifactReferenceSource(input: {
     label: input.label,
     order: input.order ?? 1,
     // 应用产物:全版布局——分组导航栏(app→项目)+ 类型筛选。
+    // searchable:跨「声明 searchEndpoint」的 app 并行搜索(见 appReferenceListBackend.search)。
     capabilities: {
-      searchable: false,
+      searchable: true,
       previewable: true,
       paginated: true,
       navigable: true,

@@ -261,6 +261,40 @@ func (s Service) Search(ctx context.Context, workspaceID string, input SearchInp
 	return result, nil
 }
 
+// ListRecent returns the workspace's recently accessed entries, most-recent
+// first. When the adapter does not implement RecentFilesLister the result is an
+// empty listing rooted at the workspace root.
+func (s Service) ListRecent(ctx context.Context, workspaceID string, input RecentListInput) (DirectoryListing, error) {
+	root, err := s.resolve(ctx, workspaceID)
+	if err != nil {
+		return DirectoryListing{}, err
+	}
+	normalizedRoot := NormalizeLogicalRoot(root.LogicalRoot)
+	empty := DirectoryListing{
+		WorkspaceID:   root.WorkspaceID,
+		Root:          normalizedRoot,
+		DirectoryPath: normalizedRoot,
+		Entries:       []FileEntry{},
+	}
+	lister, ok := s.adapter().(RecentFilesLister)
+	if !ok {
+		return empty, nil
+	}
+	listing, err := lister.ListRecent(ctx, root, NormalizeRecentLimit(input.Limit))
+	if err != nil {
+		return DirectoryListing{}, err
+	}
+	listing.WorkspaceID = root.WorkspaceID
+	listing.Root = normalizedRoot
+	if listing.DirectoryPath == "" {
+		listing.DirectoryPath = normalizedRoot
+	}
+	if listing.Entries == nil {
+		listing.Entries = []FileEntry{}
+	}
+	return listing, nil
+}
+
 func (s Service) resolvePath(ctx context.Context, workspaceID string, value string) (WorkspaceRoot, LogicalPath, error) {
 	root, err := s.resolve(ctx, workspaceID)
 	if err != nil {

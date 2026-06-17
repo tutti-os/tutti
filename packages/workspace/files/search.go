@@ -11,6 +11,9 @@ const (
 	DefaultSearchLimit = 30
 	MaxSearchLimit     = 50
 
+	DefaultRecentLimit = 30
+	MaxRecentLimit     = 100
+
 	searchDepthPenalty         = 120
 	searchHiddenSegmentPenalty = 8000
 	searchNoiseSegmentPenalty  = 16000
@@ -80,6 +83,16 @@ func NormalizeSearchLimit(limit int) int {
 	}
 	if limit > MaxSearchLimit {
 		return MaxSearchLimit
+	}
+	return limit
+}
+
+func NormalizeRecentLimit(limit int) int {
+	if limit <= 0 {
+		return DefaultRecentLimit
+	}
+	if limit > MaxRecentLimit {
+		return MaxRecentLimit
 	}
 	return limit
 }

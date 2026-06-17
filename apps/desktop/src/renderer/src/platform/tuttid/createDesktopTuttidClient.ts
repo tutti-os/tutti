@@ -194,6 +194,13 @@ export function createDesktopTuttidClient(
         request
       );
     },
+    async searchWorkspaceAppReferences(workspaceID, appID, request) {
+      return (await resolveClient()).searchWorkspaceAppReferences(
+        workspaceID,
+        appID,
+        request
+      );
+    },
     async refreshWorkspaceAppCatalog(workspaceID) {
       return (await resolveClient()).refreshWorkspaceAppCatalog(workspaceID);
     },
@@ -356,6 +363,13 @@ export function createDesktopTuttidClient(
       return (await resolveClient()).listWorkspaceFileDirectory(
         workspaceID,
         request
+      );
+    },
+    async listWorkspaceRecentFiles(workspaceID, request, requestOptions) {
+      return (await resolveClient()).listWorkspaceRecentFiles(
+        workspaceID,
+        request,
+        requestOptions
       );
     },
     async getWorkspaceFileTreeSnapshot(workspaceID, request) {
