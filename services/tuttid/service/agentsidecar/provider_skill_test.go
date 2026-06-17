@@ -1,6 +1,7 @@
 package agentsidecar
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -39,5 +40,16 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 	}
 	if strings.Contains(policy, "{{CLI_COMMAND}}") || strings.Contains(policy, "tutti codex start") {
 		t.Fatalf("tutti CLI policy used unresolved or production CLI command: %q", policy)
+	}
+}
+
+func TestProviderSkillRootDoesNotExposeClaudeCodeProjectSkills(t *testing.T) {
+	cwd := filepath.Join("workspace", "repo")
+
+	if root := providerSkillRoot(cwd, "claude-code"); root != "" {
+		t.Fatalf("providerSkillRoot() for claude-code = %q, want empty", root)
+	}
+	if root := providerSkillRoot(cwd, "gemini"); root != filepath.Join(cwd, ".gemini", "skills") {
+		t.Fatalf("providerSkillRoot() for gemini = %q, want project skill root", root)
 	}
 }
