@@ -2,7 +2,7 @@ import type {
   AgentMentionFilterId,
   AgentMentionGroup
 } from "./AgentMentionSearchController";
-import { AGENT_GUI_MENTION_PROVIDER_IDS } from "./agentRichTextAtProvider";
+import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "./agentContextMentionProvider";
 
 export type AgentMentionProviderDiagnosticStatus =
   | "success"
@@ -42,7 +42,7 @@ const {
   file: FILE_PROVIDER_ID,
   workspaceApp: WORKSPACE_APP_PROVIDER_ID,
   workspaceIssue: WORKSPACE_ISSUE_PROVIDER_ID
-} = AGENT_GUI_MENTION_PROVIDER_IDS;
+} = AGENT_CONTEXT_MENTION_PROVIDER_IDS;
 const AGENT_MENTION_PROVIDER_LOG_ORDER: readonly string[] = [
   FILE_PROVIDER_ID,
   AGENT_GENERATED_FILE_PROVIDER_ID,
