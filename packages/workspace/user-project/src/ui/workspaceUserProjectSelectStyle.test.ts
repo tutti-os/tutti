@@ -38,3 +38,11 @@ test("workspace user project labels marquee overflowing text on hover", () => {
     /@media \(prefers-reduced-motion:\s*reduce\)\s*{[\s\S]*animation:\s*none;[\s\S]*}/
   );
 });
+
+test("workspace user project select closes its portal when disabled", () => {
+  assert.match(
+    source,
+    /useEffect\(\(\) => \{\s*if \(!disabled \|\| !isSelectOpen\) \{\s*return;\s*}\s*setIsSelectOpen\(false\);/s
+  );
+  assert.match(source, /\}, \[disabled, isSelectOpen\]\);/);
+});

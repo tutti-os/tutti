@@ -3756,6 +3756,10 @@ aside.workspace-agents-status-panel
   transition: grid-template-columns 100ms cubic-bezier(0.2, 0, 0, 1);
 }
 
+.agent-gui-node__layout[data-rail-resizing="true"] {
+  transition: none;
+}
+
 .agent-gui-node__rail-panel {
   min-width: 0;
   min-height: 0;
@@ -3785,6 +3789,10 @@ aside.workspace-agents-status-panel
   transition:
     left 100ms cubic-bezier(0.2, 0, 0, 1),
     opacity 80ms ease;
+}
+
+.agent-gui-node__rail-resize-handle[data-resizing="true"] {
+  transition: none;
 }
 
 .agent-gui-node__rail-resize-handle--collapsed {

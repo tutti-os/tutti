@@ -213,7 +213,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
         <WorkbenchHostNodeRenderErrorBoundary
           debugDiagnostics={input.debugDiagnostics}
           node={context.node}
-          resetKey={`${context.node.id}:${context.node.data.typeId}`}
+          resetKey={`${context.node.id}:${context.node.data.typeId}:${input.externalStateRevision}`}
           workspaceId={input.workspaceId}
         >
           <WorkbenchHostNodeBodyRenderer
@@ -501,8 +501,51 @@ class WorkbenchHostNodeRenderErrorBoundary extends Component<
       return (
         <div
           data-workbench-node-render-error="true"
-          style={{ height: "100%", width: "100%" }}
-        />
+          style={{
+            alignItems: "center",
+            boxSizing: "border-box",
+            color: "var(--text-secondary, #6b7280)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            height: "100%",
+            justifyContent: "center",
+            padding: 24,
+            textAlign: "center",
+            width: "100%"
+          }}
+        >
+          <div
+            data-workbench-node-render-error-message="true"
+            style={{
+              color: "var(--text-primary, #111827)",
+              fontSize: 14,
+              fontWeight: 600
+            }}
+          >
+            This workspace view failed to render.
+          </div>
+          <div style={{ fontSize: 12 }}>
+            Try selecting another conversation or reopen the window.
+          </div>
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false })}
+            style={{
+              border: "1px solid var(--line-2, #d1d5db)",
+              borderRadius: 6,
+              background: "var(--background-fronted, #ffffff)",
+              color: "var(--text-primary, #111827)",
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 600,
+              marginTop: 4,
+              padding: "6px 10px"
+            }}
+          >
+            Try again
+          </button>
+        </div>
       );
     }
 

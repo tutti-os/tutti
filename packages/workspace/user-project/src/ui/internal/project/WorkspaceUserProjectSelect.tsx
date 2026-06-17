@@ -299,6 +299,13 @@ export function WorkspaceUserProjectSelect({
     !effectiveApi;
 
   useEffect(() => {
+    if (!disabled || !isSelectOpen) {
+      return;
+    }
+    setIsSelectOpen(false);
+  }, [disabled, isSelectOpen]);
+
+  useEffect(() => {
     onProjectMissingChange?.(shouldShowMissingProjectNotice);
   }, [onProjectMissingChange, shouldShowMissingProjectNotice]);
 

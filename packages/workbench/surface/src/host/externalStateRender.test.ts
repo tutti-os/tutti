@@ -30,3 +30,15 @@ test("external state notifications invalidate host node body renderers", () => {
     /const renderWindowHeader = useCallback\([\s\S]*?input\.externalStateRevision,[\s\S]*?input\.hostSession/
   );
 });
+
+test("node render errors do not leave an empty permanent fallback", () => {
+  assert.match(
+    renderersSource,
+    /resetKey=\{`\$\{context\.node\.id\}:\$\{context\.node\.data\.typeId\}:\$\{input\.externalStateRevision\}`\}/
+  );
+  assert.match(
+    renderersSource,
+    /data-workbench-node-render-error-message="true"/
+  );
+  assert.match(renderersSource, /Try selecting another conversation/);
+});

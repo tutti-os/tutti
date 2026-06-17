@@ -773,7 +773,9 @@ export function AgentGUINodeView({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
+  const layoutElementRef = useRef<HTMLDivElement | null>(null);
   const railResizeInteractionRef = useRef<{
+    lastWidthPx: number;
     pointerId: number;
     startClientX: number;
     startWidthPx: number;
@@ -874,6 +876,7 @@ export function AgentGUINodeView({
       event.preventDefault();
       event.currentTarget.setPointerCapture?.(event.pointerId);
       railResizeInteractionRef.current = {
+        lastWidthPx: conversationRailWidthPx,
         pointerId: event.pointerId,
         startClientX: event.clientX,
         startWidthPx: conversationRailWidthPx
@@ -896,24 +899,35 @@ export function AgentGUINodeView({
       const nextWidthPx = clampConversationRailWidth(
         resizeState.startWidthPx + event.clientX - resizeState.startClientX
       );
-      onConversationRailWidthChanged(nextWidthPx);
+      if (resizeState.lastWidthPx !== nextWidthPx) {
+        resizeState.lastWidthPx = nextWidthPx;
+        layoutElementRef.current?.style.setProperty(
+          "--agent-gui-conversation-rail-width",
+          `${nextWidthPx}px`
+        );
+        event.currentTarget.setAttribute("aria-valuenow", String(nextWidthPx));
+      }
     },
-    [clampConversationRailWidth, onConversationRailWidthChanged, previewMode]
+    [clampConversationRailWidth, previewMode]
   );
 
   const endConversationRailResize = useCallback(
     (event?: PointerEvent<HTMLDivElement>): void => {
+      const resizeState = railResizeInteractionRef.current;
       if (
         event &&
-        railResizeInteractionRef.current?.pointerId === event.pointerId &&
+        resizeState?.pointerId === event.pointerId &&
         event.currentTarget.hasPointerCapture?.(event.pointerId)
       ) {
         event.currentTarget.releasePointerCapture?.(event.pointerId);
       }
       railResizeInteractionRef.current = null;
+      if (resizeState) {
+        onConversationRailWidthChanged(resizeState.lastWidthPx);
+      }
       setIsRailResizing(false);
     },
-    []
+    [onConversationRailWidthChanged]
   );
 
   const handleConversationRailResizeKeyDown = useCallback(
@@ -957,8 +971,10 @@ export function AgentGUINodeView({
   return (
     <TooltipProvider>
       <div
+        ref={layoutElementRef}
         className={styles.layout}
         data-agent-gui-preview={previewMode ? "true" : undefined}
+        data-rail-resizing={isRailResizing ? "true" : undefined}
         inert={previewMode ? true : undefined}
         style={layoutStyle}
       >

@@ -123,10 +123,13 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
   });
 
-  it("persists a later width change from the rail resize handle", () => {
+  it("updates the rail width locally while dragging and persists on release", () => {
     const onConversationRailWidthChanged = vi.fn();
 
-    renderAgentGUINodeView({ onConversationRailWidthChanged });
+    const { container } = renderAgentGUINodeView({
+      onConversationRailWidthChanged
+    });
+    const layout = container.querySelector(".agent-gui-node__layout");
     const resizeHandle = screen.getByTestId(
       "agent-gui-conversation-rail-resize-handle"
     );
@@ -137,16 +140,24 @@ describe("AgentGUINodeView layout persistence", () => {
     });
     fireEvent.pointerMove(resizeHandle, { clientX: 120, pointerId: 1 });
 
+    expect(layout).toHaveStyle({
+      "--agent-gui-conversation-rail-width": "360px"
+    });
+    expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(resizeHandle, { pointerId: 1 });
+
     expect(onConversationRailWidthChanged).toHaveBeenCalledTimes(1);
     expect(onConversationRailWidthChanged).toHaveBeenCalledWith(360);
   });
 
   it("keeps the rail resize affordance active while dragging", () => {
-    renderAgentGUINodeView();
+    const { container } = renderAgentGUINodeView();
 
     const resizeHandle = screen.getByTestId(
       "agent-gui-conversation-rail-resize-handle"
     );
+    const layout = container.querySelector(".agent-gui-node__layout");
     fireEvent.pointerDown(resizeHandle, {
       button: 0,
       clientX: 0,
@@ -154,10 +165,12 @@ describe("AgentGUINodeView layout persistence", () => {
     });
 
     expect(resizeHandle).toHaveAttribute("data-resizing", "true");
+    expect(layout).toHaveAttribute("data-rail-resizing", "true");
 
     fireEvent.pointerUp(resizeHandle, { pointerId: 1 });
 
     expect(resizeHandle).not.toHaveAttribute("data-resizing");
+    expect(layout).not.toHaveAttribute("data-rail-resizing");
   });
 
   it("collapses the conversation rail and hides the resize handle when collapsed", () => {
@@ -188,6 +201,17 @@ describe("AgentGUINodeView layout persistence", () => {
     );
     expect(css).toMatch(
       /\.room-issue-node__search-clear-button\s*{[^}]*position:\s*absolute[^}]*right:\s*4px[^}]*width:\s*24px/s
+    );
+  });
+
+  it("does not animate the rail resize geometry while dragging", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__layout\[data-rail-resizing="true"\]\s*{[^}]*transition:\s*none/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__rail-resize-handle\[data-resizing="true"\]\s*{[^}]*transition:\s*none/s
     );
   });
 

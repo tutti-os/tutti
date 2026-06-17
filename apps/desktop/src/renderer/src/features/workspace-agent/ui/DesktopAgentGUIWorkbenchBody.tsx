@@ -98,6 +98,11 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   workspaceId: string;
 }
 
+interface DesktopAgentGUIWorkbenchStateSync {
+  provider: DesktopAgentGUIProvider;
+  workbenchState: DesktopAgentGUIWorkbenchState;
+}
+
 const EMPTY_AGENT_PROVIDER_STATUS_SNAPSHOT: AgentProviderStatusSnapshot = {
   capturedAt: null,
   defaultProvider: null,
@@ -324,6 +329,11 @@ export function DesktopAgentGUIWorkbenchBody({
     useState<DesktopAgentGUIPrefillPromptRequest | null>(null);
   const lastRequestedWorkbenchStateRef =
     useRef<DesktopAgentGUIWorkbenchState | null>(null);
+  const lastAppliedWorkbenchStateRef =
+    useRef<DesktopAgentGUIWorkbenchStateSync>({
+      provider,
+      workbenchState
+    });
   const handledOpenSessionActivationSequenceRef = useRef<number | null>(null);
   const handledPrefillPromptActivationSequenceRef = useRef<number | null>(null);
   const pendingComposerDefaultsWriteRef =
@@ -440,6 +450,20 @@ export function DesktopAgentGUIWorkbenchBody({
   ]);
 
   useEffect(() => {
+    const lastAppliedWorkbenchState = lastAppliedWorkbenchStateRef.current;
+    if (
+      lastAppliedWorkbenchState.provider === provider &&
+      areDesktopAgentGUIWorkbenchStatesEqual(
+        lastAppliedWorkbenchState.workbenchState,
+        workbenchState
+      )
+    ) {
+      return;
+    }
+    lastAppliedWorkbenchStateRef.current = {
+      provider,
+      workbenchState
+    };
     setState((current) => {
       const next = normalizeDesktopAgentGUINodeState(
         {
