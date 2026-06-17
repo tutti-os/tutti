@@ -6,10 +6,6 @@ const defaultCodexIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/codex.png",
   import.meta.url
 ).href;
-const defaultAutomationIconUrl = new URL(
-  "../../../assets/workspace-canvas/dock/default/apps/automation.png",
-  import.meta.url
-).href;
 const defaultAiPptIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/PPT.png",
   import.meta.url
@@ -20,10 +16,6 @@ const defaultAiSummaryIconUrl = new URL(
 ).href;
 const defaultCalendarIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/calendar.png",
-  import.meta.url
-).href;
-const defaultChatIconUrl = new URL(
-  "../../../assets/workspace-canvas/dock/default/apps/chat.png",
   import.meta.url
 ).href;
 const defaultDesignReviewIconUrl = new URL(
@@ -54,10 +46,6 @@ const defaultSheetIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/sheet.png",
   import.meta.url
 ).href;
-const defaultVibeDesignIconUrl = new URL(
-  "../../../assets/workspace-canvas/dock/default/apps/vibedesign.png",
-  import.meta.url
-).href;
 
 export type WorkspaceAppIconResolver = (appId: string) => string | null;
 
@@ -65,22 +53,17 @@ export function createDefaultWorkspaceAppIconResolver(): WorkspaceAppIconResolve
   const iconsByAppId = new Map<string, string>([
     ["agent-claude-code", defaultClaudeCodeIconUrl],
     ["agent-codex", defaultCodexIconUrl],
-    ["automation", defaultAutomationIconUrl],
     ["ai-ppt", defaultAiPptIconUrl],
     ["ai-document", defaultDocumentIconUrl],
     ["ai-sheet", defaultSheetIconUrl],
     ["calendar", defaultCalendarIconUrl],
-    ["group-chat", defaultChatIconUrl],
-    ["ai-media-canvas", defaultMediaCanvasIconUrl],
     ["design-review", defaultDesignReviewIconUrl],
     ["daily-product-radar", defaultRadarIconUrl],
-    ["daily-tech-radar", defaultRadarIconUrl],
     ["document-summarizer", defaultAiSummaryIconUrl],
     ["media-canvas", defaultMediaCanvasIconUrl],
     ["open-cut", defaultOpenCutIconUrl],
     ["product-competition", defaultProductCompetitionIconUrl],
-    ["radar", defaultRadarIconUrl],
-    ["vibe-design", defaultVibeDesignIconUrl]
+    ["radar", defaultRadarIconUrl]
   ]);
   return (appId) => iconsByAppId.get(appId) ?? null;
 }
