@@ -187,25 +187,43 @@ ORDER BY p.app_id ASC
 	defer rows.Close()
 
 	var result []workspacebiz.AppPackage
+	var invalidActivePackages []invalidAppPackageScan
 	for rows.Next() {
 		appPackage, err := scanAppPackage(rows)
 		if err != nil {
 			if strings.TrimSpace(appPackage.AppID) == "" || strings.TrimSpace(appPackage.Version) == "" {
 				return nil, fmt.Errorf("scan workspace app package: %w", err)
 			}
-			slog.Warn(
-				"workspace app package skipped during list",
-				"appId", appPackage.AppID,
-				"version", appPackage.Version,
-				"packageDir", appPackage.PackageDir,
-				"error", err,
-			)
+			invalidActivePackages = append(invalidActivePackages, invalidAppPackageScan{
+				appPackage: appPackage,
+				err:        err,
+			})
 			continue
 		}
 		result = append(result, appPackage)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate workspace app packages: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close workspace app package rows: %w", err)
+	}
+
+	for _, invalidActivePackage := range invalidActivePackages {
+		repairedPackage, repaired := s.repairInvalidActiveAppPackage(ctx, invalidActivePackage.appPackage, invalidActivePackage.err)
+		if repaired {
+			result = append(result, repairedPackage)
+			continue
+		}
+		appPackage := invalidActivePackage.appPackage
+		err := invalidActivePackage.err
+		slog.Warn(
+			"workspace app package skipped during list",
+			"appId", appPackage.AppID,
+			"version", appPackage.Version,
+			"packageDir", appPackage.PackageDir,
+			"error", err,
+		)
 	}
 	sort.Slice(result, func(left int, right int) bool {
 		leftName := strings.ToLower(result[left].DisplayName())
@@ -217,6 +235,104 @@ ORDER BY p.app_id ASC
 	})
 
 	return result, nil
+}
+
+type invalidAppPackageScan struct {
+	appPackage workspacebiz.AppPackage
+	err        error
+}
+
+func (s *SQLiteStore) repairInvalidActiveAppPackage(ctx context.Context, invalidPackage workspacebiz.AppPackage, scanErr error) (workspacebiz.AppPackage, bool) {
+	appID := strings.TrimSpace(invalidPackage.AppID)
+	activeVersion := strings.TrimSpace(invalidPackage.Version)
+	if s == nil || s.db == nil || appID == "" || activeVersion == "" {
+		return workspacebiz.AppPackage{}, false
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT app_id, version, package_dir, manifest_json, source, factory_job_id, created_in_workspace_id, created_at_unix_ms
+FROM app_packages
+WHERE app_id = ? AND version <> ?
+ORDER BY updated_at_unix_ms DESC, version DESC
+`, appID, activeVersion)
+	if err != nil {
+		slog.Warn(
+			"workspace app package repair lookup failed",
+			"appId", appID,
+			"version", activeVersion,
+			"packageDir", invalidPackage.PackageDir,
+			"error", err,
+			"scanError", scanErr,
+		)
+		return workspacebiz.AppPackage{}, false
+	}
+
+	var repairPackage workspacebiz.AppPackage
+	foundRepairPackage := false
+	for rows.Next() {
+		candidate, err := scanAppPackage(rows)
+		if err != nil {
+			slog.Warn(
+				"workspace app package repair candidate skipped",
+				"appId", appID,
+				"version", candidate.Version,
+				"packageDir", candidate.PackageDir,
+				"error", err,
+				"scanError", scanErr,
+			)
+			continue
+		}
+		repairPackage = candidate
+		foundRepairPackage = true
+		break
+	}
+	if err := rows.Err(); err != nil {
+		slog.Warn(
+			"workspace app package repair iteration failed",
+			"appId", appID,
+			"version", activeVersion,
+			"packageDir", invalidPackage.PackageDir,
+			"error", err,
+			"scanError", scanErr,
+		)
+	}
+	if err := rows.Close(); err != nil {
+		slog.Warn(
+			"workspace app package repair rows close failed",
+			"appId", appID,
+			"version", activeVersion,
+			"packageDir", invalidPackage.PackageDir,
+			"error", err,
+			"scanError", scanErr,
+		)
+		return workspacebiz.AppPackage{}, false
+	}
+	if !foundRepairPackage {
+		return workspacebiz.AppPackage{}, false
+	}
+	if err := s.SetActiveAppPackageVersion(ctx, repairPackage.AppID, repairPackage.Version); err != nil {
+		slog.Warn(
+			"workspace app package repair activation failed",
+			"appId", appID,
+			"version", activeVersion,
+			"repairVersion", repairPackage.Version,
+			"packageDir", invalidPackage.PackageDir,
+			"repairPackageDir", repairPackage.PackageDir,
+			"error", err,
+			"scanError", scanErr,
+		)
+		return workspacebiz.AppPackage{}, false
+	}
+	slog.Warn(
+		"workspace app package repaired active version during list",
+		"appId", appID,
+		"version", activeVersion,
+		"repairVersion", repairPackage.Version,
+		"packageDir", invalidPackage.PackageDir,
+		"repairPackageDir", repairPackage.PackageDir,
+		"error", scanErr,
+	)
+	return repairPackage, true
 }
 
 func (s *SQLiteStore) ListAppPackageVersions(ctx context.Context, appID string) ([]workspacebiz.AppPackage, error) {
