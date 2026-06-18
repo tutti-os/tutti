@@ -161,7 +161,10 @@ func (s Service) resolveManagedRuntimeForProvider(ctx context.Context, require b
 	resolver := s.managedRuntimeResolver()
 	if !require {
 		if managed, ok := resolver.(managedruntime.DefaultResolver); ok {
-			root := managed.DefaultRoot()
+			root := strings.TrimSpace(managed.RuntimeRoot)
+			if root == "" {
+				root = managed.DefaultRoot()
+			}
 			if !managedruntime.RootReady(root) {
 				return managedruntime.ResolvedRuntime{}, false
 			}

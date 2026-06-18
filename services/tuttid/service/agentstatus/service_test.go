@@ -195,10 +195,7 @@ func TestServiceListIgnoresStaleGlobalClaudeACPAdapter(t *testing.T) {
 			return AuthInfo{Status: AuthAuthenticated}, true
 		},
 		ExternalAgentRegistry: registryStore,
-		ManagedRuntime: managedruntime.DefaultResolver{
-			RuntimeRoot: runtimeRoot,
-			Environ:     func() []string { return []string{"PATH=/usr/bin:/bin"} },
-		},
+		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
@@ -628,10 +625,7 @@ func TestServiceRunActionUpgradesStaleClaudeACPAdapter(t *testing.T) {
 	commands := []string{}
 	service := probeTestService(home)
 	service.ExternalAgentRegistry = registryStore
-	service.ManagedRuntime = managedruntime.DefaultResolver{
-		RuntimeRoot: runtimeRoot,
-		Environ:     func() []string { return []string{"PATH=/usr/bin:/bin"} },
-	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
@@ -1052,10 +1046,7 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 			return AuthInfo{Status: AuthRequired}, true
 		},
 		ExternalAgentRegistry: registryStore,
-		ManagedRuntime: managedruntime.DefaultResolver{
-			RuntimeRoot: runtimeRoot,
-			Environ:     func() []string { return []string{"PATH=/usr/bin:/bin"} },
-		},
+		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
@@ -1122,10 +1113,7 @@ func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *te
 			return AuthInfo{Status: AuthAuthenticated, AccountLabel: "dev@example.com"}, true
 		},
 		ExternalAgentRegistry: registryStore,
-		ManagedRuntime: managedruntime.DefaultResolver{
-			RuntimeRoot: runtimeRoot,
-			Environ:     func() []string { return []string{"PATH=/usr/bin:/bin"} },
-		},
+		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
@@ -1348,6 +1336,21 @@ func fakeManagedRuntimeRoot(t *testing.T) string {
 	writeExecutable(t, filepath.Join(root, "node", "bin", nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
 	writeExecutable(t, filepath.Join(root, "node", "bin", npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
 	return root
+}
+
+func fakeManagedRuntimeResolver(t *testing.T, runtimeRoot string) managedruntime.DefaultResolver {
+	t.Helper()
+	cacheRoot := t.TempDir()
+	return managedruntime.DefaultResolver{
+		RuntimeRoot: runtimeRoot,
+		Environ: func() []string {
+			return []string{
+				"PATH=/usr/bin:/bin",
+				"TUTTI_APP_RUNTIME_CACHE_ROOT=" + cacheRoot,
+				"TUTTI_APP_RUNTIME_CATALOG=",
+			}
+		},
+	}
 }
 
 func pythonBinaryNameForTest() string {
