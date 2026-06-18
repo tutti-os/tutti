@@ -29,6 +29,11 @@ export interface AgentContextMentionPresentation {
   statusLabel?: string;
   statusPulse?: string;
   userAvatarPlaceholderUrl?: string;
+  /**
+   * 应用是否能够提供产物文件(reference)。"true" 表示支持,缺省/其它值表示不支持。
+   * 仅用于 @ 面板行末尾「查看产物文件」入口的展示判断,不持久化到 mention 节点。
+   */
+  referencesListSupported?: string;
 }
 
 export type AgentContextMentionInsertResult =

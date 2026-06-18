@@ -129,6 +129,15 @@ import { ComposerFloatingMenuSurface } from "./composerFloatingMenu/ComposerFloa
 
 export { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 
+/**
+ * 引用 picker 的确认结果:松散文件按 file mention 插入;mentionItems(如文件夹 bundle)
+ * 作为整体节点插入。两者各走各的插入路径,composer 不需要理解 bundle 内部结构。
+ */
+export interface WorkspaceReferencePickResult {
+  files: readonly WorkspaceFileReference[];
+  mentionItems: readonly AgentContextMentionItem[];
+}
+
 export interface AgentComposerProps {
   workspaceId: string;
   workspacePath?: string | null;
@@ -299,7 +308,10 @@ export interface AgentComposerProps {
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
   ) => void;
-  onSubmit: (content: AgentPromptContentBlock[]) => void;
+  onSubmit: (
+    content: AgentPromptContentBlock[],
+    displayPrompt?: string
+  ) => void;
   onSendQueuedPromptNext: (queuedPromptId: string) => void;
   onRemoveQueuedPrompt: (queuedPromptId: string) => void;
   onEditQueuedPrompt: (queuedPromptId: string) => void;
@@ -315,7 +327,7 @@ export interface AgentComposerProps {
   onRequestWorkspaceReferences?:
     | ((
         entity?: AgentContextMentionItem | null
-      ) => Promise<WorkspaceFileReference[]>)
+      ) => Promise<WorkspaceReferencePickResult>)
     | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
@@ -1047,12 +1059,19 @@ export function AgentComposer({
       return;
     }
     setIsPaletteOpen(false);
+    // bundle 节点:发给 agent 的内容展开成逐条 file mention(agent 模式),
+    // 而 displayPrompt 用 display 串(单条 chip 链接)供对话流回显。
+    // 无 bundle 时两者相同 → 不传 displayPrompt,保持既有回显行为。
+    const agentPrompt =
+      editorHandleRef.current?.getAgentExpandedText() ?? nextPrompt;
+    const hasBundleExpansion = agentPrompt !== nextPrompt;
     onSubmit(
       agentComposerDraftToPromptContent({
-        draft: nextDraftContent,
+        draft: { ...nextDraftContent, prompt: agentPrompt },
         provider,
         skills: availableSkills
-      })
+      }),
+      hasBundleExpansion ? nextPrompt : undefined
     );
     if (draftImages.length > 0 && !canQueueWhileBusy) {
       setSubmittedImagePreview(draftImages);
@@ -1514,12 +1533,14 @@ export function AgentComposer({
     [draftImages, onDraftContentChange]
   );
 
-  const insertWorkspaceReferences = useCallback(
-    (items: readonly WorkspaceFileReference[]) => {
-      if (items.length === 0) {
-        return;
+  const applyReferencePickResult = useCallback(
+    (result: WorkspaceReferencePickResult) => {
+      if (result.files.length > 0) {
+        editorHandleRef.current?.insertWorkspaceReferences(result.files);
       }
-      editorHandleRef.current?.insertWorkspaceReferences(items);
+      if (result.mentionItems.length > 0) {
+        editorHandleRef.current?.insertMentionItems(result.mentionItems);
+      }
     },
     []
   );
@@ -1528,8 +1549,8 @@ export function AgentComposer({
     if (!onRequestWorkspaceReferences) {
       return;
     }
-    insertWorkspaceReferences(await onRequestWorkspaceReferences());
-  }, [insertWorkspaceReferences, onRequestWorkspaceReferences]);
+    applyReferencePickResult(await onRequestWorkspaceReferences());
+  }, [applyReferencePickResult, onRequestWorkspaceReferences]);
 
   // @ 面板里点事项/应用行的「查看产物文件」图标:关掉面板,打开引用 picker 并定位到该实体;
   // 选中的文件仍按常规插入,但不会把该事项/应用本身作为 mention 插入。
@@ -1539,11 +1560,11 @@ export function AgentComposer({
       if (!onRequestWorkspaceReferences) {
         return;
       }
-      void onRequestWorkspaceReferences(entity).then(insertWorkspaceReferences);
+      void onRequestWorkspaceReferences(entity).then(applyReferencePickResult);
     },
     [
       closeFileMentionPalette,
-      insertWorkspaceReferences,
+      applyReferencePickResult,
       onRequestWorkspaceReferences
     ]
   );

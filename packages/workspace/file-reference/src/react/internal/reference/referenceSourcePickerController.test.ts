@@ -211,6 +211,61 @@ test("loadMore 按 cursor 累积分页(保序不重排)", async () => {
   assert.equal(root?.nextCursor, null);
 });
 
+test("loadMoreSourceRoot 拉取指定(非 active)源根的下一页", async () => {
+  const children: Record<string, ListChildrenResult> = {
+    [`app-artifact:${SOURCE_ROOT_NODE_ID}`]: {
+      entries: [file("app-artifact", "app1"), file("app-artifact", "app2")],
+      nextCursor: "c1"
+    }
+  };
+  const controller = createReferenceSourcePickerController({
+    aggregator: {
+      ...fakeAggregator({ tabs: tabsTwo, children }),
+      async listChildren(_scope, ref, input) {
+        if (
+          ref.sourceId === "app-artifact" &&
+          ref.nodeId === SOURCE_ROOT_NODE_ID &&
+          input?.cursor === "c1"
+        ) {
+          return {
+            entries: [file("app-artifact", "app3")],
+            nextCursor: null
+          };
+        }
+        return (
+          children[`${ref.sourceId}:${ref.nodeId}`] ?? {
+            entries: [],
+            nextCursor: null
+          }
+        );
+      }
+    },
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+  // active 源为首个(tabsTwo[0]),显式为非 active 的 "app-artifact" 源预载根再拉下一页。
+  controller.ensureSourceRoot("app-artifact");
+  await flush();
+  let root =
+    controller.getSnapshot().bySource["app-artifact"]?.childrenByKey[
+      ROOT_CHILDREN_KEY
+    ];
+  assert.equal(root?.nextCursor, "c1");
+  controller.loadMoreSourceRoot("app-artifact");
+  await flush();
+  root =
+    controller.getSnapshot().bySource["app-artifact"]?.childrenByKey[
+      ROOT_CHILDREN_KEY
+    ];
+  assert.deepEqual(
+    root?.entries.map((n) => n.ref.nodeId),
+    ["app1", "app2", "app3"]
+  );
+  assert.equal(root?.nextCursor, null);
+});
+
 test("search 在当前 tab 生效", async () => {
   const controller = createReferenceSourcePickerController({
     aggregator: fakeAggregator({
@@ -248,6 +303,60 @@ test("search 在当前 tab 生效", async () => {
     controller.getSnapshot().bySource["workspace-file"]?.mode,
     "browse"
   );
+});
+
+test("setSearchQuery 把选中分组 nodeId 作为 withinNodeId 透传给 aggregator.search", async () => {
+  const searchInputs: Array<{
+    sourceId: string;
+    withinNodeId?: string | null;
+  }> = [];
+  const aggregator = fakeAggregator({
+    tabs: tabsTwo,
+    children: {
+      [`workspace-file:${SOURCE_ROOT_NODE_ID}`]: {
+        entries: [],
+        nextCursor: null
+      }
+    }
+  });
+  const baseSearch = aggregator.search.bind(aggregator);
+  aggregator.search = async (s, sourceId, input) => {
+    searchInputs.push({ sourceId, withinNodeId: input.withinNodeId ?? null });
+    return baseSearch(s, sourceId, input);
+  };
+  const controller = createReferenceSourcePickerController({
+    aggregator,
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  // 带分组范围搜索 → withinNodeId 透传。
+  controller.setSearchQuery("report", "g:app-1");
+  await flush();
+  assert.deepEqual(searchInputs.at(-1), {
+    sourceId: "workspace-file",
+    withinNodeId: "g:app-1"
+  });
+  assert.equal(
+    controller.getSnapshot().bySource["workspace-file"]?.searchScopeNodeId,
+    "g:app-1"
+  );
+
+  // 搜索中切换分组 → 以新范围重搜。
+  controller.setSearchScope("g:app-2");
+  await flush();
+  assert.deepEqual(searchInputs.at(-1), {
+    sourceId: "workspace-file",
+    withinNodeId: "g:app-2"
+  });
+
+  // 范围未变 → 不重复搜索。
+  const before = searchInputs.length;
+  controller.setSearchScope("g:app-2");
+  await flush();
+  assert.equal(searchInputs.length, before);
 });
 
 test("跨 tab 选中累积,confirm 归一为 SelectedReference[]", async () => {
@@ -304,6 +413,45 @@ test("app/issue 源文件夹:confirm 递归枚举展开成逐个文件引用", a
     ["f:b", "f:c", "f:a"]
   );
   assert.ok(selected.every((ref) => ref.kind === "file"));
+});
+
+test("confirmGrouped:navigable 源文件夹折叠成一个 bundle,松散文件单列", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      navigable: { "app-artifact": true },
+      children: {
+        "app-artifact:g:1": {
+          entries: [folder("app-artifact", "g:2"), file("app-artifact", "f:a")],
+          nextCursor: null
+        },
+        "app-artifact:g:2": {
+          entries: [file("app-artifact", "f:b"), file("app-artifact", "f:c")],
+          nextCursor: null
+        }
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+  // 单独选一个本地文件 + 一个 app 项目文件夹。
+  controller.toggleSelection(file("workspace-file", "/a.md"));
+  controller.toggleSelection(folder("app-artifact", "g:1", "项目A"));
+  const grouped = await controller.confirmGrouped();
+  // 松散文件保持单条;app 文件夹折叠成一个 bundle(文件已递归展开在内)。
+  assert.deepEqual(
+    grouped.files.map((ref) => ref.path),
+    ["/a.md"]
+  );
+  assert.equal(grouped.bundles.length, 1);
+  assert.equal(grouped.bundles[0]?.root.ref.nodeId, "g:1");
+  assert.equal(grouped.bundles[0]?.root.displayName, "项目A");
+  assert.deepEqual(
+    grouped.bundles[0]?.files.map((ref) => ref.path),
+    ["f:b", "f:c", "f:a"]
+  );
 });
 
 test("close 后丢弃迟到的浏览结果", async () => {

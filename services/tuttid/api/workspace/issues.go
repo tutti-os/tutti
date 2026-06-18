@@ -244,6 +244,20 @@ func GeneratedIssueManagerRunOutputsFromDomain(items []workspaceissues.RunOutput
 	return result
 }
 
+func GeneratedIssueManagerReferenceSearchResponseFromDomain(workspaceID string, hits []workspaceissues.RunOutputSearchHit) tuttigenerated.IssueManagerReferenceSearchResponse {
+	items := make([]tuttigenerated.IssueManagerReferenceSearchHit, 0, len(hits))
+	for _, hit := range hits {
+		items = append(items, tuttigenerated.IssueManagerReferenceSearchHit{
+			Output:     GeneratedIssueManagerRunOutputFromDomain(hit.Output),
+			IssueTitle: hit.IssueTitle,
+		})
+	}
+	return tuttigenerated.IssueManagerReferenceSearchResponse{
+		WorkspaceId: workspaceID,
+		Items:       items,
+	}
+}
+
 func GeneratedIssueManagerContextRefsResponseFromDomain(items []workspaceissues.ContextRef) tuttigenerated.IssueManagerContextRefsResponse {
 	return tuttigenerated.IssueManagerContextRefsResponse{
 		ContextRefs: GeneratedIssueManagerContextRefsFromDomain(items),

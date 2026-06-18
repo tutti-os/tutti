@@ -128,7 +128,10 @@ type SearchInput struct {
 	IncludeHidden bool
 	Limit         int
 	Query         string
-	Deadline      time.Time
+	// Filters 为已选「文件类型筛选分类」id(全局统一口径)。筛选与搜索是同一能力:
+	// Query 可空、Filters 非空时即按类型 list-all。空 = 不按类型过滤。
+	Filters  []string
+	Deadline time.Time
 }
 
 type SearchMatchTarget string

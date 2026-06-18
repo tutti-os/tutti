@@ -497,6 +497,15 @@ function agentMentionItemToRowItem(
     };
   }
 
+  if (item.kind === "workspace-app-bundle") {
+    return {
+      kind: "app",
+      name: item.name,
+      description: null,
+      iconUrl: item.iconUrl ?? null
+    };
+  }
+
   if (item.kind === "workspace-app-factory") {
     return {
       kind: "app-factory",
@@ -513,17 +522,16 @@ function agentMentionItemToRowItem(
 }
 
 /**
- * 暂不展示产物文件入口的应用(agent 启动器类,无产物文件):Claude Code / Codex。
+ * 仅 workspace-issue 行,以及声明了能够提供产物文件(reference)的 workspace-app 行,
+ * 才在行末尾展示「查看产物文件」入口。应用是否能提供产物文件由其 manifest 的
+ * references 能力决定(`referencesListSupported`),而非硬编码应用名单。
  */
-const NON_REFERENCEABLE_APP_IDS = new Set(["agent-claude-code", "agent-codex"]);
-
-/** 仅 workspace-issue / workspace-app(排除 agent 启动器应用)行有产物文件入口。 */
 function isReferenceableMentionItem(item: AgentContextMentionItem): boolean {
   if (item.kind === "workspace-issue") {
     return true;
   }
   if (item.kind === "workspace-app") {
-    return !NON_REFERENCEABLE_APP_IDS.has(item.appId);
+    return item.referencesListSupported === true;
   }
   return false;
 }

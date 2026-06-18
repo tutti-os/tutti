@@ -168,6 +168,34 @@ func (api DaemonAPI) GetWorkspaceIssueDetail(ctx context.Context, request tuttig
 	), nil
 }
 
+func (api DaemonAPI) SearchWorkspaceIssueReferences(ctx context.Context, request tuttigenerated.SearchWorkspaceIssueReferencesRequestObject) (tuttigenerated.SearchWorkspaceIssueReferencesResponseObject, error) {
+	if api.IssueService == nil {
+		return tuttigenerated.SearchWorkspaceIssueReferences503JSONResponse{ServiceUnavailableErrorJSONResponse: issueManagerServiceUnavailableError()}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.SearchWorkspaceIssueReferences400JSONResponse{InvalidRequestErrorJSONResponse: issueManagerEmptyBodyError()}, nil
+	}
+
+	var filters []string
+	if request.Body.Filters != nil {
+		filters = *request.Body.Filters
+	}
+	hits, err := api.IssueService.SearchIssueOutputs(ctx, workspaceissues.RunOutputSearchParams{
+		WorkspaceID: string(request.WorkspaceID),
+		Query:       request.Body.Query,
+		Filters:     filters,
+		IssueID:     optionalString(request.Body.IssueId),
+		TopicID:     optionalString(request.Body.TopicId),
+		Limit:       optionalInt(request.Body.Limit),
+	})
+	if err != nil {
+		return writeSearchWorkspaceIssueReferencesError(err), nil
+	}
+	return tuttigenerated.SearchWorkspaceIssueReferences200JSONResponse(
+		workspaceapi.GeneratedIssueManagerReferenceSearchResponseFromDomain(string(request.WorkspaceID), hits),
+	), nil
+}
+
 func (api DaemonAPI) UpdateWorkspaceIssue(ctx context.Context, request tuttigenerated.UpdateWorkspaceIssueRequestObject) (tuttigenerated.UpdateWorkspaceIssueResponseObject, error) {
 	if api.IssueService == nil {
 		return tuttigenerated.UpdateWorkspaceIssue503JSONResponse{ServiceUnavailableErrorJSONResponse: issueManagerServiceUnavailableError()}, nil
@@ -542,6 +570,13 @@ func optionalString(value *string) string {
 }
 
 func optionalInt64(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func optionalInt(value *int) int {
 	if value == nil {
 		return 0
 	}

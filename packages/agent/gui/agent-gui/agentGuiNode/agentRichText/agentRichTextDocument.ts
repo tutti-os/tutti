@@ -2,7 +2,9 @@ import type { Editor, JSONContent } from "@tiptap/core";
 import {
   attrsToMentionItem,
   formatAgentMentionMarkdown,
-  parseAgentMentionMarkdown
+  mentionItemToAttrs,
+  parseAgentMentionMarkdown,
+  type AgentMentionSerializeMode
 } from "./agentFileMentionExtension";
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import { parseAgentSkillToken } from "./agentSkillTokenExtension";
@@ -53,7 +55,9 @@ function createParagraphFromText(
       flushTextBuffer();
       content.push({
         type: "agentFileMention",
-        attrs: parsedMention.item
+        // 转成规范 node attrs(如 bundle 的 filesJson),否则只读回显里的
+        // bundle chip 拿不到文件数 → 不显示「N 个文件」角标。
+        attrs: mentionItemToAttrs(parsedMention.item)
       });
       index = parsedMention.end;
       continue;
@@ -120,27 +124,39 @@ export function plainTextToAgentRichTextInlineContent(
   return paragraph.content ?? [];
 }
 
-export function agentRichTextDocToPromptText(doc: JSONContent): string {
+export function agentRichTextDocToPromptText(
+  doc: JSONContent,
+  mode: AgentMentionSerializeMode = "display"
+): string {
   if (doc.type !== "doc") {
-    return nodeToPromptText(doc);
+    return nodeToPromptText(doc, mode);
   }
   const blocks = doc.content ?? [];
   if (blocks.length === 0) {
     return "";
   }
-  return blocks.map(nodeToPromptText).join("\n");
+  return blocks.map((block) => nodeToPromptText(block, mode)).join("\n");
 }
 
-export function editorToPromptText(editor: Editor): string {
-  return agentRichTextDocToPromptText(editor.getJSON());
+export function editorToPromptText(
+  editor: Editor,
+  mode: AgentMentionSerializeMode = "display"
+): string {
+  return agentRichTextDocToPromptText(editor.getJSON(), mode);
 }
 
-function nodeToPromptText(node: JSONContent): string {
+function nodeToPromptText(
+  node: JSONContent,
+  mode: AgentMentionSerializeMode
+): string {
   if (node.type === "text") {
     return node.text ?? "";
   }
   if (node.type === "agentFileMention") {
-    return formatAgentMentionMarkdown(attrsToMentionItem(node.attrs ?? {}));
+    return formatAgentMentionMarkdown(
+      attrsToMentionItem(node.attrs ?? {}),
+      mode
+    );
   }
   if (node.type === "agentSkillToken") {
     return typeof node.attrs?.trigger === "string" ? node.attrs.trigger : "";
@@ -154,5 +170,5 @@ function nodeToPromptText(node: JSONContent): string {
   if (!node.content || node.content.length === 0) {
     return "";
   }
-  return node.content.map(nodeToPromptText).join("");
+  return node.content.map((child) => nodeToPromptText(child, mode)).join("");
 }

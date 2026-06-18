@@ -75,10 +75,35 @@ import type {
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
   "referencePicker.confirm": "agentHost.agentGui.referencePicker.confirm",
+  "referencePicker.clearFilter":
+    "agentHost.agentGui.referencePicker.clearFilter",
   "referencePicker.emptyDirectory":
     "agentHost.agentGui.referencePicker.emptyDirectory",
+  "referencePicker.emptyPreview":
+    "agentHost.agentGui.referencePicker.emptyPreview",
   "referencePicker.emptySearch":
     "agentHost.agentGui.referencePicker.emptySearch",
+  "referencePicker.fileTypeAll":
+    "agentHost.agentGui.referencePicker.fileTypeAll",
+  "referencePicker.fileTypeArchive":
+    "agentHost.agentGui.referencePicker.fileTypeArchive",
+  "referencePicker.fileTypeCode":
+    "agentHost.agentGui.referencePicker.fileTypeCode",
+  "referencePicker.fileTypeDocument":
+    "agentHost.agentGui.referencePicker.fileTypeDocument",
+  "referencePicker.fileTypeImage":
+    "agentHost.agentGui.referencePicker.fileTypeImage",
+  "referencePicker.fileTypeMedia":
+    "agentHost.agentGui.referencePicker.fileTypeMedia",
+  "referencePicker.fileTypeOther":
+    "agentHost.agentGui.referencePicker.fileTypeOther",
+  "referencePicker.fileTypeSeparator":
+    "agentHost.agentGui.referencePicker.fileTypeSeparator",
+  "referencePicker.fileTypeSpreadsheet":
+    "agentHost.agentGui.referencePicker.fileTypeSpreadsheet",
+  "referencePicker.loadMore": "agentHost.agentGui.referencePicker.loadMore",
+  "referencePicker.loadMoreGroups":
+    "agentHost.agentGui.referencePicker.loadMoreGroups",
   "referencePicker.loading": "agentHost.agentGui.referencePicker.loading",
   "referencePicker.previewBinary":
     "agentHost.agentGui.referencePicker.previewBinary",
@@ -90,19 +115,33 @@ const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
     "agentHost.agentGui.referencePicker.previewFileTooLarge",
   "referencePicker.previewFolder":
     "agentHost.agentGui.referencePicker.previewFolder",
+  "referencePicker.previewHierarchy":
+    "agentHost.agentGui.referencePicker.previewHierarchy",
   "referencePicker.previewLoading":
     "agentHost.agentGui.referencePicker.previewLoading",
+  "referencePicker.previewModified":
+    "agentHost.agentGui.referencePicker.previewModified",
+  "referencePicker.previewSize":
+    "agentHost.agentGui.referencePicker.previewSize",
+  "referencePicker.previewSource":
+    "agentHost.agentGui.referencePicker.previewSource",
   "referencePicker.previewTextTooLarge":
     "agentHost.agentGui.referencePicker.previewTextTooLarge",
+  "referencePicker.previewTooLarge":
+    "agentHost.agentGui.referencePicker.previewTooLarge",
   "referencePicker.previewUnavailable":
     "agentHost.agentGui.referencePicker.previewUnavailable",
   "referencePicker.previewUnsupported":
     "agentHost.agentGui.referencePicker.previewUnsupported",
   "referencePicker.searchPlaceholder":
     "agentHost.agentGui.referencePicker.searchPlaceholder",
+  "referencePicker.selectGroupHint":
+    "agentHost.agentGui.referencePicker.selectGroupHint",
   "referencePicker.selectedCount":
     "agentHost.agentGui.referencePicker.selectedCount",
-  "referencePicker.title": "agentHost.agentGui.referencePicker.title"
+  "referencePicker.title": "agentHost.agentGui.referencePicker.title",
+  "referencePicker.workspaceRootGroup":
+    "agentHost.agentGui.referencePicker.workspaceRootGroup"
 };
 
 export interface AgentGUINodeProps {

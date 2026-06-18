@@ -121,18 +121,19 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	}
 	agentSessionID := request.Body.AgentSessionId.String()
 	session, err := api.AgentSessionService.Create(ctx, string(request.WorkspaceID), agentservice.CreateSessionInput{
-		AgentSessionID:   agentSessionID,
-		Cwd:              request.Body.Cwd,
-		InitialContent:   agentPromptContentFromGenerated(request.Body.InitialContent),
-		Model:            request.Body.Model,
-		PermissionModeID: request.Body.PermissionModeId,
-		PlanMode:         request.Body.PlanMode,
-		BrowserUse:       request.Body.BrowserUse,
-		Provider:         string(request.Body.Provider),
-		ReasoningEffort:  request.Body.ReasoningEffort,
-		Speed:            request.Body.Speed,
-		Title:            request.Body.Title,
-		Visible:          request.Body.Visible,
+		AgentSessionID:       agentSessionID,
+		Cwd:                  request.Body.Cwd,
+		InitialContent:       agentPromptContentFromGenerated(request.Body.InitialContent),
+		InitialDisplayPrompt: stringPtrValue(request.Body.InitialDisplayPrompt),
+		Model:                request.Body.Model,
+		PermissionModeID:     request.Body.PermissionModeId,
+		PlanMode:             request.Body.PlanMode,
+		BrowserUse:           request.Body.BrowserUse,
+		Provider:             string(request.Body.Provider),
+		ReasoningEffort:      request.Body.ReasoningEffort,
+		Speed:                request.Body.Speed,
+		Title:                request.Body.Title,
+		Visible:              request.Body.Visible,
 	})
 	if err != nil {
 		return writeCreateWorkspaceAgentSessionError(err), nil
@@ -252,7 +253,8 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 		}, nil
 	}
 	session, err := api.AgentSessionService.SendInput(ctx, string(request.WorkspaceID), string(request.AgentSessionID), agentservice.SendInput{
-		Content: agentPromptContentFromGenerated(request.Body.Content),
+		Content:       agentPromptContentFromGenerated(request.Body.Content),
+		DisplayPrompt: stringPtrValue(request.Body.DisplayPrompt),
 	})
 	if err != nil {
 		return writeSendWorkspaceAgentSessionInputError(err), nil
@@ -641,6 +643,13 @@ func generatedAgentSessionMessages(messages []agentservice.SessionMessage) []tut
 		})
 	}
 	return result
+}
+
+func stringPtrValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func agentPromptContentFromGenerated(content []tuttigenerated.AgentPromptContentBlock) []agentservice.PromptContentBlock {

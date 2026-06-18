@@ -69,9 +69,16 @@ export interface ReferenceListResult {
 /** 递归搜索请求(跨整源,非当前层 filter)。 */
 export interface ReferenceListSearchRequest {
   query: string;
+  /** 已选文件类型筛选分类 id(全局统一口径);空数组/缺省 = 不按类型过滤。 */
+  filters?: string[];
   cursor?: string | null;
   limit?: number;
   signal?: AbortSignal;
+  /**
+   * 可选:把搜索限定在某个分组下(协议层不透明 group id,与 list 返回的 group.id 同形)。
+   * 缺省/null = 跨整源搜索。由 createReferenceListSource 从 SearchInput.withinNodeId 解码而来。
+   */
+  withinGroupId?: string | null;
 }
 
 /** 各源自治的取数适配器:把自家数据映射成统一协议。 */
@@ -103,6 +110,8 @@ export interface CreateReferenceListSourceInput {
   sourceId: string;
   label: string;
   order?: number;
+  /** 可选源图标令牌(如 "issue"),供 picker 决定二级分组的兜底图标。 */
+  icon?: string;
   capabilities: ReferenceSourceCapabilities;
   isAvailable: (scope: ReferenceScope) => boolean | Promise<boolean>;
   backend: ReferenceListBackend;
@@ -124,7 +133,12 @@ export function createReferenceListSource(
   }
 
   const service: ReferenceSourceService = {
-    metadata: { id: sourceId, label, order: input.order ?? 0 },
+    metadata: {
+      id: sourceId,
+      label,
+      order: input.order ?? 0,
+      ...(input.icon ? { icon: input.icon } : {})
+    },
     capabilities,
     isAvailable,
 
@@ -201,11 +215,21 @@ export function createReferenceListSource(
       scope: ReferenceScope,
       input: SearchInput
     ): Promise<SearchResult> => {
+      // 把左栏选中的分组节点(GROUP_PREFIX nodeId)解码成协议层不透明 group id;
+      // 非分组(源根 / 文件节点 / 缺省)→ null,退回跨整源搜索。
+      const withinGroupId =
+        input.withinNodeId && input.withinNodeId.startsWith(GROUP_PREFIX)
+          ? decodeSegment(GROUP_PREFIX, input.withinNodeId)
+          : null;
       const result = await backendSearch(scope, {
         query: input.query,
         cursor: input.cursor ?? null,
+        ...(input.filters && input.filters.length > 0
+          ? { filters: input.filters }
+          : {}),
         ...(input.limit == null ? {} : { limit: input.limit }),
-        ...(input.signal ? { signal: input.signal } : {})
+        ...(input.signal ? { signal: input.signal } : {}),
+        ...(withinGroupId == null ? {} : { withinGroupId })
       });
       return {
         entries: result.items.map((item) => itemToNode(sourceId, item)),

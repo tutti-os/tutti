@@ -193,6 +193,10 @@ func (s IssueManagerService) GetIssueDetail(ctx context.Context, workspaceID str
 	return detail, nil
 }
 
+func (s IssueManagerService) SearchIssueOutputs(ctx context.Context, params workspaceissues.RunOutputSearchParams) ([]workspaceissues.RunOutputSearchHit, error) {
+	return s.domainService().SearchIssueOutputs(ctx, params)
+}
+
 func (s IssueManagerService) UpdateIssue(ctx context.Context, workspaceID string, issueID string, input UpdateIssueManagerIssueInput) (workspaceissues.Issue, error) {
 	issue, err := s.domainService().UpdateIssue(ctx, workspaceissues.UpdateIssueInput{
 		IssueID:     issueID,

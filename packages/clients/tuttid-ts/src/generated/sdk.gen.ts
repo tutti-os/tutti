@@ -289,6 +289,9 @@ import type {
   SearchWorkspaceFilesData,
   SearchWorkspaceFilesErrors,
   SearchWorkspaceFilesResponses,
+  SearchWorkspaceIssueReferencesData,
+  SearchWorkspaceIssueReferencesErrors,
+  SearchWorkspaceIssueReferencesResponses,
   SendWorkspaceAgentSessionInputData,
   SendWorkspaceAgentSessionInputErrors,
   SendWorkspaceAgentSessionInputResponses,
@@ -2024,6 +2027,31 @@ export const createWorkspaceIssue = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/issues",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Search issue-manager output files across one workspace
+ *
+ * Searches the produced output files of issue-manager runs by file name across one workspace. Optional issueId / topicId scope the search to one issue or topic. Returns a flat, recency-ordered list of file references (deduplicated by path) each annotated with its owning issue title; it never returns groups.
+ *
+ */
+export const searchWorkspaceIssueReferences = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SearchWorkspaceIssueReferencesData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    SearchWorkspaceIssueReferencesResponses,
+    SearchWorkspaceIssueReferencesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issue-references/search",
     ...options,
     headers: {
       "Content-Type": "application/json",

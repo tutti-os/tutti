@@ -109,6 +109,13 @@ func (a LocalFilesAdapter) Search(
 			stats.skippedHiddenFileCount++
 			return nil
 		}
+		// 文件类型筛选:仅对文件按分类过滤(目录始终保留以便继续递归/路径打分)。
+		// 全局统一口径,见 reference_filter_categories.go(TS 镜像同名)。
+		if kind == workspacefiles.EntryKindFile &&
+			!matchesReferenceFilterCategories(entry.Name(), false, input.Filters) {
+			stats.skippedUnrequestedCount++
+			return nil
+		}
 		appendSearchCandidate(rootPath, physicalPath, kind, includeKinds, &candidates, &stats)
 		if len(candidates) >= maxCandidates {
 			stats.candidateCapReached = true
@@ -131,12 +138,25 @@ func (a LocalFilesAdapter) Search(
 		return workspacefiles.SearchResult{}, walkErr
 	}
 
-	entries := workspacefiles.ScoreSearchCandidates(
-		workspacefiles.NormalizeLogicalRoot(root.LogicalRoot),
-		input.Query,
-		candidates,
-		input.Limit,
-	)
+	logicalRoot := workspacefiles.NormalizeLogicalRoot(root.LogicalRoot)
+	var entries []workspacefiles.SearchEntry
+	if strings.TrimSpace(input.Query) != "" {
+		entries = workspacefiles.ScoreSearchCandidates(
+			logicalRoot,
+			input.Query,
+			candidates,
+			input.Limit,
+		)
+	} else {
+		// 仅按类型筛选(无关键词):直接枚举命中的文件(不含目录,避免目录噪声),按名排序。
+		fileCandidates := make([]workspacefiles.SearchCandidate, 0, len(candidates))
+		for _, candidate := range candidates {
+			if candidate.Kind == workspacefiles.EntryKindFile {
+				fileCandidates = append(fileCandidates, candidate)
+			}
+		}
+		entries = workspacefiles.BuildListingEntries(logicalRoot, fileCandidates, input.Limit)
+	}
 	logWorkspaceFileSearch(start, root, input, candidates, stats, len(entries), nil)
 
 	return workspacefiles.SearchResult{

@@ -19,8 +19,15 @@ export type AgentMentionKind =
   | "file"
   | "session"
   | "workspace-app"
+  | "workspace-app-bundle"
   | "workspace-app-factory"
   | "workspace-issue";
+
+/** 折叠在一个 bundle 节点里的单个文件(只携带路径与展示名)。 */
+export interface AgentMentionBundleFile {
+  path: string;
+  name: string;
+}
 
 export interface AgentMentionFileItem {
   kind: "file";
@@ -75,6 +82,21 @@ export interface AgentMentionWorkspaceAppItem {
   name: string;
   description?: string;
   iconUrl?: string;
+  /** 应用是否能够提供产物文件(reference),决定 @ 面板行末尾是否展示「查看产物文件」入口。 */
+  referencesListSupported?: boolean;
+}
+
+export interface AgentMentionWorkspaceAppBundleItem {
+  kind: "workspace-app-bundle";
+  href: string;
+  workspaceId: string;
+  targetId: string;
+  /** 可选:来源 app id(用于 href 身份);文件夹 bundle 不一定有。 */
+  appId?: string;
+  name: string;
+  iconUrl?: string;
+  /** 递归打平后的全部子文件;序列化时逐个展开为 file mention。 */
+  files: AgentMentionBundleFile[];
 }
 
 export interface AgentMentionWorkspaceAppFactoryItem {
@@ -92,6 +114,7 @@ export type AgentContextMentionItem =
   | AgentMentionFileItem
   | AgentMentionSessionItem
   | AgentMentionWorkspaceAppItem
+  | AgentMentionWorkspaceAppBundleItem
   | AgentMentionWorkspaceAppFactoryItem
   | AgentMentionWorkspaceIssueItem;
 
@@ -169,7 +192,8 @@ export function createAgentFileMentionExtension(
         description: { default: "" },
         iconUrl: { default: "" },
         contentPreview: { default: "" },
-        thumbnailUrl: { default: "" }
+        thumbnailUrl: { default: "" },
+        filesJson: { default: "" }
       };
     },
 
@@ -219,8 +243,13 @@ export function createAgentFileMentionExtension(
               }
             : {}),
           ...(options.renderAsLink ? { href } : {}),
-          ...(item.kind === "workspace-app" && item.iconUrl
+          ...((item.kind === "workspace-app" ||
+            item.kind === "workspace-app-bundle") &&
+          item.iconUrl
             ? { "data-agent-mention-icon-url": item.iconUrl }
+            : {}),
+          ...(item.kind === "workspace-app-bundle"
+            ? { "data-agent-mention-files": JSON.stringify(item.files) }
             : {}),
           ...(fileThumbnailUrl
             ? { "data-agent-mention-thumbnail-url": fileThumbnailUrl }
@@ -436,6 +465,26 @@ export function buildAgentWorkspaceAppMentionHref(
   });
 }
 
+export function buildAgentWorkspaceAppBundleMentionHref(
+  workspaceId: string,
+  appId: string,
+  files?: readonly AgentMentionBundleFile[],
+  iconUrl?: string
+): string {
+  // files 编进 href,使 bundle 在 markdown 往返(value/草稿)后仍能还原全部文件。
+  // 只编路径(展示侧只需路径;label 还原时回退 basename),体积更小。
+  // icon 编进 href,使对话流渲染时也能展示应用图标。
+  const filesParam =
+    files && files.length > 0
+      ? JSON.stringify(files.map((file) => file.path))
+      : undefined;
+  return buildAgentGenericMentionHref("workspace-app-bundle", appId, {
+    workspaceId,
+    files: filesParam,
+    icon: iconUrl?.trim() || undefined
+  });
+}
+
 export function buildAgentWorkspaceAppFactoryMentionHref(
   workspaceId?: string | null,
   jobId?: string | null,
@@ -485,11 +534,97 @@ export function formatAgentFileMentionMarkdown(
   });
 }
 
+/**
+ * 序列化模式:
+ * - "display"(默认):bundle 渲染成单条 mention 链接(对话流/回显/草稿往返用,files 在 href 里)。
+ * - "agent":bundle 递归展开成多条 file mention(发给 agent 的真正内容,只含路径)。
+ */
+export type AgentMentionSerializeMode = "display" | "agent";
+
 export function formatAgentMentionMarkdown(
-  item: AgentContextMentionItem
+  item: AgentContextMentionItem,
+  mode: AgentMentionSerializeMode = "display"
 ): string {
+  if (item.kind === "workspace-app-bundle") {
+    if (mode === "agent" && item.files.length > 0) {
+      // 给 agent:展开成逐条 file mention(只含路径)。
+      return item.files
+        .map((file) =>
+          formatAgentFileMentionMarkdown(
+            file.name || basenameFromPath(file.path),
+            file.path
+          )
+        )
+        .join(" ");
+    }
+    // 展示模式,或「空项目 bundle」的 agent 模式:单条链接(files 已编码在 href 内,供往返还原)。
+    // 空项目没有文件可展开,退回 @项目名 链接 —— 既给 agent 一个可读的项目引用,
+    // 也避免空 bundle 序列化成空串、留下一个空白节点。
+    const bundleLabel = item.name.trim().startsWith("@")
+      ? item.name
+      : `@${item.name}`;
+    return `[${escapeMarkdownLinkLabel(bundleLabel)}](${escapeMarkdownLinkTarget(item.href)})`;
+  }
   const label = item.name.trim().startsWith("@") ? item.name : `@${item.name}`;
   return `[${escapeMarkdownLinkLabel(label)}](${escapeMarkdownLinkTarget(item.href)})`;
+}
+
+function basenameFromPath(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts.length > 0 ? (parts[parts.length - 1] ?? path) : path;
+}
+
+/** 解析 href 里的 files 参数(JSON 路径数组),还原为 bundle 文件;label 回退 basename。 */
+export function decodeBundleFilesParam(
+  value: string | null | undefined
+): AgentMentionBundleFile[] {
+  if (typeof value !== "string" || !value.trim()) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .filter(
+        (path): path is string => typeof path === "string" && path.trim() !== ""
+      )
+      .map((path) => ({ path, name: basenameFromPath(path) }));
+  } catch {
+    return [];
+  }
+}
+
+/** 解析 attrs.filesJson(失败时回退空数组,保证不抛)。 */
+export function parseBundleFilesJson(value: unknown): AgentMentionBundleFile[] {
+  if (typeof value !== "string" || !value.trim()) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .map((entry): AgentMentionBundleFile | null => {
+        if (!entry || typeof entry !== "object") {
+          return null;
+        }
+        const path = (entry as Record<string, unknown>).path;
+        if (typeof path !== "string" || !path.trim()) {
+          return null;
+        }
+        const name = (entry as Record<string, unknown>).name;
+        return {
+          path,
+          name: typeof name === "string" ? name : basenameFromPath(path)
+        };
+      })
+      .filter((entry): entry is AgentMentionBundleFile => entry !== null);
+  } catch {
+    return [];
+  }
 }
 
 export function parseAgentMentionMarkdown(
@@ -642,6 +777,21 @@ function parseMentionItemFromHref(input: {
       name: input.name
     };
   }
+  if (resource === "workspace-app-bundle") {
+    if (!workspaceId) {
+      return null;
+    }
+    return {
+      kind: "workspace-app-bundle",
+      href,
+      workspaceId,
+      targetId,
+      appId: targetId,
+      name: input.name,
+      iconUrl: url.searchParams.get("icon")?.trim() || undefined,
+      files: decodeBundleFilesParam(url.searchParams.get("files"))
+    };
+  }
   if (resource === "workspace-app-factory") {
     return {
       kind: "workspace-app-factory",
@@ -663,7 +813,7 @@ function isLocalDirectoryMentionHref(href: string): boolean {
   return href.endsWith("/") && !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(href);
 }
 
-function mentionItemToAttrs(
+export function mentionItemToAttrs(
   item: AgentContextMentionItem
 ): Record<string, string> {
   if (item.kind === "file") {
@@ -703,6 +853,18 @@ function mentionItemToAttrs(
       appId: item.appId,
       description: item.description ?? "",
       iconUrl: item.iconUrl ?? ""
+    };
+  }
+  if (item.kind === "workspace-app-bundle") {
+    return {
+      name: item.name,
+      kind: item.kind,
+      href: item.href,
+      ...workspaceMentionAttrs(item.workspaceId),
+      targetId: item.targetId,
+      appId: item.appId ?? "",
+      iconUrl: item.iconUrl ?? "",
+      filesJson: JSON.stringify(item.files)
     };
   }
   if (item.kind === "workspace-app-factory") {
@@ -830,6 +992,37 @@ export function attrsToMentionItem(
           : undefined
     };
   }
+  if (kind === "workspace-app-bundle") {
+    const workspaceId = workspaceIdFromMentionAttrs(attrs);
+    const appId =
+      typeof attrs.appId === "string" && attrs.appId.trim()
+        ? attrs.appId.trim()
+        : typeof attrs.targetId === "string"
+          ? attrs.targetId.trim()
+          : "";
+    const files = parseBundleFilesJson(attrs.filesJson);
+    const bundleIconUrl =
+      typeof attrs.iconUrl === "string" && attrs.iconUrl.trim()
+        ? attrs.iconUrl.trim()
+        : undefined;
+    return {
+      kind,
+      href:
+        href ||
+        buildAgentWorkspaceAppBundleMentionHref(
+          workspaceId,
+          appId,
+          files,
+          bundleIconUrl
+        ),
+      workspaceId,
+      targetId: appId,
+      appId,
+      name,
+      iconUrl: bundleIconUrl,
+      files
+    };
+  }
   if (kind === "workspace-app-factory") {
     const workspaceId = workspaceIdFromMentionAttrs(attrs);
     const jobId =
@@ -910,6 +1103,7 @@ function parseAgentMentionHTMLElementAttrs(
   const parsedItem = href ? parseMentionItemFromHref({ name, href }) : null;
   const parsedAttrs = parsedItem ? mentionItemToAttrs(parsedItem) : {};
   const iconUrl = node.getAttribute("data-agent-mention-icon-url") || "";
+  const filesJson = node.getAttribute("data-agent-mention-files") || "";
   return {
     ...parsedAttrs,
     name,
@@ -919,7 +1113,8 @@ function parseAgentMentionHTMLElementAttrs(
       parsedAttrs.kind ||
       "file",
     href,
-    ...(iconUrl ? { iconUrl } : {})
+    ...(iconUrl ? { iconUrl } : {}),
+    ...(filesJson ? { filesJson } : {})
   };
 }
 
@@ -975,6 +1170,9 @@ function normalizeMentionKind(value: unknown): AgentMentionKind {
   }
   if (value === "workspace-app") {
     return "workspace-app";
+  }
+  if (value === "workspace-app-bundle") {
+    return "workspace-app-bundle";
   }
   if (value === "workspace-app-factory") {
     return "workspace-app-factory";

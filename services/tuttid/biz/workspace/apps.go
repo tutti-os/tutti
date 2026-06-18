@@ -310,8 +310,10 @@ type AppReferenceListInput struct {
 }
 
 type AppReferenceSearchInput struct {
-	Query     string
-	Limit     int
+	Query string
+	Limit int
+	// Filters 为已选「文件类型筛选分类」id(全局统一口径),透传到 app 的 searchEndpoint。
+	Filters   []string
 	Cursor    string
 	Kinds     []AppReferenceKind
 	TimeRange *AppReferenceListTimeRange

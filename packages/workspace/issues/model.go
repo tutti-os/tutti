@@ -120,6 +120,27 @@ type RunOutput struct {
 	CreatedAtUnixMS int64
 }
 
+// RunOutputSearchParams scopes a workspace-wide search over produced output files.
+// Query matches output file display names. IssueID and TopicID are optional
+// scopes; IssueID takes precedence when both are set.
+type RunOutputSearchParams struct {
+	WorkspaceID string
+	Query       string
+	// Filters 为已选「文件类型筛选分类」id(全局统一口径)。筛选与搜索是同一能力:
+	// Query 可空、Filters 非空时即按类型查。空 = 不按类型过滤。
+	Filters []string
+	IssueID string
+	TopicID string
+	Limit   int
+}
+
+// RunOutputSearchHit is one matched output file annotated with its owning issue
+// title, used as the search-result subtitle.
+type RunOutputSearchHit struct {
+	Output     RunOutput
+	IssueTitle string
+}
+
 type ContextRef struct {
 	ID              uint64
 	ContextRefID    string

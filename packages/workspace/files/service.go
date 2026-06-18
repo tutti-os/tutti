@@ -242,7 +242,10 @@ func (s Service) Search(ctx context.Context, workspaceID string, input SearchInp
 	if err != nil {
 		return SearchResult{}, err
 	}
-	if input.Query == "" {
+	input.Filters = NormalizeSearchFilters(input.Filters)
+	// 筛选与搜索是同一能力:关键词与筛选同时为空才算空查询。仅选了类型筛选(query 空)时
+	// 继续走 adapter,由其按类型 list-all。
+	if input.Query == "" && len(input.Filters) == 0 {
 		return SearchResult{
 			WorkspaceID: root.WorkspaceID,
 			Root:        NormalizeLogicalRoot(root.LogicalRoot),

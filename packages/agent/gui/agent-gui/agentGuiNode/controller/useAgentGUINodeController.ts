@@ -4576,7 +4576,7 @@ export function useAgentGUINodeController({
   }, [clearPendingSessionStateReload, clearSelectedConversationNotFoundRetry]);
 
   const startConversation = useCallback(
-    (initialContentInput?: unknown) => {
+    (initialContentInput?: unknown, displayPrompt?: string) => {
       if (
         isCreatingConversation ||
         (data.provider === "openclaw" && openclawGateway?.status !== "ready")
@@ -4588,9 +4588,12 @@ export function useAgentGUINodeController({
             initialContentInput as AgentPromptContentBlock[]
           )
         : textPromptContent(normalizeOptionalPrompt(initialContentInput));
-      const normalizedInitialPrompt = agentPromptContentDisplayText(
-        normalizedInitialContent
-      );
+      const initialDisplayPrompt =
+        displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
+      // bundle 折叠时,标题/回显用 displayPrompt(单 chip),而非展开后的文件列表。
+      const normalizedInitialPrompt =
+        initialDisplayPrompt ??
+        agentPromptContentDisplayText(normalizedInitialContent);
       const initialConversationTitle =
         normalizedInitialPrompt || AGENT_PROVIDER_LABEL[data.provider];
       isCreatingConversationRef.current = true;
@@ -4657,6 +4660,7 @@ export function useAgentGUINodeController({
           provider,
           cwd: selectedProjectPath ?? "",
           initialContent: normalizedInitialContent,
+          initialDisplayPrompt,
           title: initialConversationTitle,
           settings: initialSettings,
           openclawGatewayReady:
@@ -5054,14 +5058,18 @@ export function useAgentGUINodeController({
     (
       agentSessionId: string,
       content: AgentPromptContentBlock[],
-      queuedPromptId?: string | null
+      queuedPromptId?: string | null,
+      displayPrompt?: string
     ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
         return;
       }
+      // displayPrompt(如 bundle 折叠成单 chip)优先用于回显;否则回退到 content 派生文本。
       const submittedPromptText =
-        agentPromptContentDisplayText(normalizedContent);
+        displayPrompt && displayPrompt.trim()
+          ? displayPrompt
+          : agentPromptContentDisplayText(normalizedContent);
       const submittedAtUnixMs = Date.now();
       const previousConversationStatus =
         resolveConversationSummaryById(
@@ -5124,7 +5132,9 @@ export function useAgentGUINodeController({
           return agentActivityRuntime.sendInput({
             workspaceId,
             agentSessionId,
-            content: normalizedContent
+            content: normalizedContent,
+            displayPrompt:
+              displayPrompt && displayPrompt.trim() ? displayPrompt : null
           });
         })
         .then((result) => {
@@ -5340,7 +5350,11 @@ export function useAgentGUINodeController({
   }, [executePrompt]);
 
   const queuePromptLocally = useCallback(
-    (agentSessionId: string, content: readonly AgentPromptContentBlock[]) => {
+    (
+      agentSessionId: string,
+      content: readonly AgentPromptContentBlock[],
+      displayPrompt?: string
+    ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
         return;
@@ -5348,6 +5362,7 @@ export function useAgentGUINodeController({
       const queuedPrompt: AgentGUIQueuedPromptVM = {
         id: `local-${createAgentGUIConversationId()}`,
         content: normalizedContent,
+        ...(displayPrompt && displayPrompt.trim() ? { displayPrompt } : {}),
         createdAtUnixMs: Date.now()
       };
       setQueuedPromptsBySessionId((current) => ({
@@ -5383,12 +5398,14 @@ export function useAgentGUINodeController({
   );
 
   const submitPrompt = useCallback(
-    (content: AgentPromptContentBlock[]) => {
+    (content: AgentPromptContentBlock[], displayPrompt?: string) => {
       const agentSessionId = activeConversationIdRef.current;
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (normalizedContent.length === 0) {
         return;
       }
+      const displayPromptText =
+        displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
       if (
         resolvedPromptImagesSupported === false &&
         agentPromptContentHasImage(normalizedContent)
@@ -5397,7 +5414,7 @@ export function useAgentGUINodeController({
         return;
       }
       if (!agentSessionId) {
-        startConversation(normalizedContent);
+        startConversation(normalizedContent, displayPromptText);
         return;
       }
       if (isSessionMarkedNonResumable(agentSessionId)) {
@@ -5422,10 +5439,19 @@ export function useAgentGUINodeController({
         return;
       }
       if (shouldQueuePromptLocally(agentSessionId)) {
-        queuePromptLocally(agentSessionId, normalizedContent);
+        queuePromptLocally(
+          agentSessionId,
+          normalizedContent,
+          displayPromptText
+        );
         return;
       }
-      executePrompt(agentSessionId, normalizedContent);
+      executePrompt(
+        agentSessionId,
+        normalizedContent,
+        undefined,
+        displayPromptText
+      );
     },
     [
       activation,
@@ -6142,7 +6168,12 @@ export function useAgentGUINodeController({
       return;
     }
     setDrainingQueuedPromptSessionId(activeConversationId);
-    executePrompt(activeConversationId, queuedPrompt.content, queuedPrompt.id);
+    executePrompt(
+      activeConversationId,
+      queuedPrompt.content,
+      queuedPrompt.id,
+      queuedPrompt.displayPrompt
+    );
   }, [
     activeConversationId,
     agentActivityDisplayStatuses,

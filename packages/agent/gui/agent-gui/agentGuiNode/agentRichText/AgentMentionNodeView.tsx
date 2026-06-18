@@ -7,11 +7,13 @@ import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
+import { parseBundleFilesJson } from "./agentFileMentionExtension";
 
 type AgentMentionNodeViewKind =
   | "file"
   | "session"
   | "workspace-app"
+  | "workspace-app-bundle"
   | "workspace-app-factory"
   | "workspace-issue";
 
@@ -25,6 +27,8 @@ interface AgentMentionNodeViewModel {
   label: string;
   summary?: string;
   thumbnailUrl?: string;
+  /** bundle 文件数量(workspace-app-bundle 专用)。 */
+  fileCount?: number;
 }
 
 function attrString(attrs: Record<string, unknown>, key: string): string {
@@ -41,6 +45,9 @@ function normalizeKind(value: string): AgentMentionNodeViewKind {
   }
   if (value === "workspace-app") {
     return "workspace-app";
+  }
+  if (value === "workspace-app-bundle") {
+    return "workspace-app-bundle";
   }
   if (value === "workspace-app-factory") {
     return "workspace-app-factory";
@@ -211,6 +218,19 @@ function mentionViewModel(
       iconUrl: attrString(attrs, "iconUrl").trim() || undefined,
       kind,
       label: name
+    };
+  }
+
+  if (kind === "workspace-app-bundle") {
+    return {
+      ariaLabel: `${t("agentHost.agentGui.mentionKindApp")} ${name}`.trim(),
+      directoryPath: "",
+      entryKind: "",
+      href: href || buildMentionHref("workspace-app", attrs),
+      iconUrl: attrString(attrs, "iconUrl").trim() || undefined,
+      kind,
+      label: name,
+      fileCount: parseBundleFilesJson(attrs.filesJson).length
     };
   }
 
@@ -440,7 +460,10 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
     return <AgentMentionLegacyFileNodeView {...props} />;
   }
 
-  if (mention.kind === "workspace-app") {
+  if (
+    mention.kind === "workspace-app" ||
+    mention.kind === "workspace-app-bundle"
+  ) {
     return (
       <NodeViewWrapper
         as="span"
@@ -501,6 +524,13 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
           <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
             {mention.label}
           </span>
+          {mention.kind === "workspace-app-bundle" &&
+          mention.fileCount != null &&
+          mention.fileCount >= 0 ? (
+            <span className="shrink-0 tabular-nums text-[var(--text-secondary)]">
+              {mention.fileCount}
+            </span>
+          ) : null}
         </span>
       </NodeViewWrapper>
     );

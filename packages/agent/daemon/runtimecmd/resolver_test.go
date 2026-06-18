@@ -131,6 +131,40 @@ func TestResolverReplacesPathEnv(t *testing.T) {
 	}
 }
 
+func TestResolverEnvStripsClaudeCodeNestingGuards(t *testing.T) {
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{
+				"PATH=/usr/bin",
+				"CLAUDECODE=1",
+				"CLAUDE_CODE_ENTRYPOINT=claude-desktop",
+				"CLAUDE_CODE_SESSION_ID=abc",
+				"CLAUDE_CODE_CHILD_SESSION=1",
+				"CLAUDE_CODE_OAUTH_SCOPES=keep-me",
+				"OTHER=value",
+			}
+		},
+		HomeDir: func() (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	env := resolver.Env(nil)
+	for _, item := range env {
+		key, _, _ := strings.Cut(item, "=")
+		switch key {
+		case "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION":
+			t.Fatalf("nesting guard %q should be stripped, got %#v", key, env)
+		}
+	}
+	if value, ok := envValueFrom(env, "CLAUDE_CODE_OAUTH_SCOPES"); !ok || value != "keep-me" {
+		t.Fatalf("unrelated CLAUDE_CODE_* var was dropped: %#v", env)
+	}
+	if value, ok := envValueFrom(env, "OTHER"); !ok || value != "value" {
+		t.Fatalf("unrelated var was dropped: %#v", env)
+	}
+}
+
 func TestResolverUserBinInstallDirsPrefersPathEntriesThenFallbacks(t *testing.T) {
 	home := t.TempDir()
 	pathDir := filepath.Join(home, "custom-bin")

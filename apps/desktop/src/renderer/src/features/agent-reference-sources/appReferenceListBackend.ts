@@ -16,7 +16,7 @@ import type { ReferenceScope } from "@tutti-os/workspace-file-reference/contract
  * 因 references 是 per-app,app 维度被编进协议的 group id 里(app: / grp: 段)。
  */
 
-const APP_REFERENCE_PAGE_LIMIT = 50;
+const APP_REFERENCE_PAGE_LIMIT = 200;
 const APP_MARKER = "app:";
 const GROUP_MARKER = "|grp:";
 
@@ -27,6 +27,25 @@ type AppReferenceListItem = Awaited<
 export function createAppReferenceListBackend(
   tuttidClient: TuttidClient
 ): ReferenceListBackend {
+  // app 图标缓存:把 app 图标透传到其下所有分组节点(项目/子文件夹),
+  // 使「引用应用项目」的 bundle 不论在第几层都带应用图标。
+  const appIconById = new Map<string, string>();
+  const ensureAppIcon = async (
+    scope: ReferenceScope,
+    appId: string
+  ): Promise<string | undefined> => {
+    if (appIconById.has(appId)) {
+      return appIconById.get(appId);
+    }
+    const apps = await listReferenceSupportingApps(tuttidClient, scope);
+    for (const app of apps) {
+      if (app.iconUrl) {
+        appIconById.set(app.appId, app.iconUrl);
+      }
+    }
+    return appIconById.get(appId);
+  };
+
   return {
     async list(
       scope: ReferenceScope,
@@ -35,6 +54,11 @@ export function createAppReferenceListBackend(
       // 根层级:列支持 references 的 app。
       if (!parentGroupId) {
         const apps = await listReferenceSupportingApps(tuttidClient, scope);
+        for (const app of apps) {
+          if (app.iconUrl) {
+            appIconById.set(app.appId, app.iconUrl);
+          }
+        }
         return {
           items: apps.map((app) => ({
             type: "group",
@@ -47,33 +71,40 @@ export function createAppReferenceListBackend(
       }
 
       const { appId, groupId } = decodeAppGroupId(parentGroupId);
-      const response = await tuttidClient.listWorkspaceAppReferences(
-        scope.workspaceId,
-        appId,
-        {
+      const [response, appIconUrl] = await Promise.all([
+        tuttidClient.listWorkspaceAppReferences(scope.workspaceId, appId, {
           parentGroupId: groupId,
           filterText: filter ?? null,
           cursor: cursor ?? null,
           limit: APP_REFERENCE_PAGE_LIMIT,
           kinds: ["file"]
-        }
-      );
+        }),
+        ensureAppIcon(scope, appId)
+      ]);
       return {
-        items: response.items.map((item) => appItemToProtocol(appId, item)),
+        items: response.items.map((item) =>
+          appItemToProtocol(appId, item, undefined, appIconUrl)
+        ),
         nextCursor: response.nextCursor ?? null
       };
     },
 
-    // 源级搜索:app 引用是 per-app 的,daemon 搜索接口也是 per-app,
-    // 故跨所有「声明 searchEndpoint(searchSupported)」的 app 并行搜索后合并。
+    // 源级搜索:app 引用是 per-app 的,daemon 搜索接口也是 per-app。
+    //  - withinGroupId 指定了某个 app 分组(左栏选中的应用)时,只搜该应用;
+    //  - 否则跨所有「声明 searchEndpoint(searchSupported)」的 app 并行搜索后合并。
     // 各 app 内部已按相关性排序;v1 按 app 顺序拼接,不做跨 app 全局重排,不分页。
     async search(
       scope: ReferenceScope,
-      { query, limit }
+      { query, limit, filters, withinGroupId }
     ): Promise<ReferenceListResult> {
-      const apps = (
-        await listReferenceSupportingApps(tuttidClient, scope)
-      ).filter((app) => app.references.searchSupported);
+      // 选中分组节点解码出 appId(分组形如 `app:${appId}` 或更深的 `app:${appId}|grp:…`),
+      // 把搜索限定到该应用;无 scope 时回退跨全部应用。
+      const scopedAppId = withinGroupId
+        ? decodeAppGroupId(withinGroupId).appId
+        : null;
+      const apps = (await listReferenceSupportingApps(tuttidClient, scope))
+        .filter((app) => app.references.searchSupported)
+        .filter((app) => scopedAppId == null || app.appId === scopedAppId);
       if (apps.length === 0) {
         // 没有任何 app 声明 references.searchEndpoint —— 搜索必空,日志便于排查。
         console.warn("[app-reference-search] no searchSupported apps", {
@@ -91,6 +122,7 @@ export function createAppReferenceListBackend(
               {
                 query,
                 ...(limit == null ? {} : { limit }),
+                ...(filters && filters.length > 0 ? { filters } : {}),
                 kinds: ["file"]
               }
             );
@@ -150,14 +182,17 @@ function appItemToProtocol(
   item: AppReferenceListItem,
   // 搜索结果归属标签的兜底(应用名);仅搜索拍平时传入,逐层 list(浏览)不需要。
   // 优先用 app 自报的所属项目名(reference.parentGroupLabel),缺省才回退到应用名。
-  appFallbackLabel?: string
+  appFallbackLabel?: string,
+  // app 图标:透传到分组节点,使「引用应用项目」的 bundle 带应用图标。
+  appIconUrl?: string
 ): ReferenceListItem {
   if (item.type === "group") {
     return {
       type: "group",
       id: `${APP_MARKER}${appId}${GROUP_MARKER}${base64UrlEncode(item.id)}`,
       displayName: item.displayName,
-      referenceCount: item.referenceCount
+      referenceCount: item.referenceCount,
+      ...(appIconUrl ? { iconUrl: appIconUrl } : {})
     };
   }
   const reference = item.reference;

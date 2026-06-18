@@ -1313,7 +1313,8 @@ function providerItemToAgentMentionItem(input: {
         compactText(presentation.subtitle) ||
         compactText(input.subtitle) ||
         undefined,
-      iconUrl: presentation.iconUrl?.trim() || undefined
+      iconUrl: presentation.iconUrl?.trim() || undefined,
+      referencesListSupported: presentation.referencesListSupported === "true"
     };
   }
   if (input.providerId === AGENT_SESSION_PROVIDER_ID) {

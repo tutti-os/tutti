@@ -378,6 +378,7 @@ test("desktop agent host api routes session commands through injected tuttid cli
           agentSessionId: "11111111-1111-4111-8111-111111111111",
           cwd: "/workspace",
           initialContent: [{ type: "text", text: "Build" }],
+          initialDisplayPrompt: null,
           model: "gpt-5",
           permissionModeId: "auto",
           planMode: false,
@@ -398,7 +399,7 @@ test("desktop agent host api routes session commands through injected tuttid cli
       args: [
         workspaceId,
         "11111111-1111-4111-8111-111111111111",
-        { content: [{ type: "text", text: "continue" }] }
+        { content: [{ type: "text", text: "continue" }], displayPrompt: null }
       ],
       method: "input"
     },
@@ -1125,6 +1126,7 @@ test("desktop agent host api resolves root cwd through tuttid workspace files", 
           agentSessionId: "33333333-3333-4333-8333-333333333333",
           cwd: "/Users/example/project/tutti",
           initialContent: [{ type: "text", text: "Build" }],
+          initialDisplayPrompt: null,
           model: null,
           permissionModeId: null,
           planMode: null,
@@ -1216,6 +1218,7 @@ test("desktop agent host api creates no-project session cwd under user Documents
           agentSessionId: "44444444-4444-4444-8444-444444444444",
           cwd: "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
           initialContent: [{ type: "text", text: "Scratch" }],
+          initialDisplayPrompt: null,
           model: null,
           permissionModeId: null,
           planMode: null,
@@ -2298,6 +2301,7 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
           agentSessionId: "55555555-5555-4555-8555-555555555555",
           cwd: "/workspace",
           initialContent: [{ type: "text", text: "Smoke" }],
+          initialDisplayPrompt: null,
           model: "gpt-5",
           permissionModeId: "auto",
           planMode: false,
@@ -2314,7 +2318,7 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
       args: [
         workspaceId,
         "55555555-5555-4555-8555-555555555555",
-        { content: [{ type: "text", text: "continue" }] }
+        { content: [{ type: "text", text: "continue" }], displayPrompt: null }
       ],
       method: "input"
     }

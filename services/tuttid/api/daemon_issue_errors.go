@@ -37,6 +37,22 @@ func writeListWorkspaceIssuesError(err error) tuttigenerated.ListWorkspaceIssues
 	}
 }
 
+func writeSearchWorkspaceIssueReferencesError(err error) tuttigenerated.SearchWorkspaceIssueReferencesResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.SearchWorkspaceIssueReferences400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.SearchWorkspaceIssueReferences404JSONResponse{WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr)}
+	case tuttigenerated.WorkspaceIssueResourceNotFound:
+		return tuttigenerated.SearchWorkspaceIssueReferences404JSONResponse{WorkspaceNotFoundErrorJSONResponse: tuttigenerated.WorkspaceNotFoundErrorJSONResponse(protocolErrorResponse(protocolErr))}
+	case tuttigenerated.ServiceUnavailable:
+		return tuttigenerated.SearchWorkspaceIssueReferences503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
+	default:
+		return tuttigenerated.SearchWorkspaceIssueReferences502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr)}
+	}
+}
+
 func writeListWorkspaceIssueTopicsError(err error) tuttigenerated.ListWorkspaceIssueTopicsResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {

@@ -5,6 +5,7 @@ import {
   FileTextIcon,
   FolderIcon,
   ImageFileIcon,
+  LocateFolderIcon,
   ProductIcon,
   StatusDot,
   VideoFileIcon,
@@ -288,7 +289,7 @@ function MentionOpenReferencesButton({
         onOpenReferences();
       }}
     >
-      <ProductIcon size={16} />
+      <LocateFolderIcon size={16} />
     </span>
   );
 }

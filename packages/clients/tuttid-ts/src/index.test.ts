@@ -13,6 +13,7 @@ import {
   type ApiErrorResponse,
   type AgentProviderComposerOptionsResponse,
   type AppReferenceListResponse,
+  type IssueManagerReferenceSearchResponse,
   type ListWorkspacesResponse,
   type WorkspaceFilePreviewResponse
 } from "./index.ts";
@@ -375,6 +376,66 @@ test("shared tuttid client lists workspace app references with exact body", asyn
     ],
     nextCursor: null
   } satisfies AppReferenceListResponse);
+});
+
+test("shared tuttid client searches workspace issue references with exact body", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+  let requestBody: unknown;
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+      requestBody = await request.json();
+
+      return new Response(
+        JSON.stringify({
+          workspaceId: "ws-1",
+          items: [
+            {
+              issueTitle: "Ship landing page",
+              output: {
+                outputId: "out-1",
+                runId: "run-1",
+                taskId: "task-1",
+                issueId: "issue-1",
+                workspaceId: "ws-1",
+                path: "/ws/out/login.html",
+                displayName: "login.html",
+                mediaType: "text/html",
+                sizeBytes: 1024,
+                createdAtUnix: 1700
+              }
+            }
+          ]
+        } satisfies IssueManagerReferenceSearchResponse),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  const response = await client.searchWorkspaceIssueReferences("ws-1", {
+    query: "login",
+    limit: 20,
+    issueId: "issue-1"
+  });
+
+  assert.equal(requestMethod, "POST");
+  assert.equal(requestPath, "/v1/workspaces/ws-1/issue-references/search");
+  assert.deepEqual(requestBody, {
+    query: "login",
+    limit: 20,
+    issueId: "issue-1"
+  });
+  assert.equal(response.items.length, 1);
+  assert.equal(response.items[0]?.issueTitle, "Ship landing page");
+  assert.equal(response.items[0]?.output.displayName, "login.html");
 });
 
 test("shared tuttid client deletes user projects with bearer auth", async () => {

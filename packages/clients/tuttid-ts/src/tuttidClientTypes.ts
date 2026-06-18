@@ -45,6 +45,8 @@ import type {
   IssueManagerIssue,
   IssueManagerIssueDetailResponse,
   IssueManagerIssueListResponse,
+  IssueManagerReferenceSearchRequest,
+  IssueManagerReferenceSearchResponse,
   IssueManagerRun,
   IssueManagerRunEnvelope,
   IssueManagerRunListResponse,
@@ -246,6 +248,10 @@ export interface TuttidClient {
     workspaceID: string,
     issueID: string
   ): Promise<IssueManagerIssueDetailResponse>;
+  searchWorkspaceIssueReferences(
+    workspaceID: string,
+    request: IssueManagerReferenceSearchRequest
+  ): Promise<IssueManagerReferenceSearchResponse>;
   getWorkspaceIssueTaskDetail(
     workspaceID: string,
     issueID: string,
@@ -542,6 +548,8 @@ export interface TuttidClient {
     request: {
       includeHidden?: boolean;
       includeKinds?: WorkspaceFileFilterKind[];
+      /** 已选文件类型筛选分类 id(全局统一口径);query 可空、filters 非空时即「仅按类型查」。 */
+      filters?: string[];
       limit?: number;
       query: string;
     },

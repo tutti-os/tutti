@@ -524,6 +524,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		}
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/issue-references/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.SearchWorkspaceIssueReferences(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/issue-topics", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

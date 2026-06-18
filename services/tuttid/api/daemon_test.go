@@ -487,6 +487,24 @@ func TestDaemonAPIGeneratedRoutesWorkspaceTerminalsReturnServiceUnavailable(t *t
 	)
 }
 
+func TestDaemonAPIGeneratedRoutesSearchWorkspaceIssueReferencesReturnServiceUnavailable(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/ws-1/issue-references/search", map[string]any{"query": "login"})
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusServiceUnavailable, recorder.Body.String())
+	}
+
+	assertGeneratedRouteError(
+		t,
+		recorder,
+		tuttigenerated.ServiceUnavailable,
+		apierrors.ReasonWorkspaceIssueServiceUnavailable,
+		"workspace issue-manager service is unavailable",
+	)
+}
+
 func TestDaemonAPIGeneratedRoutesAgentSessionsReturnServiceUnavailable(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{}))

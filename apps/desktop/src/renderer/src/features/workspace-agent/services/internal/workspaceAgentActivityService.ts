@@ -271,6 +271,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
             agentSessionId: requestedAgentSessionId,
             cwd: resolvedCwd?.cwd ?? null,
             initialContent: input.initialContent ?? [],
+            initialDisplayPrompt: input.initialDisplayPrompt ?? null,
             model: input.settings?.model ?? null,
             planMode: input.settings?.planMode ?? null,
             permissionModeId: resolveComposerPermissionMode(input.settings),

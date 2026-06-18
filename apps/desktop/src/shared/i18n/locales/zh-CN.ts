@@ -123,7 +123,7 @@ export const zhCN = {
     },
     referenceSources: {
       appSourceLabel: "应用",
-      issueSourceLabel: "议题",
+      issueSourceLabel: "任务",
       localSourceLabel: "本地",
       sidebarDesktop: "桌面",
       sidebarDocuments: "文稿",

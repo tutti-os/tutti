@@ -127,6 +127,8 @@ export interface AgentGUIComposerSettingsVM {
 export interface AgentGUIQueuedPromptVM {
   id: string;
   content: AgentPromptContentBlock[];
+  /** 仅展示用文本(bundle 折叠成一个 chip);content 仍带展开后的文件。 */
+  displayPrompt?: string;
   createdAtUnixMs: number;
 }
 

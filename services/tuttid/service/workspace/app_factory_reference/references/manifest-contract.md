@@ -166,6 +166,7 @@ Request:
   "limit": 20,
   "cursor": "opaque-next-page-token",
   "kinds": ["file"],
+  "filters": ["image", "document"],
   "timeRange": {
     "fromMs": 1710000000000,
     "toMs": 1710259200000
@@ -173,11 +174,12 @@ Request:
 }
 ```
 
-- `query` is required, non-empty, and already trimmed by Tutti. Match it recursively across all groups and nested references; never restrict it to the root or a single `parentGroupId`.
+- `query` is already trimmed by Tutti. It may be **empty when `filters` is non-empty** ("filter-only" search): in that case return all references matching the filters, ordered by recency. When `query` is non-empty, match it recursively across all groups and nested references; never restrict it to the root or a single `parentGroupId`.
 - There is no `parentGroupId`: search always spans the whole app.
 - `limit` is clamped by Tutti to `1..50`.
 - `cursor` is optional and opaque to Tutti.
 - v1 only sends `kinds: ["file"]`.
+- `filters` is an optional array of **global file-type category ids** (`image`, `document`, `spreadsheet`, `code`, `media`, `archive`, `other`). When present, return only file references whose name/type falls into one of the listed categories (OR semantics). Map each id to its file extensions; `other` = files with no recognized extension. Ignore unknown ids. Filtering and search are a single capability — `query` and `filters` combine, and either alone is a valid query.
 - `timeRange` is optional with the same inclusive `mtimeMs` semantics as the list protocol.
 
 Response:

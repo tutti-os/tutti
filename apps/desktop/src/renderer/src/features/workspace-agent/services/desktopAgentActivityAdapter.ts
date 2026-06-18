@@ -90,6 +90,7 @@ export function createDesktopAgentActivityAdapter({
             createDesktopAgentActivitySessionId(),
           cwd: input.cwd ?? null,
           initialContent: input.initialContent ?? [],
+          initialDisplayPrompt: input.initialDisplayPrompt ?? null,
           model: input.model ?? null,
           planMode: input.planMode ?? null,
           permissionModeId: input.permissionModeId ?? null,
@@ -107,7 +108,8 @@ export function createDesktopAgentActivityAdapter({
         input.workspaceId,
         input.agentSessionId,
         {
-          content: input.content
+          content: input.content,
+          displayPrompt: input.displayPrompt ?? null
         }
       );
       return agentActivitySessionFromTuttidSession(input.workspaceId, session);

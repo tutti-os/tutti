@@ -22,12 +22,14 @@ export function createIssueReferenceSource(input: {
     sourceId: ISSUE_SOURCE_ID,
     label: input.label,
     order: input.order ?? 2,
+    // 二级分组(各议题)用「事项」应用图标作为兜底,替代默认文件夹图标。
+    icon: "issue",
     capabilities: {
-      searchable: false,
+      searchable: true,
       previewable: true,
       paginated: true,
       navigable: true,
-      typeFilterable: true
+      filterable: true
     },
     isAvailable: () => true,
     backend: createIssueReferenceListBackend(input.tuttidClient),

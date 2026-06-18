@@ -837,7 +837,8 @@ function MentionLink({
         activateMarkdownLinkFromKey(event, href, onLinkClick);
       }}
     >
-      {mention.kind === "workspace-app" ? (
+      {mention.kind === "workspace-app" ||
+      mention.kind === "workspace-app-bundle" ? (
         <span
           className="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-[4px] bg-block"
           aria-hidden="true"
@@ -880,6 +881,13 @@ function MentionLink({
       ) : (
         <span className="tsh-agent-object-token__main">{mention.label}</span>
       )}
+      {mention.kind === "workspace-app-bundle" &&
+      mention.fileCount != null &&
+      mention.fileCount >= 0 ? (
+        <span className="shrink-0 tabular-nums text-[var(--text-secondary)]">
+          {mention.fileCount}
+        </span>
+      ) : null}
     </a>
   );
 }
@@ -1472,6 +1480,7 @@ function markdownUrlTransform(value: string): string {
 type MentionKind =
   | "session"
   | "workspace-app"
+  | "workspace-app-bundle"
   | "workspace-app-factory"
   | "workspace-issue";
 
@@ -1482,6 +1491,8 @@ interface ParsedMentionLink {
   iconUrl?: string;
   participant: string;
   summary: string;
+  /** bundle 文件数量(workspace-app-bundle 专用)。 */
+  fileCount?: number;
 }
 
 function parseMentionLink(
@@ -1505,14 +1516,17 @@ function parseMentionLink(
       ? "session"
       : resource === "workspace-app"
         ? "workspace-app"
-        : resource === "workspace-app-factory"
-          ? "workspace-app-factory"
-          : resource === "workspace-issue"
-            ? "workspace-issue"
-            : resource;
+        : resource === "workspace-app-bundle"
+          ? "workspace-app-bundle"
+          : resource === "workspace-app-factory"
+            ? "workspace-app-factory"
+            : resource === "workspace-issue"
+              ? "workspace-issue"
+              : resource;
   if (
     kind !== "session" &&
     kind !== "workspace-app" &&
+    kind !== "workspace-app-bundle" &&
     kind !== "workspace-app-factory" &&
     kind !== "workspace-issue"
   ) {
@@ -1548,6 +1562,16 @@ function parseMentionLink(
       summary: ""
     };
   }
+  if (kind === "workspace-app-bundle") {
+    return {
+      kind,
+      label,
+      iconUrl: url.searchParams.get("icon")?.trim() || undefined,
+      fileCount: bundleFileCountFromParam(url.searchParams.get("files")),
+      participant: label,
+      summary: ""
+    };
+  }
   if (kind === "workspace-issue") {
     return {
       kind,
@@ -1563,6 +1587,18 @@ function parseMentionLink(
     participant: sessionLabel.participant,
     summary: sessionLabel.summary
   };
+}
+
+function bundleFileCountFromParam(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.length : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function hasLegacyMentionQueryParams(url: URL): boolean {

@@ -18,6 +18,20 @@ describe("AgentMessageMarkdown", () => {
     resetCachedMarkdownImagesForTests();
   });
 
+  it("renders an app bundle mention as one chip with the file count", () => {
+    const files = encodeURIComponent(JSON.stringify(["/p/a", "/p/b", "/p/c"]));
+    const href = `mention://workspace-app-bundle/app1?files=${files}&icon=${encodeURIComponent("https://x.png")}&workspaceId=ws1`;
+    render(
+      <AgentMessageMarkdown content={`[@我的小项目](${href}) 里面有啥`} />
+    );
+    const chip = screen.getByRole("link", { name: "我的小项目" });
+    expect(chip).toHaveAttribute(
+      "data-agent-mention-kind",
+      "workspace-app-bundle"
+    );
+    expect(chip).toHaveTextContent("3");
+  });
+
   it("renders markdown links, inline code, and lists", () => {
     const { container } = render(
       <AgentMessageMarkdown

@@ -104,7 +104,7 @@ func TestDaemonAPIGeneratedRoutesListWorkspaceAppReferencesRejectsInvalidRequest
 		},
 		{
 			name: "limit above maximum",
-			body: map[string]any{"limit": 51},
+			body: map[string]any{"limit": 201},
 		},
 		{
 			name: "cursor too long",

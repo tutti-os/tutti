@@ -15,8 +15,21 @@ type Resolver struct {
 	LookPath         func(string) (string, error)
 }
 
+// nestingGuardEnvKeys are the environment variables a parent Claude Code
+// session exports to detect (and refuse) nested launches. When tuttid itself
+// runs inside a Claude Code session these leak into spawned ACP agents, causing
+// a child `claude` to abort with "cannot be launched inside another Claude Code
+// session". They are stripped from the base environment so each spawned agent
+// starts as a fresh session; they are CLAUDE-specific and harmless to other runtimes.
+var nestingGuardEnvKeys = []string{
+	"CLAUDECODE",
+	"CLAUDE_CODE_ENTRYPOINT",
+	"CLAUDE_CODE_SESSION_ID",
+	"CLAUDE_CODE_CHILD_SESSION",
+}
+
 func (r Resolver) Env(overrides []string) []string {
-	baseEnv := r.environ()
+	baseEnv := stripEnvKeys(r.environ(), nestingGuardEnvKeys)
 	env := append(baseEnv, overrides...)
 	pathKey := pathEnvKey(env)
 	pathGroups := [][]string{}
@@ -230,6 +243,30 @@ func envValueFrom(env []string, key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func stripEnvKeys(env []string, keys []string) []string {
+	if len(keys) == 0 {
+		return env
+	}
+	next := make([]string, 0, len(env))
+	for _, item := range env {
+		candidateKey, _, ok := strings.Cut(item, "=")
+		if ok {
+			drop := false
+			for _, key := range keys {
+				if strings.EqualFold(candidateKey, key) {
+					drop = true
+					break
+				}
+			}
+			if drop {
+				continue
+			}
+		}
+		next = append(next, item)
+	}
+	return next
 }
 
 func setEnvValue(env []string, key string, value string) []string {

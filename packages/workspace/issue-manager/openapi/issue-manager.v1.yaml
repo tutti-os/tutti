@@ -189,6 +189,45 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issue-references/search:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: searchWorkspaceIssueReferences
+      tags:
+        - issue
+      summary: Search issue-manager output files across one workspace
+      description: >
+        Searches the produced output files of issue-manager runs by file name
+        across one workspace. Optional issueId / topicId scope the search to one
+        issue or topic. Returns a flat, recency-ordered list of file references
+        (deduplicated by path) each annotated with its owning issue title; it
+        never returns groups.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueManagerReferenceSearchRequest"
+      responses:
+        "200":
+          description: Workspace issue reference search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueManagerReferenceSearchResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/issues/{issueID}:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -1194,6 +1233,67 @@ components:
           type: integer
           format: int64
           minimum: 0
+    IssueManagerReferenceSearchRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          maxLength: 200
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+        filters:
+          type: array
+          description: >-
+            已选「文件类型筛选分类」id(全局统一口径:image/document/spreadsheet/
+            code/media/archive/other)。筛选与搜索是同一能力:query 可空、filters
+            非空时即按类型查。空/缺省 = 不按类型过滤。
+          items:
+            type: string
+        issueId:
+          type: string
+          nullable: true
+          description: >
+            Optional. Limit the search to output files produced by this issue.
+        topicId:
+          type: string
+          nullable: true
+          description: >
+            Optional. Limit the search to output files produced by issues under
+            this topic. Ignored when issueId is set.
+    IssueManagerReferenceSearchResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - items
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        items:
+          type: array
+          description: >
+            Flat, recency-ordered list of output file references. Search never
+            returns group items.
+          items:
+            $ref: "#/components/schemas/IssueManagerReferenceSearchHit"
+    IssueManagerReferenceSearchHit:
+      type: object
+      additionalProperties: false
+      required:
+        - output
+        - issueTitle
+      properties:
+        output:
+          $ref: "#/components/schemas/IssueManagerRunOutput"
+        issueTitle:
+          type: string
+          description: Title of the issue that produced this output file.
     IssueManagerRunOutput:
       type: object
       additionalProperties: false

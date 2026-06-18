@@ -48,7 +48,7 @@ function makeSource(byParent: Record<string, ReferenceListResult>) {
       previewable: true,
       paginated: true,
       navigable: true,
-      typeFilterable: true
+      filterable: true
     },
     isAvailable: () => true,
     backend,
@@ -164,7 +164,7 @@ test("locateTarget:把 backend 分组 id 路径编成 NodeRef,且与 listChildre
       previewable: true,
       paginated: true,
       navigable: true,
-      typeFilterable: true
+      filterable: true
     },
     isAvailable: () => true,
     adapter: fakeAdapter,

@@ -164,6 +164,9 @@ function createTransportClient(
     async getWorkspaceIssueDetail() {
       throw new Error("not used");
     },
+    async searchWorkspaceIssueReferences() {
+      throw new Error("not used");
+    },
     async getWorkspaceIssueTaskDetail() {
       throw new Error("not used");
     },

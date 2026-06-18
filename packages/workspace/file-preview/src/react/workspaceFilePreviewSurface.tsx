@@ -85,7 +85,7 @@ export function WorkspaceFilePreviewSurface<TEntry>({
     case "error":
       return (
         <WorkspaceFilePreviewFrame className={frameClassName}>
-          <div className="space-y-3 px-4 text-center text-[13px] text-[var(--text-tertiary)]">
+          <div className="flex flex-col items-center justify-center gap-3 px-4 text-center text-[13px] text-[var(--text-tertiary)]">
             {renderIcon(state.entry)}
             <span className={messageClassName}>{state.message}</span>
           </div>

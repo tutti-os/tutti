@@ -133,6 +133,60 @@ test("workspace app mention provider prefers App Center icons over base icons", 
   );
 });
 
+test("workspace app mention provider threads reference capability into presentation", async () => {
+  const provider = createDesktopWorkspaceAppMentionProvider({
+    apps: [
+      createWorkspaceApp({
+        appId: "vibe-design",
+        name: "Vibe Design",
+        references: { listSupported: true }
+      }),
+      createWorkspaceApp({
+        appId: "agent-claude-code",
+        name: "Claude Code",
+        references: { listSupported: false }
+      })
+    ],
+    baseProvider: createBaseWorkspaceAppProvider([
+      { appId: "vibe-design", label: "Vibe Design" },
+      { appId: "agent-claude-code", label: "Claude Code" }
+    ]),
+    locale: "en",
+    workspaceId: "workspace-1"
+  });
+
+  const items = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "",
+    maxResults: 10
+  });
+
+  const referenceable = items.find((item) => item.appId === "vibe-design");
+  const nonReferenceable = items.find(
+    (item) => item.appId === "agent-claude-code"
+  );
+  assert.ok(referenceable);
+  assert.ok(nonReferenceable);
+  assert.equal(referenceable.referencesListSupported, true);
+  assert.equal(nonReferenceable.referencesListSupported, false);
+
+  // Supported apps advertise the capability so the @ panel renders the
+  // "view artifact files" entry; unsupported apps omit it entirely.
+  const referenceableInsert = provider.toInsertResult(referenceable);
+  assert.equal(referenceableInsert.kind, "mention");
+  assert.equal(
+    referenceableInsert.mention.presentation?.referencesListSupported,
+    "true"
+  );
+  const nonReferenceableInsert = provider.toInsertResult(nonReferenceable);
+  assert.equal(nonReferenceableInsert.kind, "mention");
+  assert.equal(
+    nonReferenceableInsert.mention.presentation?.referencesListSupported,
+    undefined
+  );
+});
+
 test("workspace app mention provider uses base icons without App Center metadata", async () => {
   const provider = createDesktopWorkspaceAppMentionProvider({
     apps: [],

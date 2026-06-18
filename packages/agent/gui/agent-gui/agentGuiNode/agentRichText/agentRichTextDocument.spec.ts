@@ -4,6 +4,7 @@ import {
   plainTextToAgentRichTextDoc,
   plainTextToAgentRichTextInlineContent
 } from "./agentRichTextDocument";
+import { buildAgentWorkspaceAppBundleMentionHref } from "./agentFileMentionExtension";
 
 describe("agentRichTextDocument", () => {
   it("round-trips plain text and newlines", () => {
@@ -81,7 +82,8 @@ describe("agentRichTextDocument", () => {
                 href: "/workspace/a b\\c).md",
                 kind: "file",
                 entryKind: "unknown",
-                directoryPath: "/workspace"
+                directoryPath: "/workspace",
+                thumbnailUrl: ""
               }
             },
             { type: "hardBreak" },
@@ -93,13 +95,34 @@ describe("agentRichTextDocument", () => {
                 href: "/workspace/docs",
                 kind: "file",
                 entryKind: "unknown",
-                directoryPath: "/workspace"
+                directoryPath: "/workspace",
+                thumbnailUrl: ""
               }
             }
           ]
         }
       ]
     });
+  });
+
+  it("hydrates an app bundle mention with filesJson so the file count renders", () => {
+    // 回归:对话流里的用户气泡用 AgentRichTextReadonly 渲染,bundle chip 的
+    // 「N 个文件」角标取自 node attr filesJson —— 解析时必须从 href 的 files 还原。
+    const files = [
+      { path: "/proj/a.ts", name: "a.ts" },
+      { path: "/proj/b.ts", name: "b.ts" },
+      { path: "/proj/c.ts", name: "c.ts" }
+    ];
+    const href = buildAgentWorkspaceAppBundleMentionHref(
+      "ws1",
+      "node-123",
+      files,
+      "https://x.png"
+    );
+    const doc = plainTextToAgentRichTextDoc(`[@我的小项目](${href})`);
+    const mention = doc.content?.[0]?.content?.[0];
+    expect(mention?.attrs?.kind).toBe("workspace-app-bundle");
+    expect(JSON.parse(String(mention?.attrs?.filesJson))).toHaveLength(3);
   });
 
   it("round-trips session and issue mentions as typed mention nodes", () => {
@@ -129,7 +152,10 @@ describe("agentRichTextDocument", () => {
                 title: "wang jomes · Codex · 看看项目有什么文件",
                 scope: "collab_sessions",
                 initiatorName: "",
-                agentName: ""
+                agentName: "",
+                status: "",
+                inputPreview: "",
+                summaryPreview: ""
               }
             },
             { type: "hardBreak" },
@@ -141,8 +167,12 @@ describe("agentRichTextDocument", () => {
                 href: "mention://workspace-issue/issue-1?workspaceId=room-1",
                 workspaceId: "room-1",
                 targetId: "issue-1",
+                topicId: "",
                 name: "修复 room status 批量接口",
-                title: "修复 room status 批量接口"
+                title: "修复 room status 批量接口",
+                creatorName: "",
+                status: "",
+                contentPreview: ""
               }
             }
           ]
@@ -174,8 +204,8 @@ describe("agentRichTextDocument", () => {
                 targetId: "create",
                 jobId: "",
                 name: "Create App",
-                action: undefined,
-                contextPath: undefined
+                action: "",
+                contextPath: ""
               }
             },
             { type: "text", text: " Create a weather app." }

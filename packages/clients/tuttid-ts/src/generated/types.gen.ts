@@ -348,6 +348,10 @@ export type AppReferenceSearchRequest = {
   limit?: number;
   cursor?: string | null;
   kinds?: Array<AppReferenceKind>;
+  /**
+   * 已选「文件类型筛选分类」id(全局统一口径)。筛选与搜索是同一能力:query 可空、filters 非空时即按类型查。空/缺省 = 不按类型过滤。
+   */
+  filters?: Array<string>;
   timeRange?: AppReferenceListTimeRange;
 };
 
@@ -961,6 +965,10 @@ export type CreateWorkspaceAgentSessionRequest = {
   agentSessionId: string;
   provider: WorkspaceAgentProvider;
   initialContent: Array<AgentPromptContentBlock>;
+  /**
+   * Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
+   */
+  initialDisplayPrompt?: string | null;
   title?: string | null;
   cwd?: string | null;
   permissionModeId?: string | null;
@@ -974,6 +982,10 @@ export type CreateWorkspaceAgentSessionRequest = {
 
 export type SendWorkspaceAgentSessionInputRequest = {
   content: Array<AgentPromptContentBlock>;
+  /**
+   * Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
+   */
+  displayPrompt?: string | null;
 };
 
 export type AgentPromptContentBlock = {
@@ -1384,6 +1396,42 @@ export type IssueManagerRun = {
   updatedAtUnix: number;
 };
 
+export type IssueManagerReferenceSearchRequest = {
+  query: string;
+  limit?: number;
+  /**
+   * 已选「文件类型筛选分类」id(全局统一口径:image/document/spreadsheet/ code/media/archive/other)。筛选与搜索是同一能力:query 可空、filters 非空时即按类型查。空/缺省 = 不按类型过滤。
+   */
+  filters?: Array<string>;
+  /**
+   * Optional. Limit the search to output files produced by this issue.
+   *
+   */
+  issueId?: string | null;
+  /**
+   * Optional. Limit the search to output files produced by issues under this topic. Ignored when issueId is set.
+   *
+   */
+  topicId?: string | null;
+};
+
+export type IssueManagerReferenceSearchResponse = {
+  workspaceId: string;
+  /**
+   * Flat, recency-ordered list of output file references. Search never returns group items.
+   *
+   */
+  items: Array<IssueManagerReferenceSearchHit>;
+};
+
+export type IssueManagerReferenceSearchHit = {
+  output: IssueManagerRunOutput;
+  /**
+   * Title of the issue that produced this output file.
+   */
+  issueTitle: string;
+};
+
 export type IssueManagerRunOutput = {
   outputId: string;
   runId: string;
@@ -1609,6 +1657,11 @@ export type WorkspaceFileSearchLimit = number;
 export type WorkspaceFileRecentLimit = number;
 
 export type WorkspaceFileSearchKinds = Array<WorkspaceFileFilterKind>;
+
+/**
+ * 已选「文件类型筛选分类」id(全局统一口径:image/document/spreadsheet/ code/media/archive/other)。筛选与搜索是同一能力:query 可空、filters 非空时即按类型 list-all。空/缺省 = 不按类型过滤。
+ */
+export type WorkspaceFileSearchFilters = Array<string>;
 
 export type TerminalId = string;
 
@@ -5141,6 +5194,10 @@ export type SearchWorkspaceFilesData = {
     query: string;
     limit?: number;
     includeKinds?: Array<WorkspaceFileFilterKind>;
+    /**
+     * 已选「文件类型筛选分类」id(全局统一口径:image/document/spreadsheet/ code/media/archive/other)。筛选与搜索是同一能力:query 可空、filters 非空时即按类型 list-all。空/缺省 = 不按类型过滤。
+     */
+    filters?: Array<string>;
     includeHidden?: boolean;
   };
   url: "/v1/workspaces/{workspaceID}/files/search";
@@ -5993,6 +6050,55 @@ export type CreateWorkspaceIssueResponses = {
 
 export type CreateWorkspaceIssueResponse =
   CreateWorkspaceIssueResponses[keyof CreateWorkspaceIssueResponses];
+
+export type SearchWorkspaceIssueReferencesData = {
+  body: IssueManagerReferenceSearchRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issue-references/search";
+};
+
+export type SearchWorkspaceIssueReferencesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SearchWorkspaceIssueReferencesError =
+  SearchWorkspaceIssueReferencesErrors[keyof SearchWorkspaceIssueReferencesErrors];
+
+export type SearchWorkspaceIssueReferencesResponses = {
+  /**
+   * Workspace issue reference search results
+   */
+  200: IssueManagerReferenceSearchResponse;
+};
+
+export type SearchWorkspaceIssueReferencesResponse =
+  SearchWorkspaceIssueReferencesResponses[keyof SearchWorkspaceIssueReferencesResponses];
 
 export type DeleteWorkspaceIssueData = {
   body?: never;

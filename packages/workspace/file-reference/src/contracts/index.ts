@@ -93,6 +93,8 @@ export interface WorkspaceFileReferenceAdapter {
     input: WorkspaceFileReferenceScope & {
       limit?: number;
       query: string;
+      /** 已选文件类型筛选分类 id;query 可空、filters 非空时即「仅按类型查」。 */
+      filters?: string[];
       signal?: AbortSignal;
     }
   ): Promise<WorkspaceFileReference[]>;

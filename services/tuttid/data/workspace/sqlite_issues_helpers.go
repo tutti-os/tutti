@@ -327,6 +327,18 @@ func scanWorkspaceIssueRunOutput(scanner issueScanner) (workspaceissues.RunOutpu
 	return item, err
 }
 
+func scanWorkspaceIssueRunOutputSearchHit(scanner issueScanner) (workspaceissues.RunOutputSearchHit, error) {
+	var hit workspaceissues.RunOutputSearchHit
+	var id int64
+	err := scanner.Scan(
+		&id, &hit.Output.OutputID, &hit.Output.RunID, &hit.Output.TaskID, &hit.Output.IssueID, &hit.Output.WorkspaceID,
+		&hit.Output.Path, &hit.Output.DisplayName, &hit.Output.MediaType, &hit.Output.SizeBytes, &hit.Output.CreatedAtUnixMS,
+		&hit.IssueTitle,
+	)
+	hit.Output.ID = uint64(id)
+	return hit, err
+}
+
 func rowsWereAffected(result sql.Result, operation string) (bool, error) {
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {

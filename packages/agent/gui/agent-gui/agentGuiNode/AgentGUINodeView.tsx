@@ -21,7 +21,8 @@ import type {
 } from "@tutti-os/workspace-file-reference/contracts";
 import {
   ReferenceSourcePicker,
-  WorkspaceFileReferencePicker
+  WorkspaceFileReferencePicker,
+  type ReferenceGroupedSelection
 } from "@tutti-os/workspace-file-reference/ui";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import {
@@ -91,7 +92,8 @@ import {
   type AgentComposerProps,
   type AgentComposerPromptTip,
   type AgentComposerSlashStatusLimit,
-  type AgentComposerSlashStatus
+  type AgentComposerSlashStatus,
+  type WorkspaceReferencePickResult
 } from "./AgentComposer";
 import type { AgentActivityUsage } from "@tutti-os/agent-activity-core";
 import {
@@ -114,7 +116,16 @@ import {
 } from "./agentGuiNodeViewConversation";
 import styles from "./AgentGUINode.styles";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
-import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
+import {
+  buildAgentWorkspaceAppBundleMentionHref,
+  type AgentContextMentionItem,
+  type AgentMentionWorkspaceAppBundleItem
+} from "./agentRichText/agentFileMentionExtension";
+
+function referenceBasename(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts.length > 0 ? (parts[parts.length - 1] ?? path) : path;
+}
 
 /**
  * 把 @ 面板里的事项/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。
@@ -383,7 +394,10 @@ interface AgentGUINodeViewProps {
   actions: {
     createConversation: (options?: { projectPath?: string | null }) => void;
     selectConversation: (agentSessionId: string) => void;
-    submitPrompt: (content: AgentPromptContentBlock[]) => void;
+    submitPrompt: (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string
+    ) => void;
     submitCompact: () => Promise<void> | void;
     dismissUsageAlert: () => void;
     showPromptImagesUnsupported: () => void;
@@ -828,18 +842,24 @@ export function AgentGUINodeView({
     setLocalComposerFocusRequestSequence
   ] = useState(0);
   const workspaceReferencePickerResolverRef = useRef<
-    ((refs: WorkspaceFileReference[]) => void) | null
+    ((result: WorkspaceReferencePickResult) => void) | null
   >(null);
+  const emptyReferencePickResult: WorkspaceReferencePickResult = useMemo(
+    () => ({ files: [], mentionItems: [] }),
+    []
+  );
   const requestWorkspaceReferences = useCallback(
-    async (entity?: AgentContextMentionItem | null) => {
+    async (
+      entity?: AgentContextMentionItem | null
+    ): Promise<WorkspaceReferencePickResult> => {
       if (previewMode) {
-        return [];
+        return emptyReferencePickResult;
       }
       if (
         (!workspaceFileReferenceAdapter && !referenceSourceAggregator) ||
         !workspaceFileReferenceCopy
       ) {
-        return [];
+        return emptyReferencePickResult;
       }
       // 仅多源 picker(referenceSourceAggregator)支持定位;本地 picker 不支持。
       const target =
@@ -848,11 +868,12 @@ export function AgentGUINodeView({
           : null;
       setWorkspaceReferencePickerTarget(target);
       setWorkspaceReferencePickerOpen(true);
-      return await new Promise<WorkspaceFileReference[]>((resolve) => {
+      return await new Promise<WorkspaceReferencePickResult>((resolve) => {
         workspaceReferencePickerResolverRef.current = resolve;
       });
     },
     [
+      emptyReferencePickResult,
       previewMode,
       referenceSourceAggregator,
       resolveMentionReferenceTarget,
@@ -861,22 +882,68 @@ export function AgentGUINodeView({
     ]
   );
   const closeWorkspaceReferencePicker = useCallback(() => {
-    workspaceReferencePickerResolverRef.current?.([]);
+    workspaceReferencePickerResolverRef.current?.(emptyReferencePickResult);
     workspaceReferencePickerResolverRef.current = null;
     setWorkspaceReferencePickerOpen(false);
     setWorkspaceReferencePickerTarget(null);
-  }, []);
-  const confirmWorkspaceReferencePicker = useCallback(
-    (refs: WorkspaceFileReference[]) => {
-      workspaceReferencePickerResolverRef.current?.(refs);
+  }, [emptyReferencePickResult]);
+  const settleReferencePicker = useCallback(
+    (
+      result: WorkspaceReferencePickResult,
+      addedFiles: WorkspaceFileReference[]
+    ) => {
+      workspaceReferencePickerResolverRef.current?.(result);
       workspaceReferencePickerResolverRef.current = null;
       setWorkspaceReferencePickerOpen(false);
       setWorkspaceReferencePickerTarget(null);
-      if (refs.length > 0) {
-        void onWorkspaceFileReferencesAdded?.(refs);
+      if (addedFiles.length > 0) {
+        void onWorkspaceFileReferencesAdded?.(addedFiles);
       }
     },
     [onWorkspaceFileReferencesAdded]
+  );
+  const confirmWorkspaceReferencePicker = useCallback(
+    (refs: WorkspaceFileReference[]) => {
+      settleReferencePicker({ files: refs, mentionItems: [] }, refs);
+    },
+    [settleReferencePicker]
+  );
+  // 「文件夹=一个 bundle 节点」确认:navigable 源文件夹折叠成 bundle mention item,
+  // 松散文件仍按 file mention 插入。
+  const confirmWorkspaceReferenceBundles = useCallback(
+    (result: ReferenceGroupedSelection) => {
+      // 文件夹折叠成 bundle mention item;空项目(无产物 / app 未运行)同样保留,
+      // 渲染成 icon + 项目名 + count(0);agent 序列化退回单条 @项目名 链接,
+      // 不会再留下空白节点(见 formatAgentMentionMarkdown 的空 bundle 分支)。
+      const mentionItems: AgentMentionWorkspaceAppBundleItem[] =
+        result.bundles.map((bundle) => {
+          const files = bundle.files.map((file) => ({
+            path: file.path,
+            name: file.displayName?.trim() || referenceBasename(file.path)
+          }));
+          const bundleIconUrl = bundle.iconUrl ?? undefined;
+          return {
+            kind: "workspace-app-bundle",
+            href: buildAgentWorkspaceAppBundleMentionHref(
+              viewModel.workspaceId,
+              bundle.nodeId,
+              files,
+              bundleIconUrl
+            ),
+            workspaceId: viewModel.workspaceId,
+            targetId: bundle.nodeId,
+            name: bundle.displayName,
+            iconUrl: bundleIconUrl,
+            files
+          };
+        });
+      const addedFiles = [
+        ...result.files,
+        ...result.bundles.flatMap((bundle) => bundle.files)
+      ];
+      settleReferencePicker({ files: result.files, mentionItems }, addedFiles);
+    },
+    [settleReferencePicker, viewModel.workspaceId]
   );
   const openclawGateway =
     viewModel.openclawGateway ??
@@ -1169,6 +1236,7 @@ export function AgentGUINodeView({
           workspaceId={viewModel.workspaceId}
           onClose={closeWorkspaceReferencePicker}
           onConfirm={confirmWorkspaceReferencePicker}
+          onConfirmBundles={confirmWorkspaceReferenceBundles}
         />
       ) : (
         <WorkspaceFileReferencePicker
@@ -1207,7 +1275,7 @@ interface AgentGUIDetailPaneProps {
   onRequestWorkspaceReferences?:
     | ((
         entity?: AgentContextMentionItem | null
-      ) => Promise<WorkspaceFileReference[]>)
+      ) => Promise<WorkspaceReferencePickResult>)
     | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];

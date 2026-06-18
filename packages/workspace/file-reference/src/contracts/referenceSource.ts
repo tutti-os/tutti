@@ -69,9 +69,21 @@ export interface ListChildrenResult {
 
 export interface SearchInput {
   query: string;
+  /**
+   * 已选「文件类型筛选分类」id 数组(全局统一口径,见 core/referenceFilterCategories)。
+   * 筛选与搜索在底层是同一能力:query 可空、filters 非空时即「仅按类型查」。
+   * 空数组/缺省 = 不按类型过滤。各源把它下钻到 daemon 真正过滤。
+   */
+  filters?: string[];
   cursor?: string | null;
   limit?: number;
   signal?: AbortSignal;
+  /**
+   * 可选:把搜索限定在该源内某个二级分组(左栏选中的「分组节点」nodeId,源内不透明)。
+   * 缺省/null = 跨整源搜索(历史行为)。例如应用产物源传入选中 app 的分组节点,
+   * 即「只搜该应用」而非所有应用。源自行解释此 nodeId;不支持的源可忽略。
+   */
+  withinNodeId?: string | null;
 }
 
 export interface SearchResult {
@@ -120,8 +132,11 @@ export interface ReferenceSourceCapabilities {
   paginated: boolean;
   /** 是否展示左侧分组导航(master-detail)。本地源 false;应用/任务源 true。 */
   navigable?: boolean;
-  /** 是否展示文件类型筛选(网页/文档/图片…)。本地源 false;应用源 true。 */
-  typeFilterable?: boolean;
+  /**
+   * 是否支持「全局文件类型筛选」(图片/文档/表格…)。为 true 时 picker 展示筛选下拉,
+   * 已选分类作为 search() 的 filters 下钻到 daemon 过滤。三源(本地/应用/任务)均为 true。
+   */
+  filterable?: boolean;
 }
 
 /**

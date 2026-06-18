@@ -399,6 +399,7 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
         agentSessionId: "22222222-2222-4222-8222-222222222222",
         cwd: "/workspace",
         initialContent: [{ type: "text", text: "hello" }],
+        initialDisplayPrompt: null,
         model: "gpt-5.5-codex-spark",
         permissionModeId: "read-only",
         planMode: true,

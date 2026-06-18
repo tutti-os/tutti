@@ -19,7 +19,7 @@ import (
 
 const (
 	appReferenceListDefaultLimit = 20
-	appReferenceListMaxLimit     = 50
+	appReferenceListMaxLimit     = 200
 	appReferenceListMaxBytes     = 1024 * 1024
 	appReferenceListTimeout      = 1500 * time.Millisecond
 	appReferenceTextMaxRunes     = 200
@@ -127,12 +127,14 @@ func (s *AppCenterService) listAppRuntimeReferences(ctx context.Context, endpoin
 
 func (s *AppCenterService) searchAppRuntimeReferences(ctx context.Context, endpointURL string, appPackage workspacebiz.AppPackage, workspaceID string, input workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceListResult, error) {
 	query := trimRunes(strings.TrimSpace(input.Query), appReferenceTextMaxRunes)
-	if query == "" {
+	// 筛选与搜索是同一能力:query 可空、filters 非空时即按类型查,透传给 app 的 searchEndpoint。
+	if query == "" && len(input.Filters) == 0 {
 		return workspacebiz.AppReferenceListResult{}, nil
 	}
 	payload := appRuntimeReferenceSearchRequest{
-		Query: query,
-		Limit: normalizeAppReferenceListLimit(input.Limit),
+		Query:   query,
+		Limit:   normalizeAppReferenceListLimit(input.Limit),
+		Filters: input.Filters,
 	}
 	if cursor := trimRunes(strings.TrimSpace(input.Cursor), appReferenceCursorMaxRunes); cursor != "" {
 		payload.Cursor = cursor
@@ -220,8 +222,10 @@ type appRuntimeReferenceListRequest struct {
 }
 
 type appRuntimeReferenceSearchRequest struct {
-	Query     string                            `json:"query"`
-	Limit     int                               `json:"limit"`
+	Query string `json:"query"`
+	Limit int    `json:"limit"`
+	// Filters:已选「文件类型筛选分类」id(全局统一口径),由 app 自行按 id 过滤、未知 id 忽略。
+	Filters   []string                          `json:"filters,omitempty"`
 	Cursor    string                            `json:"cursor,omitempty"`
 	Kinds     []string                          `json:"kinds,omitempty"`
 	TimeRange *appRuntimeReferenceListTimeRange `json:"timeRange,omitempty"`

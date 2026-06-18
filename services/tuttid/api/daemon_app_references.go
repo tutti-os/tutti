@@ -16,7 +16,7 @@ const (
 	appReferenceListRequestGroupIDMaxRunes = 2048
 	appReferenceListRequestCursorMaxRunes  = 2048
 	appReferenceListRequestLimitMin        = 1
-	appReferenceListRequestLimitMax        = 50
+	appReferenceListRequestLimitMax        = 200
 )
 
 func (api DaemonAPI) ListWorkspaceAppReferences(ctx context.Context, request tuttigenerated.ListWorkspaceAppReferencesRequestObject) (tuttigenerated.ListWorkspaceAppReferencesResponseObject, error) {
@@ -169,10 +169,40 @@ func validateAppReferenceListRequest(body tuttigenerated.AppReferenceListRequest
 	return input, nil
 }
 
+// appReferenceFiltersMax 限定单次请求传入的筛选分类数量上限(防滥用)。
+const appReferenceFiltersMax = 32
+
+// normalizeAppReferenceFilters trims、去重、丢弃空白筛选分类 id,并截断到上限。
+func normalizeAppReferenceFilters(filters []string) []string {
+	if len(filters) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(filters))
+	for _, filter := range filters {
+		filter = strings.TrimSpace(filter)
+		if filter == "" || seen[filter] {
+			continue
+		}
+		seen[filter] = true
+		out = append(out, filter)
+		if len(out) >= appReferenceFiltersMax {
+			break
+		}
+	}
+	return out
+}
+
 func validateAppReferenceSearchRequest(body tuttigenerated.AppReferenceSearchRequest) (workspacebiz.AppReferenceSearchInput, *tuttigenerated.InvalidRequestErrorJSONResponse) {
 	input := workspacebiz.AppReferenceSearchInput{}
 	query := strings.TrimSpace(body.Query)
-	if query == "" || utf8.RuneCountInString(query) > appReferenceListRequestTextMaxRunes {
+	// 筛选与搜索是同一能力:query 可空、filters 非空时即按类型查。
+	var filters []string
+	if body.Filters != nil {
+		filters = normalizeAppReferenceFilters(*body.Filters)
+	}
+	if utf8.RuneCountInString(query) > appReferenceListRequestTextMaxRunes ||
+		(query == "" && len(filters) == 0) {
 		response := invalidRequestError(
 			apierrors.MalformedRequest(
 				apierrors.WithDeveloperMessage("workspace app reference search query is invalid"),
@@ -182,6 +212,7 @@ func validateAppReferenceSearchRequest(body tuttigenerated.AppReferenceSearchReq
 		return workspacebiz.AppReferenceSearchInput{}, &response
 	}
 	input.Query = query
+	input.Filters = filters
 	if body.Limit != nil {
 		if *body.Limit < appReferenceListRequestLimitMin || *body.Limit > appReferenceListRequestLimitMax {
 			response := invalidRequestError(

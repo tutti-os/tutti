@@ -103,6 +103,149 @@ func TestSQLiteIssueStoreLifecycle(t *testing.T) {
 	}
 }
 
+func TestSQLiteIssueStoreSearchRunOutputs(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-search",
+		Name: "Search Workspace",
+	}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	service := testIssueService(store)
+
+	topicB, err := service.CreateTopic(ctx, workspaceissues.CreateTopicInput{
+		WorkspaceID: "ws-search",
+		ActorUserID: "user-1",
+		Title:       "Topic B",
+	})
+	if err != nil {
+		t.Fatalf("CreateTopic() error = %v", err)
+	}
+
+	createIssueWithOutputs := func(topicID string, title string, paths []string) string {
+		t.Helper()
+		issue, err := service.CreateIssue(ctx, workspaceissues.CreateIssueInput{
+			WorkspaceID: "ws-search",
+			TopicID:     topicID,
+			ActorUserID: "user-1",
+			Title:       title,
+		})
+		if err != nil {
+			t.Fatalf("CreateIssue(%q) error = %v", title, err)
+		}
+		task, err := service.CreateTask(ctx, workspaceissues.CreateTaskInput{
+			WorkspaceID: "ws-search",
+			IssueID:     issue.IssueID,
+			ActorUserID: "user-1",
+			Title:       "task for " + title,
+		})
+		if err != nil {
+			t.Fatalf("CreateTask(%q) error = %v", title, err)
+		}
+		run, err := service.CreateRun(ctx, workspaceissues.CreateRunInput{
+			WorkspaceID:   "ws-search",
+			IssueID:       issue.IssueID,
+			TaskID:        task.TaskID,
+			ActorUserID:   "user-1",
+			AgentProvider: "codex",
+		})
+		if err != nil {
+			t.Fatalf("CreateRun(%q) error = %v", title, err)
+		}
+		outputs := make([]workspaceissues.CompleteRunOutputInput, 0, len(paths))
+		for _, p := range paths {
+			outputs = append(outputs, workspaceissues.CompleteRunOutputInput{Path: p})
+		}
+		if _, _, err := service.CompleteRun(ctx, workspaceissues.CompleteRunInput{
+			WorkspaceID: "ws-search",
+			IssueID:     issue.IssueID,
+			TaskID:      task.TaskID,
+			RunID:       run.RunID,
+			ActorUserID: "user-1",
+			Status:      string(workspaceissues.StatusCompleted),
+			Outputs:     outputs,
+		}); err != nil {
+			t.Fatalf("CompleteRun(%q) error = %v", title, err)
+		}
+		return issue.IssueID
+	}
+
+	issueA := createIssueWithOutputs(workspaceissues.DefaultTopicID, "Alpha issue",
+		[]string{"/ws/a/alpha-report.md", "/ws/a/shared-notes.md"})
+	createIssueWithOutputs(topicB.TopicID, "Beta issue",
+		[]string{"/ws/b/beta-report.md", "/ws/b/shared-notes.md"})
+
+	displayNames := func(hits []workspaceissues.RunOutputSearchHit) []string {
+		names := make([]string, 0, len(hits))
+		for _, hit := range hits {
+			names = append(names, hit.Output.DisplayName)
+		}
+		return names
+	}
+
+	// Workspace-wide name match spans both issues and annotates issue titles.
+	hits, err := store.SearchRunOutputs(ctx, workspaceissues.RunOutputSearchParams{
+		WorkspaceID: "ws-search",
+		Query:       "report",
+		Limit:       50,
+	})
+	if err != nil {
+		t.Fatalf("SearchRunOutputs(report) error = %v", err)
+	}
+	if got := displayNames(hits); len(got) != 2 {
+		t.Fatalf("report hits = %v, want 2", got)
+	}
+	for _, hit := range hits {
+		if hit.IssueTitle == "" {
+			t.Fatalf("hit missing issue title: %+v", hit)
+		}
+	}
+
+	// Case-insensitive match.
+	hits, err = store.SearchRunOutputs(ctx, workspaceissues.RunOutputSearchParams{
+		WorkspaceID: "ws-search",
+		Query:       "ALPHA",
+		Limit:       50,
+	})
+	if err != nil {
+		t.Fatalf("SearchRunOutputs(ALPHA) error = %v", err)
+	}
+	if got := displayNames(hits); len(got) != 1 || got[0] != "alpha-report.md" {
+		t.Fatalf("ALPHA hits = %v, want [alpha-report.md]", got)
+	}
+
+	// IssueID scope limits to one issue.
+	hits, err = store.SearchRunOutputs(ctx, workspaceissues.RunOutputSearchParams{
+		WorkspaceID: "ws-search",
+		Query:       "notes",
+		IssueID:     issueA,
+		Limit:       50,
+	})
+	if err != nil {
+		t.Fatalf("SearchRunOutputs(notes, issueA) error = %v", err)
+	}
+	if got := displayNames(hits); len(got) != 1 || hits[0].Output.IssueID != issueA {
+		t.Fatalf("notes/issueA hits = %v (issue %q), want one under %q", got, hits[0].Output.IssueID, issueA)
+	}
+
+	// TopicID scope limits to issues under one topic.
+	hits, err = store.SearchRunOutputs(ctx, workspaceissues.RunOutputSearchParams{
+		WorkspaceID: "ws-search",
+		Query:       "notes",
+		TopicID:     topicB.TopicID,
+		Limit:       50,
+	})
+	if err != nil {
+		t.Fatalf("SearchRunOutputs(notes, topicB) error = %v", err)
+	}
+	if got := displayNames(hits); len(got) != 1 {
+		t.Fatalf("notes/topicB hits = %v, want 1", got)
+	}
+}
+
 func TestSQLiteIssueStoreRunLifecycleForIssueWithoutTasks(t *testing.T) {
 	t.Parallel()
 

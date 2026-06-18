@@ -35,4 +35,5 @@ type Store interface {
 	GetRun(context.Context, string, string, string, string) (Run, error)
 	ListRunOutputs(context.Context, string, string, string, string) ([]RunOutput, error)
 	ListLatestRunOutputs(context.Context, string, string, string) ([]RunOutput, error)
+	SearchRunOutputs(context.Context, RunOutputSearchParams) ([]RunOutputSearchHit, error)
 }

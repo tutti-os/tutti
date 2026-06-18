@@ -126,7 +126,7 @@ export const en = {
     },
     referenceSources: {
       appSourceLabel: "Apps",
-      issueSourceLabel: "Issues",
+      issueSourceLabel: "Tasks",
       localSourceLabel: "Local",
       sidebarDesktop: "Desktop",
       sidebarDocuments: "Documents",

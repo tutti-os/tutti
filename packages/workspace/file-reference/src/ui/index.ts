@@ -6,3 +6,7 @@ export {
   ReferenceSourcePicker,
   type ReferenceSourcePickerProps
 } from "./internal/reference/ReferenceSourcePicker.tsx";
+export type {
+  ReferenceBundleSelection,
+  ReferenceGroupedSelection
+} from "../react/internal/reference/useReferenceSourcePickerView.ts";

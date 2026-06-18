@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   attrsToMentionItem,
   buildAgentSessionMentionHref,
+  buildAgentWorkspaceAppBundleMentionHref,
   buildAgentWorkspaceAppFactoryMentionHref,
   buildAgentWorkspaceIssueMentionHref,
+  formatAgentMentionMarkdown,
   parseAgentMentionMarkdown
 } from "./agentFileMentionExtension";
 
@@ -215,6 +217,97 @@ describe("attrsToMentionItem", () => {
       kind: "file",
       name: "diagram.png",
       thumbnailUrl: "data:image/png;base64,thumb"
+    });
+  });
+
+  it("parses app bundle attrs into a files array", () => {
+    expect(
+      attrsToMentionItem({
+        kind: "workspace-app-bundle",
+        name: "Design",
+        appId: "app-1",
+        workspaceId: "ws-1",
+        filesJson: JSON.stringify([
+          { path: "/p/a.txt", name: "a.txt" },
+          { path: "/p/sub/b.txt", name: "b.txt" }
+        ])
+      })
+    ).toMatchObject({
+      kind: "workspace-app-bundle",
+      appId: "app-1",
+      workspaceId: "ws-1",
+      files: [
+        { path: "/p/a.txt", name: "a.txt" },
+        { path: "/p/sub/b.txt", name: "b.txt" }
+      ]
+    });
+  });
+
+  it("tolerates malformed bundle filesJson by yielding no files", () => {
+    expect(
+      attrsToMentionItem({
+        kind: "workspace-app-bundle",
+        name: "Design",
+        appId: "app-1",
+        workspaceId: "ws-1",
+        filesJson: "{not json"
+      })
+    ).toMatchObject({ kind: "workspace-app-bundle", files: [] });
+  });
+});
+
+describe("formatAgentMentionMarkdown — app bundle", () => {
+  const bundleItem = {
+    kind: "workspace-app-bundle" as const,
+    href: "mention://workspace-app-bundle/app-1?workspaceId=ws-1",
+    workspaceId: "ws-1",
+    targetId: "app-1",
+    appId: "app-1",
+    name: "Design",
+    files: [
+      { path: "/p/a.txt", name: "a.txt" },
+      { path: "/p/sub/b.txt", name: "b.txt" }
+    ]
+  };
+
+  it("display mode (default) renders one chip link", () => {
+    expect(formatAgentMentionMarkdown(bundleItem)).toBe(
+      "[@Design](mention://workspace-app-bundle/app-1?workspaceId=ws-1)"
+    );
+  });
+
+  it("agent mode expands into one file mention per file", () => {
+    expect(formatAgentMentionMarkdown(bundleItem, "agent")).toBe(
+      "[@a.txt](/p/a.txt) [@b.txt](/p/sub/b.txt)"
+    );
+  });
+
+  it("agent mode of an empty bundle falls back to the chip link", () => {
+    // 空项目无文件可展开:退回 @项目名 链接,而不是空串(否则会留下空白节点)。
+    expect(
+      formatAgentMentionMarkdown({ ...bundleItem, files: [] }, "agent")
+    ).toBe("[@Design](mention://workspace-app-bundle/app-1?workspaceId=ws-1)");
+  });
+
+  it("round-trips files + icon through the href (build → parse)", () => {
+    const href = buildAgentWorkspaceAppBundleMentionHref(
+      "ws-1",
+      "app-1",
+      [
+        { path: "/p/a.txt", name: "a.txt" },
+        { path: "/p/sub/b.txt", name: "b.txt" }
+      ],
+      "https://icons/app-1.png"
+    );
+    const parsed = parseAgentMentionMarkdown(`[@Design](${href})`);
+    expect(parsed?.item).toMatchObject({
+      kind: "workspace-app-bundle",
+      name: "Design",
+      iconUrl: "https://icons/app-1.png",
+      files: [
+        { path: "/p/a.txt", name: "a.txt" },
+        { path: "/p/sub/b.txt", name: "b.txt" }
+      ]
     });
   });
 });

@@ -77,7 +77,7 @@
     "dev:web": "vite --config vite.web.config.mjs",
     "notify:release:feishu": "node scripts/send-release-feishu-card.mjs",
     "preview": "electron-vite preview",
-    "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
+    "test": "node --import ./test/register-asset-stub.mjs --test --experimental-strip-types \"./src/**/*.test.ts\"",
     "typecheck": "node ../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {

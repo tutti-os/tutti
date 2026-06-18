@@ -176,6 +176,56 @@ func (s Service) GetIssueDetail(ctx context.Context, workspaceID string, issueID
 	}, nil
 }
 
+const (
+	defaultIssueOutputSearchLimit = 50
+	maxIssueOutputSearchLimit     = 200
+)
+
+// SearchIssueOutputs searches produced output files across one workspace by file
+// name, deduplicated by path and ordered by recency. IssueID / TopicID optionally
+// scope the search; IssueID wins when both are set.
+// normalizeRunOutputFilters trims、去重、丢弃空白的「文件类型筛选分类」id。
+func normalizeRunOutputFilters(filters []string) []string {
+	if len(filters) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(filters))
+	for _, filter := range filters {
+		filter = strings.TrimSpace(filter)
+		if filter == "" || seen[filter] {
+			continue
+		}
+		seen[filter] = true
+		out = append(out, filter)
+	}
+	return out
+}
+
+func (s Service) SearchIssueOutputs(ctx context.Context, params RunOutputSearchParams) ([]RunOutputSearchHit, error) {
+	store, err := s.store()
+	if err != nil {
+		return nil, err
+	}
+	params.WorkspaceID = strings.TrimSpace(params.WorkspaceID)
+	params.Query = strings.TrimSpace(params.Query)
+	params.IssueID = strings.TrimSpace(params.IssueID)
+	params.TopicID = strings.TrimSpace(params.TopicID)
+	params.Filters = normalizeRunOutputFilters(params.Filters)
+	// 筛选与搜索是同一能力:关键词与筛选同时为空才算无效查询。仅选类型筛选(Query 空)时
+	// 由 store 按类型 list-all。
+	if params.WorkspaceID == "" || (params.Query == "" && len(params.Filters) == 0) {
+		return nil, ErrInvalidArgument
+	}
+	if params.Limit <= 0 {
+		params.Limit = defaultIssueOutputSearchLimit
+	}
+	if params.Limit > maxIssueOutputSearchLimit {
+		params.Limit = maxIssueOutputSearchLimit
+	}
+	return store.SearchRunOutputs(ctx, params)
+}
+
 func (s Service) DeleteIssue(ctx context.Context, workspaceID string, issueID string, actorUserID string) (bool, error) {
 	store, err := s.store()
 	if err != nil {

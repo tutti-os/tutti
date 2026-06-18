@@ -2216,6 +2216,7 @@ paths:
         - $ref: "#/components/parameters/WorkspaceFileSearchQuery"
         - $ref: "#/components/parameters/WorkspaceFileSearchLimit"
         - $ref: "#/components/parameters/WorkspaceFileSearchKinds"
+        - $ref: "#/components/parameters/WorkspaceFileSearchFilters"
         - $ref: "#/components/parameters/WorkspaceFileIncludeHidden"
       responses:
         "200":
@@ -2636,7 +2637,7 @@ components:
       schema:
         type: integer
         minimum: 1
-        maximum: 50
+        maximum: 200
         default: 30
     WorkspaceFileRecentLimit:
       name: limit
@@ -2657,6 +2658,20 @@ components:
         type: array
         items:
           $ref: "#/components/schemas/WorkspaceFileFilterKind"
+    WorkspaceFileSearchFilters:
+      name: filters
+      in: query
+      required: false
+      style: form
+      explode: true
+      description: >-
+        已选「文件类型筛选分类」id(全局统一口径:image/document/spreadsheet/
+        code/media/archive/other)。筛选与搜索是同一能力:query 可空、filters
+        非空时即按类型 list-all。空/缺省 = 不按类型过滤。
+      schema:
+        type: array
+        items:
+          type: string
     TerminalID:
       name: terminalID
       in: path
@@ -3457,7 +3472,7 @@ components:
         limit:
           type: integer
           minimum: 1
-          maximum: 50
+          maximum: 200
         cursor:
           type: string
           nullable: true
@@ -3521,12 +3536,11 @@ components:
       properties:
         query:
           type: string
-          minLength: 1
           maxLength: 200
         limit:
           type: integer
           minimum: 1
-          maximum: 50
+          maximum: 200
         cursor:
           type: string
           nullable: true
@@ -3535,6 +3549,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AppReferenceKind"
+        filters:
+          type: array
+          description: >-
+            已选「文件类型筛选分类」id(全局统一口径)。筛选与搜索是同一能力:query
+            可空、filters 非空时即按类型查。空/缺省 = 不按类型过滤。
+          items:
+            type: string
         timeRange:
           $ref: "#/components/schemas/AppReferenceListTimeRange"
     AppReferenceSearchResponse:
@@ -5145,6 +5166,10 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/AgentPromptContentBlock"
+        initialDisplayPrompt:
+          type: string
+          nullable: true
+          description: Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
         title:
           type: string
           nullable: true
@@ -5183,6 +5208,10 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/AgentPromptContentBlock"
+        displayPrompt:
+          type: string
+          nullable: true
+          description: Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
     AgentPromptContentBlock:
       type: object
       additionalProperties: false

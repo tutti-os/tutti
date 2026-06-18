@@ -84,6 +84,7 @@ type IssueManagerService interface {
 	ListIssues(context.Context, string, workspaceservice.ListIssueManagerItemsInput) (workspaceissues.IssueList, error)
 	CreateIssue(context.Context, string, workspaceservice.CreateIssueManagerIssueInput) (workspaceissues.Issue, error)
 	GetIssueDetail(context.Context, string, string) (workspaceissues.IssueDetail, error)
+	SearchIssueOutputs(context.Context, workspaceissues.RunOutputSearchParams) ([]workspaceissues.RunOutputSearchHit, error)
 	UpdateIssue(context.Context, string, string, workspaceservice.UpdateIssueManagerIssueInput) (workspaceissues.Issue, error)
 	DeleteIssue(context.Context, string, string) (bool, error)
 	AddIssueContextRefs(context.Context, string, string, workspaceservice.AddIssueManagerContextRefsInput) ([]workspaceissues.ContextRef, error)

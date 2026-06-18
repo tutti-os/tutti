@@ -17,10 +17,12 @@ import {
   CardHeader,
   CardTitle,
   CheckIcon,
+  ChevronDownIcon,
   CloseIcon,
   FileIcon,
   FolderFilledIcon,
   Input,
+  IssueIcon,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -43,10 +45,14 @@ import type {
   WorkspaceFileReferenceCopy
 } from "../../../contracts/index.ts";
 import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAggregator.ts";
-import { nodeRefKey } from "../../../core/index.ts";
+import {
+  nodeRefKey,
+  type ReferenceFilterCategory
+} from "../../../core/index.ts";
 import {
   useReferenceSourcePickerView,
-  type ReferenceNodePreviewState
+  type ReferenceNodePreviewState,
+  type ReferenceGroupedSelection
 } from "../../../react/internal/reference/useReferenceSourcePickerView.ts";
 
 export interface ReferenceSourcePickerProps {
@@ -56,28 +62,20 @@ export interface ReferenceSourcePickerProps {
   initialTarget?: ReferenceLocateTarget | null;
   onClose: () => void;
   onConfirm: (refs: WorkspaceFileReference[]) => void;
+  /**
+   * 可选:启用「文件夹=一个 bundle 节点」确认形态。提供时确认走 confirmGrouped,
+   * navigable 源的选中文件夹折叠成 bundle 回调,其余仍为单条文件。
+   */
+  onConfirmBundles?: (result: ReferenceGroupedSelection) => void;
   open: boolean;
   workspaceId: string;
 }
 
-// v1 新增 UI 文案默认中文;后续接入 i18n。
-const L = {
-  sourceColumn: "分类",
-  selectGroupHint: "从左侧选择一个目录",
-  previewSource: "产出来源",
-  previewModified: "产出时间",
-  previewSize: "文件大小",
-  previewHierarchy: "所属层级",
-  reference: "引用",
-  loadMore: "加载更多",
-  emptyPreview: "选择一个文件查看详情",
-  previewLoading: "加载预览…",
-  previewFolder: "文件夹",
-  previewUnsupported: "暂不支持预览此文件",
-  previewError: "预览加载失败",
-  previewBinary: "二进制文件,无法预览",
-  previewTooLarge: "文件过大,无法预览"
-};
+/**
+ * 左栏二级分组(应用/任务列表)默认最多展示的条目数;超出则折叠在「拉取更多」之后。
+ * 每点一次「拉取更多」再多展示一页(同样步长),并在源端仍有续页(cursor)时拉取下一页。
+ */
+const SIDEBAR_GROUP_PAGE_SIZE = 20;
 
 type PickerView = ReturnType<typeof useReferenceSourcePickerView>;
 
@@ -127,6 +125,7 @@ export function ReferenceSourcePicker({
   initialTarget,
   onClose,
   onConfirm,
+  onConfirmBundles,
   open,
   workspaceId
 }: ReferenceSourcePickerProps): JSX.Element | null {
@@ -135,10 +134,25 @@ export function ReferenceSourcePicker({
     aggregator,
     workspaceId,
     open,
+    workspaceRootGroupLabel: copy.t("referencePicker.workspaceRootGroup"),
     initialTarget,
     onClose,
-    onConfirm
+    onConfirm,
+    onConfirmBundles
   });
+
+  // 文件类型筛选已下沉为查询参数(view.activeFilters);此处只做切换/清空的转发。
+  const activeFilterSet = new Set(view.activeFilters);
+  const toggleFilter = (id: string) => {
+    const next = new Set(activeFilterSet);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    view.setFilters([...next]);
+  };
+  const clearFilters = () => view.setFilters([]);
 
   // 三栏可拖拽 + 双击自动适配:layoutRef 量整体宽度,content/panel ref 用于双击适配。
   const layoutRef = useRef<HTMLDivElement | null>(null);
@@ -202,24 +216,29 @@ export function ReferenceSourcePicker({
             <ResizablePanelGroup
               className="min-h-0 min-w-0 flex-1"
               orientation="horizontal"
-              // 三栏初始占比 2:5:3。v4 在三面板下 `defaultSize` 初始布局会因注册时序被忽略而回退等分,
+              // 三栏初始占比(侧边栏更窄,类 Finder)。v4 在三面板下 `defaultSize` 初始布局会因注册时序被忽略而回退等分,
               // 这里用 `defaultLayout`(按 panel id 指定 flexGrow 权重)作为权威初始布局。
-              defaultLayout={{ sidebar: 2, middle: 5, preview: 3 }}
+              defaultLayout={{ sidebar: 2.5, middle: 4.5, preview: 3 }}
             >
               <ResizablePanel
                 id="sidebar"
-                className="min-h-0 min-w-0 border-r border-[var(--line-1)]"
-                defaultSize={20}
-                minSize="180px"
+                className="min-h-0 min-w-0"
+                defaultSize={15}
+                minSize="150px"
                 panelRef={(handle) => {
                   sidebarPanelRef.current = handle;
                 }}
               >
-                <SourceSidebar contentRef={sidebarContentRef} view={view} />
+                <SourceSidebar
+                  contentRef={sidebarContentRef}
+                  copy={copy}
+                  view={view}
+                />
               </ResizablePanel>
               <ResizableHandle
                 disableDoubleClick
                 withHandle
+                className="after:bg-[var(--line-1)]"
                 onDoubleClick={fitSidebar}
               />
               <ResizablePanel
@@ -246,8 +265,35 @@ export function ReferenceSourcePicker({
                         }
                       />
                     </div>
+                    {view.capabilities?.filterable &&
+                    view.filterCategories.length > 0 ? (
+                      <FilterCategoryFilter
+                        categories={view.filterCategories}
+                        copy={copy}
+                        selected={activeFilterSet}
+                        onClear={clearFilters}
+                        onToggle={toggleFilter}
+                      />
+                    ) : null}
                   </div>
-                  <ScrollArea className="min-h-0 flex-1">
+                  <ScrollArea
+                    className="min-h-0 flex-1"
+                    viewportProps={{
+                      // 拉到底部(距底 <120px)自动加载更多 —— 查询态走增长式分页,
+                      // 浏览态走 cursor 续页。已在加载/无更多时由 loadMore 内部 no-op。
+                      onScroll: (event) => {
+                        const el = event.currentTarget;
+                        if (
+                          view.hasMore &&
+                          !view.isLoading &&
+                          !view.isLoadingMore &&
+                          el.scrollHeight - el.scrollTop - el.clientHeight < 120
+                        ) {
+                          view.loadMore();
+                        }
+                      }
+                    }}
+                  >
                     <div
                       ref={middleContentRef}
                       className="flex flex-col gap-[2px] p-3"
@@ -256,8 +302,8 @@ export function ReferenceSourcePicker({
                         <Feedback>
                           <Spinner size={16} />
                         </Feedback>
-                      ) : view.isSearch ? (
-                        // 搜索:扁平结果
+                      ) : view.isQuery ? (
+                        // 查询态(关键词或筛选):扁平结果
                         view.searchResults.length === 0 ? (
                           <Feedback>
                             {copy.t("referencePicker.emptySearch")}
@@ -275,7 +321,9 @@ export function ReferenceSourcePicker({
                           ))
                         )
                       ) : !hasSelectedGroup ? (
-                        <Feedback>{L.selectGroupHint}</Feedback>
+                        <Feedback>
+                          {copy.t("referencePicker.selectGroupHint")}
+                        </Feedback>
                       ) : view.currentEntries.length === 0 ? (
                         <Feedback>
                           {copy.t("referencePicker.emptyDirectory")}
@@ -292,15 +340,19 @@ export function ReferenceSourcePicker({
                           />
                         ))
                       )}
-                      {view.hasMore && hasSelectedGroup && !view.isSearch ? (
+                      {view.hasMore && (view.isQuery || hasSelectedGroup) ? (
                         <Button
                           className="mt-1 w-full"
+                          disabled={view.isLoadingMore}
                           size="sm"
                           type="button"
                           variant="ghost"
                           onClick={view.loadMore}
                         >
-                          {L.loadMore}
+                          {view.isLoadingMore ? (
+                            <Spinner className="text-current" size={14} />
+                          ) : null}
+                          {copy.t("referencePicker.loadMore")}
                         </Button>
                       ) : null}
                     </div>
@@ -310,23 +362,21 @@ export function ReferenceSourcePicker({
               <ResizableHandle
                 disableDoubleClick
                 withHandle
+                className="after:bg-[var(--line-1)]"
                 onDoubleClick={fitMiddle}
               />
               <ResizablePanel
                 id="preview"
-                className="min-h-0 min-w-0 border-l border-[var(--line-1)]"
+                className="min-h-0 min-w-0"
                 defaultSize={30}
                 minSize="200px"
               >
                 <PreviewInfoPane
+                  copy={copy}
                   node={view.focusedNode}
                   previewState={view.previewState}
                   sourceLabel={view.activeTabLabel}
-                  hierarchy={view.breadcrumb}
-                  onReference={view.toggleSelection}
-                  referenced={
-                    view.focusedNode ? view.isSelected(view.focusedNode) : false
-                  }
+                  hierarchy={resolveHierarchyPath(view)}
                 />
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -356,13 +406,33 @@ export function ReferenceSourcePicker({
 }
 
 /**
- * 左侧两级分栏(类 macOS Finder 边栏):
- * 一级 = 各引用源(本地/应用/issue),可多源同时展开;二级 = 该源根下的目录分组。
+ * 二级分组无自带 iconUrl 时的兜底图标:按源 metadata.icon 令牌选取。
+ * 议题源(icon: "issue")用「事项」应用图标,其余回退到文件夹图标。
+ */
+function GroupFallbackIcon({
+  icon,
+  className
+}: {
+  icon?: string;
+  className: string;
+}): JSX.Element {
+  if (icon === "issue") {
+    return <IssueIcon className={className} />;
+  }
+  return <FolderFilledIcon className={className} />;
+}
+
+/**
+ * 左侧边栏(类 macOS Finder 边栏):
+ * 一级源(本地/应用/任务)作为常驻分组标题、默认全部展开、无折叠箭头;
+ * 其下二级目录分组与标题左对齐(无额外缩进),靠图标区分层级。
  */
 function SourceSidebar({
+  copy,
   view,
   contentRef
 }: {
+  copy: WorkspaceFileReferenceCopy;
   view: PickerView;
   contentRef: RefObject<HTMLDivElement | null>;
 }): JSX.Element {
@@ -371,87 +441,122 @@ function SourceSidebar({
   useEffect(() => {
     selectedGroupRef.current?.scrollIntoView({ block: "nearest" });
   }, [view.selectedGroupKey]);
+  // 每个源已展示的分组上限(默认一页);点「拉取更多」按页累加。源切换/重开会重置。
+  const [shownBySource, setShownBySource] = useState<Record<string, number>>(
+    {}
+  );
+  const loadMoreGroups = (sourceId: string) => {
+    const groups = view.sidebarGroupsBySource[sourceId] ?? [];
+    const limit = shownBySource[sourceId] ?? SIDEBAR_GROUP_PAGE_SIZE;
+    // 以当前实际可见数为基准再加一页(selectedIndex 撑高时不回退已可见的项)。
+    const selectedIndex = groups.findIndex(
+      (group) => nodeRefKey(group.ref) === view.selectedGroupKey
+    );
+    const visibleCount = selectedIndex >= limit ? selectedIndex + 1 : limit;
+    const next = visibleCount + SIDEBAR_GROUP_PAGE_SIZE;
+    setShownBySource((prev) => ({ ...prev, [sourceId]: next }));
+    // 已加载的分组不够填满下一页、且源端仍有续页时,顺带拉取下一页补足。
+    if (
+      next > groups.length &&
+      (view.sidebarHasMoreBySource[sourceId] ?? false)
+    ) {
+      view.loadMoreSidebarGroups(sourceId);
+    }
+  };
   return (
     <ScrollArea className="h-full min-h-0 w-full">
-      <div ref={contentRef} className="flex flex-col gap-0.5 p-2">
-        <p className="px-2 py-1 text-[11px] font-semibold text-[var(--text-tertiary)]">
-          {L.sourceColumn}
-        </p>
+      <div ref={contentRef} className="flex flex-col gap-1 p-2">
         {view.tabs.map((tab) => {
-          const active = tab.sourceId === view.activeSourceId;
-          const expanded = view.isSourceExpanded(tab.sourceId);
           const groups = view.sidebarGroupsBySource[tab.sourceId] ?? [];
+          const limit = shownBySource[tab.sourceId] ?? SIDEBAR_GROUP_PAGE_SIZE;
+          // 当前选中分组(如 initialTarget 定位到靠后的项)始终展示,避免「选中却被折叠」。
+          const selectedIndex = groups.findIndex(
+            (group) => nodeRefKey(group.ref) === view.selectedGroupKey
+          );
+          const effectiveLimit =
+            selectedIndex >= limit ? selectedIndex + 1 : limit;
+          const visibleGroups = groups.slice(0, effectiveLimit);
+          const loadingMore =
+            view.sidebarLoadingMoreBySource[tab.sourceId] ?? false;
+          // 还能拉取更多 = 已加载分组超出当前展示上限,或源端仍有续页未取。
+          const hasMore =
+            groups.length > effectiveLimit ||
+            (view.sidebarHasMoreBySource[tab.sourceId] ?? false);
           return (
             <div key={tab.sourceId} className="flex flex-col gap-0.5">
-              <button
-                aria-expanded={expanded}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-[6px] px-2 py-1.5 text-left text-[13px] font-semibold transition-colors hover:bg-transparency-block",
-                  active
-                    ? "text-[var(--text-primary)]"
-                    : "text-[var(--text-secondary)]"
-                )}
-                type="button"
-                onClick={() => view.toggleSourceExpanded(tab.sourceId)}
+              {/* 一级源:Finder 风格分区标题,无箭头、不可折叠。 */}
+              <p
+                className="px-2 pt-1.5 pb-0.5 text-[11px] font-semibold text-[var(--text-tertiary)]"
+                data-autofit-label
               >
-                <ArrowRightIcon
-                  className={cn(
-                    "size-3 shrink-0 text-[var(--text-tertiary)] transition-transform",
-                    expanded && "rotate-90"
-                  )}
-                />
-                <span className="truncate" data-autofit-label>
-                  {tab.label}
-                </span>
-              </button>
-              {expanded ? (
-                <div className="flex flex-col gap-0.5">
-                  {groups.length === 0 ? (
-                    <p className="px-2 py-1.5 pl-7 text-[12px] text-[var(--text-tertiary)]">
-                      {view.isLoadingTabs ? "…" : ""}
-                    </p>
-                  ) : (
-                    groups.map((group) => {
-                      const key = nodeRefKey(group.ref);
-                      const selected = key === view.selectedGroupKey;
-                      return (
-                        <button
-                          key={key}
-                          ref={selected ? selectedGroupRef : undefined}
-                          className={cn(
-                            "flex items-center gap-2 rounded-[6px] py-1.5 pr-2 pl-7 text-left text-[13px] transition-colors hover:bg-transparency-block",
-                            selected
-                              ? "bg-transparency-block text-[var(--text-primary)]"
-                              : "text-[var(--text-secondary)]"
-                          )}
-                          type="button"
-                          onClick={() => view.selectGroup(group)}
-                        >
-                          {group.iconUrl ? (
-                            <img
-                              alt=""
-                              className="size-4 shrink-0 rounded-[3px] object-cover"
-                              src={group.iconUrl}
-                            />
-                          ) : (
-                            <FolderFilledIcon className="size-4 shrink-0 text-[var(--rich-text-folder)]" />
-                          )}
-                          <span
-                            className="min-w-0 flex-1 truncate"
-                            data-autofit-label
-                          >
-                            {group.displayName}
-                          </span>
-                          {group.childCount != null ? (
-                            <span className="shrink-0 text-[11px] text-[var(--text-tertiary)]">
-                              {group.childCount}
-                            </span>
-                          ) : null}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
+                {tab.label}
+              </p>
+              {groups.length === 0 ? (
+                view.isLoadingTabs ? (
+                  <p className="px-2 py-1 text-[12px] text-[var(--text-tertiary)]">
+                    …
+                  </p>
+                ) : null
+              ) : (
+                visibleGroups.map((group) => {
+                  const key = nodeRefKey(group.ref);
+                  const selected = key === view.selectedGroupKey;
+                  return (
+                    <button
+                      key={key}
+                      ref={selected ? selectedGroupRef : undefined}
+                      aria-current={selected ? "true" : undefined}
+                      className={cn(
+                        "flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[13px] transition-colors",
+                        selected
+                          ? "bg-primary/10 font-medium text-[var(--text-primary)] hover:bg-primary/15"
+                          : "text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
+                      )}
+                      type="button"
+                      onClick={() => view.selectGroup(group)}
+                    >
+                      {group.iconUrl ? (
+                        <img
+                          alt=""
+                          className="size-4 shrink-0 rounded-[3px] object-cover"
+                          src={group.iconUrl}
+                        />
+                      ) : (
+                        <GroupFallbackIcon
+                          className="size-4 shrink-0 text-[var(--rich-text-folder)]"
+                          icon={tab.icon}
+                        />
+                      )}
+                      <span
+                        className="min-w-0 flex-1 truncate"
+                        data-autofit-label
+                      >
+                        {group.displayName}
+                      </span>
+                      {group.childCount != null ? (
+                        <span className="shrink-0 text-[11px] text-[var(--text-tertiary)]">
+                          {group.childCount}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })
+              )}
+              {hasMore ? (
+                <button
+                  className="flex items-center gap-1.5 rounded-[6px] px-2 py-1.5 text-left text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] disabled:opacity-60"
+                  disabled={loadingMore}
+                  type="button"
+                  onClick={() => loadMoreGroups(tab.sourceId)}
+                >
+                  {loadingMore ? (
+                    <Spinner
+                      className="text-[var(--text-secondary)]"
+                      size={12}
+                    />
+                  ) : null}
+                  <span>{copy.t("referencePicker.loadMoreGroups")}</span>
+                </button>
               ) : null}
             </div>
           );
@@ -530,7 +635,8 @@ function SearchResultRow({
  */
 function toPreviewSurfaceState(
   node: ReferenceNode,
-  previewState: ReferenceNodePreviewState
+  previewState: ReferenceNodePreviewState,
+  copy: WorkspaceFileReferenceCopy
 ): WorkspaceFilePreviewSurfaceState<ReferenceNode> {
   if (
     !("node" in previewState) ||
@@ -558,38 +664,60 @@ function toPreviewSurfaceState(
         entry: node,
         message:
           previewState.reason === "binary"
-            ? L.previewBinary
+            ? copy.t("referencePicker.previewBinary")
             : previewState.reason === "file_too_large" ||
                 previewState.reason === "text_too_large"
-              ? L.previewTooLarge
-              : L.previewUnsupported,
+              ? copy.t("referencePicker.previewTooLarge")
+              : copy.t("referencePicker.previewUnsupported"),
         status: "readonly"
       };
     case "error":
-      return { entry: node, message: L.previewError, status: "error" };
+      return {
+        entry: node,
+        message: copy.t("referencePicker.previewError"),
+        status: "error"
+      };
     case "unsupported":
       return {
         entry: node,
-        message: L.previewUnsupported,
+        message: copy.t("referencePicker.previewUnsupported"),
         status: "unsupported"
       };
   }
 }
 
+/**
+ * 产出来源徽标配色:按一级源给「产出来源」徽标着色,复用 rich-text mention
+ * 的语义 token(本地文件 / 应用产物 / 事项产物各自的 @mention 同色),保持
+ * 全局一致。未知源回退到默认 secondary 徽标(返回 undefined)。
+ * sourceId 取值见 contracts/referenceSource.ts 的枚举说明。
+ * 注意:class 必须写成完整字面量,Tailwind JIT 不扫描拼接出来的类名。
+ */
+function sourceBadgeClassName(sourceId: string): string | undefined {
+  return SOURCE_BADGE_CLASSES[sourceId];
+}
+
+const SOURCE_BADGE_CLASSES: Record<string, string> = {
+  "workspace-file":
+    "bg-[color-mix(in_srgb,var(--rich-text-mention-file)_12%,transparent)] text-[var(--rich-text-mention-file)]",
+  "app-artifact":
+    "bg-[color-mix(in_srgb,var(--rich-text-mention-app)_12%,transparent)] text-[var(--rich-text-mention-app)]",
+  "issue-file":
+    "bg-[color-mix(in_srgb,var(--rich-text-mention-issue)_12%,transparent)] text-[var(--rich-text-mention-issue)]"
+};
+
 function PreviewInfoPane({
+  copy,
   node,
   previewState,
   sourceLabel,
-  hierarchy,
-  referenced,
-  onReference
+  hierarchy
 }: {
+  copy: WorkspaceFileReferenceCopy;
   node: ReferenceNode | null;
   previewState: ReferenceNodePreviewState;
   sourceLabel: string;
   hierarchy: readonly ReferenceNode[];
-  referenced: boolean;
-  onReference: (node: ReferenceNode) => void;
 }): JSX.Element {
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-[var(--background-fronted)]">
@@ -597,13 +725,13 @@ function PreviewInfoPane({
         <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
           {/* 文件查看面板:复用 file-manager 的共享预览组件,真实渲染图片/文本内容。 */}
           <WorkspaceFilePreviewSurface<ReferenceNode>
-            directoryMessage={L.previewFolder}
-            emptyMessage={L.emptyPreview}
+            directoryMessage={copy.t("referencePicker.previewFolder")}
+            emptyMessage={copy.t("referencePicker.emptyPreview")}
             frameClassName="flex aspect-[3/2] w-full flex-col items-center justify-center overflow-hidden rounded-[8px] border border-[var(--line-2,var(--border-2))] bg-[var(--transparency-block)] p-0 text-center"
             imageAlt={(entry) => entry.displayName}
             imageFrameClassName="p-3"
             loadingIndicator={<Spinner size={16} />}
-            loadingMessage={L.previewLoading}
+            loadingMessage={copy.t("referencePicker.previewLoading")}
             messageClassName="mx-auto max-w-[24ch] text-[13px] leading-5 text-[var(--text-secondary)] [overflow-wrap:anywhere]"
             renderIcon={(entry) =>
               entry.kind === "folder" ? (
@@ -612,7 +740,7 @@ function PreviewInfoPane({
                 <FileIcon className="size-9 text-[var(--text-tertiary)]" />
               )
             }
-            state={toPreviewSurfaceState(node, previewState)}
+            state={toPreviewSurfaceState(node, previewState, copy)}
             textClassName="h-full w-full overflow-auto p-3 text-left text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]"
             textFrameClassName="items-stretch justify-stretch"
           />
@@ -620,16 +748,21 @@ function PreviewInfoPane({
             {node.displayName}
           </p>
           <dl className="space-y-2 text-[13px]">
-            <InfoRow label={L.previewSource}>
-              <Badge variant="secondary">{sourceLabel}</Badge>
+            <InfoRow label={copy.t("referencePicker.previewSource")}>
+              <Badge
+                variant="secondary"
+                className={sourceBadgeClassName(node.ref.sourceId)}
+              >
+                {sourceLabel}
+              </Badge>
             </InfoRow>
             {node.mtimeMs != null ? (
-              <InfoRow label={L.previewModified}>
+              <InfoRow label={copy.t("referencePicker.previewModified")}>
                 {formatDateTime(node.mtimeMs)}
               </InfoRow>
             ) : null}
             {node.sizeBytes != null ? (
-              <InfoRow label={L.previewSize}>
+              <InfoRow label={copy.t("referencePicker.previewSize")}>
                 {formatBytes(node.sizeBytes)}
               </InfoRow>
             ) : null}
@@ -637,33 +770,35 @@ function PreviewInfoPane({
           {hierarchy.length > 0 ? (
             <div className="space-y-1.5">
               <p className="text-[11px] font-semibold text-[var(--text-tertiary)]">
-                {L.previewHierarchy}
+                {copy.t("referencePicker.previewHierarchy")}
               </p>
-              <div className="flex flex-wrap gap-1">
-                {hierarchy.map((crumb) => (
-                  <Badge
+              {/* 类目录路径展示:逐级 displayName 以「/」连接,如 文稿 / xx / xx。
+                  每截单独 truncate(最长 ~14ch),超长段(如哈希目录)不再换行撑乱布局。 */}
+              <div className="flex flex-wrap items-center gap-y-1 text-[12px] leading-5">
+                {hierarchy.map((crumb, index) => (
+                  <span
                     key={nodeRefKey(crumb.ref)}
-                    className="min-w-0 max-w-full"
-                    variant="secondary"
+                    className="flex min-w-0 items-center"
                   >
-                    <span className="truncate">{crumb.displayName}</span>
-                  </Badge>
+                    {index > 0 ? (
+                      <span className="mx-1 shrink-0 text-[var(--text-tertiary)]">
+                        /
+                      </span>
+                    ) : null}
+                    <span
+                      className="max-w-[14ch] truncate text-[var(--text-secondary)]"
+                      title={crumb.displayName}
+                    >
+                      {crumb.displayName}
+                    </span>
+                  </span>
                 ))}
               </div>
             </div>
           ) : null}
-          <div className="mt-auto flex justify-end">
-            <Button
-              type="button"
-              variant={referenced ? "secondary" : undefined}
-              onClick={() => onReference(node)}
-            >
-              {L.reference}
-            </Button>
-          </div>
         </div>
       ) : (
-        <Feedback>{L.emptyPreview}</Feedback>
+        <Feedback>{copy.t("referencePicker.emptyPreview")}</Feedback>
       )}
     </aside>
   );
@@ -751,6 +886,155 @@ function Feedback({ children }: { children: ReactNode }): JSX.Element {
   );
 }
 
+/**
+ * 文件类型多选筛选(搜索框右侧)。自实现的轻量 popover —— 不用设计系统的 Radix
+ * DropdownMenu:本下拉嵌在自定义遮罩对话框(createPortal 到 body)里,Radix 菜单项
+ * 的 select 在「portal + modal=false」组合下点击无法触发(hover 高亮正常但点了不勾选),
+ * 表现为「筛选选了完全没反应」。改用原生 `<button onClick>`,点击必然触发 toggle。
+ *
+ * 弹层就地(absolute)渲染在触发器下方、不再 portal:对话框很高、弹层短且贴顶,
+ * 不会被 overflow 裁切;省去手动定位与 z 层冲突。未选时按钮显示「全部类型」,已选时
+ * 按固定顺序拼出已选分类名(过宽则截断,完整列表见 title 悬浮提示),并附数量徽章。
+ *
+ * 触发器固定宽度、固定 h-8(与左侧搜索框 Input 同高,父行 items-center 居中对齐):
+ * 选中文案再长也只在内部截断成「…」,不撑宽控件、不挤动搜索框。有选中时,触发器右侧的
+ * 箭头位让位给「清除」按钮:点击一键清空全部筛选(也可在弹层里逐项取消勾选)。
+ */
+function FilterCategoryFilter({
+  categories,
+  copy,
+  selected,
+  onClear,
+  onToggle
+}: {
+  categories: readonly ReferenceFilterCategory[];
+  copy: WorkspaceFileReferenceCopy;
+  selected: ReadonlySet<string>;
+  onClear: () => void;
+  onToggle: (id: string) => void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // 打开期间:点击容器外部或按 Esc 收起。pointerdown 用捕获阶段,先于其它处理生效;
+  // 容器内的点击(触发器/选项)不收起,以支持连续多选。
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  // 按 categories 的固定顺序收集已选标签,保证展示顺序稳定。
+  const selectedLabels = categories
+    .filter((category) => selected.has(category.id))
+    .map((category) => copy.t(category.labelKey));
+  const count = selectedLabels.length;
+  const labelText =
+    count > 0
+      ? selectedLabels.join(copy.t("referencePicker.fileTypeSeparator"))
+      : copy.t("referencePicker.fileTypeAll");
+
+  return (
+    // shrink-0:不被搜索框挤压;固定宽度让控件不随选中文案变宽。
+    <div ref={containerRef} className="relative w-[124px] shrink-0">
+      <Button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        // h-8:与左侧搜索框(Input size=default 同为 h-8/32px)显式等高对齐。
+        // 不用 h-full —— flex 项内的百分比高度无法可靠地依 items-stretch 求值,
+        // 会塌到按钮内容高度,导致与搜索框高度不一致。
+        // w-full + justify-between:固定宽度容器内,文案占据中间并截断,箭头贴右。
+        className="h-8 w-full justify-between gap-1.5 border-0 px-2.5"
+        size="default"
+        type="button"
+        variant="secondary"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="min-w-0 flex-1 truncate text-left" title={labelText}>
+          {labelText}
+        </span>
+        {count > 1 ? (
+          <Badge className="shrink-0 px-1.5" variant="secondary">
+            {count}
+          </Badge>
+        ) : null}
+        {count > 0 ? (
+          // 有选中时,右侧箭头位让位给「清除」:role=button 的 span(避免 button 嵌
+          // button 的非法结构),stopPropagation 让点击只清空筛选、不触发触发器的开合。
+          <span
+            aria-label={copy.t("referencePicker.clearFilter")}
+            className="grid size-4 shrink-0 cursor-pointer place-items-center rounded-full text-[var(--text-tertiary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
+            role="button"
+            tabIndex={0}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClear();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                event.stopPropagation();
+                onClear();
+              }
+            }}
+          >
+            <CloseIcon size={12} />
+          </span>
+        ) : (
+          <ChevronDownIcon className="size-3.5 shrink-0 text-[var(--text-tertiary)]" />
+        )}
+      </Button>
+      {open ? (
+        <div
+          className="absolute top-[calc(100%+4px)] right-0 min-w-40 overflow-hidden rounded-[8px] border border-[var(--line-1)] bg-[var(--background-fronted)] p-1 shadow-panel"
+          role="menu"
+          style={{ zIndex: "var(--z-panel-popover)" }}
+        >
+          {categories.map((category) => {
+            const checked = selected.has(category.id);
+            return (
+              <button
+                key={category.id}
+                aria-checked={checked}
+                className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)]"
+                role="menuitemcheckbox"
+                type="button"
+                onClick={() => onToggle(category.id)}
+              >
+                <span className="grid size-4 shrink-0 place-items-center">
+                  {checked ? (
+                    <CheckIcon className="size-3.5 text-[var(--tutti-purple)]" />
+                  ) : null}
+                </span>
+                <span className="flex-1">{copy.t(category.labelKey)}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // 每级缩进 = 箭头列宽(20px)+ 间距(8px)。文件没有箭头列,因此其图标恰好落在
 // 父文件夹图标的正下方;更深层级仍逐级缩进以体现层级关系。
 const TREE_INDENT = 28;
@@ -761,6 +1045,55 @@ function isFocused(
   node: ReferenceNode
 ): boolean {
   return focused ? nodeRefKey(focused.ref) === nodeRefKey(node.ref) : false;
+}
+
+/**
+ * 焦点节点的「所属层级」完整路径(用作类目录 path 展示):
+ * 导航面包屑(分组逐层,如 文稿 / 某应用)+ 就地展开树里从当前层到焦点节点
+ * 父级的文件夹链。焦点节点为空或未在已加载树中命中(如搜索结果)时退回面包屑。
+ */
+function resolveHierarchyPath(view: PickerView): readonly ReferenceNode[] {
+  const focused = view.focusedNode;
+  if (!focused) {
+    return view.breadcrumb;
+  }
+  const trail = findFocusedTrail(
+    view.currentEntries,
+    view.childrenByKey,
+    nodeRefKey(focused.ref),
+    []
+  );
+  return trail ? [...view.breadcrumb, ...trail] : view.breadcrumb;
+}
+
+/**
+ * 在已加载的就地展开树里深度优先查找焦点节点,返回其「祖先文件夹链」(不含焦点本身)。
+ * 未命中返回 null。只遍历已加载子节点,代价随展开范围而非全树增长。
+ */
+function findFocusedTrail(
+  roots: readonly ReferenceNode[],
+  childrenByKey: PickerView["childrenByKey"],
+  targetKey: string,
+  trail: readonly ReferenceNode[]
+): ReferenceNode[] | null {
+  for (const node of roots) {
+    if (nodeRefKey(node.ref) === targetKey) {
+      return [...trail];
+    }
+    if (node.kind === "folder") {
+      const children = childrenByKey[nodeRefKey(node.ref)]?.entries ?? [];
+      if (children.length > 0) {
+        const found = findFocusedTrail(children, childrenByKey, targetKey, [
+          ...trail,
+          node
+        ]);
+        if (found) {
+          return found;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 /**

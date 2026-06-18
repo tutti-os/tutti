@@ -92,12 +92,19 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
     async refreshTree() {
       // The desktop host has no dedicated tree invalidation surface yet.
     },
-    async searchReferences({ limit = 30, query, signal, workspaceId }) {
+    async searchReferences({
+      limit = 30,
+      query,
+      filters,
+      signal,
+      workspaceId
+    }) {
       const response = await tuttidClient.searchWorkspaceFiles(
         workspaceId,
         {
           limit,
-          query
+          query,
+          ...(filters && filters.length > 0 ? { filters } : {})
         },
         { signal }
       );

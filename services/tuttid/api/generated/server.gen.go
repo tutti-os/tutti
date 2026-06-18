@@ -241,6 +241,9 @@ type ServerInterface interface {
 	// List git branches for a workspace working directory
 	// (GET /v1/workspaces/{workspaceID}/git-branches)
 	ListWorkspaceGitBranches(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceGitBranchesParams)
+	// Search issue-manager output files across one workspace
+	// (POST /v1/workspaces/{workspaceID}/issue-references/search)
+	SearchWorkspaceIssueReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
 	// List issue-manager topics for one workspace
 	// (GET /v1/workspaces/{workspaceID}/issue-topics)
 	ListWorkspaceIssueTopics(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
@@ -2932,6 +2935,19 @@ func (siw *ServerInterfaceWrapper) SearchWorkspaceFiles(w http.ResponseWriter, r
 		return
 	}
 
+	// ------------- Optional query parameter "filters" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "filters", r.URL.Query(), &params.Filters, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "filters"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "filters", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "includeHidden" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeHidden", r.URL.Query(), &params.IncludeHidden, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
@@ -3146,6 +3162,38 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceGitBranches(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListWorkspaceGitBranches(w, r, workspaceID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchWorkspaceIssueReferences operation middleware
+func (siw *ServerInterfaceWrapper) SearchWorkspaceIssueReferences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchWorkspaceIssueReferences(w, r, workspaceID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5059,6 +5107,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/upload", wrapper.UploadWorkspaceFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/upload/preflight", wrapper.PreflightUploadWorkspaceFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/git-branches", wrapper.ListWorkspaceGitBranches)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issue-references/search", wrapper.SearchWorkspaceIssueReferences)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issue-topics", wrapper.ListWorkspaceIssueTopics)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issue-topics", wrapper.CreateWorkspaceIssueTopic)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issue-topics/{topicID}", wrapper.DeleteWorkspaceIssueTopic)
@@ -13284,6 +13333,123 @@ func (response ListWorkspaceGitBranches503JSONResponse) VisitListWorkspaceGitBra
 	return err
 }
 
+type SearchWorkspaceIssueReferencesRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Body        *SearchWorkspaceIssueReferencesJSONRequestBody
+}
+
+type SearchWorkspaceIssueReferencesResponseObject interface {
+	VisitSearchWorkspaceIssueReferencesResponse(w http.ResponseWriter) error
+}
+
+type SearchWorkspaceIssueReferences200JSONResponse IssueManagerReferenceSearchResponse
+
+func (response SearchWorkspaceIssueReferences200JSONResponse) VisitSearchWorkspaceIssueReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceIssueReferences400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response SearchWorkspaceIssueReferences400JSONResponse) VisitSearchWorkspaceIssueReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceIssueReferences401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response SearchWorkspaceIssueReferences401JSONResponse) VisitSearchWorkspaceIssueReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceIssueReferences404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response SearchWorkspaceIssueReferences404JSONResponse) VisitSearchWorkspaceIssueReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceIssueReferences405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response SearchWorkspaceIssueReferences405JSONResponse) VisitSearchWorkspaceIssueReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceIssueReferences502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response SearchWorkspaceIssueReferences502JSONResponse) VisitSearchWorkspaceIssueReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspaceIssueReferences503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response SearchWorkspaceIssueReferences503JSONResponse) VisitSearchWorkspaceIssueReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListWorkspaceIssueTopicsRequestObject struct {
 	WorkspaceID WorkspaceID `json:"workspaceID"`
 }
@@ -17983,6 +18149,9 @@ type StrictServerInterface interface {
 	// List git branches for a workspace working directory
 	// (GET /v1/workspaces/{workspaceID}/git-branches)
 	ListWorkspaceGitBranches(ctx context.Context, request ListWorkspaceGitBranchesRequestObject) (ListWorkspaceGitBranchesResponseObject, error)
+	// Search issue-manager output files across one workspace
+	// (POST /v1/workspaces/{workspaceID}/issue-references/search)
+	SearchWorkspaceIssueReferences(ctx context.Context, request SearchWorkspaceIssueReferencesRequestObject) (SearchWorkspaceIssueReferencesResponseObject, error)
 	// List issue-manager topics for one workspace
 	// (GET /v1/workspaces/{workspaceID}/issue-topics)
 	ListWorkspaceIssueTopics(ctx context.Context, request ListWorkspaceIssueTopicsRequestObject) (ListWorkspaceIssueTopicsResponseObject, error)
@@ -20371,6 +20540,41 @@ func (sh *strictHandler) ListWorkspaceGitBranches(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListWorkspaceGitBranchesResponseObject); ok {
 		if err := validResponse.VisitListWorkspaceGitBranchesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchWorkspaceIssueReferences operation middleware
+func (sh *strictHandler) SearchWorkspaceIssueReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
+	var request SearchWorkspaceIssueReferencesRequestObject
+
+	request.WorkspaceID = workspaceID
+
+	var body SearchWorkspaceIssueReferencesJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchWorkspaceIssueReferences(ctx, request.(SearchWorkspaceIssueReferencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchWorkspaceIssueReferences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchWorkspaceIssueReferencesResponseObject); ok {
+		if err := validResponse.VisitSearchWorkspaceIssueReferencesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

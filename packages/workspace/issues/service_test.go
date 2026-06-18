@@ -1207,6 +1207,53 @@ func (s *fakeStore) ListLatestRunOutputs(_ context.Context, workspaceID string, 
 	return s.ListRunOutputs(context.Background(), workspaceID, issueID, runs[0].TaskID, runs[0].RunID)
 }
 
+func (s *fakeStore) SearchRunOutputs(_ context.Context, params RunOutputSearchParams) ([]RunOutputSearchHit, error) {
+	query := strings.ToLower(params.Query)
+	matches := make([]RunOutput, 0)
+	for _, outputs := range s.output {
+		for _, output := range outputs {
+			if output.WorkspaceID != params.WorkspaceID {
+				continue
+			}
+			if !strings.Contains(strings.ToLower(output.DisplayName), query) {
+				continue
+			}
+			if params.IssueID != "" {
+				if output.IssueID != params.IssueID {
+					continue
+				}
+			} else if params.TopicID != "" {
+				if s.issues[issueKey(output.WorkspaceID, output.IssueID)].TopicID != params.TopicID {
+					continue
+				}
+			}
+			matches = append(matches, output)
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].CreatedAtUnixMS != matches[j].CreatedAtUnixMS {
+			return matches[i].CreatedAtUnixMS > matches[j].CreatedAtUnixMS
+		}
+		return matches[i].ID > matches[j].ID
+	})
+	hits := make([]RunOutputSearchHit, 0)
+	seenPaths := map[string]struct{}{}
+	for _, output := range matches {
+		if params.Limit > 0 && len(hits) >= params.Limit {
+			break
+		}
+		if _, exists := seenPaths[output.Path]; exists {
+			continue
+		}
+		seenPaths[output.Path] = struct{}{}
+		hits = append(hits, RunOutputSearchHit{
+			Output:     output,
+			IssueTitle: s.issues[issueKey(output.WorkspaceID, output.IssueID)].Title,
+		})
+	}
+	return hits, nil
+}
+
 func issueKey(workspaceID string, issueID string) string {
 	return strings.Join([]string{workspaceID, issueID}, "\x00")
 }

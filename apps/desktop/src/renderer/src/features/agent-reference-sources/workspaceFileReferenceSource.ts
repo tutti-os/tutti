@@ -84,13 +84,14 @@ export function createWorkspaceFileReferenceSource(input: {
 
   return {
     metadata: { id: WORKSPACE_FILE_SOURCE_ID, label, order: input.order ?? 0 },
-    // 本地文件:简版布局——无分组导航栏、无类型筛选。
+    // 本地文件:简版布局——无分组导航栏,但支持全局文件类型筛选。
+    // filterable:已选分类作为 search() 的 filters 下钻到 daemon 的 /files/search 过滤。
     capabilities: {
       searchable: true,
       previewable: true,
       paginated: false,
       navigable: false,
-      typeFilterable: false
+      filterable: true
     },
 
     isAvailable: () => typeof adapter.listDirectory === "function",
@@ -139,14 +140,17 @@ export function createWorkspaceFileReferenceSource(input: {
 
     async search(
       scope: ReferenceScope,
-      { query, limit, signal }: SearchInput
+      { query, filters, limit, signal }: SearchInput
     ): Promise<SearchResult> {
       if (!adapter.searchReferences) {
         return { entries: [], nextCursor: null };
       }
+      // query 与 filters 至少一项非空(controller 保证);仅选筛选(query 空)时
+      // 由 daemon 按类型 list-all。filters 下钻到 /files/search 服务端过滤。
       const refs = await adapter.searchReferences({
         workspaceId: scope.workspaceId,
         query,
+        ...(filters && filters.length > 0 ? { filters } : {}),
         ...(limit === undefined ? {} : { limit }),
         ...(signal ? { signal } : {})
       });

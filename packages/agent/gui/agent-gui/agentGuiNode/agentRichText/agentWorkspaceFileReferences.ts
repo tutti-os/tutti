@@ -1,5 +1,9 @@
 import type { JSONContent } from "@tiptap/core";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
+import {
+  mentionItemToAttrs,
+  type AgentContextMentionItem
+} from "./agentFileMentionExtension";
 
 function basename(path: string): string {
   const normalized = path.trim().replace(/\/+$/, "");
@@ -25,6 +29,20 @@ function referenceMentionPath(item: WorkspaceFileReference): string {
     return `${path}/`;
   }
   return path;
+}
+
+/**
+ * 把任意 mention item(file / workspace-app-bundle / …)建成可插入的节点内容。
+ * 每个 item 走 mentionItemToAttrs 归一为节点 attrs;item 之间补空格。
+ */
+export function createAgentMentionContent(
+  items: readonly AgentContextMentionItem[]
+): JSONContent[] {
+  return items.flatMap((item, index) => [
+    ...(index > 0 ? ([{ type: "text", text: " " }] as JSONContent[]) : []),
+    { type: "agentFileMention", attrs: mentionItemToAttrs(item) },
+    { type: "text", text: " " }
+  ]);
 }
 
 export function createAgentFileMentionContent(

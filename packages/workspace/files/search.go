@@ -9,7 +9,8 @@ import (
 
 const (
 	DefaultSearchLimit = 30
-	MaxSearchLimit     = 50
+	// 引用 picker 的搜索/筛选结果支持「拉到底部增长式分页」,单次 limit 可增长到此上限。
+	MaxSearchLimit = 200
 
 	DefaultRecentLimit = 30
 	MaxRecentLimit     = 100
@@ -95,6 +96,61 @@ func NormalizeRecentLimit(limit int) int {
 		return MaxRecentLimit
 	}
 	return limit
+}
+
+// NormalizeSearchFilters trims、去重、丢弃空白的「文件类型筛选分类」id。
+func NormalizeSearchFilters(filters []string) []string {
+	if len(filters) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(filters))
+	for _, filter := range filters {
+		filter = strings.TrimSpace(filter)
+		if filter == "" || seen[filter] {
+			continue
+		}
+		seen[filter] = true
+		out = append(out, filter)
+	}
+	return out
+}
+
+// BuildListingEntries 从已过滤的 candidates 直接构造结果(不做关键词打分),供「仅按类型
+// 筛选、无关键词」的枚举用:按名称、再按路径稳定排序,截断到 limit。category 过滤由调用方
+// (data 层 walk)先行完成,本函数对传入 candidates 不再二次过滤。
+func BuildListingEntries(root LogicalPath, candidates []SearchCandidate, limit int) []SearchEntry {
+	limit = NormalizeSearchLimit(limit)
+	entries := make([]SearchEntry, 0, len(candidates))
+	for _, candidate := range candidates {
+		relativePath := normalizeCandidateRelativePath(candidate.RelativePath)
+		if relativePath == "" {
+			continue
+		}
+		if candidate.Kind != EntryKindFile && candidate.Kind != EntryKindDirectory {
+			continue
+		}
+		logicalPath := LogicalPath(path.Join(root.String(), relativePath))
+		entries = append(entries, SearchEntry{
+			Path:          logicalPath,
+			Name:          path.Base(relativePath),
+			Kind:          candidate.Kind,
+			DirectoryPath: LogicalPathDir(logicalPath),
+			MatchIndices:  []int{},
+			MatchTarget:   SearchMatchTargetBasename,
+			Score:         0,
+		})
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].Name != entries[j].Name {
+			return entries[i].Name < entries[j].Name
+		}
+		return entries[i].Path < entries[j].Path
+	})
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	return entries
 }
 
 func NormalizeSearchKinds(kinds []EntryKind) ([]EntryKind, error) {
