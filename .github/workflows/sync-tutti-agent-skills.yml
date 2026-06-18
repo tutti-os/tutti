@@ -74,25 +74,38 @@ jobs:
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Bump plugin cachebuster
+      - name: Bump plugin patch version
         if: steps.changes.outputs.has_changes == 'true'
         working-directory: tutti-agent-skills
         run: |
           python3 - <<'PY'
           import json
-          import os
           import pathlib
+          import re
+          import sys
 
-          sha = os.environ["GITHUB_SHA"][:12]
+          def bump_patch(version):
+              base = str(version).split("+", 1)[0]
+              parts = base.split(".")
+              if len(parts) != 3 or not all(part.isdigit() for part in parts):
+                  sys.exit(f"Unsupported plugin version: {version}")
+              parts[2] = str(int(parts[2]) + 1)
+              return ".".join(parts)
+
           for manifest_path in [
               pathlib.Path(".codex-plugin/plugin.json"),
               pathlib.Path("plugins/tutti/.codex-plugin/plugin.json"),
           ]:
-              manifest = json.loads(manifest_path.read_text())
-              version = str(manifest.get("version", "0.1.0"))
-              base = version.split("+", 1)[0]
-              manifest["version"] = f"{base}+codex.source-{sha}"
-              manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+              text = manifest_path.read_text()
+              manifest = json.loads(text)
+              next_version = bump_patch(manifest.get("version", "0.1.0"))
+              text = re.sub(
+                  r'("version"\s*:\s*")[^"]+(")',
+                  rf"\g<1>{next_version}\2",
+                  text,
+                  count=1,
+              )
+              manifest_path.write_text(text)
           PY
 
       - name: Validate allowed changed paths
@@ -215,24 +228,53 @@ jobs:
             --json number \
             --jq '.[0].number // ""')"
           if [ -z "$pr_number" ]; then
+            body="$(printf 'Mirrors Tutti main repository workspace app skills.\n\nSource commit: %s' "${GITHUB_SHA}")"
             pr_url="$(gh pr create \
               --repo "$SKILLS_REPO" \
               --base main \
               --head "$SYNC_BRANCH" \
               --title "Sync Tutti agent skills" \
-              --body "Mirrors Tutti main repository workspace app skills.\n\nSource commit: ${GITHUB_SHA}")"
+              --body "$body")"
             pr_number="${pr_url##*/}"
           else
+            body="$(printf 'Mirrors Tutti main repository workspace app skills.\n\nSource commit: %s' "${GITHUB_SHA}")"
             gh pr edit "$pr_number" \
               --repo "$SKILLS_REPO" \
               --title "Sync Tutti agent skills" \
-              --body "Mirrors Tutti main repository workspace app skills.\n\nSource commit: ${GITHUB_SHA}"
+              --body "$body"
             pr_url="https://github.com/${SKILLS_REPO}/pull/${pr_number}"
           fi
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
           echo "url=https://github.com/${SKILLS_REPO}/pull/${pr_number}" >> "$GITHUB_OUTPUT"
 
-      - name: Enable auto-merge
+      - name: Wait for sync pull request checks
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TUTTI_AGENT_SKILLS_SYNC_TOKEN }}
+        run: |
+          for attempt in {1..30}; do
+            checks_json="$(gh pr checks \
+              "${{ steps.sync_pr.outputs.number }}" \
+              --repo "$SKILLS_REPO" \
+              --json name,state,bucket 2>/dev/null || true)"
+            checks_count="$(printf '%s' "$checks_json" | python3 -c 'import json,sys; print(len(json.load(sys.stdin) or []))' 2>/dev/null || echo 0)"
+            if [ "$checks_count" -gt 0 ]; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "No checks appeared on sync PR after waiting." >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
+          gh pr checks \
+            "${{ steps.sync_pr.outputs.number }}" \
+            --repo "$SKILLS_REPO" \
+            --watch \
+            --fail-fast
+
+      - name: Merge sync pull request
         if: steps.changes.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.TUTTI_AGENT_SKILLS_SYNC_TOKEN }}
@@ -241,7 +283,8 @@ jobs:
             "${{ steps.sync_pr.outputs.number }}" \
             --repo "$SKILLS_REPO" \
             --squash \
-            --auto
+            --delete-branch \
+            --admin
 
       - name: Find source pull request
         if: always()
@@ -265,7 +308,7 @@ jobs:
             const syncUrl = "${{ steps.sync_pr.outputs.url }}";
             const status = "${{ job.status }}";
             const body = hasChanges
-              ? `Tutti skills sync ${status}.\n\nExternal repository:\n  tutti-os/tutti-agent-skills\n\nSync PR:\n  ${syncUrl}\n\nAuto-merge:\n  enabled after required checks pass\n\nSource commit:\n  ${context.sha}`
+              ? `Tutti skills sync ${status}.\n\nExternal repository:\n  tutti-os/tutti-agent-skills\n\nSync PR:\n  ${syncUrl}\n\nMerge:\n  automatically merged after external checks pass\n\nSource commit:\n  ${context.sha}`
               : `Tutti skills sync skipped.\n\nNo mirrored skill changes were detected for source commit ${context.sha}.`;
 
             await github.rest.issues.createComment({
