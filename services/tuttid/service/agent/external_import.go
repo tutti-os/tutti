@@ -455,9 +455,6 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 			CompletedAtUnixMS: message.OccurredAtUnixMS,
 		})
 	}
-	if len(updates) == 0 && sessionExists {
-		return 0, false, nil
-	}
 	if _, err := s.ExternalImportStore.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
 		WorkspaceID:       workspaceID,
 		AgentSessionID:    agentSessionID,
@@ -478,6 +475,9 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 		EndedAtUnixMS:    session.UpdatedAtUnixMS,
 	}); err != nil {
 		return 0, false, err
+	}
+	if len(updates) == 0 && sessionExists {
+		return 0, false, nil
 	}
 	importedMessages := 0
 	for start := 0; start < len(updates); start += 200 {

@@ -170,6 +170,13 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	if result.ImportedProjects != 1 || result.ImportedSessions != 1 || result.ImportedMessages != 2 {
 		t.Fatalf("import result = %#v, want one project, one session, two messages", result)
 	}
+	importedSession, err := service.Get(ctx, "ws-1", codexAID)
+	if err != nil {
+		t.Fatalf("Get imported session error = %v", err)
+	}
+	if value(importedSession.Title) != "Plan the import" {
+		t.Fatalf("imported session title = %q, want first user message", value(importedSession.Title))
+	}
 	sessions, err := service.List(ctx, "ws-1")
 	if err != nil {
 		t.Fatalf("List error = %v", err)
@@ -209,6 +216,37 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	}
 	if finalRerun.ImportedSessions != 0 || finalRerun.ImportedMessages != 0 {
 		t.Fatalf("final rerun import = %#v, want no new sessions or messages", finalRerun)
+	}
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "2026", "codex-a.jsonl"),
+		map[string]any{
+			"timestamp": timestamp(0),
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "codex-a", "cwd": projectA},
+		},
+		map[string]any{"timestamp": timestamp(time.Second), "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "codex-a-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Updated first prompt"}},
+		}},
+		map[string]any{"timestamp": timestamp(2 * time.Second), "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "codex-a-2", "role": "assistant",
+			"content": []any{map[string]any{"type": "output_text", "text": "Import planned"}},
+		}},
+	)
+	titleRefresh, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: projectA, SessionIDs: []string{codexAID}}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions title refresh error = %v", err)
+	}
+	if titleRefresh.ImportedSessions != 0 || titleRefresh.ImportedMessages != 0 {
+		t.Fatalf("title refresh import = %#v, want no new sessions or messages", titleRefresh)
+	}
+	refreshedSession, err := service.Get(ctx, "ws-1", codexAID)
+	if err != nil {
+		t.Fatalf("Get refreshed imported session error = %v", err)
+	}
+	if value(refreshedSession.Title) != "Updated first prompt" {
+		t.Fatalf("refreshed title = %q, want updated first user message", value(refreshedSession.Title))
 	}
 }
 
