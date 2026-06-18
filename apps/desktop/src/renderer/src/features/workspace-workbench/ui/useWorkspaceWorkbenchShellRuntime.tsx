@@ -46,6 +46,8 @@ import { renderWorkspaceFilesNodeBody } from "./WorkspaceFilesNodeBody";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 
+const onboardingAppId = "tutti-onboarding";
+
 export interface WorkspaceWorkbenchShellRuntime {
   appI18n: I18nRuntime<string>;
   closeDialog: {
@@ -86,6 +88,7 @@ export interface WorkspaceWorkbenchShellRuntime {
     fit: WorkbenchSurfaceWallpaperFit;
     url: string;
   };
+  workbenchHostService: ReturnType<typeof useWorkspaceWorkbenchHostService>;
 }
 
 export function useWorkspaceWorkbenchShellRuntime({
@@ -303,7 +306,11 @@ export function useWorkspaceWorkbenchShellRuntime({
               await host.launchNode({
                 payload: { appId, prepared, prevStatus },
                 reason: "host",
-                typeId: workspaceAppWebviewTypeID
+                typeId: workspaceAppWebviewTypeID,
+                // 让 onboarding 应用打开时播放“从底部进入并展开”的动画。
+                ...(appId === onboardingAppId
+                  ? { launchSource: "onboarding-auto" }
+                  : {})
               });
             }
           : null
@@ -358,7 +365,8 @@ export function useWorkspaceWorkbenchShellRuntime({
       appearance: shellRuntimeSnapshot.wallpaperSelection.wallpaper.appearance,
       fit: shellRuntimeSnapshot.wallpaperSelection.wallpaper.fit,
       url: shellRuntimeSnapshot.wallpaperSelection.wallpaper.url
-    }
+    },
+    workbenchHostService
   };
 }
 

@@ -11,7 +11,8 @@ import {
   type DesktopWorkspaceAppExternalRendererRequest,
   type DesktopWorkspaceAppExternalRendererResponse,
   type DesktopWorkspaceAppExternalRendererResult,
-  type DesktopWorkspaceAppContext
+  type DesktopWorkspaceAppContext,
+  type DesktopWorkspaceOpenFeatureRequest
 } from "../../shared/contracts/ipc";
 import {
   normalizeTuttiExternalAtQueryInput,
@@ -251,6 +252,19 @@ export function registerWorkspaceAppContextIpc(
       url: payload.url
     });
   });
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appContext.openFeature,
+    (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      if (!isWorkspaceAppOpenFeaturePayload(payload)) {
+        throw new Error("Workspace app feature target is not allowed.");
+      }
+      context.ownerWindow.webContents.send(
+        desktopIpcChannels.appContext.openFeatureRequested,
+        payload
+      );
+    }
+  );
   preferences.subscribe(() => {
     broadcastWorkspaceAppContext({
       locale: preferences.getLocale()
@@ -490,6 +504,7 @@ function createWorkspaceAppContext(
   const installationId = `${context.workspaceID}:${context.appID}`;
   return {
     appId: context.appID,
+    capabilities: ["workspace.openFeature@1"],
     contextToken: createWorkspaceAppContextToken(endpoint, context, {
       installationId,
       issuer
@@ -583,6 +598,27 @@ function isWorkspaceAppOpenUrlPayload(
     !Array.isArray(value) &&
     typeof (value as { url?: unknown }).url === "string"
   );
+}
+
+function isWorkspaceAppOpenFeaturePayload(
+  value: unknown
+): value is DesktopWorkspaceOpenFeatureRequest {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const feature = (value as { feature?: unknown }).feature;
+  const allowedFeatures = [
+    "app-center",
+    "issue-manager",
+    "message-center",
+    "agent-connect",
+    "agent-chat"
+  ];
+  if (typeof feature !== "string" || !allowedFeatures.includes(feature)) {
+    return false;
+  }
+  const provider = (value as { provider?: unknown }).provider;
+  return provider === undefined || typeof provider === "string";
 }
 
 function normalizeWorkspaceAppOpenUrlLogPayload(

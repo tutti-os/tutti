@@ -48,6 +48,8 @@ export const desktopIpcChannels = {
     changed: "workspace-app-context:changed",
     diagnostic: "workspace-app-context:diagnostic",
     get: "workspace-app-context:get",
+    openFeature: "workspace-app-feature:open",
+    openFeatureRequested: "workspace-app-feature:open-requested",
     openUrl: "workspace-app:open-url"
   },
   appExternal: {
@@ -279,6 +281,16 @@ export interface DesktopWorkspaceAppContext {
   workspaceId?: string;
 }
 
+export interface DesktopWorkspaceOpenFeatureRequest {
+  feature:
+    | "app-center"
+    | "issue-manager"
+    | "message-center"
+    | "agent-connect"
+    | "agent-chat";
+  provider?: string;
+}
+
 export type DesktopWorkspaceAppFrontendLogPayload = TuttiExternalLogInput;
 
 export interface DesktopBackendConfig {
@@ -505,6 +517,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.computerUse.uninstall]: undefined;
   [desktopIpcChannels.computerUse.grantPermissions]: undefined;
   [desktopIpcChannels.appContext.get]: undefined;
+  [desktopIpcChannels.appContext
+    .openFeature]: DesktopWorkspaceOpenFeatureRequest;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryInput;
   [desktopIpcChannels.appExternal.filesOpen]: TuttiExternalFileOpenInput;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectInput;
@@ -597,6 +611,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.computerUse
     .grantPermissions]: DesktopComputerUseActionResult;
   [desktopIpcChannels.appContext.get]: DesktopWorkspaceAppContext;
+  [desktopIpcChannels.appContext.openFeature]: void;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryResult[];
   [desktopIpcChannels.appExternal.filesOpen]: void;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectResult;

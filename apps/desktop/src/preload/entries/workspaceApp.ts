@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type {
   DesktopIpcResult,
-  DesktopWorkspaceAppContext
+  DesktopWorkspaceAppContext,
+  DesktopWorkspaceOpenFeatureRequest
 } from "../../shared/contracts/ipc";
 import { createWorkspaceAppExternalBridge } from "./workspaceAppExternalBridge.ts";
 import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
@@ -9,7 +10,8 @@ import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
 const appContextChannels = {
   changed: "workspace-app-context:changed",
   diagnostic: "workspace-app-context:diagnostic",
-  get: "workspace-app-context:get"
+  get: "workspace-app-context:get",
+  openFeature: "workspace-app-feature:open"
 } as const;
 
 installWorkspaceAppLinkInterception({
@@ -31,9 +33,15 @@ installWorkspaceAppLinkInterception({
 
 export interface WorkspaceAppHostContext {
   get(): Promise<DesktopWorkspaceAppContext>;
+  getLocale(): Promise<string>;
   subscribe(
     listener: (context: DesktopWorkspaceAppContext) => void
   ): () => void;
+  onLocaleChanged(listener: (locale: string) => void): () => void;
+}
+
+export interface WorkspaceAppWorkspaceBridge {
+  openFeature(input: DesktopWorkspaceOpenFeatureRequest): Promise<void>;
 }
 
 const contextListeners = new Set<
@@ -60,6 +68,10 @@ const appContext: WorkspaceAppHostContext = {
       pendingContext = null;
     }
   },
+  async getLocale() {
+    const context = await appContext.get();
+    return context.locale;
+  },
   subscribe(listener) {
     contextListeners.add(listener);
     void appContext
@@ -78,6 +90,11 @@ const appContext: WorkspaceAppHostContext = {
     return () => {
       contextListeners.delete(listener);
     };
+  },
+  onLocaleChanged(listener) {
+    return appContext.subscribe((context) => {
+      listener(context.locale);
+    });
   }
 };
 
@@ -90,6 +107,12 @@ const tuttiExternal = createWorkspaceAppExternalBridge({
     ipcRenderer.send(channel, payload);
   }
 });
+
+const workspace: WorkspaceAppWorkspaceBridge = {
+  openFeature(input) {
+    return invokeWorkspaceApp(appContextChannels.openFeature, input);
+  }
+};
 
 ipcRenderer.on(
   appContextChannels.changed,
@@ -151,6 +174,11 @@ function isWorkspaceAppContext(
 }
 
 contextBridge.exposeInMainWorld("tuttiExternal", tuttiExternal);
+contextBridge.exposeInMainWorld("tuttiAppContext", appContext);
+contextBridge.exposeInMainWorld("tutti", {
+  appContext,
+  workspace
+});
 
 function sendDiagnostic(
   event: string,

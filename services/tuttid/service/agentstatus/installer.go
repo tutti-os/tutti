@@ -42,6 +42,9 @@ type installerExecutionSummary struct {
 func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) providerRuntimeResolution {
 	resolver := s.commandResolver()
 	env := resolver.Env(spec.AdapterEnv)
+	if strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" && spec.Provider == "codex" {
+		return providerRuntimeResolution{Env: env}
+	}
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return s.resolveExternalProviderRuntime(ctx, spec, resolver, env)
 	}

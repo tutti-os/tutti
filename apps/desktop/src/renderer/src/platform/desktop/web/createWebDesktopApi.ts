@@ -295,6 +295,9 @@ function createWebHostApi(): DesktopHostApi {
       }
     },
     workspace: {
+      onOpenFeatureRequest() {
+        return () => {};
+      },
       openWorkspaceAppFolder() {
         return Promise.reject(electronDebugRequired("openWorkspaceAppFolder"));
       },

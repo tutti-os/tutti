@@ -28,7 +28,8 @@ import type {
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest,
   DesktopWorkspaceAppExternalRendererRequest,
-  DesktopWorkspaceAppExternalRendererResult
+  DesktopWorkspaceAppExternalRendererResult,
+  DesktopWorkspaceOpenFeatureRequest
 } from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 
@@ -63,6 +64,9 @@ export interface DesktopPlatformApi {
 }
 
 export interface DesktopHostWorkspaceApi {
+  onOpenFeatureRequest(
+    listener: (request: DesktopWorkspaceOpenFeatureRequest) => void
+  ): () => void;
   openWorkspaceAppFolder(input: {
     appId: string;
     folderKind: DesktopWorkspaceAppFolderKind;
