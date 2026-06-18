@@ -57,6 +57,8 @@ Keep install/build work out of `bootstrap.sh`; use `prepare.sh` only when prepar
 
 ## CLI Surface
 
+If the user asks to connect the app to the Tutti ecosystem, the app must expose a `tutti.cli.json` surface and declare it from `tutti.app.json`. Do not skip CLI integration as optional in that case. If the app has no obvious domain action yet, expose a small useful command such as `status`, `summary`, or `open-context` that proves the app is discoverable and callable.
+
 If the app exposes `tutti.cli.json`:
 
 - Use `schemaVersion: "tutti.app.cli.v1"`.

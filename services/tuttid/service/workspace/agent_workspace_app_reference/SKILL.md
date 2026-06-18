@@ -43,8 +43,9 @@ Also read `$tutti-workspace-app-factory` before changing final package files or 
 4. Build the web UI as the primary development surface. Keep the server as local API/static host and app orchestration layer.
 5. If agents are needed, add `@tutti-os/agent-acp-kit`, provider detection, runtime provider abstraction, event normalization, and a run-scoped tool gateway.
 6. Add package generation only after the local dev app runs. Package the built web assets, bundled server, `tutti.app.json`, optional `tutti.cli.json`, executable `bootstrap.sh`, assets, locales, and package-local `AGENTS.md`.
-7. For GitHub-hosted app repositories that should publish releases, add staging and production release workflows after the package builder is stable.
-8. Verify with the repo's targeted checks first, then package checks.
+7. If the user asks to connect to the Tutti app ecosystem, treat ecosystem integration as required: expose app capabilities through `tutti.cli.json`, make the app callable by other Tutti apps and agents, and use `TUTTI_CLI` for any calls to other installed Tutti apps.
+8. For GitHub-hosted app repositories that should publish releases, add staging and production release workflows after the package builder is stable.
+9. Verify with the repo's targeted checks first, then package checks.
 
 ## Validation
 
