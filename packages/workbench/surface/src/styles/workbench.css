@@ -98,6 +98,31 @@
     height 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 应用打开时从底部进入并展开的动画。仅命中带 onboarding-auto 标记的节点，
+   使用独立的 translate/scale 属性（不占用 transform，避免与 mission-control
+   的 matrix 变换冲突）。 */
+@keyframes workbench-shell-enter {
+  from {
+    opacity: 0;
+    translate: 0 56px;
+    scale: 0.9;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+.workbench-window-shell[data-launch-source="onboarding-auto"][data-presentation-mode="default"][data-genie-state="visible"] {
+  transform-origin: bottom center;
+  animation: workbench-shell-enter 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workbench-window-shell[data-launch-source="onboarding-auto"] {
+    animation: none;
+  }
+}
+
 .workbench-window-shell[data-presentation-mode="mission-control"] {
   pointer-events: auto;
   will-change: transform;

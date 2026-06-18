@@ -165,6 +165,9 @@ func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed b
 	if !installed {
 		return AuthInfo{Status: AuthUnknown}
 	}
+	if spec.Provider == agentprovider.ClaudeCode && strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" {
+		return AuthInfo{Status: AuthRequired}
+	}
 	if len(spec.AuthStatusCommand) > 0 && strings.TrimSpace(binaryPath) != "" {
 		if auth, ok := s.resolveAuthFromCommand(ctx, spec, binaryPath); ok {
 			return auth

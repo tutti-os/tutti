@@ -298,6 +298,9 @@ function createWebHostApi(): DesktopHostApi {
       }
     },
     workspace: {
+      onOpenFeatureRequest() {
+        return () => {};
+      },
       onOpenFileRequest() {
         return () => {};
       },

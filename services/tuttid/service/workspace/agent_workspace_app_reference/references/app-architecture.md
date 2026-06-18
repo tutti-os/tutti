@@ -81,6 +81,12 @@ Use one narrow browser wrapper for Tutti host calls. The web app must continue t
 
 ```ts
 export interface TuttiWorkspaceAppBridge {
+  app?: {
+    getContext(): Promise<{ workspaceId?: string; locale?: string }>;
+    subscribe?(
+      listener: (context: { workspaceId?: string; locale?: string }) => void
+    ): () => void;
+  };
   files?: {
     open(input: {
       path: string;
@@ -88,25 +94,22 @@ export interface TuttiWorkspaceAppBridge {
       mode?: "auto" | "preview" | "reveal";
     }): Promise<void>;
   };
-  appContext?: {
-    get(): Promise<{ workspaceId?: string; locale?: string }>;
-    subscribe?(
-      listener: (context: { workspaceId?: string; locale?: string }) => void
-    ): () => void;
+  workspace?: {
+    openFeature(input: {
+      feature:
+        | "app-center"
+        | "issue-manager"
+        | "message-center"
+        | "agent-connect"
+        | "agent-chat";
+      provider?: string;
+    }): Promise<void>;
   };
 }
 
 declare global {
   interface Window {
-    tutti?: TuttiWorkspaceAppBridge;
-    tuttiExternal?: {
-      app?: {
-        getContext?: () => Promise<{ locale?: string; language?: string }>;
-        subscribe?: (
-          listener: (context: { locale?: string; language?: string }) => void
-        ) => () => void;
-      };
-    };
+    tuttiExternal?: TuttiWorkspaceAppBridge;
   }
 }
 ```

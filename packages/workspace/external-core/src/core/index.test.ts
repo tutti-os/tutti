@@ -7,6 +7,7 @@ import {
   normalizeTuttiExternalLogInput,
   normalizeTuttiExternalPermissionRequestInput,
   normalizeTuttiExternalSettingsOpenInput,
+  normalizeTuttiExternalWorkspaceOpenFeatureInput,
   tuttiExternalAtDefaultMaxResults,
   tuttiExternalAtMaxResultsLimit,
   tuttiExternalAtProviderIds,
@@ -172,6 +173,33 @@ test("rejects invalid settings open input", () => {
   assert.throws(
     () => normalizeTuttiExternalSettingsOpenInput({ provider: "codex" }),
     /provider is unsupported/
+  );
+});
+
+test("normalizes workspace feature open input", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalWorkspaceOpenFeatureInput({
+      feature: "message-center",
+      provider: " codex "
+    }),
+    {
+      feature: "message-center",
+      provider: "codex"
+    }
+  );
+});
+
+test("rejects invalid workspace feature open input", () => {
+  assert.throws(
+    () => normalizeTuttiExternalWorkspaceOpenFeatureInput(null),
+    /input must be an object/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalWorkspaceOpenFeatureInput({
+        feature: "not-supported"
+      }),
+    /feature is unsupported/
   );
 });
 

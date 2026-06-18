@@ -29,7 +29,10 @@ import type {
   WorkspaceWallpaperDisplayMode,
   WorkspaceWallpaperId
 } from "./workspaceWallpaper";
-import type { DesktopHostNotificationNavigationPayload } from "@shared/contracts/ipc";
+import type {
+  DesktopHostNotificationNavigationPayload,
+  DesktopWorkspaceOpenFeatureRequest
+} from "@shared/contracts/ipc";
 import type {
   TuttiExternalAtQueryInput,
   TuttiExternalAtQueryResult
@@ -123,6 +126,9 @@ export interface IWorkspaceWorkbenchHostService {
   onWindowCloseRequest(listener: () => void): () => void;
   onNotificationNavigate(
     listener: (payload: DesktopHostNotificationNavigationPayload) => void
+  ): () => void;
+  onOpenFeatureRequest(
+    listener: (request: DesktopWorkspaceOpenFeatureRequest) => void
   ): () => void;
   onOpenFileRequest(
     listener: (request: DesktopWorkspaceAppOpenFileResolvedPayload) => void

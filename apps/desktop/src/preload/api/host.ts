@@ -211,6 +211,20 @@ export function createHostDesktopApi(): DesktopHostApi {
       }
     },
     workspace: {
+      onOpenFeatureRequest(listener): () => void {
+        const handler = (_event: IpcRendererEvent, payload: unknown) =>
+          listener(payload as Parameters<typeof listener>[0]);
+        ipcRenderer.on(
+          desktopIpcChannels.appContext.openFeatureRequested,
+          handler
+        );
+        return () => {
+          ipcRenderer.removeListener(
+            desktopIpcChannels.appContext.openFeatureRequested,
+            handler
+          );
+        };
+      },
       onOpenFileRequest(listener): () => void {
         const handler = (_event: IpcRendererEvent, payload: unknown) =>
           listener(payload as Parameters<typeof listener>[0]);

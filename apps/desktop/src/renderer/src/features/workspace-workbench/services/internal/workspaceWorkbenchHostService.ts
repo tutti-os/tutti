@@ -85,7 +85,8 @@ import { createDesktopWorkspaceDockPreviewCache } from "./desktopWorkspaceDockPr
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type {
   DesktopHostNotificationNavigationPayload,
-  DesktopWorkspaceAppOpenFileResolvedPayload
+  DesktopWorkspaceAppOpenFileResolvedPayload,
+  DesktopWorkspaceOpenFeatureRequest
 } from "@shared/contracts/ipc";
 import { SettingsCustomWallpaperClearedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-cleared/settingsCustomWallpaperClearedReporter.ts";
 import { SettingsCustomWallpaperUploadedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-uploaded/settingsCustomWallpaperUploadedReporter.ts";
@@ -122,7 +123,10 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenFileRequest">;
+  hostWorkspaceApi: Pick<
+    DesktopHostWorkspaceApi,
+    "onOpenFeatureRequest" | "onOpenFileRequest"
+  >;
   workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: WorkspaceAgentActivityService;
@@ -148,7 +152,10 @@ export interface WorkspaceWorkbenchHostExternalDependencies {
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenFileRequest">;
+  hostWorkspaceApi: Pick<
+    DesktopHostWorkspaceApi,
+    "onOpenFeatureRequest" | "onOpenFileRequest"
+  >;
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -246,6 +253,12 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     listener: (payload: DesktopHostNotificationNavigationPayload) => void
   ): () => void {
     return this.dependencies.hostNotificationsApi.onNavigate(listener);
+  }
+
+  onOpenFeatureRequest(
+    listener: (request: DesktopWorkspaceOpenFeatureRequest) => void
+  ): () => void {
+    return this.dependencies.hostWorkspaceApi.onOpenFeatureRequest(listener);
   }
 
   createWorkspaceAppExternalFileReferenceAdapter(

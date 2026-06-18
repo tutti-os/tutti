@@ -32,7 +32,10 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenFileRequest">;
+  hostWorkspaceApi: Pick<
+    DesktopHostWorkspaceApi,
+    "onOpenFeatureRequest" | "onOpenFileRequest"
+  >;
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,

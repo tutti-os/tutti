@@ -57,6 +57,19 @@ const defaultWindowChromeI18n = createWorkbenchWindowChromeI18nRuntime(
   })
 );
 
+function resolveWorkbenchNodeLaunchSource(data: unknown): string | undefined {
+  if (
+    data &&
+    typeof data === "object" &&
+    "launchSource" in data &&
+    typeof data.launchSource === "string" &&
+    data.launchSource.length > 0
+  ) {
+    return data.launchSource;
+  }
+  return undefined;
+}
+
 function resolveWorkbenchNodeTypeId(data: unknown): string | undefined {
   if (
     data &&
@@ -191,6 +204,7 @@ export function WorkbenchWindowFrame<TData>({
       data-focused={isFocused ? "true" : "false"}
       data-display-mode={node.displayMode}
       data-genie-state={genie.isNodeGenieHidden(node.id) ? "hidden" : "visible"}
+      data-launch-source={resolveWorkbenchNodeLaunchSource(node.data)}
       data-minimized-mount={hiddenMounted ? "hidden" : "visible"}
       data-presentation-mode={presentationMode ?? "default"}
       data-slot="viewport-menu-boundary"

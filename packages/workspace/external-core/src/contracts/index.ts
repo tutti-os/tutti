@@ -118,6 +118,18 @@ export interface TuttiExternalSettingsOpenInput {
   tab?: "models";
 }
 
+export type TuttiExternalWorkspaceFeature =
+  | "app-center"
+  | "issue-manager"
+  | "message-center"
+  | "agent-connect"
+  | "agent-chat";
+
+export interface TuttiExternalWorkspaceOpenFeatureInput {
+  feature: TuttiExternalWorkspaceFeature;
+  provider?: string;
+}
+
 export const tuttiExternalLogLevels = [
   "debug",
   "info",
@@ -156,6 +168,9 @@ export interface TuttiExternalBridge {
   };
   settings: {
     open(input?: TuttiExternalSettingsOpenInput): Promise<void>;
+  };
+  workspace: {
+    openFeature(input: TuttiExternalWorkspaceOpenFeatureInput): Promise<void>;
   };
   logs: {
     write(input: TuttiExternalLogInput): void;

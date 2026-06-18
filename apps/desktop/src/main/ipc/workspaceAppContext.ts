@@ -20,7 +20,8 @@ import {
   normalizeTuttiExternalFileSelectInput,
   normalizeTuttiExternalLogInput,
   normalizeTuttiExternalPermissionRequestInput,
-  normalizeTuttiExternalSettingsOpenInput
+  normalizeTuttiExternalSettingsOpenInput,
+  normalizeTuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/core";
 import type {
   TuttiExternalAtQueryResult,
@@ -257,6 +258,17 @@ export function registerWorkspaceAppContextIpc(
       url: payload.url
     });
   });
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.workspaceFeatureOpen,
+    (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalWorkspaceOpenFeatureInput(payload);
+      context.ownerWindow.webContents.send(
+        desktopIpcChannels.appContext.openFeatureRequested,
+        input
+      );
+    }
+  );
   preferences.subscribe(() => {
     broadcastWorkspaceAppContext({
       locale: preferences.getLocale()
@@ -496,7 +508,7 @@ function createWorkspaceAppContext(
   const installationId = `${context.workspaceID}:${context.appID}`;
   return {
     appId: context.appID,
-    capabilities: ["files.open@1"],
+    capabilities: ["files.open@1", "workspace.openFeature@1"],
     contextToken: createWorkspaceAppContextToken(endpoint, context, {
       installationId,
       issuer

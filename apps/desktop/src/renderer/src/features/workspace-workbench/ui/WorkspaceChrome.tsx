@@ -65,6 +65,7 @@ import {
 } from "../services/workspaceAgentOutcomeNotification";
 import { resolveWorkspaceAgentMessageCenterTrigger } from "../services/workspaceAgentMessageCenterTrigger";
 import { toggleWorkspaceAgentMessageCenter } from "../services/workspaceAgentMessageCenterToggle";
+import { registerWorkspaceMessageCenterOpenHandler } from "../services/workspaceMessageCenterCoordinator";
 import { createWorkspaceAgentGuiSessionLaunchRequest } from "../services/workspaceAgentGuiLaunch";
 import { requestWorkspaceBrowserLaunch } from "../services/workspaceBrowserLaunchCoordinator";
 import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoordinator";
@@ -330,6 +331,14 @@ function WorkspaceAgentMessageCenterAction({
   useEffect(() => {
     void workspaceAgentActivityService.load(workspace.id);
   }, [workspace.id, workspaceAgentActivityService]);
+
+  useEffect(
+    () =>
+      registerWorkspaceMessageCenterOpenHandler(workspace.id, () => {
+        setOpen(true);
+      }),
+    [workspace.id]
+  );
 
   useEffect(() => {
     requestedMessageSummarySessionIdsRef.current.clear();

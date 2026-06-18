@@ -34,7 +34,8 @@ import type {
   TuttiExternalPermissionRequestInput,
   TuttiExternalPermissionRequestResult,
   TuttiExternalRendererRequest,
-  TuttiExternalSettingsOpenInput
+  TuttiExternalSettingsOpenInput,
+  TuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/contracts";
 
 export const desktopIpcChannels = {
@@ -48,6 +49,7 @@ export const desktopIpcChannels = {
     changed: "workspace-app-context:changed",
     diagnostic: "workspace-app-context:diagnostic",
     get: "workspace-app-context:get",
+    openFeatureRequested: "workspace-app-feature:open-requested",
     openFileRequested: "workspace-app-files:open-requested",
     openUrl: "workspace-app:open-url"
   },
@@ -59,7 +61,8 @@ export const desktopIpcChannels = {
     permissionsRequest: "workspace-app-permissions:request",
     rendererRequest: "workspace-app-external:renderer-request",
     rendererResponse: "workspace-app-external:renderer-response",
-    settingsOpen: "workspace-app-settings:open"
+    settingsOpen: "workspace-app-settings:open",
+    workspaceFeatureOpen: "workspace-app-feature:open"
   },
   browser: {
     activate: "browser:activate",
@@ -280,6 +283,9 @@ export interface DesktopWorkspaceAppContext {
   locale: DesktopLocale;
   workspaceId?: string;
 }
+
+export type DesktopWorkspaceOpenFeatureRequest =
+  TuttiExternalWorkspaceOpenFeatureInput;
 
 export type DesktopWorkspaceAppFrontendLogPayload = TuttiExternalLogInput;
 
@@ -545,6 +551,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appExternal
     .permissionsRequest]: TuttiExternalPermissionRequestInput;
   [desktopIpcChannels.appExternal.settingsOpen]: TuttiExternalSettingsOpenInput;
+  [desktopIpcChannels.appExternal
+    .workspaceFeatureOpen]: DesktopWorkspaceOpenFeatureRequest;
   [desktopIpcChannels.browser.activate]: BrowserNodeActivationInput;
   [desktopIpcChannels.browser.capturePreview]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.close]: BrowserNodeNodeIdInput;
@@ -638,6 +646,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.appExternal
     .permissionsRequest]: TuttiExternalPermissionRequestResult;
   [desktopIpcChannels.appExternal.settingsOpen]: void;
+  [desktopIpcChannels.appExternal.workspaceFeatureOpen]: void;
   [desktopIpcChannels.browser.activate]: void;
   [desktopIpcChannels.browser.capturePreview]: string | null;
   [desktopIpcChannels.browser.close]: void;

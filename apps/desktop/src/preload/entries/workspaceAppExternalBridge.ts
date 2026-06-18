@@ -9,7 +9,8 @@ import type {
   TuttiExternalLogInput,
   TuttiExternalPermissionRequestInput,
   TuttiExternalPermissionRequestResult,
-  TuttiExternalSettingsOpenInput
+  TuttiExternalSettingsOpenInput,
+  TuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/contracts";
 import { normalizeTuttiExternalLogInput } from "@tutti-os/workspace-external-core/core";
 
@@ -31,7 +32,8 @@ export const workspaceAppExternalChannels = {
   filesSelect: "workspace-app-files:select",
   logsWrite: "workspace-app-logs:write",
   permissionsRequest: "workspace-app-permissions:request",
-  settingsOpen: "workspace-app-settings:open"
+  settingsOpen: "workspace-app-settings:open",
+  workspaceFeatureOpen: "workspace-app-feature:open"
 } as const;
 
 export function createWorkspaceAppExternalBridge(
@@ -97,6 +99,18 @@ export function createWorkspaceAppExternalBridge(
         return dependencies.invoke<void>(
           workspaceAppExternalChannels.settingsOpen,
           input ?? {}
+        );
+      }
+    },
+    workspace: {
+      openFeature(input: TuttiExternalWorkspaceOpenFeatureInput) {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "workspace.openFeature"
+        );
+        return dependencies.invoke<void>(
+          workspaceAppExternalChannels.workspaceFeatureOpen,
+          input
         );
       }
     },
