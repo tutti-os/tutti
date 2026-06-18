@@ -19,6 +19,7 @@ Use this skill for:
 - App-specific MCP or command gateways that expose domain tools to local agents.
 - Multi-package `pnpm` workspaces with `apps/web`, `apps/server`, and `packages/shared`.
 - App-owned packaging, smoke tests, i18n enforcement, and CLI/reference endpoints.
+- GitHub Actions release workflows for publishing Tutti app releases and staging/production catalogs.
 
 Use `$tutti-workspace-app-factory` instead for a small standalone package, package repair, or manifest-only validation.
 
@@ -29,6 +30,7 @@ Read only the references needed for the task:
 - `references/app-architecture.md` for repository layout, web/server/shared boundaries, and dependency choices.
 - `references/agent-acp-kit.md` when implementing local agent providers, provider detection, ACP event mapping, or run-scoped MCP tools.
 - `references/package-builder.md` when adding `scripts/package-tutti-app.mjs`, `bootstrap.sh`, Tutti CLI output docs, or package validation.
+- `references/github-actions-release.md` when creating or changing `.github/workflows/publish-tutti-app.yml`, `.github/workflows/publish-tutti-app-staging.yml`, release variables, or catalog publishing.
 - `references/i18n-and-web-debugging.md` when changing UI copy, language handling, web-first debug flow, or smoke/e2e checks.
 
 Also read `$tutti-workspace-app-factory` before changing final package files or package runtime behavior.
@@ -41,7 +43,8 @@ Also read `$tutti-workspace-app-factory` before changing final package files or 
 4. Build the web UI as the primary development surface. Keep the server as local API/static host and app orchestration layer.
 5. If agents are needed, add `@tutti-os/agent-acp-kit`, provider detection, runtime provider abstraction, event normalization, and a run-scoped tool gateway.
 6. Add package generation only after the local dev app runs. Package the built web assets, bundled server, `tutti.app.json`, optional `tutti.cli.json`, executable `bootstrap.sh`, assets, locales, and package-local `AGENTS.md`.
-7. Verify with the repo's targeted checks first, then package checks.
+7. For GitHub-hosted app repositories that should publish releases, add staging and production release workflows after the package builder is stable.
+8. Verify with the repo's targeted checks first, then package checks.
 
 ## Validation
 

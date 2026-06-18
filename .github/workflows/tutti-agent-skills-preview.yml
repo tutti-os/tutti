@@ -80,7 +80,7 @@ jobs:
             "description": "Tutti workspace app authoring and agent app architecture tools.",
             "author": { "name": "Tutti" },
             "repository": "https://github.com/tutti-os/tutti-agent-skills",
-            "license": "MIT",
+            "license": "Apache-2.0",
             "keywords": ["tutti", "workspace-apps", "agent-skills"],
             "skills": "./skills/",
             "interface": {
