@@ -24,11 +24,11 @@ function removeManagedSection(body) {
   return body.replace(managedSectionPattern, "\n").trimEnd();
 }
 
-function findPreferredMacDmgAssetName(assetNames) {
-  return (
-    assetNames.find((name) => /-mac-universal\.dmg$/i.test(name)) ??
-    assetNames.find((name) => /\.dmg$/i.test(name))
-  );
+function findMacDmgAssetName(assetNames, pattern) {
+  return assetNames.find((name) => {
+    pattern.lastIndex = 0;
+    return pattern.test(name);
+  });
 }
 
 function resolveDesktopDownloadLinks(
@@ -37,13 +37,24 @@ function resolveDesktopDownloadLinks(
   releaseAssetBaseUrl
 ) {
   const desktopAssets = [
-    { label: "macOS", resolveAssetName: findPreferredMacDmgAssetName }
+    {
+      label: "macOS Apple Silicon (arm64)",
+      pattern: /-mac-arm64\.dmg$/i
+    },
+    {
+      label: "macOS Intel (x64)",
+      pattern: /-mac-x64\.dmg$/i
+    },
+    {
+      label: "macOS Universal",
+      pattern: /-mac-universal\.dmg$/i
+    }
   ];
   const normalizedBaseUrl = normalizeBaseUrl(releaseAssetBaseUrl);
 
   return desktopAssets
-    .map(({ label, resolveAssetName }) => {
-      const assetName = resolveAssetName(assetNames);
+    .map(({ label, pattern }) => {
+      const assetName = findMacDmgAssetName(assetNames, pattern);
       if (!assetName) {
         return null;
       }
@@ -127,7 +138,7 @@ export {
   SECTION_END,
   SECTION_START,
   buildUpdatedReleaseBody,
-  findPreferredMacDmgAssetName,
+  findMacDmgAssetName,
   removeManagedSection,
   resolveDesktopDownloadLinks
 };
