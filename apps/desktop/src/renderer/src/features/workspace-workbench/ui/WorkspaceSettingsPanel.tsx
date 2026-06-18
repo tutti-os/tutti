@@ -1,6 +1,5 @@
 import type * as React from "react";
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useRef,
@@ -71,6 +70,10 @@ import {
 } from "../../../../../shared/theme/index.ts";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
+import {
+  WorkspaceSettingsActionButton,
+  workspaceSettingsControlColumnClass
+} from "./WorkspaceSettingsActionButton";
 import { CustomWallpaperImageError } from "../services/customWallpaper";
 import {
   customWorkspaceWallpaperId,
@@ -1690,20 +1693,22 @@ function ComputerUseSetupRow({
           </p>
         )}
       </div>
-      <div className="relative z-[1] flex w-[220px] min-w-[220px] items-center justify-end gap-2 max-[560px]:w-full max-[560px]:min-w-0">
+      <div
+        className={cn(
+          "relative z-[1] flex items-center justify-end gap-2",
+          workspaceSettingsControlColumnClass
+        )}
+      >
         {(status === "checking" || status === "idle") && (
-          <Button
-            className="h-8 min-w-0 flex-1 rounded-[6px]"
+          <WorkspaceSettingsActionButton
+            className="flex-1"
             disabled
-            size="sm"
-            variant="secondary"
-          >
-            {t("common.loading")}
-          </Button>
+            label={t("common.loading")}
+          />
         )}
         {status === "not-installed" && (
-          <ComputerUseProgressButton
-            ariaLabel={t("workspace.settings.general.computerUseProgressAria")}
+          <WorkspaceSettingsActionButton
+            className="flex-1"
             disabled={operationRunning}
             label={
               operation === "install"
@@ -1711,6 +1716,9 @@ function ComputerUseSetupRow({
                 : t("workspace.settings.general.computerUseInstallButton")
             }
             progress={operation === "install" ? operationProgress : null}
+            progressAriaLabel={t(
+              "workspace.settings.general.computerUseProgressAria"
+            )}
             onClick={() => {
               void handleInstall();
             }}
@@ -1720,13 +1728,14 @@ function ComputerUseSetupRow({
           <>
             <Tooltip>
               <TooltipTrigger asChild>
-                <ComputerUseProgressButton
-                  ariaLabel={t(
-                    "workspace.settings.general.computerUseProgressAria"
-                  )}
+                <WorkspaceSettingsActionButton
+                  className="flex-1"
                   disabled={operationRunning}
                   label={grantLabel}
                   progress={operation === "grant" ? operationProgress : null}
+                  progressAriaLabel={t(
+                    "workspace.settings.general.computerUseProgressAria"
+                  )}
                   onClick={() => {
                     void handleGrant();
                   }}
@@ -1736,10 +1745,8 @@ function ComputerUseSetupRow({
                 {grantTooltip}
               </TooltipContent>
             </Tooltip>
-            <ComputerUseProgressButton
-              ariaLabel={t(
-                "workspace.settings.general.computerUseProgressAria"
-              )}
+            <WorkspaceSettingsActionButton
+              className="flex-1"
               disabled={operationRunning}
               label={
                 operation === "uninstall"
@@ -1747,6 +1754,9 @@ function ComputerUseSetupRow({
                   : t("workspace.settings.general.computerUseUninstallButton")
               }
               progress={operation === "uninstall" ? operationProgress : null}
+              progressAriaLabel={t(
+                "workspace.settings.general.computerUseProgressAria"
+              )}
               variant="destructive"
               onClick={() => {
                 void handleUninstall();
@@ -1758,69 +1768,6 @@ function ComputerUseSetupRow({
     </div>
   );
 }
-
-type ComputerUseProgressButtonProps = Omit<
-  React.ComponentPropsWithoutRef<typeof Button>,
-  "children" | "disabled" | "onClick" | "size" | "variant"
-> & {
-  ariaLabel: string;
-  disabled: boolean;
-  label: string;
-  progress: number | null;
-  variant?: "secondary" | "destructive";
-  onClick: () => void;
-};
-
-const ComputerUseProgressButton = forwardRef<
-  HTMLButtonElement,
-  ComputerUseProgressButtonProps
->(function ComputerUseProgressButton(
-  {
-    ariaLabel,
-    disabled,
-    label,
-    progress,
-    variant = "secondary",
-    onClick,
-    ...buttonProps
-  },
-  ref
-) {
-  const running = progress !== null;
-  return (
-    <Button
-      {...buttonProps}
-      ref={ref}
-      aria-label={running ? ariaLabel : buttonProps["aria-label"]}
-      aria-valuemax={running ? 100 : undefined}
-      aria-valuemin={running ? 0 : undefined}
-      aria-valuenow={running ? Math.round(progress) : undefined}
-      className={cn(
-        "relative h-8 min-w-0 flex-1 overflow-hidden rounded-[6px]",
-        buttonProps.className
-      )}
-      disabled={disabled}
-      role={running ? "progressbar" : buttonProps.role}
-      size="sm"
-      variant={variant}
-      onClick={onClick}
-    >
-      {running && (
-        <span
-          aria-hidden="true"
-          className={cn(
-            "absolute inset-y-0 left-0 z-0 transition-[width] duration-200 ease-out",
-            variant === "destructive"
-              ? "bg-[color-mix(in_srgb,var(--white-stationary)_24%,transparent)]"
-              : "bg-[color-mix(in_srgb,var(--text-primary)_14%,transparent)]"
-          )}
-          style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-        />
-      )}
-      <span className="relative z-[1] min-w-0 truncate">{label}</span>
-    </Button>
-  );
-});
 
 function nextComputerUseOperationProgress(current: number): number {
   if (current >= 94) {
@@ -1959,6 +1906,30 @@ function WorkspaceGeneralSettingsSection({
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.externalImport.settingsLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.externalImport.settingsDescription")}
+          </p>
+        </div>
+        <div
+          className={cn(
+            "flex justify-end max-[560px]:justify-start",
+            workspaceSettingsControlColumnClass
+          )}
+        >
+          <WorkspaceSettingsActionButton
+            icon={<UploadIcon className="size-3.5" />}
+            label={t("workspace.externalImport.settingsAction")}
+            type="button"
+            onClick={onOpenExternalAgentImport}
+          />
+        </div>
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.general.defaultAgentProviderLabel")}
           </strong>
           <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
@@ -1992,28 +1963,6 @@ function WorkspaceGeneralSettingsSection({
               ))}
             </SelectContent>
           </Select>
-        </div>
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.externalImport.settingsLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.externalImport.settingsDescription")}
-          </p>
-        </div>
-        <div className="flex w-[220px] min-w-[220px] justify-end max-[560px]:w-full max-[560px]:min-w-0 max-[560px]:justify-start">
-          <Button
-            size="sm"
-            type="button"
-            variant="secondary"
-            onClick={onOpenExternalAgentImport}
-          >
-            <UploadIcon className="size-3.5" />
-            {t("workspace.externalImport.settingsAction")}
-          </Button>
         </div>
       </div>
 

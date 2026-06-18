@@ -164,26 +164,26 @@ export const en = {
     externalImport: {
       back: "Back",
       description:
-        "Import local Codex and Claude Code project history from the last 30 days.",
+        "Import local Codex and Claude Code project history from the last 30 days",
       done: "Done",
-      empty: "No local Codex or Claude Code project history was found.",
+      empty: "No local Codex or Claude Code project history was found",
       errors: "Skipped items",
       import: "Import",
       importFailed: "We couldn't import external agent history right now.",
       importing: "Importing...",
       chatOptionDescription: "Recent 30 days · {{messages}} messages",
       chatOptionTitle: "Chat sessions ({{count}})",
-      optionDescription: "Choose what to import from the scanned history.",
-      projectOptionDescription: "Use existing project folders.",
+      optionDescription: "Choose what to import from the scanned history",
+      projectOptionDescription: "Use existing project folders",
       projectOptionTitle: "Projects ({{count}})",
-      providerDescription: "Choose which local apps to scan.",
+      providerDescription: "Choose which local apps to scan",
       promptDescription:
-        "Tutti can import recent {{provider}} project conversations.",
+        "Tutti can import recent {{provider}} project conversations",
       promptImport: "Import",
       promptLater: "Later",
       promptTitle: "Import existing AI chats",
       result:
-        "Imported {{sessions}} sessions and {{messages}} messages from {{projects}} projects.",
+        "Imported {{sessions}} sessions and {{messages}} messages from {{projects}} projects",
       scan: "Scan",
       scanFailed: "We couldn't scan external agent history right now.",
       scanning: "Scanning local agent history...",
@@ -191,7 +191,7 @@ export const en = {
       selectImportOption: "Select {{label}}",
       settingsAction: "Import",
       settingsDescription:
-        "Bring recent local Codex and Claude Code conversation history into this workspace.",
+        "Bring recent local Codex and Claude Code conversation history into this workspace",
       settingsLabel: "Import AI chats",
       title: "Import from AI apps"
     },

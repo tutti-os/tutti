@@ -30,7 +30,7 @@ test("workspace settings panel lists appearance below general", () => {
 test("workspace settings general panel lists agent defaults before language", () => {
   assert.match(
     source,
-    /workspace\.settings\.general\.defaultAgentProviderLabel[\s\S]*workspace\.externalImport\.settingsLabel[\s\S]*workspace\.settings\.general\.browserUseConnectionModeLabel[\s\S]*workspace\.settings\.general\.preventSleepLabel[\s\S]*workspace\.settings\.general\.languageLabel/
+    /workspace\.externalImport\.settingsLabel[\s\S]*workspace\.settings\.general\.defaultAgentProviderLabel[\s\S]*workspace\.settings\.general\.browserUseConnectionModeLabel[\s\S]*workspace\.settings\.general\.preventSleepLabel[\s\S]*workspace\.settings\.general\.languageLabel/
   );
 });
 

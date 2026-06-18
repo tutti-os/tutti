@@ -9,7 +9,6 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import {
   Button,
-  ChatIcon,
   Checkbox,
   Dialog,
   DialogContent,
@@ -25,7 +24,6 @@ import {
 import { useService } from "@tutti-os/infra/di";
 import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import { useTranslation } from "@renderer/i18n";
-import { cn } from "@renderer/lib/format";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
 
 const externalImportProviderOptions: WorkspaceAgentProvider[] = [
@@ -35,6 +33,12 @@ const externalImportProviderOptions: WorkspaceAgentProvider[] = [
 
 type ExternalImportStep = "providers" | "options";
 type ExternalImportOption = "projects" | "chats";
+
+const externalImportListCheckboxClass =
+  "focus-visible:!ring-0 focus-visible:border-[var(--border-1)] data-[state=checked]:focus-visible:border-[var(--text-primary)]";
+
+const externalImportListItemClass =
+  "grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-[8px] bg-[var(--transparency-block)] p-3 transition-colors hover:bg-[var(--transparency-hover)]";
 
 const externalImportOptionDefaults: ExternalImportOption[] = [
   "projects",
@@ -314,19 +318,13 @@ function ProviderSelectionList({
           const checked = selectedProviders.has(provider);
           const label = resolveWorkspaceAgentGuiLabel(provider);
           return (
-            <label
-              key={provider}
-              className={cn(
-                "grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] p-3 transition-colors hover:bg-[var(--transparency-hover)]",
-                checked && "border-[var(--border-focus)]"
-              )}
-            >
+            <label key={provider} className={externalImportListItemClass}>
               <Checkbox
                 aria-label={t("workspace.externalImport.selectProvider", {
                   label
                 })}
                 checked={checked}
-                className="mt-0.5"
+                className={externalImportListCheckboxClass}
                 onCheckedChange={(value) => onToggle(provider, value === true)}
               />
               <span className="min-w-0 text-[13px] font-semibold text-[var(--text-primary)]">
@@ -355,13 +353,11 @@ function ImportOptionSelectionList({
   }
   const options: {
     description: string;
-    icon: React.ReactNode;
     id: ExternalImportOption;
     title: string;
   }[] = [
     {
       description: t("workspace.externalImport.projectOptionDescription"),
-      icon: <FolderIcon className="size-5" />,
       id: "projects",
       title: t("workspace.externalImport.projectOptionTitle", {
         count: scan.projects.length
@@ -371,7 +367,6 @@ function ImportOptionSelectionList({
       description: t("workspace.externalImport.chatOptionDescription", {
         messages: scan.scannedMessages
       }),
-      icon: <ChatIcon className="size-5" />,
       id: "chats",
       title: t("workspace.externalImport.chatOptionTitle", {
         count: scan.scannedSessions
@@ -387,24 +382,15 @@ function ImportOptionSelectionList({
         {options.map((option) => {
           const checked = selectedOptions.has(option.id);
           return (
-            <label
-              key={option.id}
-              className={cn(
-                "grid cursor-pointer grid-cols-[auto_auto_minmax(0,1fr)] gap-3 rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] p-3 transition-colors hover:bg-[var(--transparency-hover)]",
-                checked && "border-[var(--border-focus)]"
-              )}
-            >
+            <label key={option.id} className={externalImportListItemClass}>
               <Checkbox
                 aria-label={t("workspace.externalImport.selectImportOption", {
                   label: option.title
                 })}
                 checked={checked}
-                className="mt-1"
+                className={externalImportListCheckboxClass}
                 onCheckedChange={(value) => onToggle(option.id, value === true)}
               />
-              <span className="flex size-8 items-center justify-center rounded-[8px] bg-[var(--transparency-block)] text-[var(--text-primary)]">
-                {option.icon}
-              </span>
               <span className="min-w-0">
                 <strong className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
                   {option.title}
@@ -474,9 +460,7 @@ function CenteredImportState({
 }) {
   return (
     <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center text-[13px] text-[var(--text-secondary)]">
-      <div className="flex size-10 items-center justify-center rounded-[8px] bg-[var(--transparency-block)] text-[var(--text-primary)]">
-        {icon}
-      </div>
+      <div className="text-[var(--text-primary)]">{icon}</div>
       <p className="m-0 max-w-[360px] leading-[1.4]">{text}</p>
     </div>
   );
