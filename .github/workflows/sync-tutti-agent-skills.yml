@@ -252,6 +252,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TUTTI_AGENT_SKILLS_SYNC_TOKEN }}
         run: |
+          for attempt in {1..30}; do
+            checks_json="$(gh pr checks \
+              "${{ steps.sync_pr.outputs.number }}" \
+              --repo "$SKILLS_REPO" \
+              --json name,state,bucket 2>/dev/null || true)"
+            checks_count="$(printf '%s' "$checks_json" | python3 -c 'import json,sys; print(len(json.load(sys.stdin) or []))' 2>/dev/null || echo 0)"
+            if [ "$checks_count" -gt 0 ]; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "No checks appeared on sync PR after waiting." >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
           gh pr checks \
             "${{ steps.sync_pr.outputs.number }}" \
             --repo "$SKILLS_REPO" \
