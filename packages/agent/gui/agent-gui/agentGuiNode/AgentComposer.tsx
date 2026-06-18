@@ -1533,8 +1533,8 @@ export function AgentComposer({
     insertWorkspaceReferences(await onRequestWorkspaceReferences());
   }, [insertWorkspaceReferences, onRequestWorkspaceReferences]);
 
-  // @ 面板里点事项/应用行的「查看产物文件」图标:关掉面板,打开引用 picker 并定位到该实体;
-  // 选中的文件仍按常规插入,但不会把该事项/应用本身作为 mention 插入。
+  // @ 面板里点任务/应用行的「查看产物文件」图标:关掉面板,打开引用 picker 并定位到该实体;
+  // 选中的文件仍按常规插入,但不会把该任务/应用本身作为 mention 插入。
   const handleOpenReferencesForEntity = useCallback(
     (entity: AgentContextMentionItem): void => {
       closeFileMentionPalette();

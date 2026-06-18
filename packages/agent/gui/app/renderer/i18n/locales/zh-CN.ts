@@ -287,7 +287,7 @@ export const zhCN = {
       sheetTitle: "表格",
       sheetDescription: "整理结构化数据、表格、计算和房间计划清单",
       calendarTitle: "日程",
-      calendarDescription: "规划房间里程碑、跟进事项、评审和共享日程",
+      calendarDescription: "规划房间里程碑、跟进任务、评审和共享日程",
       systemMonitorTitle: "系统监控",
       systemMonitorDescription: "查看运行时健康度、资源信号和工作区活动",
       codeEditorTitle: "代码编辑器",
@@ -311,7 +311,7 @@ export const zhCN = {
       mockSheetPreviewTitle: "数据表格",
       mockSheetPreviewBody: "这里将展示表格、计算、筛选和房间计划数据",
       mockCalendarPreviewTitle: "房间日历",
-      mockCalendarPreviewBody: "这里将展示里程碑、会议、跟进事项和共享日程块",
+      mockCalendarPreviewBody: "这里将展示里程碑、会议、跟进任务和共享日程块",
       mockMonitorPreviewTitle: "运行时信号",
       mockMonitorPreviewBody: "这里将展示 CPU、内存、网络和工作区活动信号",
       mockCodePreviewTitle: "源码工作区",
@@ -324,7 +324,7 @@ export const zhCN = {
     workspaceCenterSearchAria: "打开房间搜索",
     workspaceCenterSearchTitle: "在当前房间搜索节点、分区与便签",
     agentGui: {
-      initialPlaceholder: "输入 @ 引用会话、文件、事项和应用",
+      initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
       followupPlaceholder: "要求 {{provider}} 继续后续变更",
       installRequiredPlaceholder:
         "请先从 Dock 安装 {{provider}}，然后再发送消息",
@@ -518,8 +518,8 @@ export const zhCN = {
           prompt: "让 Agent 知道在哪里读文件、运行命令和理解代码"
         },
         useIssue: {
-          label: "善用Issue",
-          prompt: "把需求、约束和验收标准写进 Issue，Agent 更容易按目标推进"
+          label: "善用任务",
+          prompt: "把需求、约束和验收标准写进任务，Agent 更容易按目标推进"
         },
         mapCurrentState: {
           label: "先梳理现状",
@@ -527,7 +527,7 @@ export const zhCN = {
         },
         continueRecentSession: {
           label: "接力最近会话",
-          prompt: "延续工作时让 Agent 先回顾最近进展、未完成事项和阻塞点"
+          prompt: "延续工作时让 Agent 先回顾最近进展、未完成任务和阻塞点"
         },
         referenceOtherAgents: {
           label: "引用其他 Agent 对话历史",
@@ -613,7 +613,7 @@ export const zhCN = {
       contextPickerBrowseAppHint: "输入内容以搜索应用",
       contextPickerBrowseSessionHint: "输入内容以搜索我发起的 Agent 会话",
       contextPickerBrowseCollabHint: "输入内容以搜索其他人和 Agent 的会话",
-      contextPickerBrowseIssueHint: "输入内容以搜索当前房间内的 Issue",
+      contextPickerBrowseIssueHint: "输入内容以搜索当前房间内的任务",
       workspaceAppFactoryMentionFallback: "创建应用",
       contextPickerExpandMore: "展开更多 {{count}} 条",
       contextPickerCategoryFileDescription: "搜索工作区文件和目录",
@@ -793,11 +793,11 @@ export const zhCN = {
       mentionFilterApp: "应用",
       mentionFilterSession: "会话",
       mentionFilterCollab: "协作",
-      mentionFilterIssue: "事项",
+      mentionFilterIssue: "任务",
       mentionKindApp: "应用",
       mentionKindAppFactory: "应用工厂",
       mentionKindFile: "文件",
-      mentionKindIssue: "事项",
+      mentionKindIssue: "任务",
       mentionKindSession: "会话",
       mentionGroupFiles: "文件",
       mentionGroupOpenedFiles: "我打开的文件",
@@ -805,11 +805,11 @@ export const zhCN = {
       mentionGroupApps: "应用",
       mentionGroupMySessions: "我的会话",
       mentionGroupCollabSessions: "协作会话",
-      mentionGroupIssues: "事项",
+      mentionGroupIssues: "任务",
       mentionEmptyMySessions: "暂无会话",
       mentionEmptyCollabSessions: "暂无协作会话",
       mentionEmptyApps: "暂无应用",
-      mentionEmptyIssues: "暂无事项",
+      mentionEmptyIssues: "暂无任务",
       mentionEmptyDockFiles:
         "Dock 栏暂无已打开文件，输入关键词可搜索工作区文件",
       mentionEmptyAgentGeneratedFiles: "暂无 Agent 生成的文件",
@@ -820,9 +820,9 @@ export const zhCN = {
       issueRunPrompt: {
         currentWorkingDirectoryLabel: "当前工作目录",
         executionRequirementsLabel: "执行要求",
-        intro: "你正在处理一个任务事项。",
-        issueContentLabel: "事项内容",
-        issueTitleLabel: "事项标题",
+        intro: "你正在处理一个任务。",
+        issueContentLabel: "任务内容",
+        issueTitleLabel: "任务标题",
         missingContent: "（无补充内容）",
         noReferences: "- （无引用资料）",
         referencesLabel: "引用资料",
@@ -1447,7 +1447,7 @@ export const zhCN = {
       titlePlaceholder: "请输入任务标题",
       fieldDescription: "需求描述",
       descriptionPlaceholder: "补充背景、现象、影响范围与期望结果",
-      descriptionPlaceholderLegacy: "描述问题背景、异常表现和期望结果。",
+      descriptionPlaceholderLegacy: "描述任务背景、目标和期望结果。",
       fieldPriority: "优先级",
       priorityOptionMedium: "中",
       priorityOptionHigh: "高",
@@ -2263,7 +2263,7 @@ export const zhCN = {
       sheetTitle: "表格",
       sheetDescription: "整理结构化数据、表格、计算和房间计划清单",
       calendarTitle: "日程",
-      calendarDescription: "规划房间里程碑、跟进事项、评审和共享日程",
+      calendarDescription: "规划房间里程碑、跟进任务、评审和共享日程",
       systemMonitorTitle: "系统监控",
       systemMonitorDescription: "查看运行时健康度、资源信号和工作区活动",
       codeEditorTitle: "代码编辑器",
@@ -2287,7 +2287,7 @@ export const zhCN = {
       mockSheetPreviewTitle: "数据表格",
       mockSheetPreviewBody: "这里将展示表格、计算、筛选和房间计划数据",
       mockCalendarPreviewTitle: "房间日历",
-      mockCalendarPreviewBody: "这里将展示里程碑、会议、跟进事项和共享日程块",
+      mockCalendarPreviewBody: "这里将展示里程碑、会议、跟进任务和共享日程块",
       mockMonitorPreviewTitle: "运行时信号",
       mockMonitorPreviewBody: "这里将展示 CPU、内存、网络和工作区活动信号",
       mockCodePreviewTitle: "源码工作区",

@@ -555,7 +555,7 @@ describe("AgentRichTextEditor", () => {
     );
     expect(mentions[1]).toHaveAttribute(
       "aria-label",
-      "事项 修复 room status 批量接口"
+      "任务 修复 room status 批量接口"
     );
   });
 

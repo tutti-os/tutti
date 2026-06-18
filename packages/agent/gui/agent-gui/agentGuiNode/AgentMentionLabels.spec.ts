@@ -26,11 +26,11 @@ describe("AgentMentionLabels", () => {
     expect(agentMentionFilterLabel("all")).toBe("全部");
     expect(agentMentionFilterLabel("app")).toBe("应用");
     expect(agentMentionFilterLabel("session")).toBe("会话");
-    expect(agentMentionFilterLabel("issue")).toBe("事项");
+    expect(agentMentionFilterLabel("issue")).toBe("任务");
     expect(agentMentionGroupLabel("apps")).toBe("应用");
-    expect(agentMentionGroupLabel("issues")).toBe("事项");
+    expect(agentMentionGroupLabel("issues")).toBe("任务");
     expect(agentMentionGroupLabel("my_sessions")).toBe("我的会话");
-    expect(agentMentionEmptyGroupLabel("issues", "")).toBe("暂无事项");
+    expect(agentMentionEmptyGroupLabel("issues", "")).toBe("暂无任务");
     expect(agentMentionEmptyGroupLabel("files", "")).toBe(
       "Dock 栏暂无已打开文件，输入关键词可搜索工作区文件"
     );

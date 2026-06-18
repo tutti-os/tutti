@@ -117,7 +117,7 @@ import type { AgentContextMentionProvider } from "./agentContextMentionProvider"
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 
 /**
- * 把 @ 面板里的事项/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。
+ * 把 @ 面板里的任务/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。
  * 由宿主(desktop)注入 —— 源 id 与 params 形态是宿主侧 reference source 的知识。
  */
 export type AgentMentionReferenceTargetResolver = (
@@ -822,7 +822,7 @@ export function AgentGUINodeView({
   );
   const [workspaceReferencePickerOpen, setWorkspaceReferencePickerOpen] =
     useState(false);
-  // 打开引用 picker 时的定位目标(点事项/应用行的产物图标时设置;「+」按钮则为 null)。
+  // 打开引用 picker 时的定位目标(点任务/应用行的产物图标时设置;「+」按钮则为 null)。
   const [workspaceReferencePickerTarget, setWorkspaceReferencePickerTarget] =
     useState<ReferenceLocateTarget | null>(null);
   const [

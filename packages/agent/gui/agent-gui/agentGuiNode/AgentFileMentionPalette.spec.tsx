@@ -17,9 +17,9 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.agentGui.mentionFilterSession": "Sessions",
     "agentHost.agentGui.mentionGroupApps": "Apps",
     "agentHost.agentGui.mentionEmptyMySessions": "暂无会话",
-    "agentHost.agentGui.mentionGroupIssues": "事项",
-    "agentHost.agentGui.mentionEmptyIssues": "暂无事项",
-    "agentHost.agentGui.mentionFilterIssue": "事项",
+    "agentHost.agentGui.mentionGroupIssues": "任务",
+    "agentHost.agentGui.mentionEmptyIssues": "暂无任务",
+    "agentHost.agentGui.mentionFilterIssue": "任务",
     "agentHost.agentGui.fileMentionSwitchCategory": "切换分类",
     "agentHost.agentGui.fileMentionSwitchSelection": "切换选中",
     "agentHost.agentGui.contextPickerBrowseFileHint":
@@ -1264,12 +1264,12 @@ describe("AgentFileMentionPalette", () => {
       "border-t",
       "border-[var(--line-1)]"
     );
-    expect(screen.getByText("事项")).toHaveClass(
+    expect(screen.getByText("任务")).toHaveClass(
       "text-[13px]",
       "font-normal",
       "text-[var(--text-secondary)]"
     );
-    expect(screen.getByText("暂无事项")).toHaveClass(
+    expect(screen.getByText("暂无任务")).toHaveClass(
       "text-[13px]",
       "font-normal",
       "text-[var(--text-tertiary)]"

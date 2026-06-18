@@ -378,7 +378,7 @@ describe("AgentMentionSearchController", () => {
 
     expect(labelById.get("app")).toBe("应用");
     expect(labelById.get("session")).toBe("会话");
-    expect(labelById.get("issue")).toBe("事项");
+    expect(labelById.get("issue")).toBe("任务");
     expect(labelById.get("all")).toBe("全部");
   });
 

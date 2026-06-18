@@ -413,31 +413,31 @@ vi.mock("../../i18n/index", () => ({
       "agentHost.agentGui.mentionFilterFile": "文件",
       "agentHost.agentGui.mentionFilterSession": "会话",
       "agentHost.agentGui.mentionFilterCollab": "协作",
-      "agentHost.agentGui.mentionFilterIssue": "Issue",
+      "agentHost.agentGui.mentionFilterIssue": "Tasks",
       "agentHost.agentGui.mentionGroupApps": "App",
       "agentHost.agentGui.mentionGroupFiles": "文件",
       "agentHost.agentGui.mentionGroupMySessions": "我的会话",
       "agentHost.agentGui.mentionGroupCollabSessions": "协作会话",
-      "agentHost.agentGui.mentionGroupIssues": "Issue",
+      "agentHost.agentGui.mentionGroupIssues": "Tasks",
       "agentHost.agentGui.mentionEmptyMySessions": "暂无会话",
       "agentHost.agentGui.mentionEmptyCollabSessions": "暂无协作会话",
-      "agentHost.agentGui.mentionEmptyIssues": "暂无 Issue",
+      "agentHost.agentGui.mentionEmptyIssues": "No tasks yet",
       "agentHost.agentGui.mentionNoMatchingFiles": "没有匹配到文件",
       "agentHost.agentGui.fileMentionEmpty": "根据你输入的内容搜索工作区文件",
       "agentHost.agentGui.promptTipsPrefix": "Tips：",
       "agentHost.agentGui.promptTips.setWorkspace.label": "指定工作区",
       "agentHost.agentGui.promptTips.setWorkspace.prompt":
         "让 Agent 知道在哪里读文件、运行命令和理解代码",
-      "agentHost.agentGui.promptTips.useIssue.label": "善用Issue",
+      "agentHost.agentGui.promptTips.useIssue.label": "善用任务",
       "agentHost.agentGui.promptTips.useIssue.prompt":
-        "把需求、约束和验收标准写进 Issue，Agent 更容易按目标推进",
+        "把需求、约束和验收标准写进任务，Agent 更容易按目标推进",
       "agentHost.agentGui.promptTips.mapCurrentState.label": "先梳理现状",
       "agentHost.agentGui.promptTips.mapCurrentState.prompt":
         "不确定怎么下手时，让 Agent 先总结当前状态、风险和下一步",
       "agentHost.agentGui.promptTips.continueRecentSession.label":
         "接力最近会话",
       "agentHost.agentGui.promptTips.continueRecentSession.prompt":
-        "延续工作时让 Agent 先回顾最近进展、未完成事项和阻塞点",
+        "延续工作时让 Agent 先回顾最近进展、未完成任务和阻塞点",
       "agentHost.agentGui.promptTips.referenceOtherAgents.label":
         "引用其他 Agent 对话历史",
       "agentHost.agentGui.promptTips.referenceOtherAgents.prompt":
@@ -545,16 +545,16 @@ vi.mock("../../i18n/index", () => ({
         "agentHost.agentGui.promptTips.setWorkspace.label": "指定工作区",
         "agentHost.agentGui.promptTips.setWorkspace.prompt":
           "让 Agent 知道在哪里读文件、运行命令和理解代码",
-        "agentHost.agentGui.promptTips.useIssue.label": "善用Issue",
+        "agentHost.agentGui.promptTips.useIssue.label": "善用任务",
         "agentHost.agentGui.promptTips.useIssue.prompt":
-          "把需求、约束和验收标准写进 Issue，Agent 更容易按目标推进",
+          "把需求、约束和验收标准写进任务，Agent 更容易按目标推进",
         "agentHost.agentGui.promptTips.mapCurrentState.label": "先梳理现状",
         "agentHost.agentGui.promptTips.mapCurrentState.prompt":
           "不确定怎么下手时，让 Agent 先总结当前状态、风险和下一步",
         "agentHost.agentGui.promptTips.continueRecentSession.label":
           "接力最近会话",
         "agentHost.agentGui.promptTips.continueRecentSession.prompt":
-          "延续工作时让 Agent 先回顾最近进展、未完成事项和阻塞点",
+          "延续工作时让 Agent 先回顾最近进展、未完成任务和阻塞点",
         "agentHost.agentGui.promptTips.referenceOtherAgents.label":
           "引用其他 Agent 对话历史",
         "agentHost.agentGui.promptTips.referenceOtherAgents.prompt":
@@ -4515,7 +4515,7 @@ describe("AgentGUINode", () => {
     expect(within(palette).queryByText("暂无会话")).toBeNull();
     expect(within(palette).queryByText("暂无协作会话")).toBeNull();
     expect(within(palette).queryByRole("tab", { name: "协作" })).toBeNull();
-    expect(within(palette).queryByText("暂无 Issue")).toBeNull();
+    expect(within(palette).queryByText("No tasks yet")).toBeNull();
 
     fireEvent.keyDown(getComposerEditor(), { key: "ArrowDown" });
 
@@ -4577,8 +4577,8 @@ describe("AgentGUINode", () => {
     expect(within(palette).queryByText("暂无会话")).toBeNull();
     expect(within(palette).queryByText("协作会话")).toBeNull();
     expect(within(palette).queryByText("暂无协作会话")).toBeNull();
-    expect(within(palette).getAllByText("Issue").length).toBeGreaterThan(0);
-    expect(within(palette).queryByText("暂无 Issue")).toBeNull();
+    expect(within(palette).getAllByText("Tasks").length).toBeGreaterThan(0);
+    expect(within(palette).queryByText("No tasks yet")).toBeNull();
   });
 
   it("shows the loading label when opening @ mentions before any browse data is ready", async () => {
@@ -4661,19 +4661,19 @@ describe("AgentGUINode", () => {
     const palette = await screen.findByRole("listbox", {
       name: "agentHost.agentGui.fileMentionPalette"
     });
-    expect(await within(palette).findByText("暂无 Issue")).toBeTruthy();
+    expect(await within(palette).findByText("No tasks yet")).toBeTruthy();
     const surface = screen.getByTestId("agent-gui-mention-palette-surface");
     const initialSurfaceStyle = surface.getAttribute("style") ?? "";
     const initialSurfaceHeight =
       initialSurfaceStyle.match(/height:[^;]+/)?.[0] ?? "";
     expect(initialSurfaceHeight).toBeTruthy();
 
-    fireEvent.click(within(palette).getByRole("tab", { name: "Issue" }));
+    fireEvent.click(within(palette).getByRole("tab", { name: "Tasks" }));
 
     await waitFor(() =>
       expect(mockListWorkspaceIssues).toHaveBeenCalledTimes(2)
     );
-    expect(within(palette).getByRole("tab", { name: "Issue" })).toHaveAttribute(
+    expect(within(palette).getByRole("tab", { name: "Tasks" })).toHaveAttribute(
       "aria-selected",
       "true"
     );
@@ -4930,7 +4930,7 @@ describe("AgentGUINode", () => {
     const palette = await screen.findByRole("listbox", {
       name: "agentHost.agentGui.fileMentionPalette"
     });
-    fireEvent.click(within(palette).getByRole("tab", { name: "Issue" }));
+    fireEvent.click(within(palette).getByRole("tab", { name: "Tasks" }));
 
     await waitFor(() =>
       expect(mockListWorkspaceIssues).toHaveBeenCalledWith({
@@ -4945,7 +4945,7 @@ describe("AgentGUINode", () => {
     const secondTaskOption = (
       await screen.findByText("整理 agent 输入")
     ).closest("button");
-    const taskOption = within(palette).getByRole("tab", { name: "Issue" });
+    const taskOption = within(palette).getByRole("tab", { name: "Tasks" });
     const allOption = within(palette).getByRole("tab", { name: "全部" });
     const appOption = within(palette).getByRole("tab", { name: "App" });
 
@@ -4970,7 +4970,7 @@ describe("AgentGUINode", () => {
 
     await waitFor(() => {
       expect(
-        within(palette).getByRole("tab", { name: "Issue" })
+        within(palette).getByRole("tab", { name: "Tasks" })
       ).toHaveAttribute("aria-selected", "false");
       expect(within(palette).getByRole("tab", { name: "App" })).toHaveAttribute(
         "aria-selected",
