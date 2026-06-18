@@ -190,7 +190,7 @@ test("desktop agent gui provider derives from workbench instance id", () => {
   );
 });
 
-test("desktop agent gui node state source keeps workbench rail state in memory", (t) => {
+test("desktop agent gui node state source consumes instance launch state after node state is written", (t) => {
   const source = createDesktopAgentGUINodeStateSource({
     workspaceId: "workspace-1"
   });
@@ -228,6 +228,44 @@ test("desktop agent gui node state source keeps workbench rail state in memory",
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1"
     }
+  );
+
+  source.writeNodeState({
+    instanceId: "agent-gui:gemini",
+    nodeId: "node-1",
+    state: {
+      composerOverrides: { permissionModeId: "read-only" },
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: 420,
+      lastActiveAgentSessionId: "session-2",
+      lastActiveConversationTitle: "Node title"
+    },
+    typeId: "agent-gui"
+  });
+
+  assert.equal(notified, 2);
+  assert.deepEqual(
+    source.externalStateSource.getNodeState({
+      instanceId: "agent-gui:gemini",
+      nodeId: "node-1",
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    }),
+    {
+      composerOverrides: { permissionModeId: "read-only" },
+      composerOverridesByProvider: null,
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: 420,
+      lastActiveAgentSessionId: "session-2",
+      lastActiveConversationTitle: "Node title"
+    }
+  );
+  assert.equal(
+    source.readNodeState({
+      instanceId: "agent-gui:gemini",
+      typeId: "agent-gui"
+    }),
+    null
   );
   assert.equal(
     source.externalStateSource.getNodeState({

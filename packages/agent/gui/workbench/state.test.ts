@@ -112,7 +112,7 @@ describe("agent gui workbench state", () => {
     ).toBe("codex");
   });
 
-  it("keeps node state in memory for workbench external state", () => {
+  it("uses instance launch state only until node state is written", () => {
     const source = createAgentGuiWorkbenchNodeStateSource({
       workspaceId: "workspace-1"
     });
@@ -136,7 +136,6 @@ describe("agent gui workbench state", () => {
       },
       typeId: "agent-gui"
     });
-    unsubscribe();
 
     expect(notified).toBe(1);
     expect(
@@ -155,6 +154,54 @@ describe("agent gui workbench state", () => {
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1"
     });
+
+    source.writeNodeState({
+      instanceId: "agent-gui:gemini",
+      nodeId: "node-1",
+      state: {
+        composerOverrides: { permissionModeId: "read-only" },
+        conversationRailCollapsed: false,
+        conversationRailWidthPx: 420,
+        lastActiveAgentSessionId: "session-2",
+        lastActiveConversationTitle: "Node title"
+      },
+      typeId: "agent-gui"
+    });
+    unsubscribe();
+
+    expect(notified).toBe(2);
+    expect(
+      source.externalStateSource.getNodeState({
+        instanceId: "agent-gui:gemini",
+        nodeId: "node-1",
+        typeId: "agent-gui",
+        workspaceId: "workspace-1"
+      })
+    ).toEqual({
+      composerOverrides: { permissionModeId: "read-only" },
+      composerOverridesByProvider: null,
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: 420,
+      lastActiveAgentSessionId: "session-2",
+      lastActiveConversationTitle: "Node title"
+    });
+    expect(
+      source.externalStateSource.getSnapshotNodeState?.({
+        instanceId: "agent-gui:gemini",
+        nodeId: "node-1",
+        typeId: "agent-gui",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject({
+      lastActiveAgentSessionId: "session-2",
+      lastActiveConversationTitle: "Node title"
+    });
+    expect(
+      source.readNodeState({
+        instanceId: "agent-gui:gemini",
+        typeId: "agent-gui"
+      })
+    ).toBeNull();
   });
 
   it("isolates multi-instance node state by workbench node id", () => {

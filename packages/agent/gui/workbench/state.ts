@@ -183,6 +183,16 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
   const nodeStateByKey = new Map<string, AgentGuiWorkbenchState>();
   const listeners = new Set<() => void>();
 
+  const lookupState = (request: AgentGuiWorkbenchStateLookupRequest) => {
+    const nodeState = request.nodeId
+      ? nodeStateByKey.get(agentGuiWorkbenchNodeStateKey(request))
+      : null;
+    const state =
+      nodeState ??
+      nodeStateByKey.get(agentGuiWorkbenchInstanceStateKey(request));
+    return state ? { ...state } : null;
+  };
+
   const notify = () => {
     for (const listener of listeners) {
       listener();
@@ -195,19 +205,13 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
         if (request.typeId !== typeId) {
           return null;
         }
-        const state =
-          nodeStateByKey.get(agentGuiWorkbenchNodeStateKey(request)) ??
-          nodeStateByKey.get(agentGuiWorkbenchInstanceStateKey(request));
-        return state ? { ...state } : null;
+        return lookupState(request);
       },
       getSnapshotNodeState(request) {
         if (request.typeId !== typeId) {
           return null;
         }
-        const state =
-          nodeStateByKey.get(agentGuiWorkbenchNodeStateKey(request)) ??
-          nodeStateByKey.get(agentGuiWorkbenchInstanceStateKey(request));
-        return state ? { ...state } : null;
+        return lookupState(request);
       },
       getWorkspaceState() {
         return {
@@ -225,10 +229,7 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
       if (request.typeId !== typeId) {
         return null;
       }
-      const state =
-        nodeStateByKey.get(agentGuiWorkbenchNodeStateKey(request)) ??
-        nodeStateByKey.get(agentGuiWorkbenchInstanceStateKey(request));
-      return state ? { ...state } : null;
+      return lookupState(request);
     },
     writeNodeState(request) {
       if (request.typeId !== typeId) {
@@ -236,6 +237,9 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
       }
       const key = agentGuiWorkbenchNodeStateKey(request);
       const previous = nodeStateByKey.get(key);
+      const clearedInstanceSeed = request.nodeId
+        ? nodeStateByKey.delete(agentGuiWorkbenchInstanceStateKey(request))
+        : false;
       const next = {
         ...normalizeAgentGuiWorkbenchState(request.state)
       };
@@ -247,7 +251,11 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
           request.state.lastActiveConversationTitle;
       }
       nodeStateByKey.set(key, next);
-      if (previous && areAgentGuiWorkbenchMemoryStatesEqual(previous, next)) {
+      if (
+        !clearedInstanceSeed &&
+        previous &&
+        areAgentGuiWorkbenchMemoryStatesEqual(previous, next)
+      ) {
         return;
       }
       notify();

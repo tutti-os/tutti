@@ -1426,6 +1426,21 @@ function conversationBusyStatusFromAgentActivityDisplayStatus(
   return null;
 }
 
+function reuseAgentActivityDisplayStatusesIfUnchanged(
+  previous: ReadonlyMap<string, AgentActivityDisplayStatus> | null,
+  next: Map<string, AgentActivityDisplayStatus>
+): Map<string, AgentActivityDisplayStatus> {
+  if (!previous || previous.size !== next.size) {
+    return next;
+  }
+  for (const [sessionId, status] of next) {
+    if (previous.get(sessionId) !== status) {
+      return next;
+    }
+  }
+  return previous as Map<string, AgentActivityDisplayStatus>;
+}
+
 function permissionModeOptions(
   provider: AgentGUINodeData["provider"],
   permissionConfig: AgentSessionPermissionConfig | null | undefined
@@ -1930,10 +1945,19 @@ export function useAgentGUINodeController({
   const agentActivityRuntime = useAgentActivityRuntime();
   const agentHostApi = useAgentHostApi();
   const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
-  const agentActivityDisplayStatuses = useMemo(
-    () => selectSessionDisplayStatuses(agentActivitySnapshot),
-    [agentActivitySnapshot]
-  );
+  const agentActivityDisplayStatusesRef = useRef<Map<
+    string,
+    AgentActivityDisplayStatus
+  > | null>(null);
+  const agentActivityDisplayStatuses = useMemo(() => {
+    const next = selectSessionDisplayStatuses(agentActivitySnapshot);
+    const stable = reuseAgentActivityDisplayStatusesIfUnchanged(
+      agentActivityDisplayStatusesRef.current,
+      next
+    );
+    agentActivityDisplayStatusesRef.current = stable;
+    return stable;
+  }, [agentActivitySnapshot]);
   const generatedControllerOwnerKey = useId();
   const conversationListQuery =
     useMemo<AgentGUIConversationListQuery | null>(() => {

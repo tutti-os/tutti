@@ -724,7 +724,15 @@ async function refreshAgentGUIConversationListQuery(
       queryKey,
       localCreatedConversationIds
     );
+    const currentConversations = getQueryState(query)?.conversations ?? [];
     const retainedSessionIds = new Set(retainedSnapshotSessionIds);
+    if (reason === "workspace-agent-update") {
+      for (const conversation of currentConversations) {
+        if (!nextDeletedConversationIds.has(conversation.id)) {
+          retainedSessionIds.add(conversation.id);
+        }
+      }
+    }
     if (retainedSnapshotSessionIds.size > 0) {
       for (const agentSessionId of localCreatedConversationIds) {
         if (!nextDeletedConversationIds.has(agentSessionId)) {
@@ -733,7 +741,6 @@ async function refreshAgentGUIConversationListQuery(
       }
     }
 
-    const currentConversations = getQueryState(query)?.conversations ?? [];
     const nextConversations = sortConversationsByRecency(
       mergeLoadedConversations(
         currentConversations,
