@@ -56,6 +56,7 @@ Before writing files, read these bundled references:
 - `references/manifest-contract.md` for `tutti.app.json`.
 - `references/cli-manifest-contract.md` for optional `tutti.cli.json`.
 - `references/runtime-env.md` for runtime environment variables and storage ownership.
+- `references/i18n-harness.md` when the app has localized metadata, user-facing in-app copy, or an existing localization system.
 - `references/tutti-cli-commands.md` when the generated app runtime should call, combine, or expose local Tutti CLI capabilities.
 - `references/validation-checklist.md` for completion checks.
 
@@ -70,6 +71,7 @@ Create or update these files under `output.packageRoot` from the context in hand
 - `bootstrap.sh`: executable shell entrypoint that starts the app server with no arguments.
 - `AGENTS.md`: package-local guidance describing layout, runtime command, endpoints, data storage, and modification rules.
 - `locales/<locale>/manifest.json`: manifest metadata localization files, only when the user asks for localized app metadata.
+- App-owned locale dictionaries or an i18n helper/harness when the app has user-facing in-app copy in more than one language.
 - App implementation files and assets needed for the requested behavior.
 
 If the task supplies exact metadata such as `appId`, version, display name, or description, copy those values exactly into `tutti.app.json`. If metadata is missing, choose conservative defaults:
@@ -99,6 +101,7 @@ The runtime must:
 - Launch Python with `$TUTTI_APP_PYTHON` and Node with `$TUTTI_APP_NODE`; use `$TUTTI_APP_NPM` for npm install/build work.
 - When the generated app calls another local Tutti capability at runtime, use `$TUTTI_CLI` and follow `references/tutti-cli-commands.md`.
 - Read the current UI locale from the optional host-injected app context when localized in-app copy is needed. Do not pass locale in the launch URL query.
+- Keep localized in-app copy behind stable keys and use the harness pattern in `references/i18n-harness.md` so future edits can check locale parity.
 - Use CSS `prefers-color-scheme` / `matchMedia("(prefers-color-scheme: dark)")` for dark/light rendering. Do not pass theme in the launch URL query.
 - When exposing app-owned files through references or generated content, return reference-list `location` objects scoped to `app-data-relative` or `app-package-relative`. Do not emit, persist, or instruct clients to open direct `.tutti` / `.tutti-dev` app state paths such as `$TUTTI_STATE_DIR/apps/...`; the daemon resolves valid locations before desktop clients open files.
 
@@ -121,7 +124,7 @@ When converting an existing repository into a Tutti workspace app package:
 3. Translate the existing start command into `bootstrap.sh`. If the project needs install or build work, put that in executable `prepare.sh` and keep `bootstrap.sh` launch-only.
 4. Replace hard-coded host, port, data, runtime, and log paths with the Tutti runtime environment variables from `references/runtime-env.md`.
 5. If the project already exposes commands, convert the stable user-facing commands into `tutti.cli.json`; otherwise omit `cli`.
-6. If the project already has localized metadata or UI copy, preserve it using `localizationInfo` for manifest metadata and app-owned locale files or dictionaries for in-app copy.
+6. If the project already has localized metadata or UI copy, preserve it using `localizationInfo` for manifest metadata and the i18n harness from `references/i18n-harness.md` for in-app copy.
 7. Document the adapted layout, original project entrypoints, runtime command, storage ownership, and any unsupported original features in package `AGENTS.md`.
 8. Validate the converted package against `references/validation-checklist.md`.
 
@@ -131,7 +134,7 @@ When converting an existing repository into a Tutti workspace app package:
 2. Decide the smallest runtime shape that satisfies the requested behavior.
 3. Write the manifest, bootstrap script, package guidance, and app files.
 4. Make `bootstrap.sh` executable.
-5. Validate against `references/validation-checklist.md`.
+5. Run `scripts/validate_tutti_app_package.py <package-root>` when available, then validate remaining runtime behavior against `references/validation-checklist.md`.
 6. Fix any validation failure before finishing.
 
 ## Repair Workflow
