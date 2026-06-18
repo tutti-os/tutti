@@ -1,10 +1,12 @@
 import { createElement, type HTMLAttributes, type ReactNode } from "react";
 import { Button, PanelIcon, cn } from "@tutti-os/ui-system";
+import { EditIcon } from "@tutti-os/ui-system/icons";
 
 export interface AgentGuiWorkbenchHeaderCopy {
   collapseConversationRail: string;
   expandConversationRail: string;
   fallbackAgentLabel: string;
+  newConversation: string;
 }
 
 export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement> {
@@ -12,6 +14,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   defaultActions?: ReactNode;
   isConversationRailAutoCollapsed: boolean;
   isConversationRailCollapsed: boolean;
+  onCreateConversation?: () => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
   title?: string;
 }
@@ -22,6 +25,7 @@ export function AgentGuiWorkbenchHeader({
   defaultActions,
   isConversationRailAutoCollapsed,
   isConversationRailCollapsed,
+  onCreateConversation,
   onToggleConversationRail,
   title,
   ...headerProps
@@ -41,7 +45,7 @@ export function AgentGuiWorkbenchHeader({
     },
     createElement(
       "div",
-      { className: "flex min-w-0 items-center gap-2" },
+      { className: "flex min-w-0 items-center gap-1" },
       createElement(
         "span",
         {
@@ -60,7 +64,7 @@ export function AgentGuiWorkbenchHeader({
           "data-agent-gui-conversation-rail-collapsed":
             isConversationRailCollapsed ? "true" : undefined,
           "data-testid": "agent-gui-toggle-conversation-rail",
-          size: "icon-sm",
+          size: "icon-xs",
           title: toggleLabel,
           type: "button",
           variant: "ghost",
@@ -72,7 +76,30 @@ export function AgentGuiWorkbenchHeader({
           onPointerDown: (event) => event.stopPropagation()
         },
         createElement(PanelIcon, { className: "size-[18px]" })
-      )
+      ),
+      isConversationRailCollapsed && onCreateConversation
+        ? createElement(
+            Button as never,
+            {
+              "aria-label": copy.newConversation,
+              className: "cursor-pointer rounded-md",
+              size: "icon-xs",
+              title: copy.newConversation,
+              type: "button",
+              variant: "ghost",
+              onClick: (event) => {
+                event.stopPropagation();
+                onCreateConversation();
+              },
+              onDoubleClick: (event) => event.stopPropagation(),
+              onPointerDown: (event) => event.stopPropagation()
+            },
+            createElement(EditIcon, {
+              "aria-hidden": true,
+              className: "size-[16px]"
+            })
+          )
+        : null
     ),
     createElement(
       "div",

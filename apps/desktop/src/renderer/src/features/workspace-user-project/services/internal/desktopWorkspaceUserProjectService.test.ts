@@ -315,6 +315,18 @@ test("workspace user project service prepares selection decisions", async () => 
     })
   });
 
+  assert.deepEqual(
+    await service.prepareSelection({
+      projectLocked: false,
+      selectedPath: null
+    }),
+    {
+      isSelectedPathMissing: false,
+      projects,
+      selection: { kind: "none" }
+    }
+  );
+
   await service.rememberDefaultSelection({ path: "/workspace/beta" });
 
   assert.deepEqual(

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { isValidElement, type ReactElement } from "react";
 import { agentGuiDockIconUrls } from "../dockIcons.ts";
 import {
+  AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
   agentGuiWorkbenchDefaultCopy,
   createAgentGuiWorkbenchContribution,
   resolveAgentGuiWorkbenchDefaultLaunchFrame,
@@ -294,5 +296,73 @@ describe("agent GUI workbench contribution copy", () => {
     expect(preview?.kind).toBe("component");
     expect(preview?.revision).toContain("Current session title");
     expect(preview?.revision).not.toContain("Stale session title");
+  });
+
+  it("shows a new-session action next to the rail toggle when collapsed", () => {
+    const contribution = createAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const events: CustomEvent[] = [];
+    const handler = (event: Event) => {
+      events.push(event as CustomEvent);
+    };
+    window.addEventListener(
+      AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
+      handler
+    );
+
+    try {
+      render(
+        contribution.nodes?.[0]?.renderHeader?.({
+          activation: null,
+          defaultActions: null,
+          displayMode: "floating",
+          dragHandleProps: {},
+          externalNodeState: {
+            conversationRailCollapsed: true,
+            lastActiveAgentSessionId: null
+          },
+          externalWorkspaceState: null,
+          instanceId: "agent-gui:codex:panel:test-1",
+          instanceKey: null,
+          isFocused: true,
+          node: {
+            data: {
+              runtimeNodeState: null
+            },
+            displayMode: "floating",
+            frame: { height: 560, width: 1040, x: 0, y: 0 },
+            id: "agent-gui-node-1",
+            title: "Codex"
+          },
+          surfaceSize: { height: 800, width: 1200 },
+          windowActions: {
+            applyQuickLayout: () => {},
+            close: () => {},
+            focus: () => {},
+            minimize: () => {},
+            resize: () => {},
+            toggleDisplayMode: () => {}
+          }
+        } as never) ?? null
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: agentGuiWorkbenchDefaultCopy.newConversation
+        })
+      );
+    } finally {
+      window.removeEventListener(
+        AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
+        handler
+      );
+    }
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.detail).toEqual({
+      instanceId: "agent-gui:codex:panel:test-1"
+    });
   });
 });

@@ -54,7 +54,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "../../app/renderer/components/ui/dropdown-menu";
-import { CreateChatIcon } from "../../app/renderer/components/icons/CreateChatIcon";
 import { PinFilledIcon } from "../../app/renderer/components/icons/PinFilledIcon";
 import { PinLinedIcon } from "../../app/renderer/components/icons/PinLinedIcon";
 import { UnavailableChatIcon } from "../../app/renderer/components/icons/UnavailableChatIcon";
@@ -387,6 +386,7 @@ interface AgentGUINodeViewProps {
   onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
   isActive?: boolean;
   composerFocusRequestSequence?: number | null;
+  newConversationRequestSequence?: number | null;
   isAgentProviderReady: boolean;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
@@ -812,6 +812,7 @@ export function AgentGUINodeView({
   onCapabilitySettingsRequest,
   isActive = true,
   composerFocusRequestSequence = null,
+  newConversationRequestSequence = null,
   isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
@@ -858,6 +859,9 @@ export function AgentGUINodeView({
     localComposerFocusRequestSequence,
     setLocalComposerFocusRequestSequence
   ] = useState(0);
+  const handledNewConversationRequestSequenceRef = useRef(
+    newConversationRequestSequence
+  );
   const workspaceReferencePickerResolverRef = useRef<
     ((result: WorkspaceReferencePickResult) => void) | null
   >(null);
@@ -989,6 +993,25 @@ export function AgentGUINodeView({
     },
     [actions, previewMode]
   );
+  useEffect(() => {
+    if (
+      newConversationRequestSequence === null ||
+      handledNewConversationRequestSequenceRef.current ===
+        newConversationRequestSequence
+    ) {
+      return;
+    }
+
+    handledNewConversationRequestSequenceRef.current =
+      newConversationRequestSequence;
+    if (!createConversationDisabled) {
+      requestCreateConversation();
+    }
+  }, [
+    createConversationDisabled,
+    newConversationRequestSequence,
+    requestCreateConversation
+  ]);
   const effectiveWorkspaceAppIcons = useMemo(
     () =>
       mergeWorkspaceAppIconsFromCommands({
@@ -3130,7 +3153,7 @@ const AgentGUIConversationRailPane = memo(
             disabled={createConversationDisabled}
             onClick={() => onCreateConversation()}
           >
-            <CreateChatIcon />
+            <EditIcon aria-hidden="true" />
             <span>{labels.newConversation}</span>
           </Button>
         </div>

@@ -126,24 +126,10 @@ export async function prepareWorkspaceUserProjectSelection(
       }
     };
   }
-  if (defaultSelection) {
-    return {
-      isSelectedPathMissing,
-      projects,
-      selection: { kind: "none" }
-    };
-  }
-
-  const recentProject = projects[0];
   return {
     isSelectedPathMissing,
     projects,
-    selection: recentProject
-      ? {
-          kind: "select",
-          path: recentProject.path
-        }
-      : { kind: "none" }
+    selection: { kind: "none" }
   };
 }
 

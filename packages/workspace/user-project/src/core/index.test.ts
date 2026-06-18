@@ -181,6 +181,25 @@ test("prepareWorkspaceUserProjectSelection resolves fallback decisions", async (
   };
 
   assert.deepEqual(
+    await prepareWorkspaceUserProjectSelection(
+      {
+        async list() {
+          return { projects };
+        }
+      },
+      {
+        projectLocked: false,
+        selectedPath: null
+      }
+    ),
+    {
+      isSelectedPathMissing: false,
+      projects,
+      selection: { kind: "none" }
+    }
+  );
+
+  assert.deepEqual(
     await prepareWorkspaceUserProjectSelection(api, {
       projectLocked: false,
       selectedPath: null

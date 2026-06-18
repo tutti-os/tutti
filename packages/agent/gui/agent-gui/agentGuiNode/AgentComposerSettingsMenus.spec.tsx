@@ -590,7 +590,7 @@ describe("AgentProjectDropdown", () => {
     });
   });
 
-  it("defaults to the most recent project on first load", async () => {
+  it("defaults to no project on first load", async () => {
     const onProjectPathChange = vi.fn();
     mockAgentHostApi.userProjects = {
       list: vi.fn().mockResolvedValue({
@@ -618,11 +618,15 @@ describe("AgentProjectDropdown", () => {
     );
 
     await waitFor(() =>
-      expect(onProjectPathChange).toHaveBeenCalledWith("/workspace/tutti")
+      expect(mockAgentHostApi.userProjects?.list).toHaveBeenCalled()
+    );
+    expect(onProjectPathChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveTextContent(
+      "No project"
     );
   });
 
-  it("keeps a remembered No project default instead of using the most recent project", async () => {
+  it("keeps a remembered No project default", async () => {
     const onProjectPathChange = vi.fn();
     mockAgentHostApi.userProjects = {
       getDefaultSelection: vi.fn().mockResolvedValue({ path: null }),

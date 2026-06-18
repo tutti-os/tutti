@@ -50,8 +50,15 @@ export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
 export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
   "tutti:agent-gui-workbench-conversation-rail-toggle";
 
+export const AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT =
+  "tutti:agent-gui-workbench-new-conversation";
+
 export interface AgentGuiWorkbenchConversationRailToggleDetail {
   conversationRailCollapsed: boolean;
+  instanceId: string;
+}
+
+export interface AgentGuiWorkbenchNewConversationDetail {
   instanceId: string;
 }
 
@@ -59,6 +66,7 @@ export interface AgentGuiWorkbenchContributionCopy {
   collapseConversationRail: string;
   expandConversationRail: string;
   fallbackAgentLabel: string;
+  newConversation: string;
   nodeTitle: string;
 }
 
@@ -69,6 +77,7 @@ export const agentGuiWorkbenchDefaultCopy: AgentGuiWorkbenchContributionCopy = {
   collapseConversationRail: "Collapse conversation rail",
   expandConversationRail: "Expand conversation rail",
   fallbackAgentLabel: "Agent",
+  newConversation: "New conversation",
   nodeTitle: "Agent"
 };
 
@@ -209,6 +218,18 @@ export function createAgentGuiWorkbenchContribution(
               )
             );
           };
+          const announceNewConversation = () => {
+            window.dispatchEvent(
+              new CustomEvent<AgentGuiWorkbenchNewConversationDetail>(
+                AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
+                {
+                  detail: {
+                    instanceId
+                  }
+                }
+              )
+            );
+          };
 
           return createElement(AgentGuiWorkbenchHeader, {
             copy,
@@ -217,6 +238,7 @@ export function createAgentGuiWorkbenchContribution(
             isConversationRailCollapsed,
             title,
             ...dragHandleProps,
+            onCreateConversation: announceNewConversation,
             onPointerDown: (event) => {
               dragHandleProps.onPointerDown?.(event);
               if (!isFocused) {

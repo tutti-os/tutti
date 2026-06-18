@@ -139,6 +139,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       fallbackAgentLabel: input.appI18n.t(
         "workspace.agentGui.fallbackAgentLabel"
       ),
+      newConversation: input.appI18n.t("workspace.agentGui.newConversation"),
       nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent)
     },
     dockIconUrls: input.dockIconUrls,

@@ -178,6 +178,7 @@ export interface AgentGUINodeProps {
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
   showProjectSelector?: boolean;
   isMuted?: boolean;
+  newConversationRequestSequence?: number | null;
   onMinimize?: () => void;
   onToggleMaximize?: () => void;
   onShowMessage?: (
@@ -489,6 +490,8 @@ function areAgentGUINodePropsEqual(
     previous.showProjectSelector === next.showProjectSelector &&
     previous.composerFocusRequestSequence ===
       next.composerFocusRequestSequence &&
+    previous.newConversationRequestSequence ===
+      next.newConversationRequestSequence &&
     previous.openSessionRequest === next.openSessionRequest &&
     previous.prefillPromptRequest === next.prefillPromptRequest
   );
@@ -521,6 +524,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   isMaximized = false,
   isActive,
   composerFocusRequestSequence = null,
+  newConversationRequestSequence = null,
   openSessionRequest = null,
   prefillPromptRequest = null,
   showProjectSelector = true,
@@ -1263,6 +1267,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             actions={actions}
             isActive={isActive}
             composerFocusRequestSequence={composerFocusRequestSequence}
+            newConversationRequestSequence={newConversationRequestSequence}
             isAgentProviderReady={isActiveAgentProviderReady}
             slashStatusLimits={slashStatusLimits}
             slashStatusLimitsLoading={

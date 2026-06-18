@@ -120,6 +120,7 @@ export const en = {
       collapseConversationRail: "Collapse session list",
       expandConversationRail: "Expand session list",
       fallbackAgentLabel: "Agent",
+      newConversation: "New session",
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable"

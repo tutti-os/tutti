@@ -15,7 +15,9 @@ import type {
 } from "@tutti-os/agent-gui";
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
-  type AgentGuiWorkbenchConversationRailToggleDetail
+  AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
+  type AgentGuiWorkbenchConversationRailToggleDetail,
+  type AgentGuiWorkbenchNewConversationDetail
 } from "@tutti-os/agent-gui/workbench/contribution";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { WorkspaceLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
@@ -332,6 +334,8 @@ export function DesktopAgentGUIWorkbenchBody({
   > | null>(null);
   const [prefillPromptRequest, setPrefillPromptRequest] =
     useState<DesktopAgentGUIPrefillPromptRequest | null>(null);
+  const [newConversationRequestSequence, setNewConversationRequestSequence] =
+    useState(0);
   const handledOpenSessionActivationSequenceRef = useRef<number | null>(null);
   const handledPrefillPromptActivationSequenceRef = useRef<number | null>(null);
   const pendingComposerDefaultsWriteRef =
@@ -598,6 +602,36 @@ export function DesktopAgentGUIWorkbenchBody({
   }, [context.instanceId, handleUpdateNode]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
+    const handleNewConversationRequest = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (!detail || typeof detail !== "object" || !("instanceId" in detail)) {
+        return;
+      }
+
+      const request = detail as AgentGuiWorkbenchNewConversationDetail;
+      if (request.instanceId !== context.instanceId) {
+        return;
+      }
+
+      setNewConversationRequestSequence((current) => current + 1);
+    };
+
+    window.addEventListener(
+      AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
+      handleNewConversationRequest
+    );
+    return () => {
+      window.removeEventListener(
+        AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
+        handleNewConversationRequest
+      );
+    };
+  }, [context.instanceId, previewMode]);
+
+  useEffect(() => {
     if (
       previewMode ||
       hasExplicitConversationRailCollapsedState ||
@@ -731,6 +765,7 @@ export function DesktopAgentGUIWorkbenchBody({
       isMaximized={context.displayMode === "fullscreen"}
       isActive={context.isFocused}
       composerFocusRequestSequence={composerFocusRequestSequence}
+      newConversationRequestSequence={newConversationRequestSequence}
       openSessionRequest={openSessionRequest}
       prefillPromptRequest={prefillPromptRequest}
       managedAgentsState={managedAgentsState}
