@@ -1652,6 +1652,11 @@ export type WorkspaceFilePrefetchBudgetMs = number;
 
 export type WorkspaceFileSearchQuery = string;
 
+/**
+ * 可选:把搜索限定在工作区根下的某子路径(对应左栏选中的「位置」,如 文稿/下载/桌面)。相对工作区根的逻辑路径;缺省/空 = 跨整根搜索。
+ */
+export type WorkspaceFileSearchWithin = string;
+
 export type WorkspaceFileSearchLimit = number;
 
 export type WorkspaceFileRecentLimit = number;
@@ -5192,6 +5197,10 @@ export type SearchWorkspaceFilesData = {
   };
   query: {
     query: string;
+    /**
+     * 可选:把搜索限定在工作区根下的某子路径(对应左栏选中的「位置」,如 文稿/下载/桌面)。相对工作区根的逻辑路径;缺省/空 = 跨整根搜索。
+     */
+    within?: string;
     limit?: number;
     includeKinds?: Array<WorkspaceFileFilterKind>;
     /**

@@ -174,7 +174,7 @@ Request:
 }
 ```
 
-- `query` is already trimmed by Tutti. It may be **empty when `filters` is non-empty** ("filter-only" search): in that case return all references matching the filters, ordered by recency. When `query` is non-empty, match it recursively across all groups and nested references; never restrict it to the root or a single `parentGroupId`.
+- `query` is already trimmed by Tutti. It may be **empty when `filters` is non-empty** ("filter-only" search): in that case return all references matching the filters, ordered by recency. When `query` is non-empty, match it recursively against each file reference's **own name** (the `displayName` you return for that file) across all groups and nested references; never restrict it to the root or a single `parentGroupId`. Match the file name **only** — do not match a reference solely because its `location.path`, containing folder/project, or `parentGroupLabel` contains the query, otherwise typing `2` would surface `cover.svg` just because it lives in a project named `2222`. (You may still use path/group text to break ties in ranking, but a file whose name does not contain the query must not appear.)
 - There is no `parentGroupId`: search always spans the whole app.
 - `limit` is clamped by Tutti to `1..50`.
 - `cursor` is optional and opaque to Tutti.

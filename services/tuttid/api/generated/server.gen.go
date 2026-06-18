@@ -2909,6 +2909,19 @@ func (siw *ServerInterfaceWrapper) SearchWorkspaceFiles(w http.ResponseWriter, r
 		return
 	}
 
+	// ------------- Optional query parameter "within" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "within", r.URL.Query(), &params.Within, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "within"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "within", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})

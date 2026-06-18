@@ -135,3 +135,34 @@ test("desktop workspace file reference adapter passes search abort signals to tu
 
   assert.equal(observedSignal, abortController.signal);
 });
+
+test("desktop workspace file reference adapter forwards within scope to tuttid", async () => {
+  let observedRequest:
+    | Parameters<TuttidClient["searchWorkspaceFiles"]>[1]
+    | undefined;
+  const adapter = createDesktopWorkspaceFileReferenceAdapter({
+    hostFilesApi: {} as DesktopHostFilesApi,
+    tuttidClient: {
+      async searchWorkspaceFiles(
+        _workspaceId: string,
+        request: Parameters<TuttidClient["searchWorkspaceFiles"]>[1]
+      ) {
+        observedRequest = request;
+        return {
+          entries: [],
+          root: "/Users/test/project/tutti",
+          workspaceId: "workspace-1"
+        };
+      }
+    } as unknown as TuttidClient,
+    workspaceId: "workspace-1"
+  });
+
+  await adapter.searchReferences?.({
+    query: "report",
+    within: "Documents",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(observedRequest?.within, "Documents");
+});

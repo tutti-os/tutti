@@ -62,6 +62,21 @@ func (a LocalFilesAdapter) Search(
 		return workspacefiles.SearchResult{}, err
 	}
 
+	// 搜索范围限定:Within 非空时把遍历起点收敛到工作区根下的该子目录(左栏选中的「位置」,
+	// 如 文稿/下载/桌面),而候选项的相对路径仍以工作区根为基准计算,使结果逻辑路径保持可定位。
+	// 空 = 跨整根搜索(searchRootPath == rootPath,行为与既有一致)。
+	searchRootPath := rootPath
+	if within := strings.TrimSpace(input.Within); within != "" {
+		withinLogical, err := workspacefiles.NormalizeLogicalPathWithinRoot(within, root.LogicalRoot)
+		if err != nil {
+			return workspacefiles.SearchResult{}, err
+		}
+		searchRootPath, err = existingPhysicalPath(root, withinLogical)
+		if err != nil {
+			return workspacefiles.SearchResult{}, err
+		}
+	}
+
 	includeKinds := map[workspacefiles.EntryKind]bool{}
 	for _, kind := range input.IncludeKinds {
 		includeKinds[kind] = true
@@ -73,7 +88,7 @@ func (a LocalFilesAdapter) Search(
 	allowHiddenFiles := input.IncludeHidden || workspacefiles.SearchQueryTargetsHiddenFile(input.Query)
 	allowHiddenAndNoiseDirectories := input.IncludeHidden || workspacefiles.SearchQueryTargetsHiddenOrNoise(input.Query)
 	stats := searchWalkStats{}
-	walkErr := filepath.WalkDir(rootPath, func(physicalPath string, entry fs.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(searchRootPath, func(physicalPath string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			stats.skippedUnreadableCount++
 			return nil
@@ -86,7 +101,7 @@ func (a LocalFilesAdapter) Search(
 			stats.deadlineExceeded = true
 			return context.DeadlineExceeded
 		}
-		if physicalPath == rootPath {
+		if physicalPath == searchRootPath {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
@@ -109,12 +124,18 @@ func (a LocalFilesAdapter) Search(
 			stats.skippedHiddenFileCount++
 			return nil
 		}
-		// 文件类型筛选:仅对文件按分类过滤(目录始终保留以便继续递归/路径打分)。
+		// 文件类型筛选:筛选生效时,搜索结果须是「关键词 ∩ 类型」的交集。目录不属于任何文件
+		// 类型,故不作为结果候选(但仍递归进入以发现匹配类型的文件,所以只跳过登记、不 SkipDir);
+		// 文件按其分类过滤。无筛选时不影响目录,保留按名/路径命中的文件夹。
 		// 全局统一口径,见 reference_filter_categories.go(TS 镜像同名)。
-		if kind == workspacefiles.EntryKindFile &&
-			!matchesReferenceFilterCategories(entry.Name(), false, input.Filters) {
-			stats.skippedUnrequestedCount++
-			return nil
+		if len(input.Filters) > 0 {
+			if kind == workspacefiles.EntryKindDirectory {
+				return nil
+			}
+			if !matchesReferenceFilterCategories(entry.Name(), false, input.Filters) {
+				stats.skippedUnrequestedCount++
+				return nil
+			}
 		}
 		appendSearchCandidate(rootPath, physicalPath, kind, includeKinds, &candidates, &stats)
 		if len(candidates) >= maxCandidates {

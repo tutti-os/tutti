@@ -550,6 +550,8 @@ export interface TuttidClient {
       includeKinds?: WorkspaceFileFilterKind[];
       /** 已选文件类型筛选分类 id(全局统一口径);query 可空、filters 非空时即「仅按类型查」。 */
       filters?: string[];
+      /** 把搜索限定在工作区根下某子路径(左栏选中的「位置」);缺省/空 = 跨整根搜索。 */
+      within?: string;
       limit?: number;
       query: string;
     },

@@ -2214,6 +2214,7 @@ paths:
       summary: Search workspace files by logical path
       parameters:
         - $ref: "#/components/parameters/WorkspaceFileSearchQuery"
+        - $ref: "#/components/parameters/WorkspaceFileSearchWithin"
         - $ref: "#/components/parameters/WorkspaceFileSearchLimit"
         - $ref: "#/components/parameters/WorkspaceFileSearchKinds"
         - $ref: "#/components/parameters/WorkspaceFileSearchFilters"
@@ -2630,6 +2631,16 @@ components:
       required: true
       schema:
         type: string
+    WorkspaceFileSearchWithin:
+      name: within
+      in: query
+      required: false
+      description: >-
+        可选:把搜索限定在工作区根下的某子路径(对应左栏选中的「位置」,如
+        文稿/下载/桌面)。相对工作区根的逻辑路径;缺省/空 = 跨整根搜索。
+      schema:
+        type: string
+        minLength: 1
     WorkspaceFileSearchLimit:
       name: limit
       in: query

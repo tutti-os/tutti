@@ -895,6 +895,7 @@ export type {
   WorkspaceFileSearchMatchTarget,
   WorkspaceFileSearchQuery,
   WorkspaceFileSearchResponse,
+  WorkspaceFileSearchWithin,
   WorkspaceFileTreeDirectory,
   WorkspaceFileTreeEntry,
   WorkspaceFileTreePrefetchReason,

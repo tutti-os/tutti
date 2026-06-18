@@ -130,7 +130,10 @@ type SearchInput struct {
 	Query         string
 	// Filters 为已选「文件类型筛选分类」id(全局统一口径)。筛选与搜索是同一能力:
 	// Query 可空、Filters 非空时即按类型 list-all。空 = 不按类型过滤。
-	Filters  []string
+	Filters []string
+	// Within 把搜索限定在工作区根下某子路径(左栏选中的「位置」,如 文稿/下载/桌面)。
+	// 相对工作区根的逻辑路径;空 = 跨整根搜索。结果路径仍相对工作区根计算以保持可定位。
+	Within   string
 	Deadline time.Time
 }
 

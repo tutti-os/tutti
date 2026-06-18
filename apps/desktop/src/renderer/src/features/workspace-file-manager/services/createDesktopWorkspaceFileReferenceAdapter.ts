@@ -96,6 +96,7 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
       limit = 30,
       query,
       filters,
+      within,
       signal,
       workspaceId
     }) {
@@ -104,7 +105,8 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
         {
           limit,
           query,
-          ...(filters && filters.length > 0 ? { filters } : {})
+          ...(filters && filters.length > 0 ? { filters } : {}),
+          ...(within ? { within } : {})
         },
         { signal }
       );

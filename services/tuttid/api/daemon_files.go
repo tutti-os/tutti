@@ -242,12 +242,17 @@ func (api DaemonAPI) SearchWorkspaceFiles(
 	if request.Params.Filters != nil {
 		filters = *request.Params.Filters
 	}
+	within := ""
+	if request.Params.Within != nil {
+		within = *request.Params.Within
+	}
 	result, err := api.FileService.Search(ctx, workspaceID, workspacefiles.SearchInput{
 		Query:         string(request.Params.Query),
 		Limit:         limit,
 		IncludeKinds:  workspaceapi.DomainSearchKindsFromGenerated(request.Params.IncludeKinds),
 		IncludeHidden: includeHidden,
 		Filters:       filters,
+		Within:        within,
 	})
 	if err != nil {
 		return writeSearchWorkspaceFilesError(err), nil

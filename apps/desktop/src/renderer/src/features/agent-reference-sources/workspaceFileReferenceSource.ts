@@ -140,17 +140,27 @@ export function createWorkspaceFileReferenceSource(input: {
 
     async search(
       scope: ReferenceScope,
-      { query, filters, limit, signal }: SearchInput
+      { query, filters, limit, signal, withinNodeId }: SearchInput
     ): Promise<SearchResult> {
       if (!adapter.searchReferences) {
         return { entries: [], nextCursor: null };
       }
+      // 搜索范围 = 左栏选中的「位置」(withinNodeId,本地源 nodeId 即路径)。
+      // 「最近访问」是虚拟列表、「个人」是源根(home),两者无对应子目录 → 跨整根搜索;
+      // 其余固定位置(下载/文稿/桌面,相对路径)下钻到 daemon 限定遍历起点。
+      const within =
+        withinNodeId &&
+        withinNodeId !== RECENT_GROUP_NODE_ID &&
+        withinNodeId !== WORKSPACE_ROOT_GROUP_NODE_ID
+          ? withinNodeId
+          : undefined;
       // query 与 filters 至少一项非空(controller 保证);仅选筛选(query 空)时
       // 由 daemon 按类型 list-all。filters 下钻到 /files/search 服务端过滤。
       const refs = await adapter.searchReferences({
         workspaceId: scope.workspaceId,
         query,
         ...(filters && filters.length > 0 ? { filters } : {}),
+        ...(within ? { within } : {}),
         ...(limit === undefined ? {} : { limit }),
         ...(signal ? { signal } : {})
       });

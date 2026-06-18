@@ -359,6 +359,80 @@ test("setSearchQuery 把选中分组 nodeId 作为 withinNodeId 透传给 aggreg
   assert.equal(searchInputs.length, before);
 });
 
+test("搜索中切源 → 把当前查询带到目标源并在其下重搜", async () => {
+  const searchInputs: Array<{ sourceId: string; query: string }> = [];
+  const tabs: ReferenceSourceTab[] = [
+    {
+      sourceId: "source-a",
+      label: "源 A",
+      capabilities: { searchable: true, previewable: true, paginated: false }
+    },
+    {
+      sourceId: "source-b",
+      label: "源 B",
+      capabilities: { searchable: true, previewable: true, paginated: false }
+    }
+  ];
+  const aggregator = fakeAggregator({
+    tabs,
+    children: {
+      [`source-a:${SOURCE_ROOT_NODE_ID}`]: { entries: [], nextCursor: null },
+      [`source-b:${SOURCE_ROOT_NODE_ID}`]: { entries: [], nextCursor: null }
+    },
+    search: {
+      "source-a:report": {
+        entries: [file("source-a", "/a/report.md", "report.md")],
+        nextCursor: null
+      },
+      "source-b:report": {
+        entries: [file("source-b", "b:report", "report.md")],
+        nextCursor: null
+      }
+    }
+  });
+  const baseSearch = aggregator.search.bind(aggregator);
+  aggregator.search = async (s, sourceId, input) => {
+    searchInputs.push({ sourceId, query: input.query });
+    return baseSearch(s, sourceId, input);
+  };
+  const controller = createReferenceSourcePickerController({
+    aggregator,
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  // 在源 A 搜索 "report"。
+  controller.setSearchQuery("report");
+  await flush();
+  assert.equal(searchInputs.at(-1)?.sourceId, "source-a");
+
+  // 切到源 B → 自动带 "report" 重搜,源 B 进入搜索态并出结果。
+  controller.setActiveSource("source-b");
+  await flush();
+  assert.deepEqual(searchInputs.at(-1), {
+    sourceId: "source-b",
+    query: "report"
+  });
+  const tabB = controller.getSnapshot().bySource["source-b"];
+  assert.equal(tabB?.mode, "search");
+  assert.equal(tabB?.searchQuery, "report");
+  assert.deepEqual(
+    tabB?.searchEntries.map((n) => n.ref.nodeId),
+    ["b:report"]
+  );
+
+  // 无查询时切源 → 不发起搜索,回浏览态。
+  controller.setSearchQuery("");
+  await flush();
+  const beforeIdle = searchInputs.length;
+  controller.setActiveSource("source-a");
+  await flush();
+  assert.equal(searchInputs.length, beforeIdle);
+  assert.equal(controller.getSnapshot().bySource["source-a"]?.mode, "browse");
+});
+
 test("跨 tab 选中累积,confirm 归一为 SelectedReference[]", async () => {
   const controller = createReferenceSourcePickerController({
     aggregator: fakeAggregator({ tabs: tabsTwo, children: {} }),

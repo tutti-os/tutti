@@ -3011,6 +3011,9 @@ type WorkspaceFileSearchLimit = int
 // WorkspaceFileSearchQuery defines model for WorkspaceFileSearchQuery.
 type WorkspaceFileSearchQuery = string
 
+// WorkspaceFileSearchWithin defines model for WorkspaceFileSearchWithin.
+type WorkspaceFileSearchWithin = string
+
 // WorkspaceID defines model for WorkspaceID.
 type WorkspaceID = string
 
@@ -3102,9 +3105,12 @@ type ListWorkspaceRecentFilesParams struct {
 
 // SearchWorkspaceFilesParams defines parameters for SearchWorkspaceFiles.
 type SearchWorkspaceFilesParams struct {
-	Query        WorkspaceFileSearchQuery  `form:"query" json:"query"`
-	Limit        *WorkspaceFileSearchLimit `form:"limit,omitempty" json:"limit,omitempty"`
-	IncludeKinds *WorkspaceFileSearchKinds `form:"includeKinds,omitempty" json:"includeKinds,omitempty"`
+	Query WorkspaceFileSearchQuery `form:"query" json:"query"`
+
+	// Within 可选:把搜索限定在工作区根下的某子路径(对应左栏选中的「位置」,如 文稿/下载/桌面)。相对工作区根的逻辑路径;缺省/空 = 跨整根搜索。
+	Within       *WorkspaceFileSearchWithin `form:"within,omitempty" json:"within,omitempty"`
+	Limit        *WorkspaceFileSearchLimit  `form:"limit,omitempty" json:"limit,omitempty"`
+	IncludeKinds *WorkspaceFileSearchKinds  `form:"includeKinds,omitempty" json:"includeKinds,omitempty"`
 
 	// Filters 已选「文件类型筛选分类」id(全局统一口径:image/document/spreadsheet/ code/media/archive/other)。筛选与搜索是同一能力:query 可空、filters 非空时即按类型 list-all。空/缺省 = 不按类型过滤。
 	Filters       *WorkspaceFileSearchFilters `form:"filters,omitempty" json:"filters,omitempty"`

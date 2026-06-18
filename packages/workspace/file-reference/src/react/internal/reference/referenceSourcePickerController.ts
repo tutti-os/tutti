@@ -596,6 +596,24 @@ export function createReferenceSourcePickerController(
       cancelSearch();
       setSnapshot({ activeSourceId: sourceId });
       if (trimmed === "" && carriedFilters.length === 0) {
+        // 全局查询为空:目标源回浏览态(清掉其可能残留的旧查询/结果),加载源根。
+        updateTab(sourceId, (tab) =>
+          tab.mode === "browse" &&
+          tab.searchQuery === "" &&
+          tab.searchFilters.length === 0
+            ? tab
+            : {
+                ...tab,
+                mode: "browse",
+                searchQuery: "",
+                searchFilters: [],
+                searchEntries: [],
+                searchHasMore: false,
+                isSearchLoading: false,
+                isSearchLoadingMore: false,
+                searchError: null
+              }
+        );
         ensureRootLoaded(sourceId);
         return;
       }
