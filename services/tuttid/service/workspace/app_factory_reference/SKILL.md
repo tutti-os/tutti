@@ -1,11 +1,11 @@
 ---
 name: tutti-workspace-app-factory
-description: "Create or repair a self-contained Tutti workspace app package from a user request. Use for mention://workspace-app-factory/create handoffs, mention://workspace-app-factory handoffs, standalone Tutti workspace app generation, repair, validation, manifests, bootstrap scripts, package-local AGENTS.md, local HTTP runtimes, healthchecks, app assets, optional app-runtime Tutti CLI integration, and TUTTI_APP_* storage rules."
+description: "Create, convert, or repair a self-contained Tutti workspace app package from a user request or existing repository. Use for mention://workspace-app-factory/create handoffs, mention://workspace-app-factory handoffs, standalone Tutti workspace app generation, adapting existing projects into Tutti packages, repair, validation, manifests, bootstrap scripts, package-local AGENTS.md, local HTTP runtimes, healthchecks, app assets, optional app-runtime Tutti CLI integration, and TUTTI_APP_* storage rules."
 ---
 
 # Tutti Workspace App Factory
 
-Use this skill to create or repair one Tutti workspace app package. The app package must be self-contained, runnable by the Tutti custom app runtime, and safe to copy into a workspace app archive.
+Use this skill to create, convert, or repair one Tutti workspace app package. The app package must be self-contained, runnable by the Tutti custom app runtime, and safe to copy into a workspace app archive.
 
 ## Version Check And Update Reminder
 
@@ -43,7 +43,7 @@ Before generating, repairing, or validating an app package, perform a best-effor
 
 If the current working directory contains `context.json`, or the task includes `mention://workspace-app-factory/create` or `mention://workspace-app-factory`, operate in Tutti factory handoff mode. Read `context.json` before writing files, then follow its metadata, output rules, workspace context, and constraints exactly. Do not copy the context file into generated app outputs.
 
-If `context.json` is absent, operate in standalone mode. Treat the current working directory as the app authoring workspace, create the app package under `package/`, and infer missing metadata conservatively from the user request.
+If `context.json` is absent, operate in standalone mode. Treat the current working directory as the app authoring workspace. If the directory already contains an app or repository, adapt it into a Tutti package under `package/`; otherwise create a new package under `package/`. Infer missing metadata conservatively from the user request.
 
 The package root is the only generated app output directory; files outside it are scratch or coordination files and will not be published.
 
@@ -111,6 +111,19 @@ Avoid startup-time package installation. If dependencies or build artifacts are 
 Generated apps must not rely on system `python`, `python3`, `node`, or `npm` commands. Use the explicit managed runtime environment variables instead.
 
 Keep generated apps small and inspectable. Do not add frameworks, background workers, databases, or network services unless they are required by the user request.
+
+## Conversion Workflow
+
+When converting an existing repository into a Tutti workspace app package:
+
+1. Inspect the repository shape first: package manifests, lockfiles, source directories, existing start/build scripts, ports, static assets, storage paths, and localization files.
+2. Prefer a wrapper package under `package/` that copies or references the smallest runnable subset of the existing project. Do not rewrite the original repository outside `package/` unless the user explicitly asks.
+3. Translate the existing start command into `bootstrap.sh`. If the project needs install or build work, put that in executable `prepare.sh` and keep `bootstrap.sh` launch-only.
+4. Replace hard-coded host, port, data, runtime, and log paths with the Tutti runtime environment variables from `references/runtime-env.md`.
+5. If the project already exposes commands, convert the stable user-facing commands into `tutti.cli.json`; otherwise omit `cli`.
+6. If the project already has localized metadata or UI copy, preserve it using `localizationInfo` for manifest metadata and app-owned locale files or dictionaries for in-app copy.
+7. Document the adapted layout, original project entrypoints, runtime command, storage ownership, and any unsupported original features in package `AGENTS.md`.
+8. Validate the converted package against `references/validation-checklist.md`.
 
 ## Implementation Workflow
 
