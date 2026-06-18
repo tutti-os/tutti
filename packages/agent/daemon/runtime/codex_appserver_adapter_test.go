@@ -410,6 +410,24 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"turnId": "turn-1"}})
 		case appServerMethodThreadCompact:
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{}})
+			// The real app-server runs compaction as a full turn and streams
+			// turn/started → item/started → item/completed → turn/completed.
+			c.notify(appServerNotifyTurnStarted, map[string]any{
+				"threadId": "codex-thread-1",
+				"turn":     map[string]any{"id": "turn-compact", "status": "inProgress", "items": []any{}},
+			})
+			c.notify(appServerNotifyItemStarted, map[string]any{
+				"threadId": "codex-thread-1", "turnId": "turn-compact",
+				"item": map[string]any{"type": "contextCompaction", "id": "item-compact", "status": "inProgress"},
+			})
+			c.notify(appServerNotifyItemCompleted, map[string]any{
+				"threadId": "codex-thread-1", "turnId": "turn-compact",
+				"item": map[string]any{"type": "contextCompaction", "id": "item-compact", "status": "completed"},
+			})
+			c.notify(appServerNotifyTurnCompleted, map[string]any{
+				"threadId": "codex-thread-1",
+				"turn":     map[string]any{"id": "turn-compact", "status": "completed", "items": []any{}},
+			})
 		case appServerMethodThreadRollback:
 			c.sendJSON(map[string]any{
 				"id":     message.ID,
@@ -1354,6 +1372,17 @@ func TestCodexAppServerAdapterSlashCompact(t *testing.T) {
 	}
 	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(requests) != 0 {
 		t.Fatalf("turn/start should not run for /compact")
+	}
+	// "Context compacted." must arrive via item/completed through the
+	// session-level handler — not as a locally-emitted terminal message.
+	var gotCompactedBanner bool
+	for _, event := range events {
+		if event.Payload.Content == "Context compacted." {
+			gotCompactedBanner = true
+		}
+	}
+	if !gotCompactedBanner {
+		t.Fatalf("expected 'Context compacted.' banner in compact events; got %#v", events)
 	}
 	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
 		t.Fatalf("compact turn completed events = %d, want 1", len(completed))

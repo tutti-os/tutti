@@ -890,9 +890,30 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 			emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
 			return true, nil
 		}
+		// Block until the App Server signals turn/completed. The session-level
+		// handler keeps activeTurn alive during this wait, so the
+		// contextCompaction item/completed notification fires appServerItemEvents
+		// and emits the "Context compacted." banner through emitEvents before we
+		// close the turn.
+		_, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, nil)
+		if finishErr != nil {
+			if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) {
+				emitTerminal(append(
+					normalizer.FinishInterrupted(session, turnID, "interrupted"),
+					newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
+						"error": finishErr.Error(),
+					}),
+				))
+			} else {
+				emitTerminal(append(
+					normalizer.FinishFailed(session, turnID),
+					newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(finishErr)),
+				))
+			}
+			return true, nil
+		}
 		emitTerminal(append(
 			normalizer.FinishCompleted(session, turnID),
-			appServerSystemNoticeEvent(session, turnID, "system_notice", "Context compaction started.", ""),
 			newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
 				"stopReason": "end_turn",
 			}),
