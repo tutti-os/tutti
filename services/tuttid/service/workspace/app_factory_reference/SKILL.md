@@ -7,6 +7,8 @@ description: "Create, convert, or repair a self-contained Tutti workspace app pa
 
 Use this skill to create, convert, or repair one Tutti workspace app package. The app package must be self-contained, runnable by the Tutti custom app runtime, and safe to copy into a workspace app archive.
 
+For a full agent-enabled Tutti app repository with `apps/web`, `apps/server`, `packages/shared`, `@tutti-os/agent-acp-kit`, local Codex/Claude runtimes, MCP tool gateways, and an app-owned package builder, use `$tutti-agent-workspace-app` first. Return to this skill for the final package contract and validation.
+
 ## Version Check And Update Reminder
 
 Before generating, repairing, or validating an app package, perform a best-effort freshness check unless the user asks to skip network access or the environment is offline.

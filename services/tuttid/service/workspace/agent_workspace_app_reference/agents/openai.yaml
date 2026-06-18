@@ -1,0 +1,7 @@
+interface:
+  display_name: "Tutti Agent Workspace App"
+  short_description: "Build agent-enabled Tutti apps"
+  default_prompt: "Use $tutti-agent-workspace-app to create an agent-enabled Tutti workspace app repository."
+
+policy:
+  allow_implicit_invocation: true
