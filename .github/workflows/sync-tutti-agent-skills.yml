@@ -247,18 +247,28 @@ jobs:
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
           echo "url=https://github.com/${SKILLS_REPO}/pull/${pr_number}" >> "$GITHUB_OUTPUT"
 
-      - name: Enable auto-merge
+      - name: Wait for sync pull request checks
         if: steps.changes.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.TUTTI_AGENT_SKILLS_SYNC_TOKEN }}
         run: |
-          if ! gh pr merge \
+          gh pr checks \
+            "${{ steps.sync_pr.outputs.number }}" \
+            --repo "$SKILLS_REPO" \
+            --watch \
+            --fail-fast
+
+      - name: Merge sync pull request
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TUTTI_AGENT_SKILLS_SYNC_TOKEN }}
+        run: |
+          gh pr merge \
             "${{ steps.sync_pr.outputs.number }}" \
             --repo "$SKILLS_REPO" \
             --squash \
-            --auto; then
-            echo "::warning::Could not enable auto-merge. The sync PR was created or updated but may need repository merge settings or branch protection review."
-          fi
+            --delete-branch \
+            --admin
 
       - name: Find source pull request
         if: always()
@@ -282,7 +292,7 @@ jobs:
             const syncUrl = "${{ steps.sync_pr.outputs.url }}";
             const status = "${{ job.status }}";
             const body = hasChanges
-              ? `Tutti skills sync ${status}.\n\nExternal repository:\n  tutti-os/tutti-agent-skills\n\nSync PR:\n  ${syncUrl}\n\nAuto-merge:\n  enabled after required checks pass\n\nSource commit:\n  ${context.sha}`
+              ? `Tutti skills sync ${status}.\n\nExternal repository:\n  tutti-os/tutti-agent-skills\n\nSync PR:\n  ${syncUrl}\n\nMerge:\n  automatically merged after external checks pass\n\nSource commit:\n  ${context.sha}`
               : `Tutti skills sync skipped.\n\nNo mirrored skill changes were detected for source commit ${context.sha}.`;
 
             await github.rest.issues.createComment({
