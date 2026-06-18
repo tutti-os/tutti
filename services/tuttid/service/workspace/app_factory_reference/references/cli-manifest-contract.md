@@ -1,6 +1,6 @@
 # Tutti App CLI Manifest Contract
 
-Create `tutti.cli.json` only when `tutti.app.json` declares:
+Create `tutti.cli.json` when the app exposes capabilities to the Tutti ecosystem. The app manifest must declare:
 
 ```json
 {
@@ -51,6 +51,7 @@ Shape:
 Rules:
 
 - `scope` is required and may differ from `appId`.
+- If the user asks to connect the app to the Tutti ecosystem, `tutti.cli.json` is required and must expose at least one useful command.
 - `scope` and every command path segment must use lowercase letters, numbers, and hyphen only.
 - `description` is optional. When present, it describes the CLI scope as a whole for app-level discovery surfaces such as `tutti --help` and `@app` mentions.
 - Command `path` must not repeat `scope`.
