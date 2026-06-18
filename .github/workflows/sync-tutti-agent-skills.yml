@@ -1,0 +1,268 @@
+name: Sync Tutti Agent Skills
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "services/tuttid/service/workspace/app_factory_reference/**"
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Source ref to mirror, usually main or a commit SHA."
+        required: false
+        default: main
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: sync-tutti-agent-skills
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    env:
+      SKILLS_REPO: tutti-os/tutti-agent-skills
+      SYNC_BRANCH: sync/workspace-app-factory-skill
+
+    steps:
+      - name: Checkout Tutti main repository
+        uses: actions/checkout@v4
+        with:
+          path: source-repository
+          ref: ${{ github.event.inputs.source_ref || github.sha }}
+
+      - name: Checkout skills repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SKILLS_REPO }}
+          token: ${{ secrets.TUTTI_AGENT_SKILLS_SYNC_TOKEN }}
+          path: tutti-agent-skills
+
+      - name: Sync built-in skill
+        run: |
+          rsync -a --delete \
+            source-repository/services/tuttid/service/workspace/app_factory_reference/ \
+            tutti-agent-skills/skills/tutti-workspace-app-factory/
+          rsync -a --delete \
+            source-repository/services/tuttid/service/workspace/app_factory_reference/ \
+            tutti-agent-skills/plugins/tutti/skills/tutti-workspace-app-factory/
+
+      - name: Detect mirrored changes
+        id: changes
+        working-directory: tutti-agent-skills
+        run: |
+          if git diff --quiet -- skills/tutti-workspace-app-factory plugins/tutti/skills/tutti-workspace-app-factory; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump plugin cachebuster
+        if: steps.changes.outputs.has_changes == 'true'
+        working-directory: tutti-agent-skills
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          sha = os.environ["GITHUB_SHA"][:12]
+          for manifest_path in [
+              pathlib.Path(".codex-plugin/plugin.json"),
+              pathlib.Path("plugins/tutti/.codex-plugin/plugin.json"),
+          ]:
+              manifest = json.loads(manifest_path.read_text())
+              version = str(manifest.get("version", "0.1.0"))
+              base = version.split("+", 1)[0]
+              manifest["version"] = f"{base}+codex.source-{sha}"
+              manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+
+      - name: Validate allowed changed paths
+        if: steps.changes.outputs.has_changes == 'true'
+        working-directory: tutti-agent-skills
+        run: |
+          git diff --name-only > /tmp/tutti-agent-skills-changed-files.txt
+          while IFS= read -r path; do
+            case "$path" in
+              skills/tutti-workspace-app-factory/*|skills/tutti-workspace-app-factory/**|plugins/tutti/skills/tutti-workspace-app-factory/*|plugins/tutti/skills/tutti-workspace-app-factory/**|.codex-plugin/plugin.json|plugins/tutti/.codex-plugin/plugin.json)
+                ;;
+              *)
+                echo "Unexpected changed path: $path" >&2
+                exit 1
+                ;;
+            esac
+          done < /tmp/tutti-agent-skills-changed-files.txt
+
+      - name: Validate skill discovery
+        if: steps.changes.outputs.has_changes == 'true'
+        working-directory: tutti-agent-skills
+        run: |
+          npx --yes skills add . --list
+          npx --yes skills add ./skills/tutti-workspace-app-factory --list
+
+      - name: Validate marketplace layout
+        if: steps.changes.outputs.has_changes == 'true'
+        working-directory: tutti-agent-skills
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          marketplace = json.loads(pathlib.Path(".agents/plugins/marketplace.json").read_text())
+          plugins = marketplace.get("plugins")
+          if not isinstance(plugins, list) or not plugins:
+              sys.exit("marketplace must contain at least one plugin")
+          entry = plugins[0]
+          if entry.get("name") != "tutti":
+              sys.exit("marketplace plugin name must be tutti")
+          if entry.get("source", {}).get("path") != "./plugins/tutti":
+              sys.exit("marketplace plugin source path must be ./plugins/tutti")
+          for root in (pathlib.Path("."), pathlib.Path("plugins/tutti")):
+              manifest = json.loads((root / ".codex-plugin/plugin.json").read_text())
+              if manifest.get("name") != "tutti":
+                  sys.exit(f"{root} plugin name must be tutti")
+              if manifest.get("skills") != "./skills/":
+                  sys.exit(f"{root} skills path must be ./skills/")
+              if manifest.get("interface", {}).get("websiteURL") != "https://tutti.sh/":
+                  sys.exit(f"{root} websiteURL must be https://tutti.sh/")
+              if not (root / "skills/tutti-workspace-app-factory/SKILL.md").exists():
+                  sys.exit(f"{root} is missing the workspace app factory skill")
+          PY
+
+      - name: Validate skill frontmatter
+        if: steps.changes.outputs.has_changes == 'true'
+        working-directory: tutti-agent-skills
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          skill = pathlib.Path("skills/tutti-workspace-app-factory/SKILL.md")
+          text = skill.read_text()
+          if not text.startswith("---\n"):
+              sys.exit("SKILL.md must start with YAML frontmatter")
+          end = text.find("\n---\n", 4)
+          if end < 0:
+              sys.exit("SKILL.md must close YAML frontmatter")
+          frontmatter = text[4:end]
+          if not re.search(r"^name:\s*tutti-workspace-app-factory\s*$", frontmatter, re.M):
+              sys.exit("SKILL.md missing expected name")
+          if not re.search(r"^description:\s*.+", frontmatter, re.M):
+              sys.exit("SKILL.md missing description")
+          allowed = {"name", "description"}
+          keys = {
+              line.split(":", 1)[0].strip()
+              for line in frontmatter.splitlines()
+              if ":" in line and not line.startswith(" ")
+          }
+          extra = keys - allowed
+          if extra:
+              sys.exit(f"SKILL.md frontmatter has unsupported keys: {sorted(extra)}")
+          PY
+
+      - name: Commit and push sync branch
+        if: steps.changes.outputs.has_changes == 'true'
+        working-directory: tutti-agent-skills
+        env:
+          TOKEN: ${{ secrets.TUTTI_AGENT_SKILLS_SYNC_TOKEN }}
+        run: |
+          git config user.name "tutti-agent-skills-sync"
+          git config user.email "tutti-agent-skills-sync@users.noreply.github.com"
+          git checkout -B "$SYNC_BRANCH"
+          git add skills/tutti-workspace-app-factory plugins/tutti/skills/tutti-workspace-app-factory .codex-plugin/plugin.json plugins/tutti/.codex-plugin/plugin.json
+          git commit -m "Sync workspace app factory skill from Tutti main repository"
+          git push "https://x-access-token:${TOKEN}@github.com/${SKILLS_REPO}.git" "$SYNC_BRANCH" --force
+
+      - name: Open or update sync pull request
+        if: steps.changes.outputs.has_changes == 'true'
+        id: sync_pr
+        working-directory: tutti-agent-skills
+        env:
+          GH_TOKEN: ${{ secrets.TUTTI_AGENT_SKILLS_SYNC_TOKEN }}
+        run: |
+          pr_number="$(gh pr list \
+            --repo "$SKILLS_REPO" \
+            --head "$SYNC_BRANCH" \
+            --json number \
+            --jq '.[0].number // ""')"
+          if [ -z "$pr_number" ]; then
+            pr_url="$(gh pr create \
+              --repo "$SKILLS_REPO" \
+              --base main \
+              --head "$SYNC_BRANCH" \
+              --title "Sync workspace app factory skill" \
+              --body "Mirrors Tutti main repository services/tuttid/service/workspace/app_factory_reference.\n\nSource commit: ${GITHUB_SHA}")"
+            pr_number="${pr_url##*/}"
+          else
+            gh pr edit "$pr_number" \
+              --repo "$SKILLS_REPO" \
+              --title "Sync workspace app factory skill" \
+              --body "Mirrors Tutti main repository services/tuttid/service/workspace/app_factory_reference.\n\nSource commit: ${GITHUB_SHA}"
+            pr_url="https://github.com/${SKILLS_REPO}/pull/${pr_number}"
+          fi
+          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "url=https://github.com/${SKILLS_REPO}/pull/${pr_number}" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TUTTI_AGENT_SKILLS_SYNC_TOKEN }}
+        run: |
+          gh pr merge \
+            "${{ steps.sync_pr.outputs.number }}" \
+            --repo "$SKILLS_REPO" \
+            --squash \
+            --auto
+
+      - name: Find source pull request
+        if: always()
+        id: source_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr_number="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+            --jq '.[0].number // ""')"
+          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Comment sync result on source pull request
+        if: always() && steps.source_pr.outputs.number != ''
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const prNumber = Number("${{ steps.source_pr.outputs.number }}");
+            const hasChanges = "${{ steps.changes.outputs.has_changes }}" === "true";
+            const syncUrl = "${{ steps.sync_pr.outputs.url }}";
+            const status = "${{ job.status }}";
+            const body = hasChanges
+              ? `Tutti skills sync ${status}.\n\nExternal repository:\n  tutti-os/tutti-agent-skills\n\nSync PR:\n  ${syncUrl}\n\nAuto-merge:\n  enabled after required checks pass\n\nSource commit:\n  ${context.sha}`
+              : `Tutti skills sync skipped.\n\nNo mirrored skill changes were detected for source commit ${context.sha}.`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body,
+            });
+
+      - name: Summarize sync
+        if: always()
+        run: |
+          {
+            echo "## Tutti Skills Sync"
+            echo
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- Mirrored changes: \`${{ steps.changes.outputs.has_changes || 'unknown' }}\`"
+            echo "- Sync PR: ${{ steps.sync_pr.outputs.url || 'not created' }}"
+            echo "- Job status: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

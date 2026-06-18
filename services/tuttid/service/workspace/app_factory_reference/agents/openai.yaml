@@ -1,0 +1,7 @@
+interface:
+  display_name: "Tutti Workspace App Factory"
+  short_description: "Create Tutti workspace app packages"
+  default_prompt: "Use $tutti-workspace-app-factory to create or repair a self-contained Tutti workspace app package."
+
+policy:
+  allow_implicit_invocation: true
