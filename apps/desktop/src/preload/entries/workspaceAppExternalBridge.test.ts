@@ -117,6 +117,58 @@ test("workspace app external bridge invokes at query without user activation", a
   ]);
 });
 
+test("workspace app external bridge invokes workspace feature open", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => true,
+    send: unexpectedSend,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return undefined as TResult;
+    }
+  });
+
+  await bridge.workspace.openFeature({ feature: "message-center" });
+
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.workspaceFeatureOpen,
+      payload: { feature: "message-center" }
+    }
+  ]);
+});
+
+test("workspace app external bridge requires activation for workspace feature open", () => {
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  assert.throws(
+    () => bridge.workspace.openFeature({ feature: "message-center" }),
+    /workspace\.openFeature requires a user action/
+  );
+});
+
 test("workspace app external bridge requires activation for file select", async () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {

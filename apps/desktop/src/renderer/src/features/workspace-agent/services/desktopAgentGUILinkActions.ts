@@ -10,7 +10,7 @@ export interface DesktopAgentGUILinkActionDependencies {
     workspaceId: string;
   }): Promise<boolean> | boolean;
   launchWorkspaceIssueManager(input: {
-    issueId: string;
+    issueId?: string | null;
     mode?: "breakdown" | "execute";
     outputDir?: string | null;
     runId?: string | null;
@@ -35,6 +35,8 @@ export interface DesktopAgentGUILinkActionDependencies {
   }): Promise<boolean> | boolean;
   workspaceId: string;
 }
+
+const issueManagerWorkspaceAppId = "issue-manager";
 
 export async function runDesktopAgentGUILinkAction(
   action: WorkspaceLinkAction,
@@ -85,11 +87,20 @@ export async function runDesktopAgentGUILinkAction(
       if (action.workspaceId !== dependencies.workspaceId) {
         return false;
       }
-      if (!action.appId.trim() || !dependencies.launchWorkspaceApp) {
+      const appId = action.appId.trim();
+      if (!appId) {
+        return false;
+      }
+      if (appId === issueManagerWorkspaceAppId) {
+        return dependencies.launchWorkspaceIssueManager({
+          workspaceId: dependencies.workspaceId
+        });
+      }
+      if (!dependencies.launchWorkspaceApp) {
         return false;
       }
       return dependencies.launchWorkspaceApp({
-        appId: action.appId,
+        appId,
         workspaceId: dependencies.workspaceId
       });
     }

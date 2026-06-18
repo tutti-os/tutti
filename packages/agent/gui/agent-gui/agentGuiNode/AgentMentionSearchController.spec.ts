@@ -378,7 +378,21 @@ describe("AgentMentionSearchController", () => {
 
     expect(labelById.get("app")).toBe("应用");
     expect(labelById.get("session")).toBe("会话");
+    expect(labelById.get("issue")).toBe("事项");
     expect(labelById.get("all")).toBe("全部");
+  });
+
+  it("uses Tasks for the English issue browse category label", () => {
+    setAgentGuiI18nTestLocale("en");
+    const controller = new AgentMentionSearchController({});
+    const states: { categories: readonly { id: string; label: string }[] }[] =
+      [];
+    controller.subscribe((state) => states.push(state));
+
+    const categories = states.at(-1)?.categories ?? [];
+    const labelById = new Map(categories.map((c) => [c.id, c.label]));
+
+    expect(labelById.get("issue")).toBe("Tasks");
   });
 
   it("prefetches the browse overview for blank queries including dock files", async () => {
@@ -1922,7 +1936,7 @@ describe("AgentMentionSearchController", () => {
             emptyLabel:
               "No open files in the dock yet. Type to search workspace files."
           },
-          { id: "issues", items: [], emptyLabel: "No issues yet" },
+          { id: "issues", items: [], emptyLabel: "No tasks yet" },
           {
             id: "apps",
             items: [],
@@ -2159,7 +2173,7 @@ describe("AgentMentionSearchController", () => {
             items: [],
             emptyLabel: "No matching files"
           },
-          { id: "issues", items: [], emptyLabel: "No issues yet" },
+          { id: "issues", items: [], emptyLabel: "No tasks yet" },
           {
             id: "apps",
             items: [],

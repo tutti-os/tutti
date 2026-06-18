@@ -441,6 +441,7 @@ function createDependenciesStub(): {
       revealWorkspaceFile: fail,
       openTerminalLink: fail,
       readLocalFileText: fail,
+      readLocalPreviewFile: fail,
       readPreviewFile: fail,
       resolveEntryIcon: async () => null,
       selectAppArchive: fail,

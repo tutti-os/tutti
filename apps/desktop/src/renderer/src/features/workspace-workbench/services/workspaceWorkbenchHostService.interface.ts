@@ -38,6 +38,7 @@ import type {
   TuttiExternalAtQueryResult
 } from "@tutti-os/workspace-external-core/contracts";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
+import type { DesktopWorkspaceAppOpenFileResolvedPayload } from "@shared/contracts/ipc";
 
 export type WorkspaceCustomWallpaperStatus = "idle" | "saving" | "removing";
 
@@ -128,6 +129,9 @@ export interface IWorkspaceWorkbenchHostService {
   ): () => void;
   onOpenFeatureRequest(
     listener: (request: DesktopWorkspaceOpenFeatureRequest) => void
+  ): () => void;
+  onOpenFileRequest(
+    listener: (request: DesktopWorkspaceAppOpenFileResolvedPayload) => void
   ): () => void;
   readWallpaperDisplayMode(workspaceId: string): WorkspaceWallpaperDisplayMode;
   readWallpaperId(workspaceId: string): WorkspaceWallpaperId;

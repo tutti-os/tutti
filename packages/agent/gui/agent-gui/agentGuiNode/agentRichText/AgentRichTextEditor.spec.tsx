@@ -516,7 +516,7 @@ describe("AgentRichTextEditor", () => {
     );
     expect(issueMention).toHaveAttribute(
       "aria-label",
-      "Issue 修复 room status 批量接口"
+      "Task 修复 room status 批量接口"
     );
     expect(issueMention).toHaveAttribute("data-slot", "mention-pill");
     expect(

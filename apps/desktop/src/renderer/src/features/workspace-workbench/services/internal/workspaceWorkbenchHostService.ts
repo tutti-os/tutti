@@ -85,6 +85,7 @@ import { createDesktopWorkspaceDockPreviewCache } from "./desktopWorkspaceDockPr
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type {
   DesktopHostNotificationNavigationPayload,
+  DesktopWorkspaceAppOpenFileResolvedPayload,
   DesktopWorkspaceOpenFeatureRequest
 } from "@shared/contracts/ipc";
 import { SettingsCustomWallpaperClearedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-cleared/settingsCustomWallpaperClearedReporter.ts";
@@ -122,7 +123,10 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenFeatureRequest">;
+  hostWorkspaceApi: Pick<
+    DesktopHostWorkspaceApi,
+    "onOpenFeatureRequest" | "onOpenFileRequest"
+  >;
   workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: WorkspaceAgentActivityService;
@@ -148,7 +152,10 @@ export interface WorkspaceWorkbenchHostExternalDependencies {
   hostFilesApi: DesktopHostFilesApi;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
-  hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenFeatureRequest">;
+  hostWorkspaceApi: Pick<
+    DesktopHostWorkspaceApi,
+    "onOpenFeatureRequest" | "onOpenFileRequest"
+  >;
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -311,6 +318,12 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       .filter(
         (result): result is TuttiExternalAtQueryResult => result !== null
       );
+  }
+
+  onOpenFileRequest(
+    listener: (request: DesktopWorkspaceAppOpenFileResolvedPayload) => void
+  ): () => void {
+    return this.dependencies.hostWorkspaceApi.onOpenFileRequest(listener);
   }
 
   readWallpaperDisplayMode(workspaceId: string) {

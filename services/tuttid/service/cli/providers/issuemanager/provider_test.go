@@ -180,6 +180,29 @@ func (f *fakeIssueManager) CompleteRun(_ context.Context, _ string, _ string, _ 
 	return workspaceissues.RunDetail{Run: workspaceissues.Run{RunID: "RUN-1", Status: workspaceissues.Status(input.Status)}, Outputs: outputs}, nil
 }
 
+func TestCommandsExposeIssueManagerAsWorkspaceAppSource(t *testing.T) {
+	commands := NewProvider(fakeWorkspaceCatalog{}, &fakeIssueManager{}).Commands()
+
+	if len(commands) == 0 {
+		t.Fatal("Commands() returned no commands")
+	}
+	for _, command := range commands {
+		source := command.Capability.Source
+		if source.Kind != cliservice.CapabilitySourceApp {
+			t.Fatalf("%s source kind = %q, want app", command.Capability.ID, source.Kind)
+		}
+		if source.AppID != appID {
+			t.Fatalf("%s app id = %q, want %q", command.Capability.ID, source.AppID, appID)
+		}
+		if source.AppName != "Task Manager" {
+			t.Fatalf("%s app name = %q, want Task Manager", command.Capability.ID, source.AppName)
+		}
+		if source.CLIDescription == "" {
+			t.Fatalf("%s missing CLI description", command.Capability.ID)
+		}
+	}
+}
+
 func TestIssueListCommandUsesStartupWorkspace(t *testing.T) {
 	issues := &fakeIssueManager{}
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues).newIssueListCommand()

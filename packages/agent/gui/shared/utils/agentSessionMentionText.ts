@@ -107,7 +107,7 @@ function formatSessionLabel(
 
 function formatIssueLabel(label: string): string {
   const normalizedLabel = label.trim().replace(/^@+/, "").trim();
-  return normalizedLabel ? `@Issue · ${normalizedLabel}` : label.trim();
+  return normalizedLabel ? `@Task · ${normalizedLabel}` : label.trim();
 }
 
 function unescapeMarkdownLabel(label: string): string {

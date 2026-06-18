@@ -11,6 +11,7 @@ import { FilePreviewClosedReporter } from "../../../analytics/reporters/file-pre
 import { FilePreviewOpenedReporter } from "../../../analytics/reporters/file-preview-opened/filePreviewOpenedReporter.ts";
 import { createAnalyticsOpenedSourceParams } from "../../../analytics/reporters/openedSource.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
+import type { DesktopHostFilesApi } from "@preload/types";
 import { createWorkspaceFilePreviewWindowSaveRequestSource } from "../workspaceFilePreviewSaveRequests.ts";
 import { WorkspaceFilePreviewNodeBody } from "../../ui/WorkspaceFilePreviewNodeBody.tsx";
 import { WorkspaceFilePreviewNodeHeader } from "../../ui/WorkspaceFilePreviewNodeHeader.tsx";
@@ -31,6 +32,7 @@ import { workspaceFilePreviewNodeFrame } from "./workspaceWorkbenchComposition.t
 
 export function createWorkspaceFilePreviewContribution(input: {
   appI18n: I18nRuntime<string>;
+  hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   tuttidClient: Pick<
     TuttidClient,
@@ -86,6 +88,7 @@ export function createWorkspaceFilePreviewContribution(input: {
 
 function createWorkspaceFilePreviewNodeDefinition(input: {
   appI18n: I18nRuntime<string>;
+  hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   tuttidClient: Pick<
     TuttidClient,
@@ -126,6 +129,7 @@ function createWorkspaceFilePreviewNodeDefinition(input: {
       createElement(WorkspaceFilePreviewNodeBody, {
         appI18n: input.appI18n,
         context,
+        hostFilesApi: input.hostFilesApi,
         i18n: input.i18n,
         tuttidClient: input.tuttidClient,
         saveRequestSource,

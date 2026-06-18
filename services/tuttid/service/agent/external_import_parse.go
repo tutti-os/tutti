@@ -31,6 +31,11 @@ func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bo
 			if message.Text != "" {
 				session.Messages = append(session.Messages, message)
 			}
+		case "event_msg":
+			payload := mapField(raw, "payload")
+			if stringField(payload, "type") == "user_message" {
+				session.Title = firstNonEmptyString(session.Title, externalContentText(payload["message"]))
+			}
 		}
 	})
 	if err != nil {
@@ -127,8 +132,20 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 	session.Messages = messages
 	session.StartedAtUnixMS = firstExternalMessageUnixMS(messages)
 	session.UpdatedAtUnixMS = lastExternalMessageUnixMS(messages)
-	session.Title = externalSessionTitle(messages)
+	session.Title = externalParsedSessionTitle(session.Title, messages)
 	return session, true, nil
+}
+
+func externalParsedSessionTitle(hint string, messages []externalImportedMessage) string {
+	if hint = strings.TrimSpace(hint); hint != "" {
+		return truncateExternalTitle(hint)
+	}
+	for _, message := range messages {
+		if message.Role == "user" && !strings.HasPrefix(message.Text, "<environment_context>") {
+			return truncateExternalTitle(message.Text)
+		}
+	}
+	return externalSessionTitle(messages)
 }
 
 func readJSONLLines(reader io.Reader, handle func(int, map[string]any)) error {

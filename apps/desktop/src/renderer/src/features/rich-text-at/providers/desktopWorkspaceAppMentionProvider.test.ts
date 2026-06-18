@@ -4,6 +4,38 @@ import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-me
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import { createDesktopWorkspaceAppMentionProvider } from "./desktopWorkspaceAppMentionProvider.ts";
 
+test("workspace app mention provider lists installed App Center apps without CLI capabilities", async () => {
+  const provider = createDesktopWorkspaceAppMentionProvider({
+    apps: [
+      createWorkspaceApp({
+        appId: "vibe-design",
+        description: "Design prototypes in Tutti.",
+        name: "Vibe Design"
+      }),
+      createWorkspaceApp({
+        appId: "group-chat",
+        description: "Workspace group chat.",
+        enabled: false,
+        name: "Group Chat"
+      })
+    ],
+    baseProvider: createBaseWorkspaceAppProvider([]),
+    locale: "en",
+    workspaceId: "workspace-1"
+  });
+
+  const items = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "",
+    maxResults: 10
+  });
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.appId, "vibe-design");
+  assert.equal(provider.getItemLabel(items[0]!), "Vibe Design");
+});
+
 test("workspace app mention provider uses localized Chinese app text", async () => {
   const provider = createDesktopWorkspaceAppMentionProvider({
     apps: [
@@ -169,6 +201,53 @@ test("workspace app mention provider uses base icons without App Center metadata
   const insertResult = provider.toInsertResult(codex);
   assert.equal(insertResult.kind, "mention");
   assert.equal(insertResult.mention.presentation?.iconUrl, codex.iconUrl);
+});
+
+test("workspace app mention provider localizes built-in issue manager metadata", async () => {
+  const provider = createDesktopWorkspaceAppMentionProvider({
+    apps: [],
+    baseProvider: createBaseWorkspaceAppProvider([
+      {
+        appId: "issue-manager",
+        description: "Manage workspace tasks and runs.",
+        iconUrl: "tutti-asset://issue/default.png",
+        label: "Task Manager",
+        scopes: "issue"
+      }
+    ]),
+    locale: "zh-CN",
+    workspaceId: "workspace-1"
+  });
+
+  const items = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "任务",
+    maxResults: 10
+  });
+
+  assert.equal(items.length, 1);
+  assert.equal(provider.getItemLabel(items[0]!), "任务管理");
+  assert.equal(
+    provider.getItemSubtitle?.(items[0]!),
+    "管理工作区任务和运行记录。"
+  );
+  assert.equal(items[0]?.iconUrl, "tutti-asset://issue/default.png");
+  assert.deepEqual(provider.toInsertResult(items[0]!), {
+    kind: "mention",
+    mention: {
+      entityId: "issue-manager",
+      label: "任务管理",
+      presentation: {
+        description: "管理工作区任务和运行记录。",
+        iconUrl: "tutti-asset://issue/default.png",
+        subtitle: "管理工作区任务和运行记录。"
+      },
+      scope: {
+        workspaceId: "workspace-1"
+      }
+    }
+  });
 });
 
 test("workspace app mention provider keeps English fallback when localization is missing", async () => {

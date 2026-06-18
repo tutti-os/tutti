@@ -12,6 +12,7 @@ import { WorkspaceFilePreviewSurface } from "@tutti-os/workspace-file-preview/re
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import type { DesktopHostFilesApi } from "@preload/types";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import {
   isWorkspaceFilePreviewActivationTarget,
@@ -31,6 +32,7 @@ import {
 export function WorkspaceFilePreviewNodeBody({
   appI18n,
   context,
+  hostFilesApi,
   i18n,
   tuttidClient,
   saveRequestSource,
@@ -38,6 +40,7 @@ export function WorkspaceFilePreviewNodeBody({
 }: {
   appI18n: I18nRuntime<string>;
   context: WorkbenchHostNodeBodyContext;
+  hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   tuttidClient: Pick<
     TuttidClient,
@@ -72,6 +75,7 @@ export function WorkspaceFilePreviewNodeBody({
     () =>
       createWorkspaceFilePreviewNodeController({
         appI18n,
+        hostFilesApi,
         i18n,
         initialFile: activeFile,
         tuttidClient,
@@ -81,6 +85,7 @@ export function WorkspaceFilePreviewNodeBody({
       }),
     [
       appI18n,
+      hostFilesApi,
       i18n,
       tuttidClient,
       setNodeRuntimeState,

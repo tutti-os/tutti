@@ -8,7 +8,12 @@ import (
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
-const appID = "issue-manager"
+const (
+	appID             = "issue-manager"
+	appName           = "Task Manager"
+	appCLIDescription = "Manage workspace tasks and runs."
+	appDescription    = "Plan, track, and execute workspace task work."
+)
 
 type IssueManager interface {
 	ListTopics(context.Context, string) (workspaceissues.TopicList, error)
@@ -45,7 +50,7 @@ func (Provider) AppID() string {
 }
 
 func (p Provider) Commands() []cliservice.Command {
-	return []cliservice.Command{
+	commands := []cliservice.Command{
 		p.newTopicListCommand(),
 		p.newTopicCreateCommand(),
 		p.newTopicUpdateCommand(),
@@ -67,6 +72,21 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newRunCreateCommand(),
 		p.newRunCompleteCommand(),
 	}
+	for i := range commands {
+		commands[i] = issueManagerAppCommand(commands[i])
+	}
+	return commands
+}
+
+func issueManagerAppCommand(command cliservice.Command) cliservice.Command {
+	command.Capability.Source = cliservice.CapabilitySource{
+		Kind:           cliservice.CapabilitySourceApp,
+		AppID:          appID,
+		AppName:        appName,
+		CLIDescription: appCLIDescription,
+		AppDescription: appDescription,
+	}
+	return command
 }
 
 func (p Provider) requireIssueManager() error {

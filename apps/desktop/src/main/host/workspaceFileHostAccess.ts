@@ -51,6 +51,7 @@ export interface WorkspaceFileHostAccess {
   revealWorkspaceFile(payload: DesktopWorkspaceFilePathPayload): Promise<void>;
   openTerminalLink(payload: DesktopTerminalLinkPathPayload): Promise<void>;
   readLocalFileText(path: string): Promise<DesktopLocalFileTextResult>;
+  readLocalPreviewFile(path: string): Promise<Uint8Array>;
   readPreviewFile(
     payload: DesktopWorkspaceFilePathPayload
   ): Promise<Uint8Array>;
@@ -186,6 +187,12 @@ export function createWorkspaceFileHostAccess(
         name: basename(path),
         path
       };
+    },
+
+    async readLocalPreviewFile(path) {
+      await ensureFileWithinPreviewBudget(path, statImpl);
+      const bytes = await readFileImpl(path);
+      return Uint8Array.from(bytes);
     },
 
     async readPreviewFile(payload) {

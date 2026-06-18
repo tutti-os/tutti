@@ -379,6 +379,8 @@ function workspaceAppDefaultIconUrl(appId: string): string | null {
       return tuttiAgentAssetUrls.claudeCode;
     case "agent-codex":
       return tuttiAgentAssetUrls.codex;
+    case "issue-manager":
+      return tuttiIssueAssetUrls.default;
     default:
       return null;
   }

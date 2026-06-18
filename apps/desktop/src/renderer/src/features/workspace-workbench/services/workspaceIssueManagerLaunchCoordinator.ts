@@ -1,5 +1,5 @@
 export interface WorkspaceIssueManagerLaunchRequest {
-  issueId: string;
+  issueId?: string | null;
   mode?: "breakdown" | "execute";
   outputDir?: string | null;
   runId?: string | null;
@@ -54,9 +54,12 @@ function normalizeWorkspaceIssueManagerLaunchRequest(
   request: WorkspaceIssueManagerLaunchRequest
 ): WorkspaceIssueManagerLaunchRequest | null {
   const workspaceId = request.workspaceId.trim();
-  const issueId = request.issueId.trim();
-  if (!workspaceId || !issueId) {
+  if (!workspaceId) {
     return null;
+  }
+  const issueId = normalizeOptionalString(request.issueId);
+  if (!issueId) {
+    return { workspaceId };
   }
 
   const mode =

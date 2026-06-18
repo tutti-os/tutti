@@ -1016,7 +1016,7 @@ function mentionVisual(item: AgentContextMentionItem): {
     };
   }
   return {
-    kindLabel: "Issue",
+    kindLabel: "Task",
     primary: item.name
   };
 }

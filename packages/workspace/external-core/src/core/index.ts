@@ -9,7 +9,9 @@ import {
   type TuttiExternalLogLevel,
   type TuttiExternalManagedAiModelProviderId,
   type TuttiExternalPermissionRequestInput,
-  type TuttiExternalSettingsOpenInput
+  type TuttiExternalSettingsOpenInput,
+  type TuttiExternalWorkspaceFeature,
+  type TuttiExternalWorkspaceOpenFeatureInput
 } from "../contracts/index.ts";
 
 export {
@@ -20,6 +22,13 @@ export {
 export const tuttiExternalAtMaxResultsLimit = 50;
 export const tuttiExternalAtDefaultMaxResults = 20;
 export const tuttiExternalLogDiagnosticTextLimit = 8_000;
+export const tuttiExternalWorkspaceFeatures = [
+  "app-center",
+  "issue-manager",
+  "message-center",
+  "agent-connect",
+  "agent-chat"
+] as const satisfies readonly TuttiExternalWorkspaceFeature[];
 
 export function limitDiagnosticText(
   value: string | undefined
@@ -175,6 +184,24 @@ export function normalizeTuttiExternalSettingsOpenInput(
   };
 }
 
+export function normalizeTuttiExternalWorkspaceOpenFeatureInput(
+  input: unknown
+): TuttiExternalWorkspaceOpenFeatureInput {
+  if (!isRecord(input)) {
+    throw new Error("workspace.openFeature input must be an object.");
+  }
+  const feature = input.feature;
+  if (!isTuttiExternalWorkspaceFeature(feature)) {
+    throw new Error("workspace.openFeature feature is unsupported.");
+  }
+  return {
+    feature,
+    ...(typeof input.provider === "string" && input.provider.trim() !== ""
+      ? { provider: input.provider.trim() }
+      : {})
+  };
+}
+
 export function isTuttiExternalAtProviderId(
   value: unknown
 ): value is TuttiExternalAtProviderId {
@@ -191,6 +218,17 @@ export function isTuttiExternalManagedAiModelProviderId(
     typeof value === "string" &&
     tuttiExternalManagedAiModelProviderIds.includes(
       value as TuttiExternalManagedAiModelProviderId
+    )
+  );
+}
+
+export function isTuttiExternalWorkspaceFeature(
+  value: unknown
+): value is TuttiExternalWorkspaceFeature {
+  return (
+    typeof value === "string" &&
+    tuttiExternalWorkspaceFeatures.includes(
+      value as TuttiExternalWorkspaceFeature
     )
   );
 }

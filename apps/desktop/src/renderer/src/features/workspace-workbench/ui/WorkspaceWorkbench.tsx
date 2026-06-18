@@ -599,6 +599,9 @@ async function openWorkspaceIssueManagerNode(
   if (!nodeId) {
     return false;
   }
+  if (!request.issueId) {
+    return true;
+  }
 
   const payload: IssueManagerOpenActivationPayload = {
     issueId: request.issueId,

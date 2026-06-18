@@ -8,6 +8,7 @@ import {
 } from "@tutti-os/workspace-file-preview";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import type { DesktopHostFilesApi } from "@preload/types";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import { workspaceWorkbenchDesktopI18nKeys } from "@shared/i18n";
 import {
@@ -62,6 +63,7 @@ export interface WorkspaceFilePreviewNodeController {
 
 export function createWorkspaceFilePreviewNodeController(input: {
   appI18n: I18nRuntime<string>;
+  hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   initialFile: WorkspaceFileActivationTarget | null;
   tuttidClient: Pick<
@@ -88,6 +90,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
   constructor(
     private readonly input: {
       appI18n: I18nRuntime<string>;
+      hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
       i18n: WorkspaceWorkbenchDesktopI18nRuntime;
       initialFile: WorkspaceFileActivationTarget | null;
       tuttidClient: Pick<
@@ -134,6 +137,9 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     }
 
     const target = this.state.entry;
+    if (isAbsoluteFilesystemPath(target.path)) {
+      return;
+    }
     const targetKey = workspaceFilePreviewNodeFileKey(target);
     const content = this.state.draft;
 
@@ -216,13 +222,20 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     generation: number
   ): Promise<void> {
     try {
-      const preview = await this.input.tuttidClient.readWorkspaceFilePreview(
-        this.input.workspaceID,
-        target.path
-      );
-      const bytes = normalizeWorkspaceFilePreviewBytes(
-        decodeBase64Bytes(preview.bytesBase64)
-      );
+      const bytes = isAbsoluteFilesystemPath(target.path)
+        ? normalizeWorkspaceFilePreviewBytes(
+            await this.input.hostFilesApi.readLocalPreviewFile(target.path)
+          )
+        : normalizeWorkspaceFilePreviewBytes(
+            decodeBase64Bytes(
+              (
+                await this.input.tuttidClient.readWorkspaceFilePreview(
+                  this.input.workspaceID,
+                  target.path
+                )
+              ).bytesBase64
+            )
+          );
       if (this.isStale(generation)) {
         return;
       }
@@ -455,4 +468,13 @@ function resolveReadonlyMessage(
         maxSize: formatWorkspacePreviewByteLimit(maxSizeBytes ?? 0)
       });
   }
+}
+
+function isAbsoluteFilesystemPath(path: string): boolean {
+  const trimmed = path.trim();
+  return (
+    trimmed.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(trimmed) ||
+    trimmed.startsWith("\\\\")
+  );
 }

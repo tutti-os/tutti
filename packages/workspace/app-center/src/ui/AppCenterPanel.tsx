@@ -60,7 +60,13 @@ import {
   type AppCenterHostActions
 } from "./AppCard.tsx";
 
-type FactoryTemplateID = "weather" | "lookup" | "system" | "news" | "gomoku";
+type FactoryTemplateID =
+  | "lovart"
+  | "weather"
+  | "lookup"
+  | "system"
+  | "news"
+  | "gomoku";
 export type AppCenterAppTab = "recommended" | "my";
 type RecommendedCategoryTabID =
   | "all"
@@ -78,6 +84,12 @@ interface FactoryTemplate {
 }
 
 const factoryTemplates: readonly FactoryTemplate[] = [
+  {
+    defaultNameKey: "factory.templates.lovart.defaultName",
+    id: "lovart",
+    promptKey: "factory.templates.lovart.prompt",
+    titleKey: "factory.templates.lovart.title"
+  },
   {
     defaultNameKey: "factory.templates.weather.defaultName",
     id: "weather",

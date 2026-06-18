@@ -4,7 +4,8 @@ import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import {
   tuttiAgentAssetUrls,
   tuttiFileAssetUrls,
-  tuttiFolderAssetUrls
+  tuttiFolderAssetUrls,
+  tuttiIssueAssetUrls
 } from "../../../../../../shared/tuttiAssetProtocol.ts";
 import { DesktopRichTextAtService } from "./desktopRichTextAtService.ts";
 
@@ -641,6 +642,80 @@ test("desktop rich text @ service assembles provider agent mention apps from cap
         description: "Start a Codex agent session in the current workspace.",
         iconUrl: tuttiAgentAssetUrls.codex,
         subtitle: "Start a Codex agent session in the current workspace."
+      },
+      scope: {
+        workspaceId: "workspace-1"
+      }
+    }
+  });
+});
+
+test("desktop rich text @ service uses task icon fallback for issue manager app mentions", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listCliCapabilities() {
+        return {
+          commands: [
+            {
+              id: "issue-manager.issue.list",
+              description: "List workspace tasks.",
+              path: ["issue", "list"],
+              summary: "List tasks",
+              output: { defaultMode: "table", json: true, table: null },
+              source: {
+                appId: "issue-manager",
+                appName: "Task Manager",
+                cliDescription: "Manage workspace tasks and runs.",
+                kind: "app"
+              }
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient
+  });
+
+  const [provider] = service.getProviders({
+    capabilities: ["workspace-app"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider);
+  const items = await provider.query({
+    context: {},
+    keyword: "tasks",
+    maxResults: 5,
+    trigger: "@"
+  });
+
+  assert.deepEqual(items, [
+    {
+      appId: "issue-manager",
+      commandCount: 1,
+      commandDescriptions: ["List workspace tasks."],
+      commandPaths: ["issue list"],
+      description: "Manage workspace tasks and runs.",
+      commandSummaries: ["List tasks"],
+      displayName: "Task Manager",
+      iconUrl: tuttiIssueAssetUrls.default,
+      scopes: ["issue"],
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.equal(
+    provider.getItemIconUrl?.(items[0]),
+    tuttiIssueAssetUrls.default
+  );
+  assert.deepEqual(provider.toInsertResult(items[0]), {
+    kind: "mention",
+    mention: {
+      entityId: "issue-manager",
+      label: "Task Manager",
+      presentation: {
+        description: "Manage workspace tasks and runs.",
+        iconUrl: tuttiIssueAssetUrls.default,
+        subtitle: "Manage workspace tasks and runs."
       },
       scope: {
         workspaceId: "workspace-1"

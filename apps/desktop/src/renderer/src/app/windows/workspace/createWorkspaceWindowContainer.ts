@@ -181,6 +181,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     hostFilesApi: desktopApi.host.files,
     hostNotificationsApi: desktopApi.host.notifications,
     hostWindowApi: desktopApi.host.window,
+    hostWorkspaceApi: desktopApi.host.workspace,
     tuttidClient,
     platformApi: desktopApi.platform,
     reporterService,

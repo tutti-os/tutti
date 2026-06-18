@@ -119,6 +119,14 @@ export const appCenterEn = {
       }
     },
     templates: {
+      lovart: {
+        defaultName: "Lovart Studio",
+        prompt:
+          "Create a local AI brand design studio inspired by Lovart. The app should turn one brand or campaign brief into a coordinated asset board. Provide a concise brief form for brand name, audience, tone, colors, deliverables, and constraints; generate an editable creative direction with palette, typography notes, messaging angles, and art direction; create a checklist of assets such as logo concepts, hero image, product mockups, social posts, ad banners, landing page sections, and short video storyboard frames; produce copy-ready image prompts for each asset with aspect ratio, style, and negative prompt guidance; render the assets in a canvas-like grid with status, notes, and iteration history; let users refine a selected asset with natural-language instructions; keep projects, briefs, generated prompts, notes, and asset states in app data. Use mock generated thumbnails locally unless a host-provided image generation API is available, and clearly show retryable generation errors.",
+        summary:
+          "Brand briefs, coordinated asset boards, and prompt workflows.",
+        title: "Lovart Studio"
+      },
       lookup: {
         defaultName: "Answer Book",
         prompt:
@@ -183,6 +191,10 @@ export const appCenterEn = {
     groupChat: {
       description: "Collaborate with multiple agents in a group chat.",
       name: "Group Chat"
+    },
+    issueManager: {
+      description: "Manage workspace tasks and runs.",
+      name: "Task Manager"
     },
     vibeDesign: {
       description: "Create and iterate on design prototypes.",
@@ -389,6 +401,13 @@ export const appCenterZhCN = {
       }
     },
     templates: {
+      lovart: {
+        defaultName: "Lovart Studio",
+        prompt:
+          "创建一个受 Lovart 启发的本地 AI 品牌设计工作室应用。应用需要把一句品牌或营销活动 brief 转成一组统一风格的资产看板。提供简洁的 brief 表单，字段包括品牌名、受众、语气、颜色、交付物和约束；生成可编辑的创意方向，包含色板、字体建议、信息表达角度和视觉方向；创建资产清单，例如 logo 概念、主视觉、产品 mockup、社媒帖子、广告横幅、落地页区块和短视频分镜；为每个资产生成可复制的图片提示词，包含画幅比例、风格和负面提示词建议；用类似画布的网格展示资产、状态、备注和迭代历史；允许用户用自然语言细化选中的资产；把项目、brief、生成提示词、备注和资产状态保存在应用数据目录。没有宿主提供的图片生成 API 时使用本地 mock 缩略图，并清楚展示可重试的生成失败状态。",
+        summary: "品牌 brief、统一资产看板和提示词工作流。",
+        title: "Lovart Studio"
+      },
       lookup: {
         defaultName: "答案之书",
         prompt:
@@ -452,6 +471,10 @@ export const appCenterZhCN = {
     groupChat: {
       description: "在群里和多个 Agent 一起协作",
       name: "群聊"
+    },
+    issueManager: {
+      description: "管理工作区任务和运行记录。",
+      name: "任务管理"
     },
     vibeDesign: {
       description: "创建并迭代产品原型设计",

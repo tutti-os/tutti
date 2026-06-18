@@ -179,9 +179,7 @@ export function createDmgArtifactNotarizer({
       return [];
     }
 
-    for (const dmgPath of resolveDmgArtifactPaths(buildResult)) {
-      await notarizeDmg(dmgPath);
-    }
+    await Promise.all(resolveDmgArtifactPaths(buildResult).map(notarizeDmg));
 
     return [];
   };

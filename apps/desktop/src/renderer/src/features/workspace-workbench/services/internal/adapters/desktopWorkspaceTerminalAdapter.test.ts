@@ -520,6 +520,9 @@ function createHostFilesApi(
     async readLocalFileText(path) {
       return { content: "", name: "", path };
     },
+    async readLocalPreviewFile() {
+      return new Uint8Array();
+    },
     async readPreviewFile() {
       return new Uint8Array();
     },

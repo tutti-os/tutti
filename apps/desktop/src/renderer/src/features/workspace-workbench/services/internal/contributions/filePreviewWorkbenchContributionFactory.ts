@@ -8,6 +8,7 @@ export const filePreviewWorkbenchContributionFactory: DesktopWorkbenchContributi
     create(context) {
       return createWorkspaceFilePreviewContribution({
         appI18n: context.appI18n,
+        hostFilesApi: context.hostFilesApi,
         i18n: context.i18n,
         tuttidClient: context.tuttidClient,
         reporterService: context.reporterService,

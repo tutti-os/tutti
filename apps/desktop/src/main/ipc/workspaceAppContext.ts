@@ -12,7 +12,7 @@ import {
   type DesktopWorkspaceAppExternalRendererResponse,
   type DesktopWorkspaceAppExternalRendererResult,
   type DesktopWorkspaceAppContext,
-  type DesktopWorkspaceOpenFeatureRequest
+  type DesktopWorkspaceAppOpenFileRequest
 } from "../../shared/contracts/ipc";
 import {
   normalizeTuttiExternalAtQueryInput,
@@ -20,10 +20,12 @@ import {
   normalizeTuttiExternalFileSelectInput,
   normalizeTuttiExternalLogInput,
   normalizeTuttiExternalPermissionRequestInput,
-  normalizeTuttiExternalSettingsOpenInput
+  normalizeTuttiExternalSettingsOpenInput,
+  normalizeTuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/core";
 import type {
   TuttiExternalAtQueryResult,
+  TuttiExternalFileOpenInput,
   TuttiExternalFileSelectResult,
   TuttiExternalManagedAiModel,
   TuttiExternalManagedAiModelProviderId,
@@ -48,6 +50,7 @@ import {
   WorkspaceAppFrontendLogWriter,
   WorkspaceAppGuestLogRateLimiter
 } from "./workspaceAppFrontendLogging.ts";
+import { resolveWorkspaceAppOpenFilePayload } from "../host/workspaceAppFileOpen.ts";
 
 const workspaceAppGuestWebContents = new Set<WebContents>();
 const workspaceAppGuestContexts = new Map<number, WorkspaceAppGuestContext>();
@@ -154,13 +157,16 @@ export function registerWorkspaceAppContextIpc(
     async (event, payload) => {
       const context = requireWorkspaceAppGuestContext(event.sender);
       const input = normalizeTuttiExternalFileOpenInput(payload);
-      return requestWorkspaceAppExternalRenderer<void>(context, {
+      const request = toWorkspaceAppOpenFileRequest(input, payload);
+      const resolved = await resolveWorkspaceAppOpenFilePayload({
         appId: context.appID,
-        input,
-        operation: "files.open",
-        requestId: randomUUID(),
+        request,
         workspaceId: context.workspaceID
       });
+      context.ownerWindow.webContents.send(
+        desktopIpcChannels.appContext.openFileRequested,
+        resolved
+      );
     }
   );
   registerDesktopIpcHandler(
@@ -253,15 +259,13 @@ export function registerWorkspaceAppContextIpc(
     });
   });
   registerDesktopIpcHandler(
-    desktopIpcChannels.appContext.openFeature,
+    desktopIpcChannels.appExternal.workspaceFeatureOpen,
     (event, payload) => {
       const context = requireWorkspaceAppGuestContext(event.sender);
-      if (!isWorkspaceAppOpenFeaturePayload(payload)) {
-        throw new Error("Workspace app feature target is not allowed.");
-      }
+      const input = normalizeTuttiExternalWorkspaceOpenFeatureInput(payload);
       context.ownerWindow.webContents.send(
         desktopIpcChannels.appContext.openFeatureRequested,
-        payload
+        input
       );
     }
   );
@@ -504,7 +508,7 @@ function createWorkspaceAppContext(
   const installationId = `${context.workspaceID}:${context.appID}`;
   return {
     appId: context.appID,
-    capabilities: ["workspace.openFeature@1"],
+    capabilities: ["files.open@1", "workspace.openFeature@1"],
     contextToken: createWorkspaceAppContextToken(endpoint, context, {
       installationId,
       issuer
@@ -600,27 +604,6 @@ function isWorkspaceAppOpenUrlPayload(
   );
 }
 
-function isWorkspaceAppOpenFeaturePayload(
-  value: unknown
-): value is DesktopWorkspaceOpenFeatureRequest {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const feature = (value as { feature?: unknown }).feature;
-  const allowedFeatures = [
-    "app-center",
-    "issue-manager",
-    "message-center",
-    "agent-connect",
-    "agent-chat"
-  ];
-  if (typeof feature !== "string" || !allowedFeatures.includes(feature)) {
-    return false;
-  }
-  const provider = (value as { provider?: unknown }).provider;
-  return provider === undefined || typeof provider === "string";
-}
-
 function normalizeWorkspaceAppOpenUrlLogPayload(
   value: unknown
 ): Record<string, unknown> | null {
@@ -642,4 +625,38 @@ function broadcastWorkspaceAppContext(payload: { locale: string }): void {
     }
     contents.send(desktopIpcChannels.appContext.changed, payload);
   }
+}
+
+function toWorkspaceAppOpenFileRequest(
+  input: TuttiExternalFileOpenInput,
+  payload: unknown
+): DesktopWorkspaceAppOpenFileRequest {
+  const request: DesktopWorkspaceAppOpenFileRequest = { ...input };
+  if (!isRecord(payload)) {
+    return request;
+  }
+
+  const location = payload.location;
+  if (isRecord(location) && typeof location.path === "string") {
+    const locationType = location.type;
+    if (
+      locationType === "app-data-relative" ||
+      locationType === "app-package-relative" ||
+      locationType === "workspace-relative"
+    ) {
+      request.location = {
+        path: location.path.trim(),
+        type: locationType
+      };
+    }
+  }
+
+  if (
+    typeof payload.packageVersion === "string" ||
+    payload.packageVersion === null
+  ) {
+    request.packageVersion = payload.packageVersion;
+  }
+
+  return request;
 }

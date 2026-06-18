@@ -173,8 +173,43 @@ test("desktop agent gui link actions launch workspace apps in the same workspace
   ]);
 });
 
+test("desktop agent gui link actions route issue-manager app mentions to issue manager", async () => {
+  const launchedIssues: unknown[] = [];
+
+  const handled = await runDesktopAgentGUILinkAction(
+    {
+      appId: "issue-manager",
+      source: "agent-markdown",
+      type: "open-workspace-app",
+      workspaceId: "workspace-1"
+    },
+    {
+      launchAgentGui: failLaunchAgentGui,
+      launchWorkspaceApp: failLaunchWorkspaceApp,
+      launchWorkspaceIssueManager(input) {
+        launchedIssues.push(input);
+        return true;
+      },
+      launchWorkspaceFiles: failLaunchWorkspaceFiles,
+      openBrowserUrl: failOpenBrowserUrl,
+      workspaceId: "workspace-1"
+    }
+  );
+
+  assert.equal(handled, true);
+  assert.deepEqual(launchedIssues, [
+    {
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 function failLaunchAgentGui(): never {
   throw new Error("agent gui should not launch");
+}
+
+function failLaunchWorkspaceApp(): never {
+  throw new Error("workspace app should not launch");
 }
 
 function failLaunchWorkspaceFiles(): never {

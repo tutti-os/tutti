@@ -96,6 +96,10 @@ export function registerHostFilesIpc(deps: HostFilesIpcDependencies): void {
     (_event, payload: string) => hostAccess.readLocalFileText(payload)
   );
   registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.readLocalPreviewFile,
+    (_event, payload: string) => hostAccess.readLocalPreviewFile(payload)
+  );
+  registerDesktopIpcHandler(
     desktopIpcChannels.host.files.readPreviewFile,
     (_event, payload: DesktopWorkspaceFilePathPayload) =>
       hostAccess.readPreviewFile(payload)

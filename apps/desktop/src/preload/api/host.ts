@@ -126,6 +126,12 @@ export function createHostDesktopApi(): DesktopHostApi {
           path
         );
       },
+      readLocalPreviewFile(path: string): Promise<Uint8Array> {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.files.readLocalPreviewFile,
+          path
+        );
+      },
       readPreviewFile(workspaceID: string, path: string): Promise<Uint8Array> {
         return invokeDesktopApi(desktopIpcChannels.host.files.readPreviewFile, {
           path,
@@ -215,6 +221,20 @@ export function createHostDesktopApi(): DesktopHostApi {
         return () => {
           ipcRenderer.removeListener(
             desktopIpcChannels.appContext.openFeatureRequested,
+            handler
+          );
+        };
+      },
+      onOpenFileRequest(listener): () => void {
+        const handler = (_event: IpcRendererEvent, payload: unknown) =>
+          listener(payload as Parameters<typeof listener>[0]);
+        ipcRenderer.on(
+          desktopIpcChannels.appContext.openFileRequested,
+          handler
+        );
+        return () => {
+          ipcRenderer.removeListener(
+            desktopIpcChannels.appContext.openFileRequested,
             handler
           );
         };
