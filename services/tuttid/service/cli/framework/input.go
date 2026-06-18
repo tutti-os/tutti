@@ -1,0 +1,279 @@
+package framework
+
+import (
+	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
+
+	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+)
+
+func FromStruct[T any]() InputSpec {
+	var zero T
+	typ := reflect.TypeOf(zero)
+	if typ == nil {
+		typ = reflect.TypeOf((*T)(nil)).Elem()
+	}
+	if typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	spec := InputSpec{InputType: typ.String(), AcceptsInput: false}
+	if typ.Kind() != reflect.Struct {
+		return spec
+	}
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+		name := strings.TrimSpace(field.Tag.Get("cli"))
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = kebabCase(field.Name)
+		}
+		fieldSpec := FieldSpec{
+			Name:        name,
+			Type:        schemaType(field.Type),
+			Description: strings.TrimSpace(field.Tag.Get("description")),
+			Hint:        strings.TrimSpace(field.Tag.Get("hint")),
+		}
+		applyValidateTag(&fieldSpec, field.Tag.Get("validate"))
+		spec.Fields = append(spec.Fields, fieldSpec)
+		spec.AcceptsInput = true
+	}
+	return spec
+}
+
+func Schema(input InputSpec) map[string]any {
+	schema := map[string]any{
+		"type":       "object",
+		"properties": map[string]any{},
+	}
+	properties := schema["properties"].(map[string]any)
+	required := []string{}
+	for _, field := range input.Fields {
+		propertyType := field.Type
+		if propertyType == "" {
+			propertyType = "string"
+		}
+		property := map[string]any{"type": propertyType}
+		if field.Description != "" {
+			property["description"] = field.Description
+		}
+		properties[field.Name] = property
+		if field.Required {
+			required = append(required, field.Name)
+		}
+	}
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	return schema
+}
+
+func BindInput[T any](spec InputSpec, input map[string]any) (T, error) {
+	var result T
+	if input == nil {
+		input = map[string]any{}
+	}
+	fields := map[string]FieldSpec{}
+	for _, field := range spec.Fields {
+		fields[field.Name] = field
+	}
+	for key := range input {
+		if _, ok := fields[key]; !ok {
+			if !spec.AcceptsInput {
+				return result, fmt.Errorf("%w: command does not accept input", cliservice.ErrInvalidInput)
+			}
+			return result, fmt.Errorf("%w: unknown input %q", cliservice.ErrInvalidInput, key)
+		}
+	}
+
+	value := reflect.ValueOf(&result).Elem()
+	typ := value.Type()
+	if typ.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			value.Set(reflect.New(typ.Elem()))
+		}
+		value = value.Elem()
+		typ = value.Type()
+	}
+	if typ.Kind() != reflect.Struct {
+		return result, nil
+	}
+
+	for i := 0; i < typ.NumField(); i++ {
+		structField := typ.Field(i)
+		if structField.PkgPath != "" {
+			continue
+		}
+		name := strings.TrimSpace(structField.Tag.Get("cli"))
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = kebabCase(structField.Name)
+		}
+		fieldSpec, ok := fields[name]
+		if !ok {
+			continue
+		}
+		raw, exists := input[name]
+		if !exists || raw == nil {
+			if fieldSpec.Required {
+				return result, missingRequiredError(fieldSpec)
+			}
+			continue
+		}
+		if fieldSpec.Required && strings.TrimSpace(fmt.Sprint(raw)) == "" {
+			return result, missingRequiredError(fieldSpec)
+		}
+		if err := setFieldValue(value.Field(i), fieldSpec, raw); err != nil {
+			return result, err
+		}
+	}
+	return result, nil
+}
+
+func setFieldValue(field reflect.Value, spec FieldSpec, raw any) error {
+	if !field.CanSet() {
+		return nil
+	}
+	if field.Kind() == reflect.Pointer {
+		value := reflect.New(field.Type().Elem())
+		if err := setFieldValue(value.Elem(), spec, raw); err != nil {
+			return err
+		}
+		field.Set(value)
+		return nil
+	}
+	switch field.Kind() {
+	case reflect.String:
+		text, ok := raw.(string)
+		if !ok {
+			return invalidInputError(spec.Name)
+		}
+		field.SetString(strings.TrimSpace(text))
+	case reflect.Bool:
+		value, err := parseBool(raw)
+		if err != nil {
+			return invalidInputError(spec.Name)
+		}
+		field.SetBool(value)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value, err := parseInt(raw)
+		if err != nil {
+			return invalidInputError(spec.Name)
+		}
+		if spec.Min != nil && value < *spec.Min {
+			return invalidInputError(spec.Name)
+		}
+		if spec.Max != nil && value > *spec.Max {
+			return invalidInputError(spec.Name)
+		}
+		field.SetInt(value)
+	default:
+		return invalidInputError(spec.Name)
+	}
+	return nil
+}
+
+func parseBool(raw any) (bool, error) {
+	if value, ok := raw.(bool); ok {
+		return value, nil
+	}
+	text, ok := raw.(string)
+	if !ok {
+		return false, fmt.Errorf("invalid bool")
+	}
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "1", "true", "yes", "on":
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid bool")
+	}
+}
+
+func parseInt(raw any) (int64, error) {
+	switch value := raw.(type) {
+	case int:
+		return int64(value), nil
+	case int64:
+		return value, nil
+	case float64:
+		if value != float64(int64(value)) {
+			return 0, fmt.Errorf("invalid integer")
+		}
+		return int64(value), nil
+	case string:
+		return strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	default:
+		return 0, fmt.Errorf("invalid integer")
+	}
+}
+
+func missingRequiredError(field FieldSpec) error {
+	message := fmt.Sprintf("required input %q is missing", field.Name)
+	if field.Hint != "" {
+		message += ". " + field.Hint
+	}
+	return fmt.Errorf("%w: %s", cliservice.ErrInvalidInput, message)
+}
+
+func invalidInputError(name string) error {
+	return fmt.Errorf("%w: invalid input %q", cliservice.ErrInvalidInput, name)
+}
+
+func applyValidateTag(field *FieldSpec, tag string) {
+	for _, part := range strings.Split(tag, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if part == "required" {
+			field.Required = true
+			continue
+		}
+		if raw, ok := strings.CutPrefix(part, "min="); ok {
+			if value, err := strconv.ParseInt(raw, 10, 64); err == nil {
+				field.Min = &value
+			}
+			continue
+		}
+		if raw, ok := strings.CutPrefix(part, "max="); ok {
+			if value, err := strconv.ParseInt(raw, 10, 64); err == nil {
+				field.Max = &value
+			}
+		}
+	}
+}
+
+func schemaType(typ reflect.Type) string {
+	if typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	switch typ.Kind() {
+	case reflect.Bool:
+		return "boolean"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return "integer"
+	default:
+		return "string"
+	}
+}
+
+func kebabCase(value string) string {
+	var builder strings.Builder
+	for i, char := range value {
+		if i > 0 && char >= 'A' && char <= 'Z' {
+			builder.WriteByte('-')
+		}
+		builder.WriteRune(char)
+	}
+	return strings.ToLower(builder.String())
+}

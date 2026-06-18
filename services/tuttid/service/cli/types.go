@@ -58,6 +58,7 @@ type InvokeContext struct {
 	Source          string
 	WorkspaceID     string
 	ParentCommandID string
+	AgentSessionID  string
 }
 
 type InvokeRequest struct {

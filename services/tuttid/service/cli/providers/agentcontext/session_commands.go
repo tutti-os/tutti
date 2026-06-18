@@ -2,11 +2,13 @@ package agentcontext
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
 
 var sessionActionColumns = []cliservice.TableColumn{
@@ -16,43 +18,70 @@ var sessionActionColumns = []cliservice.TableColumn{
 	{Key: "launchRequested", Label: "Launch Requested"},
 }
 
+type startInput struct {
+	Provider        string `cli:"provider" validate:"required"`
+	Cwd             string `cli:"cwd"`
+	DisplayPrompt   string `cli:"display-prompt"`
+	Model           string `cli:"model" validate:"required"`
+	PermissionMode  string `cli:"permission-mode"`
+	Prompt          string `cli:"prompt" validate:"required"`
+	ReasoningEffort string `cli:"reasoning-effort"`
+	Show            bool   `cli:"show"`
+	Title           string `cli:"title"`
+	Visible         bool   `cli:"visible"`
+}
+
+type providerStartInput struct {
+	Cwd             string `cli:"cwd"`
+	DisplayPrompt   string `cli:"display-prompt"`
+	Model           string `cli:"model" validate:"required"`
+	PermissionMode  string `cli:"permission-mode"`
+	Prompt          string `cli:"prompt" validate:"required"`
+	ReasoningEffort string `cli:"reasoning-effort"`
+	Show            bool   `cli:"show"`
+	Title           string `cli:"title"`
+	Visible         bool   `cli:"visible"`
+}
+
+type sessionIDInput struct {
+	SessionID string `cli:"session-id" validate:"required"`
+}
+
+type sendInput struct {
+	SessionID string `cli:"session-id" validate:"required"`
+	Prompt    string `cli:"prompt" validate:"required"`
+}
+
+type sessionActionResult struct {
+	Session         agentservice.Session
+	LaunchRequested bool
+}
+
 func (p Provider) newStartCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".agent.start",
-			Path:        []string{"agent", "start"},
-			Summary:     "Start an agent session",
-			Description: "Start an agent session in the current workspace. Use --show to request AgentGUI activation.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"provider": map[string]any{"type": "string"},
-					"cwd":      map[string]any{"type": "string"},
-					"display-prompt": map[string]any{
-						"type": "string",
-					},
-					"model": map[string]any{"type": "string"},
-					"permission-mode": map[string]any{
-						"type": "string",
-					},
-					"prompt": map[string]any{"type": "string"},
-					"reasoning-effort": map[string]any{
-						"type": "string",
-					},
-					"show":    map[string]any{"type": "boolean"},
-					"title":   map[string]any{"type": "string"},
-					"visible": map[string]any{"type": "boolean"},
-				},
-				"required": []string{"provider", "model", "prompt"},
-			},
-			Output: cliservice.CapabilityOutput{
-				DefaultMode: cliservice.OutputModeTable,
-				JSON:        true,
-				Table:       &cliservice.TableOutput{Columns: sessionActionColumns},
-			},
+	return framework.Register(framework.CommandSpec[startInput]{
+		ID:          appID + ".agent.start",
+		Path:        []string{"agent", "start"},
+		Summary:     "Start an agent session",
+		Description: "Start an agent session in the current workspace. Use --show to request AgentGUI activation.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[startInput](),
+		Output:      sessionActionOutputSpec(),
+		Run: func(ctx context.Context, invoke framework.InvokeContext, input startInput) (any, error) {
+			return p.runStart(ctx, invoke, input.Provider, startFields{
+				Cwd:             input.Cwd,
+				DisplayPrompt:   input.DisplayPrompt,
+				Model:           input.Model,
+				PermissionMode:  input.PermissionMode,
+				Prompt:          input.Prompt,
+				ReasoningEffort: input.ReasoningEffort,
+				Show:            input.Show,
+				Title:           input.Title,
+				Visible:         input.Visible,
+			})
 		},
-		Handler: p.startCommandHandler(""),
-	}
+	})
 }
 
 type providerStartCommandSpec struct {
@@ -66,286 +95,238 @@ type providerStartCommandSpec struct {
 }
 
 func (p Provider) newProviderStartCommand(spec providerStartCommandSpec) cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          spec.CommandID,
-			Path:        spec.Path,
-			Summary:     spec.Summary,
-			Description: spec.Description,
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"cwd": map[string]any{"type": "string"},
-					"display-prompt": map[string]any{
-						"type": "string",
-					},
-					"model": map[string]any{"type": "string"},
-					"permission-mode": map[string]any{
-						"type": "string",
-					},
-					"prompt": map[string]any{"type": "string"},
-					"reasoning-effort": map[string]any{
-						"type": "string",
-					},
-					"show":    map[string]any{"type": "boolean"},
-					"title":   map[string]any{"type": "string"},
-					"visible": map[string]any{"type": "boolean"},
-				},
-				"required": []string{"model", "prompt"},
-			},
-			Output: cliservice.CapabilityOutput{
-				DefaultMode: cliservice.OutputModeTable,
-				JSON:        true,
-				Table:       &cliservice.TableOutput{Columns: sessionActionColumns},
-			},
-			Source: cliservice.CapabilitySource{
-				Kind:           cliservice.CapabilitySourceApp,
-				AppID:          spec.AppID,
-				AppName:        spec.AppName,
-				CLIDescription: spec.Description,
-			},
+	return framework.Register(framework.CommandSpec[providerStartInput]{
+		ID:          spec.CommandID,
+		Path:        spec.Path,
+		Summary:     spec.Summary,
+		Description: spec.Description,
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[providerStartInput](),
+		Output:      sessionActionOutputSpec(),
+		Source: cliservice.CapabilitySource{
+			Kind:           cliservice.CapabilitySourceApp,
+			AppID:          spec.AppID,
+			AppName:        spec.AppName,
+			CLIDescription: spec.Description,
 		},
-		Handler: p.startCommandHandler(spec.Provider),
-	}
+		Run: func(ctx context.Context, invoke framework.InvokeContext, input providerStartInput) (any, error) {
+			return p.runStart(ctx, invoke, spec.Provider, startFields(input))
+		},
+	})
 }
 
-func (p Provider) startCommandHandler(fixedProvider string) cliservice.Handler {
-	return func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-		if err := p.requireSessions(); err != nil {
-			return cliservice.CommandOutput{}, err
-		}
-		workspaceID, err := p.workspaceID(ctx, request)
-		if err != nil {
-			return cliservice.CommandOutput{}, err
-		}
-		provider := strings.TrimSpace(fixedProvider)
-		if provider == "" {
-			provider, err = cliservice.RequiredStringInput(request.Input, "provider")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-		}
-		cwd, _, err := cliservice.StringInput(request.Input, "cwd")
-		if err != nil {
-			return cliservice.CommandOutput{}, err
-		}
-		displayPrompt, _, err := cliservice.StringInput(request.Input, "display-prompt")
-		if err != nil {
-			return cliservice.CommandOutput{}, err
-		}
-		model, err := cliservice.RequiredStringInput(request.Input, "model")
-		if err != nil {
-			return cliservice.CommandOutput{}, err
-		}
-		permissionModeID, _, err := cliservice.StringInput(request.Input, "permission-mode")
-		if err != nil {
-			return cliservice.CommandOutput{}, err
-		}
-		prompt, err := cliservice.RequiredStringInput(request.Input, "prompt")
-		if err != nil {
-			return cliservice.CommandOutput{}, err
-		}
-		reasoningEffort, _, err := cliservice.StringInput(request.Input, "reasoning-effort")
-		if err != nil {
-			return cliservice.CommandOutput{}, err
-		}
-		title, _, err := cliservice.StringInput(request.Input, "title")
-		if err != nil {
-			return cliservice.CommandOutput{}, err
-		}
-		show := boolInput(request.Input, "show")
-		visible := boolInput(request.Input, "visible") || show
-		session, err := p.sessions.Create(ctx, workspaceID, agentservice.CreateSessionInput{
-			Provider:             provider,
-			Cwd:                  optionalStringPointer(cwd),
-			InitialContent:       agentservice.TextPromptContent(prompt),
-			InitialDisplayPrompt: displayPrompt,
-			Model:                optionalStringPointer(model),
-			PermissionModeID:     optionalStringPointer(permissionModeID),
-			ReasoningEffort:      optionalStringPointer(reasoningEffort),
-			Title:                optionalStringPointer(title),
-			Visible:              boolPointer(visible),
-		})
-		if err != nil {
-			return cliservice.CommandOutput{}, err
-		}
-		launchRequested := false
-		if show {
-			if err := p.publishLaunchRequested(ctx, workspaceID, session, "start_show", request.Context.Source); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			launchRequested = true
-		}
-		return sessionActionOutput(request, session, launchRequested), nil
+type startFields struct {
+	Cwd             string
+	DisplayPrompt   string
+	Model           string
+	PermissionMode  string
+	Prompt          string
+	ReasoningEffort string
+	Show            bool
+	Title           string
+	Visible         bool
+}
+
+func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, provider string, input startFields) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
 	}
+	visible := input.Visible || input.Show
+	cwd, err := p.resolveStartCwd(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
+	if err != nil {
+		return nil, err
+	}
+	session, err := p.sessions.Create(ctx, invoke.WorkspaceID, agentservice.CreateSessionInput{
+		Provider:             provider,
+		Cwd:                  optionalStringPointer(cwd),
+		InitialContent:       agentservice.TextPromptContent(input.Prompt),
+		InitialDisplayPrompt: input.DisplayPrompt,
+		Model:                optionalStringPointer(input.Model),
+		PermissionModeID:     optionalStringPointer(input.PermissionMode),
+		ReasoningEffort:      optionalStringPointer(input.ReasoningEffort),
+		Title:                optionalStringPointer(input.Title),
+		Visible:              boolPointer(visible),
+	})
+	if err != nil {
+		return nil, err
+	}
+	launchRequested := false
+	if input.Show {
+		if err := p.publishLaunchRequested(ctx, invoke.WorkspaceID, session, "start_show", invoke.Request.Context.Source); err != nil {
+			return nil, err
+		}
+		launchRequested = true
+	}
+	return sessionActionResult{Session: session, LaunchRequested: launchRequested}, nil
+}
+
+func (p Provider) resolveStartCwd(
+	ctx context.Context,
+	workspaceID string,
+	explicit string,
+	invokeContext cliservice.InvokeContext,
+) (string, error) {
+	if cwd := strings.TrimSpace(explicit); cwd != "" {
+		return cwd, nil
+	}
+	callerID := strings.TrimSpace(invokeContext.AgentSessionID)
+	if callerID == "" {
+		return "", nil
+	}
+	session, err := p.sessions.Get(ctx, workspaceID, callerID)
+	if err != nil {
+		if errors.Is(err, agentservice.ErrSessionNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	if cwd := strings.TrimSpace(session.Cwd); cwd != "" {
+		return cwd, nil
+	}
+	return "", nil
 }
 
 func (p Provider) newOpenCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".agent.open",
-			Path:        []string{"agent", "open"},
-			Summary:     "Request AgentGUI open",
-			Description: "Request desktop AgentGUI activation for an existing agent session.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"session-id": map[string]any{"type": "string"},
-				},
-				"required": []string{"session-id"},
-			},
-			Output: cliservice.CapabilityOutput{
-				DefaultMode: cliservice.OutputModeTable,
-				JSON:        true,
-				Table:       &cliservice.TableOutput{Columns: sessionActionColumns},
-			},
-		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireSessions(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			sessionID, err := cliservice.RequiredStringInput(request.Input, "session-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			session, err := p.sessions.Get(ctx, workspaceID, sessionID)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			if err := p.publishLaunchRequested(ctx, workspaceID, session, "open", request.Context.Source); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			return sessionActionOutput(request, session, true), nil
-		},
+	return framework.Register(framework.CommandSpec[sessionIDInput]{
+		ID:          appID + ".agent.open",
+		Path:        []string{"agent", "open"},
+		Summary:     "Request AgentGUI open",
+		Description: "Request desktop AgentGUI activation for an existing agent session.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[sessionIDInput](),
+		Output:      sessionActionOutputSpec(),
+		Run:         p.runOpen,
+	})
+}
+
+func (p Provider) runOpen(ctx context.Context, invoke framework.InvokeContext, input sessionIDInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
 	}
+	session, err := p.sessions.Get(ctx, invoke.WorkspaceID, input.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.publishLaunchRequested(ctx, invoke.WorkspaceID, session, "open", invoke.Request.Context.Source); err != nil {
+		return nil, err
+	}
+	return sessionActionResult{Session: session, LaunchRequested: true}, nil
 }
 
 func (p Provider) newGetCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".agent.get",
-			Path:        []string{"agent", "get"},
-			Summary:     "Get an agent session",
-			Description: "Get one agent session in the current workspace.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"session-id": map[string]any{"type": "string"},
+	return framework.Register(framework.CommandSpec[sessionIDInput]{
+		ID:          appID + ".agent.get",
+		Path:        []string{"agent", "get"},
+		Summary:     "Get an agent session",
+		Description: "Get compact agent session context in the current workspace.",
+		Kind:        framework.KindGet,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[sessionIDInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewDetail,
+			JSON:        true,
+			JSONViews: map[framework.OutputView]func(any) map[string]any{
+				framework.ViewDetail: func(result any) map[string]any {
+					return map[string]any{"session": sessionInspectValue(result.(agentservice.Session))}
 				},
-				"required": []string{"session-id"},
 			},
-			Output: cliservice.CapabilityOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireSessions(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			sessionID, err := cliservice.RequiredStringInput(request.Input, "session-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			session, err := p.sessions.Get(ctx, workspaceID, sessionID)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: map[string]any{"session": sessionValue(session)}}, nil
-		},
+		Run: p.runGet,
+	})
+}
+
+func (p Provider) runGet(ctx context.Context, invoke framework.InvokeContext, input sessionIDInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
 	}
+	return p.sessions.Get(ctx, invoke.WorkspaceID, input.SessionID)
 }
 
 func (p Provider) newSendCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".agent.send",
-			Path:        []string{"agent", "send"},
-			Summary:     "Send input to an agent session",
-			Description: "Send user input to an existing agent session.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"session-id": map[string]any{"type": "string"},
-					"prompt":     map[string]any{"type": "string"},
-				},
-				"required": []string{"session-id", "prompt"},
-			},
-			Output: cliservice.CapabilityOutput{
-				DefaultMode: cliservice.OutputModeTable,
-				JSON:        true,
-				Table:       &cliservice.TableOutput{Columns: sessionActionColumns},
-			},
-		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireSessions(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			sessionID, err := cliservice.RequiredStringInput(request.Input, "session-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			prompt, err := cliservice.RequiredStringInput(request.Input, "prompt")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			session, err := p.sessions.SendInput(ctx, workspaceID, sessionID, agentservice.SendInput{
-				Content: agentservice.TextPromptContent(prompt),
-			})
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			return sessionActionOutput(request, session, false), nil
-		},
+	return framework.Register(framework.CommandSpec[sendInput]{
+		ID:          appID + ".agent.send",
+		Path:        []string{"agent", "send"},
+		Summary:     "Send input to an agent session",
+		Description: "Send user input to an existing agent session.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[sendInput](),
+		Output:      sessionActionOutputSpec(),
+		Run:         p.runSend,
+	})
+}
+
+func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, input sendInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
 	}
+	session, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
+		Content: agentservice.TextPromptContent(input.Prompt),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sessionActionResult{Session: session}, nil
 }
 
 func (p Provider) newCancelCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".agent.cancel",
-			Path:        []string{"agent", "cancel"},
-			Summary:     "Cancel an agent session",
-			Description: "Cancel an agent session in the current workspace.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"session-id": map[string]any{"type": "string"},
-				},
-				"required": []string{"session-id"},
-			},
-			Output: cliservice.CapabilityOutput{
-				DefaultMode: cliservice.OutputModeTable,
-				JSON:        true,
-				Table:       &cliservice.TableOutput{Columns: sessionActionColumns},
+	return framework.Register(framework.CommandSpec[sessionIDInput]{
+		ID:          appID + ".agent.cancel",
+		Path:        []string{"agent", "cancel"},
+		Summary:     "Cancel an agent session",
+		Description: "Cancel an agent session in the current workspace.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[sessionIDInput](),
+		Output:      sessionActionOutputSpec(),
+		Run:         p.runCancel,
+	})
+}
+
+func (p Provider) runCancel(ctx context.Context, invoke framework.InvokeContext, input sessionIDInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
+	}
+	result, err := p.sessions.Cancel(ctx, invoke.WorkspaceID, input.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	return sessionActionResult{Session: result.Session}, nil
+}
+
+func sessionActionOutputSpec() framework.OutputSpec {
+	return framework.OutputSpec{
+		DefaultMode: cliservice.OutputModeTable,
+		DefaultView: framework.ViewSummary,
+		JSON:        true,
+		Table: &framework.TableOutputSpec{
+			Columns: sessionActionColumns,
+			Rows: func(result any) []map[string]any {
+				action := result.(sessionActionResult)
+				return []map[string]any{{
+					"id":              action.Session.ID,
+					"provider":        action.Session.Provider,
+					"status":          action.Session.Status,
+					"launchRequested": action.LaunchRequested,
+				}}
 			},
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireSessions(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			sessionID, err := cliservice.RequiredStringInput(request.Input, "session-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			result, err := p.sessions.Cancel(ctx, workspaceID, sessionID)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			return sessionActionOutput(request, result.Session, false), nil
+		JSONViews: map[framework.OutputView]func(any) map[string]any{
+			framework.ViewSummary: func(result any) map[string]any {
+				action := result.(sessionActionResult)
+				return map[string]any{
+					"launchRequested": action.LaunchRequested,
+					"session":         sessionActionValue(action.Session),
+				}
+			},
 		},
 	}
 }
@@ -369,50 +350,12 @@ func (p Provider) publishLaunchRequested(
 	}))
 }
 
-func sessionActionOutput(
-	request cliservice.InvokeRequest,
-	session agentservice.Session,
-	launchRequested bool,
-) cliservice.CommandOutput {
-	value := sessionValue(session)
-	value["launchRequested"] = launchRequested
-	if request.OutputMode == cliservice.OutputModeJSON {
-		return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: map[string]any{
-			"launchRequested": launchRequested,
-			"session":         value,
-		}}
-	}
-	return cliservice.CommandOutput{
-		Kind:    cliservice.OutputModeTable,
-		Columns: sessionActionColumns,
-		Rows: []map[string]any{{
-			"id":              session.ID,
-			"provider":        session.Provider,
-			"status":          session.Status,
-			"launchRequested": launchRequested,
-		}},
-	}
-}
-
 func optionalStringPointer(value string) *string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil
 	}
 	return &value
-}
-
-func boolInput(input map[string]any, key string) bool {
-	if value, ok := input[key].(bool); ok {
-		return value
-	}
-	value, _, _ := cliservice.StringInput(input, key)
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
 }
 
 func boolPointer(value bool) *bool {

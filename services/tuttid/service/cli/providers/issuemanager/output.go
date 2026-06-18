@@ -94,21 +94,28 @@ func runRows(items []workspaceissues.Run) []map[string]any {
 	return rows
 }
 
-func topicValue(item workspaceissues.Topic) map[string]any {
+func topicSummaryValue(item workspaceissues.Topic) map[string]any {
 	return map[string]any{
 		"topicId":              item.TopicID,
-		"workspaceId":          item.WorkspaceID,
 		"title":                item.Title,
-		"summary":              item.Summary,
 		"isDefault":            item.IsDefault,
-		"pinnedAtUnixMs":       item.PinnedAtUnixMS,
+		"pinned":               item.PinnedAtUnixMS > 0,
 		"lastActivityAtUnixMs": item.LastActivityAtUnixMS,
-		"createdAtUnixMs":      item.CreatedAtUnixMS,
-		"updatedAtUnixMs":      item.UpdatedAtUnixMS,
 	}
 }
 
-func issueValue(item workspaceissues.Issue) map[string]any {
+func issueSummaryValue(item workspaceissues.Issue) map[string]any {
+	return map[string]any{
+		"issueId":         item.IssueID,
+		"topicId":         item.TopicID,
+		"title":           item.Title,
+		"status":          string(item.Status),
+		"taskCount":       item.TaskCount,
+		"updatedAtUnixMs": item.UpdatedAtUnixMS,
+	}
+}
+
+func issueDetailValue(item workspaceissues.Issue) map[string]any {
 	return map[string]any{
 		"issueId":                item.IssueID,
 		"workspaceId":            item.WorkspaceID,
@@ -131,7 +138,29 @@ func issueValue(item workspaceissues.Issue) map[string]any {
 	}
 }
 
-func taskValue(item workspaceissues.Task) map[string]any {
+func taskSummaryValue(item workspaceissues.Task) map[string]any {
+	return map[string]any{
+		"taskId":      item.TaskID,
+		"issueId":     item.IssueID,
+		"title":       item.Title,
+		"status":      string(item.Status),
+		"priority":    string(item.Priority),
+		"sortIndex":   item.SortIndex,
+		"latestRunId": item.LatestRunID,
+	}
+}
+
+func taskActionSummaryValue(item workspaceissues.Task) map[string]any {
+	return map[string]any{
+		"taskId":   item.TaskID,
+		"issueId":  item.IssueID,
+		"title":    item.Title,
+		"status":   string(item.Status),
+		"priority": string(item.Priority),
+	}
+}
+
+func taskDetailValue(item workspaceissues.Task) map[string]any {
 	return map[string]any{
 		"taskId":             item.TaskID,
 		"issueId":            item.IssueID,
@@ -151,7 +180,18 @@ func taskValue(item workspaceissues.Task) map[string]any {
 	}
 }
 
-func runValue(item workspaceissues.Run) map[string]any {
+func runSummaryValue(item workspaceissues.Run) map[string]any {
+	return map[string]any{
+		"runId":          item.RunID,
+		"taskId":         item.TaskID,
+		"issueId":        item.IssueID,
+		"status":         string(item.Status),
+		"agentProvider":  item.AgentProvider,
+		"agentSessionId": item.AgentSessionID,
+	}
+}
+
+func runDetailValue(item workspaceissues.Run) map[string]any {
 	return map[string]any{
 		"runId":              item.RunID,
 		"taskId":             item.TaskID,
@@ -173,6 +213,13 @@ func runValue(item workspaceissues.Run) map[string]any {
 	}
 }
 
+func runOutputSummaryValue(item workspaceissues.RunOutput) map[string]any {
+	return map[string]any{
+		"path":        item.Path,
+		"displayName": item.DisplayName,
+	}
+}
+
 func runOutputValue(item workspaceissues.RunOutput) map[string]any {
 	return map[string]any{
 		"outputId":        item.OutputID,
@@ -188,48 +235,42 @@ func runOutputValue(item workspaceissues.RunOutput) map[string]any {
 	}
 }
 
-func contextRefValue(item workspaceissues.ContextRef) map[string]any {
-	return map[string]any{
-		"contextRefId":    item.ContextRefID,
-		"workspaceId":     item.WorkspaceID,
-		"issueId":         item.IssueID,
-		"taskId":          item.TaskID,
-		"parentKind":      string(item.ParentKind),
-		"refType":         item.RefType,
-		"path":            item.Path,
-		"displayName":     item.DisplayName,
-		"createdAtUnixMs": item.CreatedAtUnixMS,
-	}
-}
-
-func topicValues(items []workspaceissues.Topic) []any {
+func topicSummaryValues(items []workspaceissues.Topic) []any {
 	values := make([]any, 0, len(items))
 	for _, item := range items {
-		values = append(values, topicValue(item))
+		values = append(values, topicSummaryValue(item))
 	}
 	return values
 }
 
-func issueValues(items []workspaceissues.Issue) []any {
+func issueSummaryValues(items []workspaceissues.Issue) []any {
 	values := make([]any, 0, len(items))
 	for _, item := range items {
-		values = append(values, issueValue(item))
+		values = append(values, issueSummaryValue(item))
 	}
 	return values
 }
 
-func taskValues(items []workspaceissues.Task) []any {
+func taskSummaryValues(items []workspaceissues.Task) []any {
 	values := make([]any, 0, len(items))
 	for _, item := range items {
-		values = append(values, taskValue(item))
+		values = append(values, taskSummaryValue(item))
 	}
 	return values
 }
 
-func runValues(items []workspaceissues.Run) []any {
+func runSummaryValues(items []workspaceissues.Run) []any {
 	values := make([]any, 0, len(items))
 	for _, item := range items {
-		values = append(values, runValue(item))
+		values = append(values, runSummaryValue(item))
+	}
+	return values
+}
+
+func runOutputSummaryValues(items []workspaceissues.RunOutput) []any {
+	values := make([]any, 0, len(items))
+	for _, item := range items {
+		values = append(values, runOutputSummaryValue(item))
 	}
 	return values
 }
@@ -238,14 +279,6 @@ func runOutputValues(items []workspaceissues.RunOutput) []any {
 	values := make([]any, 0, len(items))
 	for _, item := range items {
 		values = append(values, runOutputValue(item))
-	}
-	return values
-}
-
-func contextRefValues(items []workspaceissues.ContextRef) []any {
-	values := make([]any, 0, len(items))
-	for _, item := range items {
-		values = append(values, contextRefValue(item))
 	}
 	return values
 }

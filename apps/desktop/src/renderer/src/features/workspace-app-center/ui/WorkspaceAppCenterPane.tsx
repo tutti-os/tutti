@@ -84,52 +84,93 @@ const catalogAppDisplayById = new Map<string, CatalogAppDisplayDefinition>(
   )
 );
 
+const aiPptAppIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/apps/PPT.png",
+  import.meta.url
+).href;
+const aiDocumentAppIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/apps/document.png",
+  import.meta.url
+).href;
+const aiSheetAppIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/apps/sheet.png",
+  import.meta.url
+).href;
+const openCutAppIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/apps/opencut.png",
+  import.meta.url
+).href;
+const productCompetitionAppIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/apps/product-competition.png",
+  import.meta.url
+).href;
+const designReviewAppIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/apps/design-review.png",
+  import.meta.url
+).href;
+const calendarAppIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/apps/calendar.png",
+  import.meta.url
+).href;
+const documentSummarizerAppIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/apps/aisummary.png",
+  import.meta.url
+).href;
+
 const comingSoonWorkspaceAppDefinitions = [
   {
     appId: "ai-ppt",
     descriptionKey: "appCenter.comingSoonApps.aiPpt.description",
+    iconUrl: aiPptAppIconUrl,
     nameKey: "appCenter.comingSoonApps.aiPpt.name",
     tags: ["coming-soon", "office", "presentation"]
   },
   {
     appId: "ai-document",
     descriptionKey: "appCenter.comingSoonApps.aiDocument.description",
+    iconUrl: aiDocumentAppIconUrl,
     nameKey: "appCenter.comingSoonApps.aiDocument.name",
     tags: ["coming-soon", "office", "document"]
   },
   {
     appId: "ai-sheet",
     descriptionKey: "appCenter.comingSoonApps.aiSheet.description",
+    iconUrl: aiSheetAppIconUrl,
     nameKey: "appCenter.comingSoonApps.aiSheet.name",
     tags: ["coming-soon", "office", "spreadsheet"]
   },
   {
     appId: "open-cut",
     descriptionKey: "appCenter.comingSoonApps.openCut.description",
+    iconUrl: openCutAppIconUrl,
     nameKey: "appCenter.comingSoonApps.openCut.name",
     tags: ["coming-soon", "content", "creation", "video", "timeline", "editor"]
   },
   {
     appId: "product-competition",
     descriptionKey: "appCenter.comingSoonApps.productCompetition.description",
+    iconUrl: productCompetitionAppIconUrl,
     nameKey: "appCenter.comingSoonApps.productCompetition.name",
     tags: ["coming-soon", "product", "design"]
   },
   {
     appId: "design-review",
     descriptionKey: "appCenter.comingSoonApps.designReview.description",
+    iconUrl: designReviewAppIconUrl,
     nameKey: "appCenter.comingSoonApps.designReview.name",
     tags: ["coming-soon", "product", "design"]
   },
   {
     appId: "calendar",
     descriptionKey: "appCenter.comingSoonApps.calendar.description",
+    iconUrl: calendarAppIconUrl,
     nameKey: "appCenter.comingSoonApps.calendar.name",
     tags: ["coming-soon", "productivity", "calendar", "schedule"]
   },
   {
     appId: "document-summarizer",
     descriptionKey: "appCenter.comingSoonApps.documentSummarizer.description",
+    iconUrl: documentSummarizerAppIconUrl,
     nameKey: "appCenter.comingSoonApps.documentSummarizer.name",
     tags: ["coming-soon", "productivity", "summary", "document"]
   }
@@ -363,6 +404,7 @@ function createComingSoonWorkspaceApp(input: {
     description: input.description,
     enabled: false,
     exportable: false,
+    iconUrl: input.definition.iconUrl,
     installed: false,
     localizations: [
       {

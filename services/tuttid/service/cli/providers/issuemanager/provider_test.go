@@ -2,6 +2,8 @@ package issuemanager
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
@@ -92,17 +94,38 @@ func (*fakeIssueManager) DeleteIssue(context.Context, string, string) (bool, err
 }
 
 func (*fakeIssueManager) ListTasks(context.Context, string, string, workspaceservice.ListIssueManagerItemsInput) (workspaceissues.TaskList, error) {
-	return workspaceissues.TaskList{Items: []workspaceissues.Task{{TaskID: "TASK-1", IssueID: "ISS-1", Title: "Task"}}}, nil
+	return workspaceissues.TaskList{Items: []workspaceissues.Task{{
+		TaskID:             "TASK-1",
+		IssueID:            "ISS-1",
+		WorkspaceID:        "workspace-1",
+		Title:              "Task",
+		Content:            "hidden",
+		CreatorUserID:      "user-1",
+		CreatorDisplayName: "User",
+		CreatorAvatarURL:   "https://example.invalid/avatar.png",
+	}}}, nil
 }
 
 func (*fakeIssueManager) CreateTask(context.Context, string, string, workspaceservice.CreateIssueManagerTaskInput) (workspaceissues.Task, error) {
-	return workspaceissues.Task{TaskID: "TASK-1", IssueID: "ISS-1", Title: "created"}, nil
+	return workspaceissues.Task{
+		TaskID:             "TASK-1",
+		IssueID:            "ISS-1",
+		WorkspaceID:        "workspace-1",
+		Title:              "created",
+		Content:            "",
+		Priority:           workspaceissues.PriorityMedium,
+		CreatorUserID:      "user-1",
+		CreatorDisplayName: "User",
+		CreatorAvatarURL:   "https://example.invalid/avatar.png",
+		CreatedAtUnixMS:    1700000000000,
+		UpdatedAtUnixMS:    1700000000000,
+	}, nil
 }
 
 func (*fakeIssueManager) GetTaskDetail(context.Context, string, string, string) (workspaceissues.TaskDetail, error) {
 	run := workspaceissues.Run{RunID: "RUN-1", TaskID: "TASK-1", IssueID: "ISS-1", AgentSessionID: "SESSION-1"}
 	return workspaceissues.TaskDetail{
-		Task:          workspaceissues.Task{TaskID: "TASK-1", IssueID: "ISS-1", Title: "Task", LatestRunID: "RUN-1"},
+		Task:          workspaceissues.Task{TaskID: "TASK-1", IssueID: "ISS-1", Title: "Task", Content: "visible content", LatestRunID: "RUN-1"},
 		LatestRun:     &run,
 		RecentRuns:    []workspaceissues.Run{run},
 		LatestOutputs: []workspaceissues.RunOutput{{OutputID: "OUT-1", Path: "/tmp/report.md", DisplayName: "report.md"}},
@@ -124,7 +147,19 @@ func (*fakeIssueManager) ListRuns(context.Context, string, string, string) ([]wo
 
 func (f *fakeIssueManager) CreateRun(_ context.Context, _ string, _ string, taskID string, input workspaceservice.CreateIssueManagerRunInput) (workspaceissues.Run, error) {
 	f.created = input
-	return workspaceissues.Run{RunID: "RUN-1", TaskID: taskID, IssueID: "ISS-1", Status: workspaceissues.StatusRunning}, nil
+	return workspaceissues.Run{
+		RunID:              "RUN-1",
+		TaskID:             taskID,
+		IssueID:            "ISS-1",
+		WorkspaceID:        "workspace-1",
+		RequesterUserID:    "requester-1",
+		AgentUserID:        input.AgentUserID,
+		AgentProvider:      input.AgentProvider,
+		AgentSessionID:     input.AgentSessionID,
+		Status:             workspaceissues.StatusRunning,
+		OutputDir:          "/tmp/output",
+		ExecutionDirectory: "/tmp/work",
+	}, nil
 }
 
 func (*fakeIssueManager) GetRunDetail(context.Context, string, string, string, string) (workspaceissues.RunDetail, error) {
@@ -179,8 +214,13 @@ func TestTopicListCommandReturnsWorkspaceTopics(t *testing.T) {
 	if len(topics) != 2 {
 		t.Fatalf("topics = %#v", topics)
 	}
-	if topics[0].(map[string]any)["topicId"] != workspaceissues.DefaultTopicID || topics[1].(map[string]any)["summary"] != "Launch work" {
+	first := topics[0].(map[string]any)
+	second := topics[1].(map[string]any)
+	if first["topicId"] != workspaceissues.DefaultTopicID || second["title"] != "Launch" || second["pinned"] != true {
 		t.Fatalf("topics = %#v", topics)
+	}
+	if _, ok := second["summary"]; ok {
+		t.Fatalf("topic summary should omit summary: %#v", second)
 	}
 }
 
@@ -197,7 +237,7 @@ func TestTopicUpdateTracksPinnedFalse(t *testing.T) {
 	if !issues.topicUpdate.HasPinned || issues.topicUpdate.Pinned {
 		t.Fatalf("topicUpdate = %#v", issues.topicUpdate)
 	}
-	if output.Value["topic"].(map[string]any)["pinnedAtUnixMs"] != int64(0) {
+	if output.Value["topic"].(map[string]any)["pinned"] != false {
 		t.Fatalf("output = %#v", output.Value)
 	}
 }
@@ -216,9 +256,48 @@ func TestTaskGetIncludesLatestRunAndOutputs(t *testing.T) {
 	if latestRun["agentSessionId"] != "SESSION-1" {
 		t.Fatalf("latestRun = %#v", latestRun)
 	}
+	if detail["task"].(map[string]any)["content"] != "visible content" {
+		t.Fatalf("detail = %#v", detail)
+	}
 	if len(detail["latestOutputs"].([]any)) != 1 {
 		t.Fatalf("detail = %#v", detail)
 	}
+}
+
+func TestTaskCreateReturnsSummaryJSON(t *testing.T) {
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}).newTaskCreateCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"issue-id": "ISS-1", "title": "Task"},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	task := output.Value["task"].(map[string]any)
+	if task["taskId"] != "TASK-1" || task["issueId"] != "ISS-1" || task["priority"] != "medium" {
+		t.Fatalf("task = %#v", task)
+	}
+	assertAbsent(t, task, creatorFieldKeys()...)
+	assertAbsent(t, task, "workspaceId", "createdAtUnixMs", "updatedAtUnixMs", "content")
+}
+
+func TestTaskListReturnsSummaryItems(t *testing.T) {
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}).newTaskListCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"issue-id": "ISS-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	tasks := output.Value["tasks"].([]any)
+	task := tasks[0].(map[string]any)
+	if task["taskId"] != "TASK-1" || task["title"] != "Task" {
+		t.Fatalf("task = %#v", task)
+	}
+	assertAbsent(t, task, "content")
+	assertAbsent(t, task, creatorFieldKeys()...)
 }
 
 func TestIssueUpdateTracksStatus(t *testing.T) {
@@ -300,6 +379,7 @@ func TestIssueRunCreateDoesNotRequireTaskID(t *testing.T) {
 	if run["taskId"] != "" || run["status"] != "running" {
 		t.Fatalf("run = %#v", run)
 	}
+	assertAbsent(t, run, "requesterUserId", "agentUserId", "outputDir", "executionDirectory")
 }
 
 func TestIssueRunCompleteDoesNotRequireTaskID(t *testing.T) {
@@ -323,4 +403,31 @@ func TestIssueRunCompleteDoesNotRequireTaskID(t *testing.T) {
 	if output.Value["run"].(map[string]any)["status"] != "completed" {
 		t.Fatalf("output = %#v", output.Value)
 	}
+}
+
+func TestIssueListReportsMissingTopicID(t *testing.T) {
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}).newIssueListCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{},
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) {
+		t.Fatalf("err = %v, want ErrInvalidInput", err)
+	}
+	if !strings.Contains(err.Error(), `required input "topic-id" is missing`) {
+		t.Fatalf("err = %q", err.Error())
+	}
+}
+
+func assertAbsent(t *testing.T, value map[string]any, keys ...string) {
+	t.Helper()
+	for _, key := range keys {
+		if _, ok := value[key]; ok {
+			t.Fatalf("value should omit %q: %#v", key, value)
+		}
+	}
+}
+
+func creatorFieldKeys() []string {
+	return []string{"creator" + "AvatarUrl", "creator" + "DisplayName", "creator" + "UserId"}
 }

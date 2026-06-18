@@ -6,80 +6,70 @@ import (
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
 
+type composerOptionsInput struct {
+	Provider        string `cli:"provider" validate:"required"`
+	Locale          string `cli:"locale"`
+	Model           string `cli:"model"`
+	PermissionMode  string `cli:"permission-mode"`
+	ReasoningEffort string `cli:"reasoning-effort"`
+}
+
 func (p Provider) newComposerOptionsCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".agent.composer-options",
-			Path:        []string{"agent", "composer-options"},
-			Summary:     "Get agent composer options",
-			Description: "Get provider-specific model and reasoning options without starting an agent session.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"provider":         map[string]any{"type": "string"},
-					"locale":           map[string]any{"type": "string"},
-					"model":            map[string]any{"type": "string"},
-					"permission-mode":  map[string]any{"type": "string"},
-					"reasoning-effort": map[string]any{"type": "string"},
+	return framework.Register(framework.CommandSpec[composerOptionsInput]{
+		ID:          appID + ".agent.composer-options",
+		Path:        []string{"agent", "composer-options"},
+		Summary:     "Get agent composer options",
+		Description: "Get provider-specific model and reasoning options without starting an agent session.",
+		Kind:        framework.KindGet,
+		Workspace:   framework.WorkspaceOptional,
+		Inputs:      framework.FromStruct[composerOptionsInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewDetail,
+			JSON:        true,
+			JSONViews: map[framework.OutputView]func(any) map[string]any{
+				framework.ViewDetail: func(result any) map[string]any {
+					return composerOptionsValue(result.(agentservice.ComposerOptions))
 				},
-				"required": []string{"provider"},
 			},
-			Output: cliservice.CapabilityOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireSessions(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			provider, err := cliservice.RequiredStringInput(request.Input, "provider")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			model, _, err := cliservice.StringInput(request.Input, "model")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			permissionModeID, _, err := cliservice.StringInput(request.Input, "permission-mode")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			reasoningEffort, _, err := cliservice.StringInput(request.Input, "reasoning-effort")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			locale, _, err := cliservice.StringInput(request.Input, "locale")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			defaults := p.composerDefaultsForProvider(ctx, provider)
-			if locale == "" {
-				locale = p.composerDefaultLocale(ctx)
-			}
-			if model == "" {
-				model = defaults.Model
-			}
-			if permissionModeID == "" {
-				permissionModeID = defaults.PermissionModeID
-			}
-			if reasoningEffort == "" {
-				reasoningEffort = defaults.ReasoningEffort
-			}
-			options, err := p.sessions.GetComposerOptions(ctx, agentservice.ComposerOptionsInput{
-				Locale:   locale,
-				Provider: provider,
-				Settings: agentservice.ComposerSettings{
-					Model:            model,
-					PermissionModeID: permissionModeID,
-					ReasoningEffort:  reasoningEffort,
-				},
-			})
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: composerOptionsValue(options)}, nil
-		},
+		Run: p.runComposerOptions,
+	})
+}
+
+func (p Provider) runComposerOptions(ctx context.Context, _ framework.InvokeContext, input composerOptionsInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
 	}
+	defaults := p.composerDefaultsForProvider(ctx, input.Provider)
+	locale := input.Locale
+	if locale == "" {
+		locale = p.composerDefaultLocale(ctx)
+	}
+	model := input.Model
+	if model == "" {
+		model = defaults.Model
+	}
+	permissionModeID := input.PermissionMode
+	if permissionModeID == "" {
+		permissionModeID = defaults.PermissionModeID
+	}
+	reasoningEffort := input.ReasoningEffort
+	if reasoningEffort == "" {
+		reasoningEffort = defaults.ReasoningEffort
+	}
+	return p.sessions.GetComposerOptions(ctx, agentservice.ComposerOptionsInput{
+		Locale:   locale,
+		Provider: input.Provider,
+		Settings: agentservice.ComposerSettings{
+			Model:            model,
+			PermissionModeID: permissionModeID,
+			ReasoningEffort:  reasoningEffort,
+		},
+	})
 }
 
 func (p Provider) composerDefaultLocale(ctx context.Context) string {
@@ -116,7 +106,6 @@ func composerOptionsValue(options agentservice.ComposerOptions) map[string]any {
 		"modelConfig":       composerConfigOptionValue(options.ModelConfig),
 		"permissionConfig":  permissionConfigValue(options.PermissionConfig),
 		"reasoningConfig":   composerConfigOptionValue(options.ReasoningConfig),
-		"runtimeContext":    options.RuntimeContext,
 	}
 }
 

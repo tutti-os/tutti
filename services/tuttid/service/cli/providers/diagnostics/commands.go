@@ -4,6 +4,7 @@ import (
 	"context"
 
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
 
 const appID = "diagnostics"
@@ -23,21 +24,29 @@ func (Provider) Commands() []cliservice.Command {
 }
 
 func newPingCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:      appID + ".doctor.ping",
-			Path:    []string{"doctor", "ping"},
-			Summary: "Check CLI command routing",
-			Output: cliservice.CapabilityOutput{
-				DefaultMode: cliservice.OutputModePlain,
-				JSON:        true,
+	return framework.Register(framework.CommandSpec[struct{}]{
+		ID:          appID + ".doctor.ping",
+		Path:        []string{"doctor", "ping"},
+		Summary:     "Check CLI command routing",
+		Description: "Return a simple diagnostic response from the daemon CLI registry.",
+		Kind:        framework.KindGet,
+		Workspace:   framework.WorkspaceOptional,
+		Inputs:      framework.FromStruct[struct{}](),
+		Output: framework.OutputSpec{
+			DefaultMode:   cliservice.OutputModePlain,
+			DefaultView:   framework.ViewDetail,
+			JSON:          true,
+			RawJSON:       true,
+			RawJSONReason: "diagnostic ping has a fixed one-field JSON payload",
+			JSONValue: func(any) map[string]any {
+				return map[string]any{"status": "ok"}
+			},
+			PlainText: func(any) string {
+				return "ok"
 			},
 		},
-		Handler: func(context.Context, cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			return cliservice.CommandOutput{
-				Kind: cliservice.OutputModePlain,
-				Text: "ok",
-			}, nil
+		Run: func(context.Context, framework.InvokeContext, struct{}) (any, error) {
+			return "ok", nil
 		},
-	}
+	})
 }

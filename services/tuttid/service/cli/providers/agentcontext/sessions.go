@@ -6,6 +6,7 @@ import (
 
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
 
 var sessionColumns = []cliservice.TableColumn{
@@ -15,91 +16,101 @@ var sessionColumns = []cliservice.TableColumn{
 	{Key: "title", Label: "Title"},
 }
 
-func (p Provider) newSessionsCommand(path []string, id string) cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          id,
-			Path:        path,
-			Summary:     "List agent sessions",
-			Description: "List agent sessions in the current workspace.",
-			Output: cliservice.CapabilityOutput{
-				DefaultMode: cliservice.OutputModeTable,
-				JSON:        true,
-				Table:       &cliservice.TableOutput{Columns: sessionColumns},
-			},
-		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireSessions(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			sessions, err := p.sessions.List(ctx, workspaceID)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			if request.OutputMode == cliservice.OutputModeJSON {
-				return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: map[string]any{"sessions": sessionValues(sessions)}}, nil
-			}
-			return cliservice.CommandOutput{Kind: cliservice.OutputModeTable, Columns: sessionColumns, Rows: sessionRows(sessions)}, nil
-		},
-	}
+type sessionSummaryInput struct {
+	SessionID    string `cli:"session-id" validate:"required" description:"Agent session id to inspect."`
+	Limit        int    `cli:"limit" validate:"min=0" description:"Maximum number of recent messages to return."`
+	AfterVersion int64  `cli:"after-version" validate:"min=0" description:"Return messages after this message version."`
 }
 
-func (p Provider) newSessionMessagesCommand(path []string, id string) cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          id,
-			Path:        path,
-			Summary:     "Get agent session messages",
-			Description: "Get recent messages for an agent session.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"session-id":    map[string]any{"type": "string"},
-					"limit":         map[string]any{"type": "string"},
-					"after-version": map[string]any{"type": "string"},
+type sessionSummaryResult struct {
+	Page    agentservice.SessionMessagesPage
+	Session agentservice.Session
+}
+
+func (p Provider) newSessionsCommand(path []string, id string) cliservice.Command {
+	return framework.Register(framework.CommandSpec[struct{}]{
+		ID:          id,
+		Path:        path,
+		Summary:     "List agent sessions",
+		Description: "List agent sessions in the current workspace. JSON output returns compact session summaries.",
+		Kind:        framework.KindList,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[struct{}](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeTable,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			Table: &framework.TableOutputSpec{
+				Columns: sessionColumns,
+				Rows: func(result any) []map[string]any {
+					return sessionRows(result.([]agentservice.Session))
 				},
-				"required": []string{"session-id"},
 			},
-			Output: cliservice.CapabilityOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
+			JSONViews: map[framework.OutputView]func(any) map[string]any{
+				framework.ViewSummary: func(result any) map[string]any {
+					return map[string]any{"sessions": sessionSummaryValues(result.([]agentservice.Session))}
+				},
+			},
+			ListCompact: true,
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireSessions(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			sessionID, err := cliservice.RequiredStringInput(request.Input, "session-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			limit, _, err := cliservice.IntInput(request.Input, "limit")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			afterVersion, _, err := cliservice.Int64Input(request.Input, "after-version")
-			if err != nil || afterVersion < 0 {
-				return cliservice.CommandOutput{}, agentservice.ErrInvalidArgument
-			}
-			page, err := p.sessions.ListMessages(ctx, workspaceID, sessionID, agentservice.ListMessagesInput{
-				AfterVersion: uint64(afterVersion),
-				Limit:        limit,
-			})
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: map[string]any{
-				"agentSessionId": page.AgentSessionID,
-				"messages":       messageValues(page.Messages),
-				"latestVersion":  page.LatestVersion,
-				"hasMore":        page.HasMore,
-			}}, nil
+		Run: p.runSessions,
+	})
+}
+
+func (p Provider) runSessions(ctx context.Context, invoke framework.InvokeContext, _ struct{}) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
+	}
+	return p.sessions.List(ctx, invoke.WorkspaceID)
+}
+
+func (p Provider) newSessionSummaryCommand() cliservice.Command {
+	return framework.Register(framework.CommandSpec[sessionSummaryInput]{
+		ID:          appID + ".agent.session-summary",
+		Path:        []string{"agent", "session-summary"},
+		Summary:     "Get agent session summary",
+		Description: "Get compact session context and recent messages for agent-session mentions.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[sessionSummaryInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewSummary: sessionSummaryJSONValue},
 		},
+		Run: p.runSessionSummary,
+	})
+}
+
+func (p Provider) runSessionSummary(ctx context.Context, invoke framework.InvokeContext, input sessionSummaryInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
+	}
+	page, err := p.sessions.ListMessages(ctx, invoke.WorkspaceID, input.SessionID, agentservice.ListMessagesInput{
+		AfterVersion: uint64(input.AfterVersion),
+		Limit:        input.Limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	session, err := p.sessions.Get(ctx, invoke.WorkspaceID, input.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	return sessionSummaryResult{Page: page, Session: session}, nil
+}
+
+func sessionSummaryJSONValue(result any) map[string]any {
+	summary := result.(sessionSummaryResult)
+	return map[string]any{
+		"agentSessionId": summary.Page.AgentSessionID,
+		"session":        sessionInspectValue(summary.Session),
+		"messages":       messageCompactValues(summary.Page.Messages),
+		"latestVersion":  summary.Page.LatestVersion,
+		"hasMore":        summary.Page.HasMore,
 	}
 }
 

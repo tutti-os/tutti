@@ -5,288 +5,246 @@ import (
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
+type taskListInput struct {
+	IssueID   string `cli:"issue-id" validate:"required"`
+	Status    string `cli:"status"`
+	Search    string `cli:"search"`
+	PageSize  int    `cli:"page-size" validate:"min=1,max=100"`
+	PageToken string `cli:"page-token"`
+}
+
+type issueTaskInput struct {
+	IssueID string `cli:"issue-id" validate:"required"`
+	TaskID  string `cli:"task-id" validate:"required"`
+}
+
+type taskCreateInput struct {
+	IssueID   string `cli:"issue-id" validate:"required" description:"Issue that owns the task."`
+	TaskID    string `cli:"task-id" description:"Stable task id to create; generated when omitted."`
+	Title     string `cli:"title" validate:"required" description:"Task title."`
+	Content   string `cli:"content" description:"Task instructions or notes."`
+	Priority  string `cli:"priority" description:"Task priority: high, medium, or low."`
+	DueAtUnix int64  `cli:"due-at-unix" description:"Due time as a Unix timestamp in seconds."`
+}
+
+type taskUpdateInput struct {
+	IssueID   string  `cli:"issue-id" validate:"required" description:"Issue that owns the task."`
+	TaskID    string  `cli:"task-id" validate:"required" description:"Task to update."`
+	Title     *string `cli:"title" description:"Replace the task title."`
+	Content   *string `cli:"content" description:"Replace the task instructions or notes."`
+	Status    *string `cli:"status" description:"Task status: not_started, running, in_progress, pending_acceptance, completed, failed, or canceled."`
+	Priority  *string `cli:"priority" description:"Task priority: high, medium, or low."`
+	DueAtUnix *int64  `cli:"due-at-unix" description:"Set due time as a Unix timestamp in seconds."`
+}
+
 func (p Provider) newTaskListCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".issue.task.list",
-			Path:        []string{"issue", "task", "list"},
-			Summary:     "List issue tasks",
-			Description: "List tasks under an issue.",
-			InputSchema: objectSchema(map[string]any{
-				"issue-id":   stringProperty(),
-				"status":     stringProperty(),
-				"search":     stringProperty(),
-				"page-size":  integerProperty(),
-				"page-token": stringProperty(),
-			}, "issue-id"),
-			Output: cliservice.CapabilityOutput{
-				DefaultMode: cliservice.OutputModeTable,
-				JSON:        true,
-				Table:       &cliservice.TableOutput{Columns: taskColumns},
-			},
+	return framework.Register(framework.CommandSpec[taskListInput]{
+		ID:          appID + ".issue.task.list",
+		Path:        []string{"issue", "task", "list"},
+		Summary:     "List issue tasks",
+		Description: "List tasks under an issue. JSON output omits task content bodies.",
+		Kind:        framework.KindList,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[taskListInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeTable,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			Table:       &framework.TableOutputSpec{Columns: taskColumns, Rows: func(result any) []map[string]any { return taskRows(result.(workspaceissues.TaskList).Items) }},
+			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewSummary: taskListJSONValue},
+			ListCompact: true,
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireIssueManager(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			issueID, err := cliservice.RequiredStringInput(request.Input, "issue-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			input, err := listInput(request.Input)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			list, err := p.issues.ListTasks(ctx, workspaceID, issueID, input)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			if request.OutputMode == cliservice.OutputModeJSON {
-				value := map[string]any{
-					"tasks":        taskValues(list.Items),
-					"totalCount":   list.TotalCount,
-					"statusCounts": statusCountsValue(list.StatusCounts),
-				}
-				maybeAddNextPageToken(value, list.NextPageToken)
-				return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: value}, nil
-			}
-			return cliservice.CommandOutput{Kind: cliservice.OutputModeTable, Columns: taskColumns, Rows: taskRows(list.Items)}, nil
-		},
-	}
+		Run: p.runTaskList,
+	})
 }
 
 func (p Provider) newTaskGetCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".issue.task.get",
-			Path:        []string{"issue", "task", "get"},
-			Summary:     "Get issue task detail",
-			Description: "Get task detail, latest run, recent runs, and latest outputs.",
-			InputSchema: objectSchema(map[string]any{
-				"issue-id": stringProperty(),
-				"task-id":  stringProperty(),
-			}, "issue-id", "task-id"),
-			Output: cliservice.CapabilityOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
+	return framework.Register(framework.CommandSpec[issueTaskInput]{
+		ID:          appID + ".issue.task.get",
+		Path:        []string{"issue", "task", "get"},
+		Summary:     "Get issue task detail",
+		Description: "Get task detail, latest run, recent runs, and latest outputs.",
+		Kind:        framework.KindGet,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[issueTaskInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewDetail,
+			JSON:        true,
+			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewDetail: taskDetailJSONValue},
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireIssueManager(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			issueID, err := cliservice.RequiredStringInput(request.Input, "issue-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			taskID, err := cliservice.RequiredStringInput(request.Input, "task-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			detail, err := p.issues.GetTaskDetail(ctx, workspaceID, issueID, taskID)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			var latestRun any
-			if detail.LatestRun != nil {
-				latestRun = runValue(*detail.LatestRun)
-			}
-			return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: map[string]any{
-				"detail": map[string]any{
-					"task":          taskValue(detail.Task),
-					"contextRefs":   contextRefValues(detail.ContextRefs),
-					"latestRun":     latestRun,
-					"recentRuns":    runValues(detail.RecentRuns),
-					"latestOutputs": runOutputValues(detail.LatestOutputs),
-				},
-			}}, nil
-		},
-	}
+		Run: p.runTaskGet,
+	})
 }
 
 func (p Provider) newTaskCreateCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".issue.task.create",
-			Path:        []string{"issue", "task", "create"},
-			Summary:     "Create an issue task",
-			Description: "Create a child task under an issue. Use this to persist task breakdown output without creating a run.",
-			InputSchema: objectSchema(map[string]any{
-				"issue-id":    stringProperty("Issue that owns the task."),
-				"task-id":     stringProperty("Stable task id to create; generated when omitted."),
-				"title":       stringProperty("Task title."),
-				"content":     stringProperty("Task instructions or notes."),
-				"priority":    stringProperty("Task priority: high, medium, or low."),
-				"due-at-unix": integerProperty("Due time as a Unix timestamp in seconds."),
-			}, "issue-id", "title"),
-			Output: cliservice.CapabilityOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
+	return framework.Register(framework.CommandSpec[taskCreateInput]{
+		ID:          appID + ".issue.task.create",
+		Path:        []string{"issue", "task", "create"},
+		Summary:     "Create an issue task",
+		Description: "Create a child task under an issue. Use this to persist task breakdown output without creating a run.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[taskCreateInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			JSONViews: map[framework.OutputView]func(any) map[string]any{
+				framework.ViewSummary: func(result any) map[string]any {
+					return map[string]any{"task": taskActionSummaryValue(result.(workspaceissues.Task))}
+				},
+			},
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireIssueManager(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			issueID, err := cliservice.RequiredStringInput(request.Input, "issue-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			title, err := cliservice.RequiredStringInput(request.Input, "title")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			taskID, _, err := cliservice.StringInput(request.Input, "task-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			content, _, err := cliservice.StringInput(request.Input, "content")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			priority, _, err := cliservice.StringInput(request.Input, "priority")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			dueAtUnix, _, err := cliservice.Int64Input(request.Input, "due-at-unix")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			task, err := p.issues.CreateTask(ctx, workspaceID, issueID, workspaceservice.CreateIssueManagerTaskInput{
-				TaskID:      taskID,
-				Title:       title,
-				Content:     content,
-				Priority:    priority,
-				DueAtUnixMS: dueAtUnix * 1000,
-			})
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: map[string]any{"task": taskValue(task)}}, nil
-		},
-	}
+		Run: p.runTaskCreate,
+	})
 }
 
 func (p Provider) newTaskUpdateCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".issue.task.update",
-			Path:        []string{"issue", "task", "update"},
-			Summary:     "Update an issue task",
-			Description: "Update a task under an issue. Breakdown updates should edit task fields without creating or completing runs.",
-			InputSchema: objectSchema(map[string]any{
-				"issue-id":    stringProperty("Issue that owns the task."),
-				"task-id":     stringProperty("Task to update."),
-				"title":       stringProperty("Replace the task title."),
-				"content":     stringProperty("Replace the task instructions or notes."),
-				"status":      stringProperty("Task status: not_started, running, in_progress, pending_acceptance, completed, failed, or canceled."),
-				"priority":    stringProperty("Task priority: high, medium, or low."),
-				"due-at-unix": integerProperty("Set due time as a Unix timestamp in seconds."),
-			}, "issue-id", "task-id"),
-			Output: cliservice.CapabilityOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
+	return framework.Register(framework.CommandSpec[taskUpdateInput]{
+		ID:          appID + ".issue.task.update",
+		Path:        []string{"issue", "task", "update"},
+		Summary:     "Update an issue task",
+		Description: "Update a task under an issue. Breakdown updates should edit task fields without creating or completing runs.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[taskUpdateInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			JSONViews: map[framework.OutputView]func(any) map[string]any{
+				framework.ViewSummary: func(result any) map[string]any {
+					return map[string]any{"task": taskActionSummaryValue(result.(workspaceissues.Task))}
+				},
+			},
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireIssueManager(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			issueID, err := cliservice.RequiredStringInput(request.Input, "issue-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			taskID, err := cliservice.RequiredStringInput(request.Input, "task-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			title, hasTitle, err := cliservice.StringInput(request.Input, "title")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			content, hasContent, err := cliservice.StringInput(request.Input, "content")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			status, hasStatus, err := cliservice.StringInput(request.Input, "status")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			priority, hasPriority, err := cliservice.StringInput(request.Input, "priority")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			dueAtUnix, hasDueAt, err := cliservice.Int64Input(request.Input, "due-at-unix")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			if !hasTitle && !hasContent && !hasStatus && !hasPriority && !hasDueAt {
-				return cliservice.CommandOutput{}, workspaceissues.ErrInvalidArgument
-			}
-			task, err := p.issues.UpdateTask(ctx, workspaceID, issueID, taskID, workspaceservice.UpdateIssueManagerTaskInput{
-				Title:       title,
-				HasTitle:    hasTitle,
-				Content:     content,
-				HasContent:  hasContent,
-				Status:      status,
-				HasStatus:   hasStatus,
-				Priority:    priority,
-				HasPriority: hasPriority,
-				DueAtUnixMS: dueAtUnix * 1000,
-				HasDueAt:    hasDueAt,
-			})
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: map[string]any{"task": taskValue(task)}}, nil
+		Run: p.runTaskUpdate,
+	})
+}
+
+func (p Provider) newTaskDeleteCommand() cliservice.Command {
+	return framework.Register(framework.CommandSpec[issueTaskInput]{
+		ID:          appID + ".issue.task.delete",
+		Path:        []string{"issue", "task", "delete"},
+		Summary:     "Delete an issue task",
+		Description: "Delete a task under an issue.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[issueTaskInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewSummary: func(result any) map[string]any { return map[string]any{"removed": result.(bool)} }},
+		},
+		Run: p.runTaskDelete,
+	})
+}
+
+func (p Provider) runTaskList(ctx context.Context, invoke framework.InvokeContext, input taskListInput) (any, error) {
+	if err := p.requireIssueManager(); err != nil {
+		return nil, err
+	}
+	return p.issues.ListTasks(ctx, invoke.WorkspaceID, input.IssueID, workspaceservice.ListIssueManagerItemsInput{
+		StatusFilter: input.Status,
+		SearchQuery:  input.Search,
+		PageSize:     input.PageSize,
+		PageToken:    input.PageToken,
+	})
+}
+
+func taskListJSONValue(result any) map[string]any {
+	list := result.(workspaceissues.TaskList)
+	value := map[string]any{
+		"tasks":        taskSummaryValues(list.Items),
+		"totalCount":   list.TotalCount,
+		"statusCounts": statusCountsValue(list.StatusCounts),
+	}
+	maybeAddNextPageToken(value, list.NextPageToken)
+	return value
+}
+
+func (p Provider) runTaskGet(ctx context.Context, invoke framework.InvokeContext, input issueTaskInput) (any, error) {
+	if err := p.requireIssueManager(); err != nil {
+		return nil, err
+	}
+	return p.issues.GetTaskDetail(ctx, invoke.WorkspaceID, input.IssueID, input.TaskID)
+}
+
+func taskDetailJSONValue(result any) map[string]any {
+	detail := result.(workspaceissues.TaskDetail)
+	var latestRun any
+	if detail.LatestRun != nil {
+		latestRun = runSummaryValue(*detail.LatestRun)
+	}
+	return map[string]any{
+		"detail": map[string]any{
+			"task":          taskDetailValue(detail.Task),
+			"latestRun":     latestRun,
+			"recentRuns":    runSummaryValues(detail.RecentRuns),
+			"latestOutputs": runOutputValues(detail.LatestOutputs),
 		},
 	}
 }
 
-func (p Provider) newTaskDeleteCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".issue.task.delete",
-			Path:        []string{"issue", "task", "delete"},
-			Summary:     "Delete an issue task",
-			Description: "Delete a task under an issue.",
-			InputSchema: objectSchema(map[string]any{
-				"issue-id": stringProperty(),
-				"task-id":  stringProperty(),
-			}, "issue-id", "task-id"),
-			Output: cliservice.CapabilityOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
-		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireIssueManager(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			issueID, err := cliservice.RequiredStringInput(request.Input, "issue-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			taskID, err := cliservice.RequiredStringInput(request.Input, "task-id")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			removed, err := p.issues.DeleteTask(ctx, workspaceID, issueID, taskID)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: map[string]any{"removed": removed}}, nil
-		},
+func (p Provider) runTaskCreate(ctx context.Context, invoke framework.InvokeContext, input taskCreateInput) (any, error) {
+	if err := p.requireIssueManager(); err != nil {
+		return nil, err
 	}
+	return p.issues.CreateTask(ctx, invoke.WorkspaceID, input.IssueID, workspaceservice.CreateIssueManagerTaskInput{
+		TaskID:      input.TaskID,
+		Title:       input.Title,
+		Content:     input.Content,
+		Priority:    input.Priority,
+		DueAtUnixMS: input.DueAtUnix * 1000,
+	})
+}
+
+func (p Provider) runTaskUpdate(ctx context.Context, invoke framework.InvokeContext, input taskUpdateInput) (any, error) {
+	if err := p.requireIssueManager(); err != nil {
+		return nil, err
+	}
+	if input.Title == nil && input.Content == nil && input.Status == nil && input.Priority == nil && input.DueAtUnix == nil {
+		return nil, workspaceissues.ErrInvalidArgument
+	}
+	update := workspaceservice.UpdateIssueManagerTaskInput{
+		HasTitle:    input.Title != nil,
+		HasContent:  input.Content != nil,
+		HasStatus:   input.Status != nil,
+		HasPriority: input.Priority != nil,
+		HasDueAt:    input.DueAtUnix != nil,
+	}
+	if input.Title != nil {
+		update.Title = *input.Title
+	}
+	if input.Content != nil {
+		update.Content = *input.Content
+	}
+	if input.Status != nil {
+		update.Status = *input.Status
+	}
+	if input.Priority != nil {
+		update.Priority = *input.Priority
+	}
+	if input.DueAtUnix != nil {
+		update.DueAtUnixMS = *input.DueAtUnix * 1000
+	}
+	return p.issues.UpdateTask(ctx, invoke.WorkspaceID, input.IssueID, input.TaskID, update)
+}
+
+func (p Provider) runTaskDelete(ctx context.Context, invoke framework.InvokeContext, input issueTaskInput) (any, error) {
+	if err := p.requireIssueManager(); err != nil {
+		return nil, err
+	}
+	return p.issues.DeleteTask(ctx, invoke.WorkspaceID, input.IssueID, input.TaskID)
 }

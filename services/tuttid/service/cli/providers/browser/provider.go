@@ -43,25 +43,17 @@ func (p Provider) Commands() []cliservice.Command {
 	}
 }
 
-func (p Provider) workspaceID(ctx context.Context, request cliservice.InvokeRequest) (string, error) {
-	return cliservice.ResolveWorkspaceID(ctx, p.workspaces, request.Context.WorkspaceID)
-}
-
-// call resolves the workspace, invokes the mapped chrome-devtools-mcp tool, and
-// returns the tool's text as plain CLI output. The browser service surfaces
+// call invokes the mapped chrome-devtools-mcp tool and returns its text. The
+// browser service surfaces
 // tool errors (e.g. "Chrome not installed", "browser MCP failed to start") as
 // Go errors, which the CLI renders to the agent.
-func (p Provider) call(ctx context.Context, request cliservice.InvokeRequest, tool string, args map[string]any) (cliservice.CommandOutput, error) {
+func (p Provider) call(ctx context.Context, workspaceID string, tool string, args map[string]any) (string, error) {
 	if p.browser == nil {
-		return cliservice.CommandOutput{}, errBrowserUnavailable
-	}
-	workspaceID, err := p.workspaceID(ctx, request)
-	if err != nil {
-		return cliservice.CommandOutput{}, err
+		return "", errBrowserUnavailable
 	}
 	result, err := p.browser.CallTool(ctx, workspaceID, "", tool, args)
 	if err != nil {
-		return cliservice.CommandOutput{}, err
+		return "", err
 	}
-	return cliservice.CommandOutput{Kind: cliservice.OutputModePlain, Text: result.Text}, nil
+	return result.Text, nil
 }

@@ -258,10 +258,15 @@ func serviceCliContext(contextValue *tuttigenerated.CliInvokeContext) cliservice
 	if contextValue.ParentCommandId != nil {
 		parentCommandID = *contextValue.ParentCommandId
 	}
+	agentSessionID := ""
+	if contextValue.AgentSessionId != nil {
+		agentSessionID = *contextValue.AgentSessionId
+	}
 	return cliservice.InvokeContext{
 		Source:          contextValue.Source,
 		WorkspaceID:     workspaceID,
 		ParentCommandID: parentCommandID,
+		AgentSessionID:  agentSessionID,
 	}
 }
 

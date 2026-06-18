@@ -155,6 +155,7 @@ func defaultRuntimeEnv(input PrepareInput, stateDir string) []string {
 		"TUTTI_WORKSPACE_ID=" + strings.TrimSpace(input.WorkspaceID),
 		"TUTTI_AGENT_SESSION_ID=" + strings.TrimSpace(input.AgentSessionID),
 		"TUTTI_AGENT_PROVIDER=" + strings.TrimSpace(input.Provider),
+		"TUTTI_AGENT_CWD=" + strings.TrimSpace(input.Cwd),
 	}
 	if pathEnv := runtimePathEnv(stateDir); pathEnv != "" {
 		env = append(env, pathEnv)

@@ -198,15 +198,19 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(issueSkill), "Use the injected `tutti-cli` skill as the command reference") ||
 		!strings.Contains(string(issueSkill), "## Inspection Mode") ||
 		!strings.Contains(string(issueSkill), "Create the run yourself before doing the work") ||
-		!strings.Contains(string(issueSkill), "If the mention does not include `taskId`, inspect the issue tasks before creating a run") ||
+		!strings.Contains(string(issueSkill), "inspect issue tasks before creating a run") ||
 		!strings.Contains(string(issueSkill), "execute each child task in issue order") ||
 		!strings.Contains(string(issueSkill), "--agent-provider codex --agent-session-id session-1") ||
 		!strings.Contains(string(issueSkill), "complete that same run") ||
-		!strings.Contains(string(issueSkill), "Do not edit code, do not execute the task, and do not create or complete runs in breakdown mode") {
+		!strings.Contains(string(issueSkill), "Do not edit code, do not execute the task, and do not create or complete runs in breakdown mode") ||
+		!strings.Contains(string(issueSkill), "**Done when:**") {
 		t.Fatalf("issue-manager skill content = %q", string(issueSkill))
 	}
 	if envValue(prepared.Env, "TUTTI_AGENT_PROVIDER") != "codex" {
 		t.Fatalf("prepared env = %#v, want TUTTI_AGENT_PROVIDER", prepared.Env)
+	}
+	if envValue(prepared.Env, "TUTTI_AGENT_CWD") != cwd {
+		t.Fatalf("prepared env = %#v, want TUTTI_AGENT_CWD", prepared.Env)
 	}
 	workspaceAppSkill, err := os.ReadFile(filepath.Join(codexHome, "skills", "workspace-app", "SKILL.md"))
 	if err != nil {
@@ -214,7 +218,8 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if !strings.Contains(string(workspaceAppSkill), "mention://workspace-app") ||
 		!strings.Contains(string(workspaceAppSkill), "appId") ||
-		!strings.Contains(string(workspaceAppSkill), "Use the injected `tutti-cli` skill as the command reference") {
+		!strings.Contains(string(workspaceAppSkill), "Use the injected `tutti-cli` skill as the command reference") ||
+		!strings.Contains(string(workspaceAppSkill), "inherits the caller agent session working directory") {
 		t.Fatalf("workspace-app skill content = %q", string(workspaceAppSkill))
 	}
 	appFactorySkill, err := os.ReadFile(filepath.Join(codexHome, "skills", "app-factory", "SKILL.md"))
@@ -707,8 +712,10 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 	if !strings.Contains(string(pluginSkill), "tutti issue list") ||
 		!strings.Contains(string(pluginSkill), "mention://agent-session") ||
-		!strings.Contains(string(pluginSkill), "`mention://workspace-issue/<issueId>?workspaceId=...` belongs to `issue-manager`") ||
-		!strings.Contains(string(pluginSkill), "`mention://workspace-app/<appId>?workspaceId=...` belongs to `workspace-app`") {
+		!strings.Contains(string(pluginSkill), "## Route First") ||
+		!strings.Contains(string(pluginSkill), "## Call Protocol") ||
+		!strings.Contains(string(pluginSkill), "invoke the `issue-manager` skill") ||
+		!strings.Contains(string(pluginSkill), "invoke the `workspace-app` skill") {
 		t.Fatalf("claude plugin skill content = %q", string(pluginSkill))
 	}
 	issuePluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "issue-manager", "SKILL.md"))

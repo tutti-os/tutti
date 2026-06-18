@@ -5,40 +5,26 @@ description: Use to operate the macOS desktop — take screenshots, click, type,
 
 # Computer Use
 
-Use this skill whenever the task needs macOS desktop automation: capturing a
-screenshot, clicking a UI element, typing text, pressing keyboard shortcuts, or
-scrolling.
+Use this skill for macOS desktop automation: screenshot, click, type, press keys, scroll, or move the cursor.
 
-Drive the desktop **only** through the `tutti computer` CLI. The Tutti daemon
-owns the cua-driver session for you. Do **not** shell out to AppleScript,
-`osascript`, `xdotool`, or any direct accessibility API call — those are not the
-managed desktop session and will be blocked or denied.
+Drive the desktop only through `tutti computer`. The Tutti daemon owns the cua-driver session. Do not use AppleScript, `osascript`, `xdotool`, or direct accessibility APIs; those are outside the managed session.
 
-## Commands
+## Protocol
 
-- `tutti computer screenshot` — capture the screen and return the PNG file path.
-- `tutti computer click --x <n> --y <n>` — left-click at screen coordinates.
-- `tutti computer double-click --x <n> --y <n>` — double-click at coordinates.
-- `tutti computer right-click --x <n> --y <n>` — right-click at coordinates.
-- `tutti computer type --text <text>` — type a string of characters.
-- `tutti computer press-key --key <key>` — press a key or shortcut (e.g. `cmd+c`, `return`, `escape`).
-- `tutti computer scroll --x <n> --y <n> --direction <up|down|left|right> --amount <n>` — scroll at coordinates.
-- `tutti computer move-cursor --x <n> --y <n>` — move the cursor without clicking.
+1. Start with `tutti computer screenshot` to read screen state.
+2. Choose coordinates from that screenshot; coordinates are logical screen points.
+3. Act with `click`, `double-click`, `right-click`, `type`, `press-key`, `scroll`, or `move-cursor`.
+4. Re-run `screenshot` after actions that change the UI because coordinates can shift.
 
-## Workflow
+Common forms:
 
-1. `tutti computer screenshot` to see the current screen state.
-2. Identify the target element's coordinates from the screenshot.
-3. Act with `click`, `type`, `press-key`, etc., using those coordinates.
-4. Re-`screenshot` after actions that change the screen — coordinates may shift.
+- `tutti computer click --x <n> --y <n>`
+- `tutti computer type --text <text>`
+- `tutti computer press-key --key <key>`
+- `tutti computer scroll --x <n> --y <n> --direction <up|down|left|right> --amount <n>`
 
-## Notes
+## Guardrails
 
 - The computer session is shared per workspace and reused across commands.
-- All automation is background (no focus stealing); the foreground app is not
-  disturbed.
-- If a command reports that cua-driver is not installed or permissions are
-  missing (Screen Recording, Accessibility), report that to the user rather
-  than falling back to AppleScript or shell automation.
-- Coordinates are in logical screen points (not raw pixels). Use the screenshot
-  to determine correct coordinates.
+- Automation is background and should not steal focus.
+- If cua-driver is missing or Screen Recording/Accessibility permission is denied, report that error instead of falling back to AppleScript or shell automation.

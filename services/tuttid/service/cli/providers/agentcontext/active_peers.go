@@ -5,43 +5,59 @@ import (
 
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
 
 func (p Provider) newActivePeersCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".agent.active-peers",
-			Path:        []string{"agent", "active-peers"},
-			Summary:     "Show active peer agents",
-			Description: "Show logical active peer agents in the current workspace before editing files.",
-			Output:      cliservice.CapabilityOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
+	return framework.Register(framework.CommandSpec[struct{}]{
+		ID:          appID + ".agent.active-peers",
+		Path:        []string{"agent", "active-peers"},
+		Summary:     "Show active peer agents",
+		Description: "Show logical active peer agents in the current workspace before editing files.",
+		Kind:        framework.KindList,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[struct{}](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewSummary: activePeersValue},
+			ListCompact: true,
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireSessions(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			peers, err := p.sessions.ListActivePeers(ctx, workspaceID)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			return cliservice.CommandOutput{Kind: cliservice.OutputModeJSON, Value: map[string]any{
-				"agents":         activePeerValues(peers.Agents),
-				"selfKnown":      peers.SelfKnown,
-				"mayIncludeSelf": peers.MayIncludeSelf,
-				"warning":        peers.Warning,
-			}}, nil
-		},
+		Run: p.runActivePeers,
+	})
+}
+
+func (p Provider) runActivePeers(ctx context.Context, invoke framework.InvokeContext, _ struct{}) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
+	}
+	return p.sessions.ListActivePeers(ctx, invoke.WorkspaceID)
+}
+
+func activePeersValue(result any) map[string]any {
+	peers := result.(agentservice.ActivePeers)
+	return map[string]any{
+		"agents":         activePeerValues(peers.Agents),
+		"selfKnown":      peers.SelfKnown,
+		"mayIncludeSelf": peers.MayIncludeSelf,
+		"warning":        peers.Warning,
 	}
 }
 
 func activePeerValues(peers []agentservice.ActivePeer) []any {
 	values := make([]any, 0, len(peers))
 	for _, peer := range peers {
-		value := sessionValue(peer.Session)
+		value := map[string]any{
+			"agentSessionId": peer.Session.ID,
+			"provider":       peer.Session.Provider,
+			"status":         string(peer.Session.Status),
+			"title":          "",
+		}
+		if peer.Session.Title != nil {
+			value["title"] = *peer.Session.Title
+		}
 		value["selfRelation"] = peer.SelfRelation
 		values = append(values, value)
 	}

@@ -3055,6 +3055,10 @@ components:
         parentCommandId:
           type: string
           nullable: true
+        agentSessionId:
+          type: string
+          description: Caller agent session id hint. This is not an authorization boundary.
+          nullable: true
     CliInvokeRequest:
       type: object
       additionalProperties: false

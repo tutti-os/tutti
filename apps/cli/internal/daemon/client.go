@@ -79,6 +79,7 @@ type InvokeContext struct {
 	Source          string `json:"source"`
 	WorkspaceID     string `json:"workspaceID,omitempty"`
 	ParentCommandID string `json:"parentCommandId,omitempty"`
+	AgentSessionID  string `json:"agentSessionId,omitempty"`
 }
 
 type InvokeResponse struct {

@@ -69,13 +69,6 @@ func (p Provider) Commands() []cliservice.Command {
 	}
 }
 
-func (p Provider) workspaceID(ctx context.Context, request cliservice.InvokeRequest) (string, error) {
-	if p.workspaces == nil {
-		return "", workspaceissues.ErrInvalidArgument
-	}
-	return cliservice.ResolveWorkspaceID(ctx, p.workspaces, request.Context.WorkspaceID)
-}
-
 func (p Provider) requireIssueManager() error {
 	if p.issues == nil {
 		return workspaceissues.ErrInvalidArgument

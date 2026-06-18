@@ -116,6 +116,10 @@ export type CliInvokeContext = {
   source: string;
   workspaceID?: string | null;
   parentCommandId?: string | null;
+  /**
+   * Caller agent session id hint. This is not an authorization boundary.
+   */
+  agentSessionId?: string | null;
 };
 
 export type CliInvokeRequest = {

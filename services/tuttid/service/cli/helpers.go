@@ -33,6 +33,14 @@ func ResolveWorkspaceID(ctx context.Context, workspaces WorkspaceCatalog, reques
 	return workspace.ID, nil
 }
 
+func MissingRequiredInputError(key string) error {
+	return fmt.Errorf("%w: required input %q is missing", ErrInvalidInput, strings.TrimSpace(key))
+}
+
+func InvalidInputKeyError(key string) error {
+	return fmt.Errorf("%w: invalid input %q", ErrInvalidInput, strings.TrimSpace(key))
+}
+
 func StringInput(input map[string]any, key string) (string, bool, error) {
 	value, ok := input[key]
 	if !ok || value == nil {
@@ -40,7 +48,7 @@ func StringInput(input map[string]any, key string) (string, bool, error) {
 	}
 	text, ok := value.(string)
 	if !ok {
-		return "", false, ErrInvalidInput
+		return "", false, InvalidInputKeyError(key)
 	}
 	return strings.TrimSpace(text), true, nil
 }
@@ -51,7 +59,7 @@ func RequiredStringInput(input map[string]any, key string) (string, error) {
 		return "", err
 	}
 	if value == "" {
-		return "", ErrInvalidInput
+		return "", MissingRequiredInputError(key)
 	}
 	return value, nil
 }
@@ -63,7 +71,7 @@ func IntInput(input map[string]any, key string) (int, bool, error) {
 	}
 	value, err := strconv.Atoi(raw)
 	if err != nil {
-		return 0, true, ErrInvalidInput
+		return 0, true, InvalidInputKeyError(key)
 	}
 	return value, true, nil
 }
@@ -75,7 +83,7 @@ func Int64Input(input map[string]any, key string) (int64, bool, error) {
 	}
 	value, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
-		return 0, true, ErrInvalidInput
+		return 0, true, InvalidInputKeyError(key)
 	}
 	return value, true, nil
 }

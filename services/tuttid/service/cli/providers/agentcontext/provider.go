@@ -2,7 +2,6 @@ package agentcontext
 
 import (
 	"context"
-	"strings"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -98,16 +97,10 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newOpenCommand(),
 		p.newSendCommand(),
 		p.newCancelCommand(),
-		p.newSessionsCommand([]string{"agent", "list"}, appID+".agent.list"),
 		p.newSessionsCommand([]string{"agent", "sessions"}, appID+".agent.sessions"),
-		p.newSessionMessagesCommand([]string{"agent", "session", "messages"}, appID+".agent.session.messages"),
-		p.newSessionMessagesCommand([]string{"agent", "session-summary"}, appID+".agent.session-summary"),
+		p.newSessionSummaryCommand(),
 		p.newActivePeersCommand(),
 	}
-}
-
-func (p Provider) workspaceID(ctx context.Context, request cliservice.InvokeRequest) (string, error) {
-	return cliservice.ResolveWorkspaceID(ctx, p.workspaces, request.Context.WorkspaceID)
 }
 
 func (p Provider) requireSessions() error {
@@ -115,63 +108,4 @@ func (p Provider) requireSessions() error {
 		return agentservice.ErrInvalidArgument
 	}
 	return nil
-}
-
-func sessionValue(session agentservice.Session) map[string]any {
-	value := map[string]any{
-		"id":             strings.TrimSpace(session.ID),
-		"provider":       strings.TrimSpace(session.Provider),
-		"cwd":            strings.TrimSpace(session.Cwd),
-		"status":         strings.TrimSpace(session.Status),
-		"visible":        session.Visible,
-		"resumable":      session.Resumable,
-		"runtimeContext": session.RuntimeContext,
-		"createdAt":      session.CreatedAt,
-		"updatedAt":      session.UpdatedAt,
-		"endedAt":        session.EndedAt,
-		"lastError":      session.LastError,
-	}
-	if session.Title != nil {
-		value["title"] = *session.Title
-	}
-	if session.Settings != nil {
-		value["settings"] = agentservice.ComposerSettingsToMap(*session.Settings)
-	}
-	value["permissionConfig"] = permissionConfigValue(session.PermissionConfig)
-	return value
-}
-
-func sessionValues(sessions []agentservice.Session) []any {
-	values := make([]any, 0, len(sessions))
-	for _, session := range sessions {
-		values = append(values, sessionValue(session))
-	}
-	return values
-}
-
-func messageValue(message agentservice.SessionMessage) map[string]any {
-	return map[string]any{
-		"id":                message.ID,
-		"agentSessionId":    strings.TrimSpace(message.AgentSessionID),
-		"messageId":         strings.TrimSpace(message.MessageID),
-		"turnId":            strings.TrimSpace(message.TurnID),
-		"role":              strings.TrimSpace(message.Role),
-		"kind":              strings.TrimSpace(message.Kind),
-		"status":            strings.TrimSpace(message.Status),
-		"payload":           message.Payload,
-		"occurredAtUnixMs":  message.OccurredAtUnixMS,
-		"startedAtUnixMs":   message.StartedAtUnixMS,
-		"completedAtUnixMs": message.CompletedAtUnixMS,
-		"createdAtUnixMs":   message.CreatedAtUnixMS,
-		"updatedAtUnixMs":   message.UpdatedAtUnixMS,
-		"version":           message.Version,
-	}
-}
-
-func messageValues(messages []agentservice.SessionMessage) []any {
-	values := make([]any, 0, len(messages))
-	for _, message := range messages {
-		values = append(values, messageValue(message))
-	}
-	return values
 }

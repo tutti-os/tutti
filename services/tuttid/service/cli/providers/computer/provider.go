@@ -44,23 +44,14 @@ func (p Provider) Commands() []cliservice.Command {
 	}
 }
 
-func (p Provider) workspaceID(ctx context.Context, request cliservice.InvokeRequest) (string, error) {
-	return cliservice.ResolveWorkspaceID(ctx, p.workspaces, request.Context.WorkspaceID)
-}
-
-// call resolves the workspace, invokes the mapped cua-driver tool, and returns
-// the tool's text as plain CLI output.
-func (p Provider) call(ctx context.Context, request cliservice.InvokeRequest, tool string, args map[string]any) (cliservice.CommandOutput, error) {
+// call invokes the mapped cua-driver tool and returns the tool's text.
+func (p Provider) call(ctx context.Context, workspaceID string, tool string, args map[string]any) (string, error) {
 	if p.computer == nil {
-		return cliservice.CommandOutput{}, errComputerUnavailable
-	}
-	workspaceID, err := p.workspaceID(ctx, request)
-	if err != nil {
-		return cliservice.CommandOutput{}, err
+		return "", errComputerUnavailable
 	}
 	result, err := p.computer.CallTool(ctx, workspaceID, "", tool, args)
 	if err != nil {
-		return cliservice.CommandOutput{}, err
+		return "", err
 	}
-	return cliservice.CommandOutput{Kind: cliservice.OutputModePlain, Text: result.Text}, nil
+	return result.Text, nil
 }

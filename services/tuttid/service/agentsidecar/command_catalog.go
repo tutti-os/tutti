@@ -227,7 +227,7 @@ func fallbackCommandGuide(cliName string) string {
 		fmt.Sprintf("- Create an issue task run: `%s issue task run create --issue-id <issue-id> --task-id <task-id> --agent-provider <provider> --agent-session-id <session-id> --json` - Execution mode only; do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- Complete an issue task run: `%s issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed --summary <summary> --outputs '[{\"path\":\"<artifact-path>\"}]' --json` - Execution mode only; do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- List agent sessions: `%s agent sessions`", cliName),
-		fmt.Sprintf("- Get agent session messages: `%s agent session-summary --session-id <session-id> --json`", cliName),
+		fmt.Sprintf("- Get agent session summary: `%s agent session-summary --session-id <session-id> --json`", cliName),
 		fmt.Sprintf("- Show active peer agents: `%s agent active-peers --json`", cliName),
 	}, "\n")
 }

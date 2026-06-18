@@ -1599,6 +1599,8 @@ type CliCommandOutput struct {
 
 // CliInvokeContext Client-supplied invocation context. These fields are hints for routing and audit only; authorization and workspace validation remain daemon-owned.
 type CliInvokeContext struct {
+	// AgentSessionId Caller agent session id hint. This is not an authorization boundary.
+	AgentSessionId  *string `json:"agentSessionId,omitempty"`
 	ParentCommandId *string `json:"parentCommandId,omitempty"`
 
 	// Source Client source label such as cli. This is not an authorization boundary.

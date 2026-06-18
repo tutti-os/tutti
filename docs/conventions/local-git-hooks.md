@@ -40,6 +40,8 @@ Rules:
 - staged-file checks should inspect only staged files when practical
 - checks in `pre-commit` should remain fast and deterministic
 - package-boundary enforcement that is cheap to evaluate may run here
+- TypeScript staged linting should tolerate generated-only changes that are
+  ignored by Oxlint while still failing real diagnostics for linted files
 
 ## `pre-push`
 

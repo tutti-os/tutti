@@ -77,7 +77,7 @@
   "lint-staged": {
     "*.{ts,tsx,js,jsx,mjs,cjs}": [
       "oxfmt --write",
-      "oxlint --fix --deny-warnings"
+      "oxlint --fix --deny-warnings --no-error-on-unmatched-pattern"
     ],
     "*.{json,md,yml,yaml,css,html}": [
       "prettier --write --config packages/configs/prettier/base.mjs"

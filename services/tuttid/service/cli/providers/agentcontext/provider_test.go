@@ -45,6 +45,8 @@ type fakeAgentSessions struct {
 	createInput     agentservice.CreateSessionInput
 	composerInput   agentservice.ComposerOptionsInput
 	sendInput       agentservice.SendInput
+	getSession      agentservice.Session
+	getErr          error
 }
 
 func (f *fakeAgentSessions) Cancel(_ context.Context, workspaceID string, sessionID string) (agentservice.CancelSessionResult, error) {
@@ -82,6 +84,12 @@ func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input 
 func (f *fakeAgentSessions) Get(_ context.Context, workspaceID string, sessionID string) (agentservice.Session, error) {
 	f.workspaceID = workspaceID
 	f.sessionID = sessionID
+	if f.getErr != nil {
+		return agentservice.Session{}, f.getErr
+	}
+	if f.getSession.ID != "" {
+		return f.getSession, nil
+	}
 	return agentservice.Session{ID: sessionID, Provider: "codex", Status: "created", Visible: true}, nil
 }
 
@@ -218,12 +226,13 @@ func commandByID(t *testing.T, commands []cliservice.Command, commandID string) 
 	return cliservice.Command{}
 }
 
-func TestSessionMessagesCommandUsesLimitAndAfterVersion(t *testing.T) {
+func TestSessionSummaryCommandUsesLimitAndAfterVersion(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionMessagesCommand([]string{"agent", "session", "messages"}, "agent-context.agent.session.messages")
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"session-id": "SESSION-1", "limit": "20", "after-version": "3"},
+		Input:      map[string]any{"session-id": "SESSION-1", "limit": "20", "after-version": "3"},
+		OutputMode: cliservice.OutputModeJSON,
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
@@ -233,6 +242,21 @@ func TestSessionMessagesCommandUsesLimitAndAfterVersion(t *testing.T) {
 	}
 	if output.Value["agentSessionId"] != "SESSION-1" || output.Value["latestVersion"] != uint64(2) {
 		t.Fatalf("output = %#v", output.Value)
+	}
+	session, ok := output.Value["session"].(map[string]any)
+	if !ok || session["agentSessionId"] != "SESSION-1" {
+		t.Fatalf("output = %#v", output.Value)
+	}
+	messages := output.Value["messages"].([]any)
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	message := messages[0].(map[string]any)
+	if message["text"] != "Done." {
+		t.Fatalf("message = %#v", message)
+	}
+	if _, ok := message["payload"]; ok {
+		t.Fatalf("compact message should not include payload: %#v", message)
 	}
 }
 
@@ -468,6 +492,98 @@ func TestStartCommandPassesComposerSettings(t *testing.T) {
 	}
 }
 
+func TestStartCommandInheritsCallerSessionCwd(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		getSession: agentservice.Session{ID: "CALLER-1", Cwd: "/workspace/a"},
+	}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newProviderStartCommand(providerStartCommandSpec{
+		AppID:       claudeCodeAgentAppID,
+		AppName:     "Claude Code",
+		CommandID:   appID + ".claude.start",
+		Description: "Start a Claude Code agent session in the current workspace.",
+		Path:        []string{"claude", "start"},
+		Provider:    "claude-code",
+		Summary:     "Start a Claude Code agent session",
+	})
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"model": "sonnet", "prompt": "do work"},
+		Context: cliservice.InvokeContext{
+			AgentSessionID: "CALLER-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.sessionID != "CALLER-1" {
+		t.Fatalf("sessionID = %q, want CALLER-1", sessions.sessionID)
+	}
+	if sessions.createInput.Cwd == nil || *sessions.createInput.Cwd != "/workspace/a" {
+		t.Fatalf("Cwd = %#v, want /workspace/a", sessions.createInput.Cwd)
+	}
+}
+
+func TestStartCommandExplicitCwdOverridesCallerSessionCwd(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		getSession: agentservice.Session{ID: "CALLER-1", Cwd: "/workspace/a"},
+	}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"cwd":      "/workspace/other",
+			"model":    "gpt-5",
+			"prompt":   "do work",
+			"provider": "codex",
+		},
+		Context: cliservice.InvokeContext{
+			AgentSessionID: "CALLER-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.sessionID != "" {
+		t.Fatalf("sessionID = %q, want no caller lookup", sessions.sessionID)
+	}
+	if sessions.createInput.Cwd == nil || *sessions.createInput.Cwd != "/workspace/other" {
+		t.Fatalf("Cwd = %#v, want /workspace/other", sessions.createInput.Cwd)
+	}
+}
+
+func TestStartCommandWithoutCallerSessionLeavesCwdForAllocator(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"model": "gpt-5", "prompt": "do work", "provider": "codex"},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.createInput.Cwd != nil {
+		t.Fatalf("Cwd = %#v, want nil", sessions.createInput.Cwd)
+	}
+}
+
+func TestStartCommandMissingCallerSessionLeavesCwdForAllocator(t *testing.T) {
+	sessions := &fakeAgentSessions{getErr: agentservice.ErrSessionNotFound}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"model": "gpt-5", "prompt": "do work", "provider": "codex"},
+		Context: cliservice.InvokeContext{
+			AgentSessionID: "CALLER-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.createInput.Cwd != nil {
+		t.Fatalf("Cwd = %#v, want nil", sessions.createInput.Cwd)
+	}
+}
+
 func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 	provider := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{})
 	commands := provider.Commands()
@@ -515,12 +631,13 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 func TestProviderStartCommandRequiresModelAndPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newProviderStartCommand(providerStartCommandSpec{
-		AppID:     codexAgentAppID,
-		AppName:   "Codex",
-		CommandID: appID + ".codex.start",
-		Path:      []string{"codex", "start"},
-		Provider:  "codex",
-		Summary:   "Start a Codex agent session",
+		AppID:       codexAgentAppID,
+		AppName:     "Codex",
+		CommandID:   appID + ".codex.start",
+		Description: "Start a Codex agent session in the current workspace.",
+		Path:        []string{"codex", "start"},
+		Provider:    "codex",
+		Summary:     "Start a Codex agent session",
 	})
 	required, ok := command.Capability.InputSchema["required"].([]string)
 	if !ok {
@@ -584,8 +701,14 @@ func TestGetCommandReturnsSession(t *testing.T) {
 		t.Fatalf("Handler: %v", err)
 	}
 	session := output.Value["session"].(map[string]any)
-	if session["id"] != "SESSION-1" || sessions.workspaceID != "workspace-1" {
+	if session["agentSessionId"] != "SESSION-1" || sessions.workspaceID != "workspace-1" {
 		t.Fatalf("output = %#v sessions = %#v", output.Value, sessions)
+	}
+	if _, ok := session["runtimeContext"]; ok {
+		t.Fatalf("compact session should not include runtimeContext: %#v", session)
+	}
+	if _, ok := session["permissionConfig"]; ok {
+		t.Fatalf("compact session should not include permissionConfig: %#v", session)
 	}
 }
 
@@ -610,24 +733,33 @@ func TestCancelCommandCancelsSession(t *testing.T) {
 	}
 }
 
-func TestSessionSummaryAliasMatchesMessages(t *testing.T) {
+func TestSessionSummaryIncludesCompactSession(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	provider := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions)
-	commands := provider.Commands()
-	var alias cliservice.Command
-	for _, command := range commands {
-		if command.Capability.ID == "agent-context.agent.session-summary" {
-			alias = command
-		}
-	}
-	if alias.Handler == nil {
-		t.Fatal("session-summary alias not registered")
-	}
-	if _, err := alias.Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"session-id": "SESSION-1"}}); err != nil {
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
 	if len(sessions.messageCallIDs) != 1 || sessions.messageCallIDs[0] != "SESSION-1" {
 		t.Fatalf("messageCallIDs = %#v", sessions.messageCallIDs)
+	}
+	session, ok := output.Value["session"].(map[string]any)
+	if !ok || session["agentSessionId"] != "SESSION-1" {
+		t.Fatalf("output = %#v", output.Value)
+	}
+}
+
+func TestProviderCommandsExcludeRemovedSessionAliases(t *testing.T) {
+	commands := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).Commands()
+	for _, command := range commands {
+		switch command.Capability.ID {
+		case "agent-context.agent.list", "agent-context.agent.session.messages":
+			t.Fatalf("removed command still registered: %q", command.Capability.ID)
+		}
 	}
 }
 
@@ -639,7 +771,7 @@ func TestActivePeersReturnsServiceProjection(t *testing.T) {
 		t.Fatalf("Handler: %v", err)
 	}
 	agents := output.Value["agents"].([]any)
-	if len(agents) != 1 || agents[0].(map[string]any)["id"] != "SESSION-1" {
+	if len(agents) != 1 || agents[0].(map[string]any)["agentSessionId"] != "SESSION-1" {
 		t.Fatalf("agents = %#v", agents)
 	}
 	if agents[0].(map[string]any)["selfRelation"] != "unknown" {

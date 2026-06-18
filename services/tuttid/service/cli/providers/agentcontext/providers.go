@@ -7,6 +7,7 @@ import (
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
 
 var providerColumns = []cliservice.TableColumn{
@@ -15,59 +16,64 @@ var providerColumns = []cliservice.TableColumn{
 	{Key: "detail", Label: "Detail"},
 }
 
+type providersInput struct {
+	Provider string `cli:"provider"`
+}
+
+type providersResult struct {
+	DefaultProvider string
+	Availability    []agentservice.ProviderAvailability
+}
+
 func (p Provider) newProvidersCommand() cliservice.Command {
-	return cliservice.Command{
-		Capability: cliservice.Capability{
-			ID:          appID + ".agent.providers",
-			Path:        []string{"agent", "providers"},
-			Summary:     "List available agent providers",
-			Description: "List agent providers and whether tuttid can start their local runtime command.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"provider": map[string]any{"type": "string"},
+	return framework.Register(framework.CommandSpec[providersInput]{
+		ID:          appID + ".agent.providers",
+		Path:        []string{"agent", "providers"},
+		Summary:     "List available agent providers",
+		Description: "List agent providers and whether tuttid can start their local runtime command.",
+		Kind:        framework.KindList,
+		Workspace:   framework.WorkspaceOptional,
+		Inputs:      framework.FromStruct[providersInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeTable,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			Table: &framework.TableOutputSpec{
+				Columns: providerColumns,
+				Rows: func(result any) []map[string]any {
+					return providerAvailabilityRows(result.(providersResult).Availability)
 				},
 			},
-			Output: cliservice.CapabilityOutput{
-				DefaultMode: cliservice.OutputModeTable,
-				JSON:        true,
-				Table:       &cliservice.TableOutput{Columns: providerColumns},
+			JSONViews: map[framework.OutputView]func(any) map[string]any{
+				framework.ViewSummary: func(result any) map[string]any {
+					providers := result.(providersResult)
+					return map[string]any{
+						"defaultProvider": providers.DefaultProvider,
+						"providers":       providerAvailabilityValues(providers.Availability),
+					}
+				},
 			},
+			ListCompact: true,
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireSessions(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			provider, _, err := cliservice.StringInput(request.Input, "provider")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			availability, err := p.sessions.ListProviderAvailability(ctx, agentservice.ProviderAvailabilityInput{
-				Provider: provider,
-			})
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			if request.OutputMode == cliservice.OutputModeJSON {
-				defaultProvider, err := p.defaultAgentProvider(ctx)
-				if err != nil {
-					return cliservice.CommandOutput{}, err
-				}
-				return cliservice.CommandOutput{
-					Kind: cliservice.OutputModeJSON,
-					Value: map[string]any{
-						"defaultProvider": defaultProvider,
-						"providers":       providerAvailabilityValues(availability),
-					},
-				}, nil
-			}
-			return cliservice.CommandOutput{
-				Kind:    cliservice.OutputModeTable,
-				Columns: providerColumns,
-				Rows:    providerAvailabilityRows(availability),
-			}, nil
-		},
+		Run: p.runProviders,
+	})
+}
+
+func (p Provider) runProviders(ctx context.Context, _ framework.InvokeContext, input providersInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
 	}
+	availability, err := p.sessions.ListProviderAvailability(ctx, agentservice.ProviderAvailabilityInput{
+		Provider: input.Provider,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defaultProvider, err := p.defaultAgentProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return providersResult{DefaultProvider: defaultProvider, Availability: availability}, nil
 }
 
 func (p Provider) defaultAgentProvider(ctx context.Context) (string, error) {
@@ -100,25 +106,10 @@ func providerAvailabilityRows(items []agentservice.ProviderAvailability) []map[s
 func providerAvailabilityValues(items []agentservice.ProviderAvailability) []any {
 	values := make([]any, 0, len(items))
 	for _, item := range items {
-		checks := make([]any, 0, len(item.Checks))
-		for _, check := range item.Checks {
-			checks = append(checks, map[string]any{
-				"name":   check.Name,
-				"passed": check.Passed,
-				"detail": check.Detail,
-			})
-		}
 		value := map[string]any{
-			"provider":   item.Provider,
-			"status":     item.Status,
-			"checks":     checks,
-			"capturedAt": item.CapturedAt,
-		}
-		if item.LastError != nil {
-			value["lastError"] = map[string]any{
-				"code":    item.LastError.Code,
-				"message": item.LastError.Message,
-			}
+			"provider": item.Provider,
+			"status":   item.Status,
+			"detail":   providerAvailabilityDetail(item),
 		}
 		values = append(values, value)
 	}

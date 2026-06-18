@@ -22,6 +22,7 @@ func TestClientTransportModelTracksOpenAPIContract(t *testing.T) {
 		"cliDescription:",
 		"CliInvokeRequest:",
 		"CliInvokeContext:",
+		"agentSessionId:",
 		"CliInvokeResponse:",
 		"CliCommandOutput:",
 		"CliOutputMode:",
