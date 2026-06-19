@@ -1133,23 +1133,16 @@ export function WorkbenchHostDock({
                     }
                     aria-label={i18n.t("launch", { title: entry.label })}
                     aria-disabled={
-                      clickResolution.kind === "blocked" &&
-                      !resolvedEntry.hasMatchingNodes
+                      clickResolution.kind === "blocked" ? true : undefined
                     }
                     className="desktop-dock__btn"
                     data-interactive={
-                      clickResolution.kind === "blocked" &&
-                      !resolvedEntry.hasMatchingNodes
-                        ? "false"
-                        : "true"
+                      clickResolution.kind === "blocked" ? "false" : "true"
                     }
                     title={entry.label}
                     type="button"
                     onPointerDown={() => {
-                      if (
-                        clickResolution.kind === "blocked" &&
-                        !resolvedEntry.hasMatchingNodes
-                      ) {
+                      if (clickResolution.kind === "blocked") {
                         return;
                       }
                       beginDockIconInteraction(anchorKey);

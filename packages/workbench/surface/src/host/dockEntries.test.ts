@@ -160,6 +160,32 @@ test("dock click resolution follows instance strategy for existing nodes", () =>
   );
   assert.deepEqual(
     resolveWorkbenchDockEntryClick({
+      entry: {
+        ...entry,
+        state: {
+          kind: "disabled"
+        }
+      },
+      instanceMode: "single",
+      matchedNodes: [makeNode("browser-1", "browser", "browser")]
+    }),
+    { kind: "blocked" }
+  );
+  assert.deepEqual(
+    resolveWorkbenchDockEntryClick({
+      entry: {
+        ...entry,
+        state: {
+          kind: "disabled"
+        }
+      },
+      instanceMode: "multi",
+      matchedNodes: [makeNode("browser-1", "browser", "browser")]
+    }),
+    { kind: "blocked" }
+  );
+  assert.deepEqual(
+    resolveWorkbenchDockEntryClick({
       entry,
       matchedNodes: []
     }),

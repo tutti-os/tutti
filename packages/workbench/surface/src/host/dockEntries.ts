@@ -125,6 +125,9 @@ export function resolveWorkbenchDockEntryClick(input: {
     }
     return { actionId: input.entry.clickActionId, kind: "action" };
   }
+  if (isWorkbenchDockEntryBlocked(input.entry)) {
+    return { kind: "blocked" };
+  }
   if (input.instanceMode === "multi" && input.matchedNodes.length > 0) {
     return { kind: "open-popup" };
   }
@@ -133,9 +136,6 @@ export function resolveWorkbenchDockEntryClick(input: {
   }
   if (input.matchedNodes.length > 1) {
     return { kind: "open-popup" };
-  }
-  if (isWorkbenchDockEntryBlocked(input.entry)) {
-    return { kind: "blocked" };
   }
   return { kind: "launch" };
 }
