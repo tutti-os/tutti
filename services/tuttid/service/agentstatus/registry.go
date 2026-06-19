@@ -108,14 +108,9 @@ func DefaultRegistry() Registry {
 			AdapterCommand:     []string{"codex-acp"},
 			AuthStatusCommand:  []string{"login", "status"},
 			AuthMarkerPaths:    []string{"~/.codex/auth.json"},
-			Install: InstallerSpec{
-				Kind:           InstallerKindOfficialScript,
-				DisplayCommand: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
-				ScriptURL:      "https://chatgpt.com/codex/install.sh",
-				ScriptShell:    "sh",
-			},
-			AdapterInstall: codexACPInstallerSpec(),
-			LoginArgs:      []string{"login"},
+			Install:            codexCLIInstallerSpec(),
+			AdapterInstall:     codexACPInstallerSpec(),
+			LoginArgs:          []string{"login"},
 		},
 		agentprovider.Nexight: {
 			Provider:           agentprovider.Nexight,
@@ -174,6 +169,16 @@ func DefaultRegistry() Registry {
 		}
 	}
 	return Registry{Specs: specs}
+}
+
+func codexCLIInstallerSpec() InstallerSpec {
+	return InstallerSpec{
+		Kind:           InstallerKindCodexCLILatest,
+		DisplayCommand: "Install Codex CLI latest from GitHub releases",
+		CodexCLI: &CodexCLILatestInstallerSpec{
+			BaseURL: "https://github.com/openai/codex/releases/latest/download",
+		},
+	}
 }
 
 func codexACPInstallerSpec() InstallerSpec {

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -761,6 +762,70 @@ func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".local", "bin", "codex-acp")); err != nil {
 		t.Fatalf("installed adapter missing: %v", err)
+	}
+}
+
+func TestServiceRunCodexCLILatestInstallerDownloadsLatestAssets(t *testing.T) {
+	home := t.TempDir()
+	installDir := filepath.Join(home, ".local", "bin")
+	archivePath, archiveSHA256 := codexCLIPackageArchive(t)
+	target, ok := codexCLIPackageTarget(runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		t.Skipf("codex CLI package target unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	archiveName := "codex-package-" + target + ".tar.gz"
+	requestedPaths := []string{}
+	installerServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requestedPaths = append(requestedPaths, request.URL.Path)
+		switch request.URL.Path {
+		case "/" + archiveName:
+			http.ServeFile(writer, request, archivePath)
+		case "/codex-package_SHA256SUMS":
+			_, _ = writer.Write([]byte(archiveSHA256 + "  " + archiveName + "\n"))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer installerServer.Close()
+
+	service := probeTestService(home)
+	service.HTTPClient = installerServer.Client()
+	result, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
+		Kind: InstallerKindCodexCLILatest,
+		CodexCLI: &CodexCLILatestInstallerSpec{
+			BaseURL: installerServer.URL,
+		},
+	}, installDir)
+	if err != nil {
+		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("ExitCode = %d, want 0; stderr=%q", result.ExitCode, result.Stderr)
+	}
+	if result.Stdout == "" {
+		t.Fatal("Stdout is empty, want install summary")
+	}
+	for _, path := range requestedPaths {
+		if strings.Contains(path, "api.github.com") || strings.Contains(path, "/api/") {
+			t.Fatalf("requested path %q, want latest/download asset paths only", path)
+		}
+	}
+	if !slices.Equal(requestedPaths, []string{"/" + archiveName, "/codex-package_SHA256SUMS"}) {
+		t.Fatalf("requestedPaths = %#v, want archive then checksum", requestedPaths)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "packages", "standalone", "current", "bin", "codex")); err != nil {
+		t.Fatalf("current codex missing: %v", err)
+	}
+	visiblePath := filepath.Join(installDir, "codex")
+	if !service.executableFile(visiblePath) {
+		t.Fatalf("visible codex path %s is not executable", visiblePath)
+	}
+	output, err := exec.Command(visiblePath, "--version").CombinedOutput()
+	if err != nil {
+		t.Fatalf("run installed codex: %v; output=%s", err, output)
+	}
+	if strings.TrimSpace(string(output)) != "codex 1.2.3" {
+		t.Fatalf("codex --version = %q, want codex 1.2.3", strings.TrimSpace(string(output)))
 	}
 }
 
@@ -1821,6 +1886,63 @@ func releaseBinaryArchive(t *testing.T, binaryName string, contents string) (str
 	data, err := os.ReadFile(archivePath)
 	if err != nil {
 		t.Fatalf("read archive: %v", err)
+	}
+	sum := sha256.Sum256(data)
+	return archivePath, hex.EncodeToString(sum[:])
+}
+
+func codexCLIPackageArchive(t *testing.T) (string, string) {
+	t.Helper()
+	archivePath := filepath.Join(t.TempDir(), "codex-package.tar.gz")
+	file, err := os.Create(archivePath)
+	if err != nil {
+		t.Fatalf("create codex package archive: %v", err)
+	}
+	gzipWriter := gzip.NewWriter(file)
+	tarWriter := tar.NewWriter(gzipWriter)
+	files := map[string]struct {
+		mode     int64
+		contents string
+	}{
+		"codex-package.json": {
+			mode:     0o644,
+			contents: `{"name":"codex-package","version":"1.2.3"}`,
+		},
+		"bin/codex": {
+			mode:     0o755,
+			contents: "#!/bin/sh\necho 'codex 1.2.3'\n",
+		},
+		"codex-path/rg": {
+			mode:     0o755,
+			contents: "#!/bin/sh\necho rg\n",
+		},
+	}
+	for name, file := range files {
+		contentBytes := []byte(file.contents)
+		header := &tar.Header{
+			Name: name,
+			Mode: file.mode,
+			Size: int64(len(contentBytes)),
+		}
+		if err := tarWriter.WriteHeader(header); err != nil {
+			t.Fatalf("write codex package header: %v", err)
+		}
+		if _, err := tarWriter.Write(contentBytes); err != nil {
+			t.Fatalf("write codex package contents: %v", err)
+		}
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatalf("close codex package tar writer: %v", err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatalf("close codex package gzip writer: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close codex package archive file: %v", err)
+	}
+	data, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("read codex package archive: %v", err)
 	}
 	sum := sha256.Sum256(data)
 	return archivePath, hex.EncodeToString(sum[:])

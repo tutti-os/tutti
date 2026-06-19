@@ -13,6 +13,7 @@ const (
 	InstallerKindOfficialScript           InstallerKind = "official_script"
 	InstallerKindGitHubReleaseBinary      InstallerKind = "github_release_binary"
 	InstallerKindExternalAgentRegistryNPM InstallerKind = "external_agent_registry_npm"
+	InstallerKindCodexCLILatest           InstallerKind = "codex_cli_latest"
 )
 
 // InstallerPostStep names an optional, idempotent step run after a successful
@@ -34,6 +35,7 @@ type InstallerSpec struct {
 	ScriptShell    string
 	ReleaseBinary  *ReleaseBinaryInstallerSpec
 	RegistryNPM    *ExternalAgentRegistryNPMInstallerSpec
+	CodexCLI       *CodexCLILatestInstallerSpec
 	PostInstall    InstallerPostStep
 }
 
@@ -59,6 +61,11 @@ type ReleaseBinaryAsset struct {
 	SHA256 string
 }
 
+type CodexCLILatestInstallerSpec struct {
+	BaseURL    string
+	InstallDir string
+}
+
 func (s InstallerSpec) displayCommand() string {
 	switch s.Kind {
 	case InstallerKindShellCommand:
@@ -75,6 +82,8 @@ func (s InstallerSpec) displayCommand() string {
 			return firstNonBlank(s.DisplayCommand, "Install "+s.RegistryNPM.Package+" from ACP External Agent Registry")
 		}
 		return strings.TrimSpace(s.DisplayCommand)
+	case InstallerKindCodexCLILatest:
+		return firstNonBlank(s.DisplayCommand, "Install Codex CLI latest from GitHub releases")
 	default:
 		return ""
 	}
@@ -130,6 +139,13 @@ func validateInstallerSpec(spec InstallerSpec) error {
 		}
 		if strings.TrimSpace(spec.RegistryNPM.PrefixDir) == "" {
 			return fmt.Errorf("external agent registry npm installer prefix dir is required")
+		}
+	case InstallerKindCodexCLILatest:
+		if spec.CodexCLI == nil {
+			return fmt.Errorf("codex CLI latest installer config is required")
+		}
+		if _, ok := codexCLIPackageTarget(runtime.GOOS, runtime.GOARCH); !ok {
+			return fmt.Errorf("codex CLI latest installer asset is unavailable for %s", releaseBinaryPlatformKey(runtime.GOOS, runtime.GOARCH))
 		}
 	default:
 		return fmt.Errorf("unsupported installer kind %q", spec.Kind)
