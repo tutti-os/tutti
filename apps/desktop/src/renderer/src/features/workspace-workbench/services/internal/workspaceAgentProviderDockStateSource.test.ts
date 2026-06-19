@@ -99,7 +99,10 @@ test("agent provider dock state source reads latest service snapshot without rec
   const service = createAgentProviderStatusService({
     statuses: [
       createStatus({
-        actions: [{ id: "install", kind: "daemon_action" }],
+        actions: [
+          { id: "install", kind: "daemon_action" },
+          { id: "refresh", kind: "refresh" }
+        ],
         availability: "not_installed",
         provider: "claude-code"
       })
@@ -113,9 +116,15 @@ test("agent provider dock state source reads latest service snapshot without rec
   assert.deepEqual(
     source.getEntryState(workspaceAgentGuiDockEntryId("claude-code")),
     {
-      hoverActions: [{ id: "install", label: "install" }],
+      hoverActions: [
+        { id: "install", label: "install" },
+        { id: "refresh", label: "refresh" }
+      ],
       diagnostics: createExpectedDiagnostics({
-        actions: [{ id: "install", kind: "daemon_action" }],
+        actions: [
+          { id: "install", kind: "daemon_action" },
+          { id: "refresh", kind: "refresh" }
+        ],
         adapterInstalled: false,
         authStatus: "unknown",
         availability: "not_installed",
@@ -175,7 +184,10 @@ test("agent provider dock state source shows install pending as loading", () => 
     pendingActions: [{ actionId: "install", provider: "claude-code" }],
     statuses: [
       createStatus({
-        actions: [{ id: "install", kind: "daemon_action" }],
+        actions: [
+          { id: "install", kind: "daemon_action" },
+          { id: "refresh", kind: "refresh" }
+        ],
         availability: "not_installed",
         provider: "claude-code"
       })
@@ -195,10 +207,14 @@ test("agent provider dock state source shows install pending as loading", () => 
           id: "install",
           label: "install",
           pendingLabel: "installing"
-        }
+        },
+        { id: "refresh", label: "refresh" }
       ],
       diagnostics: createExpectedDiagnostics({
-        actions: [{ id: "install", kind: "daemon_action" }],
+        actions: [
+          { id: "install", kind: "daemon_action" },
+          { id: "refresh", kind: "refresh" }
+        ],
         adapterInstalled: false,
         authStatus: "unknown",
         availability: "not_installed",
@@ -210,6 +226,52 @@ test("agent provider dock state source shows install pending as loading", () => 
       state: {
         kind: "loading",
         reason: "installing"
+      },
+      visibility: "always"
+    }
+  );
+});
+
+test("agent provider dock state source keeps not installed Codex disabled with setup actions", () => {
+  const service = createAgentProviderStatusService({
+    statuses: [
+      createStatus({
+        actions: [
+          { id: "install", kind: "daemon_action" },
+          { id: "refresh", kind: "refresh" }
+        ],
+        availability: "not_installed",
+        provider: "codex"
+      })
+    ]
+  });
+  const source = createWorkspaceAgentProviderDockStateSource({
+    agentProviderStatusService: service,
+    i18n: createI18n()
+  });
+
+  assert.deepEqual(
+    source.getEntryState(workspaceAgentGuiDockEntryId("codex")),
+    {
+      hoverActions: [
+        { id: "install", label: "install" },
+        { id: "refresh", label: "refresh" }
+      ],
+      diagnostics: createExpectedDiagnostics({
+        actions: [
+          { id: "install", kind: "daemon_action" },
+          { id: "refresh", kind: "refresh" }
+        ],
+        adapterInstalled: false,
+        authStatus: "unknown",
+        availability: "not_installed",
+        cliInstalled: false,
+        provider: "codex"
+      }),
+      order: 101,
+      state: {
+        kind: "disabled",
+        reason: "install required"
       },
       visibility: "always"
     }

@@ -62,7 +62,7 @@ export function resolveAgentProviderDockStatusProps(input: {
           input.status.actions,
           input.copy,
           input.pendingActionIds,
-          new Set(["install"])
+          new Set(["install", "refresh"])
         ),
         ...dockOrderProp(input.order),
         state: {
