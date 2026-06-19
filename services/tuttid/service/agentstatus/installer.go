@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -187,6 +188,17 @@ func (s Service) installMissingProviderRuntime(
 			}
 			attemptedAdapter = true
 		}
+		slog.Info(
+			"agent provider install step started",
+			"provider", spec.Provider,
+			"target", installTarget,
+			"installerKind", installer.Kind,
+			"command", installer.displayCommand(),
+			"cliPath", current.CLIPath,
+			"adapterPath", current.AdapterPath,
+			"adapterVersion", current.AdapterVersion,
+			"installDir", current.InstallDir,
+		)
 		command, result, err := s.executeInstaller(ctx, installer, &current)
 		if command != "" {
 			summary.Commands = append(summary.Commands, command)
@@ -199,15 +211,55 @@ func (s Service) installMissingProviderRuntime(
 		}
 		summary.ExitCode = intPointer(result.ExitCode)
 		if err != nil {
+			slog.Warn(
+				"agent provider install step failed to run",
+				"provider", spec.Provider,
+				"target", installTarget,
+				"installerKind", installer.Kind,
+				"command", command,
+				"exitCode", result.ExitCode,
+				"stdout", trimActionOutput(result.Stdout),
+				"stderr", trimActionOutput(result.Stderr),
+				"error", err,
+			)
 			return summary, current, err
 		}
 		if result.ExitCode != 0 {
+			slog.Warn(
+				"agent provider install step failed",
+				"provider", spec.Provider,
+				"target", installTarget,
+				"installerKind", installer.Kind,
+				"command", command,
+				"exitCode", result.ExitCode,
+				"stdout", trimActionOutput(result.Stdout),
+				"stderr", trimActionOutput(result.Stderr),
+			)
 			return summary, current, nil
 		}
+		slog.Info(
+			"agent provider install step completed",
+			"provider", spec.Provider,
+			"target", installTarget,
+			"installerKind", installer.Kind,
+			"command", command,
+			"exitCode", result.ExitCode,
+			"stdout", trimActionOutput(result.Stdout),
+			"stderr", trimActionOutput(result.Stderr),
+		)
 		selectedInstallDir := current.InstallDir
 		resolvedSpec, _ := s.resolveProviderSpec(ctx, spec, false)
 		current = s.resolveProviderRuntime(ctx, resolvedSpec)
 		current.InstallDir = selectedInstallDir
+		slog.Info(
+			"agent provider install step rechecked runtime",
+			"provider", spec.Provider,
+			"target", installTarget,
+			"cliPath", current.CLIPath,
+			"adapterPath", current.AdapterPath,
+			"adapterVersion", current.AdapterVersion,
+			"installDir", current.InstallDir,
+		)
 	}
 }
 
@@ -382,6 +434,15 @@ func (s Service) runReleaseBinaryInstaller(
 			Stderr:   fmt.Sprintf("release binary installer asset is unavailable for %s", releaseBinaryPlatformKey(runtime.GOOS, runtime.GOARCH)),
 		}, nil
 	}
+	platformKey := releaseBinaryPlatformKey(runtime.GOOS, runtime.GOARCH)
+	slog.Info(
+		"agent provider release binary install asset selected",
+		"binary", spec.ReleaseBinary.BinaryName,
+		"version", spec.ReleaseBinary.Version,
+		"platform", platformKey,
+		"installDir", installDir,
+		"url", asset.URL,
+	)
 
 	archiveFile, err := os.CreateTemp("", "tutti-agent-provider-archive-*"+archiveSuffix(asset.URL))
 	if err != nil {
