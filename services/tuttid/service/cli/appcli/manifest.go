@@ -17,7 +17,7 @@ const (
 	maxManifestBytes      = 256 * 1024
 	defaultTimeoutMs      = 30000
 	minTimeoutMs          = 1000
-	maxTimeoutMs          = 300000
+	maxTimeoutMs          = 600000
 )
 
 var segmentPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`)

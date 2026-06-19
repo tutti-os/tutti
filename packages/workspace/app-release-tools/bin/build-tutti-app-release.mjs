@@ -352,8 +352,8 @@ function validateCLIHandler(handler, label) {
     throw new Error(`${label}.path must start with /tutti/cli/`);
   }
   const timeoutMs = handler.timeoutMs ?? 30000;
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 300000) {
-    throw new Error(`${label}.timeoutMs must be between 1000 and 300000`);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 600000) {
+    throw new Error(`${label}.timeoutMs must be between 1000 and 600000`);
   }
 }
 
