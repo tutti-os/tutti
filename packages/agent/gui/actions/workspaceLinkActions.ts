@@ -118,12 +118,29 @@ export function resolveWorkspaceFilePathCandidate({
   basePath
 }: ResolveWorkspaceFilePathCandidateInput): ResolvedWorkspaceFilePathCandidate | null {
   const rawPath = decodeWorkspaceLinkPath(path.trim());
-  const root = normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "");
-  if (!rawPath || !root || isUrlLikeWorkspaceFilePath(rawPath)) {
+  if (!rawPath || isUrlLikeWorkspaceFilePath(rawPath)) {
     return null;
   }
 
   const normalizedPath = normalizeWorkspaceFilePath(rawPath);
+  if (
+    isAbsoluteLocalPath(normalizedPath) &&
+    (isDirectAgentGeneratedImagePath(normalizedPath) ||
+      isDirectWorkspaceAppDataPath(normalizedPath))
+  ) {
+    const directoryPath = dirname(normalizedPath);
+    return {
+      path: normalizedPath,
+      directoryPath,
+      workspaceRoot:
+        normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "") || directoryPath
+    };
+  }
+
+  const root = normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "");
+  if (!root) {
+    return null;
+  }
   const base = normalizeWorkspaceFilePath(basePath?.trim() || root);
   const resolvedPath = isAbsoluteLocalPath(normalizedPath)
     ? normalizedPath
@@ -366,14 +383,10 @@ function isDirectAgentGeneratedImagePath(path: string): boolean {
   if (!isAbsoluteLocalPath(path)) {
     return false;
   }
-  const segments = path.split("/").filter(Boolean);
-  const stateRootIndex = segments.findIndex(
-    (segment) => segment === ".tutti" || segment === ".tutti-dev"
-  );
-  if (stateRootIndex < 0) {
+  const statePath = getTuttiStatePathSegments(path);
+  if (!statePath) {
     return false;
   }
-  const statePath = segments.slice(stateRootIndex);
   if (
     statePath[1] !== "agent" ||
     statePath[2] !== "runs" ||
@@ -382,4 +395,30 @@ function isDirectAgentGeneratedImagePath(path: string): boolean {
     return false;
   }
   return /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(path);
+}
+
+function isDirectWorkspaceAppDataPath(path: string): boolean {
+  if (!isAbsoluteLocalPath(path)) {
+    return false;
+  }
+  const statePath = getTuttiStatePathSegments(path);
+  if (!statePath) {
+    return false;
+  }
+  return (
+    statePath[1] === "apps" &&
+    statePath[2] === "workspaces" &&
+    statePath.length > 5
+  );
+}
+
+function getTuttiStatePathSegments(path: string): string[] | null {
+  const segments = path.split("/").filter(Boolean);
+  const stateRootIndex = segments.findIndex(
+    (segment) => segment === ".tutti" || segment === ".tutti-dev"
+  );
+  if (stateRootIndex < 0) {
+    return null;
+  }
+  return segments.slice(stateRootIndex);
 }

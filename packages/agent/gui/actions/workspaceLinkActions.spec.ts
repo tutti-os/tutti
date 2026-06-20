@@ -73,6 +73,59 @@ describe("resolveWorkspaceFileLinkAction", () => {
     ).toBeNull();
   });
 
+  it("allows direct workspace app data paths without a selected project", () => {
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "/Users/test/.tutti-dev/apps/workspaces/workspace-1/group-chat/data/rooms/room-1/uploads/image.png",
+        workspaceRoot: "",
+        basePath: "",
+        source: "agent-markdown"
+      })
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "/Users/test/.tutti-dev/apps/workspaces/workspace-1/group-chat/data/rooms/room-1/uploads/image.png",
+      directoryPath:
+        "/Users/test/.tutti-dev/apps/workspaces/workspace-1/group-chat/data/rooms/room-1/uploads",
+      workspaceRoot:
+        "/Users/test/.tutti-dev/apps/workspaces/workspace-1/group-chat/data/rooms/room-1/uploads"
+    });
+
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "/Users/test/Downloads/image.png",
+        workspaceRoot: "",
+        basePath: "",
+        source: "agent-markdown"
+      })
+    ).toBeNull();
+
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "/Users/test/.tutti-dev/apps/workspaces/workspace-1",
+        workspaceRoot: "",
+        basePath: "",
+        source: "agent-markdown"
+      })
+    ).toBeNull();
+  });
+
+  it("preserves the selected workspace root for direct workspace app data paths", () => {
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "/Users/test/.tutti-dev/apps/workspaces/workspace-1/group-chat/data/file.txt",
+        workspaceRoot: "/Users/test/project/tutti",
+        basePath: "/Users/test/project/tutti",
+        source: "agent-markdown"
+      })
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "/Users/test/.tutti-dev/apps/workspaces/workspace-1/group-chat/data/file.txt",
+      directoryPath:
+        "/Users/test/.tutti-dev/apps/workspaces/workspace-1/group-chat/data",
+      workspaceRoot: "/Users/test/project/tutti"
+    });
+  });
+
   it("resolves relative paths through the same workspace file candidate contract", () => {
     expect(
       resolveWorkspaceFilePathCandidate({

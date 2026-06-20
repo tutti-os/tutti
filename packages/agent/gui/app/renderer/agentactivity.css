@@ -3637,6 +3637,7 @@ aside.workspace-agents-status-panel
   color: inherit;
 }
 
+.agent-gui-node__composer-textarea [data-slot="mention-pill"],
 .agent-gui-node__composer-textarea
   [data-agent-file-mention="true"].tsh-agent-object-token {
   cursor: pointer;
