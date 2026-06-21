@@ -985,19 +985,6 @@ export function AgentComposer({
     };
   }, [contextMentionProviders]);
 
-  // Warm the mention browse cache from an explicit intent signal — the composer
-  // gaining focus — instead of a render-driven effect. Focus is the earliest
-  // reliable hint that the user may open the @ palette, and the controller owns
-  // the actual scheduling (idle defer + in-flight dedup), so this just declares
-  // intent and stays cheap to fire on every focus.
-  const handleComposerFocus = useCallback((): void => {
-    mentionControllerRef.current?.preloadBrowse({
-      workspaceId,
-      currentUserId,
-      sessionCwd: selectedProjectPath || null
-    });
-  }, [currentUserId, selectedProjectPath, workspaceId]);
-
   useEffect(() => {
     const isExternalDraftReplacement = draftPromptRef.current !== draftPrompt;
     draftPromptRef.current = draftPrompt;
@@ -2277,7 +2264,6 @@ export function AgentComposer({
                   className={styles.composerTextarea}
                   onChange={handleDraftChange}
                   onSubmit={submitCurrentPrompt}
-                  onFocus={handleComposerFocus}
                   availableSkills={availableSkills}
                   availableCapabilities={availableCapabilities}
                   removeMentionLabel={labels.removeMention}

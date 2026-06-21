@@ -73,25 +73,6 @@ describe("AgentRichTextEditor", () => {
     );
   });
 
-  it("invokes onFocus when the editor gains focus", async () => {
-    const onFocus = vi.fn();
-    render(
-      <AgentRichTextEditor
-        value=""
-        disabled={false}
-        placeholder="Prompt"
-        onChange={vi.fn()}
-        onSubmit={vi.fn()}
-        onFocus={onFocus}
-      />
-    );
-
-    const editor = await screen.findByRole("textbox", { name: "Prompt" });
-    fireEvent.focus(editor);
-
-    await waitFor(() => expect(onFocus).toHaveBeenCalledTimes(1));
-  });
-
   it("emits plain prompt text from paste input", async () => {
     const onChange = vi.fn();
     render(
