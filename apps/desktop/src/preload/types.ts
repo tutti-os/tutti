@@ -65,6 +65,7 @@ export interface DesktopPlatformApi {
 }
 
 export interface DesktopHostWorkspaceApi {
+  broadcastAgentStatus(payload: { agentBound: boolean }): void;
   onOpenFeatureRequest(
     listener: (request: DesktopWorkspaceOpenFeatureRequest) => void
   ): () => void;

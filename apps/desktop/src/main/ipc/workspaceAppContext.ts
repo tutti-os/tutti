@@ -269,6 +269,20 @@ export function registerWorkspaceAppContextIpc(
       );
     }
   );
+  ipcMain.on(
+    desktopIpcChannels.appContext.agentStatusBroadcast,
+    (_event, payload: unknown) => {
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        typeof (payload as { agentBound?: unknown }).agentBound === "boolean"
+      ) {
+        broadcastWorkspaceAppContext({
+          agentBound: (payload as { agentBound: boolean }).agentBound
+        });
+      }
+    }
+  );
   preferences.subscribe(() => {
     broadcastWorkspaceAppContext({
       locale: preferences.getLocale()
@@ -617,7 +631,7 @@ function normalizeWorkspaceAppOpenUrlLogPayload(
   };
 }
 
-function broadcastWorkspaceAppContext(payload: { locale: string }): void {
+function broadcastWorkspaceAppContext(payload: Partial<DesktopWorkspaceAppContext>): void {
   for (const contents of [...workspaceAppGuestWebContents]) {
     if (contents.isDestroyed()) {
       workspaceAppGuestWebContents.delete(contents);

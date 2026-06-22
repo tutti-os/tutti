@@ -46,6 +46,7 @@ export const desktopIpcChannels = {
     grantPermissions: "computerUse:grantPermissions"
   },
   appContext: {
+    agentStatusBroadcast: "workspace-app-context:agent-status-broadcast",
     changed: "workspace-app-context:changed",
     diagnostic: "workspace-app-context:diagnostic",
     get: "workspace-app-context:get",
@@ -275,6 +276,7 @@ export interface DesktopHostPreferencesSyncPayload {
 }
 
 export interface DesktopWorkspaceAppContext {
+  agentBound?: boolean;
   appId?: string;
   capabilities?: string[];
   contextToken?: string;

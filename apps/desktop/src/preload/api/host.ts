@@ -211,6 +211,12 @@ export function createHostDesktopApi(): DesktopHostApi {
       }
     },
     workspace: {
+      broadcastAgentStatus(payload: { agentBound: boolean }): void {
+        ipcRenderer.send(
+          desktopIpcChannels.appContext.agentStatusBroadcast,
+          payload
+        );
+      },
       onOpenFeatureRequest(listener): () => void {
         const handler = (_event: IpcRendererEvent, payload: unknown) =>
           listener(payload as Parameters<typeof listener>[0]);

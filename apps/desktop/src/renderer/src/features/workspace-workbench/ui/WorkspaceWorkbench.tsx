@@ -414,6 +414,18 @@ function ReadyWorkspaceWorkbench({
   }, [appCenterService, state.workspace.id, workbenchHost]);
 
   useEffect(() => {
+    const broadcastAgentBound = () => {
+      const snapshot = agentProviderStatusService.getSnapshot();
+      const agentBound = snapshot.statuses.some(
+        (s) => s.availability.status === "ready"
+      );
+      window.tutti?.host?.workspace?.broadcastAgentStatus({ agentBound });
+    };
+    broadcastAgentBound();
+    return agentProviderStatusService.subscribe(broadcastAgentBound);
+  }, [agentProviderStatusService]);
+
+  useEffect(() => {
     const missionControlShortcutsEnabled =
       runtime.shortcutsEnabled || runtime.missionControl.isOpen;
     if (!missionControlShortcutsEnabled || !runtime.missionControl.canOpen) {
@@ -539,7 +551,8 @@ function WorkspaceAgentConnectingCard({
     () => service.getSnapshot()
   );
   const pending = snapshot.pendingActions.find(
-    (action) => action.actionId === "install"
+    (action) =>
+      action.actionId === "install" || action.actionId === "login"
   );
   if (!pending) {
     return null;
