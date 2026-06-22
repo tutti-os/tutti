@@ -688,7 +688,7 @@ export const en = {
       sectionToday: "Today",
       sectionYesterday: "Yesterday",
       sectionEarlier: "Earlier",
-      projectSectionEdit: "Edit",
+      projectSectionEdit: "New session",
       projectSectionMoreActions: "Project actions",
       projectRailCreateProject: "New project",
       projectRailLinkExistingProject: "Link existing project folder",

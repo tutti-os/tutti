@@ -34,6 +34,21 @@ test("workspace settings general panel lists agent defaults before language", ()
   );
 });
 
+test("workspace settings default provider only offers Codex and Claude Code", () => {
+  assert.match(
+    source,
+    /const workspaceSettingsDefaultAgentProviders = \[\s*"codex",\s*"claude-code"\s*\]/
+  );
+  assert.match(
+    source,
+    /workspaceSettingsDefaultAgentProviders\.map\(\(provider\) => \([\s\S]*<SelectItem key=\{provider\} value=\{provider\}>/
+  );
+  assert.doesNotMatch(
+    source,
+    /workspaceAgentGuiProviders\.map\(\(provider\) => \([\s\S]*<SelectItem key=\{provider\} value=\{provider\}>/
+  );
+});
+
 test("workspace settings general panel owns browser-use connection mode", () => {
   assert.match(
     source,

@@ -630,7 +630,7 @@ export const zhCN = {
       sectionToday: "今天",
       sectionYesterday: "昨天",
       sectionEarlier: "更早",
-      projectSectionEdit: "编辑",
+      projectSectionEdit: "新建会话",
       projectSectionMoreActions: "项目操作",
       projectRailCreateProject: "新建项目",
       projectRailLinkExistingProject: "关联已有项目文件",

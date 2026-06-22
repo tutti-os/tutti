@@ -29,6 +29,23 @@ test("fullscreen windows default to reveal header mode", () => {
   );
 });
 
+test("fullscreen reveal header hover zone stays compact", () => {
+  const source = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    source,
+    /\.workbench-window__header-reveal-zone\s*\{[^}]*height:\s*8px;/
+  );
+  assert.doesNotMatch(
+    source,
+    /\.workbench-window__header-reveal-zone\s*\{[^}]*height:\s*12px;/
+  );
+  assert.match(
+    source,
+    /\.workbench-window\[data-display-mode="fullscreen"\]:has\(\s*\.workbench-window__header-reveal-zone:hover\s*\)\s*\.workbench-window__header\s*\{[^}]*opacity\s+0\.16s\s+ease\s+0\.5s,[^}]*transform\s+0\.2s\s+cubic-bezier\(0\.4,\s*0,\s*0\.2,\s*1\)\s+0\.5s;/
+  );
+});
+
 test("fullscreen toggle releases button focus when entering fullscreen", () => {
   const source = readFileSync(
     resolve("src/react/WorkbenchWindowFullscreenToggle.tsx"),

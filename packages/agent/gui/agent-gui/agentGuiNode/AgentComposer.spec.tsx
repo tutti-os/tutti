@@ -1551,6 +1551,9 @@ describe("AgentComposer", () => {
     expect(css).toMatch(
       /\.agent-gui-node__composer-footer-right\s+\.agent-gui-node__composer-menu-trigger\s+>\s+svg\s*{[^}]*width:\s*16px[^}]*height:\s*16px[^}]*flex:\s*0 0 16px[^}]*margin-left:\s*0/s
     );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-menu-trigger\s*{[^}]*padding:\s*0 8px/s
+    );
   });
 
   it("renders context usage immediately before the permission menu", async () => {

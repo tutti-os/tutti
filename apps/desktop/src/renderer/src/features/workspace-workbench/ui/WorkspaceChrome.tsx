@@ -773,14 +773,16 @@ function WorkspaceAgentDecisionToast({
         className="workspace-agent-decision-toast__edge-glow agent-gui-edge-glow pointer-events-none inset-0 rounded-[12px]"
         style={{ position: "absolute" }}
       />
-      <button
+      <Button
         type="button"
         aria-label={closeLabel}
-        className="workspace-agent-decision-toast__close absolute top-0 right-0 z-[2] inline-flex size-6 translate-x-[35%] -translate-y-[35%] items-center justify-center rounded-full border border-[var(--line-2)] bg-[var(--background-panel)] text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--background-fronted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--border-focus)_30%,transparent)]"
+        className="workspace-agent-decision-toast__close absolute top-0 right-0 z-[2] size-6 translate-x-[35%] -translate-y-[35%] rounded-full border-[var(--line-2)] bg-[var(--background-panel)] text-[var(--text-secondary)] shadow-sm hover:bg-[var(--background-fronted)] hover:text-[var(--text-primary)] focus-visible:ring-[color-mix(in_srgb,var(--border-focus)_30%,transparent)]"
+        size="icon-xs"
+        variant="chrome"
         onClick={onClose}
       >
         <CloseIcon className="size-4" />
-      </button>
+      </Button>
       <div className="workspace-agent-decision-toast__content relative z-[1] grid min-w-0 gap-2.5 transition-opacity">
         <div className="flex min-w-0 items-center justify-between gap-2.5 pr-2">
           <h3 className="min-w-0 truncate text-[13px] font-bold leading-5 text-[var(--text-secondary)]">

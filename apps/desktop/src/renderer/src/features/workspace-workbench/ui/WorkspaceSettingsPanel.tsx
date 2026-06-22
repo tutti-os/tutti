@@ -65,10 +65,7 @@ import {
   type DesktopFileDefaultOpenersByExtension,
   type DesktopSleepPreventionMode
 } from "../../../../../shared/preferences/index.ts";
-import {
-  resolveWorkspaceAgentGuiLabel,
-  workspaceAgentGuiProviders
-} from "../services/workspaceAgentProviderCatalog";
+import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
 import {
   desktopThemeSources,
   type DesktopThemeAppearance,
@@ -100,6 +97,16 @@ const workspaceSettingsInputClass =
 
 const developerPanelUnlockTaps = 7;
 const computerUseOperationSettleMs = 280;
+const workspaceSettingsDefaultAgentProviders = [
+  "codex",
+  "claude-code"
+] as const satisfies readonly DesktopAgentProvider[];
+
+function isWorkspaceSettingsDefaultAgentProvider(
+  provider: DesktopAgentProvider
+): boolean {
+  return provider === "codex" || provider === "claude-code";
+}
 
 export function WorkspaceSettingsPanel({
   onOpenExternalAgentImport,
@@ -2064,8 +2071,13 @@ function WorkspaceGeneralSettingsSection({
   const isUpdatingLocale = changingLocale !== null;
   const pendingLocale = changingLocale ?? locale;
   const isUpdatingDefaultAgentProvider = changingDefaultAgentProvider !== null;
-  const pendingDefaultAgentProvider =
+  const rawPendingDefaultAgentProvider =
     changingDefaultAgentProvider ?? defaultAgentProvider;
+  const pendingDefaultAgentProvider = isWorkspaceSettingsDefaultAgentProvider(
+    rawPendingDefaultAgentProvider
+  )
+    ? rawPendingDefaultAgentProvider
+    : "codex";
   const isUpdatingBrowserUseConnectionMode =
     changingBrowserUseConnectionMode !== null;
   const pendingBrowserUseConnectionMode =
@@ -2142,7 +2154,7 @@ function WorkspaceGeneralSettingsSection({
               className={workspaceSettingsSelectContentClass}
               style={{ zIndex: "var(--z-panel-popover)" }}
             >
-              {workspaceAgentGuiProviders.map((provider) => (
+              {workspaceSettingsDefaultAgentProviders.map((provider) => (
                 <SelectItem key={provider} value={provider}>
                   {resolveWorkspaceAgentGuiLabel(provider)}
                 </SelectItem>

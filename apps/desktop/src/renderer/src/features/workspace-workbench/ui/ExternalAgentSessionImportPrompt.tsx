@@ -64,14 +64,16 @@ export function ExternalAgentSessionImportPrompt({
     toast.custom(
       (id) => (
         <article className="relative w-full min-w-0 overflow-visible rounded-[12px] border border-[var(--line-2)] bg-[var(--background-fronted)] p-3.5 shadow-[0_14px_40px_var(--shadow-elevated)]">
-          <button
+          <Button
             type="button"
             aria-label={t("common.close")}
-            className="workspace-agent-decision-toast__close absolute top-0 right-0 z-[2] inline-flex size-6 translate-x-[35%] -translate-y-[35%] items-center justify-center rounded-full border border-[var(--line-2)] bg-[var(--background-panel)] text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--background-fronted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--border-focus)_30%,transparent)]"
+            className="workspace-agent-decision-toast__close absolute top-0 right-0 z-[2] size-6 translate-x-[35%] -translate-y-[35%] rounded-full border-[var(--line-2)] bg-[var(--background-panel)] text-[var(--text-secondary)] shadow-sm hover:bg-[var(--background-fronted)] hover:text-[var(--text-primary)] focus-visible:ring-[color-mix(in_srgb,var(--border-focus)_30%,transparent)]"
+            size="icon-xs"
+            variant="chrome"
             onClick={() => toast.dismiss(id)}
           >
             <CloseIcon className="size-4" />
-          </button>
+          </Button>
           <div className="workspace-agent-decision-toast__content relative z-[1] grid min-w-0 gap-3 transition-opacity">
             <div className="grid min-w-0 gap-1 pr-3">
               <h3 className="m-0 text-[13px] font-semibold leading-5 text-[var(--text-primary)]">

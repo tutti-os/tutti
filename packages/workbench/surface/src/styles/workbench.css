@@ -239,7 +239,15 @@
 .workbench-window[data-display-mode="fullscreen"]:has(
     .workbench-window__header-reveal-zone:hover
   )
-  .workbench-window__header,
+  .workbench-window__header {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition:
+    opacity 0.16s ease 0.5s,
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1) 0.5s;
+}
+
 .workbench-window[data-display-mode="fullscreen"]:has(
     .workbench-window__header:hover
   )
@@ -260,7 +268,7 @@
   right: 0;
   left: 0;
   z-index: 2;
-  height: 22px;
+  height: 8px;
   pointer-events: auto;
 }
 
@@ -1322,6 +1330,9 @@
 }
 
 .desktop-dock__icon-shell {
+  --desktop-dock-loading-badge-offset: -3.6px;
+  --desktop-dock-loading-badge-size: 16.2px;
+  --desktop-dock-loading-spinner-size: 9px;
   position: relative;
   box-sizing: border-box;
   display: inline-flex;
@@ -1347,11 +1358,11 @@
 .desktop-dock__icon-shell[data-entry-state="loading"]::before,
 .desktop-dock__count-badge {
   position: absolute;
-  right: -3.6px;
-  bottom: -3.6px;
+  right: var(--desktop-dock-loading-badge-offset);
+  bottom: var(--desktop-dock-loading-badge-offset);
   display: inline-flex;
-  min-width: 16.2px;
-  height: 16.2px;
+  min-width: var(--desktop-dock-loading-badge-size);
+  height: var(--desktop-dock-loading-badge-size);
   align-items: center;
   justify-content: center;
   padding: 0 4.5px;
@@ -1363,7 +1374,7 @@
 
 .desktop-dock__icon-shell[data-entry-state="loading"]::before {
   box-sizing: border-box;
-  width: 16.2px;
+  width: var(--desktop-dock-loading-badge-size);
   min-width: 0;
   padding: 0;
   content: "";
@@ -1406,11 +1417,25 @@
 
 .desktop-dock__icon-shell[data-entry-state="loading"]::after {
   position: absolute;
-  right: 0;
-  bottom: 0;
+  right: calc(
+    var(--desktop-dock-loading-badge-offset) +
+      (
+        var(--desktop-dock-loading-badge-size) -
+          var(--desktop-dock-loading-spinner-size)
+      ) /
+      2
+  );
+  bottom: calc(
+    var(--desktop-dock-loading-badge-offset) +
+      (
+        var(--desktop-dock-loading-badge-size) -
+          var(--desktop-dock-loading-spinner-size)
+      ) /
+      2
+  );
   box-sizing: border-box;
-  width: 9px;
-  height: 9px;
+  width: var(--desktop-dock-loading-spinner-size);
+  height: var(--desktop-dock-loading-spinner-size);
   border: 1.8px solid color-mix(in srgb, var(--text-inverted) 36%, transparent);
   border-top-color: var(--text-inverted);
   border-radius: 999px;

@@ -740,6 +740,9 @@ export function AppCenterPanel({
             emptyMessage={activeAppEmptyMessage}
             title={activeAppTabTitle}
           />
+          {activeApps.length > 0 ? (
+            <div aria-hidden="true" className="h-6 shrink-0" />
+          ) : null}
         </section>
       </div>
       <ConfirmationDialog
@@ -1111,8 +1114,10 @@ function FactoryPermissionDropdown({
         aria-label={copy.t("factory.labels.review")}
         className={cn(
           "h-9 max-w-full rounded-[999px] border border-[color:var(--line-2)] bg-[var(--background-panel)] px-3 text-[13px] font-medium text-[var(--text-primary)] shadow-none hover:bg-[var(--transparency-block)] [&>svg:last-child]:opacity-70",
-          loading ? "animate-pulse" : null,
-          disabled
+          loading
+            ? "animate-pulse rounded-none border-transparent bg-transparent px-1 opacity-100 shadow-none hover:bg-transparent disabled:bg-transparent disabled:opacity-100"
+            : null,
+          disabled && !loading
             ? "cursor-not-allowed text-[var(--text-tertiary)] opacity-60 hover:bg-[var(--background-panel)]"
             : null,
           triggerClassName
@@ -1221,8 +1226,10 @@ function FactoryModelReasoningDropdown({
         aria-label={copy.t("factory.labels.modelReasoning")}
         className={cn(
           "h-9 max-w-full rounded-[999px] border border-[color:var(--line-2)] bg-[var(--background-panel)] px-3 text-[13px] font-medium text-[var(--text-primary)] shadow-none hover:bg-[var(--transparency-block)] [&>svg:last-child]:opacity-70",
-          loading ? "animate-pulse" : null,
-          disabled
+          loading
+            ? "animate-pulse rounded-none border-transparent bg-transparent px-1 opacity-100 shadow-none hover:bg-transparent disabled:bg-transparent disabled:opacity-100"
+            : null,
+          disabled && !loading
             ? "cursor-not-allowed text-[var(--text-tertiary)] opacity-60 hover:bg-[var(--background-panel)]"
             : null,
           triggerClassName

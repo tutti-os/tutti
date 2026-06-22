@@ -4397,6 +4397,46 @@ button.agent-gui-node__conversation-section-toggle:hover
   pointer-events: auto;
 }
 
+.agent-gui-node__conversation-section-action-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.agent-gui-node__conversation-section-action-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: var(--z-tooltip);
+  max-width: 180px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-2, var(--tutti-line-2));
+  border-radius: 6px;
+  background: var(--background-fronted);
+  box-shadow: 0 10px 26px rgb(0 0 0 / 0.18);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  transform: translate(-50%, -2px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  white-space: nowrap;
+}
+
+.agent-gui-node__conversation-section-action-tooltip-wrap:hover
+  .agent-gui-node__conversation-section-action-tooltip,
+.agent-gui-node__conversation-section-action-tooltip-wrap:focus-within
+  .agent-gui-node__conversation-section-action-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .agent-gui-node__conversation-section-more-button {
   flex: none;
   opacity: 0;
@@ -6604,7 +6644,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  padding: 0 2px;
+  padding: 0 8px;
   color: var(--agent-gui-text-secondary);
   font-size: 13px;
   font-weight: 400;

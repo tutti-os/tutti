@@ -299,16 +299,42 @@ describe("AgentGUINodeView layout persistence", () => {
       },
       labels: {
         ...createLabels(),
-        projectSectionEdit: "Edit"
+        projectSectionEdit: "New session"
       }
     });
 
-    fireEvent.click(screen.getByLabelText("Edit"));
+    fireEvent.click(screen.getByLabelText("New session"));
 
     expect(actions.createConversation).toHaveBeenCalledWith({
       projectPath: "/workspace/app"
     });
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
+  });
+
+  it("shows tooltips for project section icon actions", () => {
+    const { container } = renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        userProjects: [
+          {
+            id: "project-app",
+            path: "/workspace/app",
+            label: "App"
+          }
+        ]
+      }
+    });
+
+    const tooltips = Array.from(
+      container.querySelectorAll(
+        ".agent-gui-node__conversation-section-action-tooltip"
+      )
+    );
+
+    expect(tooltips.map((tooltip) => tooltip.textContent)).toEqual([
+      "projectSectionEdit",
+      "projectSectionMoreActions"
+    ]);
   });
 
   it("hides the project rail header when the project selector is disabled", () => {
@@ -358,6 +384,30 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.getByText("sectionConversations")).toBeInTheDocument();
     expect(screen.getAllByText("No chats yet")).toHaveLength(2);
     expect(screen.queryByText("noConversations")).not.toBeInTheDocument();
+  });
+
+  it("hides batch delete from empty project section actions", async () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        userProjects: [
+          {
+            id: "project-app",
+            path: "/workspace/app",
+            label: "App"
+          }
+        ]
+      }
+    });
+
+    const moreActionsButton = screen.getByRole("button", {
+      name: "projectSectionMoreActions"
+    });
+    fireEvent.pointerDown(moreActionsButton);
+    fireEvent.click(moreActionsButton);
+
+    expect(screen.queryByText("batchDeleteProjectSessions")).toBeNull();
+    expect(await screen.findByText("removeProject")).toBeInTheDocument();
   });
 
   it("shows a tooltip trigger for the active conversation run path", () => {

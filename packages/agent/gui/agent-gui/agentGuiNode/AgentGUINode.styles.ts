@@ -61,6 +61,10 @@ const styles = {
     "agent-gui-node__conversation-open-window-button",
   conversationPinButton: "agent-gui-node__conversation-pin-button",
   conversationSection: "agent-gui-node__conversation-section",
+  conversationSectionActionTooltip:
+    "agent-gui-node__conversation-section-action-tooltip",
+  conversationSectionActionTooltipWrap:
+    "agent-gui-node__conversation-section-action-tooltip-wrap",
   conversationSectionActions: "agent-gui-node__conversation-section-actions",
   conversationSectionChevron: "agent-gui-node__conversation-section-chevron",
   conversationSectionEmpty: "agent-gui-node__conversation-section-empty",

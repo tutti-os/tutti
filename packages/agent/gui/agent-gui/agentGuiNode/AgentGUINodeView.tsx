@@ -3213,47 +3213,62 @@ const AgentGUIConversationRailSection = memo(
           )}
           {projectPath ? (
             <div className={styles.conversationSectionActions}>
-              <BareIconButton
-                className={styles.conversationSectionMoreButton}
-                aria-label={labels.projectSectionEdit}
-                title={labels.projectSectionEdit}
-                size="sm"
-                disabled={createConversationDisabled}
-                onClick={() => onCreateConversation({ projectPath })}
-              >
-                <EditIcon aria-hidden="true" />
-              </BareIconButton>
+              <span className={styles.conversationSectionActionTooltipWrap}>
+                <BareIconButton
+                  className={styles.conversationSectionMoreButton}
+                  aria-label={labels.projectSectionEdit}
+                  size="sm"
+                  disabled={createConversationDisabled}
+                  onClick={() => onCreateConversation({ projectPath })}
+                >
+                  <EditIcon aria-hidden="true" />
+                </BareIconButton>
+                <span
+                  aria-hidden="true"
+                  className={styles.conversationSectionActionTooltip}
+                >
+                  {labels.projectSectionEdit}
+                </span>
+              </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <BareIconButton
-                    className={styles.conversationSectionMoreButton}
-                    aria-label={labels.projectSectionMoreActions}
-                    title={labels.projectSectionMoreActions}
-                    size="sm"
-                  >
-                    <MoreHorizontalIcon aria-hidden="true" />
-                  </BareIconButton>
+                  <span className={styles.conversationSectionActionTooltipWrap}>
+                    <BareIconButton
+                      className={styles.conversationSectionMoreButton}
+                      aria-label={labels.projectSectionMoreActions}
+                      size="sm"
+                    >
+                      <MoreHorizontalIcon aria-hidden="true" />
+                    </BareIconButton>
+                    <span
+                      aria-hidden="true"
+                      className={styles.conversationSectionActionTooltip}
+                    >
+                      {labels.projectSectionMoreActions}
+                    </span>
+                  </span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="end"
                   className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
                   sideOffset={6}
                 >
-                  <DropdownMenuItem
-                    className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                    disabled={projectConversationCount === 0}
-                    onSelect={() => {
-                      const label = projectLabel || projectPath;
-                      setPendingProjectAction({
-                        kind: "batch-delete",
-                        conversationCount: projectConversationCount,
-                        label,
-                        path: projectPath
-                      });
-                    }}
-                  >
-                    <span>{labels.batchDeleteProjectSessions}</span>
-                  </DropdownMenuItem>
+                  {projectConversationCount > 0 ? (
+                    <DropdownMenuItem
+                      className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                      onSelect={() => {
+                        const label = projectLabel || projectPath;
+                        setPendingProjectAction({
+                          kind: "batch-delete",
+                          conversationCount: projectConversationCount,
+                          label,
+                          path: projectPath
+                        });
+                      }}
+                    >
+                      <span>{labels.batchDeleteProjectSessions}</span>
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem
                     className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
                     onSelect={() => {
