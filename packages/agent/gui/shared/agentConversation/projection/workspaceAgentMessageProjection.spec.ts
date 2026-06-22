@@ -239,6 +239,44 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     expect(bodies).toEqual(["I'll check the repo.Distinct message."]);
   });
 
+  it("dedupes Codex streaming and final snapshots with different message ids", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "assistant-stream-1",
+          id: 1,
+          version: 1,
+          role: "assistant",
+          kind: "text",
+          payload: { source: "runtime", text: "Done." }
+        }),
+        message({
+          messageId: "assistant-final-1",
+          id: 2,
+          version: 2,
+          role: "assistant",
+          kind: "text",
+          payload: { source: "runtime", text: "Done." }
+        })
+      ]
+    });
+
+    const bodies = conversation.rows
+      .filter(
+        (
+          row
+        ): row is Extract<
+          (typeof conversation.rows)[number],
+          { kind: "message" }
+        > => row.kind === "message"
+      )
+      .flatMap((row) => row.messages.map((item) => item.body));
+    expect(bodies).toEqual(["Done."]);
+  });
+
   it("projects only the latest reasoning snapshot for a stable message id", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
