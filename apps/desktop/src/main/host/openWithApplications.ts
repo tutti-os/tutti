@@ -7,6 +7,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { DesktopOpenWithApplication } from "../../shared/contracts/ipc.ts";
 import { resolveOpenWithApplicationIconOverrideDataUrl } from "../../shared/openWithApplicationIconOverrides.ts";
+import { requestWorkerIconPngBytes } from "./iconWorker/iconWorkerClient.ts";
 
 const execFileAsync = promisify(execFile);
 type ExecFileAsync = (
@@ -508,21 +509,17 @@ export async function readApplicationIconDataUrl(
 
   const iconPath = resolveApplicationIconPath(applicationPath);
   if (iconPath) {
-    try {
-      const { nativeImage } = await import("electron");
-      const image = nativeImage.createFromPath(iconPath);
-      if (!image.isEmpty()) {
-        const iconDataUrl = image
-          .resize({
-            height: applicationIconPixelSize,
-            width: applicationIconPixelSize
-          })
-          .toDataURL();
-        applicationIconDataUrlByPath.set(applicationPath, iconDataUrl);
-        return iconDataUrl;
-      }
-    } catch {
-      // Fall through to NSWorkspace icon lookup.
+    // Decode the bundle icon in the isolated worker process; a malformed
+    // `.icns` can hard-abort native image decoding otherwise.
+    const iconPngBytes = await requestWorkerIconPngBytes({
+      mode: "imageThumbnail",
+      path: iconPath,
+      sizePx: applicationIconPixelSize
+    });
+    if (iconPngBytes) {
+      const iconDataUrl = `data:image/png;base64,${iconPngBytes.toString("base64")}`;
+      applicationIconDataUrlByPath.set(applicationPath, iconDataUrl);
+      return iconDataUrl;
     }
   }
 

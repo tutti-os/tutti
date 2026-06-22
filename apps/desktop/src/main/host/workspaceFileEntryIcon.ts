@@ -1,9 +1,10 @@
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import {
   resolveWorkspaceFileDefaultApplicationIconExtension,
   resolveWorkspaceFileVisualKind
 } from "@tutti-os/workspace-file-manager/services";
+import { requestWorkerIconPngBytes } from "./iconWorker/iconWorkerClient.ts";
 import {
   readApplicationIconDataUrl,
   resolveDefaultApplicationForFile
@@ -252,71 +253,29 @@ function dataUrlToPngBytes(dataUrl: string | null): Buffer | null {
   return bytes.byteLength > 0 ? bytes : null;
 }
 
+// Native icon generation runs in a disposable worker process: `app.getFileIcon`
+// can hard-abort on malformed bundles, which a try/catch here cannot contain.
 async function readNativeFileIconPngBytes(
   targetPath: string
 ): Promise<Buffer | null> {
   if (process.platform !== "darwin" && process.platform !== "win32") {
     return null;
   }
-
-  try {
-    const { app } = await import("electron");
-    const icon = await app.getFileIcon(targetPath, { size: "large" });
-    if (icon.isEmpty()) {
-      return null;
-    }
-    return icon
-      .resize({ height: entryIconPixelSize, width: entryIconPixelSize })
-      .toPNG();
-  } catch {
-    return null;
-  }
+  return requestWorkerIconPngBytes({
+    mode: "fileIcon",
+    path: targetPath,
+    sizePx: entryIconPixelSize
+  });
 }
 
+// Decoding arbitrary image files is likewise isolated in the worker process.
 async function readImageThumbnailPngBytes(
   targetPath: string,
   maxEdgePx: number
 ): Promise<Buffer | null> {
-  try {
-    const { nativeImage } = await import("electron");
-    let image = nativeImage.createFromPath(targetPath);
-    if (image.isEmpty()) {
-      image = nativeImage.createFromBuffer(await readFile(targetPath));
-    }
-    if (image.isEmpty()) {
-      return null;
-    }
-
-    const sourceSize = image.getSize();
-    if (!isValidImageSize(sourceSize)) {
-      return null;
-    }
-
-    const scale = Math.min(
-      1,
-      maxEdgePx / Math.max(sourceSize.width, sourceSize.height)
-    );
-    const output =
-      scale < 1
-        ? image.resize({
-            height: Math.max(1, Math.round(sourceSize.height * scale)),
-            width: Math.max(1, Math.round(sourceSize.width * scale))
-          })
-        : image;
-    if (output.isEmpty()) {
-      return null;
-    }
-    return output.toPNG();
-  } catch {
-    return null;
-  }
-}
-
-function isValidImageSize(size: { height: number; width: number }): boolean {
-  return (
-    Number.isFinite(size.height) &&
-    Number.isFinite(size.width) &&
-    size.height > 0 &&
-    size.width > 0
-  );
+  return requestWorkerIconPngBytes({
+    mode: "imageThumbnail",
+    path: targetPath,
+    sizePx: maxEdgePx
+  });
 }
