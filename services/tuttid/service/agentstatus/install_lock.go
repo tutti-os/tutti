@@ -2,6 +2,8 @@ package agentstatus
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -33,7 +35,7 @@ type installCommandLock struct {
 func newInstallCommandLock(command string) installCommandLock {
 	return installCommandLock{
 		command:       command,
-		lockPath:      filepath.Join(tuttitypes.TuttidRunDir(), "locks", "npm-global-install.lock"),
+		lockPath:      installCommandLockPath(command),
 		now:           time.Now,
 		pollInterval:  npmGlobalInstallLockPollInterval,
 		processExists: tuttitypes.ProcessExists,
@@ -122,7 +124,18 @@ func (l installCommandLock) Acquire(ctx context.Context) (func(), error) {
 
 func requiresInstallCommandLock(command string) bool {
 	command = strings.TrimSpace(command)
-	return strings.HasPrefix(command, "npm install -g") || strings.HasPrefix(command, "npm i -g")
+	return strings.HasPrefix(command, "npm install -g") ||
+		strings.HasPrefix(command, "npm i -g") ||
+		strings.HasPrefix(command, string(InstallerKindExternalAgentRegistryNPM)+":")
+}
+
+func installCommandLockPath(command string) string {
+	lockFile := "npm-global-install.lock"
+	if strings.HasPrefix(strings.TrimSpace(command), string(InstallerKindExternalAgentRegistryNPM)+":") {
+		sum := sha256.Sum256([]byte(strings.TrimSpace(command)))
+		lockFile = "agent-provider-install-" + hex.EncodeToString(sum[:8]) + ".lock"
+	}
+	return filepath.Join(tuttitypes.TuttidRunDir(), "locks", lockFile)
 }
 
 func RecoverDefaultInstallCommandLock() (InstallCommandLockRecoveryResult, error) {
