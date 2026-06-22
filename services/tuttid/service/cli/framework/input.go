@@ -83,14 +83,6 @@ func BindInput[T any](spec InputSpec, input map[string]any) (T, error) {
 	for _, field := range spec.Fields {
 		fields[field.Name] = field
 	}
-	for key := range input {
-		if _, ok := fields[key]; !ok {
-			if !spec.AcceptsInput {
-				return result, fmt.Errorf("%w: command does not accept input", cliservice.ErrInvalidInput)
-			}
-			return result, fmt.Errorf("%w: unknown input %q", cliservice.ErrInvalidInput, key)
-		}
-	}
 
 	value := reflect.ValueOf(&result).Elem()
 	typ := value.Type()

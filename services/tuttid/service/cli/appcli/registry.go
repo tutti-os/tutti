@@ -626,9 +626,6 @@ func appErrorMessage(content []byte) string {
 
 func normalizeInput(schema map[string]any, input map[string]any) (map[string]any, error) {
 	if len(schema) == 0 {
-		if len(input) > 0 {
-			return nil, fmt.Errorf("%w: command does not accept input", cliservice.ErrInvalidInput)
-		}
 		return map[string]any{}, nil
 	}
 	properties, _ := schema["properties"].(map[string]any)
@@ -640,7 +637,7 @@ func normalizeInput(schema map[string]any, input map[string]any) (map[string]any
 	for key, value := range input {
 		property, ok := properties[key]
 		if !ok {
-			return nil, fmt.Errorf("%w: unknown input %q", cliservice.ErrInvalidInput, key)
+			continue
 		}
 		propertyMap, _ := property.(map[string]any)
 		normalized, err := normalizeValue(schemaType(propertyMap), value)

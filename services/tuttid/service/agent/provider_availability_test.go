@@ -80,6 +80,74 @@ func TestServiceListProviderAvailabilityUsesAgentStatusSnapshot(t *testing.T) {
 	}
 }
 
+func TestServiceListProviderAvailabilityUsesShortCache(t *testing.T) {
+	capturedAt := time.Unix(10, 0).UTC()
+	lister := &fakeAgentProviderStatusLister{
+		snapshot: agentstatusservice.Snapshot{
+			CapturedAt: capturedAt,
+			Providers: []agentstatusservice.ProviderStatus{{
+				Provider: "codex",
+				Availability: agentstatusservice.Availability{
+					CheckedAt: &capturedAt,
+					Status:    agentstatusservice.AvailabilityReady,
+				},
+				CLI: agentstatusservice.CLIStatus{
+					Installed:  true,
+					BinaryPath: "/usr/local/bin/codex",
+				},
+				Adapter: agentstatusservice.AdapterStatus{
+					Installed:  true,
+					BinaryPath: "/usr/local/bin/codex-acp",
+				},
+				Auth: agentstatusservice.AuthInfo{Status: agentstatusservice.AuthAuthenticated},
+			}},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
+
+	first, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{Provider: "codex"})
+	if err != nil {
+		t.Fatalf("ListProviderAvailability first returned error: %v", err)
+	}
+	first[0].Provider = "mutated"
+	second, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{Provider: "codex"})
+	if err != nil {
+		t.Fatalf("ListProviderAvailability second returned error: %v", err)
+	}
+	if lister.callCount != 1 {
+		t.Fatalf("status lister calls = %d, want 1", lister.callCount)
+	}
+	if second[0].Provider != "codex" {
+		t.Fatalf("cached availability = %#v, want unmutated codex", second[0])
+	}
+}
+
+func TestServiceListProviderAvailabilityCacheCanBeDisabled(t *testing.T) {
+	lister := &fakeAgentProviderStatusLister{
+		snapshot: agentstatusservice.Snapshot{
+			Providers: []agentstatusservice.ProviderStatus{{
+				Provider: "codex",
+				Availability: agentstatusservice.Availability{
+					Status: agentstatusservice.AvailabilityReady,
+				},
+			}},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.ProviderAvailabilityCacheTTL = -1
+	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
+
+	for i := 0; i < 2; i++ {
+		if _, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{Provider: "codex"}); err != nil {
+			t.Fatalf("ListProviderAvailability returned error: %v", err)
+		}
+	}
+	if lister.callCount != 2 {
+		t.Fatalf("status lister calls = %d, want 2", lister.callCount)
+	}
+}
+
 func TestServiceListProviderAvailabilityAcceptsSupportedRuntimeProvider(t *testing.T) {
 	lister := &fakeAgentProviderStatusLister{}
 	service := NewService(newFakeRuntime())

@@ -3,7 +3,6 @@ package appcli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -113,18 +112,38 @@ func TestRegistryScopeConflictKeepsDeterministicWinner(t *testing.T) {
 	}
 }
 
-func TestRegistryInvokeRejectsUnknownInput(t *testing.T) {
-	registry := NewRegistry(fakeWorkspaceCatalog{workspaceID: "ws-1"}, nil)
-	appPackage := writeTestPackage(t, "automation-app", "automation", testJSONCommand())
-	registry.Activate(context.Background(), Activation{WorkspaceID: "ws-1", AppPackage: appPackage, BaseURL: "http://127.0.0.1:1"})
+func TestRegistryInvokeIgnoresUnknownInput(t *testing.T) {
+	var envelope map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+			t.Fatalf("decode envelope: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"kind":"json","value":{"ok":true}}`))
+	}))
+	defer server.Close()
 
-	_, err := registry.Invoke(context.Background(), cliservice.InvokeRequest{
+	registry := NewRegistry(fakeWorkspaceCatalog{workspaceID: "ws-1"}, fakeRuntime{baseURL: server.URL})
+	appPackage := writeTestPackage(t, "automation-app", "automation", testJSONCommand())
+	registry.Activate(context.Background(), Activation{WorkspaceID: "ws-1", AppPackage: appPackage, BaseURL: server.URL})
+
+	output, err := registry.Invoke(context.Background(), cliservice.InvokeRequest{
 		CommandID: "app.automation-app.automation.run",
-		Input:     map[string]any{"unknown": "x"},
+		Input:     map[string]any{"name": "daily", "unknown": "x"},
 		Context:   cliservice.InvokeContext{WorkspaceID: "ws-1"},
 	})
-	if err == nil || !errors.Is(err, cliservice.ErrInvalidInput) {
-		t.Fatalf("Invoke() error = %v, want invalid input", err)
+	if err != nil {
+		t.Fatalf("Invoke() error = %v", err)
+	}
+	if output.Kind != cliservice.OutputModeJSON {
+		t.Fatalf("output = %#v", output)
+	}
+	input, ok := envelope["input"].(map[string]any)
+	if !ok || input["name"] != "daily" {
+		t.Fatalf("envelope input = %#v", envelope["input"])
+	}
+	if _, ok := input["unknown"]; ok {
+		t.Fatalf("unknown input was forwarded: %#v", input)
 	}
 }
 

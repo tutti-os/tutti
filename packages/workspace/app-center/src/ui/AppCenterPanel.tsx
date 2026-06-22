@@ -544,7 +544,7 @@ export function AppCenterPanel({
       )}
     >
       {statusToast ? <AppCenterStatusToast toast={statusToast} /> : null}
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto px-6 pb-6 pt-5 [container-type:inline-size]">
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto px-6 pt-5 [container-type:inline-size]">
         <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           <div className="flex h-8 min-w-0 items-center justify-between gap-3">
             <SectionTabs
@@ -740,9 +740,6 @@ export function AppCenterPanel({
             emptyMessage={activeAppEmptyMessage}
             title={activeAppTabTitle}
           />
-          {activeApps.length > 0 ? (
-            <div aria-hidden="true" className="h-6 shrink-0" />
-          ) : null}
         </section>
       </div>
       <ConfirmationDialog
@@ -1409,14 +1406,17 @@ function AppCardGrid({
   }
 
   return (
-    <div
-      aria-label={title}
-      className="grid min-h-0 min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-3 pb-6"
-      role="list"
-    >
-      {apps.map((app) => (
-        <AppCard actions={actions} app={app} copy={copy} key={app.id} />
-      ))}
+    <div className="flex min-w-0 shrink-0 flex-col">
+      <div
+        aria-label={title}
+        className="grid min-h-0 min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-3"
+        role="list"
+      >
+        {apps.map((app) => (
+          <AppCard actions={actions} app={app} copy={copy} key={app.id} />
+        ))}
+      </div>
+      <div aria-hidden="true" className="h-6 shrink-0" />
     </div>
   );
 }

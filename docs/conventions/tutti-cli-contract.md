@@ -159,7 +159,7 @@ The framework owns builtin input binding.
 
 Rules:
 
-- reject unknown inputs
+- ignore unknown inputs for forward compatibility across app and daemon versions
 - accept strings from `apps/cli` for string, boolean, and integer fields
 - parse boolean strings using ordinary CLI-friendly values such as `true` and
   `false`
@@ -173,8 +173,6 @@ Error wording should be consistent:
 
 - missing required input: `required input "topic-id" is missing`
 - invalid input: `invalid input "page-size"`
-- unknown input: `unknown input "foo"`
-- command accepts no input: `command does not accept input`
 
 All builtin input validation failures must wrap `cliservice.ErrInvalidInput` so
 the existing invoke route status-code mapping remains stable.
@@ -296,8 +294,8 @@ Framework tests should cover:
 - string, boolean, integer, and int64 binding
 - required input validation
 - numeric min/max validation
-- unknown input rejection
-- no-input command rejection
+- unknown input is ignored
+- no-input commands ignore extra input
 - table, JSON, plain, and markdown output formatting
 - command registration defaults
 

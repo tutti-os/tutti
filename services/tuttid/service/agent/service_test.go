@@ -907,6 +907,7 @@ func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 func TestServiceGetsComposerOptionsWithoutStartingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
+	service.CapabilityLister = &recordingComposerCapabilityLister{}
 
 	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 		Provider: "codex",
@@ -962,6 +963,96 @@ func TestServiceGetsComposerOptionsWithoutStartingRuntime(t *testing.T) {
 	capabilities, ok := options.RuntimeContext["capabilities"].([]string)
 	if !ok || !slices.Contains(capabilities, "imageInput") {
 		t.Fatalf("capabilities = %#v, want imageInput", options.RuntimeContext["capabilities"])
+	}
+}
+
+type recordingComposerCapabilityLister struct {
+	callCount int
+}
+
+func (l *recordingComposerCapabilityLister) ListComposerCapabilityOptions(
+	_ context.Context,
+	_ string,
+	_ string,
+	_ []ComposerSkillOption,
+) ([]ComposerCapabilityOption, []string) {
+	l.callCount++
+	return []ComposerCapabilityOption{{
+		ID:         "connector:github",
+		Kind:       "connector",
+		Name:       "github",
+		Label:      "GitHub",
+		Status:     "available",
+		Invocation: "promptItem",
+	}}, nil
+}
+
+func TestServiceGetComposerOptionsSkipsCapabilityCatalogWhenDisabled(t *testing.T) {
+	runtime := newFakeRuntime()
+	lister := &recordingComposerCapabilityLister{}
+	service := NewService(runtime)
+	service.CapabilityLister = lister
+	includeCapabilityCatalog := false
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:                 "codex",
+		IncludeCapabilityCatalog: &includeCapabilityCatalog,
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if lister.callCount != 0 {
+		t.Fatalf("capability lister calls = %d, want 0", lister.callCount)
+	}
+	if len(options.CapabilityCatalog) != 0 {
+		t.Fatalf("capability catalog = %#v, want empty when disabled", options.CapabilityCatalog)
+	}
+}
+
+func TestServiceGetComposerOptionsIncludesCapabilityCatalogByDefault(t *testing.T) {
+	runtime := newFakeRuntime()
+	lister := &recordingComposerCapabilityLister{}
+	service := NewService(runtime)
+	service.CapabilityLister = lister
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if lister.callCount != 1 {
+		t.Fatalf("capability lister calls = %d, want 1", lister.callCount)
+	}
+	if len(options.CapabilityCatalog) != 1 || options.CapabilityCatalog[0].ID != "connector:github" {
+		t.Fatalf("capability catalog = %#v", options.CapabilityCatalog)
+	}
+}
+
+func TestServiceGetComposerOptionsCachesCapabilityCatalog(t *testing.T) {
+	runtime := newFakeRuntime()
+	lister := &recordingComposerCapabilityLister{}
+	service := NewService(runtime)
+	service.CapabilityLister = lister
+
+	first, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions first returned error: %v", err)
+	}
+	first.CapabilityCatalog[0].ID = "mutated"
+	second, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions second returned error: %v", err)
+	}
+	if lister.callCount != 1 {
+		t.Fatalf("capability lister calls = %d, want 1", lister.callCount)
+	}
+	if len(second.CapabilityCatalog) != 1 || second.CapabilityCatalog[0].ID != "connector:github" {
+		t.Fatalf("cached capability catalog = %#v, want unmutated github connector", second.CapabilityCatalog)
 	}
 }
 

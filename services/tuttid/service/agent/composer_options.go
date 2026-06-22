@@ -62,10 +62,11 @@ type ComposerSettings struct {
 }
 
 type ComposerOptionsInput struct {
-	Cwd      string
-	Locale   string
-	Provider string
-	Settings ComposerSettings
+	Cwd                      string
+	Locale                   string
+	Provider                 string
+	Settings                 ComposerSettings
+	IncludeCapabilityCatalog *bool
 }
 
 type ComposerSkillOption struct {
@@ -140,7 +141,11 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		"speed":            nullableString(effectiveSettings.Speed),
 	}
 	skills := s.discoverComposerSkillOptions(provider, input.Cwd, nil)
-	capabilityCatalog, capabilityErrors := discoverComposerCapabilityOptions(ctx, provider, input.Cwd, skills)
+	capabilityCatalog := []ComposerCapabilityOption{}
+	capabilityErrors := []string(nil)
+	if composerOptionsIncludeCapabilityCatalog(input) {
+		capabilityCatalog, capabilityErrors = s.listComposerCapabilityOptions(ctx, provider, input.Cwd, skills)
+	}
 	runtimeContext["skills"] = composerSkillOptionsRuntimeContext(skills)
 	runtimeContext["capabilityCatalog"] = composerCapabilityOptionsRuntimeContext(capabilityCatalog)
 	if len(capabilityErrors) > 0 {
@@ -164,6 +169,10 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Skills:            skills,
 		CapabilityCatalog: capabilityCatalog,
 	}, nil
+}
+
+func composerOptionsIncludeCapabilityCatalog(input ComposerOptionsInput) bool {
+	return input.IncludeCapabilityCatalog == nil || *input.IncludeCapabilityCatalog
 }
 
 // composerProviderCapabilities is the conservative static default used to

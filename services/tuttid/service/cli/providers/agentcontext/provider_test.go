@@ -489,6 +489,9 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 	if sessions.composerInput.Locale != "zh-CN" || sessions.composerInput.Provider != "codex" || sessions.composerInput.Settings.Model != "gpt-5" || sessions.composerInput.Settings.PermissionModeID != "auto" || sessions.composerInput.Settings.ReasoningEffort != "high" {
 		t.Fatalf("composer input = %#v", sessions.composerInput)
 	}
+	if sessions.composerInput.IncludeCapabilityCatalog != nil {
+		t.Fatalf("include capability catalog = %#v, want nil default", *sessions.composerInput.IncludeCapabilityCatalog)
+	}
 	if output.Value["provider"] != "codex" {
 		t.Fatalf("output = %#v", output.Value)
 	}
@@ -503,6 +506,27 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 	modes := permissionConfig["modes"].([]any)
 	if modes[0].(map[string]any)["label"] != "替我审批" {
 		t.Fatalf("permission modes = %#v", modes)
+	}
+}
+
+func TestComposerOptionsCommandCanDisableCapabilityCatalog(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newComposerOptionsCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"provider":                   "codex",
+			"include-capability-catalog": "false",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.composerInput.IncludeCapabilityCatalog == nil {
+		t.Fatal("include capability catalog = nil, want explicit false")
+	}
+	if *sessions.composerInput.IncludeCapabilityCatalog {
+		t.Fatalf("include capability catalog = true, want false")
 	}
 }
 

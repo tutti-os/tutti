@@ -73,17 +73,23 @@ func TestBindInputRejectsInvalidRange(t *testing.T) {
 	}
 }
 
-func TestBindInputRejectsUnknownInput(t *testing.T) {
-	_, err := BindInput[sampleInput](FromStruct[sampleInput](), map[string]any{"topic-id": "topic-1", "extra": "x"})
-	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), `unknown input "extra"`) {
-		t.Fatalf("err = %v", err)
+func TestBindInputIgnoresUnknownInput(t *testing.T) {
+	input, err := BindInput[sampleInput](FromStruct[sampleInput](), map[string]any{"topic-id": "topic-1", "extra": "x"})
+	if err != nil {
+		t.Fatalf("BindInput: %v", err)
+	}
+	if input.TopicID != "topic-1" {
+		t.Fatalf("input = %#v", input)
 	}
 }
 
-func TestBindInputRejectsInputForNoInputCommand(t *testing.T) {
-	_, err := BindInput[struct{}](FromStruct[struct{}](), map[string]any{"extra": "x"})
-	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "command does not accept input") {
-		t.Fatalf("err = %v", err)
+func TestBindInputIgnoresInputForNoInputCommand(t *testing.T) {
+	input, err := BindInput[struct{}](FromStruct[struct{}](), map[string]any{"extra": "x"})
+	if err != nil {
+		t.Fatalf("BindInput: %v", err)
+	}
+	if input != (struct{}{}) {
+		t.Fatalf("input = %#v", input)
 	}
 }
 

@@ -10,11 +10,12 @@ import (
 )
 
 type composerOptionsInput struct {
-	Provider        string `cli:"provider" validate:"required"`
-	Locale          string `cli:"locale"`
-	Model           string `cli:"model"`
-	PermissionMode  string `cli:"permission-mode"`
-	ReasoningEffort string `cli:"reasoning-effort"`
+	Provider                 string `cli:"provider" validate:"required"`
+	Locale                   string `cli:"locale"`
+	Model                    string `cli:"model"`
+	PermissionMode           string `cli:"permission-mode"`
+	ReasoningEffort          string `cli:"reasoning-effort"`
+	IncludeCapabilityCatalog *bool  `cli:"include-capability-catalog"`
 }
 
 func (p Provider) newComposerOptionsCommand() cliservice.Command {
@@ -62,8 +63,9 @@ func (p Provider) runComposerOptions(ctx context.Context, _ framework.InvokeCont
 		reasoningEffort = defaults.ReasoningEffort
 	}
 	return p.sessions.GetComposerOptions(ctx, agentservice.ComposerOptionsInput{
-		Locale:   locale,
-		Provider: input.Provider,
+		Locale:                   locale,
+		Provider:                 input.Provider,
+		IncludeCapabilityCatalog: input.IncludeCapabilityCatalog,
 		Settings: agentservice.ComposerSettings{
 			Model:            model,
 			PermissionModeID: permissionModeID,

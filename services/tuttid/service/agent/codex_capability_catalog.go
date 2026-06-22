@@ -27,6 +27,24 @@ type CodexCLICapabilityLister struct {
 	LookPath         func(string) (string, error)
 }
 
+type defaultComposerCapabilityLister struct{}
+
+func (defaultComposerCapabilityLister) ListComposerCapabilityOptions(
+	ctx context.Context,
+	provider string,
+	cwd string,
+	fallbackSkills []ComposerSkillOption,
+) ([]ComposerCapabilityOption, []string) {
+	return discoverComposerCapabilityOptions(ctx, provider, cwd, fallbackSkills)
+}
+
+func (s *Service) composerCapabilityLister() ComposerCapabilityLister {
+	if s.CapabilityLister != nil {
+		return s.CapabilityLister
+	}
+	return defaultComposerCapabilityLister{}
+}
+
 func discoverComposerCapabilityOptions(
 	ctx context.Context,
 	provider string,

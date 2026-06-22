@@ -85,6 +85,11 @@ func (s *Service) ListProviderAvailability(ctx context.Context, input ProviderAv
 	if err != nil {
 		return nil, err
 	}
+	cacheKey := providerAvailabilityCacheKey(providers)
+	now := time.Now().UTC()
+	if cached, ok := s.providerAvailabilityCache.get(cacheKey, now, s.providerAvailabilityCacheTTL()); ok {
+		return cached, nil
+	}
 	checker := s.AvailabilityChecker
 	if checker == nil {
 		checker = AgentStatusProviderAvailabilityChecker{Service: agentstatusservice.Service{}}
@@ -93,7 +98,11 @@ func (s *Service) ListProviderAvailability(ctx context.Context, input ProviderAv
 	if errors.Is(err, agentstatusservice.ErrInvalidProvider) {
 		return nil, ErrInvalidArgument
 	}
-	return availability, err
+	if err != nil {
+		return nil, err
+	}
+	s.providerAvailabilityCache.set(cacheKey, now, availability)
+	return cloneProviderAvailability(availability), nil
 }
 
 func (s *Service) ensureProviderRuntimeInstalled(ctx context.Context, provider string) error {
@@ -123,6 +132,13 @@ func providerAvailabilityInputProviders(input ProviderAvailabilityInput) ([]stri
 		return nil, ErrInvalidArgument
 	}
 	return []string{normalized}, nil
+}
+
+func (s *Service) providerAvailabilityCacheTTL() time.Duration {
+	if s.ProviderAvailabilityCacheTTL != 0 {
+		return s.ProviderAvailabilityCacheTTL
+	}
+	return defaultProviderAvailabilityCacheTTL
 }
 
 func (c AgentStatusProviderAvailabilityChecker) ListProviderAvailability(

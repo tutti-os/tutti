@@ -24,8 +24,10 @@ func NewService(runtime RuntimeController) *Service {
 		panic("agent service requires a runtime")
 	}
 	return &Service{
-		Runtime:           runtime,
-		skillOptionsCache: newComposerSkillOptionsCache(),
+		Runtime:                   runtime,
+		skillOptionsCache:         newComposerSkillOptionsCache(),
+		providerAvailabilityCache: newProviderAvailabilityCache(),
+		capabilityCatalogCache:    newComposerCapabilityCatalogCache(),
 	}
 }
 
