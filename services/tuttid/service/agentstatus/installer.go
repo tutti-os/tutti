@@ -402,7 +402,12 @@ func installerLockCommand(spec InstallerSpec) string {
 		return spec.ShellCommand
 	}
 	if spec.Kind == InstallerKindExternalAgentRegistryNPM && spec.RegistryNPM != nil {
-		return string(spec.Kind) + ":" + spec.RegistryNPM.AgentID + ":" + spec.RegistryNPM.Package
+		return strings.Join([]string{
+			string(spec.Kind),
+			strings.TrimSpace(spec.RegistryNPM.AgentID),
+			strings.TrimSpace(spec.RegistryNPM.Package),
+			strings.TrimSpace(spec.RegistryNPM.PrefixDir),
+		}, ":")
 	}
 	return ""
 }
