@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -17,6 +18,8 @@ const (
 )
 
 var liveComposerModelDiscoveryGroup singleflight.Group
+
+var errLiveModelDiscoverySessionFailed = errors.New("live model discovery session failed")
 
 func (s *Service) liveModelDiscoveryTimeout() time.Duration {
 	if s.LiveModelDiscoveryTimeout != 0 {
@@ -115,11 +118,7 @@ func (s *Service) discoverLiveComposerModelsUncached(
 		return nil, normalizeRuntimeError(err)
 	}
 	defer func() {
-		_ = s.controller().Close(context.Background(), RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: session.ID,
-		})
-		_ = s.cleanupRuntime(context.Background(), workspaceID, session.ID)
+		_, _ = s.Delete(context.Background(), workspaceID, session.ID)
 	}()
 	return s.pollComposerModelOptions(ctx, workspaceID, session)
 }
@@ -139,6 +138,9 @@ func (s *Service) pollComposerModelOptions(
 		if options := extractModelOptionsFromRuntimeContext(current.RuntimeContext); len(options) > 0 {
 			return options, nil
 		}
+		if err := liveModelDiscoverySessionFailureError(current); err != nil {
+			return nil, err
+		}
 		select {
 		case <-pollCtx.Done():
 			return nil, pollCtx.Err()
@@ -149,6 +151,17 @@ func (s *Service) pollComposerModelOptions(
 			}
 		}
 	}
+}
+
+func liveModelDiscoverySessionFailureError(session RuntimeSession) error {
+	if strings.TrimSpace(session.Status) != "failed" {
+		return nil
+	}
+	lastError := strings.TrimSpace(session.LastError)
+	if lastError == "" {
+		return errLiveModelDiscoverySessionFailed
+	}
+	return fmt.Errorf("%w: %s", errLiveModelDiscoverySessionFailed, lastError)
 }
 
 func extractModelOptionsFromRuntimeContext(runtimeContext map[string]any) []ComposerConfigOptionValue {

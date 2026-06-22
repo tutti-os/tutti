@@ -1344,6 +1344,50 @@ func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
 	}
 }
 
+func TestGetComposerOptionsClaudeCodeDeletesHiddenDiscoverySession(t *testing.T) {
+	runtime := newFakeRuntime()
+	persisted := fakeSessionReader{sessions: map[string]PersistedSession{}}
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Provider != "claude-code" {
+			return session
+		}
+		session.RuntimeContext = map[string]any{
+			"configOptions": []any{
+				map[string]any{
+					"id":           "model",
+					"currentValue": "default",
+					"options": []any{
+						map[string]any{"name": "Default", "value": "default"},
+					},
+				},
+			},
+		}
+		persisted.sessions[input.WorkspaceID+":"+session.ID] = PersistedSession{
+			ID:          session.ID,
+			WorkspaceID: input.WorkspaceID,
+			Provider:    input.Provider,
+			Visible:     session.Visible,
+		}
+		return session
+	}
+	service := NewService(runtime)
+	service.SessionReader = persisted
+
+	if _, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+	}); err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(runtime.closeCalls) != 1 {
+		t.Fatalf("close calls = %d, want 1", len(runtime.closeCalls))
+	}
+	if len(persisted.sessions) != 0 {
+		t.Fatalf("persisted sessions = %#v, want hidden discovery session deleted", persisted.sessions)
+	}
+}
+
 func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
@@ -1380,6 +1424,39 @@ func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
 	}
 	if len(runtime.closeCalls) != 1 {
 		t.Fatalf("close calls = %d, want 1 with cache", len(runtime.closeCalls))
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeLiveModelsFailedStartupReturnsQuickly(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Provider != "claude-code" {
+			return session
+		}
+		session.Status = "failed"
+		session.LastError = "auth failed"
+		return session
+	}
+	service := NewService(runtime)
+	service.LiveModelDiscoveryTimeout = time.Second
+	startedAt := time.Now()
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-failed",
+		Cwd:         "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 400*time.Millisecond {
+		t.Fatalf("GetComposerOptions elapsed = %s, want failed discovery to return before polling timeout", elapsed)
+	}
+	if len(runtime.closeCalls) != 1 {
+		t.Fatalf("close calls = %d, want 1", len(runtime.closeCalls))
+	}
+	if options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 0 {
+		t.Fatalf("modelConfig = %#v, want untouched static fallback after failed discovery", options.ModelConfig)
 	}
 }
 
