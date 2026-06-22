@@ -14,6 +14,7 @@ import type {
 import { resolveWorkbenchHostPrepareClose } from "@tutti-os/workbench-surface";
 import type {
   IWorkspaceWorkbenchHostService,
+  WorkspaceOnboardingAutoOpenDiagnostic,
   WorkspaceCustomWallpaperSnapshot,
   WorkspaceCustomWallpaperStatus,
   WorkspaceWorkbenchBodyRendererContext,
@@ -349,6 +350,20 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       ? cachedSnapshot
       : await this.dependencies.repository.load(workspaceId);
     return hasWorkspaceOnboardingAutoOpened(snapshot);
+  }
+
+  logWorkspaceOnboardingAutoOpenDiagnostic(
+    diagnostic: WorkspaceOnboardingAutoOpenDiagnostic
+  ): void {
+    void this.dependencies.runtimeApi
+      .logRendererDiagnostic({
+        details: diagnostic.details ?? {},
+        event: diagnostic.event,
+        level: diagnostic.level,
+        source: "workspace-workbench",
+        workspaceId: diagnostic.workspaceId
+      })
+      .catch(() => undefined);
   }
 
   async markWorkspaceOnboardingAutoOpened(workspaceId: string): Promise<void> {

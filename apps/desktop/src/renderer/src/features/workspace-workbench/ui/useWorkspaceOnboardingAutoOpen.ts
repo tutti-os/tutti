@@ -33,7 +33,9 @@ interface OpenWorkspaceOnboardingInput {
   wait?: (delayMs: number) => Promise<void>;
   workbenchHostService: Pick<
     IWorkspaceWorkbenchHostService,
-    "hasWorkspaceOnboardingAutoOpened" | "markWorkspaceOnboardingAutoOpened"
+    | "hasWorkspaceOnboardingAutoOpened"
+    | "logWorkspaceOnboardingAutoOpenDiagnostic"
+    | "markWorkspaceOnboardingAutoOpened"
   >;
   workspaceId: string;
 }
@@ -48,19 +50,58 @@ export async function openWorkspaceOnboardingIfNeeded({
   workspaceId
 }: OpenWorkspaceOnboardingInput): Promise<WorkspaceOnboardingAutoOpenResult> {
   if (isCanceled()) {
+    logAutoOpenDiagnostic(workbenchHostService, {
+      appId,
+      event: "workspace-onboarding.auto-open.canceled",
+      level: "info",
+      maxAttempts,
+      reason: "before-start",
+      workspaceId
+    });
     return "canceled";
   }
+  logAutoOpenDiagnostic(workbenchHostService, {
+    appId,
+    event: "workspace-onboarding.auto-open.started",
+    level: "info",
+    maxAttempts,
+    workspaceId
+  });
   if (
     await workbenchHostService.hasWorkspaceOnboardingAutoOpened(workspaceId)
   ) {
+    logAutoOpenDiagnostic(workbenchHostService, {
+      appId,
+      event: "workspace-onboarding.auto-open.already-opened",
+      level: "info",
+      maxAttempts,
+      workspaceId
+    });
     return "already-opened";
   }
 
   await appCenterService.refreshCatalog(workspaceId);
+  logAutoOpenDiagnostic(workbenchHostService, {
+    appId,
+    event: "workspace-onboarding.auto-open.catalog-refreshed",
+    level: "debug",
+    maxAttempts,
+    workspaceId
+  });
 
   let openAttempted = false;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const attemptNumber = attempt + 1;
     if (isCanceled()) {
+      logAutoOpenDiagnostic(workbenchHostService, {
+        appId,
+        attempt: attemptNumber,
+        event: "workspace-onboarding.auto-open.canceled",
+        level: "info",
+        maxAttempts,
+        reason: "during-attempt",
+        workspaceId
+      });
       return "canceled";
     }
     await appCenterService.refresh(workspaceId);
@@ -68,11 +109,35 @@ export async function openWorkspaceOnboardingIfNeeded({
       (candidate) => candidate.appId === appId
     );
     if (!app) {
+      logAutoOpenDiagnostic(workbenchHostService, {
+        appId,
+        attempt: attemptNumber,
+        event: "workspace-onboarding.auto-open.app-missing",
+        level: "debug",
+        maxAttempts,
+        workspaceId
+      });
       await wait(500);
       continue;
     }
     if (!app.installed) {
+      logAutoOpenDiagnostic(workbenchHostService, {
+        appId,
+        attempt: attemptNumber,
+        event: "workspace-onboarding.auto-open.install-requested",
+        level: "info",
+        maxAttempts,
+        workspaceId
+      });
       await appCenterService.installApp({ appId, workspaceId });
+      logAutoOpenDiagnostic(workbenchHostService, {
+        appId,
+        attempt: attemptNumber,
+        event: "workspace-onboarding.auto-open.install-completed",
+        level: "info",
+        maxAttempts,
+        workspaceId
+      });
       await wait(500);
       continue;
     }
@@ -80,19 +145,61 @@ export async function openWorkspaceOnboardingIfNeeded({
     openAttempted = true;
     const opened = await appCenterService.openApp({ appId, workspaceId });
     if (!opened) {
+      logAutoOpenDiagnostic(workbenchHostService, {
+        appId,
+        attempt: attemptNumber,
+        event: "workspace-onboarding.auto-open.launch-not-ready",
+        level: "warn",
+        maxAttempts,
+        workspaceId
+      });
       await wait(500);
       continue;
     }
     if (isCanceled()) {
+      logAutoOpenDiagnostic(workbenchHostService, {
+        appId,
+        attempt: attemptNumber,
+        event: "workspace-onboarding.auto-open.canceled",
+        level: "info",
+        maxAttempts,
+        reason: "after-open",
+        workspaceId
+      });
       return "canceled";
     }
     await workbenchHostService.markWorkspaceOnboardingAutoOpened(workspaceId);
+    logAutoOpenDiagnostic(workbenchHostService, {
+      appId,
+      attempt: attemptNumber,
+      event: "workspace-onboarding.auto-open.opened",
+      level: "info",
+      maxAttempts,
+      workspaceId
+    });
     return "opened";
   }
 
   if (isCanceled()) {
+    logAutoOpenDiagnostic(workbenchHostService, {
+      appId,
+      event: "workspace-onboarding.auto-open.canceled",
+      level: "info",
+      maxAttempts,
+      reason: "after-attempts",
+      workspaceId
+    });
     return "canceled";
   }
+  logAutoOpenDiagnostic(workbenchHostService, {
+    appId,
+    event: openAttempted
+      ? "workspace-onboarding.auto-open.not-opened"
+      : "workspace-onboarding.auto-open.not-found",
+    level: "warn",
+    maxAttempts,
+    workspaceId
+  });
   return openAttempted ? "not-opened" : "not-found";
 }
 
@@ -126,7 +233,14 @@ export function useWorkspaceOnboardingAutoOpen({
       workbenchHostService,
       workspaceId: normalizedWorkspaceId
     })
-      .catch(() => {})
+      .catch((error: unknown) => {
+        logAutoOpenDiagnostic(workbenchHostService, {
+          event: "workspace-onboarding.auto-open.failed",
+          level: "error",
+          reason: stringifyDiagnosticError(error),
+          workspaceId: normalizedWorkspaceId
+        });
+      })
       .finally(() => {
         activeWorkspaceIdsRef.current.delete(normalizedWorkspaceId);
       });
@@ -140,4 +254,35 @@ export function useWorkspaceOnboardingAutoOpen({
 
 function defaultWait(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function logAutoOpenDiagnostic(
+  workbenchHostService: Pick<
+    IWorkspaceWorkbenchHostService,
+    "logWorkspaceOnboardingAutoOpenDiagnostic"
+  >,
+  input: {
+    appId?: string;
+    attempt?: number;
+    event: string;
+    level: "debug" | "info" | "warn" | "error";
+    maxAttempts?: number;
+    reason?: string;
+    workspaceId: string;
+  }
+): void {
+  const { event, level, workspaceId, ...details } = input;
+  workbenchHostService.logWorkspaceOnboardingAutoOpenDiagnostic({
+    details,
+    event,
+    level,
+    workspaceId
+  });
+}
+
+function stringifyDiagnosticError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
