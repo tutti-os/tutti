@@ -186,7 +186,7 @@ func (s *AppCenterService) InstallWithOptions(ctx context.Context, workspaceID s
 	if err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
-	runtimeProfileHint := s.installRuntimeProfileHint(appID, app)
+	runtimeProfileHint := s.installRuntimeProfileHint(ctx, appID, app)
 	s.startInstallJob(workspaceID, appID, options, runtimeProfileHint, func(ctx context.Context) (workspacebiz.AppPackage, error) {
 		return s.packageForInstall(ctx, appID)
 	})
@@ -201,8 +201,8 @@ func (s *AppCenterService) startInstallJob(workspaceID string, appID string, opt
 	return true
 }
 
-func (s *AppCenterService) installRuntimeProfileHint(appID string, app workspacebiz.WorkspaceApp) string {
-	remoteBuiltin, ok, err := s.remoteBuiltinForAppID(appID)
+func (s *AppCenterService) installRuntimeProfileHint(ctx context.Context, appID string, app workspacebiz.WorkspaceApp) string {
+	remoteBuiltin, ok, err := s.remoteBuiltinForAppID(ctx, appID)
 	if err == nil && ok && shouldUseRemoteBuiltin(app.Package, remoteBuiltin) {
 		return appRuntimeProfileForManifest(remoteBuiltin.Manifest)
 	}
