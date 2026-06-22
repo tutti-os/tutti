@@ -185,7 +185,7 @@ export function WorkbenchHostDock({
     new Map<string, (element: HTMLElement | null) => void>()
   );
   const previousAttentionTokenByEntryId = useRef(new Map<string, unknown>());
-  const pendingLaunchEntryIdsRef = useRef(new Set<string>());
+  const dockEntryClickThrottleUntilRef = useRef(new Map<string, number>());
   const attentionTimeouts = useRef(
     new Map<string, ReturnType<typeof setTimeout>>()
   );
@@ -845,6 +845,22 @@ export function WorkbenchHostDock({
     ]
   );
 
+  const isDockEntryClickThrottled = useCallback(
+    (anchorKey: string): boolean => {
+      const throttledUntil =
+        dockEntryClickThrottleUntilRef.current.get(anchorKey);
+      return throttledUntil !== undefined && Date.now() < throttledUntil;
+    },
+    []
+  );
+
+  const claimDockEntryClick = useCallback((anchorKey: string): void => {
+    dockEntryClickThrottleUntilRef.current.set(
+      anchorKey,
+      Date.now() + DOCK_ENTRY_CLICK_THROTTLE_MS
+    );
+  }, []);
+
   const beginDockMinimizedInteraction = useCallback(
     (anchorKey?: string): boolean => {
       hoverPanelRestTargetRef.current = null;
@@ -1356,15 +1372,19 @@ export function WorkbenchHostDock({
                       if (clickResolution.kind === "blocked") {
                         return;
                       }
-                      if (
-                        clickResolution.kind === "launch" &&
-                        pendingLaunchEntryIdsRef.current.has(entry.id)
-                      ) {
+                      if (isDockEntryClickThrottled(anchorKey)) {
                         return;
                       }
                       beginDockIconInteraction(anchorKey);
                     }}
                     onClick={(event) => {
+                      if (clickResolution.kind === "blocked") {
+                        return;
+                      }
+                      if (isDockEntryClickThrottled(anchorKey)) {
+                        return;
+                      }
+                      claimDockEntryClick(anchorKey);
                       logWorkbenchDockDebug("dock.click", debugDiagnostics, {
                         anchorKey,
                         clickResolution,
@@ -1449,30 +1469,18 @@ export function WorkbenchHostDock({
                           ).catch(() => {});
                           return;
                         case "launch":
-                          if (pendingLaunchEntryIdsRef.current.has(entry.id)) {
-                            return;
-                          }
-                          pendingLaunchEntryIdsRef.current.add(entry.id);
                           closePopup();
                           context.genie.launchNodeFromAnchor(
                             anchorKey,
                             entry.id,
                             () =>
-                              host
-                                .launchNode({
-                                  dockEntryId: entry.id,
-                                  payload: entry.launchPayload,
-                                  reason: "dock",
-                                  typeId: entry.typeId
-                                })
-                                .finally(() => {
-                                  pendingLaunchEntryIdsRef.current.delete(
-                                    entry.id
-                                  );
-                                })
+                              host.launchNode({
+                                dockEntryId: entry.id,
+                                payload: entry.launchPayload,
+                                reason: "dock",
+                                typeId: entry.typeId
+                              })
                           );
-                          return;
-                        case "blocked":
                           return;
                       }
                     }}
@@ -3131,6 +3139,7 @@ function dockWallpaperToneMapsEqual(
 }
 
 const DOCK_BOUNCE_MS = 600;
+const DOCK_ENTRY_CLICK_THROTTLE_MS = DOCK_BOUNCE_MS;
 
 function useDockBounce(slotRefs: RefObject<Map<string, HTMLElement>>) {
   const timeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());

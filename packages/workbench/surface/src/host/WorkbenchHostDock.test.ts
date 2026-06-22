@@ -248,7 +248,7 @@ test("dock presence animation callback does not retrigger the presence effect", 
 test("dock new window launch returns the created node id to the genie boundary", () => {
   assert.match(
     source,
-    /context\.genie\.launchNodeFromAnchor\(\s*anchorKey,\s*entry\.id,\s*\(\) =>\s*host\s*\.launchNode\(\{/
+    /context\.genie\.launchNodeFromAnchor\(\s*anchorKey,\s*entry\.id,\s*\(\) =>\s*host\.launchNode\(\{/
   );
   assert.match(
     source,
@@ -256,22 +256,27 @@ test("dock new window launch returns the created node id to the genie boundary",
   );
 });
 
-test("dock entry launch ignores rapid repeat clicks while a launch is in flight", () => {
+test("dock entry clicks within the bounce window are throttled like a single click", () => {
+  assert.match(source, /const DOCK_ENTRY_CLICK_THROTTLE_MS = DOCK_BOUNCE_MS;/);
   assert.match(
     source,
-    /const pendingLaunchEntryIdsRef = useRef\(new Set<string>\(\)\);/
+    /const dockEntryClickThrottleUntilRef = useRef\(new Map<string, number>\(\)\);/
   );
   assert.match(
     source,
-    /onPointerDown=\{\(\) => \{\s*if \(clickResolution\.kind === "blocked"\) \{\s*return;\s*\}\s*if \(\s*clickResolution\.kind === "launch" &&\s*pendingLaunchEntryIdsRef\.current\.has\(entry\.id\)\s*\) \{\s*return;\s*\}\s*beginDockIconInteraction\(anchorKey\);\s*\}\}/
+    /const isDockEntryClickThrottled = useCallback\(\s*\(anchorKey: string\): boolean => \{\s*const throttledUntil =\s*dockEntryClickThrottleUntilRef\.current\.get\(anchorKey\);\s*return throttledUntil !== undefined && Date\.now\(\) < throttledUntil;/
   );
   assert.match(
     source,
-    /case "launch":\s*if \(pendingLaunchEntryIdsRef\.current\.has\(entry\.id\)\) \{\s*return;\s*\}\s*pendingLaunchEntryIdsRef\.current\.add\(entry\.id\);\s*closePopup\(\);/
+    /const claimDockEntryClick = useCallback\(\(anchorKey: string\): void => \{\s*dockEntryClickThrottleUntilRef\.current\.set\(\s*anchorKey,\s*Date\.now\(\) \+ DOCK_ENTRY_CLICK_THROTTLE_MS\s*\);/
   );
   assert.match(
     source,
-    /\.finally\(\(\) => \{\s*pendingLaunchEntryIdsRef\.current\.delete\(\s*entry\.id\s*\);\s*\}\)/
+    /onPointerDown=\{\(\) => \{\s*if \(clickResolution\.kind === "blocked"\) \{\s*return;\s*\}\s*if \(isDockEntryClickThrottled\(anchorKey\)\) \{\s*return;\s*\}\s*beginDockIconInteraction\(anchorKey\);\s*\}\}/
+  );
+  assert.match(
+    source,
+    /onClick=\{\(event\) => \{\s*if \(clickResolution\.kind === "blocked"\) \{\s*return;\s*\}\s*if \(isDockEntryClickThrottled\(anchorKey\)\) \{\s*return;\s*\}\s*claimDockEntryClick\(anchorKey\);\s*logWorkbenchDockDebug\("dock\.click",/
   );
 });
 
