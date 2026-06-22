@@ -350,6 +350,7 @@ export interface AgentGUIViewLabels {
   slashStatusContextUnavailable: string;
   slashStatusLimitsUnavailable: string;
   usageChipLabel: (input: { percent: number }) => string;
+  usageTooltipLabel: string;
   usagePopoverTitle: string;
   usageContextWindowLabel: string;
   usageTokensLabel: string;
@@ -1722,6 +1723,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       slashStatusContextUnavailable: labels.slashStatusContextUnavailable,
       slashStatusLimitsUnavailable: labels.slashStatusLimitsUnavailable,
       usageChipLabel: labels.usageChipLabel,
+      usageTooltipLabel: labels.usageTooltipLabel,
       usagePopoverTitle: labels.usagePopoverTitle,
       usageContextWindowLabel: labels.usageContextWindowLabel,
       usageTokensLabel: labels.usageTokensLabel,

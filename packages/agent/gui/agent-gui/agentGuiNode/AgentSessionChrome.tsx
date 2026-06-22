@@ -415,7 +415,7 @@ export function AgentSessionChrome({
             visibleRecovery.kind === "failed"
               ? styles.chromeCardDanger
               : visibleRecovery.kind === "warning"
-                ? styles.chromeCardWarning
+                ? styles.chromeCardDanger
                 : visibleRecovery.kind === "activating"
                   ? styles.chromeCardConnecting
                   : styles.chromeCardMuted

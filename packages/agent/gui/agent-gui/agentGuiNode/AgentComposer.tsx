@@ -261,6 +261,7 @@ export interface AgentComposerProps {
     slashStatusContextUnavailable: string;
     slashStatusLimitsUnavailable: string;
     usageChipLabel: (input: { percent: number }) => string;
+    usageTooltipLabel: string;
     usagePopoverTitle: string;
     usageContextWindowLabel: string;
     usageTokensLabel: string;
@@ -450,6 +451,7 @@ function AgentUsageChip({
   labels: Pick<
     AgentComposerProps["labels"],
     | "usageChipLabel"
+    | "usageTooltipLabel"
     | "usagePopoverTitle"
     | "usageContextWindowLabel"
     | "usageLimitsLabel"
@@ -465,24 +467,31 @@ function AgentUsageChip({
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={chipLabel}
-          className="nodrag relative mr-2 inline-flex size-4 shrink-0 cursor-default items-center justify-center rounded-full p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] [-webkit-app-region:no-drag]"
-          data-testid="agent-gui-usage-chip"
-          data-usage-level={usageLevel}
-          title={chipLabel}
-          style={{
-            background: `conic-gradient(${ringColor} ${clampedPercent}%, color-mix(in srgb, ${ringColor} 16%, transparent) 0)`
-          }}
-        >
-          <span
-            aria-hidden="true"
-            className="absolute inset-0.5 rounded-full bg-[var(--agent-gui-surface-raised,var(--background-fronted))]"
-          />
-        </button>
-      </PopoverTrigger>
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <PopoverTrigger asChild>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={chipLabel}
+                className="nodrag relative mr-2 inline-flex size-4 shrink-0 cursor-default items-center justify-center rounded-full p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] [-webkit-app-region:no-drag]"
+                data-testid="agent-gui-usage-chip"
+                data-usage-level={usageLevel}
+                title={chipLabel}
+                style={{
+                  background: `conic-gradient(${ringColor} ${clampedPercent}%, color-mix(in srgb, ${ringColor} 16%, transparent) 0)`
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0.5 rounded-full bg-[var(--agent-gui-surface-raised,var(--background-fronted))]"
+                />
+              </button>
+            </TooltipTrigger>
+          </PopoverTrigger>
+          <TooltipContent side="top">{labels.usageTooltipLabel}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <PopoverContent
         side="bottom"
         align="end"
@@ -2483,6 +2492,7 @@ export function AgentComposer({
                   limits={slashStatus?.limits ?? []}
                   labels={{
                     usageChipLabel: labels.usageChipLabel,
+                    usageTooltipLabel: labels.usageTooltipLabel,
                     usagePopoverTitle: labels.usagePopoverTitle,
                     usageContextWindowLabel: labels.usageContextWindowLabel,
                     usageLimitsLabel: labels.usageLimitsLabel

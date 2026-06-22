@@ -236,7 +236,7 @@ describe("AgentSessionChrome", () => {
     expect(recoveryChrome).toHaveAttribute("data-expanded", "false");
   });
 
-  it("renders warning recovery chrome without danger alert behavior", () => {
+  it("renders warning recovery chrome with danger color without alert behavior", () => {
     render(
       <AgentSessionChrome
         chrome={{
@@ -271,10 +271,10 @@ describe("AgentSessionChrome", () => {
       .closest("section");
     expect(recoveryChrome).not.toBeNull();
     expect(recoveryChrome?.className).toContain(
-      "agent-gui-chrome__card--warning"
+      "agent-gui-chrome__card--danger"
     );
     expect(recoveryChrome?.className).not.toContain(
-      "agent-gui-chrome__card--danger"
+      "agent-gui-chrome__card--warning"
     );
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();

@@ -1621,6 +1621,9 @@ describe("AgentComposer", () => {
     expect(usageChip).toHaveClass("mr-2");
     expect(usageChip).not.toHaveAttribute("data-slot", "badge");
 
+    fireEvent.pointerMove(usageChip, { pointerType: "mouse" });
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("上下文用量");
+
     fireEvent.click(usageChip);
     await waitFor(() =>
       expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible()
@@ -2882,6 +2885,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     slashStatusContextUnavailable: "Context usage unavailable",
     slashStatusLimitsUnavailable: "Rate limits unavailable",
     usageChipLabel: ({ percent }) => `上下文 ${percent}%`,
+    usageTooltipLabel: "上下文用量",
     usagePopoverTitle: "用量",
     usageContextWindowLabel: "上下文窗口",
     usageTokensLabel: "Token 用量",

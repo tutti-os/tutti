@@ -6146,7 +6146,7 @@ describe("AgentGUINode", () => {
     ).toBeNull();
   });
 
-  it("renders new-conversation-only model inline notices as warning chrome", () => {
+  it("renders new-conversation-only model inline notices with danger color", () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
       conversationDetail: detailViewModel(),
@@ -6174,10 +6174,10 @@ describe("AgentGUINode", () => {
       .closest("section");
     expect(warningChrome).not.toBeNull();
     expect(warningChrome?.className).toContain(
-      "agent-gui-chrome__card--warning"
+      "agent-gui-chrome__card--danger"
     );
     expect(warningChrome?.className).not.toContain(
-      "agent-gui-chrome__card--danger"
+      "agent-gui-chrome__card--warning"
     );
     expect(
       within(screen.getByTestId("agent-gui-bottom-dock")).queryByRole("alert")

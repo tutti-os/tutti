@@ -476,6 +476,7 @@ export const zhCN = {
       slashStatusContextUnavailable: "上下文用量不可用",
       slashStatusLimitsUnavailable: "当前 Agent 未提供额度限制",
       usageChipLabel: "上下文 {{percent}}%",
+      usageTooltipLabel: "上下文用量",
       usagePopoverTitle: "计划用量",
       usageContextWindowLabel: "上下文窗口",
       usageTokensLabel: "Token 用量",

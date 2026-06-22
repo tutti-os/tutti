@@ -818,6 +818,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       ),
       usageChipLabel: (input: { percent: number }) =>
         t("agentHost.agentGui.usageChipLabel", { percent: input.percent }),
+      usageTooltipLabel: t("agentHost.agentGui.usageTooltipLabel"),
       usagePopoverTitle: t("agentHost.agentGui.usagePopoverTitle"),
       usageContextWindowLabel: t("agentHost.agentGui.usageContextWindowLabel"),
       usageTokensLabel: t("agentHost.agentGui.usageTokensLabel"),

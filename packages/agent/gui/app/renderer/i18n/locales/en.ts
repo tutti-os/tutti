@@ -519,6 +519,7 @@ export const en = {
       slashStatusContextUnavailable: "Context usage unavailable",
       slashStatusLimitsUnavailable: "Rate limits unavailable from this agent",
       usageChipLabel: "Context {{percent}}%",
+      usageTooltipLabel: "Context usage",
       usagePopoverTitle: "Plan usage",
       usageContextWindowLabel: "Context window",
       usageTokensLabel: "Tokens",
