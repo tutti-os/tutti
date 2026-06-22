@@ -13,10 +13,6 @@ type Resolver struct {
 	HomeDir          func() (string, error)
 	IsExecutableFile func(string) bool
 	LookPath         func(string) (string, error)
-	// ScutilProxy returns the raw output of `scutil --proxy` (and whether it is
-	// available). It is injectable for tests; the default reads the macOS system
-	// proxy and is a no-op on other platforms. See proxy.go.
-	ScutilProxy func() (string, bool)
 }
 
 // nestingGuardEnvKeys are the environment variables a parent Claude Code
@@ -45,10 +41,10 @@ func (r Resolver) Env(overrides []string) []string {
 		pathGroups = append(pathGroups, filepath.SplitList(envValue(baseEnv, pathKey)))
 	}
 	pathDirs := mergePathDirs(pathGroups...)
-	if len(pathDirs) > 0 {
-		env = setEnvValue(env, pathKey, strings.Join(pathDirs, string(os.PathListSeparator)))
+	if len(pathDirs) == 0 {
+		return env
 	}
-	return r.injectSystemProxyEnv(env)
+	return setEnvValue(env, pathKey, strings.Join(pathDirs, string(os.PathListSeparator)))
 }
 
 func (r Resolver) Resolve(command string, env []string) string {
