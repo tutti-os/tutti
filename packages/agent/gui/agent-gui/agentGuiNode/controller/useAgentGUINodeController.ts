@@ -139,6 +139,12 @@ import {
 import { useAgentGuiConversationList } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
 import {
+  clearConversationCreationOwner,
+  clearFailedNewConversation,
+  isFailedNewConversation,
+  markFailedNewConversation
+} from "./agentGuiConversationCreationStore";
+import {
   buildAgentSessionMentionHref,
   formatAgentMentionMarkdown,
   normalizeAgentSessionMentionTitle
@@ -2433,7 +2439,12 @@ export function useAgentGUINodeController({
   );
   const startingConversationIdRef = useRef<string | null>(null);
   const activatedConversationIdsRef = useRef(new Set<string>());
-  const failedNewConversationIdsRef = useRef(new Set<string>());
+  // Stable owner key for the conversation-creation store, read inside async
+  // callbacks without threading it through dependency arrays.
+  const conversationCreationOwnerKeyRef = useRef(
+    conversationListActiveOwnerKey
+  );
+  conversationCreationOwnerKeyRef.current = conversationListActiveOwnerKey;
   const pendingTurnIdBySessionIdRef = useRef<Record<string, string>>({});
   const conversationIdsRef = useRef(
     new Set(conversations.map((conversation) => conversation.id))
@@ -3782,7 +3793,12 @@ export function useAgentGUINodeController({
       if (!agentSessionId) {
         return;
       }
-      if (failedNewConversationIdsRef.current.has(agentSessionId)) {
+      if (
+        isFailedNewConversation(
+          conversationCreationOwnerKeyRef.current,
+          agentSessionId
+        )
+      ) {
         return;
       }
       if (startingConversationIdRef.current === agentSessionId) {
@@ -4301,7 +4317,12 @@ export function useAgentGUINodeController({
       setDetailError(null);
       return;
     }
-    if (failedNewConversationIdsRef.current.has(activeConversationId)) {
+    if (
+      isFailedNewConversation(
+        conversationCreationOwnerKeyRef.current,
+        activeConversationId
+      )
+    ) {
       return;
     }
     if (startingConversationIdRef.current === activeConversationId) {
@@ -4375,6 +4396,7 @@ export function useAgentGUINodeController({
         activatedConversationIdsRef.current.delete(pendingNewConversationId);
         void unactivateRef.current(pendingNewConversationId);
       }
+      clearConversationCreationOwner(conversationCreationOwnerKeyRef.current);
     };
   }, [
     scheduleActivityStreamStateReload,
@@ -4436,7 +4458,10 @@ export function useAgentGUINodeController({
           !activatedConversationIdsRef.current.has(
             snapshotDraftAgentSessionId
           ) &&
-          !failedNewConversationIdsRef.current.has(snapshotDraftAgentSessionId)
+          !isFailedNewConversation(
+            conversationCreationOwnerKeyRef.current,
+            snapshotDraftAgentSessionId
+          )
             ? snapshotDraftAgentSessionId
             : null;
         const agentSessionId =
@@ -4523,7 +4548,10 @@ export function useAgentGUINodeController({
               optimisticSortTimeUnixMs ?? 0
             )
           };
-          failedNewConversationIdsRef.current.delete(conversation.id);
+          clearFailedNewConversation(
+            conversationCreationOwnerKeyRef.current,
+            conversation.id
+          );
           if (startingConversationIdRef.current === agentSessionId) {
             startingConversationIdRef.current = null;
           }
@@ -4577,7 +4605,10 @@ export function useAgentGUINodeController({
           }));
           persistActiveConversation(conversation.id);
           if (activationFailed) {
-            failedNewConversationIdsRef.current.add(conversation.id);
+            markFailedNewConversation(
+              conversationCreationOwnerKeyRef.current,
+              conversation.id
+            );
             setIsLoadingMessages(false);
             void refreshMessagesFromSnapshot(conversation.id);
             void syncConversationListProjection(conversation.id);
@@ -4646,7 +4677,10 @@ export function useAgentGUINodeController({
             sortTimeUnixMs: failedAtUnixMs,
             updatedAtUnixMs: failedAtUnixMs
           };
-          failedNewConversationIdsRef.current.add(agentSessionId);
+          markFailedNewConversation(
+            conversationCreationOwnerKeyRef.current,
+            agentSessionId
+          );
           setTransientConversation(failedConversation);
           if (startingConversationIdRef.current === agentSessionId) {
             startingConversationIdRef.current = null;
@@ -4852,7 +4886,10 @@ export function useAgentGUINodeController({
     if (isNonRetryableResumeErrorCode(activation.codeFor(agentSessionId))) {
       return;
     }
-    failedNewConversationIdsRef.current.delete(agentSessionId);
+    clearFailedNewConversation(
+      conversationCreationOwnerKeyRef.current,
+      agentSessionId
+    );
     setDetailError(null);
     const existingMessages = resolveSessionMessages(agentSessionId);
     if (existingMessages.length === 0) {
