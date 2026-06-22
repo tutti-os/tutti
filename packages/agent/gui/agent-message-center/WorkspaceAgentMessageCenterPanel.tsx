@@ -36,7 +36,8 @@ import {
   MessageCenterIdentityLabel,
   resolveMessageCenterNotificationAction,
   WorkspaceAgentMessageCenterStack,
-  WorkspaceAgentMessageCenterCard
+  WorkspaceAgentMessageCenterCard,
+  type WorkspaceAgentMessageCenterCardProps
 } from "./WorkspaceAgentMessageCenterCard";
 import {
   buildMessageCenterProviderOptions,
@@ -56,6 +57,11 @@ export {
 export type { WorkspaceAgentMessageCenterCardProps } from "./WorkspaceAgentMessageCenterCard";
 
 const MESSAGE_CENTER_TOOLTIP_DELAY_MS = 300;
+const MESSAGE_CENTER_STACK_EAGER_SUMMARY_COUNT = 8;
+
+type WorkspaceAgentMessageCenterPromptInput = Parameters<
+  WorkspaceAgentMessageCenterCardProps["onSubmitPrompt"]
+>[0];
 
 export interface WorkspaceAgentMessageCenterPanelProps {
   i18n?: I18nRuntime<string> | null;
@@ -182,6 +188,14 @@ function WorkspaceAgentMessageCenterPanelContent({
   const itemGroups = useMemo(
     () => groupMessageCenterItems(listItems, groupBy, t),
     [groupBy, t, listItems]
+  );
+  const itemGroupStacks = useMemo(
+    () =>
+      itemGroups.map((group) => ({
+        ...group,
+        stacks: partitionMessageCenterItemsByAgentUser(group.items)
+      })),
+    [itemGroups]
   );
   const highlightedItem = useMemo(
     () =>
@@ -351,8 +365,8 @@ function WorkspaceAgentMessageCenterPanelContent({
     if (!open || !highlightedItemId) {
       return;
     }
-    for (const group of itemGroups) {
-      for (const stack of partitionMessageCenterItemsByAgentUser(group.items)) {
+    for (const group of itemGroupStacks) {
+      for (const stack of group.stacks) {
         if (
           stack.items.length > 1 &&
           stack.items.some((item) => item.id === highlightedItemId)
@@ -362,7 +376,7 @@ function WorkspaceAgentMessageCenterPanelContent({
         }
       }
     }
-  }, [expandStack, highlightedItemId, itemGroups, open]);
+  }, [expandStack, highlightedItemId, itemGroupStacks, open]);
 
   useLayoutEffect(() => {
     if (!open || !highlightedItemId) {
@@ -410,6 +424,59 @@ function WorkspaceAgentMessageCenterPanelContent({
       window.clearTimeout(timeoutId);
     };
   }, [highlightedItemId, onHighlightedItemSettled, open]);
+
+  const renderMessageCenterCard = useCallback(
+    (
+      item: WorkspaceAgentMessageCenterItem,
+      options: { stackedIndex?: number } = {}
+    ) => {
+      const highlighted = item.id === highlightedItemId;
+      const stackedIndex = options.stackedIndex;
+      const card = (
+        <MessageCenterRenderedCard
+          key={item.agentSessionId}
+          highlighted={highlighted}
+          item={item}
+          isSubmitting={
+            submittingPromptKey ===
+            `${item.agentSessionId}:${item.pendingPrompt?.requestId}`
+          }
+          lazySummary={
+            stackedIndex !== undefined &&
+            stackedIndex >= MESSAGE_CENTER_STACK_EAGER_SUMMARY_COUNT
+          }
+          registerNode={setItemNode}
+          onLinkAction={onLinkAction}
+          onOpenChat={onOpenChat}
+          onSubmitPrompt={submitPrompt}
+        />
+      );
+
+      if (stackedIndex === undefined) {
+        return card;
+      }
+
+      return (
+        <div
+          key={item.agentSessionId}
+          className="min-w-0 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
+          style={{
+            animationDelay: `${Math.min(stackedIndex * 24, 96)}ms`
+          }}
+        >
+          {card}
+        </div>
+      );
+    },
+    [
+      highlightedItemId,
+      onLinkAction,
+      onOpenChat,
+      setItemNode,
+      submitPrompt,
+      submittingPromptKey
+    ]
+  );
 
   return (
     <Drawer
@@ -479,7 +546,7 @@ function WorkspaceAgentMessageCenterPanelContent({
                     }
                   />
                 ) : null}
-                {itemGroups.map((group) => (
+                {itemGroupStacks.map((group) => (
                   <section
                     key={group.id}
                     className="flex min-w-0 flex-col gap-2.5"
@@ -489,55 +556,13 @@ function WorkspaceAgentMessageCenterPanelContent({
                       <MessageCenterGroupHeading group={group} />
                     </div>
                     {(() => {
-                      const renderCard = (
-                        item: WorkspaceAgentMessageCenterItem,
-                        options: { stackedIndex?: number } = {}
-                      ) => {
-                        const highlighted = item.id === highlightedItemId;
-                        const card = (
-                          <MessageCenterCard
-                            key={item.agentSessionId}
-                            cardRef={(node) => setItemNode(item.id, node)}
-                            highlighted={highlighted}
-                            item={item}
-                            isSubmitting={
-                              submittingPromptKey ===
-                              `${item.agentSessionId}:${item.pendingPrompt?.requestId}`
-                            }
-                            onLinkAction={onLinkAction}
-                            onOpenChat={onOpenChat}
-                            onSubmitPrompt={(input) =>
-                              void submitPrompt(item, input)
-                            }
-                          />
-                        );
-
-                        if (options.stackedIndex === undefined) {
-                          return card;
-                        }
-
-                        return (
-                          <div
-                            key={item.agentSessionId}
-                            className="min-w-0 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
-                            style={{
-                              animationDelay: `${Math.min(options.stackedIndex * 24, 96)}ms`
-                            }}
-                          >
-                            {card}
-                          </div>
-                        );
-                      };
-
-                      return partitionMessageCenterItemsByAgentUser(
-                        group.items
-                      ).map((stack) => {
+                      return group.stacks.map((stack) => {
                         const firstItem = stack.items[0];
                         if (!firstItem) {
                           return null;
                         }
                         if (stack.items.length === 1) {
-                          return renderCard(firstItem);
+                          return renderMessageCenterCard(firstItem);
                         }
                         const stackId =
                           group.id === stack.id
@@ -549,9 +574,9 @@ function WorkspaceAgentMessageCenterPanelContent({
                             expanded={expandedStackIds.has(stackId)}
                             groupId={stackId}
                             items={stack.items}
-                            renderCard={renderCard}
-                            onCollapse={() => collapseStack(stackId)}
-                            onExpand={() => expandStack(stackId)}
+                            renderCard={renderMessageCenterCard}
+                            onCollapse={collapseStack}
+                            onExpand={expandStack}
                           />
                         );
                       });
@@ -588,6 +613,55 @@ function WorkspaceAgentMessageCenterPanelContent({
 
 const MessageCenterCard = WorkspaceAgentMessageCenterCard;
 const MessageCenterStack = WorkspaceAgentMessageCenterStack;
+
+const MessageCenterRenderedCard = memo(function MessageCenterRenderedCard({
+  highlighted,
+  isSubmitting,
+  item,
+  lazySummary,
+  onLinkAction,
+  onOpenChat,
+  onSubmitPrompt,
+  registerNode
+}: {
+  highlighted: boolean;
+  isSubmitting: boolean;
+  item: WorkspaceAgentMessageCenterItem;
+  lazySummary: boolean;
+  onLinkAction?: (action: WorkspaceLinkAction) => void;
+  onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
+  onSubmitPrompt: (
+    item: WorkspaceAgentMessageCenterItem,
+    input: WorkspaceAgentMessageCenterPromptInput
+  ) => void;
+  registerNode: (itemId: string, node: HTMLElement | null) => void;
+}): JSX.Element {
+  const cardRef = useCallback(
+    (node: HTMLElement | null) => {
+      registerNode(item.id, node);
+    },
+    [item.id, registerNode]
+  );
+  const handleSubmitPrompt = useCallback(
+    (input: WorkspaceAgentMessageCenterPromptInput) => {
+      onSubmitPrompt(item, input);
+    },
+    [item, onSubmitPrompt]
+  );
+
+  return (
+    <MessageCenterCard
+      cardRef={cardRef}
+      highlighted={highlighted}
+      item={item}
+      isSubmitting={isSubmitting}
+      lazySummary={lazySummary}
+      onLinkAction={onLinkAction}
+      onOpenChat={onOpenChat}
+      onSubmitPrompt={handleSubmitPrompt}
+    />
+  );
+});
 
 function MessageCenterGroupHeading({
   group

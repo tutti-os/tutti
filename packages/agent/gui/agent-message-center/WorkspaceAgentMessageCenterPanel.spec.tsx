@@ -1363,6 +1363,55 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     expect(screen.queryByText("Running task 5")).toBeNull();
   });
 
+  it("caps oversized stack labels and expanded card rendering", () => {
+    const items = Array.from({ length: 127 }, (_, index) =>
+      createMessageCenterItem({
+        agentSessionId: `working-session-${index + 1}`,
+        title: `Running task ${index + 1}`,
+        status: "working"
+      })
+    );
+
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel(items)}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    const stack = screen.getByTestId(
+      "workspace-agent-message-stack-working:agent-user:codex:unknown-user"
+    );
+    expect(stack).toHaveAttribute("data-stack-count", "127");
+
+    const summary = screen.getByTestId(
+      "workspace-agent-message-stack-summary-working:agent-user:codex:unknown-user"
+    );
+    expect(summary).toHaveAttribute("data-stack-summary-count", "127");
+    expect(summary).toHaveTextContent("99+ messages");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand 99+ collapsed messages" })
+    );
+
+    expect(stack).toHaveAttribute("data-stack-state", "expanded");
+    expect(screen.getByText("Running task 100")).toBeTruthy();
+    expect(screen.queryByText("Running task 101")).toBeNull();
+    expect(
+      stack.querySelectorAll("[data-message-center-item-id]")
+    ).toHaveLength(100);
+    expect(
+      screen
+        .getAllByText("99+ messages")
+        .some((element) =>
+          element.parentElement?.classList.contains("text-[13px]")
+        )
+    ).toBe(true);
+  });
+
   it("expands a stack for a highlighted stacked item and still collapses on demand", async () => {
     render(
       <WorkspaceAgentMessageCenterPanel

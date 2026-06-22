@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -7,6 +8,7 @@ import {
   type AnimationEvent as ReactAnimationEvent,
   type JSX,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
   type ReactNode
 } from "react";
 import { ChevronDown, ChevronUp, ExternalLink, Info } from "lucide-react";
@@ -40,6 +42,7 @@ export interface WorkspaceAgentMessageCenterCardProps {
   highlighted?: boolean;
   interactive?: boolean;
   isSubmitting: boolean;
+  lazySummary?: boolean;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
   onSubmitPrompt: (input: {
@@ -56,119 +59,126 @@ function stopMessageCenterTextPointerPropagation(
   event.stopPropagation();
 }
 
-export function WorkspaceAgentMessageCenterCard({
-  cardRef,
-  highlighted = false,
-  interactive = true,
-  item,
-  isSubmitting,
-  onLinkAction,
-  onOpenChat,
-  onSubmitPrompt
-}: WorkspaceAgentMessageCenterCardProps): JSX.Element {
-  "use memo";
-  const { t } = useTranslation();
-  const prompt = item.pendingPrompt;
-  const displayTitle = normalizeAgentTitleText(item.title);
-  const summary = messageCenterVisibleSummary(item);
-  const displayStatus = statusClass(item);
-  const statusLabel = workspaceAgentActivityStatusLabel(displayStatus, t);
+export const WorkspaceAgentMessageCenterCard = memo(
+  function WorkspaceAgentMessageCenterCard({
+    cardRef,
+    highlighted = false,
+    interactive = true,
+    item,
+    isSubmitting,
+    lazySummary = false,
+    onLinkAction,
+    onOpenChat,
+    onSubmitPrompt
+  }: WorkspaceAgentMessageCenterCardProps): JSX.Element {
+    "use memo";
+    const { t } = useTranslation();
+    const prompt = item.pendingPrompt;
+    const displayTitle = normalizeAgentTitleText(item.title);
+    const summary = messageCenterVisibleSummary(item);
+    const displayStatus = statusClass(item);
+    const statusLabel = workspaceAgentActivityStatusLabel(displayStatus, t);
 
-  return (
-    <article
-      ref={cardRef}
-      className={cn(
-        "workspace-agent-message-center__card group/message-card flex min-w-0 flex-col gap-2.5 rounded-lg border border-[var(--line-2)] bg-[var(--background-fronted)] p-3.5 outline outline-0 outline-offset-2 outline-transparent transition-[background-color,border-color,outline-color]",
-        isWaitingMessageCenterItem(item) &&
-          "agent-gui-edge-glow border-[var(--tutti-purple-border)] bg-[var(--tutti-purple-bg)]",
-        highlighted && "outline-2 outline-[var(--accent)]"
-      )}
-      data-highlighted={highlighted ? "true" : undefined}
-      data-message-center-digest-kind={item.digest.primary.kind}
-      data-message-center-item-id={item.id}
-      data-waiting={isWaitingMessageCenterItem(item) ? "true" : undefined}
-      data-status={displayStatus}
-      tabIndex={highlighted ? -1 : undefined}
-    >
-      <div className="flex min-w-0 items-center justify-between gap-2.5">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <h3
-                className="workspace-agent-message-center__copy-text min-w-0 truncate text-[13px] font-bold leading-5 text-[var(--text-secondary)]"
-                onPointerDown={stopMessageCenterTextPointerPropagation}
+    return (
+      <article
+        ref={cardRef}
+        className={cn(
+          "workspace-agent-message-center__card group/message-card flex min-w-0 flex-col gap-2.5 rounded-lg border border-[var(--line-2)] bg-[var(--background-fronted)] p-3.5 outline outline-0 outline-offset-2 outline-transparent transition-[background-color,border-color,outline-color]",
+          isWaitingMessageCenterItem(item) &&
+            "agent-gui-edge-glow border-[var(--tutti-purple-border)] bg-[var(--tutti-purple-bg)]",
+          highlighted && "outline-2 outline-[var(--accent)]"
+        )}
+        data-highlighted={highlighted ? "true" : undefined}
+        data-message-center-digest-kind={item.digest.primary.kind}
+        data-message-center-item-id={item.id}
+        data-waiting={isWaitingMessageCenterItem(item) ? "true" : undefined}
+        data-status={displayStatus}
+        tabIndex={highlighted ? -1 : undefined}
+      >
+        <div className="flex min-w-0 items-center justify-between gap-2.5">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <h3
+                  className="workspace-agent-message-center__copy-text min-w-0 truncate text-[13px] font-bold leading-5 text-[var(--text-secondary)]"
+                  onPointerDown={stopMessageCenterTextPointerPropagation}
+                >
+                  {displayTitle}
+                </h3>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                align="start"
+                className="max-w-[min(360px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]"
               >
                 {displayTitle}
-              </h3>
-            </TooltipTrigger>
-            <TooltipContent
-              side="top"
-              align="start"
-              className="max-w-[min(360px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]"
-            >
-              {displayTitle}
-            </TooltipContent>
-          </Tooltip>
-          {item.cwd ? <ProjectPathInfo path={item.cwd} /> : null}
-        </div>
-        <span
-          className="workspace-agent-message-center__status inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold leading-4 text-[var(--text-secondary)]"
-          data-status={displayStatus}
-          title={statusLabel}
-        >
-          <StatusDot
-            tone={messageCenterStatusTone(item)}
-            pulse={
-              isWaitingMessageCenterItem(item) || item.status === "working"
-            }
-            size="sm"
+              </TooltipContent>
+            </Tooltip>
+            {item.cwd ? <ProjectPathInfo path={item.cwd} /> : null}
+          </div>
+          <span
+            className="workspace-agent-message-center__status inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold leading-4 text-[var(--text-secondary)]"
+            data-status={displayStatus}
             title={statusLabel}
-          />
-          <span>{statusLabel}</span>
-        </span>
-      </div>
-
-      {summary ? (
-        <MessageCenterSummary
-          item={item}
-          onLinkAction={onLinkAction}
-          summary={summary}
-          emptyLabel={t("agentHost.workspaceAgentMessageCenterNoSummary")}
-        />
-      ) : null}
-
-      {prompt && interactive ? (
-        <div className="min-w-0">
-          <AgentInteractivePromptSurface
-            embedded
-            variant="compact"
-            keyboardShortcuts={false}
-            prompt={prompt}
-            isSubmitting={isSubmitting}
-            onSubmit={onSubmitPrompt}
-            labels={buildWorkspaceAgentInteractivePromptLabels(
-              t,
-              item.provider
-            )}
-          />
+          >
+            <StatusDot
+              tone={messageCenterStatusTone(item)}
+              pulse={
+                isWaitingMessageCenterItem(item) || item.status === "working"
+              }
+              size="sm"
+              title={statusLabel}
+            />
+            <span>{statusLabel}</span>
+          </span>
         </div>
-      ) : null}
 
-      <MessageCenterOpenChatButton
-        provider={item.provider}
-        item={item}
-        label={t("agentHost.workspaceAgentMessageCenterOpenChat")}
-        onOpenChat={onOpenChat}
-        // Interactive deck cards only offer the primary decision inline; the
-        // jump to the conversation is the path for everything else (e.g.
-        // refining a plan), so keep it always visible rather than hover-only.
-        alwaysVisible={interactive && prompt !== null}
-      />
-    </article>
-  );
-}
+        {summary ? (
+          <MessageCenterSummary
+            item={item}
+            lazy={lazySummary}
+            onLinkAction={onLinkAction}
+            summary={summary}
+            emptyLabel={t("agentHost.workspaceAgentMessageCenterNoSummary")}
+          />
+        ) : null}
+
+        {prompt && interactive ? (
+          <div className="min-w-0">
+            <AgentInteractivePromptSurface
+              embedded
+              variant="compact"
+              keyboardShortcuts={false}
+              prompt={prompt}
+              isSubmitting={isSubmitting}
+              onSubmit={onSubmitPrompt}
+              labels={buildWorkspaceAgentInteractivePromptLabels(
+                t,
+                item.provider
+              )}
+            />
+          </div>
+        ) : null}
+
+        <MessageCenterOpenChatButton
+          provider={item.provider}
+          item={item}
+          label={t("agentHost.workspaceAgentMessageCenterOpenChat")}
+          onOpenChat={onOpenChat}
+          // Interactive deck cards only offer the primary decision inline; the
+          // jump to the conversation is the path for everything else (e.g.
+          // refining a plan), so keep it always visible rather than hover-only.
+          alwaysVisible={interactive && prompt !== null}
+        />
+      </article>
+    );
+  }
+);
 
 const STACK_PRESENCE_FALLBACK_MS = 380;
+const MESSAGE_CENTER_STACK_RENDER_LIMIT = 100;
+const MESSAGE_CENTER_STACK_DISPLAY_COUNT_LIMIT = 99;
+const MESSAGE_CENTER_SUMMARY_LAZY_ROOT_MARGIN = "480px 0px";
 
 function useStackRegionPresence(visible: boolean): {
   closing: boolean;
@@ -208,127 +218,133 @@ function useStackRegionPresence(visible: boolean): {
   return { closing, mounted, onAnimationEnd };
 }
 
-export function WorkspaceAgentMessageCenterStack({
-  className,
-  expanded,
-  groupId,
-  items,
-  renderCard,
-  onCollapse,
-  onExpand
-}: {
-  className?: string;
-  expanded: boolean;
-  groupId: string;
-  items: WorkspaceAgentMessageCenterItem[];
-  renderCard: (
-    item: WorkspaceAgentMessageCenterItem,
-    options?: { stackedIndex?: number }
-  ) => ReactNode;
-  onCollapse: () => void;
-  onExpand: () => void;
-}): JSX.Element | null {
-  "use memo";
-  const { t } = useTranslation();
-  const summaryRegion = useStackRegionPresence(!expanded);
-  const cardsRegion = useStackRegionPresence(expanded);
-  if (items.length < 2) {
-    return null;
-  }
-  const collapseLabel = t(
-    "agentHost.workspaceAgentMessageCenterCollapseStackAria"
-  );
+export const WorkspaceAgentMessageCenterStack = memo(
+  function WorkspaceAgentMessageCenterStack({
+    className,
+    expanded,
+    groupId,
+    items,
+    renderCard,
+    onCollapse,
+    onExpand
+  }: {
+    className?: string;
+    expanded: boolean;
+    groupId: string;
+    items: WorkspaceAgentMessageCenterItem[];
+    renderCard: (
+      item: WorkspaceAgentMessageCenterItem,
+      options?: { stackedIndex?: number }
+    ) => ReactNode;
+    onCollapse: (groupId: string) => void;
+    onExpand: (groupId: string) => void;
+  }): JSX.Element | null {
+    "use memo";
+    const { t } = useTranslation();
+    const summaryRegion = useStackRegionPresence(!expanded);
+    const cardsRegion = useStackRegionPresence(expanded);
+    const visibleItems = items.slice(0, MESSAGE_CENTER_STACK_RENDER_LIMIT);
+    if (items.length < 2) {
+      return null;
+    }
+    const collapseLabel = t(
+      "agentHost.workspaceAgentMessageCenterCollapseStackAria"
+    );
 
-  return (
-    <div
-      className={cn("relative flex min-w-0 flex-col", className)}
-      data-stack-count={items.length}
-      data-stack-motion="smooth"
-      data-stack-state={expanded ? "expanded" : "collapsed"}
-      data-stack-top-item-id={items[0]?.id}
-      data-testid={`workspace-agent-message-stack-${groupId}`}
-    >
-      {summaryRegion.mounted ? (
-        <div
-          className={cn(
-            "workspace-agent-message-center__stack-rest min-w-0",
-            summaryRegion.closing
-              ? "workspace-agent-message-center__stack-rest--closing"
-              : "workspace-agent-message-center__stack-rest--opening"
-          )}
-          onAnimationEnd={summaryRegion.onAnimationEnd}
-        >
+    return (
+      <div
+        className={cn("relative flex min-w-0 flex-col", className)}
+        data-stack-count={items.length}
+        data-stack-motion="smooth"
+        data-stack-state={expanded ? "expanded" : "collapsed"}
+        data-stack-top-item-id={items[0]?.id}
+        data-testid={`workspace-agent-message-stack-${groupId}`}
+      >
+        {summaryRegion.mounted ? (
           <div
-            className="min-h-0 min-w-0 overflow-hidden"
-            aria-hidden={summaryRegion.closing ? true : undefined}
-            inert={summaryRegion.closing ? true : undefined}
+            className={cn(
+              "workspace-agent-message-center__stack-rest min-w-0",
+              summaryRegion.closing
+                ? "workspace-agent-message-center__stack-rest--closing"
+                : "workspace-agent-message-center__stack-rest--opening"
+            )}
+            onAnimationEnd={summaryRegion.onAnimationEnd}
           >
-            <MessageCenterStackSummary
-              groupId={groupId}
-              items={items}
-              onExpand={onExpand}
-            />
+            <div
+              className="min-h-0 min-w-0 overflow-hidden"
+              aria-hidden={summaryRegion.closing ? true : undefined}
+              inert={summaryRegion.closing ? true : undefined}
+            >
+              <MessageCenterStackSummary
+                groupId={groupId}
+                items={items}
+                onExpand={onExpand}
+              />
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {cardsRegion.mounted ? (
-        <div
-          className={cn(
-            "workspace-agent-message-center__stack-rest min-w-0",
-            cardsRegion.closing
-              ? "workspace-agent-message-center__stack-rest--closing"
-              : "workspace-agent-message-center__stack-rest--opening"
-          )}
-          onAnimationEnd={cardsRegion.onAnimationEnd}
-        >
+        {cardsRegion.mounted ? (
           <div
-            className="min-h-0 min-w-0 overflow-hidden"
-            aria-hidden={cardsRegion.closing ? true : undefined}
-            inert={cardsRegion.closing ? true : undefined}
+            className={cn(
+              "workspace-agent-message-center__stack-rest min-w-0",
+              cardsRegion.closing
+                ? "workspace-agent-message-center__stack-rest--closing"
+                : "workspace-agent-message-center__stack-rest--opening"
+            )}
+            onAnimationEnd={cardsRegion.onAnimationEnd}
           >
-            <div className="flex min-w-0 items-center justify-between gap-2 px-0.5 pb-1.5">
-              <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-4 text-[var(--text-tertiary)]">
-                <MessageCenterIdentityAvatarMark
-                  identity={items[0]?.identity ?? null}
-                  provider={items[0]?.provider ?? ""}
-                  userId={items[0]?.userId ?? null}
-                />
-                <span className="min-w-0 truncate">
-                  {t("agentHost.workspaceAgentMessageCenterStackSummaryCount", {
-                    count: items.length
-                  })}
+            <div
+              className="min-h-0 min-w-0 overflow-hidden"
+              aria-hidden={cardsRegion.closing ? true : undefined}
+              inert={cardsRegion.closing ? true : undefined}
+            >
+              <div className="flex min-w-0 items-center justify-between gap-2 px-0.5 pb-1.5">
+                <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-4 text-[var(--text-tertiary)]">
+                  <MessageCenterIdentityAvatarMark
+                    identity={items[0]?.identity ?? null}
+                    provider={items[0]?.provider ?? ""}
+                    userId={items[0]?.userId ?? null}
+                  />
+                  <span className="min-w-0 truncate">
+                    {t(
+                      "agentHost.workspaceAgentMessageCenterStackSummaryCount",
+                      {
+                        count: messageCenterStackDisplayCount(items.length)
+                      }
+                    )}
+                  </span>
                 </span>
-              </span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={collapseLabel}
-                    className="size-6 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-                    onClick={onCollapse}
-                  >
-                    <ChevronUp className="size-3.5" aria-hidden="true" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" align="center">
-                  {collapseLabel}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="flex min-w-0 flex-col gap-2.5">
-              {items.map((item, stackedIndex) =>
-                renderCard(item, { stackedIndex })
-              )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={collapseLabel}
+                      className="size-6 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                      onClick={() => onCollapse(groupId)}
+                    >
+                      <ChevronUp className="size-3.5" aria-hidden="true" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="center">
+                    {collapseLabel}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex min-w-0 flex-col gap-2.5">
+                {visibleItems.map((item, stackedIndex) =>
+                  renderCard(item, { stackedIndex })
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
+        ) : null}
+      </div>
+    );
+  }
+);
 
 function MessageCenterStackSummary({
   groupId,
@@ -337,7 +353,7 @@ function MessageCenterStackSummary({
 }: {
   groupId: string;
   items: WorkspaceAgentMessageCenterItem[];
-  onExpand: () => void;
+  onExpand: (groupId: string) => void;
 }): JSX.Element | null {
   "use memo";
   const { t } = useTranslation();
@@ -351,7 +367,7 @@ function MessageCenterStackSummary({
     <button
       type="button"
       aria-label={t("agentHost.workspaceAgentMessageCenterExpandStackAria", {
-        count: items.length
+        count: messageCenterStackDisplayCount(items.length)
       })}
       className={cn(
         "group/stack-peek relative block w-full min-w-0 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
@@ -361,7 +377,7 @@ function MessageCenterStackSummary({
       data-stack-provider={firstItem.provider}
       data-stack-user-id={firstItem.userId ?? ""}
       data-testid={`workspace-agent-message-stack-summary-${groupId}`}
-      onClick={onExpand}
+      onClick={() => onExpand(groupId)}
     >
       <span
         className={cn(
@@ -382,7 +398,7 @@ function MessageCenterStackSummary({
             />
             <span className="min-w-0 truncate text-[13px] font-bold leading-5 text-[var(--text-secondary)]">
               {t("agentHost.workspaceAgentMessageCenterStackSummaryCount", {
-                count: items.length
+                count: messageCenterStackDisplayCount(items.length)
               })}
             </span>
           </span>
@@ -399,6 +415,12 @@ function MessageCenterStackSummary({
       </span>
     </button>
   );
+}
+
+function messageCenterStackDisplayCount(count: number): string {
+  return count > MESSAGE_CENTER_STACK_DISPLAY_COUNT_LIMIT
+    ? `${MESSAGE_CENTER_STACK_DISPLAY_COUNT_LIMIT}+`
+    : String(count);
 }
 
 function messageCenterStackPreviewText(
@@ -525,17 +547,23 @@ function isGenericApprovalSummary(summary: string): boolean {
 function MessageCenterSummary({
   emptyLabel,
   item,
+  lazy,
   onLinkAction,
   summary
 }: {
   emptyLabel: string;
   item: WorkspaceAgentMessageCenterItem;
+  lazy: boolean;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   summary: string;
 }): JSX.Element {
   "use memo";
   const summaryRef = useRef<HTMLDivElement | null>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
+  const shouldRenderRichSummary = useLazyMessageCenterSummaryReady(
+    summaryRef,
+    lazy
+  );
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction): void => {
       onLinkAction?.(
@@ -577,7 +605,7 @@ function MessageCenterSummary({
       scrollbarClassName="top-2 bottom-2 right-1.5"
       syncKey={summary}
     >
-      {summary ? (
+      {summary && shouldRenderRichSummary ? (
         <AgentMessageMarkdown
           content={summary}
           className="[&_a]:text-[var(--tutti-purple)] [&_code]:text-[var(--text-secondary)] [&_hr]:border-t-[color-mix(in_srgb,var(--text-primary)_14%,transparent)] [&_ol]:!bg-transparent [&_p]:m-0 [&_th]:bg-[color-mix(in_srgb,var(--background-panel)_94%,var(--text-primary))] [&_th]:text-[var(--text-primary)] [&_ul]:!bg-transparent text-[var(--text-primary)]"
@@ -589,11 +617,54 @@ function MessageCenterSummary({
           }}
           enableImageZoom
         />
+      ) : summary ? (
+        <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+          {summary}
+        </div>
       ) : (
         emptyLabel
       )}
     </AgentVerticalScrollArea>
   );
+}
+
+function useLazyMessageCenterSummaryReady(
+  ref: RefObject<HTMLDivElement | null>,
+  lazy: boolean
+): boolean {
+  const [ready, setReady] = useState(!lazy);
+
+  useEffect(() => {
+    setReady(!lazy);
+  }, [lazy]);
+
+  useEffect(() => {
+    if (!lazy) {
+      return undefined;
+    }
+    if (ready) {
+      return undefined;
+    }
+    const element = ref.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setReady(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setReady(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: MESSAGE_CENTER_SUMMARY_LAZY_ROOT_MARGIN }
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [lazy, ready, ref]);
+
+  return ready;
 }
 
 function MessageCenterOpenChatButton({
