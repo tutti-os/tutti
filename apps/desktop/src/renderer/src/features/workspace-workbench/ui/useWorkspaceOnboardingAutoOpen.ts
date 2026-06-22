@@ -58,6 +58,7 @@ export async function openWorkspaceOnboardingIfNeeded({
 
   await appCenterService.refreshCatalog(workspaceId);
 
+  let openAttempted = false;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (isCanceled()) {
       return "canceled";
@@ -76,9 +77,11 @@ export async function openWorkspaceOnboardingIfNeeded({
       continue;
     }
 
+    openAttempted = true;
     const opened = await appCenterService.openApp({ appId, workspaceId });
     if (!opened) {
-      return "not-opened";
+      await wait(500);
+      continue;
     }
     if (isCanceled()) {
       return "canceled";
@@ -87,7 +90,10 @@ export async function openWorkspaceOnboardingIfNeeded({
     return "opened";
   }
 
-  return isCanceled() ? "canceled" : "not-found";
+  if (isCanceled()) {
+    return "canceled";
+  }
+  return openAttempted ? "not-opened" : "not-found";
 }
 
 export function useWorkspaceOnboardingAutoOpen({
