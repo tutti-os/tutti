@@ -47,6 +47,7 @@ type AppStartInput struct {
 	PackageDir      string
 	Bootstrap       string
 	HealthcheckPath string
+	RuntimeProfile  string
 	RuntimeDir      string
 	DataDir         string
 	LogDir          string
@@ -172,7 +173,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		r.setFailed(key, "startup", fmt.Errorf("create app log dir: %w", err))
 		return
 	}
-	appRuntime, err := r.runtimeResolver().Resolve(ctx)
+	appRuntime, err := r.resolveRuntime(ctx, input.RuntimeProfile)
 	if err != nil {
 		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "runtime_unavailable", err)
 		r.setFailed(key, "runtime_unavailable", err)
@@ -517,6 +518,9 @@ func logAppRuntimeControl(event string, input AppStartInput, port int, failureRe
 		"bootstrap", input.Bootstrap,
 		"healthcheckPath", input.HealthcheckPath,
 	}
+	if strings.TrimSpace(input.RuntimeProfile) != "" {
+		fields = append(fields, "runtimeProfile", strings.TrimSpace(input.RuntimeProfile))
+	}
 	if port != 0 {
 		fields = append(fields, "port", port)
 	}
@@ -603,6 +607,17 @@ func (r *AppRunner) runtimeResolver() AppRuntimeResolver {
 		return r.RuntimeResolver
 	}
 	return DefaultManagedAppRuntimeResolver{}
+}
+
+func (r *AppRunner) resolveRuntime(ctx context.Context, profile string) (ResolvedAppRuntime, error) {
+	profile = strings.TrimSpace(profile)
+	resolver := r.runtimeResolver()
+	if profile != "" {
+		if profileResolver, ok := resolver.(AppRuntimeProfileResolver); ok {
+			return profileResolver.ResolveProfile(ctx, profile)
+		}
+	}
+	return resolver.Resolve(ctx)
 }
 
 func (r *AppRunner) setFailed(key string, reason string, err error) workspacebiz.AppRuntimeState {

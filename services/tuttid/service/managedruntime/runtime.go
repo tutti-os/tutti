@@ -38,6 +38,10 @@ type ProfilePreloader interface {
 	PreloadProfile(context.Context, string) error
 }
 
+type ProfileResolver interface {
+	ResolveProfile(context.Context, string) (ResolvedRuntime, error)
+}
+
 type ResolvedRuntime struct {
 	Root         string
 	Python       string
@@ -86,11 +90,30 @@ func (r DefaultResolver) Resolve(ctx context.Context) (ResolvedRuntime, error) {
 	if err := r.ensureRuntime(ctx, root); err != nil {
 		return ResolvedRuntime{}, err
 	}
-	return r.resolvedRuntime(root)
+	return r.resolvedRuntimeForComponents(root, []string{"python", "node"})
 }
 
 func (r DefaultResolver) PreloadProfile(ctx context.Context, profile string) error {
 	return r.ensureRuntimeProfile(ctx, r.runtimeRoot(), profile)
+}
+
+func (r DefaultResolver) ResolveProfile(ctx context.Context, profile string) (ResolvedRuntime, error) {
+	profile = strings.TrimSpace(profile)
+	if profile == "" || profile == appRuntimeBaselineProfile {
+		return r.Resolve(ctx)
+	}
+	root := r.runtimeRoot()
+	if err := r.ensureRuntimeProfile(ctx, root, profile); err != nil {
+		return ResolvedRuntime{}, err
+	}
+	if profile == appRuntimeNodeStaticProfile {
+		return r.resolvedRuntimeForComponents(root, []string{"node"})
+	}
+	componentNames, err := r.runtimeProfileComponentNames(ctx, profile)
+	if err != nil {
+		return ResolvedRuntime{}, err
+	}
+	return r.resolvedRuntimeForComponents(root, componentNames)
 }
 
 func (r DefaultResolver) runtimeRoot() string {
@@ -105,38 +128,58 @@ func (r DefaultResolver) runtimeRoot() string {
 }
 
 func (r DefaultResolver) resolvedRuntime(root string) (ResolvedRuntime, error) {
+	return r.resolvedRuntimeForComponents(root, []string{"python", "node"})
+}
+
+func (r DefaultResolver) resolvedRuntimeForComponents(root string, components []string) (ResolvedRuntime, error) {
 	pythonBinDir := filepath.Join(root, "python", "bin")
 	nodeBinDir := filepath.Join(root, "node", "bin")
 	python := filepath.Join(pythonBinDir, pythonBinaryName())
 	node := filepath.Join(nodeBinDir, nodeBinaryName())
 	npm := filepath.Join(nodeBinDir, npmBinaryName())
 
-	for name, path := range map[string]string{
-		"python": python,
-		"node":   node,
-		"npm":    npm,
-	} {
-		if !isExecutableFile(path) {
-			return ResolvedRuntime{}, fmt.Errorf("managed app runtime %s executable is unavailable at %s", name, path)
+	var (
+		binDirs      []string
+		envOverrides []string
+		resolved     ResolvedRuntime
+	)
+	for _, component := range components {
+		switch strings.TrimSpace(component) {
+		case "python":
+			if !isExecutableFile(python) {
+				return ResolvedRuntime{}, fmt.Errorf("managed app runtime python executable is unavailable at %s", python)
+			}
+			resolved.Python = python
+			binDirs = append(binDirs, pythonBinDir)
+			envOverrides = append(envOverrides, "TUTTI_APP_PYTHON="+python)
+		case "node":
+			for name, path := range map[string]string{
+				"node": node,
+				"npm":  npm,
+			} {
+				if !isExecutableFile(path) {
+					return ResolvedRuntime{}, fmt.Errorf("managed app runtime %s executable is unavailable at %s", name, path)
+				}
+			}
+			resolved.Node = node
+			resolved.NPM = npm
+			binDirs = append(binDirs, nodeBinDir)
+			envOverrides = append(envOverrides, "TUTTI_APP_NODE="+node, "TUTTI_APP_NPM="+npm)
 		}
 	}
 
-	binDirs := mergeAppPathDirs([]string{pythonBinDir, nodeBinDir})
-	envOverrides := []string{
-		tuttiAppRuntimeRootEnv + "=" + root,
-		"TUTTI_APP_PYTHON=" + python,
-		"TUTTI_APP_NODE=" + node,
-		"TUTTI_APP_NPM=" + npm,
-		"PATH=" + strings.Join(append(binDirs, filepath.SplitList(envValue(r.environ(), pathEnvKey(r.environ())))...), string(os.PathListSeparator)),
-	}
-	return ResolvedRuntime{
-		Root:         root,
-		Python:       python,
-		Node:         node,
-		NPM:          npm,
-		BinDirs:      binDirs,
-		EnvOverrides: envOverrides,
-	}, nil
+	binDirs = mergeAppPathDirs(binDirs)
+	resolved.Root = root
+	resolved.BinDirs = binDirs
+	resolved.EnvOverrides = append(
+		[]string{tuttiAppRuntimeRootEnv + "=" + root},
+		envOverrides...,
+	)
+	resolved.EnvOverrides = append(
+		resolved.EnvOverrides,
+		"PATH="+strings.Join(append(binDirs, filepath.SplitList(envValue(r.environ(), pathEnvKey(r.environ())))...), string(os.PathListSeparator)),
+	)
+	return resolved, nil
 }
 
 func (r DefaultResolver) ensureRuntime(ctx context.Context, root string) error {
@@ -192,6 +235,23 @@ func (r DefaultResolver) ensureRuntimeProfile(ctx context.Context, root string, 
 		return nil
 	}
 	return r.downloadRuntime(ctx, root, entry, missing)
+}
+
+func (r DefaultResolver) runtimeProfileComponentNames(ctx context.Context, profile string) ([]string, error) {
+	catalogSource := r.runtimeCatalogSource()
+	if catalogSource == "" {
+		return nil, fmt.Errorf("managed app runtime catalog is unavailable and %s is not configured", tuttiAppRuntimeCatalogEnv)
+	}
+	platformArch := appRuntimePlatformArch(runtime.GOOS, runtime.GOARCH)
+	catalog, err := r.loadCatalog(ctx, catalogSource)
+	if err != nil {
+		return nil, err
+	}
+	entry, ok := catalog.Runtimes[platformArch]
+	if !ok {
+		return nil, fmt.Errorf("managed app runtime catalog does not contain platform %q", platformArch)
+	}
+	return appRuntimeProfileComponentNames(entry, profile)
 }
 
 func RootReady(root string) bool {

@@ -35,11 +35,13 @@ type appArtifactFetcherStub struct {
 }
 
 type appRuntimeResolverStub struct {
-	called  chan struct{}
-	once    sync.Once
-	mu      sync.Mutex
-	profile string
-	err     error
+	called         chan struct{}
+	once           sync.Once
+	mu             sync.Mutex
+	profile        string
+	resolveProfile string
+	resolveCalls   int
+	err            error
 }
 
 type preloadThenFailRuntimeResolver struct {
@@ -178,6 +180,9 @@ func (r *appRuntimeResolverStub) Resolve(context.Context) (ResolvedAppRuntime, e
 	r.once.Do(func() {
 		close(r.called)
 	})
+	r.mu.Lock()
+	r.resolveCalls += 1
+	r.mu.Unlock()
 	if r.err != nil {
 		return ResolvedAppRuntime{}, r.err
 	}
@@ -192,6 +197,19 @@ func (r *appRuntimeResolverStub) PreloadProfile(_ context.Context, profile strin
 	r.profile = profile
 	r.mu.Unlock()
 	return r.err
+}
+
+func (r *appRuntimeResolverStub) ResolveProfile(_ context.Context, profile string) (ResolvedAppRuntime, error) {
+	r.once.Do(func() {
+		close(r.called)
+	})
+	r.mu.Lock()
+	r.resolveProfile = profile
+	r.mu.Unlock()
+	if r.err != nil {
+		return ResolvedAppRuntime{}, r.err
+	}
+	return ResolvedAppRuntime{}, nil
 }
 
 func (r *preloadThenFailRuntimeResolver) Resolve(context.Context) (ResolvedAppRuntime, error) {
@@ -469,6 +487,68 @@ func TestAppCenterServiceListSkipsRuntimePreloadWhenAllAppsInstalled(t *testing.
 	case <-resolver.called:
 		t.Fatalf("List() preloaded runtime when all apps are installed")
 	default:
+	}
+}
+
+func TestAppCenterServiceInstallNodeStaticPackageSkipsBaselineRuntimePreload(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppStoreStub()
+	manifest := workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "node-app",
+		Version:       "1.0.0",
+		Name:          "Node App",
+		Description:   "Node-only app",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "bootstrap.sh",
+			HealthcheckPath: "/",
+			Profile:         workspaceAppNodeRuntimePreloadProfile,
+		},
+	}
+	packageDir := createWorkspaceAppPackageForTest(t, t.TempDir(), manifest)
+	if err := store.PutAppPackage(ctx, workspacebiz.AppPackage{
+		AppID:      manifest.AppID,
+		Version:    manifest.Version,
+		PackageDir: packageDir,
+		Manifest:   manifest,
+		Source:     workspacebiz.AppPackageSourceGenerated,
+	}); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	resolver := &appRuntimeResolverStub{called: make(chan struct{})}
+	service := AppCenterService{
+		Store:          store,
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:         &AppRunner{RuntimeResolver: resolver},
+		StateDir:       t.TempDir(),
+		BuiltinCatalog: func() ([]builtinapps.App, error) {
+			return nil, nil
+		},
+	}
+
+	if _, err := service.Install(ctx, "ws-1", manifest.AppID); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	deadline := time.After(time.Second)
+	for {
+		resolver.mu.Lock()
+		profile := resolver.profile
+		resolveCalls := resolver.resolveCalls
+		resolver.mu.Unlock()
+		if profile == workspaceAppNodeRuntimePreloadProfile {
+			if resolveCalls != 0 {
+				t.Fatalf("baseline Resolve() calls = %d, want 0", resolveCalls)
+			}
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("node-static runtime preload did not run")
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }
 

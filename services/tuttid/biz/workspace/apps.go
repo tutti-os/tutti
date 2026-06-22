@@ -46,6 +46,7 @@ type AppManifestIcon struct {
 type AppManifestRuntime struct {
 	Bootstrap       string `json:"bootstrap"`
 	HealthcheckPath string `json:"healthcheckPath"`
+	Profile         string `json:"profile,omitempty"`
 }
 
 type AppManifestCLI struct {
@@ -535,6 +536,9 @@ func ValidateAppManifest(manifest AppManifest) error {
 	}
 	if !strings.HasPrefix(manifest.Runtime.HealthcheckPath, "/") {
 		return errors.New("app manifest runtime.healthcheckPath must start with /")
+	}
+	if profile := strings.TrimSpace(manifest.Runtime.Profile); profile != "" && profile != "node-static" {
+		return errors.New("app manifest runtime.profile must be node-static when set")
 	}
 	if manifest.Window != nil {
 		minimizeBehavior := strings.TrimSpace(manifest.Window.MinimizeBehavior)

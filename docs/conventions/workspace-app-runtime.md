@@ -113,11 +113,13 @@ The runtime catalog consumed by tuttid has this shape:
 }
 ```
 
-tuttid resolves the `baseline` profile when launching apps, and may preload
-smaller profiles such as `node-static` in the background before first launch. App
-manifests must not declare a runtime kind. If runtime requirements need to
-become more selective later, add a capability list such as runtime component
-requirements rather than restoring a single-kind manifest field.
+tuttid resolves the `baseline` profile by default when launching apps, and may
+preload smaller profiles such as `node-static` in the background before first
+launch. App manifests must not declare a runtime kind. Apps that only need Node
+may declare `runtime.profile: "node-static"` so launch does not require the
+Python component. If runtime requirements need to become more selective later,
+add a capability list such as runtime component requirements rather than
+restoring a single-kind manifest field.
 
 ## Runtime Overrides
 

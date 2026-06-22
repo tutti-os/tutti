@@ -230,6 +230,20 @@ func TestDefaultResolverPreloadsRuntimeProfileComponents(t *testing.T) {
 		t.Fatal("node profile preload installed python")
 	}
 
+	nodeRuntime, err := resolver.ResolveProfile(context.Background(), "node-static")
+	if err != nil {
+		t.Fatalf("ResolveProfile(node-static) error = %v", err)
+	}
+	if nodeRuntime.Python != "" {
+		t.Fatalf("ResolveProfile(node-static) Python = %q, want empty", nodeRuntime.Python)
+	}
+	if !isExecutableFile(nodeRuntime.Node) || !isExecutableFile(nodeRuntime.NPM) {
+		t.Fatalf("ResolveProfile(node-static) did not resolve node runtime: %#v", nodeRuntime)
+	}
+	if isExecutableFile(filepath.Join(root, "python", "bin", pythonBinaryName())) {
+		t.Fatal("node profile resolve installed python")
+	}
+
 	resolved, err := resolver.Resolve(context.Background())
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)

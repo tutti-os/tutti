@@ -73,7 +73,7 @@ App Center opening should call `POST /v1/workspaces/{workspaceID}/apps/catalog/r
 
 Remote catalog entries must include `distribution.iconUrl`, `distribution.artifactUrl`, `distribution.artifactSha256`, and a manifest icon asset. The zip package must contain a complete app package with `tutti.app.json`, `bootstrap.sh`, `AGENTS.md`, and the manifest icon asset.
 
-Workspace app packages do not declare runtime kind or bundle Python/Node. Managed runtime release and download rules belong to [Workspace App Runtime](./workspace-app-runtime.md).
+Workspace app packages do not declare arbitrary runtime kinds or bundle Python/Node. Packages that only need the managed Node/static runtime may declare `runtime.profile: "node-static"`; all other managed runtime release and download rules belong to [Workspace App Runtime](./workspace-app-runtime.md).
 
 ## Release Flow
 

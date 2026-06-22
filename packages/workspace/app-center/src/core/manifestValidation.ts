@@ -193,6 +193,7 @@ function validateRuntime(
 
   const bootstrap = readOptionalString(value.bootstrap);
   const healthcheckPath = readOptionalString(value.healthcheckPath);
+  const profile = readOptionalString(value.profile);
   if (!bootstrap || !isRelativePackagePath(bootstrap)) {
     issues.push({
       code: "manifest.runtime",
@@ -207,18 +208,27 @@ function validateRuntime(
       path: "$.runtime.healthcheckPath"
     });
   }
+  if (profile && profile !== "node-static") {
+    issues.push({
+      code: "manifest.runtime",
+      message: "runtime.profile must be node-static when set.",
+      path: "$.runtime.profile"
+    });
+  }
   if (
     !bootstrap ||
     !healthcheckPath ||
     !isRelativePackagePath(bootstrap) ||
-    !healthcheckPath.startsWith("/")
+    !healthcheckPath.startsWith("/") ||
+    (profile !== undefined && profile !== "node-static")
   ) {
     return undefined;
   }
 
   return {
     bootstrap,
-    healthcheckPath
+    healthcheckPath,
+    ...(profile ? { profile } : {})
   };
 }
 

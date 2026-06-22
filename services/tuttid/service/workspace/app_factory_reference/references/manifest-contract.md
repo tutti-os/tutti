@@ -44,6 +44,7 @@ Rules:
 - Do not include `runtime.kind`; Tutti manages the runtime baseline outside the app package.
 - `runtime.bootstrap` must be a relative package path.
 - `runtime.healthcheckPath` must start with `/`.
+- `runtime.profile` is optional. Use `"node-static"` only for apps whose bootstrap launches a Node/static server and does not need Python. Omit it for the default baseline runtime.
 - `cli` is optional. Include it only when the app exposes commands through the Tutti CLI.
 - `cli.manifest` must be a relative package path to a `tutti.app.cli.v1` manifest, usually `tutti.cli.json`.
 - `references` is optional. Include it only when the app exposes browsable file references.

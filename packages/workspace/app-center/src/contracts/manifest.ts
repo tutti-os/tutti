@@ -11,6 +11,7 @@ export interface WorkspaceAppManifestIcon {
 export interface WorkspaceAppManifestRuntime {
   readonly bootstrap: string;
   readonly healthcheckPath: string;
+  readonly profile?: "node-static";
 }
 
 export interface WorkspaceAppManifestReferences {

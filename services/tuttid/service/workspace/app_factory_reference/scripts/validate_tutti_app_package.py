@@ -84,6 +84,9 @@ def validate_manifest(root: Path, errors: list[str]) -> dict[str, Any] | None:
         healthcheck = runtime.get("healthcheckPath")
         if not isinstance(healthcheck, str) or not healthcheck.startswith("/"):
             errors.append("runtime.healthcheckPath must start with /")
+        profile = runtime.get("profile")
+        if profile is not None and profile != "node-static":
+            errors.append("runtime.profile must be node-static when set")
 
     cli = manifest.get("cli")
     if cli is not None:

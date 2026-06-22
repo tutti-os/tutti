@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"strings"
 
+	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
@@ -13,11 +14,20 @@ const workspaceAppNodeRuntimePreloadProfile = managedruntime.NodeStaticProfile
 
 type AppRuntimeResolver = managedruntime.Resolver
 type AppRuntimeProfilePreloader = managedruntime.ProfilePreloader
+type AppRuntimeProfileResolver = managedruntime.ProfileResolver
 type ResolvedAppRuntime = managedruntime.ResolvedRuntime
 type DefaultManagedAppRuntimeResolver = managedruntime.DefaultResolver
 
 func workspaceAppProcessEnv(overrides ...string) []string {
 	return managedruntime.ProcessEnv(overrides...)
+}
+
+func appRuntimeProfileForPackage(appPackage workspacebiz.AppPackage) string {
+	return appRuntimeProfileForManifest(appPackage.Manifest)
+}
+
+func appRuntimeProfileForManifest(manifest workspacebiz.AppManifest) string {
+	return strings.TrimSpace(manifest.Runtime.Profile)
 }
 
 func appRuntimeEnvValue(env []string, key string) string {

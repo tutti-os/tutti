@@ -4,8 +4,7 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
-  useSyncExternalStore
+  useState
 } from "react";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
@@ -79,7 +78,6 @@ import {
 } from "@renderer/features/workspace-app-center";
 import { workspaceLaunchpadDockActionId } from "../services/workspaceLaunchpadModel.ts";
 import { requestWorkspaceMessageCenterOpen } from "../services/workspaceMessageCenterCoordinator.ts";
-import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog.ts";
 import { workspaceBrowserNodeID } from "../services/workspaceWorkbenchNodeIds.ts";
 import { WorkspaceChrome } from "./WorkspaceChrome";
 import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
@@ -533,7 +531,6 @@ function ReadyWorkspaceWorkbench({
         workspaceId={state.workspace.id}
         onClose={closeLaunchpad}
       />
-      <WorkspaceAgentConnectingCard service={agentProviderStatusService} />
       <WorkspaceCloseGuardDialog
         request={runtime.closeDialog.request}
         onCancel={runtime.closeDialog.onCancel}
@@ -543,39 +540,6 @@ function ReadyWorkspaceWorkbench({
   );
 }
 
-function WorkspaceAgentConnectingCard({
-  service
-}: {
-  service: IAgentProviderStatusService;
-}) {
-  const { t } = useTranslation();
-  const snapshot = useSyncExternalStore(
-    (listener) => service.subscribe(listener),
-    () => service.getSnapshot(),
-    () => service.getSnapshot()
-  );
-  const pending = snapshot.pendingActions.find(
-    (action) =>
-      action.actionId === "install" || action.actionId === "login"
-  );
-  if (!pending) {
-    return null;
-  }
-  const label = resolveWorkspaceAgentGuiLabel(
-    normalizeDesktopAgentGUIProvider(pending.provider)
-  );
-  return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-28 z-50 flex justify-center">
-      <div className="pointer-events-auto flex w-64 flex-col items-center gap-3 rounded-2xl border border-border bg-background px-6 py-5 text-center shadow-xl">
-        <div className="text-[15px] font-semibold text-foreground">{label}</div>
-        <div className="text-[12.5px] leading-relaxed text-muted-foreground">
-          {t("workspace.workbenchDesktop.agentProviders.installing")}
-        </div>
-        <LoadingIcon className="size-5 animate-spin text-muted-foreground" />
-      </div>
-    </div>
-  );
-}
 async function openWorkspaceFilesNode(
   host: WorkbenchHostHandle,
   request: WorkspaceFilesLaunchRequest

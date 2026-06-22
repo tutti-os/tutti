@@ -48,6 +48,45 @@ describe("validateWorkspaceAppManifest", () => {
     assert.equal(result.manifest?.window?.minimizeBehavior, "hibernate");
   });
 
+  it("normalizes supported runtime profile", () => {
+    const result = validateWorkspaceAppManifest({
+      schemaVersion: workspaceAppManifestSchemaVersion,
+      appId: "demo",
+      name: "Demo",
+      description: "Demo app",
+      runtime: {
+        bootstrap: "bootstrap.sh",
+        healthcheckPath: "/",
+        profile: "node-static"
+      },
+      version: "1.0.0"
+    });
+
+    assert.equal(result.valid, true);
+    assert.equal(result.manifest?.runtime.profile, "node-static");
+  });
+
+  it("rejects unsupported runtime profile", () => {
+    const result = validateWorkspaceAppManifest({
+      schemaVersion: workspaceAppManifestSchemaVersion,
+      appId: "demo",
+      name: "Demo",
+      description: "Demo app",
+      runtime: {
+        bootstrap: "bootstrap.sh",
+        healthcheckPath: "/",
+        profile: "python"
+      },
+      version: "1.0.0"
+    });
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(
+      result.issues.map((issue) => issue.path),
+      ["$.runtime.profile"]
+    );
+  });
+
   it("normalizes supported window minimum size", () => {
     const result = validateWorkspaceAppManifest({
       schemaVersion: workspaceAppManifestSchemaVersion,

@@ -200,7 +200,7 @@ func (s *AppCenterService) publishInstalledAppRuntime(ctx context.Context, works
 
 func (s *AppCenterService) startRemoteBuiltinInstallJob(workspaceID string, builtin builtinapps.App) bool {
 	appID := strings.TrimSpace(builtin.Manifest.AppID)
-	return s.startInstallJob(workspaceID, appID, InstallOptions{}, func(ctx context.Context) (workspacebiz.AppPackage, error) {
+	return s.startInstallJob(workspaceID, appID, InstallOptions{}, appRuntimeProfileForManifest(builtin.Manifest), func(ctx context.Context) (workspacebiz.AppPackage, error) {
 		return s.packageForRemoteBuiltinInstall(ctx, builtin)
 	})
 }
@@ -275,6 +275,7 @@ func (s *AppCenterService) startPackage(ctx context.Context, workspaceID string,
 		PackageDir:      appPackage.PackageDir,
 		Bootstrap:       appPackage.Manifest.Runtime.Bootstrap,
 		HealthcheckPath: appPackage.Manifest.Runtime.HealthcheckPath,
+		RuntimeProfile:  appRuntimeProfileForPackage(appPackage),
 		RuntimeDir:      filepath.Join(root, "runtime"),
 		DataDir:         filepath.Join(root, "data"),
 		LogDir:          filepath.Join(root, "logs"),
