@@ -36,6 +36,17 @@ export function messageBody(item: WorkspaceAgentActivityTimelineItem): string {
     return isWorkspaceAgentSyntheticControlMessage(content) ? "" : content;
   }
 
+  // ACP user prompts (and other providers that snapshot structured prompt
+  // content) persist the body as an array of content blocks, e.g.
+  // `[{ type: "text", text: "..." }]`. Live runtime events also mirror the text
+  // into `payload.text`, but durable timeline items can arrive carrying only the
+  // structured `content` array. Extract the text so the message still renders
+  // instead of being dropped as an empty body.
+  const blockText = contentBlocksText(payloadContent);
+  if (blockText) {
+    return isWorkspaceAgentSyntheticControlMessage(blockText) ? "" : blockText;
+  }
+
   const content = item.content?.trim();
   if (content) {
     return isWorkspaceAgentSyntheticControlMessage(content) ? "" : content;
@@ -47,6 +58,27 @@ export function messageBody(item: WorkspaceAgentActivityTimelineItem): string {
   }
   const text = payloadText.trim();
   return isWorkspaceAgentSyntheticControlMessage(text) ? "" : text;
+}
+
+function contentBlocksText(value: unknown): string {
+  if (!Array.isArray(value)) {
+    return "";
+  }
+  const parts: string[] = [];
+  for (const block of value) {
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    const record = block as Record<string, unknown>;
+    if (record.type !== undefined && record.type !== "text") {
+      continue;
+    }
+    const text = record.text;
+    if (typeof text === "string" && text.trim()) {
+      parts.push(text.trim());
+    }
+  }
+  return parts.join("\n").trim();
 }
 
 export function thinkingStatusKind(

@@ -759,6 +759,85 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
     expect(view.turns[0]?.hasFailedToolCall).toBe(false);
   });
 
+  it("renders Claude Code user messages delivered as ACP content blocks", () => {
+    const claudeSession: AgentHostWorkspaceAgentSession = {
+      ...session,
+      provider: "claude-code",
+      status: "working",
+      effectiveStatus: "working"
+    };
+
+    const view = buildWorkspaceAgentSessionDetailViewModel({
+      activity: { ...activity, agentProvider: "claude-code" },
+      session: claudeSession,
+      timelineItems: [
+        item({
+          id: 70,
+          seq: 70,
+          turnId: "turn-acp",
+          itemType: "message.user",
+          role: "user",
+          status: "completed",
+          // Durable ACP user prompt: text lives only in the content-block array,
+          // with no `text` mirror or top-level `content`.
+          payload: {
+            content: [{ type: "text", text: "请帮我修复登录页" }],
+            streamState: "completed"
+          }
+        }),
+        item({
+          id: 71,
+          seq: 71,
+          turnId: "turn-acp",
+          itemType: "message.assistant",
+          role: "assistant",
+          status: "completed",
+          payload: { content: "已修复登录页。", streamState: "completed" }
+        })
+      ]
+    });
+
+    expect(view.turns).toHaveLength(1);
+    expect(view.turns[0]?.userMessage?.body).toBe("请帮我修复登录页");
+    expect(view.turns[0]?.agentMessages?.[0]?.body).toBe("已修复登录页。");
+    // The turn completed, so the processing indicator must not linger even
+    // though the session status still lags at "working".
+    expect(view.showProcessingIndicator).toBe(false);
+  });
+
+  it("does not strand the processing indicator when the only message is an ACP content-block user prompt", () => {
+    const claudeSession: AgentHostWorkspaceAgentSession = {
+      ...session,
+      provider: "claude-code",
+      status: "working",
+      effectiveStatus: "working"
+    };
+
+    const view = buildWorkspaceAgentSessionDetailViewModel({
+      activity: { ...activity, agentProvider: "claude-code" },
+      session: claudeSession,
+      timelineItems: [
+        item({
+          id: 80,
+          seq: 80,
+          turnId: "turn-acp-plan",
+          itemType: "message.user",
+          role: "user",
+          status: "completed",
+          payload: {
+            content: [{ type: "text", text: "开始规划这个任务" }],
+            streamState: "completed"
+          }
+        })
+      ]
+    });
+
+    // Before the fix the empty body dropped the user message, leaving zero turns
+    // and a stranded "Planning next moves" spinner with nothing rendered.
+    expect(view.turns).toHaveLength(1);
+    expect(view.turns[0]?.userMessage?.body).toBe("开始规划这个任务");
+  });
+
   it("renders the actual command from failed Codex exec tool payloads instead of raw error JSON", () => {
     const view = buildWorkspaceAgentSessionDetailViewModel({
       activity,
