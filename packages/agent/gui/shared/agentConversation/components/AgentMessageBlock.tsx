@@ -114,6 +114,7 @@ export function AgentMessageBlock({
           thinking={thinking}
           label={thinkingLabel}
           onLinkClick={handleLinkClick}
+          previewMode={previewMode}
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={rawTimelineJsonLabel}
         />
