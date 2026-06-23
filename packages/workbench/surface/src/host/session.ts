@@ -325,6 +325,12 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
     });
   }
 
+  minimizeNode(nodeId: string): void {
+    this.runWhenReady(this.loadGeneration, () => {
+      this.controller.commands.minimizeNode(nodeId);
+    });
+  }
+
   exitFullscreenNode(nodeId: string): void {
     this.runWhenReady(this.loadGeneration, () => {
       this.controller.commands.exitFullscreen(nodeId);

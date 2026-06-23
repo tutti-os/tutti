@@ -14,6 +14,7 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -607,7 +608,11 @@ func ProcessEnv(overrides ...string) []string {
 		}
 		env = append(next, override)
 	}
-	return env
+	// Inject the macOS system proxy so processes spawned with this env (agent
+	// installs, workspace apps) reach the upstream API through the same proxy as
+	// Resolver.Env()-spawned agents. Without it, an install from a restricted
+	// region connects directly and gets `403 Request not allowed`.
+	return runtimecmd.InjectSystemProxyEnv(env)
 }
 
 func EnvValue(env []string, key string) string {

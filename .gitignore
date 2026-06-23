@@ -33,7 +33,6 @@ __pycache__/
 *.mobileprovision
 
 *.zip
-!services/tuttid/builtin-apps/apps/**/*.zip
 *.tar
 *.tgz
 *.dmg
@@ -45,6 +44,7 @@ apps/desktop/build/tuttid-dev/
 apps/desktop/build/tutti/
 apps/desktop/build/browser-mcp/
 apps/cli/build/
+services/tuttid/builtin-apps/tutti-onboarding/build/
 
 /tuttid
 /tuttid.exe

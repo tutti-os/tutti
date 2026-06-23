@@ -1,12 +1,16 @@
 package builtinapps
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -300,6 +304,47 @@ func TestCatalogReturnsEmbeddedCatalogWhenRemoteURLFails(t *testing.T) {
 	}
 }
 
+func TestEmbeddedOnboardingArchiveMatchesCatalog(t *testing.T) {
+	app := findCatalogAppForTest(embeddedCatalog(), "tutti-onboarding")
+	if app == nil {
+		t.Fatal("embedded catalog missing tutti-onboarding")
+	}
+	if app.Distribution.Kind != DistributionEmbeddedArchive {
+		t.Fatalf("onboarding distribution kind = %q, want embedded-archive", app.Distribution.Kind)
+	}
+
+	manifestData, err := os.ReadFile(filepath.Join("tutti-onboarding", "tutti-package", "tutti.app.json"))
+	if err != nil {
+		t.Fatalf("read source manifest: %v", err)
+	}
+	sourceManifest, _, err := workspacebiz.ParseAppManifestJSON(manifestData)
+	if err != nil {
+		t.Fatalf("parse source manifest: %v", err)
+	}
+	assertCatalogManifestMatchesSource(t, app.Manifest, sourceManifest)
+
+	archiveData, err := files.ReadFile(app.Distribution.EmbeddedArtifactPath)
+	if err != nil {
+		t.Fatalf("read embedded archive %q: %v", app.Distribution.EmbeddedArtifactPath, err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(archiveData), int64(len(archiveData)))
+	if err != nil {
+		t.Fatalf("open embedded archive: %v", err)
+	}
+	requireZipEntryForTest(t, archive, "tutti.app.json")
+	requireZipEntryForTest(t, archive, "bootstrap.sh")
+	requireZipEntryForTest(t, archive, "dist/index.html")
+	requireZipEntryForTest(t, archive, "bin/darwin-arm64/tutti-onboarding-server")
+	requireZipEntryForTest(t, archive, "bin/darwin-amd64/tutti-onboarding-server")
+
+	archiveManifestData := readZipEntryForTest(t, archive, "tutti.app.json")
+	archiveManifest, _, err := workspacebiz.ParseAppManifestJSON(archiveManifestData)
+	if err != nil {
+		t.Fatalf("parse archive manifest: %v", err)
+	}
+	assertCatalogManifestMatchesSource(t, app.Manifest, archiveManifest)
+}
+
 func TestRemoteCatalogURLDefaultsToPublishedCatalog(t *testing.T) {
 	previousValue, hadPreviousValue := os.LookupEnv(remoteCatalogURLEnv)
 	t.Cleanup(func() {
@@ -432,6 +477,80 @@ func TestParseRemoteCatalogRequiresIconURLAndManifestIcon(t *testing.T) {
 	if _, err := parseRemoteCatalog(data); err == nil {
 		t.Fatal("parseRemoteCatalog() error = nil, want missing manifest icon error")
 	}
+}
+
+func assertCatalogManifestMatchesSource(t *testing.T, catalog workspacebiz.AppManifest, source workspacebiz.AppManifest) {
+	t.Helper()
+	if catalog.SchemaVersion != source.SchemaVersion {
+		t.Fatalf("schemaVersion = %q, want %q", catalog.SchemaVersion, source.SchemaVersion)
+	}
+	if catalog.AppID != source.AppID {
+		t.Fatalf("appId = %q, want %q", catalog.AppID, source.AppID)
+	}
+	if catalog.Version != source.Version {
+		t.Fatalf("version = %q, want %q", catalog.Version, source.Version)
+	}
+	if catalog.Name != source.Name {
+		t.Fatalf("name = %q, want %q", catalog.Name, source.Name)
+	}
+	if catalog.Description != source.Description {
+		t.Fatalf("description = %q, want %q", catalog.Description, source.Description)
+	}
+	if !reflect.DeepEqual(catalog.Icon, source.Icon) {
+		t.Fatalf("icon = %#v, want %#v", catalog.Icon, source.Icon)
+	}
+	if !reflect.DeepEqual(catalog.Runtime, source.Runtime) {
+		t.Fatalf("runtime = %#v, want %#v", catalog.Runtime, source.Runtime)
+	}
+	if !reflect.DeepEqual(catalog.CLI, source.CLI) {
+		t.Fatalf("cli = %#v, want %#v", catalog.CLI, source.CLI)
+	}
+	if !reflect.DeepEqual(catalog.Window, source.Window) {
+		t.Fatalf("window = %#v, want %#v", catalog.Window, source.Window)
+	}
+	if !reflect.DeepEqual(catalog.Launch, source.Launch) {
+		t.Fatalf("launch = %#v, want %#v", catalog.Launch, source.Launch)
+	}
+	if !reflect.DeepEqual(catalog.LocalizationInfo, source.LocalizationInfo) {
+		t.Fatalf("localizationInfo = %#v, want %#v", catalog.LocalizationInfo, source.LocalizationInfo)
+	}
+	if !reflect.DeepEqual(catalog.Author, source.Author) {
+		t.Fatalf("author = %#v, want %#v", catalog.Author, source.Author)
+	}
+	if !reflect.DeepEqual(catalog.Tags, source.Tags) {
+		t.Fatalf("tags = %#v, want %#v", catalog.Tags, source.Tags)
+	}
+}
+
+func requireZipEntryForTest(t *testing.T, archive *zip.Reader, name string) {
+	t.Helper()
+	for _, file := range archive.File {
+		if file.Name == name {
+			return
+		}
+	}
+	t.Fatalf("zip missing %q", name)
+}
+
+func readZipEntryForTest(t *testing.T, archive *zip.Reader, name string) []byte {
+	t.Helper()
+	for _, file := range archive.File {
+		if file.Name != name {
+			continue
+		}
+		reader, err := file.Open()
+		if err != nil {
+			t.Fatalf("open zip entry %q: %v", name, err)
+		}
+		defer reader.Close()
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			t.Fatalf("read zip entry %q: %v", name, err)
+		}
+		return data
+	}
+	t.Fatalf("zip missing %q", name)
+	return nil
 }
 
 func remoteCatalogManifestForTest(appID string) workspacebiz.AppManifest {

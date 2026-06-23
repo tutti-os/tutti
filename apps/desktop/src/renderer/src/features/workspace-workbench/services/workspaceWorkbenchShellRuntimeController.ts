@@ -96,7 +96,12 @@ export interface WorkspaceWorkbenchShellRuntimeController {
       adapter: WorkbenchMissionControlAdapter<WorkbenchHostNodeData> | null
     ) => void;
   };
-  requestWindowClose: () => Promise<void>;
+  requestWindowClose: (
+    input?: Pick<
+      Parameters<IWorkspaceWorkbenchHostService["requestWindowClose"]>[0],
+      "reason"
+    >
+  ) => Promise<"approved" | "blocked">;
   setWorkbenchHost: (host: WorkbenchHostHandle | null) => void;
   subscribe: (listener: () => void) => () => void;
   updateHostInput: (input: WorkspaceWorkbenchShellHostInput) => void;
@@ -197,9 +202,8 @@ export function createWorkspaceWorkbenchShellRuntimeController(input: {
       open: missionControl.open,
       setAdapter: missionControl.setAdapter
     },
-    requestWindowClose: async () => {
-      await windowCloseRequestController.requestClose();
-    },
+    requestWindowClose: (input = { reason: "window-close" }) =>
+      windowCloseRequestController.requestClose(input),
     setWorkbenchHost: (host) => {
       currentHost = host;
       windowCloseRequestController.setHost(host);

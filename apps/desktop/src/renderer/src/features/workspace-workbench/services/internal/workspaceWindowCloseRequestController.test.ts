@@ -20,21 +20,23 @@ test("workspace window close request controller sends the latest host and input"
     hostInput: firstHostInput,
     requestWindowClose: async (input) => {
       calls.push(input);
+      return "approved";
     }
   });
 
   controller.setHost(firstHost);
-  await controller.requestClose();
+  await controller.requestClose({ reason: "window-close" });
 
   controller.update({
     confirmCloseGuard: secondGuard,
     hostInput: secondHostInput,
     requestWindowClose: async (input) => {
       calls.push(input);
+      return "approved";
     }
   });
   controller.setHost(secondHost);
-  await controller.requestClose();
+  await controller.requestClose({ reason: "quit" });
 
   assert.equal(calls[0]?.host, firstHost);
   assert.equal(calls[0]?.hostInput, firstHostInput);
@@ -42,12 +44,14 @@ test("workspace window close request controller sends the latest host and input"
     await calls[0]?.confirmCloseGuard(createCloseDialogRequest()),
     false
   );
+  assert.equal(calls[0]?.reason, "window-close");
   assert.equal(calls[1]?.host, secondHost);
   assert.equal(calls[1]?.hostInput, secondHostInput);
   assert.equal(
     await calls[1]?.confirmCloseGuard(createCloseDialogRequest()),
     true
   );
+  assert.equal(calls[1]?.reason, "quit");
 });
 
 test("workspace window close request controller supports a missing host", async () => {
@@ -57,10 +61,11 @@ test("workspace window close request controller supports a missing host", async 
     hostInput: createHostInput("workspace-1"),
     requestWindowClose: async (input) => {
       requestedHost = input.host;
+      return "approved";
     }
   });
 
-  await controller.requestClose();
+  await controller.requestClose({ reason: "window-close" });
 
   assert.equal(requestedHost, null);
 });
@@ -92,6 +97,9 @@ function createHost(id: string): WorkbenchHostHandle {
     },
     launchNode: async () => null,
     load: async () => undefined,
+    minimizeNode() {
+      return undefined;
+    },
     reconcileProjectedNodes() {
       return undefined;
     },

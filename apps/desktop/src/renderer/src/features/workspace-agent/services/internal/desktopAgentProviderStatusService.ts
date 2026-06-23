@@ -251,7 +251,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     } catch (error) {
       if (action.id === "install") {
         this.notifications.error({
-          description: resolveAgentProviderInstallErrorMessage(error),
+          description: resolveAgentProviderInstallErrorMessage(error, provider),
           title: translate(
             "workspace.workbenchDesktop.agentProviders.installFailed"
           )
@@ -616,11 +616,42 @@ function resolveAgentProviderActionFailureReason(
   );
 }
 
-function resolveAgentProviderInstallErrorMessage(error: unknown): string {
+function resolveAgentProviderInstallErrorMessage(
+  error: unknown,
+  provider: WorkspaceAgentProvider
+): string {
   if (error instanceof AgentProviderInstallActionFailedError) {
+    if (isClaudeUnavailableInRegionInstallError(provider, error.reason)) {
+      return translate(
+        "workspace.workbenchDesktop.agentProviders.installUnavailableInRegion"
+      );
+    }
     return error.reason;
   }
-  return resolveDesktopErrorMessage(error, getActiveLocale());
+  const message = resolveDesktopErrorMessage(error, getActiveLocale());
+  if (isClaudeUnavailableInRegionInstallError(provider, message)) {
+    return translate(
+      "workspace.workbenchDesktop.agentProviders.installUnavailableInRegion"
+    );
+  }
+  return message;
+}
+
+function isClaudeUnavailableInRegionInstallError(
+  provider: WorkspaceAgentProvider,
+  message: string
+): boolean {
+  if (provider !== "claude-code") {
+    return false;
+  }
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("app-unavailable-in-region") ||
+    normalized.includes("app unavailable in region") ||
+    normalized.includes("claude isn't available here") ||
+    normalized.includes("claude isn&#x27;t available here") ||
+    normalized.includes("claude isn&apos;t available here")
+  );
 }
 
 function isTransientProviderStatusDowngrade(

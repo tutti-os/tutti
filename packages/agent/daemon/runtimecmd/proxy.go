@@ -3,6 +3,8 @@ package runtimecmd
 import (
 	"context"
 	"net"
+	"net/http"
+	"net/url"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -46,6 +48,74 @@ func (r Resolver) injectSystemProxyEnv(env []string) []string {
 		env = append(env, key+"="+value)
 	}
 	return env
+}
+
+// InjectSystemProxyEnv appends the macOS system proxy variables
+// (HTTPS_PROXY/HTTP_PROXY/NO_PROXY) to env for any key not already present,
+// reading the same SystemConfiguration source as Resolver.Env(). It exists so
+// the spawn paths that build their own environment instead of going through
+// Resolver.Env() — managed-runtime installs, agent logins, workspace terminals —
+// get identical proxy treatment. No-op on non-macOS or when no system proxy is
+// configured; never overrides a user/session-set value.
+func InjectSystemProxyEnv(env []string) []string {
+	return Resolver{}.injectSystemProxyEnv(env)
+}
+
+// SystemProxyURL returns the macOS system proxy (HTTPS preferred, then HTTP) as
+// a URL, if one is configured. In-process HTTP clients (e.g. installer
+// downloads) cannot inherit a spawned child's injected env, so they consult this
+// directly. Returns (nil, false) on non-macOS or when no proxy is set.
+func SystemProxyURL() (*url.URL, bool) {
+	return systemProxyURLFrom(Resolver{}.systemProxyEnv())
+}
+
+// systemProxyURLFrom parses the HTTPS (preferred) or HTTP proxy URL out of a
+// proxy env map. Split out so the URL-selection logic is testable without
+// invoking scutil.
+func systemProxyURLFrom(proxyEnv map[string]string) (*url.URL, bool) {
+	raw := strings.TrimSpace(proxyEnv["HTTPS_PROXY"])
+	if raw == "" {
+		raw = strings.TrimSpace(proxyEnv["HTTP_PROXY"])
+	}
+	if raw == "" {
+		return nil, false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed == nil {
+		return nil, false
+	}
+	return parsed, true
+}
+
+// HTTPProxyFunc returns an http.Transport.Proxy function that prefers an
+// explicit proxy from the process environment (honoring NO_PROXY) and falls back
+// to the macOS system proxy. It mirrors InjectSystemProxyEnv for in-process
+// downloads so installs from a restricted region don't connect directly and hit
+// `403 Request not allowed`. The system-proxy fallback is resolved once, when
+// the function is built.
+func HTTPProxyFunc() func(*http.Request) (*url.URL, error) {
+	systemURL, hasSystem := SystemProxyURL()
+	return httpProxyFunc(http.ProxyFromEnvironment, systemURL, hasSystem)
+}
+
+// httpProxyFunc builds the proxy selector from its dependencies so the
+// env-first / system-fallback precedence is testable without touching the real
+// process environment or scutil.
+func httpProxyFunc(
+	envProxy func(*http.Request) (*url.URL, error),
+	systemURL *url.URL,
+	hasSystem bool,
+) func(*http.Request) (*url.URL, error) {
+	return func(req *http.Request) (*url.URL, error) {
+		envURL, err := envProxy(req)
+		if err != nil || envURL != nil {
+			return envURL, err
+		}
+		if hasSystem {
+			return systemURL, nil
+		}
+		return nil, nil
+	}
 }
 
 func (r Resolver) systemProxyEnv() map[string]string {

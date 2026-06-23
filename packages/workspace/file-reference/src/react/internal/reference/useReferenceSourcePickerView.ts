@@ -698,6 +698,8 @@ export function useReferenceSourcePickerView({
     setFilters: (filters: string[]) =>
       controller.setSearchFilters(filters, searchScopeNodeId),
     toggleSelection: (node: ReferenceNode) => controller.toggleSelection(node),
+    toggleSingleSelectionAndExpand: (node: ReferenceNode) =>
+      controller.toggleSingleSelectionAndExpand(node),
     loadMore: () =>
       isQuery ? controller.loadMoreSearch() : controller.loadMore(currentNode),
     isSelected,

@@ -31,6 +31,7 @@ import type {
 } from "./workspaceWallpaper";
 import type {
   DesktopHostNotificationNavigationPayload,
+  DesktopHostWindowCloseRequestPayload,
   DesktopWorkspaceOpenFeatureRequest
 } from "@shared/contracts/ipc";
 import type {
@@ -134,7 +135,9 @@ export interface IWorkspaceWorkbenchHostService {
     query: TuttiExternalAtQueryInput;
     workspaceId: string;
   }): Promise<TuttiExternalAtQueryResult[]>;
-  onWindowCloseRequest(listener: () => void): () => void;
+  onWindowCloseRequest(
+    listener: (payload: DesktopHostWindowCloseRequestPayload) => void
+  ): () => void;
   onNotificationNavigate(
     listener: (payload: DesktopHostNotificationNavigationPayload) => void
   ): () => void;
@@ -151,6 +154,10 @@ export interface IWorkspaceWorkbenchHostService {
   markWorkspaceOnboardingAutoOpened(workspaceId: string): Promise<void>;
   readWallpaperDisplayMode(workspaceId: string): WorkspaceWallpaperDisplayMode;
   readWallpaperId(workspaceId: string): WorkspaceWallpaperId;
+  resolveWindowCloseRequest(input: {
+    outcome: "approved" | "blocked";
+    requestId: string;
+  }): void;
   ensureAgentProviderStatusesLoaded(): Promise<void>;
   getHomeDirectory(): string;
   getWallpaperRevision(): number;
@@ -164,7 +171,8 @@ export interface IWorkspaceWorkbenchHostService {
     ): Promise<boolean>;
     host: WorkbenchHostHandle | null;
     hostInput: WorkspaceWorkbenchHostInput;
-  }): Promise<void>;
+    reason: DesktopHostWindowCloseRequestPayload["reason"];
+  }): Promise<"approved" | "blocked">;
   writeWallpaperDisplayMode(
     workspaceId: string,
     displayMode: WorkspaceWallpaperDisplayMode

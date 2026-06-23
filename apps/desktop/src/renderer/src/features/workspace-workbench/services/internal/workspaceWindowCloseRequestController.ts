@@ -14,7 +14,9 @@ type ConfirmCloseGuard = (
 type RequestWindowClose = IWorkspaceWorkbenchHostService["requestWindowClose"];
 
 export interface WorkspaceWindowCloseRequestController {
-  requestClose: () => Promise<void>;
+  requestClose: (
+    input: Pick<Parameters<RequestWindowClose>[0], "reason">
+  ) => Promise<"approved" | "blocked">;
   setHost: (host: WorkbenchHostHandle | null) => void;
   update: (input: WorkspaceWindowCloseRequestControllerInput) => void;
 }
@@ -34,11 +36,12 @@ export function createWorkspaceWindowCloseRequestController(
   let requestWindowClose = input.requestWindowClose;
 
   return {
-    requestClose: () =>
+    requestClose: ({ reason }) =>
       requestWindowClose({
         confirmCloseGuard,
         host,
-        hostInput
+        hostInput,
+        reason
       }),
     setHost: (nextHost) => {
       host = nextHost;

@@ -369,6 +369,7 @@ function loadPackageInfos() {
     "ls-files",
     "apps/*/package.json",
     "packages/*/*/package.json",
+    "services/tuttid/builtin-apps/*/package.json",
     "tools/fixtures/*/package.json"
   ])
     .map((packageJsonPath) => {

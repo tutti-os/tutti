@@ -167,6 +167,13 @@ prepare_packaged_daemon() {
   )
 }
 
+prepare_builtin_apps() {
+  (
+    cd "${ROOT_DIR}"
+    pnpm generate:builtin-apps
+  )
+}
+
 prepare_browser_mcp() {
   # Vendors a pinned chrome-devtools-mcp into build/browser-mcp so packaged
   # browser use never fetches it over the network at runtime. The daemon
@@ -226,6 +233,7 @@ run_electron_builder_linux() {
 case "${VARIANT}" in
   unpack|mac|mac-unsigned|mac-signed|win|linux)
     release_timing_log "variant=${VARIANT} status=start"
+    run_timed_phase "prepare_builtin_apps" prepare_builtin_apps
     run_timed_phase "prepare_packaged_daemon" prepare_packaged_daemon
     run_timed_phase "prepare_browser_mcp" prepare_browser_mcp
     (

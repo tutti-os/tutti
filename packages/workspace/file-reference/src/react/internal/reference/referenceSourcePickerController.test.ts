@@ -159,6 +159,92 @@ test("toggleNode 展开 folder 并懒加载子节点", async () => {
   );
 });
 
+test("toggleSingleSelectionAndExpand single-selects and expands folders", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {
+        [`workspace-file:${SOURCE_ROOT_NODE_ID}`]: {
+          entries: [folder("workspace-file", "/dir")],
+          nextCursor: null
+        },
+        "workspace-file:/dir": {
+          entries: [file("workspace-file", "/dir/a.md")],
+          nextCursor: null
+        }
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.toggleSingleSelectionAndExpand(file("workspace-file", "/note.md"));
+  assert.deepEqual(
+    controller.getSnapshot().selection.map((node) => node.ref.nodeId),
+    ["/note.md"]
+  );
+
+  controller.toggleSingleSelectionAndExpand(folder("workspace-file", "/dir"));
+  await flush();
+  const dirKey = nodeRefKey({ sourceId: "workspace-file", nodeId: "/dir" });
+  let snapshot = controller.getSnapshot();
+  assert.equal(snapshot.bySource["workspace-file"]?.expandedKeys[dirKey], true);
+  assert.deepEqual(
+    snapshot.bySource["workspace-file"]?.childrenByKey[dirKey]?.entries.map(
+      (node) => node.ref.nodeId
+    ),
+    ["/dir/a.md"]
+  );
+  assert.deepEqual(
+    snapshot.selection.map((node) => node.ref.nodeId),
+    ["/dir"]
+  );
+
+  controller.toggleSingleSelectionAndExpand(folder("workspace-file", "/dir"));
+  snapshot = controller.getSnapshot();
+  assert.deepEqual(
+    snapshot.selection.map((node) => node.ref.nodeId),
+    []
+  );
+
+  controller.toggleSingleSelectionAndExpand(folder("workspace-file", "/dir"));
+  snapshot = controller.getSnapshot();
+  assert.deepEqual(
+    snapshot.selection.map((node) => node.ref.nodeId),
+    ["/dir"]
+  );
+
+  controller.toggleSelection(file("workspace-file", "/note.md"));
+  assert.deepEqual(
+    controller.getSnapshot().selection.map((node) => node.ref.nodeId),
+    ["/dir", "/note.md"]
+  );
+
+  controller.toggleSingleSelectionAndExpand(file("workspace-file", "/note.md"));
+  assert.deepEqual(
+    controller.getSnapshot().selection.map((node) => node.ref.nodeId),
+    ["/dir", "/note.md"]
+  );
+
+  controller.toggleSingleSelectionAndExpand(
+    file("workspace-file", "/other.md")
+  );
+  assert.deepEqual(
+    controller.getSnapshot().selection.map((node) => node.ref.nodeId),
+    ["/dir", "/note.md"]
+  );
+
+  controller.toggleSingleSelectionAndExpand(folder("workspace-file", "/dir"));
+  snapshot = controller.getSnapshot();
+  assert.equal(snapshot.bySource["workspace-file"]?.expandedKeys[dirKey], true);
+  assert.deepEqual(
+    snapshot.selection.map((node) => node.ref.nodeId),
+    ["/dir", "/note.md"]
+  );
+});
+
 test("expandNode 展开定位到的 folder 并懒加载子节点", async () => {
   const controller = createReferenceSourcePickerController({
     aggregator: fakeAggregator({

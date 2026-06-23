@@ -10,22 +10,48 @@ export async function confirmWorkspaceWindowClose(input: {
   host: WorkbenchHostHandle | null;
   hostInput: Pick<
     WorkspaceWorkbenchHostInput,
-    "createWindowCloseDialogRequest" | "workspaceId"
+    "createWindowCloseDialogRequest" | "prepareHostClose" | "workspaceId"
   >;
+  reason: "quit" | "window-close";
   requestApprovedClose(): Promise<void>;
   tracker: WindowCloseRequestTracker;
-}): Promise<void> {
+}): Promise<"approved" | "blocked"> {
   const host = input.host;
   if (host) {
-    const effects = await host.collectWindowCloseEffects();
-    const request =
-      input.hostInput.createWindowCloseDialogRequest?.(effects) ?? null;
-    if (request && !(await input.confirmCloseGuard(request))) {
-      return;
+    if (input.reason === "quit") {
+      const snapshot = host.getSnapshot();
+      const nodes = snapshot.nodes;
+      if (
+        nodes.length > 0 &&
+        input.hostInput.prepareHostClose &&
+        !(await input.hostInput.prepareHostClose({
+          host,
+          workspaceId: input.hostInput.workspaceId
+        }))
+      ) {
+        return "blocked";
+      }
+      if (nodes.length > 0) {
+        host.closeNode(resolveQuitCloseNodeId(snapshot));
+        return "blocked";
+      }
+    } else {
+      const focusedNodeId = resolveFocusedNodeId(host);
+      if (focusedNodeId) {
+        host.minimizeNode(focusedNodeId);
+        return "blocked";
+      }
+
+      const effects = await host.collectWindowCloseEffects();
+      const request =
+        input.hostInput.createWindowCloseDialogRequest?.(effects) ?? null;
+      if (request && !(await input.confirmCloseGuard(request))) {
+        return "blocked";
+      }
     }
   }
 
-  await requestWorkspaceWindowClose({
+  return requestWorkspaceWindowClose({
     requestApprovedClose: () => input.requestApprovedClose(),
     tracker: input.tracker
   });
@@ -34,15 +60,44 @@ export async function confirmWorkspaceWindowClose(input: {
 async function requestWorkspaceWindowClose(input: {
   requestApprovedClose(): Promise<void>;
   tracker: WindowCloseRequestTracker;
-}): Promise<void> {
+}): Promise<"approved" | "blocked"> {
   if (input.tracker.isClosing) {
-    return;
+    return "blocked";
   }
 
   input.tracker.begin();
   try {
     await input.requestApprovedClose();
+    return "approved";
   } finally {
     input.tracker.finish();
   }
+}
+
+function resolveFocusedNodeId(host: WorkbenchHostHandle): string | null {
+  const snapshot = host.getSnapshot();
+  const focusedNodeId = snapshot.nodeStack.at(-1);
+  const visibleNodes = snapshot.nodes.filter((node) => !node.isMinimized);
+  if (focusedNodeId) {
+    const focusedNode = visibleNodes.find((node) => node.id === focusedNodeId);
+    if (focusedNode) {
+      return focusedNode.id;
+    }
+  }
+
+  return visibleNodes.at(-1)?.id ?? null;
+}
+
+function resolveQuitCloseNodeId(
+  snapshot: ReturnType<WorkbenchHostHandle["getSnapshot"]>
+): string {
+  const focusedNodeId = snapshot.nodeStack.at(-1);
+  if (
+    focusedNodeId &&
+    snapshot.nodes.some((node) => node.id === focusedNodeId)
+  ) {
+    return focusedNodeId;
+  }
+
+  return snapshot.nodes.at(-1)?.id ?? "";
 }

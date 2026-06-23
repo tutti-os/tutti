@@ -28,7 +28,7 @@ import {
 
 const { app, BrowserWindow } = electron;
 
-const updateCheckIntervalMs = 1000 * 60 * 60 * 6;
+const updateCheckIntervalMs = 1000 * 60 * 60 * 3;
 
 type DriverDisposer = () => void;
 
@@ -471,6 +471,7 @@ export function createAppUpdateService(
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let activeCheckPromise: Promise<void> | null = null;
   let activeDownloadPromise: Promise<void> | null = null;
+  let preserveAvailableStateDuringCheck = false;
   const stateChangedListeners = new Set<
     (state: AppUpdateState, previousState: AppUpdateState) => void
   >();
@@ -534,6 +535,9 @@ export function createAppUpdateService(
         channel: state.channel,
         policy: state.policy
       });
+      if (preserveAvailableStateDuringCheck && state.status === "available") {
+        return;
+      }
       applyState({
         ...buildBaseState(
           currentVersion,
@@ -720,12 +724,26 @@ export function createAppUpdateService(
       }
     },
     async downloadUpdate() {
-      if (!supportsUpdates || state.status !== "available") {
+      if (!supportsUpdates) {
         return state;
       }
 
       if (activeDownloadPromise) {
         await activeDownloadPromise;
+        return state;
+      }
+
+      if (state.status !== "available") {
+        return state;
+      }
+
+      preserveAvailableStateDuringCheck = true;
+      try {
+        await service.checkForUpdates();
+      } finally {
+        preserveAvailableStateDuringCheck = false;
+      }
+      if (state.status !== "available") {
         return state;
       }
 

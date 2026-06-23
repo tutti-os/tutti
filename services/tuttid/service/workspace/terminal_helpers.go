@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
 )
 
 func defaultTerminalHomeDir() (string, error) {
@@ -75,11 +77,15 @@ func resolveTerminalShellInvocation(shell string) []string {
 }
 
 func terminalProcessEnv(cwd string) []string {
-	return append(os.Environ(),
+	// Inject the macOS system proxy so commands run in the workspace terminal —
+	// notably agent `login` flows — reach the upstream API through the same proxy
+	// as spawned agents, instead of connecting directly and hitting `403 Request
+	// not allowed` from a restricted region.
+	return runtimecmd.InjectSystemProxyEnv(append(os.Environ(),
 		"PWD="+cwd,
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
-	)
+	))
 }
 
 func normalizeTerminalDimension(value *int, fallback int) int {

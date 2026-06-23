@@ -251,7 +251,11 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     return this.dependencies.hostWindowApi.approveClose();
   }
 
-  onWindowCloseRequest(listener: () => void): () => void {
+  onWindowCloseRequest(
+    listener: Parameters<
+      IWorkspaceWorkbenchHostService["onWindowCloseRequest"]
+    >[0]
+  ): () => void {
     return this.dependencies.hostWindowApi.onCloseRequest(listener);
   }
 
@@ -395,13 +399,23 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     );
   }
 
+  resolveWindowCloseRequest(input: {
+    outcome: "approved" | "blocked";
+    requestId: string;
+  }): void {
+    this.dependencies.hostWindowApi.resolveCloseRequest(input);
+  }
+
   requestWindowClose(input: {
     confirmCloseGuard(
       request: WorkbenchHostCloseDialogRequest
     ): Promise<boolean>;
     host: WorkbenchHostHandle | null;
     hostInput: WorkspaceWorkbenchHostInput;
-  }): Promise<void> {
+    reason: Parameters<
+      IWorkspaceWorkbenchHostService["requestWindowClose"]
+    >[0]["reason"];
+  }): Promise<"approved" | "blocked"> {
     return confirmWorkspaceWindowClose({
       ...input,
       requestApprovedClose: () => this.approveWindowClose(),

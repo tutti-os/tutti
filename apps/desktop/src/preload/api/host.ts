@@ -181,7 +181,17 @@ export function createHostDesktopApi(): DesktopHostApi {
         );
       },
       onCloseRequest(listener): () => void {
-        const handler = () => listener();
+        const handler = (
+          _event: Electron.IpcRendererEvent,
+          payload?: { reason?: unknown; requestId?: unknown }
+        ) =>
+          listener({
+            requestId:
+              typeof payload?.requestId === "string"
+                ? payload.requestId
+                : undefined,
+            reason: payload?.reason === "quit" ? "quit" : "window-close"
+          });
         ipcRenderer.on(desktopIpcChannels.host.window.closeRequest, handler);
         return () => {
           ipcRenderer.removeListener(
@@ -189,6 +199,12 @@ export function createHostDesktopApi(): DesktopHostApi {
             handler
           );
         };
+      },
+      resolveCloseRequest(payload): void {
+        ipcRenderer.send(
+          desktopIpcChannels.host.window.closeRequestResolved,
+          payload
+        );
       }
     },
     notifications: {

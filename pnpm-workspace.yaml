@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*/*"
+  - "services/tuttid/builtin-apps/tutti-onboarding"
   - "tools/fixtures/*"
 onlyBuiltDependencies:
   - electron

@@ -562,6 +562,7 @@ export const en = {
         comingSoon: "Coming soon",
         install: "Connect",
         installFailed: "Installation failed",
+        installUnavailableInRegion: "Claude isn't available in this region.",
         installRequired: "Connect the local agent to continue",
         installing: "Installing...",
         login: "Sign in",

@@ -284,6 +284,9 @@ function createWebHostApi(): DesktopHostApi {
       },
       onCloseRequest() {
         return () => {};
+      },
+      resolveCloseRequest() {
+        return undefined;
       }
     },
     notifications: {

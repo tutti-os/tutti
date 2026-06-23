@@ -5,6 +5,7 @@
   "workspaces": [
     "apps/*",
     "packages/*/*",
+    "services/tuttid/builtin-apps/tutti-onboarding",
     "tools/fixtures/*"
   ],
   "engines": {
@@ -18,8 +19,8 @@
     }
   },
   "scripts": {
-    "build": "pnpm -r --if-present build && cd packages/workspace/files && go build ./... && cd ../../workbench/service && go build ./... && cd ../../../services/tuttid && go build ./... && cd ../../apps/cli && go build ./...",
-    "build:go": "cd packages/workspace/files && go build ./... && cd ../../workbench/service && go build ./... && cd ../../../services/tuttid && go build ./... && cd ../../apps/cli && go build ./...",
+    "build": "pnpm -r --if-present build && pnpm generate:builtin-apps && cd packages/workspace/files && go build ./... && cd ../../workbench/service && go build ./... && cd ../../../services/tuttid && go build ./... && cd ../../apps/cli && go build ./...",
+    "build:go": "pnpm generate:builtin-apps && cd packages/workspace/files && go build ./... && cd ../../workbench/service && go build ./... && cd ../../../services/tuttid && go build ./... && cd ../../apps/cli && go build ./...",
     "build:npm-packages": "node ./tools/scripts/build-npm-packages.mjs",
     "check:api-generated": "node ./tools/scripts/generate-openapi.mjs --check",
     "check:agent-activity-runtime-boundaries": "node ./tools/scripts/check-agent-activity-runtime-boundaries.mjs",
@@ -44,11 +45,12 @@
     "dev:ui-storyboard": "pnpm --filter @tutti-os/ui-storyboard dev",
     "preview:desktop": "pnpm --filter @tutti-os/desktop preview",
     "generate:api": "node ./tools/scripts/generate-openapi.mjs",
+    "generate:builtin-apps": "pnpm --filter @tutti-os/builtin-tutti-onboarding package:builtin",
     "generate:defaults": "node ./tools/scripts/generate-defaults.mjs",
     "generate:event-protocol": "node ./tools/scripts/generate-event-protocol.mjs",
     "install:golangci-lint": "node ./tools/scripts/setup-dev.mjs --install=golangci-lint",
     "lint": "pnpm lint:ts && pnpm lint:go",
-    "lint:go": "node ./tools/scripts/run-golangci-lint.mjs",
+    "lint:go": "pnpm generate:builtin-apps && node ./tools/scripts/run-golangci-lint.mjs",
     "lint:ts": "oxlint . --deny-warnings",
     "lark:logs": "node ./tools/scripts/lark-log-tool.mjs",
     "format": "pnpm format:code && pnpm format:assets",
@@ -71,7 +73,7 @@
     "sync:workbench-openapi-schema": "node ./tools/scripts/sync-workbench-openapi-schema.mjs",
     "sync:workbench-go-contract": "node ./tools/scripts/generate-workbench-go-contract.mjs",
     "test:tools": "node --test ./tools/scripts/check-tutti-names.test.mjs ./tools/scripts/check-renderer-feature-boundaries.test.mjs ./tools/scripts/check-electron-runtime-boundaries.test.mjs ./tools/scripts/check-i18n.test.mjs ./tools/scripts/desktop-build-version.test.mjs ./tools/scripts/desktop-dmg-notarization.test.mjs ./tools/scripts/desktop-release-config.test.mjs ./tools/scripts/desktop-release-download-links.test.mjs ./tools/scripts/desktop-release-feishu-card.test.mjs ./tools/scripts/desktop-release-latest.test.mjs ./tools/scripts/desktop-release-reservation.test.mjs ./tools/scripts/desktop-release-versioning.test.mjs ./tools/scripts/dev-web.test.mjs ./tools/scripts/generate-defaults.test.mjs ./tools/scripts/lark-log-tool.test.mjs ./tools/scripts/migrate-local-state-layout.test.mjs ./tools/scripts/npm-release-packages.test.mjs ./tools/scripts/package-release-version.test.mjs ./tools/scripts/publish-packages.test.mjs ./tools/scripts/build-tutti-app-release.test.mjs ./tools/scripts/build-tutti-app-runtime-catalog.test.mjs",
-    "test:go": "cd packages/workspace/files && go test ./... && cd ../../workbench/service && go test ./... && cd ../../../services/tuttid && go test ./... && cd ../../apps/cli && go test ./...",
+    "test:go": "pnpm generate:builtin-apps && cd packages/workspace/files && go test ./... && cd ../../workbench/service && go test ./... && cd ../../../services/tuttid && go test ./... && cd ../../apps/cli && go test ./...",
     "test:ts": "pnpm --filter @tutti-os/desktop test && pnpm --filter @tutti-os/browser-node test && pnpm --filter @tutti-os/client-tuttid-ts test && pnpm --filter @tutti-os/workbench-snapshot test && pnpm --filter @tutti-os/workbench-surface test && pnpm --filter @tutti-os/workspace-file-preview test && pnpm --filter @tutti-os/workspace-file-manager test && pnpm test:tools",
     "typecheck": "node ./tools/scripts/run-typecheck.mjs"
   },

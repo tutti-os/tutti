@@ -33,6 +33,7 @@ type AppManifest struct {
 	CLI              *AppManifestCLI              `json:"cli,omitempty"`
 	References       *AppManifestReferences       `json:"references,omitempty"`
 	Window           *AppManifestWindow           `json:"window,omitempty"`
+	Launch           *AppManifestLaunch           `json:"launch,omitempty"`
 	Author           *AppManifestAuthor           `json:"author,omitempty"`
 	Tags             []string                     `json:"tags,omitempty"`
 	LocalizationInfo *AppManifestLocalizationInfo `json:"localizationInfo,omitempty"`
@@ -62,6 +63,10 @@ type AppManifestWindow struct {
 	MinimizeBehavior string `json:"minimizeBehavior,omitempty"`
 	MinWidth         *int   `json:"minWidth,omitempty"`
 	MinHeight        *int   `json:"minHeight,omitempty"`
+}
+
+type AppManifestLaunch struct {
+	Mode string `json:"mode"`
 }
 
 type AppManifestAuthor struct {
@@ -581,6 +586,12 @@ func ValidateAppManifest(manifest AppManifest) error {
 	}
 	if manifest.Author != nil && strings.TrimSpace(manifest.Author.Name) == "" {
 		return errors.New("app manifest author.name is required when author is provided")
+	}
+	if manifest.Launch != nil {
+		mode := strings.TrimSpace(manifest.Launch.Mode)
+		if mode != "workspace-open" {
+			return errors.New("app manifest launch.mode must be workspace-open when launch is provided")
+		}
 	}
 	for _, tag := range manifest.Tags {
 		if strings.TrimSpace(tag) == "" {

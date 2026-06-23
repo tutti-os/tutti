@@ -19,7 +19,7 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
-//go:embed apps/**
+//go:embed generated/**
 var files embed.FS
 
 type App struct {
@@ -164,6 +164,9 @@ func embeddedCatalog() []App {
 					MinWidth:  &minWidth,
 					MinHeight: &minHeight,
 				},
+				Launch: &workspacebiz.AppManifestLaunch{
+					Mode: "workspace-open",
+				},
 				LocalizationInfo: &workspacebiz.AppManifestLocalizationInfo{
 					DefaultLocale: "en",
 					AdditionalLocales: []workspacebiz.AppManifestLocalizationFile{
@@ -188,7 +191,7 @@ func embeddedCatalog() []App {
 			},
 			Distribution: Distribution{
 				Kind:                 DistributionEmbeddedArchive,
-				EmbeddedArtifactPath: "apps/tutti-onboarding/tutti-onboarding-0.1.0.zip",
+				EmbeddedArtifactPath: "generated/tutti-onboarding/tutti-onboarding-0.1.0.zip",
 			},
 		},
 	}

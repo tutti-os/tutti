@@ -327,6 +327,9 @@ export function ReferenceSourcePicker({
                               node={node}
                               selected={view.isSelected(node)}
                               onFocus={view.setFocusedNode}
+                              onSingleSelect={
+                                view.toggleSingleSelectionAndExpand
+                              }
                               onToggle={view.toggleSelection}
                             />
                           ))
@@ -586,12 +589,14 @@ function SearchResultRow({
   focused,
   selected,
   onFocus,
+  onSingleSelect,
   onToggle
 }: {
   node: ReferenceNode;
   focused: boolean;
   selected: boolean;
   onFocus: (node: ReferenceNode) => void;
+  onSingleSelect: (node: ReferenceNode) => void;
   onToggle: (node: ReferenceNode) => void;
 }): JSX.Element {
   const isFolder = node.kind === "folder";
@@ -604,7 +609,10 @@ function SearchResultRow({
           ? "border-border bg-transparency-block"
           : "border-transparent bg-transparent hover:border-border/70 hover:bg-transparency-block"
       )}
-      onClick={() => onFocus(node)}
+      onClick={() => {
+        onFocus(node);
+        onSingleSelect(node);
+      }}
     >
       <div className="flex min-w-0 items-center gap-3 text-left">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--transparency-block)] text-[var(--text-tertiary)]">
@@ -1257,9 +1265,7 @@ function TreeNodeRow({
         style={{ paddingLeft: `${depth * TREE_INDENT + 8}px` }}
         onClick={() => {
           view.setFocusedNode(node);
-          if (isFolder) {
-            view.toggleNode(node);
-          }
+          view.toggleSingleSelectionAndExpand(node);
         }}
       >
         {isFolder ? (

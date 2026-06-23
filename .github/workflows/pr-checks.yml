@@ -179,6 +179,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -191,6 +203,12 @@ jobs:
             packages/workspace/issues/go.mod
             services/tuttid/go.mod
             services/tuttid/go.sum
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate builtin apps
+        run: pnpm generate:builtin-apps
 
       - name: Run shared Workbench service tests
         working-directory: packages/workbench/service
@@ -208,6 +226,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -220,6 +250,12 @@ jobs:
             packages/workspace/issues/go.mod
             services/tuttid/go.mod
             services/tuttid/go.sum
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate builtin apps
+        run: pnpm generate:builtin-apps
 
       - name: Install pinned golangci-lint
         run: |

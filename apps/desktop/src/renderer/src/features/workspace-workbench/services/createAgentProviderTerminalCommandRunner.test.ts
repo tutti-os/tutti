@@ -137,6 +137,7 @@ function createWorkbenchHost(
     setNodeSizeConstraints() {},
     setSnapshotNodeState() {},
     ...overrides,
+    minimizeNode: overrides.minimizeNode ?? (() => {}),
     setNodeTitle: overrides.setNodeTitle ?? (() => {})
   };
 }

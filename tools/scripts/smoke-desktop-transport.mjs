@@ -79,25 +79,27 @@ function isAlive(exitCode, signalCode) {
   return exitCode === null && signalCode === null;
 }
 
-function buildDaemon(outputPath) {
-  return new Promise((resolve, reject) => {
-    execFile(
-      "go",
-      ["build", "-o", outputPath, "./services/tuttid"],
-      { cwd: workspaceRoot },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(
-            new Error(
-              `failed to build tuttid for smoke test:\n${stdout}${stderr}`
-            )
-          );
-          return;
-        }
+async function buildDaemon(outputPath) {
+  await runCommand("pnpm", ["generate:builtin-apps"], {
+    cwd: workspaceRoot,
+    errorPrefix: "failed to generate builtin apps for smoke test"
+  });
+  await runCommand("go", ["build", "-o", outputPath, "./services/tuttid"], {
+    cwd: workspaceRoot,
+    errorPrefix: "failed to build tuttid for smoke test"
+  });
+}
 
-        resolve(undefined);
+function runCommand(command, args, { cwd, errorPrefix }) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { cwd }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`${errorPrefix}:\n${stdout}${stderr}`));
+        return;
       }
-    );
+
+      resolve(undefined);
+    });
   });
 }
 

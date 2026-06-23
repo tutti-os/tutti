@@ -739,6 +739,7 @@
   --desktop-dock-scroll-button-z-index: 120;
   --desktop-dock-scroll-fade-size: 48px;
   --desktop-dock-tooltip-gap: 32px;
+  --desktop-dock-hover-panel-gap: 12px;
   position: relative;
   z-index: 1;
   display: block;
@@ -1764,7 +1765,7 @@
   opacity: 1;
   pointer-events: auto;
   transform: translateX(-50%)
-    translateY(calc(-100% - var(--desktop-dock-tooltip-gap, 32px)));
+    translateY(calc(-100% - var(--desktop-dock-hover-panel-gap, 12px)));
   transition:
     opacity 0.12s ease,
     transform 0.12s ease;
@@ -1823,7 +1824,7 @@
   left: calc(
     var(--desktop-dock-hover-panel-anchor-left) +
       var(--desktop-dock-hover-panel-anchor-width) +
-      var(--desktop-dock-tooltip-gap, 32px)
+      var(--desktop-dock-hover-panel-gap, 12px)
   );
   transform: translateY(-50%);
 }
@@ -1831,9 +1832,9 @@
 .desktop-dock__hover-panel::before {
   position: absolute;
   right: 0;
-  bottom: calc(-1 * var(--desktop-dock-tooltip-gap, 32px));
+  bottom: calc(-1 * var(--desktop-dock-hover-panel-gap, 12px));
   left: 0;
-  height: var(--desktop-dock-tooltip-gap, 32px);
+  height: var(--desktop-dock-hover-panel-gap, 12px);
   content: "";
 }
 
@@ -1841,8 +1842,8 @@
   top: 0;
   right: auto;
   bottom: 0;
-  left: calc(-1 * var(--desktop-dock-tooltip-gap, 32px));
-  width: var(--desktop-dock-tooltip-gap, 32px);
+  left: calc(-1 * var(--desktop-dock-hover-panel-gap, 12px));
+  width: var(--desktop-dock-hover-panel-gap, 12px);
   height: auto;
 }
 
@@ -2793,7 +2794,7 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
 
   animation: workspace-launchpad-hover-panel-enter 160ms
     cubic-bezier(0.16, 1, 0.3, 1) both;
-  bottom: calc(100% + var(--desktop-dock-tooltip-gap, 32px));
+  bottom: calc(100% + var(--desktop-dock-tooltip-gap, 12px));
   left: 50%;
   right: auto;
   top: auto;

@@ -43,6 +43,7 @@ export interface DesktopAppLifecycleRuntime {
   destroyAllWindows(): void;
   getWindowCount(): number;
   quit(): void;
+  requestWorkspaceWindowsClose(): Promise<"approved" | "blocked">;
 }
 
 export function registerDesktopAppLifecycle(
@@ -81,17 +82,32 @@ export function createDesktopAppLifecycleHandlers(
       isStoppingDaemon = true;
       event.preventDefault();
       deps.logger.info("desktop app before quit");
-      void deps.tuttid
-        .stop()
-        .catch((error: unknown) => {
+      void (async () => {
+        try {
+          const outcome = await runtime.requestWorkspaceWindowsClose();
+          if (outcome === "blocked") {
+            isStoppingDaemon = false;
+            return;
+          }
+        } catch (error: unknown) {
+          deps.logger.error("failed to close workspace windows during quit", {
+            error: error instanceof Error ? error.message : String(error)
+          });
+          isStoppingDaemon = false;
+          return;
+        }
+
+        try {
+          await deps.tuttid.stop();
+        } catch (error: unknown) {
           deps.logger.error("failed to stop managed tuttid during quit", {
             error: error instanceof Error ? error.message : String(error)
           });
-        })
-        .finally(() => {
-          runtime.destroyAllWindows();
-          runtime.quit();
-        });
+        }
+
+        runtime.destroyAllWindows();
+        runtime.quit();
+      })();
     },
 
     willQuit() {
@@ -122,7 +138,12 @@ function createElectronDesktopAppLifecycleRuntime(
       }
     },
     getWindowCount: () => BrowserWindow.getAllWindows().length,
-    quit: () => app.quit()
+    quit: () => app.quit(),
+    requestWorkspaceWindowsClose: async () => {
+      const { requestWorkspaceWindowsClose } =
+        await import("./windows/workspaceWindow.ts");
+      return requestWorkspaceWindowsClose({ reason: "quit" });
+    }
   };
 }
 

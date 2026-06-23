@@ -187,7 +187,8 @@ function createApp(
 }
 
 function createAppCenterService(
-  apps: readonly WorkspaceAppCenterApp[]
+  apps: readonly WorkspaceAppCenterApp[],
+  overrides: Partial<IWorkspaceAppCenterService> = {}
 ): IWorkspaceAppCenterService {
   return {
     _serviceBrand: undefined,
@@ -197,7 +198,8 @@ function createAppCenterService(
     prepareAppLaunch: async ({ appId }: { appId: string }) =>
       apps.find((app) => app.appId === appId) ?? null,
     getViewState: () => ({ activeAppTab: "apps" }),
-    subscribe: () => () => {}
+    subscribe: () => () => {},
+    ...overrides
   } as unknown as IWorkspaceAppCenterService;
 }
 

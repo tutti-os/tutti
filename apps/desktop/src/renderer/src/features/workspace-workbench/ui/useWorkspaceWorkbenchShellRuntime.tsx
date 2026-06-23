@@ -321,8 +321,19 @@ export function useWorkspaceWorkbenchShellRuntime({
       return;
     }
 
-    return workbenchHostService.onWindowCloseRequest(() => {
-      void shellRuntimeController.requestWindowClose();
+    return workbenchHostService.onWindowCloseRequest((payload) => {
+      void shellRuntimeController
+        .requestWindowClose({
+          reason: payload.reason
+        })
+        .then((outcome) => {
+          if (payload.requestId) {
+            workbenchHostService.resolveWindowCloseRequest({
+              outcome,
+              requestId: payload.requestId
+            });
+          }
+        });
     });
   }, [enableWindowCloseGuard, shellRuntimeController, workbenchHostService]);
 

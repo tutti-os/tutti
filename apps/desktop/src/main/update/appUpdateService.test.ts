@@ -179,6 +179,76 @@ test("createAppUpdateService skips downloading state when cached update is alrea
   }
 });
 
+test("createAppUpdateService refreshes update availability before downloading", async () => {
+  const listeners: {
+    checking?: () => void;
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const emittedStatuses: string[] = [];
+  let checkCallCount = 0;
+  let emitFreshAvailability = false;
+  let latestAvailableVersion = "1.1.0";
+  let downloadedVersion: string | null = null;
+  const driver = createFakeDriver({
+    async checkForUpdates() {
+      checkCallCount += 1;
+      listeners.checking?.();
+      if (!emitFreshAvailability) {
+        return;
+      }
+      latestAvailableVersion = "1.2.0";
+      listeners.available?.(createUpdateInfoFixture(latestAvailableVersion));
+    },
+    async downloadUpdate() {
+      downloadedVersion = latestAvailableVersion;
+      listeners.downloaded?.(
+        createUpdateDownloadedInfoFixture(latestAvailableVersion)
+      );
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onCheckingForUpdate(listener) {
+      listeners.checking = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  const service = createAppUpdateService(driver, {
+    supportsUpdates: true
+  });
+
+  try {
+    service.onStateChanged((state) => {
+      emittedStatuses.push(state.status);
+    });
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    await service.checkForUpdates();
+    listeners.available?.(createUpdateInfoFixture("1.1.0"));
+    emittedStatuses.length = 0;
+
+    const checksBeforeDownload = checkCallCount;
+    emitFreshAvailability = true;
+    const state = await service.downloadUpdate();
+
+    assert.equal(checkCallCount, checksBeforeDownload + 1);
+    assert.equal(downloadedVersion, "1.2.0");
+    assert.equal(state.latestVersion, "1.2.0");
+    assert.equal(state.status, "downloaded");
+    assert.deepEqual(emittedStatuses, ["available", "downloaded"]);
+  } finally {
+    service.dispose();
+  }
+});
+
 test("createElectronUpdaterLogger defers no published versions errors during prefixed fallback", () => {
   const calls: Array<{ level: string; message: string }> = [];
   const logger = createElectronUpdaterLogger({

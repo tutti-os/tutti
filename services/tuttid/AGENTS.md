@@ -13,8 +13,9 @@ If a change involves domain decisions, durable state, or local persistence owner
 - Check daemon-side prerequisites from the repository root: `pnpm setup:dev`
 - Check only the pinned Go lint tool version from the repository root: `pnpm check:golangci-version`
 - Install pinned `golangci-lint` locally before running daemon lint commands: `pnpm install:golangci-lint`
-- Run daemon tests: `go test ./...`
-- Build daemon: `go build ./...`
+- Generate builtin workspace apps before bare daemon Go commands: `pnpm generate:builtin-apps`
+- Run daemon tests from the repository root: `pnpm test:go`
+- Build daemon from the repository root: `pnpm build:go`
 
 ## Current top-level shape
 
@@ -69,7 +70,7 @@ types/
 ## Testing defaults
 
 - Run `pnpm lint:go`
-- Run `go test ./... && go build ./...` before finishing daemon changes
+- Run `pnpm test:go && pnpm build:go` before finishing daemon changes
 - Add or update tests when changing handlers, service logic, or persistence behavior
 - Keep near-layer tests beside the package they exercise; place real-process or cross-layer daemon tests under `integration/`
 

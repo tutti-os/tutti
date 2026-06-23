@@ -334,6 +334,9 @@ function createHost(id: string): WorkbenchHostHandle {
     },
     launchNode: async () => null,
     load: async () => undefined,
+    minimizeNode() {
+      return undefined;
+    },
     reconcileProjectedNodes() {
       return undefined;
     },
@@ -385,6 +388,7 @@ function createShellHostInput(input: {
         host: request.host,
         hostInput: request.hostInput
       });
+      return "approved" as const;
     },
     themeAppearance: "light" as const,
     workspaceId: input.workspaceId ?? input.hostInput.workspaceId

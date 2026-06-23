@@ -162,6 +162,9 @@ function createWorkbenchHostHandleStub(input: {
     },
     launchNode: async () => null,
     load: async () => undefined,
+    minimizeNode() {
+      return undefined;
+    },
     reconcileProjectedNodes() {
       return undefined;
     },

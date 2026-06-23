@@ -404,6 +404,60 @@ test("runAction reports install failures and clears pending state", async () => 
   ]);
 });
 
+test("runAction summarizes Claude regional availability install failures", async () => {
+  const notifications = createNotificationRecorder();
+  const service = new DesktopAgentProviderStatusService(
+    {
+      tuttidClient: createTuttidClient({
+        actionRuns: [
+          {
+            actionID: "install",
+            completedAt: "2026-06-02T08:00:00.000Z",
+            message:
+              '<!DOCTYPE html><html><head><title>App unavailable in region | Claude</title><meta content="Unfortunately, Claude isn&#x27;t available here." name="description"></head></html>',
+            provider: "claude-code",
+            reasonCode: "install_command_failed",
+            status: "failed"
+          }
+        ],
+        snapshots: [
+          createStatusResponse([
+            createProviderStatus({
+              actions: [
+                {
+                  command: {
+                    cwd: "/workspace",
+                    input: "npm install -g @anthropic-ai/claude-code\n"
+                  },
+                  id: "install",
+                  kind: "terminal_command"
+                }
+              ],
+              availability: "not_installed",
+              provider: "claude-code"
+            })
+          ])
+        ]
+      }),
+      terminalCommandRunner: {
+        async runTerminalCommand() {}
+      }
+    },
+    notifications.service
+  );
+
+  await service.refresh();
+  await assert.rejects(() => service.runAction("claude-code", "install"));
+
+  assert.deepEqual(notifications.items, [
+    {
+      description: "Claude isn't available in this region.",
+      tone: "error",
+      title: "Installation failed"
+    }
+  ]);
+});
+
 test("runAction reports login launch failures and clears pending state", async () => {
   const events: ReporterEventInput[] = [];
   const notifications = createNotificationRecorder();

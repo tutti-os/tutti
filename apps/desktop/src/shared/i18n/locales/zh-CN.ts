@@ -536,6 +536,7 @@ export const zhCN = {
         comingSoon: "敬请期待",
         install: "连接",
         installFailed: "安装失败",
+        installUnavailableInRegion: "该地区不支持 Claude 服务。",
         installRequired: "需要先连接本地 Agent 才能继续",
         installing: "安装中...",
         login: "登录",

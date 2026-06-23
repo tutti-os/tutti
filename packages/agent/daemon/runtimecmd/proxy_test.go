@@ -1,6 +1,8 @@
 package runtimecmd
 
 import (
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -135,5 +137,108 @@ func TestEnvNoProxyWhenScutilUnavailable(t *testing.T) {
 	env := resolver.Env(nil)
 	if got := envValue(env, "HTTPS_PROXY"); got != "" {
 		t.Fatalf("HTTPS_PROXY = %q, want empty when scutil unavailable", got)
+	}
+}
+
+func TestSystemProxyURLFromPrefersHTTPS(t *testing.T) {
+	got, ok := systemProxyURLFrom(map[string]string{
+		"HTTPS_PROXY": "http://127.0.0.1:7890",
+		"HTTP_PROXY":  "http://127.0.0.1:1080",
+	})
+	if !ok {
+		t.Fatalf("systemProxyURLFrom() ok = false, want true")
+	}
+	if got.String() != "http://127.0.0.1:7890" {
+		t.Fatalf("systemProxyURLFrom() = %q, want HTTPS entry http://127.0.0.1:7890", got)
+	}
+}
+
+func TestSystemProxyURLFromFallsBackToHTTP(t *testing.T) {
+	got, ok := systemProxyURLFrom(map[string]string{
+		"HTTP_PROXY": "http://10.0.0.2:3128",
+	})
+	if !ok {
+		t.Fatalf("systemProxyURLFrom() ok = false, want true")
+	}
+	if got.String() != "http://10.0.0.2:3128" {
+		t.Fatalf("systemProxyURLFrom() = %q, want http://10.0.0.2:3128", got)
+	}
+}
+
+func TestSystemProxyURLFromEmptyReturnsFalse(t *testing.T) {
+	if got, ok := systemProxyURLFrom(nil); ok {
+		t.Fatalf("systemProxyURLFrom(nil) = (%v, true), want (nil, false)", got)
+	}
+	if got, ok := systemProxyURLFrom(map[string]string{"HTTPS_PROXY": "  "}); ok {
+		t.Fatalf("systemProxyURLFrom(blank) = (%v, true), want (nil, false)", got)
+	}
+}
+
+func mustParseURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("url.Parse(%q): %v", raw, err)
+	}
+	return parsed
+}
+
+func TestHTTPProxyFuncPrefersEnvProxy(t *testing.T) {
+	envURL := mustParseURL(t, "http://env-proxy:8080")
+	systemURL := mustParseURL(t, "http://system-proxy:7890")
+	fn := httpProxyFunc(
+		func(*http.Request) (*url.URL, error) { return envURL, nil },
+		systemURL, true,
+	)
+	got, err := fn(&http.Request{})
+	if err != nil {
+		t.Fatalf("proxy func err = %v", err)
+	}
+	if got != envURL {
+		t.Fatalf("proxy = %v, want env proxy %v (env wins over system)", got, envURL)
+	}
+}
+
+func TestHTTPProxyFuncFallsBackToSystem(t *testing.T) {
+	systemURL := mustParseURL(t, "http://system-proxy:7890")
+	fn := httpProxyFunc(
+		func(*http.Request) (*url.URL, error) { return nil, nil },
+		systemURL, true,
+	)
+	got, err := fn(&http.Request{})
+	if err != nil {
+		t.Fatalf("proxy func err = %v", err)
+	}
+	if got != systemURL {
+		t.Fatalf("proxy = %v, want system proxy %v when env has none", got, systemURL)
+	}
+}
+
+func TestHTTPProxyFuncDirectWhenNoneConfigured(t *testing.T) {
+	fn := httpProxyFunc(
+		func(*http.Request) (*url.URL, error) { return nil, nil },
+		nil, false,
+	)
+	got, err := fn(&http.Request{})
+	if err != nil {
+		t.Fatalf("proxy func err = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("proxy = %v, want nil (direct) when nothing configured", got)
+	}
+}
+
+func TestHTTPProxyFuncPropagatesEnvError(t *testing.T) {
+	wantErr := http.ErrNoCookie
+	fn := httpProxyFunc(
+		func(*http.Request) (*url.URL, error) { return nil, wantErr },
+		mustParseURL(t, "http://system-proxy:7890"), true,
+	)
+	got, err := fn(&http.Request{})
+	if err != wantErr {
+		t.Fatalf("err = %v, want %v (env error surfaces, no system fallback)", err, wantErr)
+	}
+	if got != nil {
+		t.Fatalf("proxy = %v, want nil on env error", got)
 	}
 }

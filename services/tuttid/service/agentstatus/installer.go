@@ -739,7 +739,13 @@ func (s Service) httpClient() *http.Client {
 	if s.HTTPClient != nil {
 		return s.HTTPClient
 	}
-	return http.DefaultClient
+	// Route downloads (codex CLI package, claude install.sh, release binaries)
+	// through the macOS system proxy. This is an in-process HTTP call, so it
+	// cannot inherit the proxy env we inject into spawned children — resolve it
+	// directly. Prefers an explicit env proxy, falls back to the system proxy.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = runtimecmd.HTTPProxyFunc()
+	return &http.Client{Transport: transport}
 }
 
 func joinShellCommand(parts []string) string {

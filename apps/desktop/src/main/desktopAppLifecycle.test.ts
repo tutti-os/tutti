@@ -58,7 +58,10 @@ function createUpdateService(events: string[]): AppUpdateService {
   };
 }
 
-function createRuntime(events: string[]): DesktopAppLifecycleRuntime {
+function createRuntime(
+  events: string[],
+  closeOutcomes: Array<"approved" | "blocked"> = ["approved"]
+): DesktopAppLifecycleRuntime {
   return {
     destroyAllWindows() {
       events.push("windows:destroy-all");
@@ -68,6 +71,10 @@ function createRuntime(events: string[]): DesktopAppLifecycleRuntime {
     },
     quit() {
       events.push("app:quit");
+    },
+    async requestWorkspaceWindowsClose() {
+      events.push("windows:request-quit-close");
+      return closeOutcomes.shift() ?? "approved";
     }
   };
 }
@@ -114,6 +121,7 @@ test("before quit waits for managed tuttid stop before quitting the app", async 
 
   await Promise.resolve();
   await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(prevented, true);
   assert.equal(
@@ -121,6 +129,7 @@ test("before quit waits for managed tuttid stop before quitting the app", async 
     [
       "quit:prevented",
       "info:desktop app before quit",
+      "windows:request-quit-close",
       "tuttid:stop:start"
     ].join("|")
   );
@@ -135,10 +144,11 @@ test("before quit waits for managed tuttid stop before quitting the app", async 
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(
-    events.slice(0, 3).join("|"),
+    events.slice(0, 4).join("|"),
     [
       "quit:prevented",
       "info:desktop app before quit",
+      "windows:request-quit-close",
       "tuttid:stop:start"
     ].join("|")
   );
@@ -182,9 +192,55 @@ test("before quit does not trigger a second stop while shutdown is already in pr
     [
       "quit:prevented",
       "info:desktop app before quit",
+      "windows:request-quit-close",
       "tuttid:stop",
       "windows:destroy-all",
       "app:quit"
     ].join("|")
   );
+});
+
+test("before quit only closes workspace windows when they handle the quit request", async () => {
+  const events: string[] = [];
+  const handlers = createDesktopAppLifecycleHandlers(
+    {
+      logger: createLogger(events),
+      tuttid: createTuttidManager(async () => {
+        events.push("tuttid:stop");
+      }),
+      updateService: createUpdateService(events),
+      workspaceLaunch: createWorkspaceLaunch()
+    },
+    createRuntime(events, ["blocked", "approved"])
+  );
+
+  handlers.beforeQuit({
+    preventDefault() {
+      events.push("quit:prevented");
+    }
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  handlers.beforeQuit({
+    preventDefault() {
+      events.push("quit:prevented:again");
+    }
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(events, [
+    "quit:prevented",
+    "info:desktop app before quit",
+    "windows:request-quit-close",
+    "quit:prevented:again",
+    "info:desktop app before quit",
+    "windows:request-quit-close",
+    "tuttid:stop",
+    "windows:destroy-all",
+    "app:quit"
+  ]);
 });

@@ -487,6 +487,7 @@ export interface WorkbenchHostHandle {
   isHydrating?(): boolean;
   launchNode(input: WorkbenchHostLaunchInput): Promise<string | null>;
   load(): Promise<void>;
+  minimizeNode(nodeId: string): void;
   requestNodeClose(nodeId: string): void;
   reconcileProjectedNodes(
     projectedNodes: readonly WorkbenchHostProjectedNode[]

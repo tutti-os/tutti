@@ -788,7 +788,7 @@ export const zhCN = {
       referenceWorkspaceFiles: "引用空间文件",
       referencePicker: {
         clearFilter: "清除筛选",
-        confirm: "使用已选引用",
+        confirm: "引用文件",
         emptyDirectory: "当前目录为空",
         emptyPreview: "选择一个文件查看详情",
         emptySearch: "没有匹配的文件或文件夹",

@@ -83,6 +83,7 @@ function createTerminalWorkbenchBodyTestContext({
         return null;
       },
       async load() {},
+      minimizeNode() {},
       reconcileProjectedNodes() {},
       requestNodeClose() {},
       setNodeRuntimeState() {},

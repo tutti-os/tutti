@@ -431,7 +431,7 @@ describe("useAgentGUINodeController", () => {
     await waitFor(() => {
       expect(getComposerOptions).toHaveBeenCalledWith(
         expect.objectContaining({
-          cwd: "",
+          cwd: "/workspace",
           force: undefined,
           provider: "codex"
         })

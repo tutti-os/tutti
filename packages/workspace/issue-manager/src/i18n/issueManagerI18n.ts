@@ -180,7 +180,7 @@ const issueManagerEn = {
   referencePicker: {
     browse: "Browse",
     clearFilter: "Clear filter",
-    confirm: "Use selected references",
+    confirm: "Use references",
     emptyDirectory: "This folder is empty.",
     emptyPreview: "Select a file to view details.",
     emptySearch: "No matching files or folders.",
@@ -406,7 +406,7 @@ const issueManagerZhCN = {
   referencePicker: {
     browse: "浏览",
     clearFilter: "清除筛选",
-    confirm: "使用已选引用",
+    confirm: "引用文件",
     emptyDirectory: "当前目录为空",
     emptyPreview: "选择一个文件查看详情",
     emptySearch: "没有匹配的文件或文件夹",

@@ -67,6 +67,7 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     comingSoon: "agentProviders.comingSoon",
     install: "agentProviders.install",
     installFailed: "agentProviders.installFailed",
+    installUnavailableInRegion: "agentProviders.installUnavailableInRegion",
     installRequired: "agentProviders.installRequired",
     installing: "agentProviders.installing",
     login: "agentProviders.login",

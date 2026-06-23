@@ -28,6 +28,7 @@ test("confirmWorkspaceWindowClose stops when the close effect dialog is cancelle
     confirmCloseGuard: async () => false,
     host: createWorkbenchHostHandleStub(),
     hostInput,
+    reason: "window-close",
     requestApprovedClose: async () => {
       approvedCloseCount += 1;
     },
@@ -54,6 +55,7 @@ test("confirmWorkspaceWindowClose does not prepare host close before approving w
     confirmCloseGuard: async () => true,
     host: createWorkbenchHostHandleStub(),
     hostInput,
+    reason: "window-close",
     requestApprovedClose: async () => {
       approvedCloseCount += 1;
     },
@@ -89,6 +91,7 @@ test("confirmWorkspaceWindowClose approves window close without stopping workspa
     },
     host: createWorkbenchHostHandleStub(),
     hostInput,
+    reason: "window-close",
     requestApprovedClose: async () => {
       events.push("approve");
     },
@@ -98,13 +101,269 @@ test("confirmWorkspaceWindowClose approves window close without stopping workspa
   assert.deepEqual(events, ["confirm", "approve"]);
 });
 
-function createWorkbenchHostHandleStub(): WorkbenchHostHandle {
+test("confirmWorkspaceWindowClose minimizes focused workbench node before host window", async () => {
+  const events: string[] = [];
+  const hostInput: WorkspaceWorkbenchHostInput = {
+    createWindowCloseDialogRequest: () => {
+      events.push("dialog");
+      return null;
+    },
+    snapshotRepository: {} as never,
+    workspaceId: "workspace-4"
+  };
+
+  await confirmWorkspaceWindowClose({
+    confirmCloseGuard: async () => {
+      events.push("confirm");
+      return true;
+    },
+    host: createWorkbenchHostHandleStub({
+      focusedNodeId: "workspace-app-1",
+      nodeIds: ["workspace-app-1"],
+      onMinimizeNode: (nodeId) => {
+        events.push(`node-minimize:${nodeId}`);
+      }
+    }),
+    hostInput,
+    reason: "window-close",
+    requestApprovedClose: async () => {
+      events.push("approve");
+    },
+    tracker: createWindowCloseRequestTracker()
+  });
+
+  assert.deepEqual(events, ["node-minimize:workspace-app-1"]);
+});
+
+test("confirmWorkspaceWindowClose falls back to visible node when focused id is stale", async () => {
+  const events: string[] = [];
+  const hostInput: WorkspaceWorkbenchHostInput = {
+    snapshotRepository: {} as never,
+    workspaceId: "workspace-5"
+  };
+
+  await confirmWorkspaceWindowClose({
+    confirmCloseGuard: async () => true,
+    host: createWorkbenchHostHandleStub({
+      focusedNodeId: "stale-node",
+      nodeIds: ["live-node"],
+      onMinimizeNode: (nodeId) => {
+        events.push(`node-minimize:${nodeId}`);
+      }
+    }),
+    hostInput,
+    reason: "window-close",
+    requestApprovedClose: async () => {
+      events.push("approve");
+    },
+    tracker: createWindowCloseRequestTracker()
+  });
+
+  assert.deepEqual(events, ["node-minimize:live-node"]);
+});
+
+test("confirmWorkspaceWindowClose minimizes last visible node when focus stack is empty", async () => {
+  const events: string[] = [];
+  const hostInput: WorkspaceWorkbenchHostInput = {
+    snapshotRepository: {} as never,
+    workspaceId: "workspace-6"
+  };
+
+  await confirmWorkspaceWindowClose({
+    confirmCloseGuard: async () => true,
+    host: createWorkbenchHostHandleStub({
+      nodeIds: ["workspace-files", "workspace-app-1"],
+      onMinimizeNode: (nodeId) => {
+        events.push(`node-minimize:${nodeId}`);
+      }
+    }),
+    hostInput,
+    reason: "window-close",
+    requestApprovedClose: async () => {
+      events.push("approve");
+    },
+    tracker: createWindowCloseRequestTracker()
+  });
+
+  assert.deepEqual(events, ["node-minimize:workspace-app-1"]);
+});
+
+test("confirmWorkspaceWindowClose approves host close when every node is minimized", async () => {
+  const events: string[] = [];
+  const hostInput: WorkspaceWorkbenchHostInput = {
+    snapshotRepository: {} as never,
+    workspaceId: "workspace-7"
+  };
+
+  await confirmWorkspaceWindowClose({
+    confirmCloseGuard: async () => true,
+    host: createWorkbenchHostHandleStub({
+      minimizedNodeIds: ["workspace-app-1"],
+      nodeIds: ["workspace-app-1"],
+      onMinimizeNode: (nodeId) => {
+        events.push(`node-minimize:${nodeId}`);
+      }
+    }),
+    hostInput,
+    reason: "window-close",
+    requestApprovedClose: async () => {
+      events.push("approve");
+    },
+    tracker: createWindowCloseRequestTracker()
+  });
+
+  assert.deepEqual(events, ["approve"]);
+});
+
+test("confirmWorkspaceWindowClose closes the focused workbench node and blocks host quit", async () => {
+  const events: string[] = [];
+  const hostInput: WorkspaceWorkbenchHostInput = {
+    prepareHostClose: async ({ workspaceId }) => {
+      events.push(`prepare:${workspaceId}`);
+      return true;
+    },
+    snapshotRepository: {} as never,
+    workspaceId: "workspace-8"
+  };
+
+  const outcome = await confirmWorkspaceWindowClose({
+    confirmCloseGuard: async () => {
+      events.push("confirm");
+      return true;
+    },
+    host: createWorkbenchHostHandleStub({
+      focusedNodeId: "workspace-app-1",
+      nodeIds: ["workspace-files", "workspace-app-1"],
+      onCloseNode: (nodeId) => {
+        events.push(`node-close:${nodeId}`);
+      },
+      onMinimizeNode: (nodeId) => {
+        events.push(`node-minimize:${nodeId}`);
+      }
+    }),
+    hostInput,
+    reason: "quit",
+    requestApprovedClose: async () => {
+      events.push("approve");
+    },
+    tracker: createWindowCloseRequestTracker()
+  });
+
+  assert.deepEqual(events, [
+    "prepare:workspace-8",
+    "node-close:workspace-app-1"
+  ]);
+  assert.equal(outcome, "blocked");
+});
+
+test("confirmWorkspaceWindowClose closes the last node when quit focus is stale", async () => {
+  const events: string[] = [];
+  const hostInput: WorkspaceWorkbenchHostInput = {
+    prepareHostClose: async ({ workspaceId }) => {
+      events.push(`prepare:${workspaceId}`);
+      return true;
+    },
+    snapshotRepository: {} as never,
+    workspaceId: "workspace-11"
+  };
+
+  const outcome = await confirmWorkspaceWindowClose({
+    confirmCloseGuard: async () => true,
+    host: createWorkbenchHostHandleStub({
+      focusedNodeId: "stale-node",
+      nodeIds: ["workspace-files", "workspace-app-1"],
+      onCloseNode: (nodeId) => {
+        events.push(`node-close:${nodeId}`);
+      }
+    }),
+    hostInput,
+    reason: "quit",
+    requestApprovedClose: async () => {
+      events.push("approve");
+    },
+    tracker: createWindowCloseRequestTracker()
+  });
+
+  assert.deepEqual(events, [
+    "prepare:workspace-11",
+    "node-close:workspace-app-1"
+  ]);
+  assert.equal(outcome, "blocked");
+});
+
+test("confirmWorkspaceWindowClose keeps host open when quit preparation fails", async () => {
+  const events: string[] = [];
+  const hostInput: WorkspaceWorkbenchHostInput = {
+    prepareHostClose: async ({ workspaceId }) => {
+      events.push(`prepare:${workspaceId}`);
+      return false;
+    },
+    snapshotRepository: {} as never,
+    workspaceId: "workspace-9"
+  };
+
+  const outcome = await confirmWorkspaceWindowClose({
+    confirmCloseGuard: async () => true,
+    host: createWorkbenchHostHandleStub({
+      nodeIds: ["workspace-app-1"],
+      onCloseNode: (nodeId) => {
+        events.push(`node-close:${nodeId}`);
+      }
+    }),
+    hostInput,
+    reason: "quit",
+    requestApprovedClose: async () => {
+      events.push("approve");
+    },
+    tracker: createWindowCloseRequestTracker()
+  });
+
+  assert.deepEqual(events, ["prepare:workspace-9"]);
+  assert.equal(outcome, "blocked");
+});
+
+test("confirmWorkspaceWindowClose approves quit when no workbench nodes remain", async () => {
+  const events: string[] = [];
+  const hostInput: WorkspaceWorkbenchHostInput = {
+    prepareHostClose: async ({ workspaceId }) => {
+      events.push(`prepare:${workspaceId}`);
+      return true;
+    },
+    snapshotRepository: {} as never,
+    workspaceId: "workspace-10"
+  };
+
+  const outcome = await confirmWorkspaceWindowClose({
+    confirmCloseGuard: async () => true,
+    host: createWorkbenchHostHandleStub(),
+    hostInput,
+    reason: "quit",
+    requestApprovedClose: async () => {
+      events.push("approve");
+    },
+    tracker: createWindowCloseRequestTracker()
+  });
+
+  assert.deepEqual(events, ["approve"]);
+  assert.equal(outcome, "approved");
+});
+
+function createWorkbenchHostHandleStub(
+  input: {
+    focusedNodeId?: string | null;
+    minimizedNodeIds?: string[];
+    nodeIds?: string[];
+    onCloseNode?: (nodeId: string) => void;
+    onMinimizeNode?: (nodeId: string) => void;
+    onRequestNodeClose?: (nodeId: string) => void;
+  } = {}
+): WorkbenchHostHandle {
   return {
     activateNode() {
       return undefined;
     },
-    closeNode() {
-      return undefined;
+    closeNode(nodeId) {
+      input.onCloseNode?.(nodeId);
     },
     collectWindowCloseEffects: async () => [
       {
@@ -123,15 +382,35 @@ function createWorkbenchHostHandleStub(): WorkbenchHostHandle {
       return undefined;
     },
     getSnapshot() {
-      return {} as never;
+      return {
+        activeDragNodeId: null,
+        activeResizeNodeId: null,
+        activeSnapTarget: null,
+        layoutConstraints: {} as never,
+        nodes: (input.nodeIds ?? []).map((id) => ({
+          data: {} as never,
+          displayMode: "floating",
+          frame: {} as never,
+          id,
+          isMinimized: input.minimizedNodeIds?.includes(id) ?? false,
+          kind: "window",
+          restoreFrame: null,
+          title: id
+        })),
+        nodeStack: input.focusedNodeId ? [input.focusedNodeId] : [],
+        surfaceSize: { height: 800, width: 1200 }
+      };
     },
     launchNode: async () => null,
     load: async () => undefined,
+    minimizeNode(nodeId) {
+      input.onMinimizeNode?.(nodeId);
+    },
     reconcileProjectedNodes() {
       return undefined;
     },
-    requestNodeClose() {
-      return undefined;
+    requestNodeClose(nodeId) {
+      input.onRequestNodeClose?.(nodeId);
     },
     setNodeRuntimeState() {
       return undefined;

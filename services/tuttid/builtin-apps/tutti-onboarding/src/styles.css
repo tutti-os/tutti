@@ -1,0 +1,202 @@
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@source "./**/*.{js,jsx}";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-1: var(--background-1);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-background-panel: var(--background-panel);
+  --color-background-fronted: var(--background-fronted);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-border-1: var(--border-1);
+  --color-transparency-block: var(--transparency-block);
+  --color-transparency-hover: var(--transparency-hover);
+  --color-white-stationary: var(--white-stationary);
+  --font-sans: var(--font-sans-system);
+  --font-mono: var(--font-mono-system);
+  --radius-sm: calc(var(--radius) - 0.375rem);
+  --radius-md: calc(var(--radius) - 0.25rem);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 0.25rem);
+  --shadow-soft: var(--shadow-soft);
+  --shadow-panel: var(--shadow-panel);
+}
+
+:root {
+  --font-sans-system:
+    "Lexend Variable", "Lexend", -apple-system, BlinkMacSystemFont,
+    "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
+    "Source Han Sans SC", system-ui, sans-serif;
+  --font-sans-cjk:
+    "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
+    "Source Han Sans SC", -apple-system, BlinkMacSystemFont, system-ui,
+    sans-serif;
+  --font-ui: var(--font-sans-system);
+  --font-display: var(--font-ui);
+  --font-mono-system:
+    "Geist Mono", "SF Mono", "IBM Plex Mono", "JetBrains Mono", monospace;
+  --font-weight-regular: 400;
+  --font-weight-regular-cjk: 400;
+  --font-weight-emphasis-cjk: 500;
+  --radius: 0.625rem;
+
+  --background: oklch(0.986 0.004 84);
+  --background-1: oklch(0.986 0.004 84);
+  --background-panel: rgb(248 250 252);
+  --background-fronted: rgb(255 255 255 / 1);
+  --background-soft: oklch(0.968 0.006 84);
+  --foreground: oklch(0.248 0.016 258);
+  --text-primary: var(--black-stationary);
+  --text-primary-hover: rgb(0 0 0 / 90%);
+  --text-secondary: rgb(60 60 60 / 70%);
+  --text-tertiary: rgb(60 60 60 / 50%);
+  --text-placeholder: rgb(60 60 60 / 30%);
+  --text-disabled: rgb(60 60 60 / 30%);
+  --text-inverted: rgb(255 255 255);
+  --white-stationary: rgb(255 255 255);
+  --black-stationary: rgb(0 0 0);
+  --card: oklch(0.995 0.003 84 / 88%);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.998 0.002 84 / 96%);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.57 0.112 248);
+  --primary-foreground: oklch(0.987 0.002 84);
+  --secondary: oklch(0.956 0.006 252);
+  --secondary-foreground: oklch(0.314 0.018 258);
+  --muted: oklch(0.958 0.005 84);
+  --muted-foreground: oklch(0.528 0.013 258);
+  --accent-codex: rgb(65 130 245);
+  --accent-claude: rgb(251 111 62);
+  --tutti-purple: rgb(109 127 245);
+  --accent: var(--accent-codex);
+  --accent-foreground: oklch(0.302 0.02 258);
+  --destructive: oklch(0.62 0.21 25);
+  --destructive-foreground: oklch(0.985 0.004 25);
+  --state-success: rgb(34 197 94);
+  --state-warning: rgb(234 121 8);
+  --state-danger: rgb(220 38 38);
+  --state-danger-hover: color-mix(
+    in srgb,
+    var(--state-danger) 90%,
+    transparent
+  );
+  --border: oklch(0.904 0.005 252);
+  --border-1: rgb(60 60 60 / 8%);
+  --border-2: rgb(60 60 60 / 8%);
+  --line-1: var(--border-1);
+  --line-2: var(--border-2);
+  --border-focus: rgb(65 130 245 / 24%);
+  --input: oklch(0.936 0.006 252);
+  --ring: oklch(0.662 0.072 248);
+  --shadow-soft: 0 10px 28px rgb(0 0 0 / 5%);
+  --shadow-panel: 0 20px 44px rgb(0 0 0 / 8%);
+  --shadow-elevated: rgb(0 0 0 / 8%);
+  --transparency-block: rgb(60 60 60 / 4%);
+  --transparency-hover: rgb(60 60 60 / 6%);
+  --transparency-active: rgb(60 60 60 / 6%);
+  --backdrop: rgb(255 255 255 / 60%);
+
+  --z-workbench-chrome: 100100;
+  --z-popover: 100200;
+  --z-dialog-overlay: 100600;
+  --z-dialog: 100610;
+  --z-tooltip: 100700;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: oklch(0.192 0.008 255);
+    --background-1: oklch(0.192 0.008 255);
+    --background-panel: rgb(42 42 43);
+    --background-fronted: rgb(51 51 51 / 1);
+    --background-soft: oklch(0.224 0.01 255);
+    --foreground: oklch(0.955 0.004 84);
+    --text-primary: rgb(255 255 255);
+    --text-primary-hover: rgb(255 255 255 / 90%);
+    --text-secondary: rgb(255 255 255 / 70%);
+    --text-tertiary: rgb(255 255 255 / 50%);
+    --text-placeholder: rgb(255 255 255 / 30%);
+    --text-disabled: rgb(255 255 255 / 30%);
+    --text-inverted: rgb(60 60 60);
+    --card: oklch(0.252 0.01 255 / 88%);
+    --card-foreground: var(--foreground);
+    --popover: oklch(0.264 0.01 255 / 95%);
+    --popover-foreground: var(--foreground);
+    --primary: oklch(0.714 0.086 248);
+    --primary-foreground: oklch(0.208 0.012 255);
+    --secondary: oklch(0.292 0.009 255);
+    --secondary-foreground: var(--foreground);
+    --muted: oklch(0.282 0.008 255);
+    --muted-foreground: oklch(0.734 0.012 255);
+    --accent-codex: rgb(79 143 255);
+    --accent-claude: rgb(251 111 62);
+    --tutti-purple: rgb(136 152 255);
+    --accent: var(--accent-codex);
+    --accent-foreground: var(--foreground);
+    --destructive: oklch(0.672 0.172 25);
+    --destructive-foreground: oklch(0.19 0.01 25);
+    --state-success: rgb(74 222 128);
+    --state-warning: rgb(251 146 60);
+    --state-danger: rgb(239 68 68);
+    --state-danger-hover: color-mix(
+      in srgb,
+      var(--state-danger) 90%,
+      transparent
+    );
+    --border: oklch(0.352 0.012 255);
+    --border-1: rgb(255 255 255 / 12%);
+    --border-2: rgb(255 255 255 / 8%);
+    --line-1: var(--border-1);
+    --line-2: var(--border-2);
+    --border-focus: rgb(79 143 255 / 24%);
+    --input: oklch(0.318 0.011 255);
+    --ring: oklch(0.728 0.078 248);
+    --shadow-soft: 0 14px 32px rgb(0 0 0 / 24%);
+    --shadow-panel: 0 24px 52px rgb(0 0 0 / 34%);
+    --shadow-elevated: rgb(0 0 0 / 50%);
+    --transparency-block: rgb(255 255 255 / 10%);
+    --transparency-hover: rgb(255 255 255 / 14%);
+    --transparency-active: rgb(255 255 255 / 16%);
+    --backdrop: rgb(0 0 0 / 60%);
+  }
+}
+
+@layer base {
+  body {
+    font-family: var(--font-ui);
+    font-weight: var(--font-weight-regular);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}

@@ -430,6 +430,12 @@ prepare_tuttid_binary() {
 
   mkdir -p "${TUTTID_BIN_DIR}"
 
+  log "generating builtin workspace apps"
+  (
+    cd "${ROOT_DIR}"
+    pnpm generate:builtin-apps
+  )
+
   log "downloading daemon Go modules"
   (
     cd "${TUTTID_DIR}"

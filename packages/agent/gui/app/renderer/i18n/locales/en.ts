@@ -855,7 +855,7 @@ export const en = {
       referenceWorkspaceFiles: "Reference workspace files",
       referencePicker: {
         clearFilter: "Clear filter",
-        confirm: "Use selected references",
+        confirm: "Use references",
         emptyDirectory: "This folder is empty.",
         emptyPreview: "Select a file to see details",
         emptySearch: "No matching files or folders.",

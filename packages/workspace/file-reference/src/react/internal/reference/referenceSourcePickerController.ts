@@ -138,6 +138,7 @@ export interface ReferenceSourcePickerController {
    */
   loadMoreSearch(): void;
   toggleSelection(node: ReferenceNode): void;
+  toggleSingleSelectionAndExpand(node: ReferenceNode): void;
   clearSelection(): void;
   /**
    * 选中归一。文件 → 单条;文件夹按所属源区分:
@@ -875,6 +876,37 @@ export function createReferenceSourcePickerController(
             : [...current.selection, node]
         };
       });
+    },
+    toggleSingleSelectionAndExpand(node) {
+      const key = nodeRefKey(node.ref);
+      setSnapshot((current) => {
+        if (current.selection.length > 1) {
+          return current;
+        }
+        const exists = current.selection.some(
+          (item) => nodeRefKey(item.ref) === key
+        );
+        return {
+          ...current,
+          selection: exists ? [] : [node]
+        };
+      });
+      if (node.kind === "folder") {
+        const sourceId = node.ref.sourceId;
+        const childKey = nodeRefKey(node.ref);
+        updateTab(sourceId, (tab) =>
+          tab.expandedKeys[childKey] === true
+            ? tab
+            : {
+                ...tab,
+                expandedKeys: { ...tab.expandedKeys, [childKey]: true }
+              }
+        );
+        const childState = snapshot.bySource[sourceId]?.childrenByKey[childKey];
+        if (!childState?.loaded && !childState?.loading) {
+          void loadChildren(sourceId, node, { append: false });
+        }
+      }
     },
     clearSelection() {
       setSnapshot({ selection: [] });

@@ -104,3 +104,14 @@ test("reference source picker search input preserves IME composition locally", (
     /onCompositionStart=\{searchInput\.onCompositionStart\}/
   );
 });
+
+test("tree row click single-selects while plus button toggles multi-selection", () => {
+  assert.match(
+    source,
+    /onClick=\{\(\) => \{\s*view\.setFocusedNode\(node\);\s*view\.toggleSingleSelectionAndExpand\(node\);\s*\}\}/
+  );
+  assert.match(
+    source,
+    /onClick=\{\(event\) => \{\s*event\.stopPropagation\(\);\s*view\.setFocusedNode\(node\);\s*view\.toggleSelection\(node\);\s*\}\}/
+  );
+});

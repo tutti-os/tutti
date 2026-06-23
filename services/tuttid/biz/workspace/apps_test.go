@@ -266,6 +266,33 @@ func TestParseAppManifestJSONAcceptsStandaloneRuntimeProfile(t *testing.T) {
 	}
 }
 
+func TestParseAppManifestJSONAcceptsLaunchMode(t *testing.T) {
+	t.Parallel()
+
+	manifest, normalized, err := ParseAppManifestJSON([]byte(
+		`{"schemaVersion":"tutti.app.manifest.v1","appId":"test-app","version":"0.1.0","name":"Test App","description":"Test app","icon":{"type":"asset","src":"icon.png"},"runtime":{"bootstrap":"bootstrap.sh","healthcheckPath":"/healthz"},"launch":{"mode":"workspace-open"}}`,
+	))
+	if err != nil {
+		t.Fatalf("ParseAppManifestJSON() error = %v, want nil for launch.mode", err)
+	}
+	if manifest.Launch == nil || manifest.Launch.Mode != "workspace-open" {
+		t.Fatalf("Launch = %#v, want workspace-open", manifest.Launch)
+	}
+	if !strings.Contains(normalized, `"launch":{"mode":"workspace-open"}`) {
+		t.Fatalf("normalized manifest = %s, want launch.mode preserved", normalized)
+	}
+}
+
+func TestParseAppManifestJSONRejectsUnsupportedLaunchMode(t *testing.T) {
+	t.Parallel()
+
+	if _, _, err := ParseAppManifestJSON([]byte(
+		`{"schemaVersion":"tutti.app.manifest.v1","appId":"test-app","version":"0.1.0","name":"Test App","description":"Test app","icon":{"type":"asset","src":"icon.png"},"runtime":{"bootstrap":"bootstrap.sh","healthcheckPath":"/healthz"},"launch":{"mode":"modal"}}`,
+	)); err == nil {
+		t.Fatal("ParseAppManifestJSON() error = nil, want invalid launch.mode error")
+	}
+}
+
 func TestParseAppManifestJSONRejectsUnsupportedRuntimeProfile(t *testing.T) {
 	t.Parallel()
 

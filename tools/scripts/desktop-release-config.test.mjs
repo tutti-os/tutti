@@ -398,6 +398,7 @@ test("workspace root declares package workspaces for electron-builder fallback d
   assert.deepEqual(packageJson.workspaces, [
     "apps/*",
     "packages/*/*",
+    "services/tuttid/builtin-apps/tutti-onboarding",
     "tools/fixtures/*"
   ]);
 });

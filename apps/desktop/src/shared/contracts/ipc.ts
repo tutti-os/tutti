@@ -177,6 +177,7 @@ export const desktopIpcChannels = {
       approveClose: "host:window:approveClose",
       capturePreview: "host:window:capturePreview",
       closeRequest: "host:window:closeRequest",
+      closeRequestResolved: "host:window:closeRequestResolved",
       layout: "host:window:layout"
     },
     workspace: {
@@ -203,6 +204,16 @@ export interface DesktopHostWindowCapturePreviewInput {
     x: number;
     y: number;
   };
+}
+
+export interface DesktopHostWindowCloseRequestPayload {
+  requestId?: string;
+  reason: "quit" | "window-close";
+}
+
+export interface DesktopHostWindowCloseRequestResolutionPayload {
+  outcome: "approved" | "blocked";
+  requestId: string;
 }
 
 export interface DesktopWorkspaceFilePathPayload {
