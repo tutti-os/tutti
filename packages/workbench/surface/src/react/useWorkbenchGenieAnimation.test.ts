@@ -7,6 +7,10 @@ const source = readFileSync(
   resolve("src/react/useWorkbenchGenieAnimation.tsx"),
   "utf8"
 );
+const genieAnimationSource = readFileSync(
+  resolve("src/react/genieAnimation.ts"),
+  "utf8"
+);
 
 test("genie anchors keep usable rects while minimized dock slots animate", () => {
   assert.match(source, /const dockAnchorFallbackSizePx = 43\.2;/);
@@ -49,5 +53,26 @@ test("genie minimize foregrounds the target before preview capture", () => {
   assert.match(
     source,
     /const previewImageUrlPromise = Promise\.resolve\(\s*captureNodePreviewImage\?\.\(target\) \?\? null\s*\)/
+  );
+});
+
+test("genie texture capture clones only meaningful visible DOM", () => {
+  assert.match(source, /cloneMeaningfulGenieElement\(element, windowRect\)/);
+  assert.doesNotMatch(source, /element\.cloneNode\(true\)/);
+});
+
+test("genie scanline rendering maps strip edges to avoid horizontal seams", () => {
+  assert.match(genieAnimationSource, /function resolveGenieRowTargetY/);
+  assert.match(
+    genieAnimationSource,
+    /const targetTop = resolveGenieRowTargetY/
+  );
+  assert.match(
+    genieAnimationSource,
+    /const targetBottom = resolveGenieRowTargetY/
+  );
+  assert.match(
+    genieAnimationSource,
+    /const targetHeight = Math\.max\(1, Math\.abs\(targetBottom - targetTop\) \+ 1\)/
   );
 });
