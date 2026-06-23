@@ -24,19 +24,6 @@ func main() {
 			response.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if request.Method == http.MethodPost && request.URL.Path == "/tutti/cli/status" {
-			writeJSON(response, http.StatusOK, map[string]any{
-				"kind": "json",
-				"value": map[string]any{
-					"ok": true,
-					"data": map[string]string{
-						"appId":  "tutti-onboarding",
-						"status": "ready",
-					},
-				},
-			})
-			return
-		}
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
 			writeJSON(response, http.StatusMethodNotAllowed, map[string]string{"error": "Method Not Allowed"})
 			return
