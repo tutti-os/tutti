@@ -8,6 +8,7 @@ import { hasAgentToolContent } from "./tool-renderers/agentToolContentShared";
 export function AgentAskUserQuestionCard({
   call,
   onLinkClick,
+  previewMode = false,
   defaultExpanded,
   nonCollapsible
 }: AgentToolCallCardProps): JSX.Element {
@@ -41,11 +42,19 @@ export function AgentAskUserQuestionCard({
         </div>
       ) : null}
       {hasDetail && pinned ? (
-        <AgentExpandedToolContent call={call} onLinkClick={onLinkClick} />
+        <AgentExpandedToolContent
+          call={call}
+          onLinkClick={onLinkClick}
+          previewMode={previewMode}
+        />
       ) : null}
       {hasDetail && !pinned ? (
         <CollapsibleReveal expanded={expanded}>
-          <AgentExpandedToolContent call={call} onLinkClick={onLinkClick} />
+          <AgentExpandedToolContent
+            call={call}
+            onLinkClick={onLinkClick}
+            previewMode={previewMode}
+          />
         </CollapsibleReveal>
       ) : null}
     </div>

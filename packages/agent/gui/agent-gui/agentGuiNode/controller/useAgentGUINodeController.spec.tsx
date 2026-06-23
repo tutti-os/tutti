@@ -236,6 +236,123 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("loads a user project snapshot in preview mode without subscribing", async () => {
+    const listUserProjects = vi.fn(async () => ({
+      projects: [
+        {
+          id: "app",
+          path: "/workspace/app",
+          label: "App"
+        }
+      ]
+    }));
+    const subscribeUserProjects = vi.fn(() => vi.fn());
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            cwd: "/workspace/app/packages/web"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      autoLoadRuntime: true,
+      userProjects: {
+        list: listUserProjects,
+        subscribe: subscribeUserProjects,
+        use: vi.fn()
+      }
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn(),
+        previewMode: true
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.userProjects[0]).toEqual({
+        id: "app",
+        path: "/workspace/app",
+        label: "App"
+      });
+    });
+    expect(listUserProjects).toHaveBeenCalledTimes(1);
+    expect(subscribeUserProjects).not.toHaveBeenCalled();
+  });
+
+  it("seeds preview projects from the host service before async loading settles", async () => {
+    const listUserProjects = vi.fn(
+      () =>
+        new Promise<{
+          projects: Array<{ id: string; path: string; label: string }>;
+        }>(() => {})
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            cwd: "/workspace/app/packages/web"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      autoLoadRuntime: true,
+      userProjects: {
+        service: {
+          getSnapshot: vi.fn(() => ({
+            projects: [
+              {
+                id: "app",
+                path: "/workspace/app",
+                label: "App"
+              }
+            ]
+          }))
+        },
+        list: listUserProjects,
+        subscribe: vi.fn(),
+        use: vi.fn()
+      }
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn(),
+        previewMode: true
+      })
+    );
+
+    expect(result.current.viewModel.userProjects[0]).toEqual({
+      id: "app",
+      path: "/workspace/app",
+      label: "App"
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.userProjects[0]).toEqual({
+        id: "app",
+        path: "/workspace/app",
+        label: "App"
+      });
+    });
+    expect(listUserProjects).toHaveBeenCalledTimes(1);
+  });
+
   it("removes user projects through the host api and reprojects conversations", async () => {
     const removeProject = vi.fn(async () => undefined);
     installAgentHostApi({

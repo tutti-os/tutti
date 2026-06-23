@@ -1723,6 +1723,9 @@ describe("AgentFileMentionPalette", () => {
     expect(css).toMatch(
       /\.agent-gui-node__conversation-section\[data-kind="project"\]\s+\.agent-gui-node__conversation-section-items-inner\s*{[^}]*gap:\s*2px/s
     );
+    expect(css).toMatch(
+      /\.agent-gui-node__conversation-section-empty\s*{[^}]*padding:\s*7px 12px 7px 26px/s
+    );
   });
 
   it("reserves space for conversation row actions so titles truncate", () => {

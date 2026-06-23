@@ -4557,7 +4557,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__conversation-section-empty {
   min-width: 0;
-  padding: 7px 12px;
+  padding: 7px 12px 7px 26px;
   color: var(--text-tertiary);
   font-size: 13px;
   line-height: 18px;

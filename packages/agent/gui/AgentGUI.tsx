@@ -25,16 +25,21 @@ export const AgentGUI = memo(function AgentGUI({
   locale,
   ...props
 }: AgentGUIProps): JSX.Element {
-  return (
+  const content = (
+    <AgentGuiI18nProvider runtime={i18n} locale={locale}>
+      <AgentActivityHostProvider
+        agentActivityRuntime={agentActivityRuntime}
+        agentHostApi={agentHostApi}
+      >
+        <AgentGUINode {...props} />
+      </AgentActivityHostProvider>
+    </AgentGuiI18nProvider>
+  );
+  return props.previewMode ? (
+    content
+  ) : (
     <TooltipProvider delayDuration={120} skipDelayDuration={0}>
-      <AgentGuiI18nProvider runtime={i18n} locale={locale}>
-        <AgentActivityHostProvider
-          agentActivityRuntime={agentActivityRuntime}
-          agentHostApi={agentHostApi}
-        >
-          <AgentGUINode {...props} />
-        </AgentActivityHostProvider>
-      </AgentGuiI18nProvider>
+      {content}
     </TooltipProvider>
   );
 });

@@ -98,15 +98,17 @@ export function createWorkspaceTerminalContribution(input: {
     }
     const externalState =
       (item.externalNodeState as TerminalNodeExternalState | null) ?? null;
+    const theme = feature.resolveTheme({
+      runtimeKind: externalState?.runtimeKind ?? "local",
+      sessionId: externalState?.sessionId ?? null,
+      status: externalState?.status ?? "created"
+    });
     return {
       element: createElement(TerminalDockPreview, {
         frame: item.node.frame,
         snapshot,
-        theme: feature.resolveTheme({
-          runtimeKind: externalState?.runtimeKind ?? "local",
-          sessionId: externalState?.sessionId ?? null,
-          status: externalState?.status ?? "created"
-        })
+        theme,
+        viewport: item.previewViewport ?? null
       }),
       kind: "component" as const,
       revision: snapshot.revision
@@ -150,7 +152,8 @@ export function createWorkspaceTerminalContribution(input: {
     resolveLaunchInput: (request) =>
       readTerminalWorkbenchIntent(request.payload),
     node: {
-      onPreviewChange: (change) => previewStore.update(change)
+      onPreviewChange: (change) => previewStore.update(change),
+      provideMinimizedPreview: provideTerminalPreview
     },
     shouldCloseAfterCloseFailure: ({ error, status }) =>
       shouldCloseTerminalNodeAfterCloseFailure({
@@ -180,13 +183,6 @@ export function createWorkspaceTerminalContribution(input: {
                 openedParams: resolveTerminalOpenedParams(context)
               });
               return node.renderBody(context);
-            },
-            window: {
-              ...node.window,
-              minimizedDock: {
-                kind: "component",
-                providePreview: provideTerminalPreview
-              }
             }
           }
         : node

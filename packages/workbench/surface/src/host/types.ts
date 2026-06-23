@@ -205,6 +205,7 @@ export interface WorkbenchHostDockPopupItemInput {
   isFocused: boolean;
   isMinimized: boolean;
   node: WorkbenchNode<WorkbenchHostNodeData>;
+  previewViewport?: WorkbenchSize;
 }
 
 export type WorkbenchHostNodePreviewCapture = (
@@ -342,6 +343,7 @@ export interface WorkbenchHostNodeBodyContext<
   instanceKey?: string | null;
   isFocused: boolean;
   node: WorkbenchNode<WorkbenchHostNodeData>;
+  previewViewport?: WorkbenchSize;
   setNodeRuntimeState(state: unknown): void;
   setSnapshotNodeState(state: unknown): void;
 }

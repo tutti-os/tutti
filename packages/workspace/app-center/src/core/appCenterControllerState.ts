@@ -45,6 +45,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
         workspaceId
       });
     }
+    this.reconcileActiveInstallRefreshes(workspaceId, nextApps);
     const appIdsToClose =
       this.store.workspaceId === workspaceId
         ? removedOrUninstalledAppIds(this.store.apps, nextApps)
@@ -161,6 +162,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
         previousApp: currentApp,
         workspaceId
       });
+      this.reconcileActiveInstallRefreshes(workspaceId, [currentApp]);
       return;
     }
     const mergedApp = this.mergeActiveInstallAppState(
@@ -179,6 +181,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       ),
       mergedApp
     ]);
+    this.reconcileActiveInstallRefreshes(workspaceId, [mergedApp]);
     if (areWorkspaceAppCenterAppsEqual(this.store.apps, nextApps)) {
       return;
     }
@@ -388,7 +391,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
         );
         if (
           pendingSettled &&
-          currentApp.stateRevision <= snapshotApp.stateRevision
+          currentApp.stateRevision < snapshotApp.stateRevision
         ) {
           return snapshotApp;
         }
@@ -523,6 +526,138 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     if (this.pendingInstallKeys.has(appRuntimeKey(workspaceId, appId))) {
       this.scheduleInstallRefresh(workspaceId, appId);
     }
+  }
+
+  private reconcileActiveInstallRefreshes(
+    workspaceId: string,
+    apps: readonly WorkspaceAppCenterApp[]
+  ): void {
+    if (this.pollingWorkspaceId !== workspaceId) {
+      return;
+    }
+    for (const app of apps) {
+      const key = appRuntimeKey(workspaceId, app.appId);
+      if (this.pendingInstallKeys.has(key)) {
+        continue;
+      }
+      if (this.shouldRefreshActiveInstallApp(app)) {
+        this.scheduleActiveInstallRefresh(workspaceId, app.appId);
+      } else {
+        this.clearActiveInstallRefreshTimer(workspaceId, app.appId);
+      }
+    }
+  }
+
+  private shouldRefreshActiveInstallApp(app: WorkspaceAppCenterApp): boolean {
+    return (
+      app.installProgress != null ||
+      this.isRuntimeInstallBusy(app.runtimeStatus)
+    );
+  }
+
+  private scheduleActiveInstallRefresh(
+    workspaceId: string,
+    appId: string
+  ): void {
+    const key = appRuntimeKey(workspaceId, appId);
+    if (this.activeInstallRefreshTimers.has(key)) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.activeInstallRefreshTimers.delete(key);
+      if (this.pollingWorkspaceId !== workspaceId) {
+        return;
+      }
+      void this.refreshActiveInstallState(workspaceId, appId);
+    }, this.dependencies.installRefreshDelayMs ?? defaultInstallRefreshDelayMs);
+    timer.unref?.();
+    this.activeInstallRefreshTimers.set(key, timer);
+  }
+
+  private async refreshActiveInstallState(
+    workspaceId: string,
+    appId: string
+  ): Promise<void> {
+    try {
+      const snapshot =
+        await this.dependencies.gateway.listWorkspaceApps(workspaceId);
+      this.applyActiveInstallRefreshSnapshot(workspaceId, appId, snapshot);
+    } catch (error) {
+      this.setOperationError(error, {
+        appId,
+        operation: "workspace_app.refresh_install_state",
+        uiAction: "refresh_install_state",
+        workspaceId
+      });
+    }
+  }
+
+  private applyActiveInstallRefreshSnapshot(
+    workspaceId: string,
+    appId: string,
+    snapshot: WorkspaceAppCenterSnapshot
+  ): void {
+    if (this.store.workspaceId !== workspaceId) {
+      this.applySnapshot(workspaceId, snapshot);
+      return;
+    }
+    const currentApp = this.store.apps.find(
+      (candidate) => candidate.appId === appId
+    );
+    const refreshedApp = snapshot.apps.find(
+      (candidate) => candidate.appId === appId
+    );
+    if (
+      currentApp &&
+      refreshedApp &&
+      currentApp.stateRevision === refreshedApp.stateRevision &&
+      this.shouldRefreshActiveInstallApp(currentApp) &&
+      !this.shouldRefreshActiveInstallApp(refreshedApp)
+    ) {
+      this.applySnapshotWithForcedApp(workspaceId, snapshot, refreshedApp);
+      return;
+    }
+    this.applySnapshot(workspaceId, snapshot);
+  }
+
+  private applySnapshotWithForcedApp(
+    workspaceId: string,
+    snapshot: WorkspaceAppCenterSnapshot,
+    forcedApp: WorkspaceAppCenterApp
+  ): void {
+    const nextApps = sortWorkspaceAppCenterApps(
+      this.mergeSnapshotAppsByStateRevision(
+        workspaceId,
+        this.withPendingInstallState(workspaceId, snapshot.apps)
+      ).map((app) => (app.appId === forcedApp.appId ? forcedApp : app))
+    );
+    const appIdsToClose =
+      this.store.workspaceId === workspaceId
+        ? removedOrUninstalledAppIds(this.store.apps, nextApps)
+        : [];
+    this.reconcileActiveInstallRefreshes(workspaceId, nextApps);
+    this.scheduleCatalogLoadingRefresh(workspaceId, snapshot);
+    const changed =
+      this.store.workspaceId !== workspaceId ||
+      this.store.catalogLastError !== (snapshot.catalogLastError ?? null) ||
+      this.store.catalogStatus !== snapshot.catalogStatus ||
+      this.store.catalogUpdatedAtUnixMs !==
+        (snapshot.catalogUpdatedAtUnixMs ?? null) ||
+      this.store.error !== null ||
+      this.store.loadStatus !== "ready" ||
+      !areWorkspaceAppCenterAppsEqual(this.store.apps, nextApps);
+    if (!changed) {
+      return;
+    }
+    this.store.apps = nextApps;
+    this.store.catalogLastError = snapshot.catalogLastError ?? null;
+    this.store.catalogStatus = snapshot.catalogStatus;
+    this.store.catalogUpdatedAtUnixMs = snapshot.catalogUpdatedAtUnixMs ?? null;
+    this.store.error = null;
+    this.store.loadStatus = "ready";
+    this.store.workspaceId = workspaceId;
+    this.bumpRevision();
+    this.closeWorkspaceAppViews(workspaceId, appIdsToClose);
   }
 
   private settlePendingInstallReport(input: {

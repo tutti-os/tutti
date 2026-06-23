@@ -100,8 +100,6 @@ type AgentMentionBrowseLoadReason = "open" | "preload";
 
 interface AgentMentionLifecycleDiagnosticLog {
   event:
-    | "controller.construct"
-    | "controller.dispose"
     | "browse.open"
     | "browse.preload"
     | "browse.cache"
@@ -260,10 +258,6 @@ export class AgentMentionSearchController {
       options.diagnosticSlowThresholdMs ?? DEFAULT_DIAGNOSTIC_SLOW_THRESHOLD_MS;
     this.currentFileSearchLimit = this.fileLimit;
     this.currentIssueSearchLimit = this.issueLimit;
-    this.logLifecycle("controller.construct", {
-      providerIds: this.providerIdsForDiagnostics(),
-      providerCount: this.contextMentionProviders.size
-    });
   }
 
   subscribe(listener: Listener): () => void {
@@ -608,10 +602,6 @@ export class AgentMentionSearchController {
     this.cancelPendingPreload();
     this.listeners.clear();
     this.requestId += 1;
-    this.logLifecycle("controller.dispose", {
-      requestId: this.requestId,
-      workspaceId: this.activeWorkspaceId
-    });
   }
 
   private startBrowseModeFetch(filter: AgentMentionFilterId): void {

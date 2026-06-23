@@ -20,6 +20,7 @@ interface AgentTurnSummaryRowProps {
   workspaceRoot?: string | null;
   label: string;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  previewMode?: boolean;
 }
 
 export function AgentTurnSummaryRow({

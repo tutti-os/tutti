@@ -176,6 +176,7 @@ export interface AgentComposerProps {
   isSendingTurn: boolean;
   isSubmittingPrompt: boolean;
   isActive?: boolean;
+  previewMode?: boolean;
   promptImagesSupported?: boolean;
   composerFocusRequestSequence?: number | null;
   layoutMode?: "dock" | "hero";
@@ -444,12 +445,14 @@ function AgentUsageChip({
   usedTokens,
   totalTokens,
   limits,
-  labels
+  labels,
+  tooltipsEnabled = true
 }: {
   percentUsed: number;
   usedTokens: number | null;
   totalTokens: number | null;
   limits: readonly AgentComposerSlashStatusLimit[];
+  tooltipsEnabled?: boolean;
   labels: Pick<
     AgentComposerProps["labels"],
     | "usageChipLabel"
@@ -466,30 +469,35 @@ function AgentUsageChip({
   const showTokens = usedTokens !== null && totalTokens !== null;
   const usageLevel = agentUsageChipLevel(clampedPercent);
   const ringColor = agentUsageRingColor(usageLevel);
+  const trigger = (
+    <button
+      type="button"
+      aria-label={chipLabel}
+      className="nodrag relative mr-2 inline-flex size-4 shrink-0 cursor-default items-center justify-center rounded-full p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] [-webkit-app-region:no-drag]"
+      data-testid="agent-gui-usage-chip"
+      data-usage-level={usageLevel}
+      title={chipLabel}
+      style={{
+        background: `conic-gradient(${ringColor} ${clampedPercent}%, color-mix(in srgb, ${ringColor} 16%, transparent) 0)`
+      }}
+    >
+      <span
+        aria-hidden="true"
+        className="absolute inset-0.5 rounded-full bg-[var(--agent-gui-surface-raised,var(--background-fronted))]"
+      />
+    </button>
+  );
+
+  if (!tooltipsEnabled) {
+    return trigger;
+  }
 
   return (
     <Popover>
       <TooltipProvider delayDuration={0}>
         <Tooltip>
           <PopoverTrigger asChild>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={chipLabel}
-                className="nodrag relative mr-2 inline-flex size-4 shrink-0 cursor-default items-center justify-center rounded-full p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] [-webkit-app-region:no-drag]"
-                data-testid="agent-gui-usage-chip"
-                data-usage-level={usageLevel}
-                title={chipLabel}
-                style={{
-                  background: `conic-gradient(${ringColor} ${clampedPercent}%, color-mix(in srgb, ${ringColor} 16%, transparent) 0)`
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-0.5 rounded-full bg-[var(--agent-gui-surface-raised,var(--background-fronted))]"
-                />
-              </button>
-            </TooltipTrigger>
+            <TooltipTrigger asChild>{trigger}</TooltipTrigger>
           </PopoverTrigger>
           <TooltipContent side="top">{labels.usageTooltipLabel}</TooltipContent>
         </Tooltip>
@@ -684,6 +692,7 @@ export function AgentComposer({
   isSendingTurn,
   isSubmittingPrompt,
   isActive = true,
+  previewMode = false,
   promptImagesSupported = true,
   composerFocusRequestSequence = null,
   layoutMode = "dock",
@@ -2071,6 +2080,10 @@ export function AgentComposer({
         } as CSSProperties)
       : undefined;
   useLayoutEffect(() => {
+    if (previewMode) {
+      setIsPromptTipOverflowing(false);
+      return;
+    }
     if (!activePromptTipId) {
       setIsPromptTipOverflowing(false);
       return;
@@ -2100,7 +2113,12 @@ export function AgentComposer({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [activePromptTipId, activePromptTipText, isPromptTipOverflowing]);
+  }, [
+    activePromptTipId,
+    activePromptTipText,
+    isPromptTipOverflowing,
+    previewMode
+  ]);
   const inputShellStyle = useMemo<CSSProperties | undefined>(
     () =>
       showFileMentionPalette || showFloatingCommandMenu
@@ -2230,6 +2248,7 @@ export function AgentComposer({
             embedded={true}
             edgeGlow={true}
             keyboardShortcuts={activePromptKeyboardShortcutsEnabled}
+            previewMode={previewMode}
             isSubmitting={isSubmittingPrompt}
             onSubmit={submitInteractivePromptAndDismiss}
             labels={{
@@ -2529,44 +2548,64 @@ export function AgentComposer({
           </Popover>
           <div className={styles.composerFooter}>
             <div className={composerStyles.footerGroup}>
-              <Select
-                open={false}
-                value={workspaceReferenceSelectValue}
-                disabled={
-                  isSelectedProjectMissing ||
-                  isSendingTurn ||
-                  isSubmittingPrompt ||
-                  !onRequestWorkspaceReferences ||
-                  (disabled && !canQueueWhileBusy)
-                }
-                onOpenChange={(isOpen) => {
-                  if (isOpen) {
-                    void handleWorkspaceReferencePicker();
-                  }
-                }}
-                onValueChange={(nextValue) => {
-                  if (nextValue === workspaceReferenceOptionValue) {
-                    void handleWorkspaceReferencePicker();
-                  }
-                }}
-              >
-                <SelectTrigger
-                  size="sm"
+              {previewMode ? (
+                <button
+                  type="button"
                   aria-label={labels.referenceWorkspaceFiles}
                   title={labels.referenceWorkspaceFiles}
                   className={cn(
                     styles.composerMenuTrigger,
                     styles.composerReferenceTrigger,
-                    "w-auto justify-center px-1 text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
+                    "w-auto justify-center px-1 text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
                   )}
+                  data-agent-reference-preview-trigger="true"
                 >
                   <AddIcon
                     aria-hidden
                     className="size-3.5"
                     data-agent-reference-add-icon="true"
                   />
-                </SelectTrigger>
-              </Select>
+                </button>
+              ) : (
+                <Select
+                  open={false}
+                  value={workspaceReferenceSelectValue}
+                  disabled={
+                    isSelectedProjectMissing ||
+                    isSendingTurn ||
+                    isSubmittingPrompt ||
+                    !onRequestWorkspaceReferences ||
+                    (disabled && !canQueueWhileBusy)
+                  }
+                  onOpenChange={(isOpen) => {
+                    if (isOpen) {
+                      void handleWorkspaceReferencePicker();
+                    }
+                  }}
+                  onValueChange={(nextValue) => {
+                    if (nextValue === workspaceReferenceOptionValue) {
+                      void handleWorkspaceReferencePicker();
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    aria-label={labels.referenceWorkspaceFiles}
+                    title={labels.referenceWorkspaceFiles}
+                    className={cn(
+                      styles.composerMenuTrigger,
+                      styles.composerReferenceTrigger,
+                      "w-auto justify-center px-1 text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
+                    )}
+                  >
+                    <AddIcon
+                      aria-hidden
+                      className="size-3.5"
+                      data-agent-reference-add-icon="true"
+                    />
+                  </SelectTrigger>
+                </Select>
+              )}
               {composerSettings.supportsPlanMode &&
               composerSettings.draftSettings.planMode ? (
                 <button
@@ -2598,6 +2637,7 @@ export function AgentComposer({
                   usedTokens={usage.usedTokens}
                   totalTokens={usage.totalTokens}
                   limits={slashStatus?.limits ?? []}
+                  tooltipsEnabled={!previewMode}
                   labels={{
                     usageChipLabel: labels.usageChipLabel,
                     usageTooltipLabel: labels.usageTooltipLabel,
@@ -2611,6 +2651,7 @@ export function AgentComposer({
                 <AgentPermissionModeDropdown
                   composerSettings={composerSettings}
                   disabled={settingsControlsDisabled}
+                  previewMode={previewMode}
                   labels={{
                     permissionLabel: labels.permissionLabel
                   }}
@@ -2622,6 +2663,7 @@ export function AgentComposer({
                 <AgentModelReasoningDropdown
                   composerSettings={composerSettings}
                   disabled={settingsControlsDisabled}
+                  previewMode={previewMode}
                   labels={{
                     modelLabel: labels.modelLabel,
                     modelSelectionLabel: labels.modelSelectionLabel,
@@ -2718,6 +2760,7 @@ export function AgentComposer({
               <AgentProjectDropdown
                 composerSettings={composerSettings}
                 i18n={workspaceUserProjectI18n}
+                previewMode={previewMode}
                 labels={{
                   projectLocked: labels.projectLocked,
                   projectMissingDescription: labels.projectMissingDescription
@@ -2731,7 +2774,7 @@ export function AgentComposer({
                 className={styles.composerPromptTips}
                 data-testid="agent-gui-prompt-tips"
               >
-                {isPromptTipOverflowing && promptTipNode ? (
+                {!previewMode && isPromptTipOverflowing && promptTipNode ? (
                   <TooltipProvider delayDuration={0}>
                     <Tooltip>
                       <TooltipTrigger asChild>{promptTipNode}</TooltipTrigger>

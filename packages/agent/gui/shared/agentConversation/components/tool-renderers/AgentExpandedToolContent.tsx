@@ -13,58 +13,85 @@ import { AgentSkillContent } from "./AgentSkillContent";
 import { AgentTaskContent } from "./AgentTaskContent";
 import { AgentTodoWriteContent } from "./AgentTodoWriteContent";
 import { AgentToolSearchContent } from "./AgentToolSearchContent";
-import { AgentDefaultToolContent } from "./agentToolContentShared";
+import {
+  AgentDefaultToolContent,
+  AgentToolPreviewModeProvider
+} from "./agentToolContentShared";
 import { AgentWebFetchContent } from "./AgentWebFetchContent";
 import { AgentWebSearchContent } from "./AgentWebSearchContent";
 import { AgentWriteContent } from "./AgentWriteContent";
 
 export function AgentExpandedToolContent({
   call,
-  onLinkClick
+  onLinkClick,
+  previewMode = false
 }: {
   call: AgentToolCallVM;
   onLinkClick?: (href: string) => void;
+  previewMode?: boolean;
 }): JSX.Element | null {
   "use memo";
+  const props = { call, onLinkClick, previewMode };
+  let content: JSX.Element | null;
   switch (call.rendererKind) {
     case "approval":
-      return <AgentApprovalContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentApprovalContent {...props} />;
+      break;
     case "plan-enter":
     case "plan-exit":
-      return <AgentPlanModeContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentPlanModeContent {...props} />;
+      break;
     case "ask-user":
-      return (
-        <AgentAskUserQuestionContent call={call} onLinkClick={onLinkClick} />
-      );
+      content = <AgentAskUserQuestionContent {...props} />;
+      break;
     case "task":
-      return <AgentTaskContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentTaskContent {...props} />;
+      break;
     case "read":
-      return <AgentReadContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentReadContent {...props} />;
+      break;
     case "write":
-      return <AgentWriteContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentWriteContent {...props} />;
+      break;
     case "edit":
-      return <AgentEditContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentEditContent {...props} />;
+      break;
     case "bash":
-      return <AgentBashContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentBashContent {...props} />;
+      break;
     case "search":
-      return <AgentSearchContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentSearchContent {...props} />;
+      break;
     case "web-search":
-      return <AgentWebSearchContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentWebSearchContent {...props} />;
+      break;
     case "web-fetch":
-      return <AgentWebFetchContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentWebFetchContent {...props} />;
+      break;
     case "image-generation":
-      return (
-        <AgentImageGenerationContent call={call} onLinkClick={onLinkClick} />
-      );
+      content = <AgentImageGenerationContent {...props} />;
+      break;
     case "todo-write":
-      return <AgentTodoWriteContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentTodoWriteContent {...props} />;
+      break;
     case "tool-search":
-      return <AgentToolSearchContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentToolSearchContent {...props} />;
+      break;
     case "skill":
-      return <AgentSkillContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentSkillContent {...props} />;
+      break;
     case "mcp":
-      return <AgentMcpToolContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentMcpToolContent {...props} />;
+      break;
     default:
-      return <AgentDefaultToolContent call={call} onLinkClick={onLinkClick} />;
+      content = <AgentDefaultToolContent {...props} />;
   }
+  if (!content) {
+    return null;
+  }
+  return (
+    <AgentToolPreviewModeProvider previewMode={previewMode}>
+      {content}
+    </AgentToolPreviewModeProvider>
+  );
 }

@@ -99,6 +99,7 @@ interface AgentMessageMarkdownProps {
   normalizePlainIssueMentionTitle?: boolean;
   deferLongContentRender?: boolean;
   enableImageZoom?: boolean;
+  previewMode?: boolean;
   streaming?: boolean;
 }
 
@@ -135,6 +136,7 @@ export function AgentMessageMarkdown({
   normalizePlainIssueMentionTitle = false,
   deferLongContentRender = false,
   enableImageZoom = false,
+  previewMode = false,
   streaming = false
 }: AgentMessageMarkdownProps): JSX.Element {
   "use memo";
@@ -241,6 +243,7 @@ export function AgentMessageMarkdown({
           {...props}
           onLinkClick={handleLinkClick}
           workspaceAppIcons={workspaceAppIcons}
+          previewMode={previewMode}
         />
       ),
       code: (props: MarkdownDomProps<"code">) => (
@@ -266,6 +269,7 @@ export function AgentMessageMarkdown({
       enableImageZoom,
       handleLinkClick,
       inline,
+      previewMode,
       workspaceAppIcons,
       workspaceLinkSource,
       workspaceRoot
@@ -608,11 +612,13 @@ function MarkdownLink({
   onClick: _onClick,
   onLinkClick,
   workspaceAppIcons,
+  previewMode,
   href,
   ...props
 }: MarkdownDomProps<"a"> & {
   onLinkClick?: (href: string) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  previewMode?: boolean;
 }): JSX.Element {
   "use memo";
   const { t } = useTranslation();
@@ -632,6 +638,7 @@ function MarkdownLink({
         href={targetHref}
         mention={mention}
         onLinkClick={onLinkClick}
+        previewMode={previewMode === true}
       />
     );
   }
@@ -816,11 +823,13 @@ function MentionLink({
   onLinkClick,
   href,
   mention,
+  previewMode,
   ...props
 }: AnchorHTMLAttributes<HTMLAnchorElement> & {
   href: string;
   mention: ParsedMentionLink;
   onLinkClick?: (href: string) => void;
+  previewMode: boolean;
 }): JSX.Element {
   "use memo";
   // 标签截断时,hover 用设计系统 Tooltip 展示完整文本。trigger = 整个 chip(<a>),
@@ -831,82 +840,88 @@ function MentionLink({
       : mention.label;
   const { ref: mainRef, overflowing } =
     useTextOverflow<HTMLSpanElement>(tooltipText);
+  const link = (
+    <a
+      {...props}
+      className={cn(
+        "tsh-agent-object-token tsh-agent-object-token--entity",
+        props.className
+      )}
+      data-agent-file-mention="true"
+      data-agent-link-href={href}
+      data-agent-mention-icon-url={mention.iconUrl}
+      data-agent-mention-href={href}
+      data-agent-mention-kind={mention.kind}
+      aria-label={mention.label}
+      role="link"
+      tabIndex={0}
+      onClick={(event) => {
+        activateMarkdownLink(event, href, onLinkClick);
+      }}
+      onPointerDown={(event) => {
+        activateMarkdownLinkFromPointer(event, href, onLinkClick);
+      }}
+      onKeyDown={(event) => {
+        activateMarkdownLinkFromKey(event, href, onLinkClick);
+      }}
+    >
+      {mention.kind === "workspace-app" ||
+      mention.kind === "workspace-reference" ? (
+        <span
+          className="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-[4px] bg-block"
+          aria-hidden="true"
+          data-agent-mention-app-icon="true"
+          data-workspace-app-icon="true"
+        >
+          {mention.iconUrl ? (
+            <img
+              src={mention.iconUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              decoding="async"
+              loading="lazy"
+              draggable={false}
+            />
+          ) : (
+            <span className="tsh-agent-object-token__kind-icon h-4 w-4" />
+          )}
+        </span>
+      ) : (
+        <span className="tsh-agent-object-token__kind" aria-hidden="true">
+          <span
+            className="tsh-agent-object-token__kind-icon"
+            aria-hidden="true"
+          />
+        </span>
+      )}
+      {mention.kind === "session" ? (
+        <span className="tsh-agent-object-token__main" ref={mainRef}>
+          <span className="tsh-agent-object-token__participant">
+            {mention.participant}
+          </span>
+          {mention.summary ? (
+            <span className="tsh-agent-object-token__summary">
+              {" "}
+              {mention.summary}
+            </span>
+          ) : null}
+        </span>
+      ) : (
+        <span className="tsh-agent-object-token__main" ref={mainRef}>
+          {mention.label}
+        </span>
+      )}
+    </a>
+  );
+
+  if (previewMode) {
+    return link;
+  }
+
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <a
-            {...props}
-            className={cn(
-              "tsh-agent-object-token tsh-agent-object-token--entity",
-              props.className
-            )}
-            data-agent-file-mention="true"
-            data-agent-link-href={href}
-            data-agent-mention-icon-url={mention.iconUrl}
-            data-agent-mention-href={href}
-            data-agent-mention-kind={mention.kind}
-            aria-label={mention.label}
-            role="link"
-            tabIndex={0}
-            onClick={(event) => {
-              activateMarkdownLink(event, href, onLinkClick);
-            }}
-            onPointerDown={(event) => {
-              activateMarkdownLinkFromPointer(event, href, onLinkClick);
-            }}
-            onKeyDown={(event) => {
-              activateMarkdownLinkFromKey(event, href, onLinkClick);
-            }}
-          >
-            {mention.kind === "workspace-app" ||
-            mention.kind === "workspace-reference" ? (
-              <span
-                className="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-[4px] bg-block"
-                aria-hidden="true"
-                data-agent-mention-app-icon="true"
-                data-workspace-app-icon="true"
-              >
-                {mention.iconUrl ? (
-                  <img
-                    src={mention.iconUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    decoding="async"
-                    loading="lazy"
-                    draggable={false}
-                  />
-                ) : (
-                  <span className="tsh-agent-object-token__kind-icon h-4 w-4" />
-                )}
-              </span>
-            ) : (
-              <span className="tsh-agent-object-token__kind" aria-hidden="true">
-                <span
-                  className="tsh-agent-object-token__kind-icon"
-                  aria-hidden="true"
-                />
-              </span>
-            )}
-            {mention.kind === "session" ? (
-              <span className="tsh-agent-object-token__main" ref={mainRef}>
-                <span className="tsh-agent-object-token__participant">
-                  {mention.participant}
-                </span>
-                {mention.summary ? (
-                  <span className="tsh-agent-object-token__summary">
-                    {" "}
-                    {mention.summary}
-                  </span>
-                ) : null}
-              </span>
-            ) : (
-              <span className="tsh-agent-object-token__main" ref={mainRef}>
-                {mention.label}
-              </span>
-            )}
-          </a>
-        </TooltipTrigger>
+        <TooltipTrigger asChild>{link}</TooltipTrigger>
         {overflowing ? (
           <TooltipContent className="max-w-[min(420px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]">
             {tooltipText}

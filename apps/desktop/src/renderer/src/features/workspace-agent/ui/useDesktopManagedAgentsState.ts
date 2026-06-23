@@ -19,8 +19,10 @@ const EMPTY_AGENT_PROVIDER_STATUS_SNAPSHOT: AgentProviderStatusSnapshot = {
 };
 
 export function useDesktopManagedAgentsState(
-  agentProviderStatusService: IAgentProviderStatusService | undefined
+  agentProviderStatusService: IAgentProviderStatusService | undefined,
+  options?: { ensureLoaded?: boolean }
 ): AgentHostManagedAgentsState | null {
+  const shouldEnsureLoaded = options?.ensureLoaded !== false;
   const snapshot = useSyncExternalStore(
     agentProviderStatusService
       ? (listener) => agentProviderStatusService.subscribe(listener)
@@ -32,12 +34,12 @@ export function useDesktopManagedAgentsState(
   );
 
   useEffect(() => {
-    if (!agentProviderStatusService) {
+    if (!agentProviderStatusService || !shouldEnsureLoaded) {
       return;
     }
 
     void ensureDesktopManagedAgentProviderStatuses(agentProviderStatusService);
-  }, [agentProviderStatusService]);
+  }, [agentProviderStatusService, shouldEnsureLoaded]);
 
   return useMemo(
     () =>

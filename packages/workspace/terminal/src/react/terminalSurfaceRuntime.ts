@@ -209,11 +209,7 @@ export function createTerminalSurfaceRuntime(input: {
         terminalScreenStateCache.remove(input.nodeId, input.sessionId);
       }
       clearPendingWrites();
-      input.onPreviewChange?.({
-        nodeId: input.nodeId,
-        sessionId: input.sessionId,
-        snapshot: null
-      });
+      emitTerminalPreviewSnapshot();
       terminal.dispose();
     },
     findNext(query, options) {

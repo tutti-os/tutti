@@ -529,6 +529,70 @@ test("WorkspaceAppCenterController clears pending install when backend job disap
   );
 });
 
+test("WorkspaceAppCenterController preserves pending install progress across catalog refresh", async () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async installWorkspaceApp() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              installProgress: {
+                downloadedBytes: 1024,
+                indeterminate: false,
+                overallPercent: 48,
+                totalBytes: 4096,
+                userPhase: "downloading"
+              },
+              installed: false,
+              runtimeStatus: "installing",
+              stateRevision: 2
+            })
+          ]
+        });
+      },
+      async refreshWorkspaceAppCatalog() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              availableVersion: "1.1.0",
+              installProgress: null,
+              installed: false,
+              runtimeStatus: "idle",
+              stateRevision: 2,
+              updateAvailable: true
+            })
+          ]
+        });
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          appId: "app-1",
+          installed: false,
+          runtimeStatus: "idle"
+        })
+      ]
+    })
+  );
+
+  await controller.installApp({
+    appId: "app-1",
+    workspaceId: "workspace-1"
+  });
+  await controller.refreshCatalog("workspace-1");
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "installing");
+  assert.equal(controller.store.apps[0]?.installProgress?.overallPercent, 48);
+  assert.equal(controller.store.apps[0]?.availableVersion, "1.1.0");
+});
+
 test("WorkspaceAppCenterController only marks idle enabled apps as starting", async () => {
   let optimisticStatuses: string[] = [];
   const controller = createWorkspaceAppCenterController({
@@ -562,6 +626,65 @@ test("WorkspaceAppCenterController only marks idle enabled apps as starting", as
   await controller.startEnabledApps("workspace-1");
 
   assert.deepEqual(optimisticStatuses, ["preparing", "failed", "stopping"]);
+});
+
+test("WorkspaceAppCenterController refreshes non-pending active install state", async () => {
+  let listCalls = 0;
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async listWorkspaceApps() {
+        listCalls += 1;
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-idle",
+              installProgress: null,
+              runtimeStatus: "running",
+              stateRevision: 2
+            })
+          ]
+        });
+      },
+      async startEnabledWorkspaceApps() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-idle",
+              installProgress: {
+                downloadedBytes: null,
+                indeterminate: false,
+                overallPercent: 96,
+                totalBytes: null,
+                userPhase: "starting"
+              },
+              runtimeStatus: "starting",
+              stateRevision: 2
+            })
+          ]
+        });
+      }
+    }),
+    installRefreshDelayMs: 1
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ appId: "app-idle", runtimeStatus: "idle" })]
+    })
+  );
+  controller.beginWorkspacePolling("workspace-1");
+
+  await controller.startEnabledApps("workspace-1");
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "starting");
+  assert.equal(controller.store.apps[0]?.installProgress?.overallPercent, 96);
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(listCalls, 1);
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "running");
+  assert.equal(controller.store.apps[0]?.installProgress, null);
+  controller.endWorkspacePolling("workspace-1");
 });
 
 function createApp(

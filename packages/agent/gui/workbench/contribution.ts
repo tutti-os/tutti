@@ -524,6 +524,7 @@ function createAgentGuiWorkbenchPreviewBodyContext(
     instanceKey: input.node.data.instanceKey ?? null,
     isFocused: false,
     node: input.node,
+    previewViewport: input.previewViewport,
     setNodeRuntimeState: () => undefined,
     setSnapshotNodeState: () => undefined
   };

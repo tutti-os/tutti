@@ -10,6 +10,7 @@ export interface TerminalDockPreviewProps {
   frame?: TerminalDockPreviewFrame | null;
   snapshot: TerminalPreviewSnapshot;
   theme?: TerminalTheme | null;
+  viewport?: TerminalDockPreviewFrame | null;
 }
 
 export interface TerminalDockPreviewFrame {
@@ -35,16 +36,18 @@ const terminalDockPreviewPadding = 16;
 export function TerminalDockPreview({
   frame = null,
   snapshot,
-  theme = null
+  theme = null,
+  viewport = null
 }: TerminalDockPreviewProps) {
   const containerRef = useRef<HTMLSpanElement | null>(null);
-  const [layout, setLayout] = useState({
-    height: 0,
-    scale: 1,
-    sourceHeight: 0,
-    sourceWidth: 0,
-    width: 0
-  });
+  const [layout, setLayout] = useState(() =>
+    resolveTerminalDockPreviewLayout({
+      availableSize: viewport,
+      fitMode: viewport ? "cover" : "contain",
+      frame,
+      snapshot
+    })
+  );
   const style: TerminalDockPreviewStyle = {};
   if (theme?.background) {
     style["--workspace-terminal-dock-preview-background"] = theme.background;
@@ -52,9 +55,11 @@ export function TerminalDockPreview({
   if (theme?.foreground) {
     style["--workspace-terminal-dock-preview-foreground"] = theme.foreground;
   }
-  if (layout.width > 0 && layout.height > 0) {
-    style["--workspace-terminal-dock-preview-height"] = `${layout.height}px`;
-    style["--workspace-terminal-dock-preview-width"] = `${layout.width}px`;
+  if (layout.viewportWidth > 0 && layout.viewportHeight > 0) {
+    style["--workspace-terminal-dock-preview-height"] =
+      `${layout.viewportHeight}px`;
+    style["--workspace-terminal-dock-preview-width"] =
+      `${layout.viewportWidth}px`;
     style["--workspace-terminal-dock-preview-scale"] = String(layout.scale);
     style["--workspace-terminal-dock-preview-source-height"] =
       `${layout.sourceHeight}px`;
@@ -68,40 +73,24 @@ export function TerminalDockPreview({
       return;
     }
     const updateFontSize = () => {
-      const availableSize = readTerminalDockPreviewAvailableSize(container);
-      const availableWidth = availableSize.width;
-      const availableHeight = availableSize.height;
-      const previewRatio = resolveTerminalDockPreviewRatio(frame, snapshot);
-      const sourceSize = resolveTerminalDockPreviewSourceSize(frame, snapshot);
-      const fittedSize = fitTerminalDockPreviewSize({
-        availableHeight,
-        availableWidth,
-        ratio: previewRatio
+      const nextLayout = resolveTerminalDockPreviewLayout({
+        availableSize:
+          viewport ?? readTerminalDockPreviewAvailableSize(container),
+        fitMode: viewport ? "cover" : "contain",
+        frame,
+        snapshot
       });
-      const nextScale =
-        sourceSize.width > 0 && sourceSize.height > 0
-          ? Math.min(
-              fittedSize.width / sourceSize.width,
-              fittedSize.height / sourceSize.height
-            )
-          : 1;
       setLayout((current) => {
         if (
-          Math.abs(current.height - fittedSize.height) < 0.5 &&
-          Math.abs(current.scale - nextScale) < 0.001 &&
-          Math.abs(current.sourceHeight - sourceSize.height) < 0.5 &&
-          Math.abs(current.sourceWidth - sourceSize.width) < 0.5 &&
-          Math.abs(current.width - fittedSize.width) < 0.5
+          Math.abs(current.scale - nextLayout.scale) < 0.001 &&
+          Math.abs(current.sourceHeight - nextLayout.sourceHeight) < 0.5 &&
+          Math.abs(current.sourceWidth - nextLayout.sourceWidth) < 0.5 &&
+          Math.abs(current.viewportHeight - nextLayout.viewportHeight) < 0.5 &&
+          Math.abs(current.viewportWidth - nextLayout.viewportWidth) < 0.5
         ) {
           return current;
         }
-        return {
-          height: fittedSize.height,
-          scale: nextScale,
-          sourceHeight: sourceSize.height,
-          sourceWidth: sourceSize.width,
-          width: fittedSize.width
-        };
+        return nextLayout;
       });
     };
     updateFontSize();
@@ -110,15 +99,16 @@ export function TerminalDockPreview({
     return () => {
       observer.disconnect();
     };
-  }, [frame, snapshot.cols, snapshot.lines.length]);
+  }, [frame, snapshot.cols, snapshot.lines.length, viewport]);
 
   return (
     <span
       className="workspace-terminal__dock-preview-frame"
       data-terminal-dock-preview=""
       ref={containerRef}
+      style={style}
     >
-      <span className="workspace-terminal__dock-preview-viewport" style={style}>
+      <span className="workspace-terminal__dock-preview-viewport">
         <span className="workspace-terminal__dock-preview">
           {snapshot.lines.map((line, index) => (
             <span className="workspace-terminal__dock-preview-line" key={index}>
@@ -141,6 +131,48 @@ export function TerminalDockPreview({
       </span>
     </span>
   );
+}
+
+function resolveTerminalDockPreviewLayout({
+  availableSize,
+  fitMode,
+  frame,
+  snapshot
+}: {
+  availableSize: TerminalDockPreviewFrame | null;
+  fitMode: "contain" | "cover";
+  frame: TerminalDockPreviewFrame | null;
+  snapshot: TerminalPreviewSnapshot;
+}) {
+  const availableWidth = availableSize?.width ?? 0;
+  const availableHeight = availableSize?.height ?? 0;
+  const previewRatio = resolveTerminalDockPreviewRatio(frame, snapshot);
+  const sourceSize = resolveTerminalDockPreviewSourceSize(frame, snapshot);
+  const viewportSize =
+    fitMode === "cover"
+      ? {
+          height: availableHeight > 0 ? availableHeight : 0,
+          width: availableWidth > 0 ? availableWidth : 0
+        }
+      : fitTerminalDockPreviewSize({
+          availableHeight,
+          availableWidth,
+          ratio: previewRatio
+        });
+  const scale = resolveTerminalDockPreviewScale({
+    availableHeight: viewportSize.height,
+    availableWidth: viewportSize.width,
+    fitMode,
+    sourceHeight: sourceSize.height,
+    sourceWidth: sourceSize.width
+  });
+  return {
+    scale,
+    sourceHeight: sourceSize.height,
+    sourceWidth: sourceSize.width,
+    viewportHeight: viewportSize.height,
+    viewportWidth: viewportSize.width
+  };
 }
 
 function readTerminalDockPreviewAvailableSize(element: HTMLElement) {
@@ -220,6 +252,7 @@ function fitTerminalDockPreviewSize(input: {
   }
 
   const widthFromFullHeight = input.availableHeight * input.ratio;
+  const heightFromFullWidth = input.availableWidth / input.ratio;
   if (widthFromFullHeight <= input.availableWidth) {
     return {
       height: input.availableHeight,
@@ -228,9 +261,32 @@ function fitTerminalDockPreviewSize(input: {
   }
 
   return {
-    height: input.availableWidth / input.ratio,
+    height: heightFromFullWidth,
     width: input.availableWidth
   };
+}
+
+function resolveTerminalDockPreviewScale(input: {
+  availableHeight: number;
+  availableWidth: number;
+  fitMode: "contain" | "cover";
+  sourceHeight: number;
+  sourceWidth: number;
+}) {
+  if (
+    input.availableHeight <= 0 ||
+    input.availableWidth <= 0 ||
+    input.sourceHeight <= 0 ||
+    input.sourceWidth <= 0
+  ) {
+    return 1;
+  }
+
+  const widthScale = input.availableWidth / input.sourceWidth;
+  const heightScale = input.availableHeight / input.sourceHeight;
+  return input.fitMode === "cover"
+    ? Math.max(widthScale, heightScale)
+    : Math.min(widthScale, heightScale);
 }
 
 function resolveTerminalDockPreviewSegmentStyle(

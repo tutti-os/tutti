@@ -39,7 +39,21 @@ function envFlagEnabled(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/iu.test(value?.trim() ?? "");
 }
 
+function applyElectronDiagnosticSwitches(): void {
+  const remoteDebuggingPort =
+    process.env.TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT?.trim();
+  if (remoteDebuggingPort) {
+    app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort);
+  }
+
+  const jsFlags = process.env.TUTTI_ELECTRON_JS_FLAGS?.trim();
+  if (jsFlags) {
+    app.commandLine.appendSwitch("js-flags", jsFlags);
+  }
+}
+
 export async function bootstrapDesktopApp(): Promise<void> {
+  applyElectronDiagnosticSwitches();
   registerTuttiAssetProtocolScheme();
   registerWorkspaceFileIconProtocolScheme();
   initializeDesktopEnvironment({

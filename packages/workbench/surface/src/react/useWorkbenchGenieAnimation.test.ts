@@ -51,12 +51,27 @@ test("genie dock launch skips animation setup when motion is reduced or disabled
   );
 });
 
+test("genie dock restore defers the launch out of the input task", () => {
+  assert.doesNotMatch(
+    source,
+    /flushSync\(\(\) => \{\s*void launch\(\);\s*\}\);/
+  );
+  assert.match(
+    source,
+    /rafRef\.current = window\.requestAnimationFrame\(\(\) => \{[\s\S]*void Promise\.resolve\(launch\(\)\)[\s\S]*startOpenOrRestoreAnimation/
+  );
+  assert.match(
+    source,
+    /if \(rafRef\.current !== null\) \{[\s\S]*window\.cancelAnimationFrame\(rafRef\.current\);[\s\S]*rafRef\.current = null;/
+  );
+});
+
 test("genie animation remains the default minimize animation", () => {
   assert.match(source, /minimizeAnimation = "genie"/);
   assert.doesNotMatch(source, /minimizeAnimation = "scale"/);
 });
 
-test("genie minimize foregrounds the target before preview capture", () => {
+test("genie minimize foregrounds the target before snapshot preview capture", () => {
   assert.match(source, /function isFocusedWorkbenchNode/);
   assert.match(
     source,
@@ -64,7 +79,16 @@ test("genie minimize foregrounds the target before preview capture", () => {
   );
   assert.match(
     source,
-    /const previewImageUrlPromise = Promise\.resolve\(\s*captureNodePreviewImage\?\.\(target\) \?\? null\s*\)/
+    /const previewImageUrlPromise = shouldCapturePreview\s*\?\s*Promise\.resolve\(captureNodePreviewImage\?\.\(target\) \?\? null\)\.catch/
+  );
+  assert.match(source, /async function renderPreviewImageTexture/);
+  assert.match(
+    source,
+    /const previewImageTexture =[\s\S]*renderPreviewImageTexture\(\{[\s\S]*previewImageUrl,[\s\S]*rect: windowRect/
+  );
+  assert.match(
+    source,
+    /const texture =\s*componentPreviewTexture \?\?\s*previewImageTexture \?\?\s*\(preparedTexture/
   );
 });
 
@@ -103,8 +127,9 @@ test("genie scanline rendering maps strip edges to avoid horizontal seams", () =
   );
 });
 
-test("scale and off minimize skip focus and preview capture for component previews", () => {
+test("scale, off, and genie minimize skip real-window preview capture for component previews", () => {
   assert.match(source, /shouldCaptureNodePreviewImage\?:/);
+  assert.match(source, /renderNodeGeniePreview\?:/);
   assert.match(
     source,
     /const shouldCapturePreview =\s*shouldCaptureNodePreviewImage\?\.\(target\) \?\? true;/
@@ -118,6 +143,63 @@ test("scale and off minimize skip focus and preview capture for component previe
     /const wasFocusedForCapture =\s*shouldCapturePreview && isFocusedWorkbenchNode\(controller, nodeID\);/
   );
   assert.match(source, /if \(shouldCapturePreview && !wasFocusedForCapture\)/);
+  assert.doesNotMatch(source, /createRoot/);
+  assert.match(
+    source,
+    /const requestRenderedGeniePreviewTexture = useCallback/
+  );
+  assert.match(source, /pendingRenderedPreviewCapture/);
+  assert.match(source, /workbench-genie-preview-capture/);
+  assert.doesNotMatch(source, /function renderFallbackGeniePreview/);
+  assert.match(source, /function prepareRenderedGeniePreviewCloneForTexture/);
+  assert.match(source, /const renderedGeniePreviewHeaderOffsetPx = 40;/);
+  assert.match(source, /previewViewport: \{/);
+  assert.match(
+    source,
+    /height: textureRect\.height,[\s\S]*width: textureRect\.width/
+  );
+  assert.match(
+    source,
+    /previewElement\.style\.height = `\$\{textureRect\.height\}px`;/
+  );
+  assert.match(
+    source,
+    /previewElement\.style\.transform = `translateY\(\$\{renderedGeniePreviewHeaderOffsetPx\}px\)`;/
+  );
+  assert.match(
+    source,
+    /previewElement\.style\.border = "0";[\s\S]*previewElement\.style\.borderRadius = "0";/
+  );
+  assert.match(source, /minimize\.component-texture\.skip\.empty-preview/);
+  assert.doesNotMatch(source, /renderFallbackGeniePreview\(\)/);
+  assert.match(
+    source,
+    /const componentPreviewTexture = shouldCapturePreview\s*\?\s*null\s*:\s*await requestRenderedGeniePreviewTexture/
+  );
+});
+
+test("genie restore reuses minimized or component preview texture before recapturing DOM", () => {
+  assert.match(source, /const minimizedGenieTextureCacheMaxEntries = 32;/);
+  assert.match(
+    source,
+    /const minimizedGenieTextureByNodeIDRef = useRef\(\s*new Map<string, CapturedGenieTexture>\(\)\s*\);/
+  );
+  assert.match(source, /const readMinimizedGenieTexture = useCallback/);
+  assert.match(source, /const writeMinimizedGenieTexture = useCallback/);
+  assert.match(source, /writeMinimizedGenieTexture\(nodeID, texture\);/);
+  assert.match(
+    source,
+    /const shouldRestoreFromRenderedPreview =[\s\S]*shouldCaptureNodePreviewImage\?\.\(minimizedNode\)/
+  );
+  assert.match(
+    source,
+    /const renderedPreviewTexture =[\s\S]*await requestRenderedGeniePreviewTexture\(\{[\s\S]*node: minimizedNode,[\s\S]*textureRect: restoredWindowRect/
+  );
+  assert.match(
+    source,
+    /const texture =\s*cachedTexture \?\?\s*renderedPreviewTexture \?\?\s*\(captureTarget\s*\?\s*await captureElementTexture/
+  );
+  assert.match(source, /clearMinimizedGenieTexture\(nodeID\);/);
 });
 
 test("scale minimize resolves its target from a pending minimized dock slot", () => {
@@ -162,6 +244,6 @@ test("off minimize gives immediate shell feedback and defers the state commit", 
 test("genie minimize resolves its target from a pending minimized dock slot", () => {
   assert.match(
     source,
-    /const pendingMinimizedNode: WorkbenchNode<TData> = \{[\s\S]*isMinimized: true,[\s\S]*minimizedAtUnixMs: Date\.now\(\)[\s\S]*\};[\s\S]*setPendingMinimizedNode\(pendingMinimizedNode\);[\s\S]*hideNodeForGenie\(nodeID\);[\s\S]*const anchorKey = resolveAnchorKeyForNode\(pendingMinimizedNode\);[\s\S]*runGenieAnimation/
+    /const pendingMinimizedNode: WorkbenchNode<TData> = \{[\s\S]*isMinimized: true,[\s\S]*minimizedAtUnixMs: Date\.now\(\)[\s\S]*\};[\s\S]*setPendingMinimizedNode\(pendingMinimizedNode\);[\s\S]*const anchorKey = resolveAnchorKeyForNode\(pendingMinimizedNode\);[\s\S]*runGenieAnimation[\s\S]*flushSync\(\(\) => \{\s*hideNodeForGenie\(nodeID\);/
   );
 });

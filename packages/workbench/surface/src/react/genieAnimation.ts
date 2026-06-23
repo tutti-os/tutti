@@ -366,9 +366,11 @@ export function renderGenieScanlines(
 ): void {
   const { direction, dockPoint, texture, textureRect } = frame;
   const progress = clampGenieProgress(frame.progress);
-  const textureWidth = Math.max(1, Math.round(textureRect.width));
-  const textureHeight = Math.max(1, Math.round(textureRect.height));
-  const scanlineStride = resolveGenieScanlineStride(textureHeight);
+  const sourceWidth = Math.max(1, texture.width);
+  const sourceHeight = Math.max(1, texture.height);
+  const destinationWidth = Math.max(1, textureRect.width);
+  const destinationHeight = Math.max(1, textureRect.height);
+  const scanlineStride = resolveGenieScanlineStride(sourceHeight);
   const dirtyRect = resolveGenieDirtyRect({
     dockPoint,
     textureRect,
@@ -383,10 +385,10 @@ export function renderGenieScanlines(
     dirtyRect.height
   );
 
-  for (let y = 0; y < textureHeight; y += scanlineStride) {
-    const sourceHeight = Math.min(scanlineStride, textureHeight - y);
-    const sourceMidY = y + sourceHeight / 2;
-    const rowProgress = sourceMidY / textureHeight;
+  for (let y = 0; y < sourceHeight; y += scanlineStride) {
+    const sourceSliceHeight = Math.min(scanlineStride, sourceHeight - y);
+    const sourceMidY = y + sourceSliceHeight / 2;
+    const rowProgress = sourceMidY / sourceHeight;
     const horizontalProgress = resolveGenieRowProgress({
       direction,
       progress,
@@ -402,29 +404,32 @@ export function renderGenieScanlines(
     const right =
       direction === "minimize"
         ? lerpGenieValue(
-            textureRect.left + textureWidth,
+            textureRect.left + destinationWidth,
             dockPoint.x,
             horizontalEase
           )
         : lerpGenieValue(
             dockPoint.x,
-            textureRect.left + textureWidth,
+            textureRect.left + destinationWidth,
             horizontalEase
           );
+    const destinationSourceTop = (y / sourceHeight) * destinationHeight;
+    const destinationSourceBottom =
+      ((y + sourceSliceHeight) / sourceHeight) * destinationHeight;
     const targetTop = resolveGenieRowTargetY({
       direction,
       dockPoint,
       progress,
-      sourceY: y,
-      textureHeight,
+      sourceY: destinationSourceTop,
+      textureHeight: destinationHeight,
       textureRect
     });
     const targetBottom = resolveGenieRowTargetY({
       direction,
       dockPoint,
       progress,
-      sourceY: y + sourceHeight,
-      textureHeight,
+      sourceY: destinationSourceBottom,
+      textureHeight: destinationHeight,
       textureRect
     });
     const targetY = Math.min(targetTop, targetBottom) - 0.5;
@@ -439,8 +444,8 @@ export function renderGenieScanlines(
       texture,
       0,
       y,
-      textureWidth,
-      sourceHeight,
+      sourceWidth,
+      sourceSliceHeight,
       left,
       targetY,
       rowWidth,

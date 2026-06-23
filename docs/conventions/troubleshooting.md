@@ -757,6 +757,31 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   [appUpdateService.ts](../../apps/desktop/src/main/update/appUpdateService.ts)
   [appUpdateService.ts](../../apps/desktop/src/renderer/src/features/app-update/services/internal/appUpdateService.ts)
 
+### Desktop Performance trace export runs out of memory
+
+- Symptom:
+  Chrome DevTools Performance export or trace parsing fails with
+  `Maximum call stack size exceeded` or V8 `CALL_AND_RETRY_LAST` OOM while the
+  desktop app is running through `make dev-gui`.
+- Quick checks:
+  Keep the trace short and disable renderer diagnostics that inflate tracks:
+  `VITE_TUTTI_WHY_DID_YOU_RENDER=0 make dev-gui`. For CDP-based trace capture,
+  launch with
+  `TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT=9223 TUTTI_ELECTRON_JS_FLAGS=--max-old-space-size=8192`.
+  Confirm the port with `curl http://127.0.0.1:9223/json/version`.
+- Root cause:
+  DevTools can run out of stack or old-space memory while processing large trace
+  payloads. Passing extra CLI args through `electron-vite` is not reliable enough
+  for these diagnostics, so the desktop main process owns the Electron command
+  line switches.
+- Fix:
+  Prefer CDP `Tracing.start` with `transferMode: "ReturnAsStream"` for large
+  captures instead of DevTools UI export. Record only the smallest repro window.
+- Validation:
+  Restart the desktop app, confirm the remote debugging endpoint responds, record
+  a short trace, and verify the trace JSON is written without opening the
+  Performance export path.
+
 ### Renderer component repeatedly re-renders without visible changes
 
 - Symptom:

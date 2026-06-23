@@ -11,7 +11,10 @@ import type {
   WorkbenchDockPreviewCache,
   WorkbenchDockPreviewCacheKey
 } from "../react/dockPreviewCache.ts";
-import { WorkbenchHostDock } from "./WorkbenchHostDock.tsx";
+import {
+  renderMinimizedDockPreviewContent,
+  WorkbenchHostDock
+} from "./WorkbenchHostDock.tsx";
 import {
   createWorkbenchHostNodeBodyContext,
   createWorkbenchHostNodeHeaderContext
@@ -302,6 +305,48 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     [input.nodeDefinitionByType]
   );
 
+  const renderNodeGeniePreview = useCallback(
+    (
+      node: WorkbenchNode<WorkbenchHostNodeData>,
+      {
+        previewViewport
+      }: { previewViewport: { height: number; width: number } }
+    ) => {
+      const minimizedDock = input.nodeDefinitionByType.get(node.data.typeId)
+        ?.window?.minimizedDock;
+      if (minimizedDock?.kind !== "component") {
+        return null;
+      }
+
+      const externalState = readWorkbenchHostExternalState({
+        externalStateSource: input.externalStateSource,
+        node,
+        workspaceId: input.workspaceId
+      });
+      const preview = minimizedDock.providePreview({
+        externalNodeState: externalState.externalNodeState,
+        externalWorkspaceState: externalState.externalWorkspaceState,
+        host: input.hostSession,
+        isFocused: input.hostSession.getSnapshot().nodeStack.at(-1) === node.id,
+        isMinimized: node.isMinimized,
+        node,
+        previewViewport
+      });
+      return preview
+        ? renderMinimizedDockPreviewContent(
+            preview,
+            "workbench-genie-preview-capture__preview"
+          )
+        : null;
+    },
+    [
+      input.externalStateSource,
+      input.hostSession,
+      input.nodeDefinitionByType,
+      input.workspaceId
+    ]
+  );
+
   const resolveDockAnchorKey = useCallback(
     (node: WorkbenchNode<WorkbenchHostNodeData>) => {
       if (
@@ -379,6 +424,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     renderBottomChrome,
     renderDock,
     renderNode,
+    renderNodeGeniePreview,
     renderTopChrome,
     renderWindowActions,
     renderWindowHeader,

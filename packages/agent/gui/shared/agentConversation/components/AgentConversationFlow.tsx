@@ -16,6 +16,7 @@ interface AgentConversationFlowProps {
   onAuthLogin?: (provider?: string | null) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  previewMode?: boolean;
   showRawTimelineJson?: boolean;
   labels: {
     toolCallsLabel: (count: number) => string;
@@ -36,6 +37,7 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
   onAuthLogin,
   availableSkills,
   workspaceAppIcons,
+  previewMode = false,
   showRawTimelineJson = false,
   labels
 }: AgentConversationFlowProps): JSX.Element {
@@ -58,6 +60,7 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
       onAuthLogin={onAuthLogin}
       availableSkills={availableSkills}
       workspaceAppIcons={workspaceAppIcons}
+      previewMode={previewMode}
       labels={labels}
       showRawTimelineJson={showRawTimelineJson}
     />

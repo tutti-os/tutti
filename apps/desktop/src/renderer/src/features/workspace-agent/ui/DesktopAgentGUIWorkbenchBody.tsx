@@ -289,7 +289,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     ]
   );
   const managedAgentsState = useDesktopManagedAgentsState(
-    previewMode ? undefined : agentProviderStatusService
+    agentProviderStatusService,
+    { ensureLoaded: !previewMode }
   );
   const provider = desktopAgentGUIProviderFromInstanceId(context.instanceId);
   useEffect(() => {
@@ -639,6 +640,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   }, [context.activation, context.host, context.node.id, previewMode]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     const handleOptimisticConversationRailToggle = (event: Event) => {
       const detail = (event as CustomEvent<unknown>).detail;
       if (
@@ -674,7 +678,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         handleOptimisticConversationRailToggle
       );
     };
-  }, [context.instanceId, handleUpdateNode]);
+  }, [context.instanceId, handleUpdateNode, previewMode]);
 
   useEffect(() => {
     if (previewMode) {
@@ -879,7 +883,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         previewMode ? undefined : onCapabilitySettingsRequest
       }
       onClose={DESKTOP_AGENT_GUI_NOOP}
-      onLinkAction={onLinkAction}
+      onLinkAction={previewMode ? undefined : onLinkAction}
       onResize={DESKTOP_AGENT_GUI_NOOP}
       onShowMessage={DESKTOP_AGENT_GUI_NOOP}
       onUpdateNode={handleUpdateNode}
@@ -888,17 +892,25 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           ? undefined
           : handleOpenConversationWindow
       }
-      onWorkspaceFileReferencesAdded={trackWorkspaceFileReferences}
+      onWorkspaceFileReferencesAdded={
+        previewMode ? undefined : trackWorkspaceFileReferences
+      }
       position={DESKTOP_AGENT_GUI_POSITION}
       previewMode={previewMode}
-      contextMentionProviders={effectiveContextMentionProviders}
+      contextMentionProviders={
+        previewMode ? [] : effectiveContextMentionProviders
+      }
       state={nodeState}
       title={context.node.title}
       width={frame.width}
-      workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
-      onRequestGitBranches={onRequestGitBranches}
-      referenceSourceAggregator={referenceSourceAggregator}
-      resolveMentionReferenceTarget={resolveMentionReferenceTarget}
+      workspaceFileReferenceAdapter={
+        previewMode ? null : workspaceFileReferenceAdapter
+      }
+      onRequestGitBranches={previewMode ? null : onRequestGitBranches}
+      referenceSourceAggregator={previewMode ? null : referenceSourceAggregator}
+      resolveMentionReferenceTarget={
+        previewMode ? undefined : resolveMentionReferenceTarget
+      }
       workspaceAppIcons={workspaceAppIcons}
       workspaceId={workspaceId}
       workspacePath="/"

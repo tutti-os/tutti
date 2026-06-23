@@ -25,5 +25,10 @@ test("minimized dock anchor resolution includes pending minimized nodes", () => 
 test("component minimized previews do not request snapshot preview capture", () => {
   assert.match(source, /const shouldCaptureNodePreviewImage = useCallback/);
   assert.match(source, /return minimizedDock\?\.kind !== "component";/);
+  assert.match(source, /const renderNodeGeniePreview = useCallback/);
+  assert.match(source, /if \(minimizedDock\?\.kind !== "component"\)/);
+  assert.match(source, /minimizedDock\.providePreview/);
+  assert.match(source, /workbench-genie-preview-capture__preview/);
   assert.match(source, /shouldCaptureNodePreviewImage,/);
+  assert.match(source, /renderNodeGeniePreview,/);
 });

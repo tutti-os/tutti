@@ -227,7 +227,11 @@ test("pending minimized dock slots reuse minimized layout without preview captur
     source,
     /if \(context\.genie\.isPendingMinimizedDockNode\(node\.id\)\) \{\s*return false;/
   );
-  assert.match(source, /disabled=\{isPendingMinimizedNode\}/);
+  assert.match(
+    source,
+    /aria-disabled=\{isPendingMinimizedNode \? true : undefined\}/
+  );
+  assert.match(source, /tabIndex=\{isPendingMinimizedNode \? -1 : 0\}/);
   assert.match(source, /data-pending-minimize=/);
   assert.match(
     source,
@@ -297,6 +301,43 @@ test("component minimized dock previews freeze without snapshot capture", () => 
   );
   assert.match(source, /desktop-dock__minimized-preview--component/);
   assert.match(source, /minimizedDockPreviewFreezeKey\(node\)/);
+});
+
+test("minimized dock activators allow interactive preview markup", () => {
+  const stackActivatorStart = source.indexOf("const stackButton = (");
+  const stackActivatorEnd = source.indexOf(
+    "return (\n                  <span",
+    stackActivatorStart
+  );
+  const nodeActivatorStart = source.indexOf(
+    "const dockButton = (",
+    source.indexOf("const node = slot.node;")
+  );
+  const nodeActivatorEnd = source.indexOf(
+    "return (\n                <span",
+    nodeActivatorStart
+  );
+  assert.notEqual(stackActivatorStart, -1);
+  assert.notEqual(stackActivatorEnd, -1);
+  assert.notEqual(nodeActivatorStart, -1);
+  assert.notEqual(nodeActivatorEnd, -1);
+  const minimizedActivatorSource = [
+    source.slice(stackActivatorStart, stackActivatorEnd),
+    source.slice(nodeActivatorStart, nodeActivatorEnd)
+  ].join("\n");
+
+  assert.match(source, /function activateDockButtonFromKeyboard/);
+  assert.match(source, /event\.key !== "Enter" && event\.key !== " "/);
+  assert.match(source, /event\.currentTarget\.click\(\);/);
+  assert.doesNotMatch(minimizedActivatorSource, /<button/);
+  assert.match(
+    minimizedActivatorSource,
+    /className="desktop-dock__btn desktop-dock__minimized-btn"[\s\S]*?role="button"[\s\S]*?tabIndex=\{0\}[\s\S]*?onKeyDown=\{activateDockButtonFromKeyboard\}/
+  );
+  assert.match(
+    minimizedActivatorSource,
+    /className="desktop-dock__btn desktop-dock__minimized-btn"[\s\S]*?role="button"[\s\S]*?tabIndex=\{isPendingMinimizedNode \? -1 : 0\}[\s\S]*?activateDockButtonFromKeyboard\([\s\S]*?event,[\s\S]*?isPendingMinimizedNode/
+  );
 });
 
 test("dock slot refs are stable across renders", () => {

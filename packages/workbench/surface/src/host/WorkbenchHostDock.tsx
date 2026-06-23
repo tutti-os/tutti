@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type Dispatch,
   type FocusEvent as ReactFocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   type SetStateAction
@@ -84,12 +85,29 @@ type WorkbenchMinimizedDockStackPopupCardRestoreIntent = Extract<
 
 type WorkbenchDockWallpaperTone = "dark" | "light";
 
+const minimizedDockPreviewViewport = {
+  height: 34.2,
+  width: 46.8
+};
+
 function stripDockDescriptionTerminalPunctuation(value: string): string {
   const trimmed = value.trim();
   if (!trimmed || trimmed.endsWith("...") || trimmed.endsWith("…")) {
     return trimmed;
   }
   return trimmed.replace(/[。．.]+$/u, "");
+}
+
+function activateDockButtonFromKeyboard(
+  event: ReactKeyboardEvent<HTMLElement>,
+  disabled = false
+) {
+  if (disabled || (event.key !== "Enter" && event.key !== " ")) {
+    return;
+  }
+
+  event.preventDefault();
+  event.currentTarget.click();
 }
 
 function isDockVisualMutationActive(element: HTMLElement | null): boolean {
@@ -1199,7 +1217,8 @@ export function WorkbenchHostDock({
         host,
         isFocused: context.focusedNodeId === node.id,
         isMinimized: node.isMinimized,
-        node
+        node,
+        previewViewport: minimizedDockPreviewViewport
       });
     },
     [
@@ -1787,13 +1806,15 @@ export function WorkbenchHostDock({
                   stackLabel
                 );
                 const stackButton = (
-                  <button
+                  <span
                     aria-expanded={stackPopupActive}
                     aria-haspopup="dialog"
                     aria-label={stackLabel}
                     className="desktop-dock__btn desktop-dock__minimized-btn"
                     data-interactive="true"
-                    type="button"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={activateDockButtonFromKeyboard}
                     onPointerDown={(event) => {
                       if (event.button !== 0) {
                         return;
@@ -1866,7 +1887,7 @@ export function WorkbenchHostDock({
                         {slot.nodes.length}
                       </span>
                     </span>
-                  </button>
+                  </span>
                 );
 
                 return (
@@ -1931,12 +1952,19 @@ export function WorkbenchHostDock({
                 node.title
               );
               const dockButton = (
-                <button
+                <span
                   aria-label={i18n.t("launch", { title: node.title })}
+                  aria-disabled={isPendingMinimizedNode ? true : undefined}
                   className="desktop-dock__btn desktop-dock__minimized-btn"
-                  data-interactive="true"
-                  disabled={isPendingMinimizedNode}
-                  type="button"
+                  data-interactive={isPendingMinimizedNode ? "false" : "true"}
+                  role="button"
+                  tabIndex={isPendingMinimizedNode ? -1 : 0}
+                  onKeyDown={(event) =>
+                    activateDockButtonFromKeyboard(
+                      event,
+                      isPendingMinimizedNode
+                    )
+                  }
                   onPointerDown={(event) => {
                     if (event.button !== 0 || isPendingMinimizedNode) {
                       return;
@@ -2007,7 +2035,7 @@ export function WorkbenchHostDock({
                     }
                     workspaceId={workspaceId}
                   />
-                </button>
+                </span>
               );
 
               return (
@@ -2674,7 +2702,7 @@ function renderMinimizedDockPreviewPlaceholder(className?: string) {
   );
 }
 
-function renderMinimizedDockPreviewContent(
+export function renderMinimizedDockPreviewContent(
   preview: WorkbenchDockPreviewContent,
   className?: string
 ) {

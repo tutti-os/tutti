@@ -58,6 +58,7 @@ interface AgentInteractivePromptSurfaceProps {
   variant?: AgentInteractivePromptVariant;
   edgeGlow?: boolean;
   keyboardShortcuts?: boolean;
+  previewMode?: boolean;
   isSubmitting: boolean;
   onSubmit: (input: {
     requestId: string;
@@ -91,6 +92,7 @@ export function AgentInteractivePromptSurface({
   edgeGlow = false,
   embedded = false,
   keyboardShortcuts = true,
+  previewMode = false,
   isSubmitting,
   onSubmit,
   labels
@@ -106,6 +108,7 @@ export function AgentInteractivePromptSurface({
         embedded={embedded}
         edgeGlow={edgeGlow}
         keyboardShortcuts={keyboardShortcuts}
+        previewMode={previewMode}
         isSubmitting={isSubmitting}
         onSubmit={onSubmit}
         labels={labels}
@@ -119,6 +122,7 @@ export function AgentInteractivePromptSurface({
         variant={variant}
         embedded={embedded}
         edgeGlow={edgeGlow}
+        previewMode={previewMode}
         isSubmitting={isSubmitting}
         onSubmit={onSubmit}
         labels={labels}
@@ -132,6 +136,7 @@ export function AgentInteractivePromptSurface({
         variant={variant}
         embedded={embedded}
         edgeGlow={edgeGlow}
+        previewMode={previewMode}
         isSubmitting={isSubmitting}
         onSubmit={onSubmit}
         labels={labels}
@@ -144,6 +149,7 @@ export function AgentInteractivePromptSurface({
       variant={variant}
       embedded={embedded}
       edgeGlow={edgeGlow}
+      previewMode={previewMode}
       isSubmitting={isSubmitting}
       onSubmit={onSubmit}
       labels={labels}
@@ -235,6 +241,7 @@ function ApprovalPromptSurface({
   embedded = false,
   edgeGlow = false,
   keyboardShortcuts = true,
+  previewMode = false,
   isSubmitting,
   onSubmit,
   labels
@@ -358,7 +365,7 @@ function ApprovalPromptSurface({
                 <span className={styles.interactiveOptionTitle}>
                   {detail.label}
                 </span>
-                <PromptDetailValue detail={detail} />
+                <PromptDetailValue detail={detail} previewMode={previewMode} />
                 {detail.meta ? (
                   <span className={styles.interactiveOptionDescription}>
                     {detail.meta}
@@ -465,6 +472,7 @@ function ApprovalPromptSurface({
                   <CommandTextWithTooltip
                     value={optionPresentation.commandPrefix}
                     testId="agent-interactive-command-prefix-option"
+                    tooltipsEnabled={!previewMode}
                   />
                 ) : null}
                 {option.description ? (
@@ -1008,9 +1016,11 @@ function formatToolDetails(
 }
 
 function PromptDetailValue({
-  detail
+  detail,
+  previewMode
 }: {
   detail: LabeledPromptToolDetail;
+  previewMode: boolean;
 }): JSX.Element {
   "use memo";
   if (detail.kind !== "command") {
@@ -1024,36 +1034,45 @@ function PromptDetailValue({
     <CommandTextWithTooltip
       value={detail.value}
       testId="agent-interactive-command-detail"
+      tooltipsEnabled={!previewMode}
     />
   );
 }
 
 function CommandTextWithTooltip({
   value,
-  testId
+  testId,
+  tooltipsEnabled = true
 }: {
   value: string;
   testId: string;
+  tooltipsEnabled?: boolean;
 }): JSX.Element {
   "use memo";
+  const content = (
+    <span
+      className={`${styles.interactiveOptionDescription} ${styles.interactiveOptionCommandDescription}`}
+      data-agent-interactive-command-detail={
+        testId === "agent-interactive-command-detail" ? "true" : undefined
+      }
+      data-agent-interactive-command-prefix-option={
+        testId === "agent-interactive-command-prefix-option"
+          ? "true"
+          : undefined
+      }
+    >
+      {value}
+    </span>
+  );
+
+  if (!tooltipsEnabled) {
+    return content;
+  }
+
   return (
     <TooltipProvider delayDuration={COMMAND_TOOLTIP_DELAY_MS}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className={`${styles.interactiveOptionDescription} ${styles.interactiveOptionCommandDescription}`}
-            data-agent-interactive-command-detail={
-              testId === "agent-interactive-command-detail" ? "true" : undefined
-            }
-            data-agent-interactive-command-prefix-option={
-              testId === "agent-interactive-command-prefix-option"
-                ? "true"
-                : undefined
-            }
-          >
-            {value}
-          </span>
-        </TooltipTrigger>
+        <TooltipTrigger asChild>{content}</TooltipTrigger>
         <TooltipContent className={styles.interactiveOptionCommandTooltip}>
           {value}
         </TooltipContent>

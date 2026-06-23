@@ -9,6 +9,7 @@ import {
 import { ChevronDown, ZapIcon } from "lucide-react";
 import {
   WorkspaceUserProjectSelect,
+  resolveWorkspaceUserProjectSelectLabels,
   type WorkspaceUserProjectSelectChangeAction,
   type WorkspaceUserProjectSelectLabelOverrides
 } from "@tutti-os/workspace-user-project/ui";
@@ -26,7 +27,9 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  FolderIcon,
   NewWorkspaceLinedIcon,
+  NoWorkspaceLinedIcon,
   RoomsHintIcon,
   Select,
   SelectContent,
@@ -62,10 +65,16 @@ export interface AgentProjectPathChangeMetadata {
   action: WorkspaceUserProjectSelectChangeAction;
 }
 
+function basenameProjectPath(path: string): string {
+  const normalized = path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+  return normalized.split("/").filter(Boolean).at(-1) ?? path;
+}
+
 export function AgentProjectDropdown({
   composerSettings,
   labels,
   i18n,
+  previewMode = false,
   onProjectMissingChange,
   onProjectPathChange
 }: {
@@ -75,6 +84,7 @@ export function AgentProjectDropdown({
   >;
   i18n: WorkspaceUserProjectI18nRuntime;
   labels: AgentProjectDropdownLabels;
+  previewMode?: boolean;
   onProjectMissingChange?: (isMissing: boolean) => void;
   onProjectPathChange: (
     path: string | null,
@@ -83,16 +93,65 @@ export function AgentProjectDropdown({
 }): React.JSX.Element {
   "use memo";
   const agentHostApi = useAgentHostApi();
+  const resolvedLabels = useMemo(
+    () => resolveWorkspaceUserProjectSelectLabels(i18n, labels),
+    [i18n, labels]
+  );
   const userProjectApi = useMemo(
     () =>
-      agentHostApi.userProjects
+      !previewMode && agentHostApi.userProjects
         ? {
             ...agentHostApi.userProjects,
             selectDirectory: agentHostApi.workspace.selectDirectory
           }
         : null,
-    [agentHostApi.userProjects, agentHostApi.workspace.selectDirectory]
+    [
+      agentHostApi.userProjects,
+      agentHostApi.workspace.selectDirectory,
+      previewMode
+    ]
   );
+
+  if (previewMode) {
+    const selectedPath = composerSettings.selectedProjectPath?.trim() ?? "";
+    const triggerLabel = selectedPath
+      ? basenameProjectPath(selectedPath)
+      : resolvedLabels.noProject;
+    return (
+      <button
+        type="button"
+        aria-label={
+          composerSettings.projectLocked
+            ? resolvedLabels.projectLocked
+            : resolvedLabels.projectLabel
+        }
+        className={cn(
+          "w-auto max-w-full",
+          styles.composerMenuTrigger,
+          "text-[var(--agent-gui-text-tertiary)]"
+        )}
+        data-agent-project-preview-trigger="true"
+      >
+        <span
+          className="workspace-user-project-trigger-label"
+          data-workspace-user-project-trigger-label="true"
+        >
+          {selectedPath ? (
+            <FolderIcon aria-hidden className="shrink-0" size={15} />
+          ) : (
+            <NoWorkspaceLinedIcon
+              aria-hidden
+              className="shrink-0"
+              data-agent-project-trigger-no-workspace-icon="true"
+              size={15}
+            />
+          )}
+          <span className="min-w-0 truncate">{triggerLabel}</span>
+        </span>
+        <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
+      </button>
+    );
+  }
 
   return (
     <WorkspaceUserProjectSelect
@@ -132,11 +191,13 @@ export function AgentProjectDropdown({
 export function AgentPermissionModeDropdown({
   composerSettings,
   disabled = false,
+  previewMode = false,
   labels,
   onSettingsChange
 }: {
   composerSettings: AgentGUIComposerSettingsVM;
   disabled?: boolean;
+  previewMode?: boolean;
   labels: Pick<AgentComposerSettingsMenuLabels, "permissionLabel">;
   onSettingsChange: (patch: {
     permissionModeId?: string | null;
@@ -188,6 +249,31 @@ export function AgentPermissionModeDropdown({
     applyPermissionModeId(permissionModeId);
   };
 
+  const trigger = (
+    <button
+      type="button"
+      className={cn(
+        "w-auto max-w-full",
+        styles.composerMenuTrigger,
+        selectDisabled &&
+          "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:text-[var(--agent-gui-text-tertiary)]",
+        composerSettings.isSettingsLoading && "animate-pulse"
+      )}
+      aria-label={labels.permissionLabel}
+      data-permission-tone={triggerTone}
+      data-agent-permission-preview-trigger={previewMode ? "true" : undefined}
+    >
+      <span className="flex min-w-0 flex-1 items-center">
+        <span className="truncate">{triggerLabel}</span>
+      </span>
+      <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
+    </button>
+  );
+
+  if (previewMode) {
+    return trigger;
+  }
+
   return (
     <Select
       open={isSelectOpen}
@@ -235,7 +321,10 @@ export function AgentPermissionModeDropdown({
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 truncate">{option.label}</span>
                 {option.description ? (
-                  <ComposerOptionInfoTooltip description={option.description} />
+                  <ComposerOptionInfoTooltip
+                    description={option.description}
+                    tooltipsEnabled={!previewMode}
+                  />
                 ) : null}
               </span>
             </SelectItem>
@@ -319,27 +408,35 @@ export function AgentProjectMissingStatusProbe({
 }
 
 function ComposerOptionInfoTooltip({
-  description
+  description,
+  tooltipsEnabled = true
 }: {
   description: string;
+  tooltipsEnabled?: boolean;
 }): React.JSX.Element {
   const stopSelect = (event: React.SyntheticEvent): void => {
     event.preventDefault();
     event.stopPropagation();
   };
 
+  const trigger = (
+    <span
+      className="pointer-events-none inline-flex shrink-0 cursor-help text-[var(--agent-gui-text-tertiary)] opacity-0 transition-opacity group-hover/composer-option:pointer-events-auto group-hover/composer-option:opacity-100 group-data-[highlighted]/composer-option:pointer-events-auto group-data-[highlighted]/composer-option:opacity-100"
+      data-agent-composer-option-info-trigger="true"
+      onClick={stopSelect}
+      onPointerDown={stopSelect}
+    >
+      <RoomsHintIcon aria-hidden className="size-3" />
+    </span>
+  );
+
+  if (!tooltipsEnabled) {
+    return trigger;
+  }
+
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          className="pointer-events-none inline-flex shrink-0 cursor-help text-[var(--agent-gui-text-tertiary)] opacity-0 transition-opacity group-hover/composer-option:pointer-events-auto group-hover/composer-option:opacity-100 group-data-[highlighted]/composer-option:pointer-events-auto group-data-[highlighted]/composer-option:opacity-100"
-          data-agent-composer-option-info-trigger="true"
-          onClick={stopSelect}
-          onPointerDown={stopSelect}
-        >
-          <RoomsHintIcon aria-hidden className="size-3" />
-        </span>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent side="right" className="max-w-[240px] whitespace-normal">
         {description}
       </TooltipContent>
@@ -378,11 +475,13 @@ function normalizePermissionModeValue(
 export function AgentModelReasoningDropdown({
   composerSettings,
   disabled = false,
+  previewMode = false,
   labels,
   onSettingsChange
 }: {
   composerSettings: AgentGUIComposerSettingsVM;
   disabled?: boolean;
+  previewMode?: boolean;
   labels: AgentComposerSettingsMenuLabels;
   onSettingsChange: (patch: {
     model?: string;
@@ -402,46 +501,52 @@ export function AgentModelReasoningDropdown({
     onSettingsChange(patch);
     setMenuOpen(false);
   };
+  const trigger = (
+    <button
+      type="button"
+      className={cn(
+        "w-auto",
+        styles.composerMenuTrigger,
+        menuDisabled &&
+          "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:text-[var(--agent-gui-text-tertiary)]",
+        composerSettings.isSettingsLoading && "animate-pulse"
+      )}
+      aria-label={`${labels.modelLabel} / ${labels.reasoningLabel}`}
+      data-agent-model-reasoning-trigger="true"
+      data-agent-model-reasoning-preview-trigger={
+        previewMode ? "true" : undefined
+      }
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+        {menu.speed.show && menu.trigger.isFast ? (
+          <ZapIcon
+            aria-hidden
+            className="size-3.5 shrink-0"
+            data-agent-speed-indicator="fast"
+            strokeWidth={2.5}
+          />
+        ) : null}
+        {menu.trigger.showCombined ? (
+          <span className="min-w-0 truncate">{menu.trigger.combinedLabel}</span>
+        ) : (
+          <>
+            <span className="min-w-0 truncate">{menu.trigger.modelLabel}</span>
+            <span className="shrink-0">{menu.trigger.reasoningLabel}</span>
+          </>
+        )}
+      </span>
+      <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
+    </button>
+  );
+
+  if (previewMode) {
+    return trigger;
+  }
 
   return (
     <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownMenuTrigger asChild disabled={menuDisabled}>
-        <button
-          type="button"
-          className={cn(
-            "w-auto",
-            styles.composerMenuTrigger,
-            menuDisabled &&
-              "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:text-[var(--agent-gui-text-tertiary)]",
-            composerSettings.isSettingsLoading && "animate-pulse"
-          )}
-          aria-label={`${labels.modelLabel} / ${labels.reasoningLabel}`}
-          data-agent-model-reasoning-trigger="true"
-        >
-          <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-            {menu.speed.show && menu.trigger.isFast ? (
-              <ZapIcon
-                aria-hidden
-                className="size-3.5 shrink-0"
-                data-agent-speed-indicator="fast"
-                strokeWidth={2.5}
-              />
-            ) : null}
-            {menu.trigger.showCombined ? (
-              <span className="min-w-0 truncate">
-                {menu.trigger.combinedLabel}
-              </span>
-            ) : (
-              <>
-                <span className="min-w-0 truncate">
-                  {menu.trigger.modelLabel}
-                </span>
-                <span className="shrink-0">{menu.trigger.reasoningLabel}</span>
-              </>
-            )}
-          </span>
-          <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
-        </button>
+        {trigger}
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
@@ -461,6 +566,7 @@ export function AgentModelReasoningDropdown({
               options={menu.model.options}
               selectedValue={menu.model.selectedValue}
               descriptionPresentation="model-tooltip"
+              tooltipsEnabled={!previewMode}
               onSelect={(value) => applySettingsChange({ model: value })}
             />
           </>
@@ -488,6 +594,7 @@ export function AgentModelReasoningDropdown({
               <ComposerMenuOptionItems
                 options={menu.reasoning.options}
                 selectedValue={menu.reasoning.selectedValue}
+                tooltipsEnabled={!previewMode}
                 onSelect={(value) =>
                   applySettingsChange({ reasoningEffort: value })
                 }
@@ -516,6 +623,7 @@ export function AgentModelReasoningDropdown({
                 options={menu.speed.options}
                 selectedValue={menu.speed.selectedValue}
                 descriptionPresentation="inline"
+                tooltipsEnabled={!previewMode}
                 onSelect={(value) => applySettingsChange({ speed: value })}
               />
             </DropdownMenuSubContent>
@@ -534,11 +642,13 @@ function ComposerMenuOptionItems({
   options,
   selectedValue,
   descriptionPresentation = "none",
+  tooltipsEnabled = true,
   onSelect
 }: {
   options: ComposerMenuOption[];
   selectedValue: string;
   descriptionPresentation?: "inline" | "model-tooltip" | "none" | "tooltip";
+  tooltipsEnabled?: boolean;
   onSelect: (value: string) => void;
 }): React.JSX.Element {
   return (
@@ -603,6 +713,7 @@ function ComposerMenuOptionItems({
                   {showTooltipDescription && option.description ? (
                     <ComposerOptionInfoTooltip
                       description={option.description}
+                      tooltipsEnabled={tooltipsEnabled}
                     />
                   ) : null}
                 </span>
@@ -623,7 +734,11 @@ function ComposerMenuOptionItems({
           </DropdownMenuItem>
         );
         return showModelTooltip ? (
-          <ComposerModelOptionTooltip key={option.value} option={option}>
+          <ComposerModelOptionTooltip
+            key={option.value}
+            option={option}
+            tooltipsEnabled={tooltipsEnabled}
+          >
             {item}
           </ComposerModelOptionTooltip>
         ) : (
@@ -636,12 +751,14 @@ function ComposerMenuOptionItems({
 
 function ComposerModelOptionTooltip({
   children,
-  option
+  option,
+  tooltipsEnabled = true
 }: {
   children: ReactElement<HTMLAttributes<HTMLElement>>;
   option: ComposerMenuOption;
+  tooltipsEnabled?: boolean;
 }): React.JSX.Element {
-  if (!option.tooltip) {
+  if (!tooltipsEnabled || !option.tooltip) {
     return children;
   }
   return (

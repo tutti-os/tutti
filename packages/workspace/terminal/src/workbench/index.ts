@@ -8,7 +8,8 @@ import type {
   WorkbenchHostLaunchResult,
   WorkbenchHostNodeCloseDecision,
   WorkbenchHostNodeCloseRequest,
-  WorkbenchHostNodeDefinition
+  WorkbenchHostNodeDefinition,
+  WorkbenchHostNodeMinimizedDockCapability
 } from "@tutti-os/workbench-surface";
 import type {
   TerminalCloseGuardResult,
@@ -31,11 +32,17 @@ export interface TerminalWorkbenchIntent {
   profileId?: string | null;
 }
 
+type TerminalMinimizedPreviewProvider = Extract<
+  WorkbenchHostNodeMinimizedDockCapability,
+  { kind: "component" }
+>["providePreview"];
+
 export interface CreateTerminalWorkbenchNodeDefinitionInput {
   feature: TerminalNodeFeature;
   frame?: WorkbenchFrame;
   headerAccessory?: TerminalHeaderAccessoryRenderer;
   onPreviewChange?: TerminalPreviewChangeHandler;
+  provideMinimizedPreview?: TerminalMinimizedPreviewProvider;
   title?: string;
   typeId?: string;
 }
@@ -103,6 +110,7 @@ export function createTerminalWorkbenchNodeDefinition({
   frame = defaultTerminalNodeFrame,
   headerAccessory,
   onPreviewChange,
+  provideMinimizedPreview,
   title,
   typeId = defaultTerminalWorkbenchTypeId
 }: CreateTerminalWorkbenchNodeDefinitionInput): WorkbenchHostNodeDefinition<TerminalNodeExternalState> {
@@ -171,9 +179,12 @@ export function createTerminalWorkbenchNodeDefinition({
     window: {
       closable: true,
       defaultOpen: false,
-      minimizedDock: {
-        kind: "snapshot"
-      },
+      minimizedDock: provideMinimizedPreview
+        ? {
+            kind: "component",
+            providePreview: provideMinimizedPreview
+          }
+        : undefined,
       minimizable: true,
       restoreOnLoad: true
     }

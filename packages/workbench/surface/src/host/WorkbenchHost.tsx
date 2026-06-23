@@ -135,6 +135,7 @@ export function WorkbenchHost({
       className={className}
       captureNodePreviewImage={surfaceRenderers.captureNodePreviewImage}
       controller={hostSession.controller}
+      debugDiagnostics={debugDiagnostics}
       dockPreviewCache={dockPreviewCache}
       dockPlacement={dockPlacement}
       interactive={!isHydrating}
@@ -157,6 +158,7 @@ export function WorkbenchHost({
       renderBottomChrome={surfaceRenderers.renderBottomChrome}
       renderDock={surfaceRenderers.renderDock}
       renderNode={surfaceRenderers.renderNode}
+      renderNodeGeniePreview={surfaceRenderers.renderNodeGeniePreview}
       renderOverlay={
         missionControlRenderedState
           ? () => (

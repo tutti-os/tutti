@@ -92,9 +92,11 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Desktop Renderer Diagnostics
 
-| Variable                    | Owner document | Purpose                                                                                       |
-| --------------------------- | -------------- | --------------------------------------------------------------------------------------------- |
-| `TUTTI_ENABLE_PERF_MONITOR` | This document  | Enables the development-only ReactRenderTracker injection in the desktop renderer dev server. |
+| Variable                               | Owner document                          | Purpose                                                                                       |
+| -------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `TUTTI_ENABLE_PERF_MONITOR`            | This document                           | Enables the development-only ReactRenderTracker injection in the desktop renderer dev server. |
+| `TUTTI_ELECTRON_JS_FLAGS`              | [Troubleshooting](./troubleshooting.md) | Appends Electron `js-flags` for local diagnostics before the app is ready.                    |
+| `TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT` | [Troubleshooting](./troubleshooting.md) | Appends Electron `remote-debugging-port` for local CDP diagnostics before the app is ready.   |
 
 ## Browser MCP
 

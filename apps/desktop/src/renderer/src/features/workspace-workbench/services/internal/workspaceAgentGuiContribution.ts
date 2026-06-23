@@ -170,16 +170,19 @@ export function createWorkspaceAgentGuiContribution(input: {
         { height: context.node.frame.height, width: context.node.frame.width },
         renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
       ),
-    renderMinimizedPreview: (context, helpers) =>
-      createElement(
+    renderMinimizedPreview: (context, helpers) => {
+      const previewViewport =
+        context.previewViewport ?? minimizedDockPreviewViewport;
+      return createElement(
         DesktopAgentGUIWorkbenchDockPreviewFrame,
         {
           height: context.node.frame.height,
-          viewport: minimizedDockPreviewViewport,
+          viewport: previewViewport,
           width: context.node.frame.width
         },
         renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
-      ),
+      );
+    },
     resolveDockPopupTitle: (state) =>
       resolveWorkspaceAgentGuiDockPopupTitle(state, {
         workspaceAgentActivityService: input.workspaceAgentActivityService,

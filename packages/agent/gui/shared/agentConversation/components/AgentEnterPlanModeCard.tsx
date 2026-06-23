@@ -6,7 +6,8 @@ import { hasAgentToolContent } from "./tool-renderers/agentToolContentShared";
 
 export function AgentEnterPlanModeCard({
   call,
-  onLinkClick
+  onLinkClick,
+  previewMode = false
 }: AgentToolCallCardProps): JSX.Element {
   "use memo";
   const hasDetail = hasAgentToolContent(call);
@@ -22,7 +23,11 @@ export function AgentEnterPlanModeCard({
         </div>
       ) : null}
       {hasDetail ? (
-        <AgentExpandedToolContent call={call} onLinkClick={onLinkClick} />
+        <AgentExpandedToolContent
+          call={call}
+          onLinkClick={onLinkClick}
+          previewMode={previewMode}
+        />
       ) : null}
     </div>
   );

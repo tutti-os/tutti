@@ -247,6 +247,7 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
     css,
     /\.desktop-dock__minimized-preview-frozen-content\s*{[^}]*display:\s*block;[^}]*overflow:\s*hidden;/s
   );
+  assert.doesNotMatch(css, /\.workbench-genie-preview-capture__fallback/);
   assert.match(css, /\.desktop-dock__slot\s*{[^}]*flex:\s*0 0 auto;/s);
   assert.match(
     css,

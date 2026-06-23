@@ -61,7 +61,10 @@ import {
   type AgentGUIInteractiveQuestion,
   type AgentGUIConversationSummary
 } from "../model/agentGuiConversationModel";
-import type { AgentHostUserProject } from "../../../host/agentHostApi";
+import type {
+  AgentHostUserProject,
+  AgentHostUserProjectsApi
+} from "../../../host/agentHostApi";
 import type {
   AgentComposerDraft,
   AgentGUIComposerSettingOption,
@@ -2027,7 +2030,9 @@ export function useAgentGUINodeController({
   const [pendingCreateConversationId, setPendingCreateConversationId] =
     useState(resolvePendingCreateConversationId);
   const conversations = conversationListState?.conversations ?? [];
-  const [userProjects, setUserProjects] = useState<AgentHostUserProject[]>([]);
+  const [userProjects, setUserProjects] = useState<AgentHostUserProject[]>(() =>
+    readAgentGUIUserProjectSnapshot(agentHostApi.userProjects)
+  );
   const isNoProjectPath = agentHostApi.userProjects?.isNoProjectPath;
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
@@ -2587,11 +2592,9 @@ export function useAgentGUINodeController({
   );
 
   useEffect(() => {
-    if (previewMode) {
-      return undefined;
-    }
     const api = agentHostApi.userProjects;
     let disposed = false;
+    setUserProjectsSnapshot(readAgentGUIUserProjectSnapshot(api));
     const loadUserProjects = async () => {
       const requestSeq = ++userProjectsLoadSeqRef.current;
       if (!api) {
@@ -2612,9 +2615,11 @@ export function useAgentGUINodeController({
       }
     };
     void loadUserProjects();
-    const unsubscribe = api?.subscribe?.(() => {
-      void loadUserProjects();
-    });
+    const unsubscribe = previewMode
+      ? undefined
+      : api?.subscribe?.(() => {
+          void loadUserProjects();
+        });
     return () => {
       disposed = true;
       unsubscribe?.();
@@ -7871,6 +7876,27 @@ function areAgentGUIUserProjectsEqual(
       );
     })
   );
+}
+
+function readAgentGUIUserProjectSnapshot(
+  api: AgentHostUserProjectsApi | undefined
+): AgentHostUserProject[] {
+  const projects = api?.service?.getSnapshot?.().projects ?? [];
+  return projects.map((project) => ({
+    ...(project.createdAtUnixMs === undefined
+      ? {}
+      : { createdAtUnixMs: project.createdAtUnixMs }),
+    id: project.id,
+    ...(project.lastUsedAtUnixMs === undefined ||
+    project.lastUsedAtUnixMs === null
+      ? {}
+      : { lastUsedAtUnixMs: project.lastUsedAtUnixMs }),
+    label: project.label,
+    path: project.path,
+    ...(project.updatedAtUnixMs === undefined
+      ? {}
+      : { updatedAtUnixMs: project.updatedAtUnixMs })
+  }));
 }
 
 function normalizeInteractiveQuestions(

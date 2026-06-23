@@ -129,3 +129,22 @@ func TestWithActiveInstallJobProgressOnlyAttachesToInstallRuntimeStates(t *testi
 		}
 	}
 }
+
+func TestShouldSkipInstallProgressPublishForRunningStartingProgress(t *testing.T) {
+	progress := workspacebiz.AppInstallProgress{
+		UserPhase:      workspacebiz.AppInstallUserPhaseStarting,
+		OverallPercent: 100,
+	}
+	if !shouldSkipInstallProgressPublish(workspacebiz.AppRuntimeStatusRunning, progress) {
+		t.Fatal("shouldSkipInstallProgressPublish(running, starting) = false, want true")
+	}
+	if shouldSkipInstallProgressPublish(workspacebiz.AppRuntimeStatusRunning, workspacebiz.AppInstallProgress{
+		UserPhase:      workspacebiz.AppInstallUserPhaseDownloading,
+		OverallPercent: 40,
+	}) {
+		t.Fatal("shouldSkipInstallProgressPublish(running, downloading) = true, want false")
+	}
+	if shouldSkipInstallProgressPublish(workspacebiz.AppRuntimeStatusStarting, progress) {
+		t.Fatal("shouldSkipInstallProgressPublish(starting, starting) = true, want false")
+	}
+}

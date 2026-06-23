@@ -11,12 +11,14 @@ interface WorkspaceAgentSessionThinkingDisclosureProps {
   thinking: WorkspaceAgentSessionDetailThinking;
   label: string;
   onLinkClick?: (href: string) => void;
+  previewMode?: boolean;
 }
 
 export function WorkspaceAgentSessionThinkingDisclosure({
   thinking,
   label,
-  onLinkClick
+  onLinkClick,
+  previewMode = false
 }: WorkspaceAgentSessionThinkingDisclosureProps): JSX.Element {
   "use memo";
   const [expanded, setExpanded] = useState(false);
@@ -91,6 +93,7 @@ export function WorkspaceAgentSessionThinkingDisclosure({
             onLinkClick={onLinkClick}
             className="text-[11px] text-[var(--text-secondary)] opacity-92 [&_p]:mb-1"
             enableImageZoom
+            previewMode={previewMode}
           />
         </div>
       </CollapsibleReveal>

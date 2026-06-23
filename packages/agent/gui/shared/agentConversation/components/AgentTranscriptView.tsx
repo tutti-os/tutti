@@ -36,6 +36,7 @@ interface AgentTranscriptViewProps {
   onAuthLogin?: (provider?: string | null) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  previewMode?: boolean;
   showRawTimelineJson?: boolean;
   labels: {
     toolCallsLabel: (count: number) => string;
@@ -100,6 +101,7 @@ export function areAgentTranscriptViewPropsEqual(
     previous.onAuthLogin === next.onAuthLogin &&
     previous.availableSkills === next.availableSkills &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
+    previous.previewMode === next.previewMode &&
     previous.showRawTimelineJson === next.showRawTimelineJson &&
     transcriptLabelsEqual(previous.labels, next.labels)
   );
@@ -111,6 +113,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   onAuthLogin,
   availableSkills,
   workspaceAppIcons,
+  previewMode = false,
   showRawTimelineJson = false,
   labels
 }: AgentTranscriptViewProps): JSX.Element {
@@ -212,6 +215,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
             onAuthLogin={onAuthLogin}
             availableSkills={availableSkills}
             workspaceAppIcons={workspaceAppIcons}
+            previewMode={previewMode}
             showRawTimelineJson={showRawTimelineJson}
             toolGroupExpanded={
               row.kind === "tool-group"
