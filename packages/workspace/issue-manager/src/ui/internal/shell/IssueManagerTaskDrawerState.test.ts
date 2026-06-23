@@ -174,7 +174,7 @@ test("task drawer title wraps long unbroken text inside the panel", () => {
 });
 
 test("task drawer header exposes an explicit back control", () => {
-  assert.match(taskDrawerSectionsSource, /ArrowLeftIcon/);
+  assert.match(taskDrawerSectionsSource, /CollapseLinedIcon/);
   assert.match(taskDrawerSectionsSource, /BareIconButton/);
   assert.match(
     taskDrawerSectionsSource,
@@ -185,6 +185,22 @@ test("task drawer header exposes an explicit back control", () => {
     /title=\{copy\.t\("actions\.closeTaskDetails"\)\}/
   );
   assert.match(taskDrawerSectionsSource, /onClick=\{onClose\}/);
+});
+
+test("issue pane keeps issue-level run content behind the task drawer", () => {
+  assert.match(issueManagerPanelsSource, /latestRun=\{issueLatestRun\}/);
+  assert.match(issueManagerPanelsSource, /outputs=\{issueLatestOutputs\}/);
+  assert.match(issueManagerPanelsSource, /title=\{selectedIssue\.title\}/);
+  assert.match(issueManagerPanelsSource, /selectedTaskId=\{selectedTaskId\}/);
+  assert.doesNotMatch(
+    issueManagerPanelsSource,
+    /controller\.taskDetail\.value\?\.latestRun/
+  );
+  assert.doesNotMatch(
+    issueManagerPanelsSource,
+    /controller\.taskDetail\.value\?\.latestOutputs/
+  );
+  assert.doesNotMatch(issueManagerPanelsSource, /selectedTask\?\.title/);
 });
 
 test("task delete confirmation wraps long unbroken titles", () => {

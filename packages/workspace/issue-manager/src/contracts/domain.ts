@@ -8,6 +8,11 @@ export type IssueManagerStatus =
   | "canceled"
   | (string & {});
 
+export type IssueManagerTaskStatusUpdate =
+  | "completed"
+  | "not_started"
+  | "pending_acceptance";
+
 export type IssueManagerPriority = "high" | "medium" | "low" | (string & {});
 
 export type IssueManagerContextRefParentKind = "issue" | "task";

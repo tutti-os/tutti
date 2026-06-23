@@ -353,14 +353,14 @@ function IssueManagerSidebarItem({
           </span>
           <span
             aria-hidden="true"
-            className="h-0.5 w-14 shrink-0 overflow-hidden rounded-full bg-[var(--transparency-block)]"
+            className="h-1 w-14 shrink-0 overflow-hidden rounded-full bg-[var(--transparency-block)]"
           >
             <span
               className="block h-full rounded-full bg-[var(--status-running)]"
               style={{ width: `${subtaskProgress.percent}%` }}
             />
           </span>
-          <span className="shrink-0 text-[var(--text-primary)]">
+          <span className="shrink-0 text-[11px] font-semibold leading-none text-[var(--text-secondary)]">
             {subtaskProgress.completed}/{subtaskProgress.total}
           </span>
         </div>

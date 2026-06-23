@@ -864,11 +864,18 @@ test("controller actions update an issue-level execution task status without sel
   });
 
   await harness.actions.setTaskStatus("task-acceptance", "completed");
+  await harness.actions.setTaskStatus("task-acceptance", "pending_acceptance");
 
   assert.deepEqual(updateTaskCalls, [
     {
       issueId: "issue-1",
       status: "completed",
+      taskId: "task-acceptance",
+      workspaceId: "workspace-1"
+    },
+    {
+      issueId: "issue-1",
+      status: "pending_acceptance",
       taskId: "task-acceptance",
       workspaceId: "workspace-1"
     }

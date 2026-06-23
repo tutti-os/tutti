@@ -17,6 +17,7 @@ import type {
   IssueManagerReferenceBundle,
   IssueManagerRun,
   IssueManagerTaskDetail,
+  IssueManagerTaskStatusUpdate,
   IssueManagerTopic,
   IssueManagerCreateTopicInput,
   IssueManagerUpdateTopicInput
@@ -101,9 +102,11 @@ export interface IssueManagerController {
   saveTask: () => Promise<void>;
   setTaskStatus: (
     taskId: string,
-    status: "completed" | "not_started"
+    status: IssueManagerTaskStatusUpdate
   ) => Promise<void>;
-  setSelectedTaskStatus: (status: "completed" | "not_started") => Promise<void>;
+  setSelectedTaskStatus: (
+    status: IssueManagerTaskStatusUpdate
+  ) => Promise<void>;
   resolveRichTextTriggerProviders: (
     surface: IssueManagerRichTextSurface
   ) => readonly RichTextTriggerProvider[];

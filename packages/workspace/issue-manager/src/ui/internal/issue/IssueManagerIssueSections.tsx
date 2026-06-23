@@ -1,7 +1,6 @@
-import type { JSX, MouseEvent } from "react";
+import { useState, type JSX, type MouseEvent } from "react";
 import {
   AgentSessionsIcon,
-  ArrowRightIcon,
   Badge,
   Button,
   FileCreateIcon,
@@ -27,10 +26,13 @@ import {
 } from "../panel/IssueManagerPanelText.ts";
 import { IssueManagerTaskListLoadingState } from "../panel/IssueManagerPanelSurface.tsx";
 import { issueManagerStatusBadgeVariant } from "../status/IssueManagerStatusBadge.ts";
+import { IssueManagerSubtaskBoard } from "./IssueManagerSubtaskBoard.tsx";
 import type { IssueManagerLatestRunStatusRenderer } from "../../latestRunStatusRenderer.ts";
 import type { IssueManagerController } from "../../react/index.ts";
 import type { IssueManagerI18nRuntime } from "../../../i18n/issueManagerI18n.ts";
 import { logIssueManagerDiagnostic } from "../../../internal/issueManagerDiagnostics.ts";
+
+type IssueManagerSubtaskViewMode = "list" | "board";
 
 export function IssueManagerDetailTextSection({
   body,
@@ -261,7 +263,7 @@ export function IssueManagerOutputSection({
               <span className="flex min-w-0 flex-1 items-center gap-3">
                 <span
                   aria-hidden="true"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--line-2)] bg-transparency-actived text-primary"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--folder)_12%,transparent)] text-[var(--folder)]"
                 >
                   <FileIcon size={16} />
                 </span>
@@ -278,10 +280,6 @@ export function IssueManagerOutputSection({
                 <span className="text-[11px] font-normal text-[var(--text-secondary)]">
                   {formatIssueManagerTimestamp(output.createdAtUnix) || ""}
                 </span>
-                <span className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/20 bg-transparency-actived px-2 text-[11px] font-semibold text-primary">
-                  {copy.t("actions.openReference")}
-                  <ArrowRightIcon size={13} />
-                </span>
               </span>
             </button>
           ))}
@@ -296,6 +294,7 @@ export function IssueManagerSubtaskSection({
   diagnostics,
   onCreate,
   onSelectTask,
+  onSetTaskStatus,
   selectedTaskId,
   tasks
 }: {
@@ -303,76 +302,184 @@ export function IssueManagerSubtaskSection({
   diagnostics?: IssueManagerController["diagnostics"];
   onCreate: () => void;
   onSelectTask: (taskId: string | null) => void;
+  onSetTaskStatus: IssueManagerController["setTaskStatus"];
   selectedTaskId: string | null;
   tasks: readonly IssueManagerTaskSummary[];
 }): JSX.Element {
+  const [viewMode, setViewMode] = useState<IssueManagerSubtaskViewMode>("list");
+  const handleSelectTask = (
+    event: MouseEvent<HTMLButtonElement>,
+    task: IssueManagerTaskSummary,
+    surface: "detail_subtasks" | "detail_subtasks_board"
+  ) => {
+    logIssueManagerDiagnostic(diagnostics, "task_row.click", {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      selectedTaskId,
+      surface,
+      taskId: task.taskId,
+      taskTitle: task.title
+    });
+    onSelectTask(task.taskId);
+  };
+
   return (
     <section className="grid gap-2.5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
           {copy.t("labels.subtasks")}
         </h3>
-        <Button size="dialog" type="button" variant="ghost" onClick={onCreate}>
-          <FileCreateIcon size={14} />
-          {copy.t("actions.add")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <IssueManagerSubtaskViewModeSwitch
+            copy={copy}
+            value={viewMode}
+            onChange={setViewMode}
+          />
+          <Button
+            size="dialog"
+            type="button"
+            variant="ghost"
+            onClick={onCreate}
+          >
+            <FileCreateIcon size={14} />
+            {copy.t("actions.add")}
+          </Button>
+        </div>
       </div>
       {tasks.length === 0 ? (
         <p className="text-[13px] font-normal leading-6 text-[var(--text-secondary)]">
           {copy.t("messages.noSubtasksForIssue")}
         </p>
+      ) : viewMode === "board" ? (
+        <IssueManagerSubtaskBoard
+          copy={copy}
+          tasks={tasks}
+          onSelectTask={handleSelectTask}
+          onSetTaskStatus={onSetTaskStatus}
+        />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-[var(--line-2)] bg-transparent">
-          {tasks.map((task) => (
-            <button
-              className={cn(
-                "flex w-full items-start justify-between gap-4 border-b border-[var(--line-2)] px-4 py-3 text-left transition-colors last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-inset",
-                selectedTaskId === task.taskId
-                  ? "bg-transparency-actived"
-                  : "bg-transparent hover:bg-transparency-hover"
-              )}
-              key={task.taskId}
-              type="button"
-              onClick={(event: MouseEvent<HTMLButtonElement>) => {
-                logIssueManagerDiagnostic(diagnostics, "task_row.click", {
-                  clientX: event.clientX,
-                  clientY: event.clientY,
-                  selectedTaskId,
-                  surface: "detail_subtasks",
-                  taskId: task.taskId,
-                  taskTitle: task.title
-                });
-                onSelectTask(task.taskId);
-              }}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <IssueManagerTitleTooltip title={task.title}>
-                    <span className="truncate text-[13px] font-semibold text-[var(--text-primary)]">
-                      {task.title}
-                    </span>
-                  </IssueManagerTitleTooltip>
-                  <Badge variant={issueManagerStatusBadgeVariant(task.status)}>
-                    {resolveIssueManagerStatusLabel(copy, task.status)}
-                  </Badge>
-                </div>
-                <p className="mt-2 line-clamp-2 text-[11px] font-normal leading-[1.5] text-[var(--text-secondary)]">
-                  {summarizeIssueManagerContent(
-                    task.content,
-                    copy.t("messages.taskContentEmpty")
-                  )}
-                </p>
-              </div>
-              <span className="shrink-0 text-[11px] font-normal text-[var(--text-secondary)]">
-                {formatIssueManagerTimestamp(
-                  task.createdAtUnix ?? task.updatedAtUnix
-                ) || ""}
-              </span>
-            </button>
-          ))}
-        </div>
+        <IssueManagerSubtaskList
+          copy={copy}
+          selectedTaskId={selectedTaskId}
+          tasks={tasks}
+          onSelectTask={handleSelectTask}
+        />
       )}
     </section>
+  );
+}
+
+function IssueManagerSubtaskViewModeSwitch({
+  copy,
+  onChange,
+  value
+}: {
+  copy: IssueManagerI18nRuntime;
+  onChange: (value: IssueManagerSubtaskViewMode) => void;
+  value: IssueManagerSubtaskViewMode;
+}): JSX.Element {
+  const modes: readonly IssueManagerSubtaskViewMode[] = ["list", "board"];
+
+  return (
+    <div
+      aria-label={copy.t("labels.subtaskViewMode")}
+      className="relative inline-grid h-8 shrink-0 grid-cols-2 items-center rounded-md bg-[var(--transparency-block)] p-0.5"
+      role="group"
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute top-0.5 bottom-0.5 left-0.5 w-[calc((100%-4px)/2)] rounded-[5px] bg-[var(--background-fronted)] transition-transform duration-150 ease-out",
+          value === "board" && "translate-x-full"
+        )}
+      />
+      {modes.map((mode) => (
+        <button
+          aria-pressed={value === mode}
+          className={cn(
+            "relative z-[1] inline-flex h-7 w-14 items-center justify-center rounded-[5px] px-2.5 text-[12px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+            value === mode
+              ? "text-[var(--text-primary)]"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          )}
+          key={mode}
+          type="button"
+          onClick={() => onChange(mode)}
+        >
+          {copy.t(mode === "list" ? "labels.listView" : "labels.boardView")}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function IssueManagerSubtaskList({
+  copy,
+  onSelectTask,
+  selectedTaskId,
+  tasks
+}: {
+  copy: IssueManagerI18nRuntime;
+  onSelectTask: (
+    event: MouseEvent<HTMLButtonElement>,
+    task: IssueManagerTaskSummary,
+    surface: "detail_subtasks"
+  ) => void;
+  selectedTaskId: string | null;
+  tasks: readonly IssueManagerTaskSummary[];
+}): JSX.Element {
+  return (
+    <div className="overflow-hidden rounded-lg border border-[var(--line-2)] bg-transparent">
+      {tasks.map((task) => (
+        <button
+          className={cn(
+            "flex w-full items-start justify-between gap-4 border-b border-[var(--line-2)] px-4 py-3 text-left transition-colors last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-inset",
+            selectedTaskId === task.taskId
+              ? "bg-transparency-actived"
+              : "bg-transparent hover:bg-transparency-hover"
+          )}
+          key={task.taskId}
+          type="button"
+          onClick={(event) => onSelectTask(event, task, "detail_subtasks")}
+        >
+          <IssueManagerSubtaskListContent copy={copy} task={task} />
+          <span className="shrink-0 text-[11px] font-normal text-[var(--text-secondary)]">
+            {formatIssueManagerTimestamp(
+              task.createdAtUnix ?? task.updatedAtUnix
+            ) || ""}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function IssueManagerSubtaskListContent({
+  copy,
+  task
+}: {
+  copy: IssueManagerI18nRuntime;
+  task: IssueManagerTaskSummary;
+}): JSX.Element {
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <IssueManagerTitleTooltip title={task.title}>
+          <span className="truncate text-[13px] font-semibold text-[var(--text-primary)]">
+            {task.title}
+          </span>
+        </IssueManagerTitleTooltip>
+        <Badge variant={issueManagerStatusBadgeVariant(task.status)}>
+          {resolveIssueManagerStatusLabel(copy, task.status)}
+        </Badge>
+      </div>
+      <p className="mt-2 line-clamp-2 text-[11px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+        {summarizeIssueManagerContent(
+          task.content,
+          copy.t("messages.taskContentEmpty")
+        )}
+      </p>
+    </div>
   );
 }
 

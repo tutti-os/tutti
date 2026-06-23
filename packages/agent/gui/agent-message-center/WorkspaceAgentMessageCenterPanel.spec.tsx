@@ -683,6 +683,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     expect(screen.getByText("Codex").parentElement).toHaveClass(
       "workspace-agent-message-center__provider"
     );
+    expect(screen.getByText("Codex")).toHaveClass("text-[13px]");
   });
 
   it("hydrates the shared tooltip trigger for truncated card titles on hover", () => {
@@ -888,15 +889,28 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     expect(screen.queryByRole("heading", { name: "Waiting · 1" })).toBeNull();
 
     // Non-interactive items still group by status, with font-normal headings.
-    expect(screen.getByRole("heading", { name: "Error · 1" })).toHaveClass(
-      "font-normal"
-    );
-    expect(screen.getByRole("heading", { name: "Running · 1" })).toHaveClass(
-      "font-normal"
-    );
-    expect(screen.getByRole("heading", { name: "Completed · 1" })).toHaveClass(
-      "font-normal"
-    );
+    const errorHeading = screen.getByRole("heading", { name: "Error · 1" });
+    const runningHeading = screen.getByRole("heading", {
+      name: "Running · 1"
+    });
+    const completedHeading = screen.getByRole("heading", {
+      name: "Completed · 1"
+    });
+    expect(errorHeading).toHaveClass("font-normal");
+    expect(runningHeading).toHaveClass("font-normal");
+    expect(completedHeading).toHaveClass("font-normal");
+    expect(
+      errorHeading.querySelector('[data-slot="status-dot"]')
+    ).toHaveAttribute("data-tone", "red");
+    expect(
+      runningHeading.querySelector('[data-slot="status-dot"]')
+    ).toHaveAttribute("data-tone", "blue");
+    expect(
+      runningHeading.querySelector('[data-slot="status-dot"]')
+    ).toHaveAttribute("data-pulse", "true");
+    expect(
+      completedHeading.querySelector('[data-slot="status-dot"]')
+    ).toHaveAttribute("data-tone", "green");
   });
 
   it("filters message center items by status from the view menu", () => {

@@ -3,7 +3,6 @@ import {
   Badge,
   AgentSessionsIcon,
   Button,
-  CheckIcon,
   ChevronDownIcon,
   DropdownMenu,
   DropdownMenuContent,
@@ -27,9 +26,7 @@ import type { IssueManagerController } from "../../react/index.ts";
 import { issueManagerStatusBadgeVariant } from "../status/IssueManagerStatusBadge.ts";
 
 const providerMenuItemClassName =
-  "min-h-8 overflow-hidden rounded-md py-1.5 pr-7 pl-2.5 text-[13px] font-normal leading-[1.2] text-[var(--text-primary)]";
-const providerMenuItemCheckClassName =
-  "pointer-events-none absolute right-2 top-1/2 shrink-0 -translate-y-1/2";
+  "min-h-8 overflow-hidden rounded-md px-2.5 py-1.5 text-[13px] font-normal leading-[1.2] text-[var(--text-primary)]";
 const providerActionTriggerClassName = "font-[var(--font-weight-emphasis-cjk)]";
 
 export function IssueManagerRunActionTrigger({
@@ -103,7 +100,6 @@ function IssueManagerProviderActionMenu({
   triggerVariant: IssueManagerProviderActionTriggerVariant;
 }): JSX.Element {
   const providerOptions = controller.providerOptions;
-  const selectedProvider = controller.nodeState.selectedAgentProvider.trim();
 
   return (
     <DropdownMenu>
@@ -155,12 +151,6 @@ function IssueManagerProviderActionMenu({
                   iconUrl={option.iconUrl}
                 />
                 <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                {option.provider === selectedProvider ? (
-                  <CheckIcon
-                    className={providerMenuItemCheckClassName}
-                    size={15}
-                  />
-                ) : null}
               </span>
             </DropdownMenuItem>
           ))

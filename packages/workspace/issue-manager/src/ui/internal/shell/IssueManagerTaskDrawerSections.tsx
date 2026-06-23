@@ -1,9 +1,9 @@
 import { useState, type JSX } from "react";
 import {
-  ArrowLeftIcon,
   Badge,
   BareIconButton,
   Button,
+  CollapseLinedIcon,
   ConfirmationDialog
 } from "@tutti-os/ui-system";
 import type {
@@ -65,7 +65,7 @@ export function IssueManagerTaskDrawerHeader({
 
   return (
     <>
-      <div className="grid gap-3 px-6 py-7">
+      <div className="grid gap-3 px-6 pt-7 pb-3">
         <div className="flex items-center justify-between gap-6">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <BareIconButton
@@ -74,7 +74,7 @@ export function IssueManagerTaskDrawerHeader({
               title={copy.t("actions.closeTaskDetails")}
               onClick={onClose}
             >
-              <ArrowLeftIcon className="size-4" />
+              <CollapseLinedIcon className="size-4" />
             </BareIconButton>
             {view.showTaskMetadata && selectedTask ? (
               <IssueManagerTitleTooltip title={view.title}>

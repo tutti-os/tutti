@@ -1954,10 +1954,10 @@ describe("AgentFileMentionPalette", () => {
       /\.workspace-agent-message-center__card\[data-waiting="true"\]\s*{[^}]*border-color:\s*var\(--tutti-purple-border\)[^}]*background:\s*var\(--tutti-purple-bg\)/s
     );
     expect(css).toMatch(
-      /\.workspace-agent-message-center__open-chat-button\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent[^}]*color:\s*var\(--agent-gui-accent\)/s
+      /\.workspace-agent-message-center__open-chat-button\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent[^}]*color:\s*var\(--accent-codex\)/s
     );
     expect(css).toMatch(
-      /\.workspace-agent-message-center__open-chat-button:hover,\s*\.workspace-agent-message-center__open-chat-button:focus-visible,\s*\.workspace-agent-message-center__open-chat-button:active\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent[^}]*color:\s*var\(--agent-gui-accent\)/s
+      /\.workspace-agent-message-center__open-chat-button:hover,\s*\.workspace-agent-message-center__open-chat-button:focus-visible,\s*\.workspace-agent-message-center__open-chat-button:active\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent[^}]*color:\s*var\(--accent-codex\)/s
     );
     expect(css).toMatch(
       /\.workspace-agent-message-center__project-info-button:hover,\s*\.workspace-agent-message-center__project-info-button:focus-visible\s*{[^}]*background:\s*var\(--transparency-hover\)[^}]*color:\s*var\(--text-primary\)/s

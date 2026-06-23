@@ -1536,6 +1536,20 @@
       "iconVariant": "lined"
     },
     {
+      "id": "collapse-lined-icon",
+      "layer": "base",
+      "name": "CollapseLinedIcon",
+      "export": "CollapseLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for collapsing a side panel or returning from a split detail view.",
+      "useCases": ["Collapse controls", "Split view detail back controls"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "feedback-filled-icon",
       "layer": "base",
       "name": "FeedbackIcon",

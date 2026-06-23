@@ -290,7 +290,7 @@
   background: transparent;
   background-color: transparent;
   padding: 0;
-  color: var(--agent-gui-accent);
+  color: var(--accent-codex);
   box-shadow: none;
   opacity: 0;
   transition:
@@ -319,7 +319,7 @@
 .workspace-agent-message-center__open-chat-button:active {
   background: transparent;
   background-color: transparent;
-  color: var(--agent-gui-accent);
+  color: var(--accent-codex);
 }
 
 .workspace-agent-message-center__project-info-button {

@@ -13,6 +13,7 @@ import {
   cn,
   Drawer,
   DrawerContent,
+  StatusDot,
   TooltipProvider
 } from "@tutti-os/ui-system";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
@@ -691,6 +692,7 @@ function MessageCenterGroupHeading({
   group: ReturnType<typeof groupMessageCenterItems>[number];
 }): JSX.Element {
   "use memo";
+  const statusSignal = messageCenterGroupStatusSignal(group.id);
 
   if (group.provider) {
     return (
@@ -720,8 +722,40 @@ function MessageCenterGroupHeading({
   }
 
   return (
-    <h3 className="truncate text-[11px] font-normal leading-4 text-[var(--text-tertiary)]">
-      {group.label} · {group.items.length}
+    <h3
+      className="flex min-w-0 items-center gap-1.5 text-[11px] font-normal leading-4 text-[var(--text-tertiary)]"
+      title={`${group.label} · ${group.items.length}`}
+    >
+      {statusSignal ? (
+        <StatusDot
+          tone={statusSignal.tone}
+          pulse={statusSignal.pulse}
+          size="sm"
+          title={group.label}
+        />
+      ) : null}
+      <span className="min-w-0 truncate">
+        {group.label} · {group.items.length}
+      </span>
     </h3>
   );
+}
+
+function messageCenterGroupStatusSignal(
+  groupId: string
+): { pulse: boolean; tone: "amber" | "blue" | "green" | "red" } | null {
+  switch (groupId) {
+    case "needs-attention":
+    case "waiting":
+      return { pulse: true, tone: "amber" };
+    case "working":
+      return { pulse: true, tone: "blue" };
+    case "failed":
+      return { pulse: false, tone: "red" };
+    case "recently-completed":
+    case "completed":
+      return { pulse: false, tone: "green" };
+    default:
+      return null;
+  }
 }

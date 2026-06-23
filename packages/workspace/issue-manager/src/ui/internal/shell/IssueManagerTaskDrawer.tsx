@@ -146,7 +146,7 @@ export function IssueManagerTaskDrawer({
               "flex flex-col",
               view.bodyKind === "edit"
                 ? "gap-[14px] px-6 py-8"
-                : "gap-9 px-6 py-7"
+                : "gap-8 px-6 pt-1 pb-7"
             )}
           >
             <IssueManagerTaskDrawerBody

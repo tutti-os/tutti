@@ -58,25 +58,13 @@ export function IssueManagerIssuePane({
   const issueContent = selectedIssue?.content ?? "";
   const tasks = controller.issueDetail.value?.tasks ?? [];
   const selectedTaskId = controller.nodeState.selectedTaskId;
-  const selectedTask = selectedTaskId
-    ? ((controller.taskDetail.value?.task?.taskId === selectedTaskId
-        ? controller.taskDetail.value.task
-        : tasks.find((task) => task.taskId === selectedTaskId)) ?? null)
-    : null;
   const issueLatestRun =
     controller.issueDetail.value?.latestRun ??
     controller.issueDetail.value?.recentRuns[0] ??
     null;
-  const latestRun = selectedTask
-    ? (controller.taskDetail.value?.latestRun ??
-      controller.taskDetail.value?.recentRuns[0] ??
-      null)
-    : issueLatestRun;
-  const latestOutputs = selectedTask
-    ? (controller.taskDetail.value?.latestOutputs ?? [])
-    : (controller.issueDetail.value?.latestOutputs ?? []);
+  const issueLatestOutputs = controller.issueDetail.value?.latestOutputs ?? [];
   const issueAcceptanceTaskId = resolveIssueManagerIssueAcceptanceTaskId({
-    latestRun,
+    latestRun: issueLatestRun,
     selectedIssue,
     selectedTaskId,
     tasks
@@ -268,18 +256,18 @@ export function IssueManagerIssuePane({
               />
               <IssueManagerLatestRunStatusSection
                 copy={copy}
-                latestRun={latestRun}
+                latestRun={issueLatestRun}
                 onOpenAgentSession={
                   controller.canOpenAgentSessions
                     ? controller.openAgentSession
                     : undefined
                 }
                 renderLatestRunStatus={renderLatestRunStatus}
-                title={selectedTask?.title ?? selectedIssue.title}
+                title={selectedIssue.title}
               />
               <IssueManagerOutputSection
                 copy={copy}
-                outputs={latestOutputs}
+                outputs={issueLatestOutputs}
                 onOpen={controller.openReference}
               />
               <IssueManagerSubtaskSection
@@ -287,7 +275,8 @@ export function IssueManagerIssuePane({
                 diagnostics={controller.diagnostics}
                 onCreate={controller.createTaskDraft}
                 onSelectTask={controller.selectTask}
-                selectedTaskId={selectedTask?.taskId ?? null}
+                onSetTaskStatus={controller.setTaskStatus}
+                selectedTaskId={selectedTaskId}
                 tasks={visibleTasks}
               />
             </div>

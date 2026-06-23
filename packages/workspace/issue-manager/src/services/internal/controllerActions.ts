@@ -6,7 +6,8 @@ import type {
   IssueManagerReferenceBundle,
   IssueManagerRun,
   IssueManagerNodeState,
-  IssueManagerTaskDetail
+  IssueManagerTaskDetail,
+  IssueManagerTaskStatusUpdate
 } from "../../contracts/index.ts";
 import {
   extractIssueManagerWorkspaceFileLinksFromContent,
@@ -228,7 +229,7 @@ export function createIssueManagerControllerActions(
 
   const updateTaskStatus = async (
     taskId: string | null | undefined,
-    status: "completed" | "not_started",
+    status: IssueManagerTaskStatusUpdate,
     options: { selectTaskOnSuccess: boolean }
   ) => {
     const selectedIssueId = nodeState.selectedIssueId;
@@ -725,11 +726,11 @@ export function createIssueManagerControllerActions(
       }
     },
 
-    async setTaskStatus(taskId: string, status: "completed" | "not_started") {
+    async setTaskStatus(taskId: string, status: IssueManagerTaskStatusUpdate) {
       await updateTaskStatus(taskId, status, { selectTaskOnSuccess: false });
     },
 
-    async setSelectedTaskStatus(status: "completed" | "not_started") {
+    async setSelectedTaskStatus(status: IssueManagerTaskStatusUpdate) {
       await updateTaskStatus(nodeState.selectedTaskId, status, {
         selectTaskOnSuccess: true
       });
