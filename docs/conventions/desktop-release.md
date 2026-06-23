@@ -115,7 +115,7 @@ Current updater behavior:
 - stable channel only
 - packaged builds only
 - default policy is `prompt`
-- scheduled update check interval is six hours
+- scheduled update check interval is three hours
 - macOS update checks are disabled for unsupported unsigned or ad-hoc bundles
 
 macOS auto-update metadata must keep x64, arm64, and universal zip entries in `latest-mac.yml`. The file names must include `${arch}` so `electron-updater` can distinguish `mac-x64`, `mac-arm64`, and `mac-universal` assets.
