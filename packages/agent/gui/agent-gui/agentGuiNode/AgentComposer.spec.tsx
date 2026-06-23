@@ -344,7 +344,8 @@ vi.mock("./AgentSlashCommandPalette", () => ({
               }
             }}
           >
-            {entry.label}
+            {entry.primaryLabel ?? entry.label}
+            {entry.secondaryLabel ? ` ${entry.secondaryLabel}` : ""}
           </button>
           {entry.type === "capability" && entry.settingsLabel ? (
             <button
@@ -747,6 +748,48 @@ describe("AgentComposer", () => {
     expect(palette).toHaveTextContent("切换计划模式。");
   });
 
+  it("shows Chinese slash command labels with English aliases in zh-CN", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsPlanMode: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        uiLanguage="zh-CN"
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("状态 status");
+    expect(palette).toHaveTextContent("快速 fast");
+    expect(palette).toHaveTextContent("目标 goal");
+  });
+
   it("activates goal mode as a footer badge from the slash palette", async () => {
     let draftContent = createDraft("/");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
@@ -789,7 +832,7 @@ describe("AgentComposer", () => {
     );
     const { rerender } = render(renderComposer());
 
-    fireEvent.click(screen.getByRole("button", { name: "goal" }));
+    fireEvent.click(screen.getByRole("button", { name: "目标" }));
 
     expect(onDraftContentChange).toHaveBeenCalledWith(createDraft("/goal"));
     expect(screen.getByRole("button", { name: "目标" })).toBeInTheDocument();
@@ -4120,6 +4163,15 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     slashPalettePluginsGroup: "插件",
     slashPaletteConnectorsGroup: "连接器",
     slashPaletteMcpGroup: "MCP",
+    slashCommandCompactLabel: "压缩",
+    slashCommandContextLabel: "上下文",
+    slashCommandFastLabel: "快速",
+    slashCommandGoalLabel: "目标",
+    slashCommandInitLabel: "初始化",
+    slashCommandPlanLabel: "计划",
+    slashCommandReviewLabel: "审查",
+    slashCommandStatusLabel: "状态",
+    slashCommandUsageLabel: "用量",
     slashCommandCompactDescription: "压缩当前对话上下文。",
     slashCommandContextDescription: "查看当前上下文快照。",
     slashCommandFastDescription: "切换快速响应模式。",

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { AgentSessionCommand } from "../../shared/agentSessionTypes";
+import type { UiLanguage } from "../../contexts/settings/domain/agentSettings";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
@@ -189,6 +190,7 @@ export interface AgentComposerProps {
   isInterrupting: boolean;
   isSendingTurn: boolean;
   isSubmittingPrompt: boolean;
+  uiLanguage?: UiLanguage;
   isActive?: boolean;
   previewMode?: boolean;
   promptImagesSupported?: boolean;
@@ -265,6 +267,15 @@ export interface AgentComposerProps {
     slashPalettePluginsGroup: string;
     slashPaletteConnectorsGroup: string;
     slashPaletteMcpGroup: string;
+    slashCommandCompactLabel: string;
+    slashCommandContextLabel: string;
+    slashCommandFastLabel: string;
+    slashCommandGoalLabel: string;
+    slashCommandInitLabel: string;
+    slashCommandPlanLabel: string;
+    slashCommandReviewLabel: string;
+    slashCommandStatusLabel: string;
+    slashCommandUsageLabel: string;
     slashCommandCompactDescription: string;
     slashCommandContextDescription: string;
     slashCommandFastDescription: string;
@@ -760,6 +771,7 @@ export function AgentComposer({
   isInterrupting,
   isSendingTurn,
   isSubmittingPrompt,
+  uiLanguage = "en",
   isActive = true,
   previewMode = false,
   promptImagesSupported = true,
@@ -987,6 +999,7 @@ export function AgentComposer({
           type: "command",
           key: `command:${command.name}`,
           label: labelForSlashCommand(command),
+          ...slashCommandLabelForDisplay(command, labels, uiLanguage),
           ...(commandDescription ? { description: commandDescription } : {}),
           command
         };
@@ -1025,6 +1038,15 @@ export function AgentComposer({
     labels.computerUseCapabilitySetupRequiredDescription,
     labels.computerUseCapabilityLabel,
     labels.computerUseCapabilitySettingsLabel,
+    labels.slashCommandCompactLabel,
+    labels.slashCommandContextLabel,
+    labels.slashCommandFastLabel,
+    labels.slashCommandGoalLabel,
+    labels.slashCommandInitLabel,
+    labels.slashCommandPlanLabel,
+    labels.slashCommandReviewLabel,
+    labels.slashCommandStatusLabel,
+    labels.slashCommandUsageLabel,
     labels.slashCommandCompactDescription,
     labels.slashCommandContextDescription,
     labels.slashCommandFastDescription,
@@ -1034,6 +1056,7 @@ export function AgentComposer({
     labels.slashCommandReviewDescription,
     labels.slashCommandStatusDescription,
     labels.slashCommandUsageDescription,
+    uiLanguage,
     skillQueryMatch?.prefix
   ]);
   const showFileMentionPalette =
@@ -3357,6 +3380,68 @@ function slashCommandDescriptionForDisplay(
       return labels.slashCommandUsageDescription;
     default:
       return command.description;
+  }
+}
+
+function slashCommandLabelForDisplay(
+  command: AgentSessionCommand,
+  labels: Pick<
+    AgentComposerProps["labels"],
+    | "slashCommandCompactLabel"
+    | "slashCommandContextLabel"
+    | "slashCommandFastLabel"
+    | "slashCommandGoalLabel"
+    | "slashCommandInitLabel"
+    | "slashCommandPlanLabel"
+    | "slashCommandReviewLabel"
+    | "slashCommandStatusLabel"
+    | "slashCommandUsageLabel"
+  >,
+  uiLanguage: UiLanguage
+): { primaryLabel?: string; secondaryLabel?: string } {
+  const canonicalLabel = labelForSlashCommand(command);
+  const primaryLabel = localizedSlashCommandLabel(command, labels);
+  return uiLanguage === "en" || primaryLabel === canonicalLabel
+    ? { primaryLabel }
+    : { primaryLabel, secondaryLabel: canonicalLabel };
+}
+
+function localizedSlashCommandLabel(
+  command: AgentSessionCommand,
+  labels: Pick<
+    AgentComposerProps["labels"],
+    | "slashCommandCompactLabel"
+    | "slashCommandContextLabel"
+    | "slashCommandFastLabel"
+    | "slashCommandGoalLabel"
+    | "slashCommandInitLabel"
+    | "slashCommandPlanLabel"
+    | "slashCommandReviewLabel"
+    | "slashCommandStatusLabel"
+    | "slashCommandUsageLabel"
+  >
+): string {
+  switch (command.name.trim().toLowerCase()) {
+    case "compact":
+      return labels.slashCommandCompactLabel;
+    case "context":
+      return labels.slashCommandContextLabel;
+    case "fast":
+      return labels.slashCommandFastLabel;
+    case "goal":
+      return labels.slashCommandGoalLabel;
+    case "init":
+      return labels.slashCommandInitLabel;
+    case "plan":
+      return labels.slashCommandPlanLabel;
+    case "review":
+      return labels.slashCommandReviewLabel;
+    case "status":
+      return labels.slashCommandStatusLabel;
+    case "usage":
+      return labels.slashCommandUsageLabel;
+    default:
+      return labelForSlashCommand(command);
   }
 }
 

@@ -1124,6 +1124,15 @@ export const AgentGUINode = memo(function AgentGUINode({
         "agentHost.agentGui.slashPaletteConnectorsGroup"
       ),
       slashPaletteMcpGroup: t("agentHost.agentGui.slashPaletteMcpGroup"),
+      slashCommandCompactLabel: t("agentHost.agentGui.slashCommandCompactLabel"),
+      slashCommandContextLabel: t("agentHost.agentGui.slashCommandContextLabel"),
+      slashCommandFastLabel: t("agentHost.agentGui.slashCommandFastLabel"),
+      slashCommandGoalLabel: t("agentHost.agentGui.slashCommandGoalLabel"),
+      slashCommandInitLabel: t("agentHost.agentGui.slashCommandInitLabel"),
+      slashCommandPlanLabel: t("agentHost.agentGui.slashCommandPlanLabel"),
+      slashCommandReviewLabel: t("agentHost.agentGui.slashCommandReviewLabel"),
+      slashCommandStatusLabel: t("agentHost.agentGui.slashCommandStatusLabel"),
+      slashCommandUsageLabel: t("agentHost.agentGui.slashCommandUsageLabel"),
       slashCommandCompactDescription: t(
         "agentHost.agentGui.slashCommandCompactDescription"
       ),

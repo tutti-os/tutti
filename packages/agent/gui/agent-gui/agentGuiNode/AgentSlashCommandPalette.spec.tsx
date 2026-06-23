@@ -57,11 +57,16 @@ describe("AgentSlashCommandPalette", () => {
       "focus:bg-[var(--transparency-block)]"
     );
     expect(option).toHaveAttribute("data-highlighted", "");
-    expect(screen.getByText("tutti-cli")).toHaveClass(
+    expect(screen.getByText("tutti-cli").parentElement).toHaveClass(
       "max-w-[48%]",
       "shrink-0",
+      "items-center",
+      "overflow-hidden"
+    );
+    expect(screen.getByText("tutti-cli")).toHaveClass(
       "truncate",
-      "text-[11px]"
+      "text-[11px]",
+      "font-semibold"
     );
     expect(screen.getByText("Inspect tasks and agent context.")).toHaveClass(
       "flex-1",
@@ -161,6 +166,41 @@ describe("AgentSlashCommandPalette", () => {
     expect(icon?.parentElement).not.toHaveClass(
       "bg-[var(--transparency-hover)]",
       "rounded-[7px]"
+    );
+  });
+
+  it("renders a primary localized label with a lighter English alias", () => {
+    render(
+      <AgentSlashCommandPalette
+        label="Slash commands"
+        commandsGroupLabel="Commands"
+        capabilitiesGroupLabel="Capabilities"
+        skillsGroupLabel="Skills"
+        pluginsGroupLabel="Plugins"
+        connectorsGroupLabel="Connectors"
+        mcpGroupLabel="MCP"
+        highlightedIndex={0}
+        entries={[
+          {
+            type: "command",
+            key: "command:status",
+            label: "status",
+            primaryLabel: "状态",
+            secondaryLabel: "status",
+            command: { name: "status" }
+          }
+        ]}
+        onHighlightChange={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectCapability={vi.fn()}
+        onSelectSkill={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("状态")).toHaveClass("font-semibold");
+    expect(screen.getByText("status")).toHaveClass(
+      "text-[10px]",
+      "text-[var(--text-secondary)]"
     );
   });
 
