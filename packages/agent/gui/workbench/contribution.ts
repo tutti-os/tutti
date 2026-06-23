@@ -109,7 +109,7 @@ export interface CreateAgentGuiWorkbenchContributionInput {
     >,
     helpers: AgentGuiWorkbenchRenderBodyHelpers
   ): ReactNode;
-  renderMinimizedPreview?(
+  renderMinimizedPreview(
     context: WorkbenchHostNodeBodyContext<
       AgentGuiWorkbenchState | null,
       unknown
@@ -133,8 +133,6 @@ export function createAgentGuiWorkbenchContribution(
   });
   const frame = input.frame ?? agentGuiWorkbenchDefaultNodeFrame;
   const copy = resolveAgentGuiWorkbenchContributionCopy(input.copy);
-  const renderMinimizedPreview = input.renderMinimizedPreview;
-
   return {
     dockEntries: agentGuiWorkbenchProviders.map((provider, index) =>
       createAgentGuiWorkbenchDockEntry({
@@ -300,19 +298,15 @@ export function createAgentGuiWorkbenchContribution(
         window: {
           closable: true,
           defaultOpen: false,
-          minimizedDock: renderMinimizedPreview
-            ? {
-                kind: "component",
-                providePreview: (item) =>
-                  createAgentGuiWorkbenchPreviewContent({
-                    item,
-                    renderPreview: renderMinimizedPreview,
-                    resolveDockPopupTitle: input.resolveDockPopupTitle
-                  })
-              }
-            : {
-                kind: "snapshot"
-              },
+          minimizedDock: {
+            kind: "component",
+            providePreview: (item) =>
+              createAgentGuiWorkbenchPreviewContent({
+                item,
+                renderPreview: input.renderMinimizedPreview,
+                resolveDockPopupTitle: input.resolveDockPopupTitle
+              })
+          },
           minimizable: true
         }
       }
