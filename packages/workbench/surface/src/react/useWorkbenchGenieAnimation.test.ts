@@ -51,6 +51,11 @@ test("genie dock launch skips animation setup when motion is reduced or disabled
   );
 });
 
+test("genie animation remains the default minimize animation", () => {
+  assert.match(source, /minimizeAnimation = "genie"/);
+  assert.doesNotMatch(source, /minimizeAnimation = "scale"/);
+});
+
 test("genie minimize foregrounds the target before preview capture", () => {
   assert.match(source, /function isFocusedWorkbenchNode/);
   assert.match(

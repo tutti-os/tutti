@@ -63,7 +63,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
           xhtml: "appBrowser"
         },
         locale: "zh-CN",
-        minimizeAnimation: "scale",
+        minimizeAnimation: "genie",
         sleepPreventionMode: "never",
         themeSource: "dark",
         updateChannel: "rc",

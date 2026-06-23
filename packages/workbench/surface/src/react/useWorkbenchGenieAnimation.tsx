@@ -513,7 +513,7 @@ export function useWorkbenchGenieAnimation<TData>({
   captureNodePreviewImage,
   controller,
   dockPreviewCache,
-  minimizeAnimation = "scale",
+  minimizeAnimation = "genie",
   resolveDockAnchorKey,
   resolveDockPreviewCacheKey,
   shouldCaptureNodePreviewImage

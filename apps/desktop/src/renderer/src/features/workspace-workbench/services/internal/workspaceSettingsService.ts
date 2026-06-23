@@ -11,6 +11,7 @@ import type {
   DesktopUpdateChannel,
   DesktopUpdatePolicy
 } from "@shared/preferences";
+import { defaultDesktopMinimizeAnimation } from "../../../../../../shared/preferences/index.ts";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import {
   INotificationService,
@@ -1045,7 +1046,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   dockPlacement: "bottom",
   fileDefaultOpenersByExtension: {},
   locale: "en",
-  minimizeAnimation: "scale",
+  minimizeAnimation: defaultDesktopMinimizeAnimation,
   sleepPreventionMode: "never",
   theme: createNoopTheme("dark"),
   updateChannel: "rc",

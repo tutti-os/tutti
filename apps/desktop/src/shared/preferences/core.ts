@@ -16,7 +16,7 @@ export type DesktopMinimizeAnimation =
   (typeof desktopMinimizeAnimations)[number];
 
 export const defaultDesktopMinimizeAnimation: DesktopMinimizeAnimation =
-  "scale";
+  "genie";
 
 export const desktopBrowserUseConnectionModes = [
   "isolated",
