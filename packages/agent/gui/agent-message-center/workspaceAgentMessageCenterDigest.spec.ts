@@ -4,7 +4,13 @@ import type {
   AgentActivityNeedsAttentionItem
 } from "@tutti-os/agent-activity-core";
 import type { AgentConversationPromptVM } from "../shared/agentConversation/contracts/agentConversationVM";
-import { buildWorkspaceAgentMessageCenterDigest } from "./workspaceAgentMessageCenterDigest";
+import {
+  buildWorkspaceAgentMessageCenterDigest as buildDigestFromPrecomputed,
+  resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary,
+  type BuildWorkspaceAgentMessageCenterDigestInput,
+  type WorkspaceAgentMessageCenterDigest,
+  type WorkspaceAgentMessageCenterDigestAgentSummary
+} from "./workspaceAgentMessageCenterDigest";
 
 describe("buildWorkspaceAgentMessageCenterDigest", () => {
   it("uses agent messages for summaries instead of newer user messages", () => {
@@ -33,6 +39,57 @@ describe("buildWorkspaceAgentMessageCenterDigest", () => {
       kind: "outcome",
       summary: "Agent summary wins",
       occurredAtUnixMs: 10
+    });
+  });
+
+  it("uses a precomputed latest agent message when provided", () => {
+    const digest = buildWorkspaceAgentMessageCenterDigest({
+      fallbackTitle: "Fallback title",
+      latestAgentMessage: {
+        summary: "Precomputed summary",
+        occurredAtUnixMs: 42
+      },
+      messages: [
+        message({
+          messageId: "assistant-1",
+          role: "assistant",
+          payload: { text: "Message summary" },
+          occurredAtUnixMs: 10
+        })
+      ],
+      needsAttention: null,
+      pendingPrompt: null,
+      status: "working"
+    });
+
+    expect(digest.primary).toMatchObject({
+      kind: "progress",
+      summary: "Precomputed summary",
+      occurredAtUnixMs: 42
+    });
+  });
+
+  it("treats an explicit null latest agent message as precomputed empty", () => {
+    const digest = buildWorkspaceAgentMessageCenterDigest({
+      fallbackTitle: "Fallback title",
+      latestAgentMessage: null,
+      messages: [
+        message({
+          messageId: "assistant-1",
+          role: "assistant",
+          payload: { text: "Skipped message summary" },
+          occurredAtUnixMs: 10
+        })
+      ],
+      needsAttention: null,
+      pendingPrompt: null,
+      status: "idle"
+    });
+
+    expect(digest.primary).toMatchObject({
+      kind: "outcome",
+      summary: "Fallback title",
+      occurredAtUnixMs: null
     });
   });
 
@@ -328,6 +385,45 @@ describe("buildWorkspaceAgentMessageCenterDigest", () => {
   });
 });
 
+type DigestSpecInput = Omit<
+  BuildWorkspaceAgentMessageCenterDigestInput,
+  "latestAgentMessage"
+> & {
+  latestAgentMessage?: WorkspaceAgentMessageCenterDigestAgentSummary | null;
+  messages?: readonly AgentActivityMessage[];
+};
+
+function buildWorkspaceAgentMessageCenterDigest(
+  input: DigestSpecInput
+): WorkspaceAgentMessageCenterDigest {
+  const { latestAgentMessage, messages = [], ...digestInput } = input;
+  return buildDigestFromPrecomputed({
+    ...digestInput,
+    latestAgentMessage:
+      latestAgentMessage === undefined
+        ? latestDigestAgentMessage(messages)
+        : latestAgentMessage
+  });
+}
+
+function latestDigestAgentMessage(
+  messages: readonly AgentActivityMessage[]
+): WorkspaceAgentMessageCenterDigestAgentSummary | null {
+  let latest: WorkspaceAgentMessageCenterDigestAgentSummary | null = null;
+  for (const item of messages) {
+    const summary =
+      resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary(item);
+    if (!summary) {
+      continue;
+    }
+    const occurredAtUnixMs = messageTimeUnixMs(item);
+    if (!latest || occurredAtUnixMs >= latest.occurredAtUnixMs) {
+      latest = { summary, occurredAtUnixMs };
+    }
+  }
+  return latest;
+}
+
 function message(
   overrides: Partial<AgentActivityMessage>
 ): AgentActivityMessage {
@@ -378,4 +474,20 @@ function askUserPrompt(title: string): AgentConversationPromptVM {
       }
     ]
   };
+}
+
+function messageTimeUnixMs(message: AgentActivityMessage): number {
+  return (
+    positiveNumber(message.occurredAtUnixMs) ??
+    positiveNumber(message.completedAtUnixMs) ??
+    positiveNumber(message.startedAtUnixMs) ??
+    positiveNumber(message.version) ??
+    0
+  );
+}
+
+function positiveNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
 }

@@ -68,6 +68,7 @@ type RefreshReason =
   | "projection-sync"
   | "local-create"
   | "local-delete"
+  | "session-overlay-update"
   | "workspace-agent-update";
 type ConversationListUpdateReason =
   | RefreshReason
@@ -78,6 +79,10 @@ type ConversationListUpdateReason =
   | "pin-changed"
   | "submit-pending";
 
+interface ConversationListRefreshOptions {
+  dirtySessionIds?: readonly string[];
+}
+
 const EMPTY_SNAPSHOT: AgentGUIConversationListStoreSnapshot = {
   statesByQueryKey: {}
 };
@@ -87,6 +92,7 @@ const listeners = new Set<StoreListener>();
 const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const inflightRefreshByQueryKey = new Map<string, Promise<void>>();
 const needsRefreshAfterInflight = new Set<string>();
+const pendingDirtySessionIdsByQueryKey = new Map<string, Set<string>>();
 const requestIdByQueryKey = new Map<string, number>();
 const localCreatedConversationIdsByQueryKey = new Map<string, Set<string>>();
 const deletedConversationIdsByQueryKey = new Map<string, Set<string>>();
@@ -828,6 +834,78 @@ function mergeSessionMessagesById(
   return next;
 }
 
+function normalizeDirtySessionIds(
+  sessionIds: readonly string[] | undefined
+): string[] {
+  if (!sessionIds || sessionIds.length === 0) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const sessionId of sessionIds) {
+    const value = sessionId.trim();
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    normalized.push(value);
+  }
+  return normalized;
+}
+
+function addPendingDirtySessionIds(
+  queryKey: string,
+  sessionIds: readonly string[] | undefined
+): void {
+  const normalized = normalizeDirtySessionIds(sessionIds);
+  if (normalized.length === 0) {
+    return;
+  }
+  const pending =
+    pendingDirtySessionIdsByQueryKey.get(queryKey) ?? new Set<string>();
+  for (const sessionId of normalized) {
+    pending.add(sessionId);
+  }
+  pendingDirtySessionIdsByQueryKey.set(queryKey, pending);
+}
+
+function consumePendingDirtySessionIds(queryKey: string): Set<string> {
+  const pending = pendingDirtySessionIdsByQueryKey.get(queryKey);
+  pendingDirtySessionIdsByQueryKey.delete(queryKey);
+  return pending ?? new Set<string>();
+}
+
+function decorateConversationForRefresh(input: {
+  conversation: AgentGUIConversationSummary;
+  currentConversation: AgentGUIConversationSummary | undefined;
+  mergedMessages: readonly WorkspaceAgentActivityMessage[];
+  queryKey: string;
+}): AgentGUIConversationSummary {
+  const title = resolveAgentGUIConversationTitleFromMessages({
+    messages: input.mergedMessages,
+    conversation: input.conversation
+  });
+  const nextConversation: AgentGUIConversationSummary = {
+    ...input.conversation,
+    ...(title
+      ? { title: title.title, titleFallback: title.titleFallback }
+      : {}),
+    hasUnreadCompletion:
+      input.conversation.status === "completed"
+        ? input.currentConversation?.status !== "completed" &&
+          !hasActiveConversationOwner(input.queryKey, input.conversation.id)
+          ? true
+          : (input.conversation.hasUnreadCompletion ?? false)
+        : false,
+    status: input.conversation.status,
+    updatedAtUnixMs: input.conversation.updatedAtUnixMs,
+    pinnedAtUnixMs: input.conversation.pinnedAtUnixMs
+  };
+  return areConversationsEqual(input.conversation, nextConversation)
+    ? input.conversation
+    : nextConversation;
+}
+
 async function loadWorkspaceAgentSnapshotForConversations(input: {
   sessionOrigin: string;
   userId: string;
@@ -846,7 +924,8 @@ function getWorkspaceAgentSnapshotForConversations(input: {
 
 async function refreshAgentGUIConversationListQuery(
   query: AgentGUIConversationListQuery,
-  reason: RefreshReason
+  reason: RefreshReason,
+  options: ConversationListRefreshOptions = {}
 ): Promise<void> {
   const state = ensureQueryState(query);
   if (!state) {
@@ -876,13 +955,17 @@ async function refreshAgentGUIConversationListQuery(
       userId: state.query.userId
     };
     const workspaceAgentSnapshot =
-      reason === "workspace-agent-update"
+      reason === "workspace-agent-update" || reason === "session-overlay-update"
         ? getWorkspaceAgentSnapshotForConversations(workspaceAgentsInput)
         : await loadWorkspaceAgentSnapshotForConversations(
             workspaceAgentsInput
           );
     if (requestId !== requestIdByQueryKey.get(queryKey)) {
       return;
+    }
+    const dirtySessionIds = consumePendingDirtySessionIds(queryKey);
+    for (const sessionId of normalizeDirtySessionIds(options.dirtySessionIds)) {
+      dirtySessionIds.add(sessionId);
     }
     const sessionViewDataById = workspaceSessionViewDataBySessionId(
       state.query.workspaceId
@@ -894,12 +977,6 @@ async function refreshAgentGUIConversationListQuery(
         sessionViewDataById
       )
     );
-    const baseConversations = buildAgentGUIConversationSummaries({
-      snapshot: workspaceAgentSnapshot,
-      provider: state.query.provider,
-      sessionMessagesById: sessionMessagesByIdForSummaries
-    });
-
     const deletedConversationIds =
       deletedConversationIdsByQueryKey.get(queryKey) ?? new Set<string>();
     const localCreatedConversationIds =
@@ -934,6 +1011,36 @@ async function refreshAgentGUIConversationListQuery(
         conversation
       ])
     );
+    const canApplyDirtySessionProjection =
+      reason === "session-overlay-update" &&
+      state.initialized &&
+      dirtySessionIds.size > 0;
+    const projectionSessions = canApplyDirtySessionProjection
+      ? workspaceAgentSnapshot.sessions.filter((session) => {
+          const agentSessionId = session.agentSessionId.trim();
+          const syncSessionId = session.syncState?.agentSessionId?.trim() ?? "";
+          return (
+            (agentSessionId && dirtySessionIds.has(agentSessionId)) ||
+            (syncSessionId && dirtySessionIds.has(syncSessionId))
+          );
+        })
+      : workspaceAgentSnapshot.sessions;
+    const baseConversations = buildAgentGUIConversationSummaries({
+      snapshot: canApplyDirtySessionProjection
+        ? {
+            ...workspaceAgentSnapshot,
+            sessions: projectionSessions
+          }
+        : workspaceAgentSnapshot,
+      provider: state.query.provider,
+      sessionMessagesById: sessionMessagesByIdForSummaries
+    });
+    const conversationsToDecorate = canApplyDirtySessionProjection
+      ? new Set<string>([
+          ...dirtySessionIds,
+          ...baseConversations.map((conversation) => conversation.id)
+        ])
+      : null;
     const retainedSessionIds = new Set(retainedSnapshotSessionIds);
     if (reason === "workspace-agent-update") {
       for (const conversation of currentConversations) {
@@ -950,6 +1057,14 @@ async function refreshAgentGUIConversationListQuery(
       }
     }
 
+    if (canApplyDirtySessionProjection) {
+      for (const conversation of currentConversations) {
+        if (!nextDeletedConversationIds.has(conversation.id)) {
+          retainedSessionIds.add(conversation.id);
+        }
+      }
+    }
+
     const nextConversations = sortConversationsByRecency(
       mergeLoadedConversations(
         currentConversations,
@@ -960,6 +1075,12 @@ async function refreshAgentGUIConversationListQuery(
       ),
       createConversationOrderIndex(currentConversations)
     ).map((conversation) => {
+      if (
+        conversationsToDecorate !== null &&
+        !conversationsToDecorate.has(conversation.id)
+      ) {
+        return conversation;
+      }
       const currentConversation = currentConversationById.get(conversation.id);
       const sessionViewData = sessionViewDataById[conversation.id];
       const mergedMessages =
@@ -969,26 +1090,12 @@ async function refreshAgentGUIConversationListQuery(
             workspaceAgentSnapshot.sessionMessagesById?.[conversation.id],
           localMessages: sessionViewData?.overlayMessages
         });
-      const title = resolveAgentGUIConversationTitleFromMessages({
-        messages: mergedMessages,
-        conversation
+      return decorateConversationForRefresh({
+        conversation,
+        currentConversation,
+        mergedMessages,
+        queryKey
       });
-      return {
-        ...conversation,
-        ...(title
-          ? { title: title.title, titleFallback: title.titleFallback }
-          : {}),
-        hasUnreadCompletion:
-          conversation.status === "completed"
-            ? currentConversation?.status !== "completed" &&
-              !hasActiveConversationOwner(queryKey, conversation.id)
-              ? true
-              : (conversation.hasUnreadCompletion ?? false)
-            : false,
-        status: conversation.status,
-        updatedAtUnixMs: conversation.updatedAtUnixMs,
-        pinnedAtUnixMs: conversation.pinnedAtUnixMs
-      };
     });
 
     updateQueryState(query, (current) => {
@@ -1040,13 +1147,15 @@ async function refreshAgentGUIConversationListQuery(
 
 function scheduleQueryRefresh(
   query: AgentGUIConversationListQuery,
-  _reason: RefreshReason
+  _reason: RefreshReason,
+  options: ConversationListRefreshOptions = {}
 ): void {
   const state = ensureQueryState(query);
   if (!state) {
     return;
   }
   const queryKey = state.queryKey;
+  addPendingDirtySessionIds(queryKey, options.dirtySessionIds);
   const delayMs =
     _reason === "projection-sync" && !state.initialized
       ? 0
@@ -1057,7 +1166,11 @@ function scheduleQueryRefresh(
       needsRefreshAfterInflight.add(queryKey);
       return;
     }
-    const promise = refreshAgentGUIConversationListQuery(state.query, _reason)
+    const promise = refreshAgentGUIConversationListQuery(
+      state.query,
+      _reason,
+      options
+    )
       .catch(() => undefined)
       .finally(() => {
         inflightRefreshByQueryKey.delete(queryKey);
@@ -1156,9 +1269,10 @@ export function getDeletedAgentGUIConversationIds(
 
 export function scheduleAgentGUIConversationListProjection(
   query: AgentGUIConversationListQuery,
-  reason: RefreshReason
+  reason: RefreshReason,
+  options: ConversationListRefreshOptions = {}
 ): void {
-  scheduleQueryRefresh(query, reason);
+  scheduleQueryRefresh(query, reason, options);
 }
 
 // Internal-only. Production callers must use the named, intent-scoped mutations
@@ -1632,6 +1746,7 @@ export function resetAgentGUIConversationListStoreForTests(): void {
   refreshTimers.clear();
   inflightRefreshByQueryKey.clear();
   needsRefreshAfterInflight.clear();
+  pendingDirtySessionIdsByQueryKey.clear();
   requestIdByQueryKey.clear();
   localCreatedConversationIdsByQueryKey.clear();
   resetAgentGUIConversationPendingStateForTests();

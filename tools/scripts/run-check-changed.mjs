@@ -8,6 +8,13 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  buildGoLintLane,
+  buildGoTestLane,
+  buildPackageTestCommand,
+  isBuiltinGenerateRequired,
+  resolveGoValidationTargets
+} from "./run-check-changed-targets.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
@@ -135,17 +142,30 @@ function buildChangedLanes() {
     });
   }
 
-  if (changedFiles.some(isGoValidationRelevant)) {
-    addLane({
-      key: "lint:go",
-      label: "lint:go",
-      command: [pnpmCommand, "run", "lint:go"]
-    });
-    addLane({
-      key: "test:go",
-      label: "test:go",
-      command: [pnpmCommand, "run", "test:go"]
-    });
+  const goValidationTargets = resolveGoValidationTargets(changedFiles);
+  const forceBuiltinGenerate = isBuiltinGenerateRequired(changedFiles);
+  if (goValidationTargets) {
+    for (const [moduleRoot, targets] of goValidationTargets.lintByModule) {
+      addLane(
+        buildGoLintLane({
+          moduleRoot,
+          targets,
+          shellQuote,
+          workspaceRoot
+        })
+      );
+    }
+    for (const [moduleRoot, targets] of goValidationTargets.testByModule) {
+      addLane(
+        buildGoTestLane({
+          forceBuiltinGenerate,
+          moduleRoot,
+          pnpmCommand,
+          shellQuote,
+          targets
+        })
+      );
+    }
 
     if (pushReady) {
       addLane({
@@ -188,23 +208,15 @@ function buildChangedLanes() {
     }
 
     if (hasRelevantCode && packageInfo.scripts.test) {
-      const changedTests = packageFiles.filter(isTestFile);
       addLane({
         key: `${packageInfo.name}:test`,
         label: `${packageInfo.name}:test`,
-        command:
-          changedTests.length > 0 && packageInfo.name !== "@tutti-os/agent-gui"
-            ? [
-                pnpmCommand,
-                "--filter",
-                packageInfo.name,
-                "test",
-                "--",
-                ...changedTests.map((file) =>
-                  relative(packageInfo.root, file).replaceAll("\\", "/")
-                )
-              ]
-            : [pnpmCommand, "--filter", packageInfo.name, "test"]
+        command: buildPackageTestCommand({
+          baseRef,
+          packageFiles,
+          packageInfo,
+          pnpmCommand
+        })
       });
     }
 
@@ -454,10 +466,6 @@ function isBuildRelevant(file) {
     /(?:^|\/)(assets|public|style|styles)\//u.test(file) ||
     /(?:electron\.vite\.config\.ts|vite\.web\.config\.mjs)$/u.test(file)
   );
-}
-
-function isGoValidationRelevant(file) {
-  return /\.(?:go)$/u.test(file) || /(?:^|\/)go\.(?:mod|sum)$/u.test(file);
 }
 
 function isGlobalTypecheckRelevant(file) {

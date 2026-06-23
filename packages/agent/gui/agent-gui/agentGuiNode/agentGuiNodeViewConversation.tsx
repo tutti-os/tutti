@@ -127,13 +127,17 @@ export function groupConversations(
     });
   }
   const projectGroups = new Map<string, ConversationSectionWithSort>();
+  const normalizedProjectPathByPath = new Map<string, string>();
+  const normalizeProjectPath = (path: string) =>
+    normalizeConversationProjectPathCached(path, normalizedProjectPathByPath);
   userProjects.forEach((project, projectOrder) => {
-    const normalizedPath = normalizeConversationProjectPath(project.path);
-    if (!normalizedPath || projectGroups.has(`project:${normalizedPath}`)) {
+    const normalizedPath = normalizeProjectPath(project.path);
+    const sectionId = `project:${normalizedPath}`;
+    if (projectGroups.has(sectionId)) {
       return;
     }
-    projectGroups.set(`project:${normalizedPath}`, {
-      id: `project:${normalizedPath}`,
+    projectGroups.set(sectionId, {
+      id: sectionId,
       kind: "project",
       label: project.label,
       project,
@@ -159,22 +163,42 @@ export function groupConversations(
     if ((conversation.pinnedAtUnixMs ?? 0) > 0) {
       continue;
     }
-    const section = resolveConversationProjectSection(conversation, labels);
-    const existing = projectGroups.get(section.id);
+    if (!conversation.project) {
+      const existing = projectGroups.get("conversations");
+      if (existing) {
+        existing.items.push(conversation);
+        continue;
+      }
+      projectGroups.set("conversations", {
+        id: "conversations",
+        kind: "conversations",
+        label: labels.sectionConversations,
+        project: null,
+        items: [conversation],
+        projectOrder: Number.MAX_SAFE_INTEGER,
+        sectionOrder: 1,
+        projectUpdatedAtUnixMs: 0
+      });
+      continue;
+    }
+
+    const normalizedPath = normalizeProjectPath(conversation.project.path);
+    const sectionId = `project:${normalizedPath}`;
+    const existing = projectGroups.get(sectionId);
     if (existing) {
       existing.items.push(conversation);
       continue;
     }
-    projectGroups.set(section.id, {
-      ...section,
+    projectGroups.set(sectionId, {
+      id: sectionId,
+      kind: "project",
+      label: conversation.project.label,
+      project: conversation.project,
       items: [conversation],
-      projectOrder:
-        section.kind === "project"
-          ? Number.MAX_SAFE_INTEGER - 1
-          : Number.MAX_SAFE_INTEGER,
-      sectionOrder: section.kind === "project" ? 0 : 1,
+      projectOrder: Number.MAX_SAFE_INTEGER - 1,
+      sectionOrder: 0,
       projectUpdatedAtUnixMs: resolveConversationProjectUpdatedAtUnixMs(
-        section.project
+        conversation.project
       )
     });
   }
@@ -220,30 +244,21 @@ function resolveConversationProjectUpdatedAtUnixMs(
   );
 }
 
-function resolveConversationProjectSection(
-  conversation: AgentGUINodeViewModel["conversations"][number],
-  labels: Pick<AgentGUIViewLabels, "sectionConversations">
-): Omit<ConversationSection, "items"> {
-  if (conversation.project) {
-    return {
-      id: `project:${normalizeConversationProjectPath(
-        conversation.project.path
-      )}`,
-      kind: "project",
-      label: conversation.project.label,
-      project: conversation.project
-    };
-  }
-  return {
-    id: "conversations",
-    kind: "conversations",
-    label: labels.sectionConversations,
-    project: null
-  };
-}
-
 function normalizeConversationProjectPath(path: string): string {
   return path.trim().replaceAll("\\", "/").replace(/\/+$/, "") || "/";
+}
+
+function normalizeConversationProjectPathCached(
+  path: string,
+  normalizedPathByPath: Map<string, string>
+): string {
+  const cached = normalizedPathByPath.get(path);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const normalized = normalizeConversationProjectPath(path);
+  normalizedPathByPath.set(path, normalized);
+  return normalized;
 }
 
 function conversationMetaKind(

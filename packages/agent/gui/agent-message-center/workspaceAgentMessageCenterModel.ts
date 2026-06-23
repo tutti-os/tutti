@@ -17,7 +17,9 @@ import {
 } from "../shared/agentConversation/planImplementation";
 import {
   buildWorkspaceAgentMessageCenterDigest,
-  type WorkspaceAgentMessageCenterDigest
+  resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary,
+  type WorkspaceAgentMessageCenterDigest,
+  type WorkspaceAgentMessageCenterDigestAgentSummary
 } from "./workspaceAgentMessageCenterDigest";
 
 export interface WorkspaceAgentMessageCenterModel {
@@ -101,13 +103,20 @@ export function buildWorkspaceAgentMessageCenterModel(
     .filter((session) => session.visible !== false)
     .map((session) => {
       const messages = resolveSessionMessages(snapshot, session);
+      const messageAnalysis = analyzeMessageCenterSessionMessages(
+        session.agentSessionId,
+        messages
+      );
       const needsAttention =
         needsAttentionBySessionId.get(session.agentSessionId) ?? null;
       const status = displayStatuses.get(session.agentSessionId) ?? "idle";
-      const lastAgentMessage = latestAgentMessage(messages);
-      const title = resolveSessionTitle(session, messages);
+      const lastAgentMessage = messageAnalysis.latestAgentMessage;
+      const title = resolveSessionTitle(
+        session,
+        messageAnalysis.firstUserMessageSummary
+      );
       const pendingPrompt =
-        pendingPromptFromMessages(messages) ??
+        messageAnalysis.pendingPrompt ??
         codexPlanImplementationPrompt(session, status, messages) ??
         fallbackPromptFromNeedsAttention(
           needsAttention,
@@ -115,7 +124,7 @@ export function buildWorkspaceAgentMessageCenterModel(
         );
       const digest = buildWorkspaceAgentMessageCenterDigest({
         fallbackTitle: resolveDigestFallbackTitle(session),
-        messages,
+        latestAgentMessage: messageAnalysis.latestDigestAgentMessage,
         needsAttention,
         pendingPrompt,
         status
@@ -146,7 +155,7 @@ export function buildWorkspaceAgentMessageCenterModel(
         pendingPrompt,
         needsAttentionKind: needsAttention?.kind ?? null,
         needsAttentionSummary: needsAttention?.summary ?? null,
-        latestTurnOutcome: latestTurnOutcome(session.agentSessionId, messages),
+        latestTurnOutcome: messageAnalysis.latestTurnOutcome,
         sortTimeUnixMs
       } satisfies WorkspaceAgentMessageCenterItem;
     })
@@ -256,57 +265,119 @@ function resolveSessionMessages(
 
 function resolveSessionTitle(
   session: AgentActivitySession,
-  messages: readonly AgentActivityMessage[]
+  firstUserMessageSummary: string
 ): string {
   const title = session.title.trim();
   if (title) {
     return title;
   }
-  return (
-    firstUserMessageText(messages) || session.provider || session.agentSessionId
-  );
+  return firstUserMessageSummary || session.provider || session.agentSessionId;
 }
 
 function resolveDigestFallbackTitle(session: AgentActivitySession): string {
   return session.title.trim() || session.provider || session.agentSessionId;
 }
 
-function firstUserMessageText(
-  messages: readonly AgentActivityMessage[]
-): string {
-  for (const message of messages) {
-    if (message.role.trim().toLowerCase() !== "user") {
-      continue;
-    }
-    const summary = messageSummary(message);
-    if (summary) {
-      return summary;
-    }
-  }
-  return "";
+interface MessageCenterSessionMessageAnalysis {
+  firstUserMessageSummary: string;
+  latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
+  latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
+  latestTurnOutcome: WorkspaceAgentMessageCenterTurnOutcome | null;
+  pendingPrompt: AgentConversationPromptVM | null;
 }
 
-function pendingPromptFromMessages(
+interface PendingPromptCandidate {
+  message: AgentActivityMessage;
+  prompt: AgentConversationPromptVM;
+}
+
+interface TurnOutcomeCandidate {
+  message: AgentActivityMessage;
+  outcome: WorkspaceAgentMessageCenterTurnOutcome;
+}
+
+function analyzeMessageCenterSessionMessages(
+  agentSessionId: string,
   messages: readonly AgentActivityMessage[]
-): AgentConversationPromptVM | null {
-  for (const message of [...messages].sort(compareMessagesByRecentTime)) {
-    if (isTerminalMessageStatus(message.status)) {
-      continue;
+): MessageCenterSessionMessageAnalysis {
+  let firstUserMessageSummary = "";
+  let latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
+    null;
+  let latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
+    null;
+  let latestPendingPrompt: PendingPromptCandidate | null = null;
+  let latestOutcome: TurnOutcomeCandidate | null = null;
+
+  for (const message of messages) {
+    if (!firstUserMessageSummary && isUserMessageRole(message.role)) {
+      firstUserMessageSummary = messageSummary(message);
     }
-    const approval = approvalPromptFromMessage(message);
-    if (approval) {
-      return approval;
+
+    if (isAgentMessageRole(message.role)) {
+      const summary = messageSummary(message);
+      if (summary) {
+        const occurredAtUnixMs = messageTimeUnixMs(message);
+        if (
+          !latestAgentMessage ||
+          occurredAtUnixMs >= latestAgentMessage.occurredAtUnixMs
+        ) {
+          latestAgentMessage = { summary, occurredAtUnixMs };
+        }
+      }
+      const digestSummary =
+        resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary(message);
+      if (digestSummary) {
+        const occurredAtUnixMs = messageTimeUnixMs(message);
+        if (
+          !latestDigestAgentMessage ||
+          occurredAtUnixMs >= latestDigestAgentMessage.occurredAtUnixMs
+        ) {
+          latestDigestAgentMessage = {
+            summary: digestSummary,
+            occurredAtUnixMs
+          };
+        }
+      }
+
+      const outcome = turnOutcomeFromMessage(agentSessionId, message);
+      if (
+        outcome &&
+        (!latestOutcome ||
+          compareMessagesByRecentTime(message, latestOutcome.message) < 0)
+      ) {
+        latestOutcome = { message, outcome };
+      }
     }
-    const askUser = askUserPromptFromMessage(message);
-    if (askUser) {
-      return askUser;
-    }
-    const exitPlan = exitPlanPromptFromMessage(message);
-    if (exitPlan) {
-      return exitPlan;
+
+    if (!isTerminalMessageStatus(message.status)) {
+      const prompt = promptFromMessage(message);
+      if (
+        prompt &&
+        (!latestPendingPrompt ||
+          compareMessagesByRecentTime(message, latestPendingPrompt.message) < 0)
+      ) {
+        latestPendingPrompt = { message, prompt };
+      }
     }
   }
-  return null;
+
+  return {
+    firstUserMessageSummary,
+    latestDigestAgentMessage,
+    latestAgentMessage,
+    latestTurnOutcome: latestOutcome?.outcome ?? null,
+    pendingPrompt: latestPendingPrompt?.prompt ?? null
+  };
+}
+
+function promptFromMessage(
+  message: AgentActivityMessage
+): AgentConversationPromptVM | null {
+  return (
+    approvalPromptFromMessage(message) ??
+    askUserPromptFromMessage(message) ??
+    exitPlanPromptFromMessage(message)
+  );
 }
 
 function approvalPromptFromMessage(
@@ -390,17 +461,12 @@ function askUserPromptFromMessage(
   // The structured questions live on the tool-call input (payload.input.questions
   // or payload.tool_state.input.questions) — the same source the in-conversation
   // projection reads — so the deck card renders the identical question + options.
-  // payload.questions is a legacy fallback for shapes that inline them.
   const toolState = recordValue(payload.tool_state);
   const input =
     Object.keys(recordValue(payload.input)).length > 0
       ? recordValue(payload.input)
       : recordValue(toolState.input);
-  const rawQuestions =
-    arrayValue(input.questions).length > 0
-      ? input.questions
-      : payload.questions;
-  const questions = normalizeAskUserQuestions(rawQuestions);
+  const questions = normalizeAskUserQuestions(input.questions);
   if (questions.length === 0) {
     return null;
   }
@@ -467,63 +533,23 @@ function codexPlanImplementationPrompt(
   return planImplementationPromptFromPlanTurn(planTurnId, title);
 }
 
-function latestAgentMessage(
-  messages: readonly AgentActivityMessage[]
-): { summary: string; occurredAtUnixMs: number } | null {
-  return messages.reduce<{ summary: string; occurredAtUnixMs: number } | null>(
-    (latest, message) => {
-      if (!isAgentMessageRole(message.role)) {
-        return latest;
-      }
-      const summary = messageSummary(message);
-      if (!summary) {
-        return latest;
-      }
-      const occurredAtUnixMs = messageTimeUnixMs(message);
-      if (!latest || occurredAtUnixMs >= latest.occurredAtUnixMs) {
-        return { summary, occurredAtUnixMs };
-      }
-      return latest;
-    },
-    null
-  );
-}
-
-function latestTurnOutcome(
+function turnOutcomeFromMessage(
   agentSessionId: string,
-  messages: readonly AgentActivityMessage[]
+  message: AgentActivityMessage
 ): WorkspaceAgentMessageCenterTurnOutcome | null {
-  const latest = messages
-    .flatMap((message) => {
-      const status = outcomeStatusFromMessage(message);
-      if (!status) {
-        return [];
-      }
-      const turnId = message.turnId?.trim() || null;
-      const messageId = message.messageId.trim();
-      const notificationSubject = turnId
-        ? `turn:${turnId}`
-        : `message:${messageId}`;
-      return [
-        {
-          notificationKey: `${agentSessionId}:${notificationSubject}:${status}`,
-          status,
-          turnId,
-          sortMessage: message
-        }
-      ];
-    })
-    .sort((left, right) =>
-      compareMessagesByRecentTime(left.sortMessage, right.sortMessage)
-    )[0];
-
-  if (!latest) {
+  const status = outcomeStatusFromMessage(message);
+  if (!status) {
     return null;
   }
+  const turnId = message.turnId?.trim() || null;
+  const messageId = message.messageId.trim();
+  const notificationSubject = turnId
+    ? `turn:${turnId}`
+    : `message:${messageId}`;
   return {
-    notificationKey: latest.notificationKey,
-    status: latest.status,
-    turnId: latest.turnId
+    notificationKey: `${agentSessionId}:${notificationSubject}:${status}`,
+    status,
+    turnId
   };
 }
 
@@ -633,6 +659,10 @@ function compareMessageCenterItems(
 function isAgentMessageRole(role: string): boolean {
   const normalized = role.trim().toLowerCase();
   return normalized === "assistant" || normalized === "agent";
+}
+
+function isUserMessageRole(role: string): boolean {
+  return role.trim().toLowerCase() === "user";
 }
 
 function isTerminalMessageStatus(status: string | null | undefined): boolean {

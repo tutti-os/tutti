@@ -236,6 +236,229 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("keeps the visible conversation list reference for equal project reloads", async () => {
+    let userProjectListener: (() => void) | null = null;
+    let userProjects = [
+      {
+        id: "app",
+        path: "/workspace/app",
+        label: "App"
+      }
+    ];
+    const listUserProjects = vi.fn(async () => ({
+      projects: userProjects
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            cwd: "/workspace/app"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      userProjects: {
+        list: listUserProjects,
+        subscribe: vi.fn((listener: () => void) => {
+          userProjectListener = listener;
+          return vi.fn();
+        }),
+        use: vi.fn()
+      }
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversations[0]?.project).toEqual({
+        id: "app",
+        path: "/workspace/app",
+        label: "App"
+      });
+    });
+    const previousConversations = result.current.viewModel.conversations;
+
+    userProjects = [{ id: "app", path: "/workspace/app", label: "App" }];
+    await act(async () => {
+      userProjectListener?.();
+    });
+
+    await waitFor(() => {
+      expect(listUserProjects).toHaveBeenCalledTimes(2);
+    });
+    expect(result.current.viewModel.conversations).toBe(previousConversations);
+  });
+
+  it("keeps stable composer child references when only the selected project changes", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: []
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "codex",
+        effectiveSettings: {
+          model: "gpt-5",
+          reasoningEffort: "medium",
+          speed: null,
+          planMode: false,
+          permissionModeId: "auto"
+        },
+        modelConfig: {
+          configurable: true,
+          options: [{ value: "gpt-5", name: "GPT-5" }]
+        },
+        reasoningConfig: {
+          configurable: true,
+          options: [{ value: "medium", name: "Medium" }]
+        },
+        permissionConfig: {
+          configurable: true,
+          defaultValue: "auto",
+          modes: [{ id: "auto", label: "Auto", semantic: "auto" }]
+        }
+      }))
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.composerSettings.isSettingsLoading).toBe(
+        false
+      );
+    });
+    const initialSettings = result.current.viewModel.composerSettings;
+    const initialDraftSettings = initialSettings.draftSettings;
+    const initialAvailableModels = initialSettings.availableModels;
+    const initialAvailableReasoningEfforts =
+      initialSettings.availableReasoningEfforts;
+    const initialAvailablePermissionModes =
+      initialSettings.availablePermissionModes;
+
+    act(() => {
+      result.current.actions.updateSelectedProjectPath("/workspace/app");
+    });
+
+    expect(result.current.viewModel.composerSettings).not.toBe(initialSettings);
+    expect(result.current.viewModel.composerSettings.selectedProjectPath).toBe(
+      "/workspace/app"
+    );
+    expect(result.current.viewModel.composerSettings.draftSettings).toBe(
+      initialDraftSettings
+    );
+    expect(result.current.viewModel.composerSettings.availableModels).toBe(
+      initialAvailableModels
+    );
+    expect(
+      result.current.viewModel.composerSettings.availableReasoningEfforts
+    ).toBe(initialAvailableReasoningEfforts);
+    expect(
+      result.current.viewModel.composerSettings.availablePermissionModes
+    ).toBe(initialAvailablePermissionModes);
+  });
+
+  it("keeps the composer settings reference for equal session setting reloads", async () => {
+    let activityListener:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
+    const subscribeEvents = vi.fn((_payload, listener) => {
+      activityListener = listener;
+      return vi.fn();
+    });
+    const getState = vi.fn(async () =>
+      agentSessionState("session-1", {
+        settings: {
+          model: "gpt-5",
+          reasoningEffort: "medium",
+          permissionModeId: "auto"
+        }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents,
+      getState,
+      getComposerOptions: vi.fn(async () => ({
+        provider: "codex",
+        modelConfig: {
+          configurable: true,
+          options: [{ value: "gpt-5", name: "GPT-5" }]
+        },
+        reasoningConfig: {
+          configurable: true,
+          options: [{ value: "medium", name: "Medium" }]
+        },
+        permissionConfig: {
+          configurable: true,
+          defaultValue: "auto",
+          modes: [{ id: "auto", label: "Auto", semantic: "auto" }]
+        }
+      }))
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.retryActivation();
+    });
+
+    await waitFor(() => {
+      expect(activityListener).toBeDefined();
+      expect(result.current.viewModel.composerSettings.isSettingsLoading).toBe(
+        false
+      );
+    });
+    const initialSettings = result.current.viewModel.composerSettings;
+
+    act(() => {
+      activityListener?.({
+        eventType: "state_patch",
+        data: {
+          agentSessionId: "session-1",
+          lifecycleStatus: "active",
+          occurredAtUnixMs: 40
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(getState).toHaveBeenCalledTimes(2);
+    });
+    expect(result.current.viewModel.composerSettings).toBe(initialSettings);
+  });
+
   it("loads a user project snapshot in preview mode without subscribing", async () => {
     const listUserProjects = vi.fn(async () => ({
       projects: [
@@ -3971,6 +4194,102 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.conversation).toBe(initialConversation);
     expect(result.current.viewModel.conversationDetail).toBe(
       initialConversationDetail
+    );
+  });
+
+  it("shares the projected source detail and keeps unchanged session references", async () => {
+    let activityListener:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
+    const subscribeEvents = vi.fn((_payload, listener) => {
+      activityListener = listener;
+      return vi.fn();
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({
+        timelineItems: [
+          timelineMessage({
+            agentSessionId: "session-1",
+            id: 1,
+            eventId: "user-1",
+            role: "user",
+            content: "hello",
+            turnId: "turn-1"
+          }),
+          timelineMessage({
+            agentSessionId: "session-1",
+            id: 100,
+            eventId: "assistant-1",
+            role: "assistant",
+            content: "answer",
+            turnId: "turn-1"
+          })
+        ]
+      })),
+      subscribeEvents
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.retryActivation();
+    });
+
+    await waitFor(() => {
+      expect(activityListener).toBeDefined();
+      expect(result.current.viewModel.conversationDetail?.turns).toHaveLength(
+        1
+      );
+      expect(result.current.viewModel.conversation?.sourceDetail).toBe(
+        result.current.viewModel.conversationDetail
+      );
+      expect(result.current.viewModel.conversation?.activity).toBe(
+        result.current.viewModel.conversationDetail?.activity
+      );
+    });
+    const initialSession = result.current.viewModel.conversationDetail?.session;
+    const initialActivity =
+      result.current.viewModel.conversationDetail?.activity;
+
+    act(() => {
+      activityListener?.(
+        streamMessage({
+          agentSessionId: "session-1",
+          id: 50,
+          eventId: "assistant-older-than-latest",
+          role: "assistant",
+          content: "Older answer",
+          turnId: "turn-2"
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationDetail?.turns).toHaveLength(
+        2
+      );
+    });
+    expect(result.current.viewModel.conversationDetail?.session).toBe(
+      initialSession
+    );
+    expect(result.current.viewModel.conversationDetail?.activity).toBe(
+      initialActivity
+    );
+    expect(result.current.viewModel.conversation?.sourceDetail).toBe(
+      result.current.viewModel.conversationDetail
+    );
+    expect(result.current.viewModel.conversation?.activity).toBe(
+      result.current.viewModel.conversationDetail?.activity
     );
   });
 

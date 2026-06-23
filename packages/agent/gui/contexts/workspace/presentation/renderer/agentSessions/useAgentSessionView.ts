@@ -18,19 +18,20 @@ export function useWatchAgentSession(input: {
   workspaceId: string;
   agentSessionId: string | null | undefined;
   enabled?: boolean;
-  onEvent?: (event: AgentHostAgentActivityStreamEvent) => void;
+  onEvents?: (events: readonly AgentHostAgentActivityStreamEvent[]) => void;
   onSubscribe?: () => void;
   onCleanup?: () => void;
 }) {
-  const onEventRef = useRef(input.onEvent);
+  const onEventsRef = useRef(input.onEvents);
   const onSubscribeRef = useRef(input.onSubscribe);
   const onCleanupRef = useRef(input.onCleanup);
+  const hasBatchEventListener = input.onEvents !== undefined;
 
   useEffect(() => {
-    onEventRef.current = input.onEvent;
+    onEventsRef.current = input.onEvents;
     onSubscribeRef.current = input.onSubscribe;
     onCleanupRef.current = input.onCleanup;
-  }, [input.onCleanup, input.onEvent, input.onSubscribe]);
+  }, [input.onCleanup, input.onEvents, input.onSubscribe]);
 
   useEffect(() => {
     const workspaceId = input.workspaceId.trim();
@@ -42,25 +43,37 @@ export function useWatchAgentSession(input: {
     const unsubscribe = watchAgentSession(
       { workspaceId, agentSessionId },
       {
-        onEvent: (event) => {
-          onEventRef.current?.(event);
-        }
+        ...(hasBatchEventListener
+          ? {
+              onEvents: (
+                events: readonly AgentHostAgentActivityStreamEvent[]
+              ) => {
+                onEventsRef.current?.(events);
+              }
+            }
+          : {})
       }
     );
     return () => {
       onCleanupRef.current?.();
       unsubscribe();
     };
-  }, [input.agentSessionId, input.enabled, input.workspaceId]);
+  }, [
+    hasBatchEventListener,
+    input.agentSessionId,
+    input.enabled,
+    input.workspaceId
+  ]);
 }
 
 export function useWatchAgentSessions(input: {
   workspaceId: string;
   agentSessionIds: readonly string[];
   enabled?: boolean;
-  onEvent?: (event: AgentHostAgentActivityStreamEvent) => void;
+  onEvents?: (events: readonly AgentHostAgentActivityStreamEvent[]) => void;
 }) {
-  const onEventRef = useRef(input.onEvent);
+  const onEventsRef = useRef(input.onEvents);
+  const hasBatchEventListener = input.onEvents !== undefined;
   const agentSessionIdsKey = JSON.stringify(
     [...new Set(input.agentSessionIds.map((id) => id.trim()))]
       .filter(Boolean)
@@ -68,8 +81,8 @@ export function useWatchAgentSessions(input: {
   );
 
   useEffect(() => {
-    onEventRef.current = input.onEvent;
-  }, [input.onEvent]);
+    onEventsRef.current = input.onEvents;
+  }, [input.onEvents]);
 
   useEffect(() => {
     const workspaceId = input.workspaceId.trim();
@@ -84,9 +97,15 @@ export function useWatchAgentSessions(input: {
       watchAgentSession(
         { workspaceId, agentSessionId },
         {
-          onEvent: (event) => {
-            onEventRef.current?.(event);
-          }
+          ...(hasBatchEventListener
+            ? {
+                onEvents: (
+                  events: readonly AgentHostAgentActivityStreamEvent[]
+                ) => {
+                  onEventsRef.current?.(events);
+                }
+              }
+            : {})
         }
       )
     );
@@ -95,7 +114,12 @@ export function useWatchAgentSessions(input: {
         unsubscribe();
       }
     };
-  }, [agentSessionIdsKey, input.enabled, input.workspaceId]);
+  }, [
+    agentSessionIdsKey,
+    hasBatchEventListener,
+    input.enabled,
+    input.workspaceId
+  ]);
 }
 
 export function useAgentSessionViewSnapshot(ref: AgentSessionViewRef) {

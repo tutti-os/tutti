@@ -330,6 +330,36 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
 
+  it("defers rendering conversation items for collapsed project sections", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversations: [
+          {
+            ...createConversationSummary("session-1"),
+            cwd: "/workspace/app",
+            project: {
+              id: "project-app",
+              path: "/workspace/app",
+              label: "App"
+            }
+          }
+        ]
+      }
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /App/u }));
+
+    expect(
+      screen.queryByTestId("agent-gui-conversation-item-session-1")
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: /App/u })).toBeInTheDocument();
+  });
+
   it("opens project folders through the workspace files action", async () => {
     const actions = createActions();
     const onLinkAction = vi.fn();

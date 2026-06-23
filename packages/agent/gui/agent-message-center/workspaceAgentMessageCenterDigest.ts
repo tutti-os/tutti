@@ -23,22 +23,29 @@ export interface WorkspaceAgentMessageCenterDigest {
   primary: WorkspaceAgentMessageCenterDigestPrimary;
 }
 
+export interface WorkspaceAgentMessageCenterDigestAgentSummary {
+  summary: string;
+  occurredAtUnixMs: number;
+}
+
 export interface BuildWorkspaceAgentMessageCenterDigestInput {
   fallbackTitle: string;
-  messages: readonly AgentActivityMessage[];
+  latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
   needsAttention: AgentActivityNeedsAttentionItem | null;
   pendingPrompt: AgentConversationPromptVM | null;
   status: WorkspaceAgentActivityStatus;
 }
 
-export function buildWorkspaceAgentMessageCenterDigest({
-  fallbackTitle,
-  messages,
-  needsAttention,
-  pendingPrompt,
-  status
-}: BuildWorkspaceAgentMessageCenterDigestInput): WorkspaceAgentMessageCenterDigest {
-  const latestAgentMessage = latestAgentMessageSummary(messages);
+export function buildWorkspaceAgentMessageCenterDigest(
+  input: BuildWorkspaceAgentMessageCenterDigestInput
+): WorkspaceAgentMessageCenterDigest {
+  const {
+    fallbackTitle,
+    latestAgentMessage,
+    needsAttention,
+    pendingPrompt,
+    status
+  } = input;
   const fallbackSummary = firstNonEmptyString(
     latestAgentMessage?.summary ?? null,
     needsAttention?.summary ?? null,
@@ -98,26 +105,13 @@ export function buildWorkspaceAgentMessageCenterDigest({
   };
 }
 
-function latestAgentMessageSummary(
-  messages: readonly AgentActivityMessage[]
-): { summary: string; occurredAtUnixMs: number } | null {
-  return messages.reduce<{ summary: string; occurredAtUnixMs: number } | null>(
-    (latest, message) => {
-      if (!isAgentMessageRole(message.role)) {
-        return latest;
-      }
-      const summary = meaningfulMessageSummary(message);
-      if (!summary) {
-        return latest;
-      }
-      const occurredAtUnixMs = messageTimeUnixMs(message);
-      if (!latest || occurredAtUnixMs >= latest.occurredAtUnixMs) {
-        return { summary, occurredAtUnixMs };
-      }
-      return latest;
-    },
-    null
-  );
+export function resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary(
+  message: AgentActivityMessage
+): string {
+  if (!isAgentMessageRole(message.role)) {
+    return "";
+  }
+  return meaningfulMessageSummary(message);
 }
 
 function pendingPromptSummary(
@@ -171,39 +165,56 @@ interface MessageSummaryCandidate {
 }
 
 function meaningfulMessageSummary(message: AgentActivityMessage): string {
-  for (const candidate of messageSummaryCandidates(message)) {
-    if (!isGenericToolLabelSummary(message, candidate)) {
-      return decorateMessageSummary(message, candidate);
+  const payload = recordValue(message.payload);
+  const isToolMessage = isToolLikeMessage(message, payload);
+  const candidates = messageSummaryCandidates(message, payload, isToolMessage);
+  const structuralLabelTokens = isToolMessage
+    ? structuralToolLabelTokens(message, payload)
+    : null;
+  const hasToolDigestSignal =
+    isToolMessage && candidates.some(isToolDigestSignalCandidate);
+
+  for (const candidate of candidates) {
+    if (
+      !isGenericToolLabelSummary(candidate, {
+        hasToolDigestSignal,
+        isToolMessage,
+        structuralLabelTokens
+      })
+    ) {
+      return decorateMessageSummary(message, candidate, isToolMessage);
     }
   }
   return "";
 }
 
 function messageSummaryCandidates(
-  message: AgentActivityMessage
+  message: AgentActivityMessage,
+  payload: Record<string, unknown>,
+  isToolMessage: boolean
 ): MessageSummaryCandidate[] {
   const explicitCandidates = [
-    summaryCandidate("payload.summary", message.payload.summary),
-    summaryCandidate("payload.displayPrompt", message.payload.displayPrompt),
-    summaryCandidate("payload.text", message.payload.text),
-    summaryCandidate("payload.content", message.payload.content),
-    summaryCandidate("payload.message", message.payload.message),
-    summaryCandidate("payload.body", message.payload.body)
+    summaryCandidate("payload.summary", payload.summary),
+    summaryCandidate("payload.displayPrompt", payload.displayPrompt),
+    summaryCandidate("payload.text", payload.text),
+    summaryCandidate("payload.content", payload.content),
+    summaryCandidate("payload.message", payload.message),
+    summaryCandidate("payload.body", payload.body)
   ];
-  if (!isToolLikeMessage(message)) {
+  if (!isToolMessage) {
     return [
       ...explicitCandidates,
-      summaryCandidate("payload.title", message.payload.title)
+      summaryCandidate("payload.title", payload.title)
     ].filter((candidate): candidate is MessageSummaryCandidate =>
       Boolean(candidate)
     );
   }
   return [
     ...explicitCandidates,
-    toolErrorSummaryCandidate(message.payload),
-    toolOutputSummaryCandidate(message.payload),
-    toolInputSummaryCandidate(message.payload),
-    summaryCandidate("payload.title", message.payload.title)
+    toolErrorSummaryCandidate(payload),
+    toolOutputSummaryCandidate(payload),
+    toolInputSummaryCandidate(payload),
+    summaryCandidate("payload.title", payload.title)
   ].filter((candidate): candidate is MessageSummaryCandidate =>
     Boolean(candidate)
   );
@@ -306,31 +317,36 @@ function toolInputSummaryCandidate(
 }
 
 function isGenericToolLabelSummary(
-  message: AgentActivityMessage,
-  candidate: MessageSummaryCandidate
+  candidate: MessageSummaryCandidate,
+  context: {
+    hasToolDigestSignal: boolean;
+    isToolMessage: boolean;
+    structuralLabelTokens: Set<string> | null;
+  }
 ): boolean {
-  if (!isToolLikeMessage(message)) {
+  if (!context.isToolMessage) {
     return false;
   }
   const normalizedSummary = normalizeToken(candidate.summary);
   if (!normalizedSummary) {
     return true;
   }
-  if (structuralToolLabelTokens(message).has(normalizedSummary)) {
+  if (context.structuralLabelTokens?.has(normalizedSummary)) {
     return true;
   }
   return (
     candidate.source === "payload.title" &&
-    !hasToolDigestSignal(message) &&
+    !context.hasToolDigestSignal &&
     looksLikeBareLabel(candidate.summary)
   );
 }
 
 function decorateMessageSummary(
   message: AgentActivityMessage,
-  candidate: MessageSummaryCandidate
+  candidate: MessageSummaryCandidate,
+  isToolMessage: boolean
 ): string {
-  if (!isToolLikeMessage(message)) {
+  if (!isToolMessage) {
     return candidate.summary;
   }
   const mcpTarget = extractAgentMcpToolTarget({ payload: message.payload });
@@ -343,8 +359,10 @@ function decorateMessageSummary(
   return `${mcpTarget.displayName}: ${candidate.summary}`;
 }
 
-function isToolLikeMessage(message: AgentActivityMessage): boolean {
-  const payload = recordValue(message.payload);
+function isToolLikeMessage(
+  message: AgentActivityMessage,
+  payload = recordValue(message.payload)
+): boolean {
   const normalizedKind = normalizeToken(message.kind);
   const normalizedType = [
     stringValue(payload.type),
@@ -367,8 +385,10 @@ function isToolLikeMessage(message: AgentActivityMessage): boolean {
   );
 }
 
-function structuralToolLabelTokens(message: AgentActivityMessage): Set<string> {
-  const payload = recordValue(message.payload);
+function structuralToolLabelTokens(
+  message: AgentActivityMessage,
+  payload = recordValue(message.payload)
+): Set<string> {
   const metadata = recordValue(payload.metadata);
   return new Set(
     [
@@ -395,12 +415,13 @@ function includesAny(value: string, needles: readonly string[]): boolean {
   return needles.some((needle) => value.includes(normalizeToken(needle)));
 }
 
-function hasToolDigestSignal(message: AgentActivityMessage): boolean {
-  const payload = recordValue(message.payload);
-  return Boolean(
-    toolErrorSummaryCandidate(payload) ||
-    toolOutputSummaryCandidate(payload) ||
-    toolInputSummaryCandidate(payload)
+function isToolDigestSignalCandidate(
+  candidate: MessageSummaryCandidate
+): boolean {
+  return (
+    candidate.source === "tool.error" ||
+    candidate.source === "tool.output" ||
+    candidate.source === "tool.input"
   );
 }
 
@@ -416,16 +437,6 @@ function looksLikeBareLabel(value: string): boolean {
 
 function normalizeToken(value: string): string {
   return value.replace(/[_\s.-]+/g, "").toLowerCase();
-}
-
-function messageTimeUnixMs(message: AgentActivityMessage): number {
-  return (
-    positiveNumber(message.occurredAtUnixMs) ??
-    positiveNumber(message.completedAtUnixMs) ??
-    positiveNumber(message.startedAtUnixMs) ??
-    positiveNumber(message.version) ??
-    0
-  );
 }
 
 function firstNonEmptyString(...values: Array<string | null>): string {

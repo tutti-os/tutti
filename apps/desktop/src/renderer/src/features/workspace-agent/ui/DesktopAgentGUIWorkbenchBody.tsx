@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   memo,
   useMemo,
   useRef,
@@ -719,23 +720,42 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     };
   }, [context.instanceId, previewMode]);
 
-  const handleOpenConversationWindow = useCallback(
-    (agentSessionId: string) => {
-      if (previewMode || !onOpenAgentConversationWindow) {
+  const openConversationWindowRef = useRef({
+    onOpenAgentConversationWindow,
+    previewMode,
+    provider,
+    workspaceId
+  });
+  useLayoutEffect(() => {
+    openConversationWindowRef.current = {
+      onOpenAgentConversationWindow,
+      previewMode,
+      provider,
+      workspaceId
+    };
+  }, [onOpenAgentConversationWindow, previewMode, provider, workspaceId]);
+  const canOpenConversationWindow =
+    !previewMode && Boolean(onOpenAgentConversationWindow);
+  const handleOpenConversationWindow = useMemo(() => {
+    if (!canOpenConversationWindow) {
+      return undefined;
+    }
+    return (agentSessionId: string) => {
+      const current = openConversationWindowRef.current;
+      if (current.previewMode || !current.onOpenAgentConversationWindow) {
         return;
       }
       const trimmedAgentSessionId = agentSessionId.trim();
       if (!trimmedAgentSessionId) {
         return;
       }
-      void onOpenAgentConversationWindow({
+      void current.onOpenAgentConversationWindow({
         agentSessionId: trimmedAgentSessionId,
-        provider,
-        workspaceId
+        provider: current.provider,
+        workspaceId: current.workspaceId
       });
-    },
-    [onOpenAgentConversationWindow, previewMode, provider, workspaceId]
-  );
+    };
+  }, [canOpenConversationWindow]);
 
   useEffect(() => {
     if (

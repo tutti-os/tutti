@@ -14,13 +14,11 @@ import {
   type WorkspaceAgentSessionDetailToolCall
 } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import { projectAgentSessionEventsToTimelineItems } from "../../../shared/agentConversation/projection/agentSessionEventProjection";
-import { projectWorkspaceAgentTimelineToConversationVM } from "../../../shared/agentConversation/projection/workspaceAgentTimelineProjection";
+import { projectAgentConversationVM } from "../../../shared/agentConversation/projection/agentConversationProjection";
 import type { AgentApprovalItemVM } from "../../../shared/agentConversation/contracts/agentApprovalItemVM";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentAskUserQuestionVM } from "../../../shared/agentConversation/contracts/agentAskUserQuestionItemVM";
-import type { AgentHostUserProject } from "../../../host/agentHostApi";
-import { resolveWorkspaceUserProjectDisplayLabel } from "@tutti-os/workspace-user-project/core";
 import {
   resolveAgentGUIConversationTitle,
   resolveAgentGUIExplicitConversationTitle,
@@ -38,14 +36,24 @@ import {
   type WorkspaceAgentActivityTimelineItem
 } from "../../../shared/workspaceAgentActivityTypes";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../../../shared/workspaceAgentSessionSortTime";
+import {
+  createAgentGUIConversationProjectResolver,
+  type AgentGUIConversationNoProjectPathResolver,
+  type AgentGUIConversationProjectResolutionOptions,
+  type AgentGUIConversationProjectResolver,
+  type AgentGUIConversationProjectSummary,
+  type AgentGUIConversationUserProject
+} from "./agentGuiConversationProjectResolver";
 
 export const AGENT_GUI_RUNTIME_SESSION_ORIGIN =
   WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN;
-const AGENT_GUI_CONVERSATION_PROJECT_SUMMARY_CACHE_LIMIT = 512;
-const agentGUIConversationProjectSummaryCache = new Map<
-  string,
-  AgentGUIConversationProjectSummary
->();
+export {
+  resolveAgentGUIConversationProject,
+  type AgentGUIConversationNoProjectPathResolver,
+  type AgentGUIConversationProjectResolutionOptions,
+  type AgentGUIConversationProjectSummary,
+  type AgentGUIConversationUserProject
+} from "./agentGuiConversationProjectResolver";
 
 export interface AgentGUIConversationSummary {
   id: string;
@@ -80,31 +88,8 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "syncState"
 >;
 
-export interface AgentGUIConversationProjectSummary {
-  id: string;
-  path: string;
-  label: string;
-  createdAtUnixMs?: number;
-  updatedAtUnixMs?: number;
-  lastUsedAtUnixMs?: number;
-}
-
-export type AgentGUIConversationUserProject = Pick<
-  AgentHostUserProject,
-  | "id"
-  | "path"
-  | "label"
-  | "createdAtUnixMs"
-  | "updatedAtUnixMs"
-  | "lastUsedAtUnixMs"
->;
-
-export type AgentGUIConversationNoProjectPathResolver = (input: {
-  path: string;
-}) => boolean;
-
-export interface AgentGUIConversationProjectResolutionOptions {
-  isNoProjectPath?: AgentGUIConversationNoProjectPathResolver;
+interface AgentGUIConversationProjectResolutionContext {
+  projectResolver: AgentGUIConversationProjectResolver;
 }
 
 export type AgentGUIConversationStatus =
@@ -184,6 +169,10 @@ export function buildAgentGUIConversationSummaries({
   const sessionsById = new Map(
     runtimeSnapshot.sessions.map((session) => [session.agentSessionId, session])
   );
+  const projectResolver = createAgentGUIConversationProjectResolver(
+    userProjects,
+    { isNoProjectPath }
+  );
   return buildWorkspaceAgentActivityListViewModel(runtimeSnapshot, {
     sessionMessagesById
   })
@@ -191,7 +180,7 @@ export function buildAgentGUIConversationSummaries({
       conversationSummaryFromActivity(
         activity,
         sessionsById.get(activity.sessionId),
-        { isNoProjectPath, userProjects }
+        { projectResolver }
       )
     )
     .filter(
@@ -299,6 +288,34 @@ export function buildAgentGUIConversationDetail({
   return detail;
 }
 
+export function buildAgentGUIConversationModels({
+  timelineItems,
+  conversation,
+  workspaceRoot = null,
+  avoidGroupingEdits = false
+}: {
+  timelineItems: readonly WorkspaceAgentActivityTimelineItem[];
+  conversation: AgentGUIConversationProjectionSource;
+  workspaceRoot?: string | null;
+  avoidGroupingEdits?: boolean;
+}): {
+  conversation: AgentConversationVM | null;
+  detail: WorkspaceAgentSessionDetailViewModel | null;
+} {
+  const detail = buildAgentGUIConversationDetail({
+    timelineItems,
+    conversation,
+    workspaceRoot
+  });
+  if (!detail) {
+    return { conversation: null, detail: null };
+  }
+  return {
+    conversation: projectAgentConversationVM(detail, { avoidGroupingEdits }),
+    detail
+  };
+}
+
 export function buildAgentGUIConversationVM({
   timelineItems,
   conversation,
@@ -310,37 +327,12 @@ export function buildAgentGUIConversationVM({
   workspaceRoot?: string | null;
   avoidGroupingEdits?: boolean;
 }): AgentConversationVM | null {
-  const session = timelineSessionFromItems(timelineItems, conversation);
-  const activity =
-    buildWorkspaceAgentActivityListViewModel(
-      {
-        presences: [],
-        sessions: [session]
-      },
-      {
-        sessionMessagesById: {
-          [session.agentSessionId]:
-            workspaceAgentMessagesFromTimelineItems(timelineItems)
-        }
-      }
-    ).activities[0] ?? null;
-  if (!activity) {
-    return null;
-  }
-  const resolvedActivity = activityWithExplicitConversationTitle(
-    activity,
-    conversation
-  );
-  const conversationVM = projectWorkspaceAgentTimelineToConversationVM(
-    {
-      activity: resolvedActivity,
-      session,
-      timelineItems: [...timelineItems],
-      workspaceRoot
-    },
-    { avoidGroupingEdits }
-  );
-  return conversationVM;
+  return buildAgentGUIConversationModels({
+    timelineItems,
+    conversation,
+    workspaceRoot,
+    avoidGroupingEdits
+  }).conversation;
 }
 
 export function mergeTimelineItemsByEventID(
@@ -358,6 +350,10 @@ export function conversationSummaryFromAgentSession(
   } = {}
 ): AgentGUIConversationSummary {
   const workspaceAgentSession = agentSessionToWorkspaceAgentSession(session);
+  const projectResolver = createAgentGUIConversationProjectResolver(
+    options.userProjects ?? [],
+    { isNoProjectPath: options.isNoProjectPath }
+  );
   const activity =
     buildWorkspaceAgentActivityListViewModel({
       presences: [],
@@ -365,8 +361,7 @@ export function conversationSummaryFromAgentSession(
     }).activities[0] ?? null;
   if (activity) {
     return conversationSummaryFromActivity(activity, workspaceAgentSession, {
-      isNoProjectPath: options.isNoProjectPath,
-      userProjects: options.userProjects ?? []
+      projectResolver
     });
   }
   const provider = resolveAgentGUIProviderIdentity({
@@ -385,11 +380,7 @@ export function conversationSummaryFromAgentSession(
     titleFallback,
     status: conversationStatusFromActivity("idle"),
     cwd: session.cwd?.trim() ?? "",
-    project: resolveAgentGUIConversationProject(
-      session.cwd,
-      options.userProjects ?? [],
-      { isNoProjectPath: options.isNoProjectPath }
-    ),
+    project: projectResolver.resolve(session.cwd),
     pinnedAtUnixMs: session.pinnedAtUnixMs ?? null,
     sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs(
       workspaceAgentSession
@@ -400,67 +391,18 @@ export function conversationSummaryFromAgentSession(
   };
 }
 
-export function resolveAgentGUIConversationProject(
-  cwd: string | null | undefined,
-  userProjects: readonly AgentGUIConversationUserProject[] = [],
-  options: AgentGUIConversationProjectResolutionOptions = {}
-): AgentGUIConversationProjectSummary | null {
-  const normalizedCwd = normalizeAgentGUIProjectPath(cwd);
-  if (!normalizedCwd) {
-    return null;
-  }
-  if (options.isNoProjectPath?.({ path: normalizedCwd })) {
-    return null;
-  }
-  let matchedProject: AgentGUIConversationUserProject | null = null;
-  let matchedPath = "";
-  for (const project of userProjects) {
-    const projectPath = normalizeAgentGUIProjectPath(project.path);
-    if (
-      !projectPath ||
-      (normalizedCwd !== projectPath &&
-        !normalizedCwd.startsWith(`${projectPath}/`))
-    ) {
-      continue;
-    }
-    if (projectPath.length <= matchedPath.length) {
-      continue;
-    }
-    matchedProject = project;
-    matchedPath = projectPath;
-  }
-  if (!matchedProject) {
-    return null;
-  }
-  const summary: AgentGUIConversationProjectSummary = {
-    id: matchedProject.id,
-    path: matchedProject.path,
-    label: resolveWorkspaceUserProjectDisplayLabel(matchedProject)
-  };
-  if (matchedProject.createdAtUnixMs !== undefined) {
-    summary.createdAtUnixMs = matchedProject.createdAtUnixMs;
-  }
-  if (matchedProject.updatedAtUnixMs !== undefined) {
-    summary.updatedAtUnixMs = matchedProject.updatedAtUnixMs;
-  }
-  if (matchedProject.lastUsedAtUnixMs !== undefined) {
-    summary.lastUsedAtUnixMs = matchedProject.lastUsedAtUnixMs;
-  }
-  return cachedAgentGUIConversationProjectSummary(summary);
-}
-
 export function applyAgentGUIConversationProjects(
   conversations: readonly AgentGUIConversationSummary[],
   userProjects: readonly AgentGUIConversationUserProject[] = [],
   options: AgentGUIConversationProjectResolutionOptions = {}
 ): AgentGUIConversationSummary[] {
   let changed = false;
+  const projectResolver = createAgentGUIConversationProjectResolver(
+    userProjects,
+    options
+  );
   const next = conversations.map((conversation) => {
-    const project = resolveAgentGUIConversationProject(
-      conversation.cwd,
-      userProjects,
-      options
-    );
+    const project = projectResolver.resolve(conversation.cwd);
     if (isSameAgentGUIConversationProject(conversation.project, project)) {
       return conversation;
     }
@@ -543,10 +485,7 @@ function isAgentGUIRuntimeSession(
 function conversationSummaryFromActivity(
   activity: WorkspaceAgentActivityCard,
   session: WorkspaceAgentActivitySession | undefined,
-  options: {
-    isNoProjectPath?: AgentGUIConversationNoProjectPathResolver;
-    userProjects?: readonly AgentGUIConversationUserProject[];
-  } = {}
+  options: AgentGUIConversationProjectResolutionContext
 ): AgentGUIConversationSummary {
   const status = conversationStatusFromActivity(activity.status);
   const provider = resolveAgentGUIProviderIdentity({
@@ -573,54 +512,12 @@ function conversationSummaryFromActivity(
     titleFallback,
     status,
     cwd: session?.cwd.trim() ?? "",
-    project: resolveAgentGUIConversationProject(
-      session?.cwd,
-      options.userProjects ?? [],
-      { isNoProjectPath: options.isNoProjectPath }
-    ),
+    project: options.projectResolver.resolve(session?.cwd),
     pinnedAtUnixMs: session?.pinnedAtUnixMs ?? null,
     sortTimeUnixMs: activity.sortTimeUnixMs,
     updatedAtUnixMs: session?.updatedAtUnixMs || activity.sortTimeUnixMs || 0,
     syncState: session?.syncState
   };
-}
-
-function normalizeAgentGUIProjectPath(path: string | null | undefined): string {
-  const normalized = path?.trim().replaceAll("\\", "/") ?? "";
-  if (!normalized) {
-    return "";
-  }
-  return normalized.replace(/\/+$/, "") || "/";
-}
-
-function cachedAgentGUIConversationProjectSummary(
-  summary: AgentGUIConversationProjectSummary
-): AgentGUIConversationProjectSummary {
-  const key = [
-    summary.id,
-    summary.path,
-    summary.label,
-    summary.createdAtUnixMs ?? "",
-    summary.updatedAtUnixMs ?? "",
-    summary.lastUsedAtUnixMs ?? ""
-  ].join("\u001f");
-  const cached = agentGUIConversationProjectSummaryCache.get(key);
-  if (cached) {
-    return cached;
-  }
-  if (
-    agentGUIConversationProjectSummaryCache.size >=
-    AGENT_GUI_CONVERSATION_PROJECT_SUMMARY_CACHE_LIMIT
-  ) {
-    const oldestKey = agentGUIConversationProjectSummaryCache
-      .keys()
-      .next().value;
-    if (oldestKey) {
-      agentGUIConversationProjectSummaryCache.delete(oldestKey);
-    }
-  }
-  agentGUIConversationProjectSummaryCache.set(key, summary);
-  return summary;
 }
 
 function isSameAgentGUIConversationProject(

@@ -583,6 +583,65 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     });
   });
 
+  it("uses the newest pending prompt without sorting message arrays", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "older-ask",
+            role: "assistant",
+            kind: "tool_call",
+            status: "waiting",
+            payload: {
+              toolName: "AskUserQuestion",
+              input: {
+                requestId: "older-request",
+                questions: [
+                  {
+                    id: "older",
+                    question: "Older question?",
+                    options: [],
+                    multiSelect: false
+                  }
+                ]
+              }
+            },
+            occurredAtUnixMs: 30
+          }),
+          message({
+            agentSessionId: "session-1",
+            messageId: "newer-approval",
+            role: "assistant",
+            kind: "tool_call",
+            status: "waiting_approval",
+            payload: {
+              callType: "approval",
+              toolName: "Approval",
+              input: {
+                requestId: "newer-request",
+                options: [
+                  {
+                    optionId: "allow_once",
+                    label: "Allow once",
+                    kind: "allow_once"
+                  }
+                ]
+              }
+            },
+            occurredAtUnixMs: 40
+          })
+        ],
+        sessions: [session({ agentSessionId: "session-1", status: "waiting" })]
+      })
+    );
+
+    expect(model.items[0]?.pendingPrompt).toMatchObject({
+      kind: "approval",
+      requestId: "newer-request"
+    });
+  });
+
   it("uses caller-provided labels for needs-attention fallback prompts", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({
@@ -702,6 +761,40 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     expect(model.items[0]?.digest.primary).toMatchObject({
       kind: "outcome",
       summary: "codex"
+    });
+  });
+
+  it("keeps digest summaries on the tool-output path", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "tool-1",
+            kind: "tool_call",
+            status: "completed",
+            payload: {
+              output: { summary: "53 tests passed" },
+              title: "Bash",
+              toolName: "Bash"
+            },
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessions: [
+          session({
+            agentSessionId: "session-1",
+            status: "completed"
+          })
+        ]
+      })
+    );
+
+    expect(model.items[0]?.lastAgentMessageSummary).toBe("Bash");
+    expect(model.items[0]?.digest.primary).toMatchObject({
+      kind: "outcome",
+      summary: "53 tests passed",
+      occurredAtUnixMs: 20
     });
   });
 

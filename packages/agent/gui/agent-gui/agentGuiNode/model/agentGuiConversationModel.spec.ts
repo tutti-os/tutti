@@ -13,6 +13,7 @@ import {
   buildAgentGUIConversationVM,
   buildAgentGUIConversationSummaries,
   conversationSummaryFromAgentSession,
+  applyAgentGUIConversationProjects,
   mergeAgentGUITimelineItems,
   resolveAgentGUIConversationTitleFromTimelineItems,
   buildAgentGUITimelineRows,
@@ -21,7 +22,8 @@ import {
   selectPendingApproval,
   selectPendingApprovalFromTimelineItems,
   selectPendingInteractivePromptFromTimelineItems,
-  resolveAgentGUIConversationProject
+  resolveAgentGUIConversationProject,
+  type AgentGUIConversationUserProject
 } from "./agentGuiConversationModel";
 
 describe("agentGuiConversationModel", () => {
@@ -69,6 +71,23 @@ describe("agentGuiConversationModel", () => {
         userProject("app", "/workspace/app", "App")
       ])
     ).toBeNull();
+  });
+
+  it("does not treat a root project path as a parent project", () => {
+    expect(
+      resolveAgentGUIConversationProject("/workspace/app", [
+        userProject("root", "/", "Root")
+      ])
+    ).toBeNull();
+    expect(
+      resolveAgentGUIConversationProject("/", [
+        userProject("root", "/", "Root")
+      ])
+    ).toEqual({
+      id: "root",
+      path: "/",
+      label: "Root"
+    });
   });
 
   it("returns null for a no-project cwd before matching parent projects", () => {
@@ -236,6 +255,82 @@ describe("agentGuiConversationModel", () => {
       sortTimeUnixMs: 1_000,
       updatedAtUnixMs: 9_000
     });
+  });
+
+  it("indexes user project paths once when building conversation batches", () => {
+    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+      presences: [],
+      sessions: [
+        workspaceAgentSession({
+          agentSessionId: "one",
+          cwd: "/workspace/app/packages/one",
+          provider: "codex",
+          title: "One",
+          updatedAtUnixMs: 10
+        }),
+        workspaceAgentSession({
+          agentSessionId: "two",
+          cwd: "/workspace/app/packages/two",
+          provider: "codex",
+          title: "Two",
+          updatedAtUnixMs: 20
+        })
+      ]
+    };
+    let archivePathReads = 0;
+    const archiveProject: AgentGUIConversationUserProject = {
+      id: "archive",
+      get path() {
+        archivePathReads += 1;
+        return "/workspace/archive";
+      },
+      label: "Archive"
+    };
+
+    expect(
+      buildAgentGUIConversationSummaries({
+        snapshot,
+        provider: "codex",
+        userProjects: [
+          userProject("app", "/workspace/app", "App"),
+          archiveProject
+        ]
+      }).map((conversation) => conversation.project)
+    ).toEqual([
+      expect.objectContaining({ id: "app" }),
+      expect.objectContaining({ id: "app" })
+    ]);
+    expect(archivePathReads).toBe(1);
+  });
+
+  it("applies conversation projects without mutating existing conversations", () => {
+    const conversation = {
+      id: "session-1",
+      provider: "codex" as const,
+      title: "Session",
+      status: "ready" as const,
+      cwd: "/workspace/app",
+      project: null,
+      updatedAtUnixMs: 1
+    };
+    const conversations = [conversation];
+
+    const applied = applyAgentGUIConversationProjects(conversations, [
+      userProject("app", "/workspace/app", "App")
+    ]);
+
+    expect(applied).toEqual([
+      expect.objectContaining({
+        id: "session-1",
+        project: {
+          id: "app",
+          path: "/workspace/app",
+          label: "App"
+        }
+      })
+    ]);
+    expect(conversation.project).toBeNull();
+    expect(applied[0]).not.toBe(conversation);
   });
 
   it("selects the stored active conversation when it still exists", () => {

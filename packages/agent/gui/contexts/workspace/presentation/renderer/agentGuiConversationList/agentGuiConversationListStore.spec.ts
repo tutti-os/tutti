@@ -6,7 +6,10 @@ import {
   setAgentActivityRuntimeForTests
 } from "../../../../../agentActivityRuntime";
 import { setAgentHostApiForTests } from "../../../../../agentActivityHost";
-import type { WorkspaceAgentActivitySnapshot } from "../../../../../shared/workspaceAgentActivityTypes";
+import type {
+  WorkspaceAgentActivityMessage,
+  WorkspaceAgentActivitySnapshot
+} from "../../../../../shared/workspaceAgentActivityTypes";
 import {
   ensureAgentGUIConversationListQuery,
   getAgentGUIConversationListQuerySnapshot,
@@ -18,10 +21,15 @@ import {
   type AgentGUIConversationListQuery
 } from "./agentGuiConversationListStore";
 import type { AgentGUIConversationSummary } from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationModel";
+import {
+  hydrateAgentSessionViewOverlayMessages,
+  resetAgentSessionViewStoreForTests
+} from "../agentSessions/agentSessionViewStore";
 
 describe("agentGuiConversationListStore", () => {
   afterEach(() => {
     resetAgentGUIConversationListStoreForTests();
+    resetAgentSessionViewStoreForTests();
     resetAgentActivityRuntimeForTests();
   });
 
@@ -143,6 +151,78 @@ describe("agentGuiConversationListStore", () => {
           (item) => item.id
         )
       ).toEqual(["a", "b"]);
+    });
+  });
+
+  it("updates only dirty conversation projections for overlay message refreshes", async () => {
+    const query: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    const snapshot: WorkspaceAgentActivitySnapshot = {
+      ...emptySnapshot(),
+      sessions: [
+        runtimeSession("session-a", 2_000, { title: "Codex" }),
+        runtimeSession("session-b", 1_000, { title: "Codex" })
+      ]
+    };
+    let loadCount = 0;
+    setAgentActivityRuntimeForTests({
+      getSnapshot: () => snapshot,
+      load: async () => {
+        loadCount += 1;
+        return snapshot;
+      },
+      subscribe: () => () => {}
+    } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
+
+    ensureAgentGUIConversationListQuery(query);
+    scheduleAgentGUIConversationListProjection(query, "projection-sync");
+    await waitFor(() => {
+      expect(
+        getAgentGUIConversationListQuerySnapshot(query)?.conversations.map(
+          (conversation) => conversation.id
+        )
+      ).toEqual(["session-a", "session-b"]);
+    });
+    const before =
+      getAgentGUIConversationListQuerySnapshot(query)?.conversations ?? [];
+    const previousSessionA = before[0]!;
+    const previousSessionB = before[1]!;
+
+    hydrateAgentSessionViewOverlayMessages([
+      {
+        workspaceId: "workspace-1",
+        agentSessionId: "session-b",
+        overlayMessages: [
+          message("session-b", {
+            messageId: "message-session-b-1",
+            payload: { text: "Investigate renderer jank" }
+          })
+        ]
+      }
+    ]);
+    scheduleAgentGUIConversationListProjection(
+      query,
+      "session-overlay-update",
+      { dirtySessionIds: ["session-b"] }
+    );
+
+    await waitFor(() => {
+      const conversations =
+        getAgentGUIConversationListQuerySnapshot(query)?.conversations ?? [];
+      expect(loadCount).toBe(1);
+      expect(conversations).toHaveLength(2);
+      expect(conversations[0]).toBe(previousSessionA);
+      expect(conversations[1]).not.toBe(previousSessionB);
+      expect(conversations[1]).toEqual(
+        expect.objectContaining({
+          id: "session-b",
+          title: "Investigate renderer jank"
+        })
+      );
     });
   });
 
@@ -361,7 +441,8 @@ function emptySnapshot(): WorkspaceAgentActivitySnapshot {
 
 function runtimeSession(
   agentSessionId: string,
-  updatedAtUnixMs: number
+  updatedAtUnixMs: number,
+  overrides: Partial<WorkspaceAgentActivitySnapshot["sessions"][number]> = {}
 ): WorkspaceAgentActivitySnapshot["sessions"][number] {
   return {
     workspaceId: "workspace-1",
@@ -371,7 +452,25 @@ function runtimeSession(
     title: agentSessionId,
     status: "ready",
     updatedAtUnixMs,
-    sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
+    ...overrides
+  };
+}
+
+function message(
+  agentSessionId: string,
+  overrides: Partial<WorkspaceAgentActivityMessage> = {}
+): WorkspaceAgentActivityMessage {
+  return {
+    agentSessionId,
+    messageId: overrides.messageId ?? `message-${agentSessionId}`,
+    version: overrides.version ?? 1,
+    role: overrides.role ?? "user",
+    kind: overrides.kind ?? "message",
+    payload: overrides.payload ?? { text: agentSessionId },
+    occurredAtUnixMs: overrides.occurredAtUnixMs ?? 1_000,
+    startedAtUnixMs: overrides.startedAtUnixMs ?? 1_000,
+    ...overrides
   };
 }
 

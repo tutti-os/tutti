@@ -42,8 +42,8 @@ export interface AgentSessionViewStoreSnapshot {
 }
 
 type AgentSessionViewStoreListener = () => void;
-type AgentSessionActivityStreamListener = (
-  event: AgentHostAgentActivityStreamEvent
+type AgentSessionActivityStreamBatchListener = (
+  events: readonly AgentHostAgentActivityStreamEvent[]
 ) => void;
 type AgentSessionMessageUpdateEvent = Extract<
   AgentHostAgentActivityStreamEvent,
@@ -70,7 +70,7 @@ type NormalizedAgentSessionActivityStreamPayload = Required<
 interface AgentSessionActivityStreamEntry {
   key: string;
   payload: NormalizedAgentSessionActivityStreamPayload;
-  listeners: Set<AgentSessionActivityStreamListener>;
+  batchListeners: Set<AgentSessionActivityStreamBatchListener>;
   lingerTimer: ReturnType<typeof setTimeout> | null;
   pendingMessageBatch: PendingAgentSessionMessageBatch | null;
   releaseRuntimeEvents: (() => void) | null;
@@ -148,7 +148,9 @@ export function useAgentSessionView(
 
 export function watchAgentSession(
   payload: AgentSessionActivityStreamPayload,
-  options: { onEvent?: AgentSessionActivityStreamListener } = {}
+  options: {
+    onEvents?: AgentSessionActivityStreamBatchListener;
+  } = {}
 ): () => void {
   const normalizedPayload = normalizeSubscribePayload(payload);
   if (!normalizedPayload) {
@@ -160,7 +162,7 @@ export function watchAgentSession(
     entry = {
       key,
       payload: normalizedPayload,
-      listeners: new Set<AgentSessionActivityStreamListener>(),
+      batchListeners: new Set<AgentSessionActivityStreamBatchListener>(),
       lingerTimer: null,
       pendingMessageBatch: null,
       releaseRuntimeEvents: null,
@@ -169,8 +171,8 @@ export function watchAgentSession(
     activityStreamEntries.set(key, entry);
   }
   clearEntryLingerTimer(entry);
-  if (options.onEvent) {
-    entry.listeners.add(options.onEvent);
+  if (options.onEvents) {
+    entry.batchListeners.add(options.onEvents);
   }
   ignoreEmptyViewUpdatesAfterTestReset = false;
   updateAgentSessionView(normalizedPayload, (current) => ({
@@ -185,8 +187,8 @@ export function watchAgentSession(
     if (!currentEntry) {
       return;
     }
-    if (options.onEvent) {
-      currentEntry.listeners.delete(options.onEvent);
+    if (options.onEvents) {
+      currentEntry.batchListeners.delete(options.onEvents);
     }
     updateAgentSessionView(normalizedPayload, (current) => ({
       ...current,
@@ -198,13 +200,6 @@ export function watchAgentSession(
     }
     scheduleEntryStop(currentEntry);
   };
-}
-
-export function watchAgentSessionActivityStream(
-  payload: AgentSessionActivityStreamPayload,
-  listener: AgentSessionActivityStreamListener
-): () => void {
-  return watchAgentSession(payload, { onEvent: listener });
 }
 
 export function mergeAgentSessionViewOverlayMessages(
@@ -407,7 +402,7 @@ export function getAgentSessionActivityStreamStateForTests(): Array<{
 }> {
   return [...activityStreamEntries.values()].map((entry) => ({
     key: entry.key,
-    listenerCount: entry.listeners.size,
+    listenerCount: entry.batchListeners.size,
     hasUpstreamSubscription:
       entry.releaseRuntimeEvents !== null || entry.retainPromise !== null,
     isLingering: entry.lingerTimer !== null,
@@ -629,11 +624,7 @@ function flushPendingMessageBatch(
     return;
   }
   recordAgentSessionStreamEvents(entry, batch.events);
-  for (const event of batch.events) {
-    for (const listener of entry.listeners) {
-      listener(event);
-    }
-  }
+  dispatchAgentSessionStreamEvents(entry, batch.events);
   reportMessageBatchDiagnostics(entry, batch);
 }
 
@@ -656,8 +647,18 @@ function dispatchAgentSessionStreamEvent(
   event: AgentHostAgentActivityStreamEvent
 ): void {
   recordAgentSessionStreamEvent(entry, event);
-  for (const listener of entry.listeners) {
-    listener(event);
+  dispatchAgentSessionStreamEvents(entry, [event]);
+}
+
+function dispatchAgentSessionStreamEvents(
+  entry: AgentSessionActivityStreamEntry,
+  events: readonly AgentHostAgentActivityStreamEvent[]
+): void {
+  if (events.length === 0) {
+    return;
+  }
+  for (const listener of entry.batchListeners) {
+    listener(events);
   }
 }
 

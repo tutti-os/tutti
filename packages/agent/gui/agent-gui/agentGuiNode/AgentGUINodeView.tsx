@@ -1148,8 +1148,6 @@ export function AgentGUINodeView({
   const conversationRailStoreState =
     useMemo<AgentGUIConversationRailStoreSnapshot>(
       () => ({
-        conversations: viewModel.conversations,
-        userProjects: viewModel.userProjects,
         activeConversationId: viewModel.activeConversationId,
         pendingDeleteConversationId:
           viewModel.pendingDeleteConversation?.id ?? null,
@@ -1197,12 +1195,10 @@ export function AgentGUINodeView({
         toggleConversationPinned,
         uiLanguage,
         viewModel.activeConversationId,
-        viewModel.conversations,
         viewModel.isDeletingConversation,
         viewModel.isDeletingProjectConversations,
         viewModel.isLoadingConversations,
         viewModel.pendingDeleteConversation?.id,
-        viewModel.userProjects,
         workspaceUserProjectI18n
       ]
     );
@@ -1239,8 +1235,10 @@ export function AgentGUINodeView({
           inert={conversationRailCollapsed ? true : undefined}
         >
           <AgentGUIConversationRailStorePane
+            conversations={viewModel.conversations}
             store={conversationRailStore}
             storeState={conversationRailStoreState}
+            userProjects={viewModel.userProjects}
           />
         </aside>
         <div
@@ -2090,6 +2088,14 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       workspaceAppIcons
     ]
   );
+  const emptyHeroComposerProps = useMemo<AgentComposerProps>(
+    () => ({
+      ...bottomDockComposerProps,
+      compactSupported: viewModel.compactSupported,
+      layoutMode: "hero"
+    }),
+    [bottomDockComposerProps, viewModel.compactSupported]
+  );
   const bottomDockStoreState = useMemo<AgentGUIBottomDockStoreSnapshot>(
     () => ({
       // The lifted prompt is rendered from props on the pane; the store still
@@ -2307,60 +2313,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             onAuthLogin={authLogin}
             onContinueInNewConversation={continueInNewConversation}
             chromeLabels={chromeLabels}
-            composerProps={{
-              workspaceId: viewModel.workspaceId,
-              workspacePath: viewModel.workspacePath,
-              currentUserId: viewModel.currentUserId,
-              provider: viewModel.data.provider,
-              slashStatus,
-              usage: viewModel.usage,
-              draftContent: viewModel.draftContent,
-              availableCommands: viewModel.availableCommands,
-              hasCompactableContext: viewModel.hasSentUserMessage,
-              compactSupported: viewModel.compactSupported,
-              availableSkills: viewModel.availableSkills,
-              disabled: composerDisabled,
-              disabledReason: composerDisabledReason,
-              submitDisabled,
-              composerSettings: viewModel.composerSettings,
-              queuedPrompts: viewModel.queuedPrompts,
-              drainingQueuedPromptId: viewModel.drainingQueuedPromptId,
-              workspaceAppIcons,
-              canQueueWhileBusy,
-              placeholder: viewModel.hasSentUserMessage
-                ? labels.followupPlaceholder
-                : labels.initialPlaceholder,
-              showStopButton,
-              previewMode,
-              activePrompt: composerActivePrompt,
-              activePromptKeyboardShortcutsEnabled: isActive,
-              composerFocusRequestSequence,
-              isActive,
-              promptImagesSupported: viewModel.promptImagesSupported,
-              promptTips: labels.promptTips,
-              showProjectSelector,
-              isInterrupting: viewModel.isInterrupting,
-              isSendingTurn: isComposerSending,
-              isSubmittingPrompt: viewModel.isRespondingApproval,
-              labels: composerLabels,
-              workspaceUserProjectI18n,
-              capabilityMenuState,
-              onDraftContentChange: updateDraftContent,
-              onProjectPathChange: updateSelectedProjectPath,
-              onSettingsChange: updateComposerSettings,
-              onSubmit: submitPrompt,
-              onPromptImagesUnsupported: showPromptImagesUnsupported,
-              onSendQueuedPromptNext: sendQueuedPromptNext,
-              onRemoveQueuedPrompt: removeQueuedPrompt,
-              onEditQueuedPrompt: editQueuedPrompt,
-              onInterruptCurrentTurn: handleInterruptCurrentTurn,
-              onSubmitInteractivePrompt: submitInteractivePrompt,
-              onCapabilitySettingsRequest,
-              onLinkAction: stableLinkAction,
-              onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
-              onRequestGitBranches: stableRequestGitBranches,
-              contextMentionProviders
-            }}
+            composerProps={emptyHeroComposerProps}
           />
         ) : (
           <AgentGUIConversationTimelinePane
@@ -2616,7 +2569,7 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
             labels={chromeLabels}
           />
         ) : null}
-        <AgentComposer {...composerProps} layoutMode="hero" />
+        <AgentComposer {...composerProps} />
       </div>
     </div>
   );
@@ -2927,7 +2880,15 @@ type OpenclawGatewayViewModel =
       error: null;
     };
 
-type AgentGUIConversationRailStoreSnapshot = AgentGUIConversationRailPaneProps;
+type AgentGUIConversationRailDataProps = Pick<
+  AgentGUIConversationRailPaneProps,
+  "conversations" | "userProjects"
+>;
+
+type AgentGUIConversationRailStoreSnapshot = Omit<
+  AgentGUIConversationRailPaneProps,
+  keyof AgentGUIConversationRailDataProps
+>;
 
 type AgentGUIConversationRailStore = AgentGUIConversationRailStoreSnapshot;
 
@@ -2952,13 +2913,6 @@ function agentGUIConversationRailStoreSnapshotsEqual(
   next: AgentGUIConversationRailStoreSnapshot
 ): boolean {
   return (
-    (current.conversations === next.conversations ||
-      conversationSummaryListsRenderEqual(
-        current.conversations,
-        next.conversations
-      )) &&
-    (current.userProjects === next.userProjects ||
-      userProjectListsRenderEqual(current.userProjects, next.userProjects)) &&
     current.activeConversationId === next.activeConversationId &&
     current.pendingDeleteConversationId === next.pendingDeleteConversationId &&
     current.isLoadingConversations === next.isLoadingConversations &&
@@ -2988,58 +2942,29 @@ function agentGUIConversationRailStoreSnapshotsEqual(
   );
 }
 
-function conversationSummaryListsRenderEqual(
-  left: AgentGUINodeViewModel["conversations"],
-  right: AgentGUINodeViewModel["conversations"]
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((conversation, index) =>
-      conversationSummariesRenderEqual(conversation, right[index]!)
-    )
-  );
-}
-
-function userProjectListsRenderEqual(
-  left: AgentGUINodeViewModel["userProjects"],
-  right: AgentGUINodeViewModel["userProjects"]
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((project, index) =>
-      userProjectsRenderEqual(project, right[index]!)
-    )
-  );
-}
-
-function userProjectsRenderEqual(
-  left: AgentGUINodeViewModel["userProjects"][number],
-  right: AgentGUINodeViewModel["userProjects"][number]
-): boolean {
-  return (
-    left === right ||
-    (left.id === right.id &&
-      left.path === right.path &&
-      left.label === right.label &&
-      left.createdAtUnixMs === right.createdAtUnixMs &&
-      left.updatedAtUnixMs === right.updatedAtUnixMs &&
-      left.lastUsedAtUnixMs === right.lastUsedAtUnixMs)
-  );
-}
-
 interface AgentGUIConversationRailStorePaneProps {
+  conversations: AgentGUINodeViewModel["conversations"];
   store: AgentGUIConversationRailStore;
   storeState: AgentGUIConversationRailStoreSnapshot;
+  userProjects: AgentGUINodeViewModel["userProjects"];
 }
 
 const AgentGUIConversationRailStorePane = memo(
   function AgentGUIConversationRailStorePane({
+    conversations,
     store,
-    storeState: _storeState
+    storeState: _storeState,
+    userProjects
   }: AgentGUIConversationRailStorePaneProps): React.JSX.Element {
     "use memo";
     const state = useSnapshot(store) as AgentGUIConversationRailStoreSnapshot;
-    return <AgentGUIConversationRailPane {...state} />;
+    return (
+      <AgentGUIConversationRailPane
+        {...state}
+        conversations={conversations}
+        userProjects={userProjects}
+      />
+    );
   }
 );
 
@@ -3099,10 +3024,17 @@ function stabilizeConversationSectionItems(
   next: AgentGUINodeViewModel["conversations"]
 ): AgentGUINodeViewModel["conversations"] {
   if (previous.length !== next.length) {
+    const previousById = new Map<
+      string,
+      AgentGUINodeViewModel["conversations"][number]
+    >();
+    for (const item of previous) {
+      if (!previousById.has(item.id)) {
+        previousById.set(item.id, item);
+      }
+    }
     return next.map((item) => {
-      const previousItem = previous.find(
-        (candidate) => candidate.id === item.id
-      );
+      const previousItem = previousById.get(item.id);
       return previousItem &&
         conversationSummariesRenderEqual(previousItem, item)
         ? previousItem
@@ -3140,8 +3072,29 @@ function conversationSummariesRenderEqual(
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
     left.hasUnreadCompletion === right.hasUnreadCompletion &&
     conversationProjectsRenderEqual(left.project, right.project) &&
-    JSON.stringify(left.syncState ?? null) ===
-      JSON.stringify(right.syncState ?? null)
+    conversationSyncStatesRenderEqual(left.syncState, right.syncState)
+  );
+}
+
+function conversationSyncStatesRenderEqual(
+  left: AgentGUINodeViewModel["conversations"][number]["syncState"],
+  right: AgentGUINodeViewModel["conversations"][number]["syncState"]
+): boolean {
+  return (
+    left === right ||
+    (!left || !right
+      ? (left ?? null) === (right ?? null)
+      : left.workspaceId === right.workspaceId &&
+        left.agentSessionId === right.agentSessionId &&
+        left.status === right.status &&
+        left.pendingTimelineItemCount === right.pendingTimelineItemCount &&
+        left.pendingStatePatchCount === right.pendingStatePatchCount &&
+        left.attemptCount === right.attemptCount &&
+        left.failedReportCount === right.failedReportCount &&
+        left.lastError === right.lastError &&
+        left.lastAttemptAtUnixMs === right.lastAttemptAtUnixMs &&
+        left.lastSyncedAtUnixMs === right.lastSyncedAtUnixMs &&
+        left.updatedAtUnixMs === right.updatedAtUnixMs)
   );
 }
 
@@ -3546,10 +3499,16 @@ const AgentGUIConversationRailSection = memo(
     const [visibleItemLimit, setVisibleItemLimit] = useState(
       AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
     );
-    const visibleItemCount = Math.min(visibleItemLimit, section.items.length);
-    const visibleItems = section.items.slice(0, visibleItemCount);
-    const canShowMore = visibleItemCount < section.items.length;
+    const visibleItemCount = isSectionCollapsed
+      ? 0
+      : Math.min(visibleItemLimit, section.items.length);
+    const visibleItems = isSectionCollapsed
+      ? []
+      : section.items.slice(0, visibleItemCount);
+    const canShowMore =
+      !isSectionCollapsed && visibleItemCount < section.items.length;
     const canShowLess =
+      !isSectionCollapsed &&
       visibleItemCount > AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE;
     const showMoreConversations = useCallback(() => {
       setVisibleItemLimit((current) =>
@@ -3693,7 +3652,7 @@ const AgentGUIConversationRailSection = memo(
           aria-hidden={isSectionCollapsed ? "true" : undefined}
         >
           <div className={styles.conversationSectionItemsInner}>
-            {section.items.length === 0 ? (
+            {!isSectionCollapsed && section.items.length === 0 ? (
               <div className={styles.conversationSectionEmpty}>
                 {labels.emptyProjectConversations}
               </div>

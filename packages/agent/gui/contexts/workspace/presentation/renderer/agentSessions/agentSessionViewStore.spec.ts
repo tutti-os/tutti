@@ -30,7 +30,7 @@ describe("agentSessionViewStore", () => {
         return () => {};
       }
     } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
-    const receivedEvents: AgentHostAgentActivityStreamEvent[] = [];
+    const receivedEventBatches: AgentHostAgentActivityStreamEvent[][] = [];
 
     const release = watchAgentSession(
       {
@@ -38,7 +38,7 @@ describe("agentSessionViewStore", () => {
         agentSessionId: "agent-session-1"
       },
       {
-        onEvent: (event) => receivedEvents.push(event)
+        onEvents: (events) => receivedEventBatches.push([...events])
       }
     );
 
@@ -57,11 +57,11 @@ describe("agentSessionViewStore", () => {
       })
     );
 
-    expect(receivedEvents).toEqual([]);
+    expect(receivedEventBatches).toEqual([]);
     vi.advanceTimersByTime(33);
 
-    expect(receivedEvents).toHaveLength(1);
-    const event = receivedEvents[0];
+    expect(receivedEventBatches).toHaveLength(1);
+    const event = receivedEventBatches[0]?.[0];
     expect(event?.eventType).toBe("message_update");
     if (event?.eventType !== "message_update") {
       throw new Error("Expected a message update event");
@@ -86,6 +86,59 @@ describe("agentSessionViewStore", () => {
     release();
   });
 
+  it("delivers each message update flush once to batch watchers", () => {
+    vi.useFakeTimers();
+    let streamListener: ((event: unknown) => void) | undefined;
+    setAgentActivityRuntimeForTests({
+      retainSessionEvents: () => () => {},
+      subscribeSessionEvents: (_workspaceId, listener) => {
+        streamListener = listener;
+        return () => {};
+      }
+    } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
+    const receivedEventBatches: AgentHostAgentActivityStreamEvent[][] = [];
+
+    const release = watchAgentSession(
+      {
+        workspaceId: "workspace-1",
+        agentSessionId: "agent-session-1"
+      },
+      {
+        onEvents: (events) => receivedEventBatches.push([...events])
+      }
+    );
+
+    streamListener?.(
+      messageUpdateEvent({
+        messageId: "message-1",
+        occurredAtUnixMs: 1717200001000,
+        text: "Hello"
+      })
+    );
+    streamListener?.(
+      messageUpdateEvent({
+        messageId: "message-2",
+        occurredAtUnixMs: 1717200001010,
+        text: "there"
+      })
+    );
+
+    vi.advanceTimersByTime(33);
+
+    expect(receivedEventBatches).toHaveLength(1);
+    expect(receivedEventBatches[0]?.map((event) => event.eventType)).toEqual([
+      "message_update",
+      "message_update"
+    ]);
+    expect(
+      receivedEventBatches[0]?.map((event) =>
+        event.eventType === "message_update" ? event.data.messageId : null
+      )
+    ).toEqual(["message-1", "message-2"]);
+
+    release();
+  });
+
   it("flushes pending message updates before state patches", () => {
     vi.useFakeTimers();
     let streamListener: ((event: unknown) => void) | undefined;
@@ -96,7 +149,7 @@ describe("agentSessionViewStore", () => {
         return () => {};
       }
     } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
-    const receivedEvents: AgentHostAgentActivityStreamEvent[] = [];
+    const receivedEventBatches: AgentHostAgentActivityStreamEvent[][] = [];
 
     const release = watchAgentSession(
       {
@@ -104,7 +157,7 @@ describe("agentSessionViewStore", () => {
         agentSessionId: "agent-session-1"
       },
       {
-        onEvent: (event) => receivedEvents.push(event)
+        onEvents: (events) => receivedEventBatches.push([...events])
       }
     );
 
@@ -125,10 +178,11 @@ describe("agentSessionViewStore", () => {
       }
     });
 
-    expect(receivedEvents.map((event) => event.eventType)).toEqual([
-      "message_update",
-      "state_patch"
-    ]);
+    expect(
+      receivedEventBatches.map((events) =>
+        events.map((event) => event.eventType)
+      )
+    ).toEqual([["message_update"], ["state_patch"]]);
 
     release();
   });
