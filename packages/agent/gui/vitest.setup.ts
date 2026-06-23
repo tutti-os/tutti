@@ -1,7 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { createElement, isValidElement, cloneElement, useState } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type {
+  MouseEvent as ReactMouseEvent,
+  ReactElement,
+  ReactNode
+} from "react";
 import { afterEach, beforeEach, vi } from "vitest";
 import {
   resetAgentHostApiForTests,
@@ -96,11 +100,26 @@ vi.mock("react-medium-image-zoom", () => ({
     const [isOpen, setIsOpen] = useState(false);
     const labelZoom = a11yNameButtonZoom ?? "Zoom image";
     const labelUnzoom = a11yNameButtonUnzoom ?? "Minimize image";
-    const modalImage = isValidElement(children)
-      ? cloneElement(children as ReactElement<Record<string, unknown>>, {
-          "data-rmiz-modal-img": true
-        })
+    const childElement = isValidElement(children)
+      ? (children as ReactElement<{
+          onClick?: (event: ReactMouseEvent) => void;
+        }>)
       : null;
+    const visibleChildren =
+      childElement !== null
+        ? cloneElement(childElement, {
+            onClick: (event: ReactMouseEvent) => {
+              childElement.props.onClick?.(event);
+              setIsOpen(true);
+            }
+          })
+        : children;
+    const modalImage =
+      childElement !== null
+        ? cloneElement(childElement as ReactElement<Record<string, unknown>>, {
+            "data-rmiz-modal-img": true
+          })
+        : null;
     const buttonUnzoom = createElement(
       "button",
       {
@@ -114,7 +133,7 @@ vi.mock("react-medium-image-zoom", () => ({
     return createElement(
       "span",
       { "data-rmiz": "" },
-      createElement("span", { "data-rmiz-content": "found" }, children),
+      createElement("span", { "data-rmiz-content": "found" }, visibleChildren),
       createElement(
         "span",
         { "data-rmiz-ghost": "" },

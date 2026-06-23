@@ -4,7 +4,7 @@ import {
   plainTextToAgentRichTextDoc,
   plainTextToAgentRichTextInlineContent
 } from "./agentRichTextDocument";
-import { buildAgentWorkspaceReferenceMentionHref } from "./agentFileMentionExtension";
+import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 
 describe("agentRichTextDocument", () => {
   it("round-trips plain text and newlines", () => {
@@ -108,11 +108,18 @@ describe("agentRichTextDocument", () => {
   it("hydrates a workspace-reference mention with its handle + file count", () => {
     // 回归:对话流里的用户气泡用 AgentRichTextReadonly 渲染,reference chip 的
     // 「N 个文件」角标取自 href 的 count 参数,句柄取自 source/id/groupId。
-    const href = buildAgentWorkspaceReferenceMentionHref(
-      "ws1",
-      { source: "task", id: "topic-1", groupId: "issue-1" },
-      { iconUrl: "https://x.png", fileCount: 3 }
-    );
+    const href = createRichTextMentionHref({
+      providerId: "workspace-reference",
+      entityId: "topic-1",
+      label: "我的小项目",
+      scope: {
+        workspaceId: "ws1",
+        source: "task",
+        groupId: "issue-1",
+        icon: "https://x.png",
+        count: "3"
+      }
+    });
     const doc = plainTextToAgentRichTextDoc(`[@我的小项目](${href})`);
     const mention = doc.content?.[0]?.content?.[0];
     expect(mention?.attrs?.kind).toBe("workspace-reference");

@@ -45,6 +45,11 @@ export interface RichTextMentionPresentation {
   statusLabel?: string;
   statusPulse?: string;
   userAvatarPlaceholderUrl?: string;
+  /**
+   * Optional display hint for surfaces that expose a "show references" affordance
+   * on workspace-app mentions. Presentation is not serialized into markdown.
+   */
+  referencesListSupported?: string;
 }
 
 export interface RichTextMentionInsert {

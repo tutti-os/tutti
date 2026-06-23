@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -39,10 +41,12 @@ func (r Resolver) Env(overrides []string) []string {
 	pathGroups := [][]string{}
 	if overridePath, ok := envValueFrom(overrides, pathKey); ok {
 		pathGroups = append(pathGroups, filepath.SplitList(overridePath))
-		pathGroups = append(pathGroups, r.knownExecutableDirs(env))
+		pathGroups = append(pathGroups, r.preferredExecutableDirs(env))
+		pathGroups = append(pathGroups, r.fallbackExecutableDirs(env))
 	} else {
-		pathGroups = append(pathGroups, r.knownExecutableDirs(env))
+		pathGroups = append(pathGroups, r.preferredExecutableDirs(env))
 		pathGroups = append(pathGroups, filepath.SplitList(envValue(baseEnv, pathKey)))
+		pathGroups = append(pathGroups, r.fallbackExecutableDirs(env))
 	}
 	pathDirs := mergePathDirs(pathGroups...)
 	if len(pathDirs) > 0 {
@@ -104,31 +108,35 @@ func (r Resolver) UserBinInstallDirs(overrides []string) []string {
 	return mergePathDirs(candidates...)
 }
 
-func (r Resolver) knownExecutableDirs(env []string) []string {
+func (r Resolver) preferredExecutableDirs(env []string) []string {
+	dirs := []string{}
+	if nPrefix := strings.TrimSpace(envValue(env, "N_PREFIX")); nPrefix != "" {
+		dirs = append([]string{filepath.Join(nPrefix, "bin")}, dirs...)
+	}
+	if pnpmHome := strings.TrimSpace(envValue(env, "PNPM_HOME")); pnpmHome != "" {
+		dirs = append([]string{pnpmHome}, dirs...)
+	}
+	if voltaHome := strings.TrimSpace(envValue(env, "VOLTA_HOME")); voltaHome != "" {
+		dirs = append([]string{filepath.Join(voltaHome, "bin")}, dirs...)
+	}
+	if asdfDataDir := strings.TrimSpace(envValue(env, "ASDF_DATA_DIR")); asdfDataDir != "" {
+		dirs = append([]string{filepath.Join(asdfDataDir, "shims")}, dirs...)
+	}
+	if miseDataDir := strings.TrimSpace(envValue(env, "MISE_DATA_DIR")); miseDataDir != "" {
+		dirs = append([]string{filepath.Join(miseDataDir, "shims")}, dirs...)
+	}
+	if fnmDir := strings.TrimSpace(envValue(env, "FNM_DIR")); fnmDir != "" {
+		dirs = append(fnmNodeBinDirs(fnmDir), dirs...)
+	}
+	return dirs
+}
+
+func (r Resolver) fallbackExecutableDirs(env []string) []string {
 	dirs := []string{
 		"/opt/homebrew/bin",
 		"/usr/local/bin",
 		"/usr/bin",
 		"/bin",
-	}
-	explicitDirs := []string{}
-	if nPrefix := strings.TrimSpace(envValue(env, "N_PREFIX")); nPrefix != "" {
-		explicitDirs = append([]string{filepath.Join(nPrefix, "bin")}, explicitDirs...)
-	}
-	if pnpmHome := strings.TrimSpace(envValue(env, "PNPM_HOME")); pnpmHome != "" {
-		explicitDirs = append([]string{pnpmHome}, explicitDirs...)
-	}
-	if voltaHome := strings.TrimSpace(envValue(env, "VOLTA_HOME")); voltaHome != "" {
-		explicitDirs = append([]string{filepath.Join(voltaHome, "bin")}, explicitDirs...)
-	}
-	if asdfDataDir := strings.TrimSpace(envValue(env, "ASDF_DATA_DIR")); asdfDataDir != "" {
-		explicitDirs = append([]string{filepath.Join(asdfDataDir, "shims")}, explicitDirs...)
-	}
-	if miseDataDir := strings.TrimSpace(envValue(env, "MISE_DATA_DIR")); miseDataDir != "" {
-		explicitDirs = append([]string{filepath.Join(miseDataDir, "shims")}, explicitDirs...)
-	}
-	if fnmDir := strings.TrimSpace(envValue(env, "FNM_DIR")); fnmDir != "" {
-		explicitDirs = append(fnmNodeBinDirs(fnmDir), explicitDirs...)
 	}
 	homeDirs := []string{}
 	home, err := r.homeDir()
@@ -148,7 +156,7 @@ func (r Resolver) knownExecutableDirs(env []string) []string {
 		homeDirs = append(homeDirs, nvmNodeBinDirs(home)...)
 		homeDirs = append(homeDirs, fnmNodeBinDirs(filepath.Join(home, ".fnm"))...)
 	}
-	return append(append(explicitDirs, homeDirs...), dirs...)
+	return append(homeDirs, dirs...)
 }
 
 func (r Resolver) environ() []string {
@@ -190,7 +198,48 @@ func nvmNodeBinDirs(home string) []string {
 	if err != nil {
 		return nil
 	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		return compareNVMNodeBinDirs(matches[i], matches[j]) > 0
+	})
 	return matches
+}
+
+func compareNVMNodeBinDirs(left string, right string) int {
+	leftVersion := nvmNodeVersion(left)
+	rightVersion := nvmNodeVersion(right)
+	for i := 0; i < max(len(leftVersion), len(rightVersion)); i++ {
+		leftPart := versionPart(leftVersion, i)
+		rightPart := versionPart(rightVersion, i)
+		if leftPart > rightPart {
+			return 1
+		}
+		if leftPart < rightPart {
+			return -1
+		}
+	}
+	return strings.Compare(left, right)
+}
+
+func nvmNodeVersion(binDir string) []int {
+	versionDir := filepath.Base(filepath.Dir(binDir))
+	version := strings.TrimPrefix(versionDir, "v")
+	parts := strings.Split(version, ".")
+	result := make([]int, 0, len(parts))
+	for _, part := range parts {
+		value, err := strconv.Atoi(part)
+		if err != nil {
+			return nil
+		}
+		result = append(result, value)
+	}
+	return result
+}
+
+func versionPart(version []int, index int) int {
+	if index < 0 || index >= len(version) {
+		return 0
+	}
+	return version[index]
 }
 
 func fnmNodeBinDirs(fnmDir string) []string {

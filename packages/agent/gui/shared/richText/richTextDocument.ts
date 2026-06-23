@@ -1,3 +1,5 @@
+import { isRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
+
 export type WorkspaceFileLinkRef = {
   name: string;
   path: string;
@@ -14,7 +16,6 @@ export type WorkspaceFileLinkInput = {
 const MARKDOWN_LINK_PATTERN = /\[([^\]]+)\]\(([^)\s]+)\)/g;
 const MARKDOWN_IMAGE_PATTERN = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
 const EXTERNAL_LINK_PREFIX = /^(?:[a-z]+:)?\/\//i;
-const MENTION_LINK_PREFIX = /^mention:\/\//i;
 
 type LegacyJSONContentNode = {
   type?: string;
@@ -113,7 +114,7 @@ function isWorkspaceReferenceHref(href: string): boolean {
   const trimmed = href.trim();
   if (
     !trimmed ||
-    MENTION_LINK_PREFIX.test(trimmed) ||
+    isRichTextMentionHref(trimmed) ||
     EXTERNAL_LINK_PREFIX.test(trimmed)
   ) {
     return false;

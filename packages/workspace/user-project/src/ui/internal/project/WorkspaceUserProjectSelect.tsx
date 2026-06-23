@@ -26,6 +26,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   cn
 } from "@tutti-os/ui-system";
@@ -584,12 +585,9 @@ export function WorkspaceUserProjectSelect({
               );
             })}
             {visibleProjects.length > 0 ? (
-              <div
-                aria-hidden="true"
-                className="mx-2 my-1 h-0 shrink-0"
+              <SelectSeparator
+                className="my-1 bg-[var(--line-2)]"
                 data-workspace-user-project-action-separator="true"
-                role="separator"
-                style={{ borderTop: "1px solid var(--line-2)" }}
               />
             ) : null}
             {effectiveApi?.selectDirectory ? (

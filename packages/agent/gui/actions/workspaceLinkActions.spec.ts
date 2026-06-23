@@ -213,4 +213,13 @@ describe("resolveWorkspaceMentionLinkAction", () => {
       })
     ).toBeNull();
   });
+
+  it("rejects reserved mention scope keys", () => {
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://agent-session/session-1?workspaceId=workspace-1&provider=codex",
+        source: "agent-markdown"
+      })
+    ).toBeNull();
+  });
 });

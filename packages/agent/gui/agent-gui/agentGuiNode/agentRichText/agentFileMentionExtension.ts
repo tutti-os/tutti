@@ -4,6 +4,12 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import Suggestion, { exitSuggestion } from "@tiptap/suggestion";
 import { isRichTextTriggerPrefixBoundary } from "@tutti-os/ui-rich-text/editor";
 import {
+  createRichTextLinkMarkdown,
+  createRichTextMentionMarkdown,
+  isRichTextMentionHref,
+  parseRichTextMentionHref
+} from "@tutti-os/ui-rich-text/core";
+import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
@@ -23,7 +29,6 @@ export type AgentMentionKind =
   | "workspace-app-factory"
   | "workspace-issue";
 
-/** workspace-reference 句柄的来源(与 daemon `reference list --source` 一致)。 */
 export type AgentMentionReferenceSource = "app" | "task";
 
 export interface AgentMentionFileItem {
@@ -430,94 +435,6 @@ export function createAgentFileMentionExtension(
   });
 }
 
-export function buildAgentSessionMentionHref(
-  workspaceId: string,
-  agentSessionId: string,
-  _provider?: string | null
-): string {
-  return buildAgentGenericMentionHref("agent-session", agentSessionId, {
-    workspaceId
-  });
-}
-
-export function buildAgentWorkspaceIssueMentionHref(
-  workspaceId: string,
-  issueId: string,
-  input?: {
-    mode?: "breakdown" | "execute";
-    outputDir?: string | null;
-    runId?: string | null;
-    taskId?: string | null;
-    topicId?: string | null;
-  }
-): string {
-  return buildAgentGenericMentionHref("workspace-issue", issueId, {
-    workspaceId,
-    topicId: input?.topicId ?? undefined
-  });
-}
-
-export function buildAgentWorkspaceAppMentionHref(
-  workspaceId: string,
-  appId: string
-): string {
-  return buildAgentGenericMentionHref("workspace-app", appId, {
-    workspaceId
-  });
-}
-
-export function buildAgentWorkspaceReferenceMentionHref(
-  workspaceId: string,
-  handle: {
-    source: AgentMentionReferenceSource;
-    id: string;
-    groupId?: string | null;
-  },
-  options?: { iconUrl?: string | null; fileCount?: number }
-): string {
-  // 只编可被 daemon/CLI 解析的领域句柄(source + id + groupId);不再夹带文件路径。
-  // icon / count 仅供展示侧渲染(对话流图标、chip 文件数),不影响 agent 解析。
-  return buildAgentGenericMentionHref("workspace-reference", handle.id, {
-    workspaceId,
-    source: handle.source,
-    groupId: handle.groupId?.trim() || undefined,
-    icon: options?.iconUrl?.trim() || undefined,
-    count:
-      options?.fileCount != null && options.fileCount > 0
-        ? String(options.fileCount)
-        : undefined
-  });
-}
-
-export function buildAgentWorkspaceAppFactoryMentionHref(
-  workspaceId?: string | null,
-  jobId?: string | null,
-  input?: { action?: string | null; contextPath?: string | null }
-): string {
-  const params = new URLSearchParams();
-  const trimmedWorkspaceId = workspaceId?.trim() ?? "";
-  const trimmedJobId = jobId?.trim() ?? "";
-  const action = input?.action?.trim() ?? "";
-  const contextPath = input?.contextPath?.trim() ?? "";
-  if (trimmedWorkspaceId) {
-    params.set("workspaceId", trimmedWorkspaceId);
-  }
-  if (trimmedJobId) {
-    params.set("jobId", trimmedJobId);
-  }
-  if (action) {
-    params.set("action", action);
-  }
-  if (contextPath) {
-    params.set("contextPath", contextPath);
-  }
-  return buildAgentGenericMentionHref(
-    "workspace-app-factory",
-    trimmedJobId || "create",
-    Object.fromEntries(params)
-  );
-}
-
 export function normalizeAgentSessionMentionTitle(value: string): string {
   const trimmed = value.trim();
   const withoutMentionPrefix = trimmed.replace(/^@+/, "").trim();
@@ -543,8 +460,18 @@ export function formatAgentMentionMarkdown(
 ): string {
   // 所有 entity(含 workspace-reference)统一序列化成单条 mention 链接。
   // workspace-reference 不再展开成文件路径——agent 拿到 URI 后经 skill+CLI 按需解析。
-  const label = item.name.trim().startsWith("@") ? item.name : `@${item.name}`;
-  return `[${escapeMarkdownLinkLabel(label)}](${escapeMarkdownLinkTarget(item.href)})`;
+  if (item.kind === "file") {
+    const label = item.name.trim().startsWith("@")
+      ? item.name
+      : `@${item.name}`;
+    return createRichTextLinkMarkdown({
+      kind: "file",
+      name: label,
+      path: item.href
+    });
+  }
+  const identity = parseRichTextMentionHref(item.href, item.name);
+  return identity ? createRichTextMentionMarkdown(identity) : "";
 }
 
 function parseMentionFileCount(value: unknown): number {
@@ -618,7 +545,7 @@ export function parseAgentMentionMarkdown(
       if (
         item.kind !== "file" &&
         !prefixedMention &&
-        !href.trim().toLowerCase().startsWith("mention://")
+        !isRichTextMentionHref(href)
       ) {
         return null;
       }
@@ -642,7 +569,8 @@ export function parseMentionItemFromHref(input: {
   if (!href) {
     return null;
   }
-  if (!href.startsWith("mention://")) {
+  const mention = parseRichTextMentionHref(href, input.name);
+  if (!mention && !isRichTextMentionHref(href)) {
     return {
       kind: "file",
       href,
@@ -652,22 +580,14 @@ export function parseMentionItemFromHref(input: {
       directoryPath: dirnameFromPath(href)
     };
   }
+  if (!mention) {
+    return null;
+  }
 
-  let url: URL;
-  try {
-    url = new URL(href);
-  } catch {
-    return null;
-  }
-  const resource = url.hostname.trim().toLowerCase();
-  if (!resource || hasLegacyMentionQueryParams(url)) {
-    return null;
-  }
-  const targetId = decodeURIComponent(url.pathname.replace(/^\/+/, "")).trim();
-  if (!targetId) {
-    return null;
-  }
-  const workspaceId = workspaceIdFromMentionUrl(url);
+  const resource = mention.providerId.trim().toLowerCase();
+  const targetId = mention.entityId.trim();
+  const workspaceId = mention.scope?.workspaceId?.trim() ?? "";
+  const name = mention.label;
   if (resource === "agent-session") {
     if (!workspaceId) {
       return null;
@@ -677,8 +597,8 @@ export function parseMentionItemFromHref(input: {
       href,
       workspaceId,
       targetId,
-      name: input.name,
-      title: input.name,
+      name,
+      title: name,
       scope: "collab_sessions",
       initiatorName: "",
       agentName: ""
@@ -693,9 +613,9 @@ export function parseMentionItemFromHref(input: {
       href,
       workspaceId,
       targetId,
-      topicId: url.searchParams.get("topicId")?.trim() || undefined,
-      name: input.name,
-      title: input.name
+      topicId: mention.scope?.topicId?.trim() || undefined,
+      name,
+      title: name
     };
   }
   if (resource === "workspace-app") {
@@ -708,14 +628,14 @@ export function parseMentionItemFromHref(input: {
       workspaceId,
       targetId,
       appId: targetId,
-      name: input.name
+      name
     };
   }
   if (resource === "workspace-reference") {
     if (!workspaceId) {
       return null;
     }
-    const source = url.searchParams.get("source")?.trim();
+    const source = mention.scope?.source?.trim();
     if (source !== "app" && source !== "task") {
       return null;
     }
@@ -725,10 +645,10 @@ export function parseMentionItemFromHref(input: {
       workspaceId,
       targetId,
       source,
-      groupId: url.searchParams.get("groupId")?.trim() || undefined,
-      name: input.name,
-      iconUrl: url.searchParams.get("icon")?.trim() || undefined,
-      fileCount: parseMentionFileCount(url.searchParams.get("count"))
+      groupId: mention.scope?.groupId?.trim() || undefined,
+      name,
+      iconUrl: mention.scope?.icon?.trim() || undefined,
+      fileCount: parseMentionFileCount(mention.scope?.count)
     };
   }
   if (resource === "workspace-app-factory") {
@@ -739,10 +659,10 @@ export function parseMentionItemFromHref(input: {
       targetId,
       jobId: targetId === "create" ? "" : targetId,
       name:
-        input.name ||
+        name ||
         translate("agentHost.agentGui.workspaceAppFactoryMentionFallback"),
-      action: url.searchParams.get("action")?.trim() || undefined,
-      contextPath: url.searchParams.get("contextPath")?.trim() || undefined
+      action: mention.scope?.action?.trim() || undefined,
+      contextPath: mention.scope?.contextPath?.trim() || undefined
     };
   }
   return null;
@@ -854,7 +774,7 @@ export function attrsToMentionItem(
     const targetId = typeof attrs.targetId === "string" ? attrs.targetId : "";
     return {
       kind,
-      href: href || buildAgentSessionMentionHref(workspaceId, targetId),
+      href,
       workspaceId,
       targetId,
       name,
@@ -887,11 +807,7 @@ export function attrsToMentionItem(
         : undefined;
     return {
       kind,
-      href:
-        href ||
-        buildAgentWorkspaceIssueMentionHref(workspaceId, targetId, {
-          topicId
-        }),
+      href,
       workspaceId,
       targetId,
       topicId,
@@ -919,7 +835,7 @@ export function attrsToMentionItem(
           : "";
     return {
       kind,
-      href: href || buildAgentWorkspaceAppMentionHref(workspaceId, appId),
+      href,
       workspaceId,
       targetId: appId,
       appId,
@@ -949,13 +865,7 @@ export function attrsToMentionItem(
     const fileCount = parseMentionFileCount(attrs.fileCount);
     return {
       kind,
-      href:
-        href ||
-        buildAgentWorkspaceReferenceMentionHref(
-          workspaceId,
-          { source, id: targetId, groupId },
-          { iconUrl, fileCount }
-        ),
+      href,
       workspaceId,
       targetId,
       source,
@@ -983,12 +893,7 @@ export function attrsToMentionItem(
         : undefined;
     return {
       kind,
-      href:
-        href ||
-        buildAgentWorkspaceAppFactoryMentionHref(workspaceId, jobId, {
-          action,
-          contextPath
-        }),
+      href,
       workspaceId,
       targetId: jobId,
       jobId,
@@ -1058,49 +963,6 @@ function parseAgentMentionHTMLElementAttrs(
     ...(iconUrl ? { iconUrl } : {}),
     ...(fileCount ? { fileCount } : {})
   };
-}
-
-function workspaceIdFromMentionUrl(url: URL): string {
-  return url.searchParams.get("workspaceId")?.trim() ?? "";
-}
-
-export function buildAgentGenericMentionHref(
-  providerId: string,
-  entityId: string,
-  scope?: Readonly<Record<string, string | null | undefined>>
-): string {
-  const normalizedProviderId = providerId.trim();
-  const normalizedEntityId = entityId.trim();
-  if (!normalizedProviderId || !normalizedEntityId) {
-    return "";
-  }
-  const params = new URLSearchParams();
-  Object.entries(scope ?? {})
-    .map(([key, value]) => [key.trim(), value?.trim() ?? ""] as const)
-    .filter(([key, value]) => key && value)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .forEach(([key, value]) => {
-      params.set(key, value);
-    });
-  const query = params.toString();
-  const href = `mention://${encodeURIComponent(
-    normalizedProviderId
-  )}/${encodeURIComponent(normalizedEntityId)}`;
-  return query ? `${href}?${query}` : href;
-}
-
-function hasLegacyMentionQueryParams(url: URL): boolean {
-  return [...url.searchParams.keys()].some(
-    (key) =>
-      key === "appId" ||
-      key === "id" ||
-      key === "kind" ||
-      key === "link" ||
-      key === "provider" ||
-      key === "v" ||
-      key === "version" ||
-      key.startsWith("meta.")
-  );
 }
 
 function normalizeMentionKind(value: unknown): AgentMentionKind {
@@ -1227,12 +1089,4 @@ function dirnameFromPath(path: string): string {
     return path.startsWith("/") ? "/" : "";
   }
   return `/${parts.slice(0, -1).join("/")}`;
-}
-
-function escapeMarkdownLinkLabel(value: string): string {
-  return value.replace(/([\\[\]])/g, "\\$1");
-}
-
-function escapeMarkdownLinkTarget(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/\)/g, "\\)");
 }

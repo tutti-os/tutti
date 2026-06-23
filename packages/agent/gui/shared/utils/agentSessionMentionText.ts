@@ -1,5 +1,9 @@
 import type { UiLanguage } from "../../contexts/settings/domain/agentSettings";
 import { normalizeAgentTitleText } from "./agentTitleText";
+import {
+  isRichTextMentionHref,
+  parseRichTextMentionHref
+} from "@tutti-os/ui-rich-text/core";
 
 const MARKDOWN_LINK_PATTERN = /\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)/g;
 const MARKDOWN_LABEL_ESCAPE_PATTERN = /\\([\\[\]()])/g;
@@ -37,20 +41,20 @@ export function formatAgentSessionMentionText(
   const withSessionMentionsNormalized = trimmed.replace(
     MARKDOWN_LINK_PATTERN,
     (fullMatch, rawLabel: string, href: string) => {
-      const normalizedHref = href.trim().toLowerCase();
-      if (normalizedHref.startsWith("mention://agent-session")) {
-        return formatSessionLabel(
-          unescapeMarkdownLabel(rawLabel),
-          sessionMentionDisplayPrefix
-        );
+      const label = unescapeMarkdownLabel(rawLabel);
+      const mention = parseRichTextMentionHref(href, label);
+      if (!mention) {
+        return isRichTextMentionHref(href) ? label : fullMatch;
       }
-      if (normalizedHref.startsWith("mention://workspace-issue")) {
-        return formatIssueLabel(unescapeMarkdownLabel(rawLabel));
+      const providerId = mention.providerId.trim().toLowerCase();
+      const displayLabel = label || mention.label;
+      if (providerId === "agent-session") {
+        return formatSessionLabel(displayLabel, sessionMentionDisplayPrefix);
       }
-      if (!normalizedHref.startsWith("mention://")) {
-        return fullMatch;
+      if (providerId === "workspace-issue") {
+        return formatIssueLabel(displayLabel);
       }
-      return unescapeMarkdownLabel(rawLabel);
+      return displayLabel;
     }
   );
   const normalized = normalizeAgentTitleText(withSessionMentionsNormalized);

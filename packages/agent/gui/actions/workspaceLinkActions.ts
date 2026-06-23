@@ -1,5 +1,6 @@
 import { resolveWebsiteNavigationUrl } from "../shared/utils/websiteUrl";
 import type { WorkspaceIssueMentionMode } from "@tutti-os/workspace-issue-manager/core";
+import { parseRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 
 export type WorkspaceLinkActionSource =
   | "agent-markdown"
@@ -208,41 +209,32 @@ export function resolveWorkspaceMentionLinkAction({
   | OpenWorkspaceIssueLinkAction
   | OpenWorkspaceAppLinkAction
   | null {
-  const rawHref = href.trim();
-  if (!rawHref.toLowerCase().startsWith("mention://")) {
+  const mention = parseRichTextMentionHref(href, "");
+  if (!mention) {
     return null;
   }
 
-  let url: URL;
-  try {
-    url = new URL(rawHref);
-  } catch {
-    return null;
-  }
-
-  const workspaceId = url.searchParams.get("workspaceId")?.trim() || "";
-  const targetId = decodeURIComponent(url.pathname.replace(/^\/+/, "")).trim();
+  const workspaceId = mention.scope?.workspaceId?.trim() || "";
+  const targetId = mention.entityId.trim();
   if (!workspaceId || !targetId) {
     return null;
   }
 
-  if (url.hostname === "agent-session") {
-    const provider = url.searchParams.get("provider")?.trim() || null;
+  if (mention.providerId === "agent-session") {
     return {
       type: "open-agent-session",
       workspaceId,
       agentSessionId: targetId,
-      ...(provider ? { provider } : {}),
       source
     };
   }
 
-  if (url.hostname === "workspace-issue") {
-    const mode = parseWorkspaceIssueMentionMode(url.searchParams.get("mode"));
-    const outputDir = url.searchParams.get("outputDir")?.trim() || "";
-    const runId = url.searchParams.get("runId")?.trim() || "";
-    const taskId = url.searchParams.get("taskId")?.trim() || "";
-    const topicId = url.searchParams.get("topicId")?.trim() || "";
+  if (mention.providerId === "workspace-issue") {
+    const mode = parseWorkspaceIssueMentionMode(mention.scope?.mode ?? null);
+    const outputDir = mention.scope?.outputDir?.trim() || "";
+    const runId = mention.scope?.runId?.trim() || "";
+    const taskId = mention.scope?.taskId?.trim() || "";
+    const topicId = mention.scope?.topicId?.trim() || "";
     return {
       type: "open-workspace-issue",
       workspaceId,
@@ -256,11 +248,10 @@ export function resolveWorkspaceMentionLinkAction({
     };
   }
 
-  if (url.hostname === "workspace-app") {
-    const messageId = url.searchParams.get("messageId")?.trim() || null;
-    const summaryTaskId = url.searchParams.get("summaryTaskId")?.trim() || null;
-    const conversationId =
-      url.searchParams.get("conversationId")?.trim() || null;
+  if (mention.providerId === "workspace-app") {
+    const messageId = mention.scope?.messageId?.trim() || null;
+    const summaryTaskId = mention.scope?.summaryTaskId?.trim() || null;
+    const conversationId = mention.scope?.conversationId?.trim() || null;
     return {
       type: "open-workspace-app",
       workspaceId,

@@ -13,9 +13,6 @@
     "healthcheckPath": "/healthz",
     "profile": "standalone"
   },
-  "cli": {
-    "manifest": "tutti.cli.json"
-  },
   "window": {
     "minWidth": 520,
     "minHeight": 640

@@ -115,11 +115,11 @@ import {
 } from "./agentGuiNodeViewConversation";
 import styles from "./AgentGUINode.styles";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
-import {
-  buildAgentWorkspaceReferenceMentionHref,
-  type AgentContextMentionItem,
-  type AgentMentionWorkspaceReferenceItem
+import type {
+  AgentContextMentionItem,
+  AgentMentionWorkspaceReferenceItem
 } from "./agentRichText/agentFileMentionExtension";
+import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 
 /**
  * 把 @ 面板里的任务/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。
@@ -888,11 +888,22 @@ export function AgentGUINodeView({
           const bundleIconUrl = bundle.iconUrl ?? undefined;
           return {
             kind: "workspace-reference",
-            href: buildAgentWorkspaceReferenceMentionHref(
-              viewModel.workspaceId,
-              handle,
-              { iconUrl: bundleIconUrl, fileCount: bundle.fileCount }
-            ),
+            href: createRichTextMentionHref({
+              providerId: "workspace-reference",
+              entityId: handle.id,
+              label: bundle.displayName,
+              scope: {
+                workspaceId: viewModel.workspaceId,
+                source: handle.source,
+                ...(handle.groupId?.trim()
+                  ? { groupId: handle.groupId.trim() }
+                  : {}),
+                ...(bundleIconUrl ? { icon: bundleIconUrl } : {}),
+                ...(bundle.fileCount > 0
+                  ? { count: String(bundle.fileCount) }
+                  : {})
+              }
+            }),
             workspaceId: viewModel.workspaceId,
             targetId: handle.id,
             source: handle.source,

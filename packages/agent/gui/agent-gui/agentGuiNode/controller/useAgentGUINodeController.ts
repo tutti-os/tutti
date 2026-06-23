@@ -139,10 +139,10 @@ import {
 import { useAgentGuiConversationList } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
 import {
-  buildAgentSessionMentionHref,
   formatAgentMentionMarkdown,
   normalizeAgentSessionMentionTitle
 } from "../agentRichText/agentFileMentionExtension";
+import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
@@ -591,11 +591,12 @@ function buildContinueInNewConversationPrompt(input: {
   const mentionLabel = `${initiatorName} & ${providerLabel}${
     normalizedTitle ? ` ${normalizedTitle}` : ""
   }`.trim();
-  const href = buildAgentSessionMentionHref(
-    input.workspaceId,
-    input.agentSessionId,
-    input.provider
-  );
+  const href = createRichTextMentionHref({
+    providerId: "agent-session",
+    entityId: input.agentSessionId,
+    label: mentionLabel,
+    scope: { workspaceId: input.workspaceId }
+  });
   const mention = formatAgentMentionMarkdown({
     kind: "session",
     href,

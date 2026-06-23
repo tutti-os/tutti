@@ -45,8 +45,6 @@ import {
   syncStateRenderFieldsEqual,
   useAgentGUINodeController
 } from "./useAgentGUINodeController";
-import { buildAgentSessionMentionHref } from "../agentRichText/agentFileMentionExtension";
-
 vi.mock("@tutti-os/ui-system", () => ({
   toast: {
     error: vi.fn()
@@ -6385,7 +6383,7 @@ describe("useAgentGUINodeController", () => {
       "[@this session"
     );
     expect(result.current.viewModel.draftPrompt).toContain(
-      buildAgentSessionMentionHref("room-1", "session-1", "codex")
+      "mention://agent-session/session-1?workspaceId=room-1"
     );
     expect(result.current.viewModel.draftPrompt).toContain("hi");
   });

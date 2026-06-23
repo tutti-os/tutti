@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react";
+import { isRichTextMentionHref } from "../core/richTextDocument.ts";
 import { findRichTextMarkdownLinks } from "../core/richTextMarkdownLinks.ts";
 
 const EXTERNAL_LINK_PREFIX = /^(?:[a-z]+:)?\/\//i;
-const MENTION_LINK_PREFIX = /^mention:\/\//i;
 
 const TEXTAREA_PRESENTATION_STYLE_PROPERTIES = [
   { styleName: "paddingTop", cssName: "padding-top" },
@@ -59,7 +59,7 @@ function isDecoratableMarkdownHref(href: string): boolean {
   }
   if (
     EXTERNAL_LINK_PREFIX.test(trimmedHref) ||
-    MENTION_LINK_PREFIX.test(trimmedHref)
+    isRichTextMentionHref(trimmedHref)
   ) {
     return false;
   }

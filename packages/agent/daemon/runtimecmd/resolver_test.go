@@ -37,6 +37,68 @@ func TestResolverFindsKnownNodeGlobalBin(t *testing.T) {
 	}
 }
 
+func TestResolverPrefersNewestNVMNodeBin(t *testing.T) {
+	home := t.TempDir()
+	oldBinDir := filepath.Join(home, ".nvm", "versions", "node", "v20.19.4", "bin")
+	newBinDir := filepath.Join(home, ".nvm", "versions", "node", "v24.16.0", "bin")
+	for _, dir := range []string{oldBinDir, newBinDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir bin dir: %v", err)
+		}
+		writeExecutable(t, filepath.Join(dir, "codex"))
+	}
+
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{"PATH=/usr/bin:/bin"}
+		},
+		HomeDir: func() (string, error) {
+			return home, nil
+		},
+		LookPath: func(string) (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	env := resolver.Env(nil)
+	want := filepath.Join(newBinDir, "codex")
+	if got := resolver.Resolve("codex", env); got != want {
+		t.Fatalf("Resolve() = %q, want newest NVM codex %q", got, want)
+	}
+}
+
+func TestResolverPrefersExistingPathOverScannedNVMFallback(t *testing.T) {
+	home := t.TempDir()
+	activeBinDir := filepath.Join(home, ".nvm", "versions", "node", "v20.19.4", "bin")
+	newerBinDir := filepath.Join(home, ".nvm", "versions", "node", "v24.16.0", "bin")
+	for _, dir := range []string{activeBinDir, newerBinDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir bin dir: %v", err)
+		}
+		writeExecutable(t, filepath.Join(dir, "codex"))
+	}
+
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{
+				"PATH=" + activeBinDir + string(os.PathListSeparator) + "/usr/bin:/bin",
+			}
+		},
+		HomeDir: func() (string, error) {
+			return home, nil
+		},
+		LookPath: func(string) (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	env := resolver.Env(nil)
+	want := filepath.Join(activeBinDir, "codex")
+	if got := resolver.Resolve("codex", env); got != want {
+		t.Fatalf("Resolve() = %q, want active PATH codex %q", got, want)
+	}
+}
+
 func TestResolverFindsFnmNodeBin(t *testing.T) {
 	home := t.TempDir()
 	fnmDir := filepath.Join(home, "custom-fnm")

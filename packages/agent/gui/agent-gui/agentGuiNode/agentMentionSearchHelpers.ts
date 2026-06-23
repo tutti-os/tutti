@@ -13,10 +13,8 @@ import type {
   AgentMentionScope,
   AgentMentionSessionItem
 } from "./agentRichText/agentFileMentionExtension";
-import {
-  buildAgentSessionMentionHref,
-  normalizeAgentSessionMentionTitle
-} from "./agentRichText/agentFileMentionExtension";
+import { normalizeAgentSessionMentionTitle } from "./agentRichText/agentFileMentionExtension";
+import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type {
   AgentMentionFilterId,
   AgentMentionGroup,
@@ -77,11 +75,12 @@ export function buildSessionMentionItem(input: {
   const status = resolveSessionDisplayStatus(input.session, input.summary);
   return {
     kind: "session",
-    href: buildAgentSessionMentionHref(
-      input.workspaceId,
-      input.session.agentSessionId,
-      sessionProvider
-    ),
+    href: createRichTextMentionHref({
+      providerId: "agent-session",
+      entityId: input.session.agentSessionId,
+      label: mentionTitle,
+      scope: { workspaceId: input.workspaceId }
+    }),
     workspaceId: input.workspaceId,
     targetId: input.session.agentSessionId,
     name: `${initiatorName} & ${agentName} ${mentionTitle}`.trim(),

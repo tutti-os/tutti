@@ -143,6 +143,20 @@ export interface AgentActivityRuntimeReadSessionAttachmentInput {
   workspaceId: string;
 }
 
+export type AgentActivityRuntimePromptContentBlock =
+  AgentActivitySendInput["content"][number] & {
+    url?: string;
+  };
+
+export interface AgentActivityRuntimeUploadPromptContentInput {
+  content: AgentActivityRuntimePromptContentBlock[];
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeUploadPromptContentResult {
+  content: AgentActivityRuntimePromptContentBlock[];
+}
+
 export interface AgentActivityRuntimeSessionAttachment {
   attachmentId: string;
   mimeType: string;
@@ -198,6 +212,9 @@ export interface AgentActivityRuntime {
     input: AgentActivityRuntimeRetainSessionEventsInput
   ): () => void;
   sendInput(input: AgentActivitySendInput): Promise<AgentActivitySession>;
+  uploadPromptContent?(
+    input: AgentActivityRuntimeUploadPromptContentInput
+  ): Promise<AgentActivityRuntimeUploadPromptContentResult>;
   readSessionAttachment?(
     input: AgentActivityRuntimeReadSessionAttachmentInput
   ): Promise<AgentActivityRuntimeSessionAttachment>;

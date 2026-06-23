@@ -24,13 +24,8 @@ import {
 } from "./agentMentionSearchHelpers";
 import { agentMentionFilterLabel } from "./AgentMentionLabels";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
-import {
-  buildAgentGenericMentionHref,
-  buildAgentSessionMentionHref,
-  buildAgentWorkspaceAppMentionHref,
-  buildAgentWorkspaceIssueMentionHref,
-  normalizeAgentSessionMentionTitle
-} from "./agentRichText/agentFileMentionExtension";
+import { normalizeAgentSessionMentionTitle } from "./agentRichText/agentFileMentionExtension";
+import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type {
   AgentContextMentionInsertResult,
   AgentContextMentionProvider
@@ -1560,7 +1555,12 @@ function providerItemToAgentMentionItem(input: {
   ) {
     return {
       kind: "file",
-      href: buildAgentGenericMentionHref(input.providerId, targetId, scope),
+      href: createRichTextMentionHref({
+        providerId: input.providerId,
+        entityId: targetId,
+        label,
+        scope
+      }),
       path: targetId,
       name: label,
       entryKind: targetId.endsWith("/") ? "directory" : "unknown",
@@ -1571,8 +1571,14 @@ function providerItemToAgentMentionItem(input: {
   if (input.providerId === WORKSPACE_ISSUE_PROVIDER_ID) {
     return {
       kind: "workspace-issue",
-      href: buildAgentWorkspaceIssueMentionHref(workspaceId, targetId, {
-        topicId: scope.topicId
+      href: createRichTextMentionHref({
+        providerId: "workspace-issue",
+        entityId: targetId,
+        label,
+        scope: {
+          workspaceId,
+          ...(scope.topicId ? { topicId: scope.topicId } : {})
+        }
       }),
       workspaceId,
       targetId,
@@ -1590,7 +1596,12 @@ function providerItemToAgentMentionItem(input: {
     const appId = targetId;
     return {
       kind: "workspace-app",
-      href: buildAgentWorkspaceAppMentionHref(workspaceId, appId),
+      href: createRichTextMentionHref({
+        providerId: "workspace-app",
+        entityId: appId,
+        label,
+        scope: { workspaceId }
+      }),
       workspaceId,
       targetId: appId,
       appId,
@@ -1612,7 +1623,12 @@ function providerItemToAgentMentionItem(input: {
       description || compactText(input.subtitle) || undefined;
     return {
       kind: "session",
-      href: buildAgentSessionMentionHref(workspaceId, targetId),
+      href: createRichTextMentionHref({
+        providerId: "agent-session",
+        entityId: targetId,
+        label,
+        scope: { workspaceId }
+      }),
       workspaceId,
       targetId,
       name: label,
@@ -1634,7 +1650,7 @@ function providerItemToAgentMentionItem(input: {
 
 function normalizeMentionScope(
   scope?: Readonly<Record<string, string>>
-): Partial<Record<string, string>> {
+): Record<string, string> {
   return Object.fromEntries(
     Object.entries(scope ?? {})
       .map(([key, value]) => [key.trim(), value.trim()] as const)

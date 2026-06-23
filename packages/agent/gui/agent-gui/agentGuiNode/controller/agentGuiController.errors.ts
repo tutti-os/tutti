@@ -9,10 +9,10 @@ import { translate } from "../../../i18n/index";
 import { getAppErrorCode } from "../../../shared/errors/appError";
 import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSettings";
 import {
-  buildAgentSessionMentionHref,
   formatAgentMentionMarkdown,
   normalizeAgentSessionMentionTitle
 } from "../agentRichText/agentFileMentionExtension";
+import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import {
   AGENT_GUI_CAUGHT_ERROR_STACK_LIMIT,
   AGENT_PROVIDER_SESSION_NOT_FOUND_ERROR,
@@ -382,11 +382,12 @@ export function buildContinueInNewConversationPrompt(input: {
   const mentionLabel = `${initiatorName} & ${providerLabel}${
     normalizedTitle ? ` ${normalizedTitle}` : ""
   }`.trim();
-  const href = buildAgentSessionMentionHref(
-    input.workspaceId,
-    input.agentSessionId,
-    input.provider
-  );
+  const href = createRichTextMentionHref({
+    providerId: "agent-session",
+    entityId: input.agentSessionId,
+    label: mentionLabel,
+    scope: { workspaceId: input.workspaceId }
+  });
   const mention = formatAgentMentionMarkdown({
     kind: "session",
     href,

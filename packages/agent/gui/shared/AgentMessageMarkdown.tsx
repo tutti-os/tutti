@@ -38,6 +38,10 @@ import {
   useTextOverflow
 } from "@tutti-os/ui-system/components";
 import {
+  isRichTextMentionHref,
+  parseRichTextMentionHref
+} from "@tutti-os/ui-rich-text/core";
+import {
   getOptionalAgentHostApi,
   useOptionalAgentHostApi
 } from "../agentActivityHost";
@@ -1367,11 +1371,7 @@ function extractWorkspaceDirectoryLinkHrefs(content: string): string[] {
     const match = /^\[([^\]]*)\]\(([^)]+)\)$/.exec(slice);
     if (match) {
       const href = match[2]?.trim() ?? "";
-      if (
-        href &&
-        !href.toLowerCase().startsWith("mention://") &&
-        !href.includes("://")
-      ) {
+      if (href && !isRichTextMentionHref(href) && !href.includes("://")) {
         const normalizedHref = href.replace(/\/+$/g, "");
         if (
           href.endsWith("/") ||
@@ -1463,7 +1463,7 @@ function isMentionOnlyMarkdownContent(content: string): boolean {
     return false;
   }
   const labelEnd = trimmed.indexOf("]");
-  return trimmed.slice(labelEnd + 2).startsWith("mention://");
+  return isRichTextMentionHref(trimmed.slice(labelEnd + 2));
 }
 
 function normalizePlainSessionMentionTitle(content: string): string {
@@ -1495,7 +1495,7 @@ function normalizePlainSessionMentionTitle(content: string): string {
 }
 
 function markdownUrlTransform(value: string): string {
-  return value.startsWith("mention://") ? value : defaultUrlTransform(value);
+  return isRichTextMentionHref(value) ? value : defaultUrlTransform(value);
 }
 
 type MentionKind =
@@ -1522,16 +1522,11 @@ function parseMentionLink(
   workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[] = [],
   appFactoryFallbackLabel = "Create app"
 ): ParsedMentionLink | null {
-  let url: URL;
-  try {
-    url = new URL(href);
-  } catch {
+  const mention = parseRichTextMentionHref(href, rawLabel);
+  if (!mention) {
     return null;
   }
-  if (url.protocol !== "mention:") {
-    return null;
-  }
-  const resource = url.hostname.trim().toLowerCase();
+  const resource = mention.providerId.trim().toLowerCase();
   const kind =
     resource === "agent-session"
       ? "session"
@@ -1553,10 +1548,7 @@ function parseMentionLink(
   ) {
     return null;
   }
-  if (hasLegacyMentionQueryParams(url)) {
-    return null;
-  }
-  const entityId = decodeURIComponent(url.pathname.replace(/^\/+/, "")).trim();
+  const entityId = mention.entityId.trim();
   if (!entityId) {
     return null;
   }
@@ -1565,7 +1557,7 @@ function parseMentionLink(
     (kind === "workspace-app-factory" ? appFactoryFallbackLabel : "");
   if (kind === "workspace-app" || kind === "workspace-app-factory") {
     const appId = kind === "workspace-app" ? entityId : "";
-    const workspaceId = url.searchParams.get("workspaceId")?.trim() || "";
+    const workspaceId = mention.scope?.workspaceId?.trim() || "";
     return {
       kind,
       ...(kind === "workspace-app" ? { appId } : {}),
@@ -1587,8 +1579,8 @@ function parseMentionLink(
     return {
       kind,
       label,
-      iconUrl: url.searchParams.get("icon")?.trim() || undefined,
-      fileCount: referenceFileCountFromParam(url.searchParams.get("count")),
+      iconUrl: mention.scope?.icon?.trim() || undefined,
+      fileCount: referenceFileCountFromParam(mention.scope?.count ?? null),
       participant: label,
       summary: ""
     };
@@ -1616,20 +1608,6 @@ function referenceFileCountFromParam(value: string | null): number | undefined {
   }
   const parsed = Number.parseInt(value.trim(), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function hasLegacyMentionQueryParams(url: URL): boolean {
-  return [...url.searchParams.keys()].some(
-    (key) =>
-      key === "appId" ||
-      key === "id" ||
-      key === "kind" ||
-      key === "link" ||
-      key === "provider" ||
-      key === "v" ||
-      key === "version" ||
-      key.startsWith("meta.")
-  );
 }
 
 function resolveWorkspaceAppMentionIconUrl(input: {

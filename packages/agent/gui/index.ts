@@ -39,8 +39,11 @@ export type {
   AgentActivityRuntime,
   AgentActivityRuntimeListSessionMessagesInput,
   AgentActivityRuntimeProviderProps,
+  AgentActivityRuntimePromptContentBlock,
   AgentActivityRuntimeRetainSessionEventsInput,
   AgentActivityRuntimeSetSessionPinnedInput,
+  AgentActivityRuntimeUploadPromptContentInput,
+  AgentActivityRuntimeUploadPromptContentResult,
   AgentActivityRuntimeUpdateSessionSettingsInput,
   AgentActivityRuntimeWarmupOpenclawGatewayInput
 } from "./agentActivityRuntime";

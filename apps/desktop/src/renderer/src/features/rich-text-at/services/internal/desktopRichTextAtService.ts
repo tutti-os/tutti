@@ -119,10 +119,6 @@ interface BuiltInWorkspaceAppResource {
   };
 }
 
-type DesktopMentionPresentation = RichTextMentionPresentation & {
-  referencesListSupported?: string;
-};
-
 const {
   agentSession: AGENT_SESSION_PROVIDER_ID,
   file: FILE_PROVIDER_ID,
@@ -144,7 +140,7 @@ const RICH_TEXT_MENTION_PRESENTATION_KEYS = [
   "statusPulse",
   "userAvatarPlaceholderUrl",
   "referencesListSupported"
-] as const satisfies readonly (keyof DesktopMentionPresentation)[];
+] as const satisfies readonly (keyof RichTextMentionPresentation)[];
 
 export class DesktopRichTextAtService implements IDesktopRichTextAtService {
   readonly _serviceBrand = undefined;
@@ -555,9 +551,9 @@ function compactStringRecord(
 }
 
 function compactMentionPresentation(
-  presentation: DesktopMentionPresentation
-): DesktopMentionPresentation | undefined {
-  const compacted: DesktopMentionPresentation = {};
+  presentation: RichTextMentionPresentation
+): RichTextMentionPresentation | undefined {
+  const compacted: RichTextMentionPresentation = {};
   for (const key of RICH_TEXT_MENTION_PRESENTATION_KEYS) {
     const value = presentation[key]?.trim();
     if (value) {

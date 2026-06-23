@@ -88,6 +88,64 @@ describe("agentComposerDraft", () => {
     ]);
   });
 
+  it("converts uploaded image drafts into url prompt content", () => {
+    expect(
+      agentComposerDraftToPromptContent({
+        draft: {
+          prompt: "",
+          images: [
+            {
+              id: "image-1",
+              name: "screen.png",
+              mimeType: "image/png",
+              url: "https://cdn.example.com/screen.png",
+              previewUrl: "https://cdn.example.com/screen.png"
+            }
+          ]
+        },
+        provider: "codex",
+        skills: []
+      })
+    ).toEqual([
+      {
+        type: "image",
+        mimeType: "image/png",
+        url: "https://cdn.example.com/screen.png",
+        name: "screen.png"
+      }
+    ]);
+  });
+
+  it("does not emit image drafts that are still uploading or failed", () => {
+    expect(
+      agentComposerDraftToPromptContent({
+        draft: {
+          prompt: "",
+          images: [
+            {
+              id: "image-1",
+              name: "uploading.png",
+              mimeType: "image/png",
+              data: "aW1hZ2U=",
+              previewUrl: "data:image/png;base64,aW1hZ2U=",
+              uploading: true
+            },
+            {
+              id: "image-2",
+              name: "failed.png",
+              mimeType: "image/png",
+              data: "aW1hZ2U=",
+              previewUrl: "data:image/png;base64,aW1hZ2U=",
+              uploadError: "failed"
+            }
+          ]
+        },
+        provider: "codex",
+        skills: []
+      })
+    ).toEqual([]);
+  });
+
   it("restores text and image content into stable draft ids", () => {
     const draft = agentPromptContentToComposerDraft(
       [
@@ -111,6 +169,33 @@ describe("agentComposerDraft", () => {
           mimeType: "image/png",
           data: "aW1hZ2U=",
           previewUrl: "data:image/png;base64,aW1hZ2U="
+        }
+      ]
+    });
+  });
+
+  it("restores url image content into stable draft ids", () => {
+    const draft = agentPromptContentToComposerDraft(
+      [
+        {
+          type: "image",
+          mimeType: "image/png",
+          url: "https://cdn.example.com/panel.png",
+          name: "panel.png"
+        }
+      ],
+      "restore-queued-1"
+    );
+
+    expect(draft).toEqual({
+      prompt: "",
+      images: [
+        {
+          id: "restore-queued-1:image:0",
+          name: "panel.png",
+          mimeType: "image/png",
+          url: "https://cdn.example.com/panel.png",
+          previewUrl: "https://cdn.example.com/panel.png"
         }
       ]
     });

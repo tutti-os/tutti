@@ -1,50 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   attrsToMentionItem,
-  buildAgentSessionMentionHref,
-  buildAgentWorkspaceReferenceMentionHref,
-  buildAgentWorkspaceAppFactoryMentionHref,
-  buildAgentWorkspaceIssueMentionHref,
   formatAgentMentionMarkdown,
   parseAgentMentionMarkdown
 } from "./agentFileMentionExtension";
-
-describe("buildAgentSessionMentionHref", () => {
-  it("builds an agent session mention href", () => {
-    expect(buildAgentSessionMentionHref("workspace-1", "session-1")).toBe(
-      "mention://agent-session/session-1?workspaceId=workspace-1"
-    );
-  });
-});
-
-describe("buildAgentWorkspaceIssueMentionHref", () => {
-  it("builds a workspace issue mention href", () => {
-    expect(buildAgentWorkspaceIssueMentionHref("workspace-1", "issue-1")).toBe(
-      "mention://workspace-issue/issue-1?workspaceId=workspace-1"
-    );
-  });
-
-  it("includes issue scope when provided", () => {
-    expect(
-      buildAgentWorkspaceIssueMentionHref("workspace-1", "issue-1", {
-        mode: "execute",
-        runId: "run-1",
-        taskId: "task-1",
-        topicId: "topic-1"
-      })
-    ).toBe(
-      "mention://workspace-issue/issue-1?topicId=topic-1&workspaceId=workspace-1"
-    );
-  });
-});
-
-describe("buildAgentWorkspaceAppFactoryMentionHref", () => {
-  it("builds a workspace app factory mention href", () => {
-    expect(buildAgentWorkspaceAppFactoryMentionHref()).toBe(
-      "mention://workspace-app-factory/create"
-    );
-  });
-});
+import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 
 describe("parseAgentMentionMarkdown", () => {
   it("accepts plain workspace file markdown links without an @ prefix", () => {
@@ -194,6 +154,7 @@ describe("attrsToMentionItem", () => {
     expect(
       attrsToMentionItem({
         kind: "session",
+        href: "mention://agent-session/session-1?workspaceId=workspace-1",
         workspaceId: "workspace-1",
         targetId: "session-1",
         name: "Session"
@@ -209,6 +170,7 @@ describe("attrsToMentionItem", () => {
     expect(
       attrsToMentionItem({
         kind: "workspace-issue",
+        href: "mention://workspace-issue/issue-1?workspaceId=workspace-1",
         workspaceId: "workspace-1",
         targetId: "issue-1",
         name: "Issue"
@@ -224,6 +186,7 @@ describe("attrsToMentionItem", () => {
     expect(
       attrsToMentionItem({
         kind: "workspace-app-factory",
+        href: "mention://workspace-app-factory/create",
         name: "Create App"
       })
     ).toMatchObject({
@@ -257,6 +220,7 @@ describe("attrsToMentionItem", () => {
     expect(
       attrsToMentionItem({
         kind: "workspace-reference",
+        href: "mention://workspace-reference/topic-1?groupId=issue-1&source=task&workspaceId=ws-1",
         name: "Design",
         targetId: "topic-1",
         source: "task",
@@ -278,6 +242,7 @@ describe("attrsToMentionItem", () => {
     expect(
       attrsToMentionItem({
         kind: "workspace-reference",
+        href: "mention://workspace-reference/app-1?source=app&workspaceId=ws-1",
         name: "Design",
         targetId: "app-1",
         source: "app",
@@ -310,11 +275,18 @@ describe("formatAgentMentionMarkdown — workspace reference", () => {
   });
 
   it("round-trips the handle + icon + count through the href (build → parse)", () => {
-    const href = buildAgentWorkspaceReferenceMentionHref(
-      "ws-1",
-      { source: "task", id: "topic-1", groupId: "issue-1" },
-      { iconUrl: "https://icons/app-1.png", fileCount: 5 }
-    );
+    const href = createRichTextMentionHref({
+      providerId: "workspace-reference",
+      entityId: "topic-1",
+      label: "Design",
+      scope: {
+        workspaceId: "ws-1",
+        source: "task",
+        groupId: "issue-1",
+        icon: "https://icons/app-1.png",
+        count: "5"
+      }
+    });
     const parsed = parseAgentMentionMarkdown(`[@Design](${href})`);
     expect(parsed?.item).toMatchObject({
       kind: "workspace-reference",

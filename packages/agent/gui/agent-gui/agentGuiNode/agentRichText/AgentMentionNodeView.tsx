@@ -63,72 +63,6 @@ function normalizeKind(value: string): AgentMentionNodeViewKind {
   return "file";
 }
 
-function buildMentionHref(
-  resource:
-    | "agent-session"
-    | "workspace-app"
-    | "workspace-reference"
-    | "workspace-app-factory"
-    | "workspace-issue",
-  attrs: Record<string, unknown>
-): string {
-  const workspaceId = attrString(attrs, "workspaceId").trim();
-  const targetId = attrString(attrs, "targetId").trim();
-  if (resource === "workspace-issue") {
-    return buildAgentGenericMentionHref(resource, targetId, {
-      topicId: attrString(attrs, "topicId").trim(),
-      workspaceId
-    });
-  }
-  if (resource === "workspace-reference") {
-    return buildAgentGenericMentionHref(resource, targetId, {
-      source: attrString(attrs, "source").trim(),
-      groupId: attrString(attrs, "groupId").trim(),
-      icon: attrString(attrs, "iconUrl").trim(),
-      count: attrString(attrs, "fileCount").trim(),
-      workspaceId
-    });
-  }
-  if (resource === "workspace-app") {
-    const appId = attrString(attrs, "appId").trim() || targetId;
-    return buildAgentGenericMentionHref(resource, appId, { workspaceId });
-  }
-  if (resource === "workspace-app-factory") {
-    const jobId = attrString(attrs, "jobId").trim() || targetId;
-    return buildAgentGenericMentionHref(resource, jobId || "create", {
-      action: attrString(attrs, "action").trim(),
-      contextPath: attrString(attrs, "contextPath").trim(),
-      workspaceId
-    });
-  }
-  return buildAgentGenericMentionHref(resource, targetId, { workspaceId });
-}
-
-function buildAgentGenericMentionHref(
-  providerId: string,
-  entityId: string,
-  scope?: Readonly<Record<string, string | null | undefined>>
-): string {
-  const normalizedProviderId = providerId.trim();
-  const normalizedEntityId = entityId.trim();
-  if (!normalizedProviderId || !normalizedEntityId) {
-    return "";
-  }
-  const params = new URLSearchParams();
-  Object.entries(scope ?? {})
-    .map(([key, value]) => [key.trim(), value?.trim() ?? ""] as const)
-    .filter(([key, value]) => key && value)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .forEach(([key, value]) => {
-      params.set(key, value);
-    });
-  const query = params.toString();
-  const href = `mention://${encodeURIComponent(
-    normalizedProviderId
-  )}/${encodeURIComponent(normalizedEntityId)}`;
-  return query ? `${href}?${query}` : href;
-}
-
 function normalizeSessionTitle(value: string): string {
   const trimmed = value.trim();
   const withoutMentionPrefix = trimmed.replace(/^@+/, "").trim();
@@ -209,7 +143,7 @@ function mentionViewModel(
         `${t("agentHost.agentGui.mentionKindSession")} ${primary}`.trim(),
       directoryPath: "",
       entryKind: "",
-      href: href || buildMentionHref("agent-session", attrs),
+      href,
       kind,
       label: presentation.label,
       summary: presentation.summary
@@ -221,7 +155,7 @@ function mentionViewModel(
       ariaLabel: `${t("agentHost.agentGui.mentionKindIssue")} ${name}`.trim(),
       directoryPath: "",
       entryKind: "",
-      href: href || buildMentionHref("workspace-issue", attrs),
+      href,
       kind,
       label: name
     };
@@ -232,7 +166,7 @@ function mentionViewModel(
       ariaLabel: `${t("agentHost.agentGui.mentionKindApp")} ${name}`.trim(),
       directoryPath: "",
       entryKind: "",
-      href: href || buildMentionHref("workspace-app", attrs),
+      href,
       iconUrl: attrString(attrs, "iconUrl").trim() || undefined,
       kind,
       label: name
@@ -244,7 +178,7 @@ function mentionViewModel(
       ariaLabel: `${t("agentHost.agentGui.mentionKindApp")} ${name}`.trim(),
       directoryPath: "",
       entryKind: "",
-      href: href || buildMentionHref("workspace-reference", attrs),
+      href,
       iconUrl: attrString(attrs, "iconUrl").trim() || undefined,
       kind,
       label: name,
@@ -258,7 +192,7 @@ function mentionViewModel(
         `${t("agentHost.agentGui.mentionKindAppFactory")} ${name}`.trim(),
       directoryPath: "",
       entryKind: "",
-      href: href || buildMentionHref("workspace-app-factory", attrs),
+      href,
       kind,
       label: name
     };

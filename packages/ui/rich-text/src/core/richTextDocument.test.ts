@@ -55,14 +55,17 @@ test("serializes mention markdown with a normalized @ label", () => {
   );
 });
 
-test("does not serialize legacy mention fields from scope", () => {
+test("does not serialize reserved mention scope fields", () => {
   const mention = createRichTextMentionAttrs("provider", {
     entityId: "entity",
     label: "Entity",
     scope: {
       kind: "person",
       link: "/people/entity",
+      appId: "reserved-app",
+      id: "reserved-id",
       "meta.foo": "bar",
+      provider: "reserved-provider",
       version: "1",
       workspaceId: "ws_1"
     }
@@ -74,7 +77,7 @@ test("does not serialize legacy mention fields from scope", () => {
   );
 });
 
-test("rejects legacy rich text mention href shapes", () => {
+test("rejects reserved rich text mention scope keys", () => {
   assert.equal(
     parseRichTextMentionHref(
       "mention://workspace-app?workspaceId=ws_1&appId=app_1",
@@ -110,6 +113,31 @@ test("rejects legacy rich text mention href shapes", () => {
   assert.equal(
     parseRichTextMentionHref("mention://provider/entity?kind=person", "@Foo"),
     null
+  );
+  assert.equal(
+    parseRichTextMentionHref(
+      "mention://provider/entity?provider=reserved-provider",
+      "@Foo"
+    ),
+    null
+  );
+});
+
+test("parses a rich text mention href without a display label", () => {
+  assert.deepEqual(
+    parseRichTextMentionHref(
+      "mention://workspace-app/app_1?workspaceId=ws_1",
+      ""
+    ),
+    {
+      trigger: "@",
+      providerId: "workspace-app",
+      entityId: "app_1",
+      label: "app_1",
+      scope: {
+        workspaceId: "ws_1"
+      }
+    }
   );
 });
 

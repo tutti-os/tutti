@@ -31,7 +31,15 @@ export type RichTextDocument = JSONContent;
 const MARKDOWN_IMAGE_PATTERN = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
 const EXTERNAL_LINK_PREFIX = /^(?:[a-z]+:)?\/\//i;
 const MENTION_LINK_PREFIX = /^mention:\/\//i;
-const MENTION_LEGACY_QUERY_KEYS = new Set(["kind", "link", "v", "version"]);
+const RESERVED_MENTION_SCOPE_KEYS = new Set([
+  "appId",
+  "id",
+  "kind",
+  "link",
+  "provider",
+  "v",
+  "version"
+]);
 
 type LegacyJSONContentNode = {
   type?: string;
@@ -150,6 +158,10 @@ function normalizeMentionLabel(value: string): string {
   return value.trim().replace(/^@+/, "").trim();
 }
 
+function isReservedMentionScopeKey(key: string): boolean {
+  return RESERVED_MENTION_SCOPE_KEYS.has(key) || key.startsWith("meta.");
+}
+
 function createMentionQueryParams(
   mention: RichTextMentionIdentity
 ): URLSearchParams {
@@ -159,12 +171,7 @@ function createMentionQueryParams(
   )) {
     const nextKey = key.trim();
     const nextValue = value.trim();
-    if (
-      !nextKey ||
-      !nextValue ||
-      MENTION_LEGACY_QUERY_KEYS.has(nextKey) ||
-      nextKey.startsWith("meta.")
-    ) {
+    if (!nextKey || !nextValue || isReservedMentionScopeKey(nextKey)) {
       continue;
     }
     params.set(nextKey, nextValue);
@@ -215,27 +222,24 @@ export function parseRichTextMentionHref(
     const providerId = decodeURIComponent(parsed.hostname).trim();
     const encodedEntityId = parsed.pathname.replace(/^\/+/, "");
     const entityId = decodeURIComponent(encodedEntityId).trim();
-    const nextLabel = normalizeMentionLabel(label?.trim() ?? "");
+    const rawLabel = normalizeMentionLabel(label?.trim() ?? "");
 
     if (
       !providerId ||
       !encodedEntityId ||
       encodedEntityId.includes("/") ||
-      !entityId ||
-      !nextLabel
+      !entityId
     ) {
       return null;
     }
+
+    const nextLabel = rawLabel || entityId;
 
     const scopeEntries: Array<readonly [string, string]> = [];
     for (const [key, value] of parsed.searchParams.entries()) {
       const scopeKey = key.trim();
       const scopeValue = value.trim();
-      if (
-        !scopeKey ||
-        MENTION_LEGACY_QUERY_KEYS.has(scopeKey) ||
-        scopeKey.startsWith("meta.")
-      ) {
+      if (!scopeKey || isReservedMentionScopeKey(scopeKey)) {
         return null;
       }
       if (scopeValue) {

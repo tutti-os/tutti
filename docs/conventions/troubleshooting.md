@@ -110,6 +110,41 @@ Use this shape for new entries:
   [session.go](../../services/tuttid/service/browser/session.go)
   [command.go](../../services/tuttid/service/browser/command.go)
 
+### macOS Gatekeeper dialogs appear during Codex provider probing
+
+- Symptom:
+  Opening an app or surface that reads agent composer options, provider status,
+  or capability catalog triggers repeated macOS warnings that `codex` may harm
+  the computer.
+- Quick checks:
+  Resolve the active Codex binary from `tuttid` logs or by running with the
+  same daemon environment. Then inspect the native binary behind the npm shim
+  with `spctl --assess --type execute -vv <native-codex-path>`. If it reports
+  `CSSMERR_TP_CERT_REVOKED`, remove or reinstall that specific Codex package.
+- Root cause:
+  Provider status and composer capability discovery intentionally start Codex
+  commands such as `codex login status` and `codex app-server`. If the daemon
+  resolves an older nvm global Codex package whose Developer ID certificate has
+  been revoked, each otherwise harmless background probe can become a
+  Gatekeeper dialog. This can happen even when `which codex` in the user's shell
+  points at a newer working Codex if the daemon command resolver places scanned
+  nvm fallback directories before the real PATH.
+- Fix:
+  Respect the daemon PATH before scanned nvm fallback directories, and sort nvm
+  fallback directories by Node version so fallback resolution does not pick the
+  oldest installed Node first. Do not automatically remove attributes or delete
+  arbitrary user-managed Codex binaries from Tutti; user repair scripts should
+  only move Codex packages that `spctl` explicitly reports as certificate
+  revoked, and should keep a backup.
+- Validation:
+  Run `go test ./runtimecmd` and `go test ./runtime` from
+  `packages/agent/daemon`, plus `go test ./service/agentstatus` from
+  `services/tuttid`. Verify provider status logs resolve `codex` to the same
+  npm shim the user expects from PATH, unless PATH lacks Codex and the resolver
+  intentionally falls back to a scanned nvm install.
+- References:
+  [resolver.go](../../packages/agent/daemon/runtimecmd/resolver.go)
+
 ### Malformed user skill frontmatter breaks skill discovery
 
 - Symptom:
