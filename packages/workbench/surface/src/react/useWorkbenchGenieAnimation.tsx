@@ -15,12 +15,13 @@ import type {
 } from "./dockPreviewCache.ts";
 import {
   centerPointFromRect,
-  copyGenieComputedStyleTree,
+  cloneMeaningfulGenieElement,
   easeInQuadratic,
   isUsableGenieRect,
   renderGenieScanlines,
   viewportRectFromElement,
   type WorkbenchGenieDirection,
+  type WorkbenchGenieMeaningfulImageClone,
   type WorkbenchGenieViewportRect
 } from "./genieAnimation.ts";
 
@@ -34,6 +35,7 @@ const dockPreviewMaxHeight = 170;
 const dockPreviewImageCacheMaxEntries = 96;
 const inlineImageResourceCacheMaxEntries = 160;
 const dockAnchorFallbackSizePx = 43.2;
+const genieInlineImageMaxDevicePixelRatio = 2;
 const dockPreviewImageByNodeID = new Map<string, string>();
 const inlineImageResourceByUrl = new Map<string, Promise<string | null>>();
 
@@ -44,7 +46,7 @@ interface CapturedGenieTexture {
 
 interface PreparedGenieTextureCapture {
   clone: HTMLElement;
-  imageUrls: Array<string | null>;
+  images: WorkbenchGenieMeaningfulImageClone[];
   rect: WorkbenchGenieViewportRect;
 }
 
@@ -126,10 +128,6 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-function resolveImageResourceUrl(image: HTMLImageElement): string | null {
-  return image.currentSrc || image.src || image.getAttribute("src") || null;
-}
-
 async function fetchInlineImageResource(
   imageUrl: string
 ): Promise<string | null> {
@@ -171,15 +169,15 @@ function readInlineImageResource(imageUrl: string): Promise<string | null> {
 
 async function inlineCloneImageResources({
   cloneRoot,
-  imageUrls
+  images
 }: {
   cloneRoot: HTMLElement;
-  imageUrls: Array<string | null>;
+  images: WorkbenchGenieMeaningfulImageClone[];
 }): Promise<void> {
   const cloneImages = Array.from(cloneRoot.querySelectorAll("img"));
 
   await Promise.all(
-    imageUrls.map(async (imageUrl, index) => {
+    images.map(async (imageInfo, index) => {
       const cloneImage = cloneImages[index];
       if (!cloneImage) {
         return;
@@ -187,10 +185,21 @@ async function inlineCloneImageResources({
 
       cloneImage.removeAttribute("srcset");
       cloneImage.removeAttribute("sizes");
+      const imageUrl = imageInfo.url;
       if (!imageUrl) {
         return;
       }
-      cloneImage.src = (await readInlineImageResource(imageUrl)) ?? imageUrl;
+      const inlineImageUrl =
+        (await readInlineImageResource(imageUrl)) ?? imageUrl;
+      const resizedImageUrl = await resizeInlineImageResourceForGenieTexture(
+        inlineImageUrl,
+        imageInfo
+      );
+      if (resizedImageUrl && resizedImageUrl !== inlineImageUrl) {
+        cloneImage.src = resizedImageUrl;
+        return;
+      }
+      cloneImage.src = inlineImageUrl;
     })
   );
 }
@@ -202,6 +211,64 @@ async function loadImageFromSvg(svg: string): Promise<HTMLImageElement> {
   return image;
 }
 
+function resolveGenieInlineImageTargetSize({
+  displayHeight,
+  displayWidth
+}: WorkbenchGenieMeaningfulImageClone): {
+  height: number;
+  width: number;
+} | null {
+  if (displayWidth <= 0 || displayHeight <= 0) {
+    return null;
+  }
+  const scale = Math.min(
+    window.devicePixelRatio || 1,
+    genieInlineImageMaxDevicePixelRatio
+  );
+  return {
+    height: Math.max(1, Math.ceil(displayHeight * scale)),
+    width: Math.max(1, Math.ceil(displayWidth * scale))
+  };
+}
+
+async function resizeInlineImageResourceForGenieTexture(
+  imageUrl: string,
+  imageInfo: WorkbenchGenieMeaningfulImageClone
+): Promise<string | null> {
+  const targetSize = resolveGenieInlineImageTargetSize(imageInfo);
+  if (!targetSize) {
+    return null;
+  }
+
+  const image = new Image();
+  image.src = imageUrl;
+  try {
+    await image.decode();
+  } catch {
+    return null;
+  }
+  if (
+    image.naturalWidth <= targetSize.width &&
+    image.naturalHeight <= targetSize.height
+  ) {
+    return null;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = targetSize.width;
+  canvas.height = targetSize.height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return null;
+  }
+  try {
+    context.drawImage(image, 0, 0, targetSize.width, targetSize.height);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+}
+
 function prepareElementTextureCapture(
   element: HTMLElement
 ): PreparedGenieTextureCapture | null {
@@ -210,11 +277,11 @@ function prepareElementTextureCapture(
     return null;
   }
 
-  const imageUrls = Array.from(element.querySelectorAll("img")).map(
-    resolveImageResourceUrl
-  );
-  const clone = element.cloneNode(true) as HTMLElement;
-  copyGenieComputedStyleTree(element, clone);
+  const clonedElement = cloneMeaningfulGenieElement(element, windowRect);
+  if (!clonedElement) {
+    return null;
+  }
+  const { clone, images } = clonedElement;
   clone.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
   clone.style.position = "relative";
   clone.style.left = "0";
@@ -225,17 +292,26 @@ function prepareElementTextureCapture(
   clone.style.opacity = "1";
   clone.style.visibility = "visible";
   clone.style.pointerEvents = "none";
-  return { clone, imageUrls, rect: windowRect };
+  return {
+    clone,
+    images,
+    rect: windowRect
+  };
 }
 
 async function renderPreparedElementTexture({
   clone,
-  imageUrls,
+  images,
   rect
 }: PreparedGenieTextureCapture): Promise<CapturedGenieTexture | null> {
-  await inlineCloneImageResources({ cloneRoot: clone, imageUrls });
+  await inlineCloneImageResources({
+    cloneRoot: clone,
+    images
+  });
 
-  const image = await loadImageFromSvg(createGenieSvgTexture(clone, rect));
+  const svgTexture = createGenieSvgTexture(clone, rect);
+  const image = await loadImageFromSvg(svgTexture);
+
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(rect.width * genieSnapshotScale));
   canvas.height = Math.max(1, Math.round(rect.height * genieSnapshotScale));
@@ -437,7 +513,7 @@ export function useWorkbenchGenieAnimation<TData>({
   captureNodePreviewImage,
   controller,
   dockPreviewCache,
-  minimizeAnimation = "scale",
+  minimizeAnimation = "genie",
   resolveDockAnchorKey,
   resolveDockPreviewCacheKey,
   shouldCaptureNodePreviewImage

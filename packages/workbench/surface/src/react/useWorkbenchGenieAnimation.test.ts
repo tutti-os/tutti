@@ -7,6 +7,10 @@ const source = readFileSync(
   resolve("src/react/useWorkbenchGenieAnimation.tsx"),
   "utf8"
 );
+const genieAnimationSource = readFileSync(
+  resolve("src/react/genieAnimation.ts"),
+  "utf8"
+);
 
 test("genie anchors keep usable rects while minimized dock slots animate", () => {
   assert.match(source, /const dockAnchorFallbackSizePx = 43\.2;/);
@@ -47,6 +51,11 @@ test("genie dock launch skips animation setup when motion is reduced or disabled
   );
 });
 
+test("genie animation remains the default minimize animation", () => {
+  assert.match(source, /minimizeAnimation = "genie"/);
+  assert.doesNotMatch(source, /minimizeAnimation = "scale"/);
+});
+
 test("genie minimize foregrounds the target before preview capture", () => {
   assert.match(source, /function isFocusedWorkbenchNode/);
   assert.match(
@@ -56,6 +65,41 @@ test("genie minimize foregrounds the target before preview capture", () => {
   assert.match(
     source,
     /const previewImageUrlPromise = Promise\.resolve\(\s*captureNodePreviewImage\?\.\(target\) \?\? null\s*\)/
+  );
+});
+
+test("genie texture capture clones only meaningful visible DOM", () => {
+  assert.match(source, /cloneMeaningfulGenieElement\(element, windowRect\)/);
+  assert.doesNotMatch(source, /element\.cloneNode\(true\)/);
+});
+
+test("genie texture capture only records retained image clones", () => {
+  assert.match(
+    genieAnimationSource,
+    /if \(!includeSelf && clone\.childNodes\.length === 0\) \{\s*return null;\s*\}\s*if \(sourceElement instanceof HTMLImageElement\)/
+  );
+});
+
+test("genie inline image downsampling tolerates tainted canvases", () => {
+  assert.match(
+    source,
+    /try \{\s*context\.drawImage\(image, 0, 0, targetSize\.width, targetSize\.height\);\s*return canvas\.toDataURL\("image\/png"\);\s*\} catch \{\s*return null;\s*\}/
+  );
+});
+
+test("genie scanline rendering maps strip edges to avoid horizontal seams", () => {
+  assert.match(genieAnimationSource, /function resolveGenieRowTargetY/);
+  assert.match(
+    genieAnimationSource,
+    /const targetTop = resolveGenieRowTargetY/
+  );
+  assert.match(
+    genieAnimationSource,
+    /const targetBottom = resolveGenieRowTargetY/
+  );
+  assert.match(
+    genieAnimationSource,
+    /const targetHeight = Math\.max\(1, Math\.abs\(targetBottom - targetTop\) \+ 1\)/
   );
 });
 
