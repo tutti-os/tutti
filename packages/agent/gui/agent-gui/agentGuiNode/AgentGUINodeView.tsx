@@ -2952,8 +2952,13 @@ function agentGUIConversationRailStoreSnapshotsEqual(
   next: AgentGUIConversationRailStoreSnapshot
 ): boolean {
   return (
-    current.conversations === next.conversations &&
-    current.userProjects === next.userProjects &&
+    (current.conversations === next.conversations ||
+      conversationSummaryListsRenderEqual(
+        current.conversations,
+        next.conversations
+      )) &&
+    (current.userProjects === next.userProjects ||
+      userProjectListsRenderEqual(current.userProjects, next.userProjects)) &&
     current.activeConversationId === next.activeConversationId &&
     current.pendingDeleteConversationId === next.pendingDeleteConversationId &&
     current.isLoadingConversations === next.isLoadingConversations &&
@@ -2980,6 +2985,45 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.onRequestDeleteConversation === next.onRequestDeleteConversation &&
     current.onCancelDeleteConversation === next.onCancelDeleteConversation &&
     current.onConfirmDeleteConversation === next.onConfirmDeleteConversation
+  );
+}
+
+function conversationSummaryListsRenderEqual(
+  left: AgentGUINodeViewModel["conversations"],
+  right: AgentGUINodeViewModel["conversations"]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((conversation, index) =>
+      conversationSummariesRenderEqual(conversation, right[index]!)
+    )
+  );
+}
+
+function userProjectListsRenderEqual(
+  left: AgentGUINodeViewModel["userProjects"],
+  right: AgentGUINodeViewModel["userProjects"]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((project, index) =>
+      userProjectsRenderEqual(project, right[index]!)
+    )
+  );
+}
+
+function userProjectsRenderEqual(
+  left: AgentGUINodeViewModel["userProjects"][number],
+  right: AgentGUINodeViewModel["userProjects"][number]
+): boolean {
+  return (
+    left === right ||
+    (left.id === right.id &&
+      left.path === right.path &&
+      left.label === right.label &&
+      left.createdAtUnixMs === right.createdAtUnixMs &&
+      left.updatedAtUnixMs === right.updatedAtUnixMs &&
+      left.lastUsedAtUnixMs === right.lastUsedAtUnixMs)
   );
 }
 

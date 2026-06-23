@@ -685,14 +685,84 @@ function stableConversationSummaryList(
   next: AgentGUIConversationSummary[]
 ): AgentGUIConversationSummary[] {
   if (previous?.length !== next.length) {
-    return next;
+    const previousById = new Map(
+      (previous ?? []).map((conversation) => [conversation.id, conversation])
+    );
+    return next.map((conversation) => {
+      const previousConversation = previousById.get(conversation.id);
+      return previousConversation &&
+        conversationSummariesRenderEqual(previousConversation, conversation)
+        ? previousConversation
+        : conversation;
+    });
   }
-  for (let index = 0; index < next.length; index += 1) {
-    if (previous[index] !== next[index]) {
-      return next;
+  let changed = false;
+  const stable = next.map((conversation, index) => {
+    const previousConversation = previous[index];
+    if (
+      previousConversation &&
+      conversationSummariesRenderEqual(previousConversation, conversation)
+    ) {
+      if (previousConversation !== conversation) {
+        changed = true;
+      }
+      return previousConversation;
     }
-  }
-  return previous as AgentGUIConversationSummary[];
+    changed = true;
+    return conversation;
+  });
+  return changed ? stable : (previous as AgentGUIConversationSummary[]);
+}
+
+function conversationSummariesRenderEqual(
+  left: AgentGUIConversationSummary,
+  right: AgentGUIConversationSummary
+): boolean {
+  return (
+    left.id === right.id &&
+    left.userId === right.userId &&
+    left.provider === right.provider &&
+    left.title === right.title &&
+    conversationTitleFallbacksRenderEqual(
+      left.titleFallback,
+      right.titleFallback
+    ) &&
+    left.status === right.status &&
+    left.cwd === right.cwd &&
+    left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
+    left.sortTimeUnixMs === right.sortTimeUnixMs &&
+    left.updatedAtUnixMs === right.updatedAtUnixMs &&
+    left.hasUnreadCompletion === right.hasUnreadCompletion &&
+    conversationProjectsRenderEqual(left.project, right.project) &&
+    conversationSyncStatesEqual(left.syncState, right.syncState)
+  );
+}
+
+function conversationTitleFallbacksRenderEqual(
+  left: AgentGUIConversationSummary["titleFallback"],
+  right: AgentGUIConversationSummary["titleFallback"]
+): boolean {
+  return (
+    left === right ||
+    JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+  );
+}
+
+function conversationProjectsRenderEqual(
+  left: AgentGUIConversationSummary["project"],
+  right: AgentGUIConversationSummary["project"]
+): boolean {
+  return (
+    left === right ||
+    (!left || !right
+      ? !left && !right
+      : left.id === right.id &&
+        left.path === right.path &&
+        left.label === right.label &&
+        left.createdAtUnixMs === right.createdAtUnixMs &&
+        left.updatedAtUnixMs === right.updatedAtUnixMs &&
+        left.lastUsedAtUnixMs === right.lastUsedAtUnixMs)
+  );
 }
 
 function mergeConversationTitleUpdateFields(
@@ -2300,7 +2370,16 @@ export function useAgentGUINodeController({
     [agentActivitySnapshot.sessions]
   );
   const stableRuntimeSyncStateBySessionId = useMemo(() => {
-    const next = { ...stableRuntimeSyncStateBySessionIdRef.current };
+    const current = stableRuntimeSyncStateBySessionIdRef.current;
+    let next = current;
+    let changed = false;
+    const mutableNext = () => {
+      if (!changed) {
+        next = { ...current };
+        changed = true;
+      }
+      return next;
+    };
     const activeSessionIds = new Set<string>();
     for (const session of agentActivitySnapshot.sessions) {
       const agentSessionId = session.agentSessionId.trim();
@@ -2310,7 +2389,9 @@ export function useAgentGUINodeController({
       activeSessionIds.add(agentSessionId);
       const nextSyncState = runtimeSessionSyncState(session);
       if (!nextSyncState) {
-        delete next[agentSessionId];
+        if (current[agentSessionId] !== undefined) {
+          delete mutableNext()[agentSessionId];
+        }
         delete latestRuntimeSyncStateBySessionIdRef.current[agentSessionId];
         continue;
       }
@@ -2331,16 +2412,18 @@ export function useAgentGUINodeController({
         !currentSyncState ||
         !syncStateRenderFieldsEqual(currentSyncState, nextSyncState)
       ) {
-        next[agentSessionId] = nextSyncState;
+        mutableNext()[agentSessionId] = nextSyncState;
       }
     }
     for (const agentSessionId of Object.keys(next)) {
       if (!activeSessionIds.has(agentSessionId)) {
-        delete next[agentSessionId];
+        delete mutableNext()[agentSessionId];
         delete latestRuntimeSyncStateBySessionIdRef.current[agentSessionId];
       }
     }
-    stableRuntimeSyncStateBySessionIdRef.current = next;
+    if (changed) {
+      stableRuntimeSyncStateBySessionIdRef.current = next;
+    }
     return next;
   }, [agentActivitySnapshot.sessions]);
   const markSessionSettingsRequestState = useCallback(

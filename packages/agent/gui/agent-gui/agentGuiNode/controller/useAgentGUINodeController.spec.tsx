@@ -3852,6 +3852,55 @@ describe("useAgentGUINodeController", () => {
     ).toBe(false);
   });
 
+  it("keeps visible conversations stable when runtime session snapshots only change references", async () => {
+    installAgentHostApi({
+      autoLoadRuntime: true,
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", { updatedAtUnixMs: 2 })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversations).toHaveLength(1);
+    });
+    const previousConversations = result.current.viewModel.conversations;
+    const previousConversation = previousConversations[0];
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          provider: "codex",
+          cwd: "/workspace",
+          title: previousConversation?.title,
+          lifecycleStatus: "active",
+          currentPhase: "idle",
+          occurredAtUnixMs: 2
+        }
+      });
+    });
+
+    expect(result.current.viewModel.conversations).toBe(previousConversations);
+    expect(result.current.viewModel.conversations[0]).toBe(
+      previousConversation
+    );
+  });
+
   it("keeps projected timeline models stable when a state patch only refreshes summary metadata", async () => {
     let activityListener:
       | ((event: AgentHostAgentActivityStreamEvent) => void)

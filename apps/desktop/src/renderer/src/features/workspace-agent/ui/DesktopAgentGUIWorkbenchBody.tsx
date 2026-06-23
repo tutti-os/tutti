@@ -131,6 +131,8 @@ const DESKTOP_AGENT_GUI_AGENT_SETTINGS = {
   avoidGroupingEdits: false
 } satisfies NonNullable<AgentGUIProps["agentSettings"]>;
 const DESKTOP_AGENT_GUI_NOOP = (): void => {};
+const DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS =
+  [] satisfies NonNullable<AgentGUIProps["contextMentionProviders"]>;
 const DESKTOP_AGENT_GUI_POSITION = { x: 0, y: 0 };
 type DesktopAgentProbeState = NonNullable<
   AgentGUIProps["workspaceAgentProbes"]
@@ -244,13 +246,26 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       }),
     [appCenterState.apps, workspaceId]
   );
-  const workspaceAppMentionProvider = useMemo(
-    () =>
+  const workspaceAppMentionProvider = useMemo(() => {
+    if (previewMode) {
+      return null;
+    }
+    return (
       contextMentionProviders.find(
         (provider) =>
           provider.id === AGENT_CONTEXT_MENTION_PROVIDER_IDS.workspaceApp
-      ) ?? null,
-    [contextMentionProviders]
+      ) ?? null
+    );
+  }, [contextMentionProviders, previewMode]);
+  const agentGeneratedFileMentionProvider = useMemo(
+    () =>
+      previewMode
+        ? null
+        : createDesktopAgentGeneratedFileMentionProvider({
+            agentActivityRuntime,
+            workspaceId
+          }),
+    [agentActivityRuntime, previewMode, workspaceId]
   );
   const resolveDockFiles = useCallback(
     () =>
@@ -260,34 +275,28 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       }),
     [context.host, workspaceId]
   );
-  const agentGeneratedFileMentionProvider = useMemo(
-    () =>
-      createDesktopAgentGeneratedFileMentionProvider({
-        agentActivityRuntime,
-        workspaceId
-      }),
-    [agentActivityRuntime, workspaceId]
-  );
-  const effectiveContextMentionProviders = useMemo(
-    () =>
-      composeDesktopAgentGuiContextMentionProviders({
-        baseProviders: contextMentionProviders,
-        agentGeneratedFileMentionProvider,
-        workspaceAppMentionProvider,
-        wrapBaseProvider: (provider) =>
-          wrapDesktopFileMentionProviderWithDockFiles(provider, {
-            readDockPreview: dockPreviewCache.read.bind(dockPreviewCache),
-            resolveDockFiles
-          })
-      }),
-    [
+  const effectiveContextMentionProviders = useMemo(() => {
+    if (previewMode || !agentGeneratedFileMentionProvider) {
+      return DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS;
+    }
+    return composeDesktopAgentGuiContextMentionProviders({
+      baseProviders: contextMentionProviders,
       agentGeneratedFileMentionProvider,
-      dockPreviewCache,
-      resolveDockFiles,
-      contextMentionProviders,
-      workspaceAppMentionProvider
-    ]
-  );
+      workspaceAppMentionProvider,
+      wrapBaseProvider: (provider) =>
+        wrapDesktopFileMentionProviderWithDockFiles(provider, {
+          readDockPreview: dockPreviewCache.read.bind(dockPreviewCache),
+          resolveDockFiles
+        })
+    });
+  }, [
+    agentGeneratedFileMentionProvider,
+    dockPreviewCache,
+    previewMode,
+    resolveDockFiles,
+    contextMentionProviders,
+    workspaceAppMentionProvider
+  ]);
   const managedAgentsState = useDesktopManagedAgentsState(
     agentProviderStatusService,
     { ensureLoaded: !previewMode }
