@@ -2558,7 +2558,6 @@ export function AgentComposer({
                     styles.composerReferenceTrigger,
                     "w-auto justify-center px-1 text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
                   )}
-                  data-agent-reference-preview-trigger="true"
                 >
                   <AddIcon
                     aria-hidden

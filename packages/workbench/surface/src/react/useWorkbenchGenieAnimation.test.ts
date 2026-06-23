@@ -170,7 +170,6 @@ test("scale, off, and genie minimize skip real-window preview capture for compon
     source,
     /previewElement\.style\.border = "0";[\s\S]*previewElement\.style\.borderRadius = "0";/
   );
-  assert.match(source, /minimize\.component-texture\.skip\.empty-preview/);
   assert.doesNotMatch(source, /renderFallbackGeniePreview\(\)/);
   assert.match(
     source,

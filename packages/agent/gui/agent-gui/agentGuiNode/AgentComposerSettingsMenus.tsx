@@ -130,7 +130,6 @@ export function AgentProjectDropdown({
           styles.composerMenuTrigger,
           "text-[var(--agent-gui-text-tertiary)]"
         )}
-        data-agent-project-preview-trigger="true"
       >
         <span
           className="workspace-user-project-trigger-label"
@@ -261,7 +260,6 @@ export function AgentPermissionModeDropdown({
       )}
       aria-label={labels.permissionLabel}
       data-permission-tone={triggerTone}
-      data-agent-permission-preview-trigger={previewMode ? "true" : undefined}
     >
       <span className="flex min-w-0 flex-1 items-center">
         <span className="truncate">{triggerLabel}</span>
@@ -513,9 +511,6 @@ export function AgentModelReasoningDropdown({
       )}
       aria-label={`${labels.modelLabel} / ${labels.reasoningLabel}`}
       data-agent-model-reasoning-trigger="true"
-      data-agent-model-reasoning-preview-trigger={
-        previewMode ? "true" : undefined
-      }
     >
       <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         {menu.speed.show && menu.trigger.isFast ? (

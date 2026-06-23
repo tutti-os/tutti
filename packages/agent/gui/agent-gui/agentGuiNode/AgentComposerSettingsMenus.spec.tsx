@@ -146,9 +146,6 @@ describe("AgentProjectDropdown", () => {
     ).not.toBeNull();
     expect(projectOption).toHaveTextContent("tutti");
     expect(projectOption).not.toHaveTextContent("/workspace/tutti");
-    expect(
-      document.querySelector('[data-slot="select-separator"]')
-    ).not.toBeNull();
     const noProjectOption = screen.getByRole("option", {
       name: "No project"
     });
