@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { InstantiationContext } from "@tutti-os/infra/di";
 import { AnalyticsDebugFloatingEntryGate } from "@renderer/features/analytics-debug";
-import { AppUpdateStatus } from "@renderer/features/app-update";
 import { WorkspaceWorkbench } from "@renderer/features/workspace-workbench";
 import { createWorkspaceWindowContainer } from "./createWorkspaceWindowContainer";
 import { createDeferredWorkspaceContainerDispose } from "./deferredWorkspaceContainerDispose";
@@ -34,7 +33,6 @@ export function WorkspaceWindow() {
     <InstantiationContext instantiationService={container}>
       <WorkspaceWorkbench
         enableWindowCloseGuard={environmentMode === "desktop"}
-        headerSlot={<AppUpdateStatus />}
         routeView={routeView}
         workspaceAppExternalApi={workspaceAppExternalApi}
         workspaceID={workspaceID}

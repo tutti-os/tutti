@@ -143,9 +143,9 @@ async function resolveUpdateService(
     return factories.createUpdateService();
   }
 
-  const { createAppUpdateService } =
-    await import("./update/appUpdateService.ts");
-  return createAppUpdateService();
+  const { createDisabledAppUpdateService } =
+    await import("./update/disabledAppUpdateService.ts");
+  return createDisabledAppUpdateService();
 }
 
 async function resolveCliShim(

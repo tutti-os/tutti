@@ -9,7 +9,7 @@ const installableRecommendedAppIds = [
 ] as const;
 
 const comingSoonRecommendedAppIds = [
-  "ai-slide",
+  "ai-ppt-tmp",
   "ai-doc",
   "ai-sheet",
   "open-cut",

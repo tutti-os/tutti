@@ -11,7 +11,7 @@ const workspaceAppMentionRankGroups = [
   ["group-chat"],
   ["automation"],
   ["daily-product-radar", "daily-tech-radar", "radar"],
-  ["ai-slide"],
+  ["ai-ppt-tmp"],
   ["ai-doc"],
   ["ai-sheet"],
   ["open-cut"],

@@ -7,7 +7,6 @@ import {
   registerReporterServices,
   startPredefinePageviewAnalytics
 } from "@renderer/features/analytics";
-import { registerAppUpdateServices } from "@renderer/features/app-update";
 import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences";
 import {
   createDesktopAgentSessionStatusViewResolver,
@@ -115,9 +114,6 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     daemonConnectionAnalytics.release();
   };
   window.addEventListener("beforeunload", releaseWindowAnalytics);
-  registerAppUpdateServices(registry, desktopApi, {
-    reporterService
-  });
   registerWorkspaceCatalogServices(registry, {
     hostApi: {
       platform: desktopApi.platform.os,

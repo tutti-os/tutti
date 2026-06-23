@@ -4,7 +4,6 @@ import { app, BrowserWindow } from "electron";
 import { initializeDesktopEnvironment } from "./defaults";
 import { registerDesktopAppLifecycle } from "./desktopAppLifecycle";
 import { createDesktopAppServices } from "./desktopAppServices";
-import { startDesktopAppUpdateAnalytics } from "./appUpdateAnalytics.ts";
 import { configureApplicationMenu } from "./applicationMenu.ts";
 import { connectAgentPowerSaveBlocker } from "./agentPowerSaveBlocker.ts";
 import {
@@ -98,7 +97,6 @@ export async function bootstrapDesktopApp(): Promise<void> {
   });
   await flushDesktopLogger();
   await configureApplicationMenu({
-    checkForUpdates: () => desktopAppServices.updateService.checkForUpdates(),
     clearDeveloperLogs: () =>
       createDesktopDeveloperLogsService(
         desktopAppServices.preferences,
@@ -146,7 +144,6 @@ export async function bootstrapDesktopApp(): Promise<void> {
     ),
     logger,
     preferences: desktopAppServices.preferences,
-    updateService: desktopAppServices.updateService,
     syncWindowBackgroundColors: syncDesktopWindowBackgroundColors
   });
   const agentPowerSaveBlocker = connectAgentPowerSaveBlocker({
@@ -158,35 +155,12 @@ export async function bootstrapDesktopApp(): Promise<void> {
     preferences: desktopAppServices.preferences
   });
 
-  const appUpdateAnalytics = startDesktopAppUpdateAnalytics({
-    tuttidClient: desktopAppServices.tuttidClient,
-    onError(error) {
-      logger.warn("failed to record app update analytics", {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    },
-    updateService: desktopAppServices.updateService
-  });
-
-  void desktopAppServices.updateService.configure({
-    channel: desktopAppServices.preferences.getUpdateChannel(),
-    policy: desktopAppServices.preferences.getUpdatePolicy()
-  });
-
   await desktopAppServices.workspaceLaunch.openStartupWindow();
 
   registerDesktopAppLifecycle({
     logger,
     tuttid: desktopAppServices.tuttid,
-    disposables: [
-      hostPreferencesEventStream,
-      agentPowerSaveBlocker,
-      {
-        dispose() {
-          appUpdateAnalytics.release();
-        }
-      }
-    ],
+    disposables: [hostPreferencesEventStream, agentPowerSaveBlocker],
     updateService: desktopAppServices.updateService,
     workspaceLaunch: desktopAppServices.workspaceLaunch
   });
