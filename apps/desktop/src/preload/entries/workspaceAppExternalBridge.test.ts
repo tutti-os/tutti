@@ -146,6 +146,45 @@ test("workspace app external bridge invokes workspace feature open", async () =>
   ]);
 });
 
+test("workspace app external bridge invokes notification show without activation", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return { shown: true } as TResult;
+    }
+  });
+
+  assert.deepEqual(
+    await bridge.notifications.show({
+      body: "Saved clip.mp4.",
+      level: "success",
+      title: "Download complete"
+    }),
+    { shown: true }
+  );
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.notificationsShow,
+      payload: {
+        body: "Saved clip.mp4.",
+        level: "success",
+        title: "Download complete"
+      }
+    }
+  ]);
+});
+
 test("workspace app external bridge requires activation for workspace feature open", () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {

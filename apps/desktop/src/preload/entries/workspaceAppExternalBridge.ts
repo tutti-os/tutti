@@ -15,6 +15,8 @@ import type {
   TuttiExternalFileUploadProgress,
   TuttiExternalUploadedFile,
   TuttiExternalLogInput,
+  TuttiExternalNotificationShowInput,
+  TuttiExternalNotificationShowResult,
   TuttiExternalPermissionRequestInput,
   TuttiExternalPermissionRequestResult,
   TuttiExternalPdfPrintHtmlInput,
@@ -84,6 +86,7 @@ export const workspaceAppExternalChannels = {
   filesUploadComplete: "workspace-app-files:upload-complete",
   filesUploadPrepare: "workspace-app-files:upload-prepare",
   logsWrite: "workspace-app-logs:write",
+  notificationsShow: "workspace-app-notifications:show",
   permissionsRequest: "workspace-app-permissions:request",
   pdfPrintHtml: "workspace-app-pdf:print-html",
   referencesOpen: "workspace-app-references:open",
@@ -193,6 +196,14 @@ export function createWorkspaceAppExternalBridge(
         );
         return dependencies.invoke<TuttiExternalPermissionRequestResult>(
           workspaceAppExternalChannels.permissionsRequest,
+          input
+        );
+      }
+    },
+    notifications: {
+      show(input: TuttiExternalNotificationShowInput) {
+        return dependencies.invoke<TuttiExternalNotificationShowResult>(
+          workspaceAppExternalChannels.notificationsShow,
           input
         );
       }

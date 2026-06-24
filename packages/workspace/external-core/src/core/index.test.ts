@@ -6,6 +6,7 @@ import {
   normalizeTuttiExternalFileSelectInput,
   normalizeTuttiExternalFileUploadInput,
   normalizeTuttiExternalLogInput,
+  normalizeTuttiExternalNotificationShowInput,
   normalizeTuttiExternalPdfPrintHtmlInput,
   normalizeTuttiExternalPermissionRequestInput,
   normalizeTuttiExternalReferenceOpenInput,
@@ -235,6 +236,49 @@ test("rejects invalid settings open input", () => {
   assert.throws(
     () => normalizeTuttiExternalSettingsOpenInput({ provider: "codex" }),
     /provider is unsupported/
+  );
+});
+
+test("normalizes notification show input", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalNotificationShowInput({
+      body: " Saved clip.mp4. ",
+      title: " Download complete "
+    }),
+    {
+      body: "Saved clip.mp4.",
+      level: "info",
+      title: "Download complete"
+    }
+  );
+  assert.deepEqual(
+    normalizeTuttiExternalNotificationShowInput({
+      level: "success",
+      title: "Done"
+    }),
+    {
+      level: "success",
+      title: "Done"
+    }
+  );
+});
+
+test("rejects invalid notification show input", () => {
+  assert.throws(
+    () => normalizeTuttiExternalNotificationShowInput(null),
+    /input must be an object/
+  );
+  assert.throws(
+    () => normalizeTuttiExternalNotificationShowInput({ title: "" }),
+    /title is required/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalNotificationShowInput({
+        level: "urgent",
+        title: "Done"
+      }),
+    /level is unsupported/
   );
 });
 

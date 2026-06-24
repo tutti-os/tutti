@@ -26,6 +26,7 @@ import {
   normalizeTuttiExternalFileSelectInput,
   normalizeTuttiExternalFileUploadInput,
   normalizeTuttiExternalLogInput,
+  normalizeTuttiExternalNotificationShowInput,
   normalizeTuttiExternalPdfPrintHtmlInput,
   normalizeTuttiExternalPermissionRequestInput,
   normalizeTuttiExternalReferenceOpenInput,
@@ -52,7 +53,7 @@ import type {
 import { isTuttiExternalManagedAiModelProviderId } from "@tutti-os/workspace-external-core/core";
 import type { DesktopLocale } from "../../shared/i18n";
 import type { DesktopHostPreferencesState } from "../desktopHostPreferences";
-import type { DesktopLogger } from "../logging";
+import { getDesktopLogger, type DesktopLogger } from "../logging";
 import {
   resolveDesktopDaemonBaseUrl,
   type DesktopDaemonEndpoint
@@ -67,6 +68,7 @@ import {
   WorkspaceAppFrontendLogWriter,
   WorkspaceAppGuestLogRateLimiter
 } from "./workspaceAppFrontendLogging.ts";
+import { createElectronDesktopNotificationAccess } from "../host/electronDesktopNotificationAccess.ts";
 import { resolveWorkspaceAppOpenFilePayload } from "../host/workspaceAppFileOpen.ts";
 
 const workspaceAppGuestWebContents = new Set<WebContents>();
@@ -129,6 +131,9 @@ export function registerWorkspaceAppContextIpc(
   }
 ): void {
   const { logger, sessionID, stateRootDir } = options;
+  const notificationAccess = createElectronDesktopNotificationAccess(
+    logger ?? getDesktopLogger()
+  );
   workspaceAppGuestLogRateLimiter ??= new WorkspaceAppGuestLogRateLimiter();
   workspaceAppFrontendLogWriter ??= new WorkspaceAppFrontendLogWriter(
     stateRootDir,
@@ -229,6 +234,20 @@ export function registerWorkspaceAppContextIpc(
       const context = requireWorkspaceAppGuestContext(event.sender);
       const input = normalizeWorkspaceAppUploadCancelInput(payload);
       await requestWorkspaceAppUploadCancel(endpoint, context, input.uploadId);
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.notificationsShow,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalNotificationShowInput(payload);
+      return notificationAccess.show({
+        body: input.body,
+        title: input.title,
+        onClick() {
+          focusWorkspaceAppOwnerWindow(context.ownerWindow);
+        }
+      });
     }
   );
   registerDesktopIpcHandler(
@@ -714,6 +733,17 @@ function requireWorkspaceAppGuestContext(
     throw new Error("Workspace owner window is unavailable.");
   }
   return context;
+}
+
+function focusWorkspaceAppOwnerWindow(window: BrowserWindow): void {
+  if (window.isDestroyed()) {
+    return;
+  }
+  if (window.isMinimized()) {
+    window.restore();
+  }
+  window.show();
+  window.focus();
 }
 
 function requestWorkspaceAppExternalRenderer<

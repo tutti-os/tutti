@@ -1,4 +1,4 @@
-import { BrowserWindow, Notification, app, type WebContents } from "electron";
+import { BrowserWindow, app, type WebContents } from "electron";
 import {
   desktopIpcChannels,
   type DesktopHostNotificationNavigationPayload,
@@ -6,7 +6,7 @@ import {
 } from "../../shared/contracts/ipc";
 import type { WorkspaceLaunch } from "../host/workspaceLaunch";
 import { createDesktopNotificationActivation } from "../host/desktopNotificationActivation.ts";
-import { createDesktopNotificationAccess } from "../host/desktopNotificationAccess.ts";
+import { createElectronDesktopNotificationAccess } from "../host/electronDesktopNotificationAccess.ts";
 import { getDesktopLogger } from "../logging.ts";
 import { registerDesktopIpcHandler } from "./handle";
 
@@ -34,22 +34,7 @@ export function registerHostNotificationsIpc(
       return deps.workspaceLaunch.openStartupWindow();
     }
   });
-  const access = createDesktopNotificationAccess({
-    createNotification(input) {
-      return new Notification(input);
-    },
-    isSupported() {
-      return Notification.isSupported();
-    },
-    onFailed(error) {
-      logger.warn("desktop notification failed", {
-        error
-      });
-    },
-    onClick() {
-      void activation.activate();
-    }
-  });
+  const access = createElectronDesktopNotificationAccess(logger);
 
   registerDesktopIpcHandler(
     desktopIpcChannels.host.notifications.show,
@@ -63,7 +48,9 @@ export function registerHostNotificationsIpc(
           ? () => {
               sendNotificationNavigate(sender, navigation);
             }
-          : undefined
+          : () => {
+              void activation.activate();
+            }
       });
     }
   );

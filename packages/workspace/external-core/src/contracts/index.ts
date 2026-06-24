@@ -149,6 +149,27 @@ export interface TuttiExternalSettingsOpenInput {
   tab?: "models";
 }
 
+export const tuttiExternalNotificationLevels = [
+  "error",
+  "info",
+  "success",
+  "warning"
+] as const;
+
+export type TuttiExternalNotificationLevel =
+  (typeof tuttiExternalNotificationLevels)[number];
+
+export interface TuttiExternalNotificationShowInput {
+  body?: string;
+  level?: TuttiExternalNotificationLevel;
+  title: string;
+}
+
+export interface TuttiExternalNotificationShowResult {
+  reason?: "unsupported";
+  shown: boolean;
+}
+
 export type TuttiExternalWorkspaceFeature =
   | "app-center"
   | "issue-manager"
@@ -262,6 +283,11 @@ export interface TuttiExternalBridge {
   };
   settings: {
     open(input?: TuttiExternalSettingsOpenInput): Promise<void>;
+  };
+  notifications: {
+    show(
+      input: TuttiExternalNotificationShowInput
+    ): Promise<TuttiExternalNotificationShowResult>;
   };
   workspace: {
     openFeature(input: TuttiExternalWorkspaceOpenFeatureInput): Promise<void>;

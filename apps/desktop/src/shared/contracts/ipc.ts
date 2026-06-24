@@ -32,6 +32,8 @@ import type {
   TuttiExternalFileOpenInput,
   TuttiExternalFileSelectInput,
   TuttiExternalFileSelectResult,
+  TuttiExternalNotificationShowInput,
+  TuttiExternalNotificationShowResult,
   TuttiExternalUploadedFile,
   TuttiExternalLogInput,
   TuttiExternalPermissionRequestInput,
@@ -79,6 +81,7 @@ export const desktopIpcChannels = {
     filesUploadComplete: "workspace-app-files:upload-complete",
     filesUploadPrepare: "workspace-app-files:upload-prepare",
     logsWrite: "workspace-app-logs:write",
+    notificationsShow: "workspace-app-notifications:show",
     permissionsRequest: "workspace-app-permissions:request",
     pdfPrintHtml: "workspace-app-pdf:print-html",
     referencesOpen: "workspace-app-references:open",
@@ -654,6 +657,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appExternal
     .filesUploadPrepare]: DesktopWorkspaceAppFileUploadPrepareInput;
   [desktopIpcChannels.appExternal
+    .notificationsShow]: TuttiExternalNotificationShowInput;
+  [desktopIpcChannels.appExternal
     .permissionsRequest]: TuttiExternalPermissionRequestInput;
   [desktopIpcChannels.appExternal.pdfPrintHtml]: TuttiExternalPdfPrintHtmlInput;
   [desktopIpcChannels.appExternal
@@ -771,6 +776,8 @@ export interface DesktopInvokeResultByChannel {
     .filesUploadComplete]: TuttiExternalUploadedFile;
   [desktopIpcChannels.appExternal
     .filesUploadPrepare]: DesktopWorkspaceAppFileUploadPrepareResult;
+  [desktopIpcChannels.appExternal
+    .notificationsShow]: TuttiExternalNotificationShowResult;
   [desktopIpcChannels.appExternal
     .permissionsRequest]: TuttiExternalPermissionRequestResult;
   [desktopIpcChannels.appExternal

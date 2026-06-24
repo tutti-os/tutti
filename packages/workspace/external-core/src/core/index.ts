@@ -1,5 +1,6 @@
 import {
   tuttiExternalManagedAiModelProviderIds,
+  tuttiExternalNotificationLevels,
   tuttiExternalAtProviderIds,
   tuttiExternalWorkspaceAgentProviders,
   type TuttiExternalAtProviderId,
@@ -10,6 +11,8 @@ import {
   type TuttiExternalLogInput,
   type TuttiExternalLogLevel,
   type TuttiExternalManagedAiModelProviderId,
+  type TuttiExternalNotificationLevel,
+  type TuttiExternalNotificationShowInput,
   type TuttiExternalPermissionRequestInput,
   type TuttiExternalPdfMargin,
   type TuttiExternalPdfPrintHtmlInput,
@@ -27,6 +30,7 @@ import type { WorkspaceUserProjectSelectionPreparationInput } from "@tutti-os/wo
 export {
   tuttiExternalAtProviderIds,
   tuttiExternalManagedAiModelProviderIds,
+  tuttiExternalNotificationLevels,
   tuttiExternalWorkspaceAgentProviders
 } from "../contracts/index.ts";
 
@@ -217,6 +221,27 @@ export function normalizeTuttiExternalSettingsOpenInput(
   };
 }
 
+export function normalizeTuttiExternalNotificationShowInput(
+  input: unknown
+): TuttiExternalNotificationShowInput {
+  if (!isRecord(input)) {
+    throw new Error("notifications.show input must be an object.");
+  }
+  const title = normalizeRequiredString(
+    input.title,
+    "notifications.show title"
+  );
+  const body =
+    typeof input.body === "string" && input.body.trim() !== ""
+      ? input.body.trim()
+      : undefined;
+  return {
+    title,
+    level: normalizeTuttiExternalNotificationLevel(input.level),
+    ...(body ? { body } : {})
+  };
+}
+
 export function normalizeTuttiExternalWorkspaceOpenFeatureInput(
   input: unknown
 ): TuttiExternalWorkspaceOpenFeatureInput {
@@ -378,6 +403,17 @@ export function isTuttiExternalWorkspaceAgentProvider(
   );
 }
 
+export function isTuttiExternalNotificationLevel(
+  value: unknown
+): value is TuttiExternalNotificationLevel {
+  return (
+    typeof value === "string" &&
+    tuttiExternalNotificationLevels.includes(
+      value as TuttiExternalNotificationLevel
+    )
+  );
+}
+
 function normalizeTuttiExternalWorkspaceAgentProvider(
   value: unknown
 ): TuttiExternalWorkspaceAgentProvider {
@@ -386,6 +422,18 @@ function normalizeTuttiExternalWorkspaceAgentProvider(
     throw new Error("workspace.openFeature provider is unsupported.");
   }
   return provider;
+}
+
+function normalizeTuttiExternalNotificationLevel(
+  value: unknown
+): TuttiExternalNotificationLevel {
+  if (value === undefined || value === null || value === "") {
+    return "info";
+  }
+  if (!isTuttiExternalNotificationLevel(value)) {
+    throw new Error("notifications.show level is unsupported.");
+  }
+  return value;
 }
 
 function normalizeTuttiExternalLogLevel(value: unknown): TuttiExternalLogLevel {
