@@ -23,6 +23,12 @@ Read the closest `AGENTS.md` before editing:
 
 Use this root file for repository-wide defaults only. Area-specific files win.
 
+## Contribution Workflow
+
+Before preparing commits or pull requests, read `CONTRIBUTING.md` and follow it
+for repository-wide contribution requirements, including Conventional Commits,
+DCO sign-off, PR workflow, review gates, and multilingual documentation updates.
+
 ## Hard Rules
 
 - Published workspace packages use `@tutti-os/*`; keep manifests, imports, docs, and release config aligned.
