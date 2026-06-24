@@ -5,23 +5,56 @@ import test from "node:test";
 const source = readFileSync(new URL("./MentionPalette.tsx", import.meta.url), {
   encoding: "utf8"
 });
+const stylesheet = readFileSync(
+  new URL("./mentionPalette.css", import.meta.url),
+  {
+    encoding: "utf8"
+  }
+);
 
 test("mention palette option backgrounds are driven by highlighted state", () => {
   const rowButton = extractPaletteStyle("rowButton");
   const expandButton = extractPaletteStyle("expandButton");
 
-  assert.doesNotMatch(rowButton, /hover:bg/);
-  assert.doesNotMatch(rowButton, /focus:bg/);
+  assert.equal(rowButton, '"rich-text-at-mention-palette__row-button"');
+  assert.doesNotMatch(
+    stylesheet,
+    /\.rich-text-at-mention-palette__row-button:hover/
+  );
   assert.match(
-    rowButton,
-    /data-\[highlighted\]:bg-\[var\(--transparency-block\)\]/
+    stylesheet,
+    /\.rich-text-at-mention-palette__row-button\[data-highlighted\]/
   );
 
-  assert.doesNotMatch(expandButton, /hover:bg/);
-  assert.doesNotMatch(expandButton, /focus-visible:bg/);
+  assert.equal(expandButton, '"rich-text-at-mention-palette__expand-button"');
+  assert.doesNotMatch(
+    stylesheet,
+    /\.rich-text-at-mention-palette__expand-button:hover/
+  );
   assert.match(
-    expandButton,
-    /data-\[highlighted\]:bg-\[var\(--transparency-block\)\]/
+    stylesheet,
+    /\.rich-text-at-mention-palette__expand-button\[data-highlighted\]/
+  );
+  assert.doesNotMatch(source, /onMouseEnter=/);
+  assert.match(source, /onPointerMove=/);
+});
+
+test("mention palette always keeps the package root class for css variables", () => {
+  assert.match(
+    source,
+    /DEFAULT_THEME\.classNames\.palette,[\s\S]*theme\.classNames\.palette,[\s\S]*paletteStyles\.palette/
+  );
+  assert.doesNotMatch(
+    source,
+    /className=\{cn\(theme\.classNames\.palette,\s*paletteStyles\.palette\)\}/
+  );
+});
+
+test("mention palette scrolls highlighted options inside its own scroll body", () => {
+  assert.match(source, /scrollElementIntoScrollContainerNearest/);
+  assert.doesNotMatch(
+    source,
+    /if \(!scrollHighlightedIntoViewCentered\) \{\s*return;\s*\}/
   );
 });
 

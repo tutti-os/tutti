@@ -35,7 +35,11 @@ import type { AgentConversationPromptVM } from "../../shared/agentConversation/c
 import { cn } from "../../app/renderer/lib/utils";
 import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
 import { ListChecks, X } from "lucide-react";
-import { makeAtPanelKeyDown } from "@tutti-os/ui-rich-text/at-panel";
+import {
+  createMentionPaletteStateAdapter,
+  makeAtPanelKeyDown,
+  repairMentionPaletteHighlight
+} from "@tutti-os/ui-rich-text/at-panel";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import {
@@ -101,11 +105,12 @@ import type { AgentCapabilityTokenOption } from "./agentRichText/agentCapability
 import {
   AgentMentionSearchController,
   type AgentMentionFilterId,
+  type AgentMentionGroupId,
   type AgentMentionSearchState
 } from "./AgentMentionSearchController";
 import {
-  AgentFileMentionPalette,
-  flattenAgentMentionPaletteEntries
+  agentMentionItemKey,
+  AgentFileMentionPalette
 } from "./AgentFileMentionPalette";
 import {
   AGENT_MENTION_FILTER_TAB_ORDER,
@@ -955,10 +960,6 @@ export function AgentComposer({
     highlightedIndex,
     slashPaletteEntries.length
   );
-  const mentionPaletteEntries = useMemo(
-    () => flattenAgentMentionPaletteEntries(mentionSearchState),
-    [mentionSearchState]
-  );
   const [mentionPaletteFrame, setMentionPaletteFrame] =
     useState<MentionPaletteFrame | null>(null);
 
@@ -967,36 +968,42 @@ export function AgentComposer({
   }, [skillQueryMatch?.prefix, skillQueryMatch?.query, slashQuery]);
 
   useEffect(() => {
-    const firstKey = mentionPaletteEntries[0]?.key ?? null;
-    if (!firstKey) {
-      autoMentionHighlightedKeyRef.current = null;
-      setMentionHighlightedKey(null);
-      return;
-    }
+    const preferredKey =
+      shouldResetMentionHighlightToFilter &&
+      mentionSearchState.mode === "browse"
+        ? `category:${mentionSearchState.filter}`
+        : null;
     if (shouldResetMentionHighlightToFilter) {
-      const resetKey =
-        mentionSearchState.mode === "browse"
-          ? `category:${mentionSearchState.filter}`
-          : null;
-      autoMentionHighlightedKeyRef.current = resetKey;
-      setMentionHighlightedKey(resetKey);
+      const nextKey = repairMentionPaletteHighlight({
+        state: mentionSearchState,
+        currentKey: null,
+        preferredKey,
+        getItemKey: agentMentionItemKey
+      });
+      autoMentionHighlightedKeyRef.current = nextKey;
+      setMentionHighlightedKey(nextKey);
       setShouldResetMentionHighlightToFilter(false);
       return;
     }
     setMentionHighlightedKey((current) => {
-      const hasCurrent =
-        current !== null &&
-        mentionPaletteEntries.some((entry) => entry.key === current);
-      if (hasCurrent && current !== autoMentionHighlightedKeyRef.current) {
+      const nextKey = repairMentionPaletteHighlight({
+        state: mentionSearchState,
+        currentKey: current,
+        getItemKey: agentMentionItemKey
+      });
+      if (
+        nextKey === current &&
+        current !== autoMentionHighlightedKeyRef.current
+      ) {
         return current;
       }
-      autoMentionHighlightedKeyRef.current = firstKey;
-      return firstKey;
+      autoMentionHighlightedKeyRef.current = nextKey;
+      return nextKey;
     });
   }, [
-    mentionPaletteEntries,
     mentionSearchState.filter,
     mentionSearchState.mode,
+    mentionSearchState,
     shouldResetMentionHighlightToFilter
   ]);
 
@@ -1398,26 +1405,45 @@ export function AgentComposer({
     setIsPaletteOpen(false);
   }, [closeFileMentionPalette, showFileMentionPalette]);
 
+  const createFileMentionPaletteAdapter = useCallback(
+    (highlightedKey: string | null = mentionHighlightedKey) =>
+      createMentionPaletteStateAdapter({
+        state: mentionSearchState,
+        highlightedKey,
+        categoryCycleOrder:
+          mentionSearchState.mode === "browse"
+            ? mentionSearchState.categories
+            : AGENT_MENTION_FILTER_TAB_ORDER,
+        getItemKey: agentMentionItemKey,
+        callbacks: {
+          onHighlightChange: (key) => {
+            setShouldCenterMentionHighlight(true);
+            autoMentionHighlightedKeyRef.current = null;
+            setMentionHighlightedKey(key);
+          },
+          onActiveCategoryIdChange: (categoryId) => {
+            mentionControllerRef.current?.setFilter(
+              categoryId as AgentMentionFilterId
+            );
+            setShouldResetMentionHighlightToFilter(true);
+            setShouldCenterMentionHighlight(false);
+          },
+          onExpandGroup: (groupId) => {
+            mentionControllerRef.current?.expandGroup(
+              groupId as AgentMentionGroupId
+            );
+          },
+          onSelectItem: selectFileMention
+        }
+      }),
+    [mentionHighlightedKey, mentionSearchState, selectFileMention]
+  );
+
   const moveFileMentionSelection = useCallback(
     (delta: 1 | -1): void => {
-      const focusableEntries =
-        flattenAgentMentionPaletteEntries(mentionSearchState);
-      if (focusableEntries.length === 0) {
-        return;
-      }
-      const currentIndex = mentionHighlightedKey
-        ? focusableEntries.findIndex(
-            (entry) => entry.key === mentionHighlightedKey
-          )
-        : -1;
-      const baseIndex = currentIndex >= 0 ? currentIndex : delta > 0 ? -1 : 0;
-      const nextIndex =
-        (baseIndex + delta + focusableEntries.length) % focusableEntries.length;
-      setShouldCenterMentionHighlight(true);
-      autoMentionHighlightedKeyRef.current = null;
-      setMentionHighlightedKey(focusableEntries[nextIndex]?.key ?? null);
+      createFileMentionPaletteAdapter().moveSelection(delta);
     },
-    [mentionHighlightedKey, mentionSearchState]
+    [createFileMentionPaletteAdapter]
   );
 
   const handleMentionHighlightChange = useCallback((key: string): void => {
@@ -1427,29 +1453,9 @@ export function AgentComposer({
 
   const cycleFileMentionFilter = useCallback(
     (delta: 1 | -1 = 1): void => {
-      const filters = (
-        mentionSearchState.mode === "browse"
-          ? mentionSearchState.categories.map((category) => category.id)
-          : [...AGENT_MENTION_FILTER_TAB_ORDER]
-      ) as AgentMentionFilterId[];
-      if (filters.length === 0) {
-        return;
-      }
-      const currentFilterIndex = filters.findIndex(
-        (filter) => filter === mentionSearchState.filter
-      );
-      const baseIndex =
-        currentFilterIndex >= 0 ? currentFilterIndex : delta > 0 ? -1 : 0;
-      const nextIndex = (baseIndex + delta + filters.length) % filters.length;
-      const nextFilter = filters[nextIndex];
-      if (!nextFilter) {
-        return;
-      }
-      mentionControllerRef.current?.setFilter(nextFilter);
-      setShouldResetMentionHighlightToFilter(true);
-      setShouldCenterMentionHighlight(false);
+      createFileMentionPaletteAdapter().cycleCategory(delta);
     },
-    [mentionSearchState]
+    [createFileMentionPaletteAdapter]
   );
 
   const handleFileMentionKeyDown = useCallback(
@@ -1457,39 +1463,10 @@ export function AgentComposer({
       if (!showFileMentionPalette) {
         return false;
       }
-      const focusableEntries =
-        flattenAgentMentionPaletteEntries(mentionSearchState);
       return makeAtPanelKeyDown({
         close: closeFileMentionPalette,
         commitSelection: () => {
-          const activeEntry = focusableEntries.find(
-            (entry) => entry.key === mentionHighlightedKey
-          );
-          if (!activeEntry) {
-            const highlightedCategoryId = mentionHighlightedKey?.startsWith(
-              "category:"
-            )
-              ? mentionHighlightedKey.slice("category:".length)
-              : null;
-            if (
-              highlightedCategoryId &&
-              mentionSearchState.categories.some(
-                (category) => category.id === highlightedCategoryId
-              )
-            ) {
-              mentionControllerRef.current?.setFilter(
-                highlightedCategoryId as AgentMentionFilterId
-              );
-            }
-            return;
-          }
-          if (activeEntry.type === "category" && activeEntry.categoryId) {
-            mentionControllerRef.current?.setFilter(activeEntry.categoryId);
-          } else if (activeEntry.type === "expand" && activeEntry.groupId) {
-            mentionControllerRef.current?.expandGroup(activeEntry.groupId);
-          } else if (activeEntry.type === "item" && activeEntry.item) {
-            selectFileMention(activeEntry.item);
-          }
+          createFileMentionPaletteAdapter().commitHighlighted();
         },
         cycleFilter: cycleFileMentionFilter,
         moveSelection: moveFileMentionSelection
@@ -1497,11 +1474,9 @@ export function AgentComposer({
     },
     [
       closeFileMentionPalette,
+      createFileMentionPaletteAdapter,
       cycleFileMentionFilter,
-      mentionHighlightedKey,
-      mentionSearchState,
       moveFileMentionSelection,
-      selectFileMention,
       showFileMentionPalette
     ]
   );
@@ -2453,8 +2428,6 @@ export function AgentComposer({
                       onExpandGroup={(groupId) =>
                         mentionControllerRef.current?.expandGroup(groupId)
                       }
-                      onCycleFilter={cycleFileMentionFilter}
-                      onMoveSelection={moveFileMentionSelection}
                       onOpenReferences={
                         onRequestWorkspaceReferences
                           ? handleOpenReferencesForEntity

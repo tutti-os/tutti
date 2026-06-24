@@ -16,6 +16,8 @@ test("makeAtPanelKeyDown maps navigation and commit keys", () => {
   assert.equal(onKeyDown(keyEvent("Enter")), true);
   assert.equal(onKeyDown(keyEvent("Tab")), true);
   assert.equal(onKeyDown(keyEvent("Tab", { shiftKey: true })), true);
+  assert.equal(onKeyDown(keyEvent("ArrowRight")), true);
+  assert.equal(onKeyDown(keyEvent("ArrowLeft")), true);
   assert.equal(onKeyDown(keyEvent("Escape")), true);
   assert.equal(onKeyDown(keyEvent("a")), false);
 
@@ -23,6 +25,8 @@ test("makeAtPanelKeyDown maps navigation and commit keys", () => {
     "move:1",
     "move:-1",
     "commit",
+    "cycle:1",
+    "cycle:-1",
     "cycle:1",
     "cycle:-1",
     "close"

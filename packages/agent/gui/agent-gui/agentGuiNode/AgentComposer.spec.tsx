@@ -274,6 +274,11 @@ vi.mock("./AgentQueuedPromptPanel", () => ({
 
 vi.mock("./AgentFileMentionPalette", () => ({
   AgentFileMentionPalette: () => null,
+  agentMentionItemKey: (item: {
+    kind: string;
+    targetId?: string;
+    path?: string;
+  }) => `${item.kind}:${item.kind === "file" ? item.path : item.targetId}`,
   flattenAgentMentionPaletteEntries: () => []
 }));
 

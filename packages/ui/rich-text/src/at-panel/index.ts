@@ -1,5 +1,12 @@
-export { buildMentionPaletteState } from "./buildMentionPaletteState.ts";
 export { MentionPalette } from "./MentionPalette.tsx";
+export {
+  MentionPaletteFromState,
+  type MentionPaletteFromStateProps
+} from "./MentionPaletteFromState.tsx";
+export {
+  MentionPaletteMultiSelectFooter,
+  MentionPaletteSelectIndicator
+} from "./MentionPaletteControls.tsx";
 export {
   renderMentionRow,
   type MentionRowClassNames,
@@ -12,6 +19,7 @@ export type {
   MentionRowFileItem,
   MentionRowIssueItem,
   MentionRowItem,
+  MentionRowPlainItem,
   MentionRowSessionItem,
   MentionRowStatusTag
 } from "./mentionRowTypes.ts";
@@ -22,6 +30,28 @@ export {
   type MentionFileVisualKindInput
 } from "./mentionFileVisualKind.ts";
 export {
+  renderMentionReferenceLeading,
+  resolveMentionReferenceImageUrl,
+  type MentionReferenceLeadingInput,
+  type MentionReferenceProviderKind
+} from "./mentionReferenceIcon.ts";
+export {
+  isMentionTriggerRowProviderId,
+  mentionRowStatusTagFromPresentation,
+  richTextTriggerQueryMatchToMentionRowItem,
+  workspaceAppIconFallbackUrlFromTriggerMatch,
+  type MentionTriggerRowItemOptions,
+  type MentionTriggerRowLeadingContext,
+  type MentionTriggerRowProviderId
+} from "./mentionTriggerRowItem.ts";
+export {
+  createMentionPaletteStateAdapter,
+  type MentionPaletteStateAdapter,
+  type MentionPaletteStateAdapterInput,
+  type MentionPaletteStateCallbacks,
+  type MentionPaletteStateCommitResult
+} from "./mentionPaletteStateAdapter.ts";
+export {
   activityMentionStatusBadgeClassName,
   activityMentionStatusTone,
   issueMentionStatusBadgeClassName,
@@ -31,6 +61,19 @@ export {
   type MentionRowStatusVariant
 } from "./mentionStatusTone.ts";
 export { flattenMentionPaletteEntries } from "./mentionPaletteEntries.ts";
+export {
+  buildMentionPaletteModel,
+  buildMentionPaletteModelFromTriggerMatches,
+  findMentionPaletteEntry,
+  mentionPaletteGroup,
+  moveMentionPaletteHighlight,
+  nextMentionPaletteCategory,
+  repairMentionPaletteHighlight,
+  selectedMentionPaletteItem,
+  type MentionPaletteCategoryConfig,
+  type MentionPaletteModelInput,
+  type MentionPaletteSectionConfig
+} from "./mentionPaletteModel.ts";
 export type {
   MentionPaletteCategory,
   MentionPaletteEntry,
@@ -42,25 +85,8 @@ export type {
   MentionPaletteTheme
 } from "./mentionPaletteTypes.ts";
 export {
-  DEFAULT_RICH_TEXT_AT_PANEL_PAGE_SIZE,
-  RICH_TEXT_AT_ALL_FILTER_ID,
-  buildDefaultRichTextTriggerProviderGroups,
-  buildRichTextAtFilterTabs,
-  findRichTextTriggerProviderGroup,
-  groupRichTextAtMatches,
-  normalizeAtPanelQuery,
-  richTextAtGroupExpandCount
-} from "./searchHelpers.ts";
-export {
   makeAtPanelKeyDown,
   useAtPanelKeyboard,
   type AtPanelKeyboardActions,
   type AtPanelKeyboardEventLike
 } from "./useAtPanelKeyboard.ts";
-export type {
-  RichTextAtFilterId,
-  RichTextAtFilterTab,
-  RichTextAtGroupId,
-  RichTextTriggerProviderGroup,
-  RichTextAtSearchGroup
-} from "./types.ts";

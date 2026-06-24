@@ -1,4 +1,3 @@
-export { buildMentionPaletteState } from "./buildMentionPaletteState.ts";
 export {
   resolveMentionFileThumbnailUrl,
   resolveMentionFileVisualKind,
@@ -6,6 +5,19 @@ export {
   type MentionFileVisualKindInput
 } from "./mentionFileVisualKind.ts";
 export { flattenMentionPaletteEntries } from "./mentionPaletteEntries.ts";
+export {
+  buildMentionPaletteModel,
+  buildMentionPaletteModelFromTriggerMatches,
+  findMentionPaletteEntry,
+  mentionPaletteGroup,
+  moveMentionPaletteHighlight,
+  nextMentionPaletteCategory,
+  repairMentionPaletteHighlight,
+  selectedMentionPaletteItem,
+  type MentionPaletteCategoryConfig,
+  type MentionPaletteModelInput,
+  type MentionPaletteSectionConfig
+} from "./mentionPaletteModel.ts";
 export type {
   MentionPaletteCategory,
   MentionPaletteEntry,
@@ -22,6 +34,7 @@ export type {
   MentionRowFileItem,
   MentionRowIssueItem,
   MentionRowItem,
+  MentionRowPlainItem,
   MentionRowSessionItem,
   MentionRowStatusTag
 } from "./mentionRowTypes.ts";
@@ -34,20 +47,3 @@ export {
   type MentionRowStatusTone,
   type MentionRowStatusVariant
 } from "./mentionStatusTone.ts";
-export {
-  DEFAULT_RICH_TEXT_AT_PANEL_PAGE_SIZE,
-  RICH_TEXT_AT_ALL_FILTER_ID,
-  buildDefaultRichTextTriggerProviderGroups,
-  buildRichTextAtFilterTabs,
-  findRichTextTriggerProviderGroup,
-  groupRichTextAtMatches,
-  normalizeAtPanelQuery,
-  richTextAtGroupExpandCount
-} from "./searchHelpers.ts";
-export type {
-  RichTextAtFilterId,
-  RichTextAtFilterTab,
-  RichTextAtGroupId,
-  RichTextTriggerProviderGroup,
-  RichTextAtSearchGroup
-} from "./types.ts";

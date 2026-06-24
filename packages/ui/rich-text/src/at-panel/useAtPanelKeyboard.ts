@@ -33,6 +33,16 @@ export function makeAtPanelKeyDown(actions: AtPanelKeyboardActions) {
       actions.cycleFilter(event.shiftKey ? -1 : 1);
       return true;
     }
+    if (event.key === "ArrowRight" && actions.cycleFilter) {
+      event.preventDefault();
+      actions.cycleFilter(1);
+      return true;
+    }
+    if (event.key === "ArrowLeft" && actions.cycleFilter) {
+      event.preventDefault();
+      actions.cycleFilter(-1);
+      return true;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
       actions.commitSelection();

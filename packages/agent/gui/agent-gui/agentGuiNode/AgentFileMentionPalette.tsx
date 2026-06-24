@@ -3,7 +3,7 @@ import {
   type AgentActivityDisplayStatus
 } from "@tutti-os/agent-activity-core";
 import {
-  MentionPalette,
+  MentionPaletteFromState,
   flattenMentionPaletteEntries,
   issueMentionStatusTone,
   renderMentionRow,
@@ -67,8 +67,6 @@ export interface AgentFileMentionPaletteProps {
   onSelectCategory: (categoryId: AgentMentionBrowseCategory["id"]) => void;
   onSelectFilter: (filter: AgentMentionFilterId) => void;
   onExpandGroup: (groupId: AgentMentionGroupId) => void;
-  onCycleFilter: () => void;
-  onMoveSelection: (delta: 1 | -1) => void;
   /**
    * 可选:点击 issue / app 行末尾的「查看产物文件」图标时回调(打开引用 picker 并定位)。
    * 仅 workspace-issue / workspace-app 行渲染该入口。
@@ -124,7 +122,7 @@ const AGENT_MENTION_ROW_CLASS_NAMES: MentionRowClassNames = {
  * `${group.id}:${agentMentionItemKey(item)}`, matching the agent's historical
  * `${group.id}:${item.kind}:${...}` format so highlight keys stay compatible.
  */
-function agentMentionItemKey(item: AgentContextMentionItem): string {
+export function agentMentionItemKey(item: AgentContextMentionItem): string {
   return `${item.kind}:${
     item.kind === "file" ? agentGeneratedMentionItemKey(item) : item.targetId
   }`;
@@ -167,7 +165,7 @@ export function groupStartKeys(state: AgentMentionSearchState): string[] {
     .map((group) => {
       const firstItem = group.items[0];
       if (firstItem) {
-        return `${group.id}:${firstItem.kind}:${firstItem.kind === "file" ? firstItem.path : firstItem.targetId}`;
+        return `${group.id}:${agentMentionItemKey(firstItem)}`;
       }
       if (group.hasMore) {
         return `expand:${group.id}`;
@@ -192,8 +190,6 @@ export function AgentFileMentionPalette({
   onSelectCategory,
   onSelectFilter,
   onExpandGroup,
-  onCycleFilter,
-  onMoveSelection,
   onOpenReferences
 }: AgentFileMentionPaletteProps): React.JSX.Element {
   "use memo";
@@ -260,7 +256,7 @@ export function AgentFileMentionPalette({
   });
 
   return (
-    <MentionPalette<AgentContextMentionItem>
+    <MentionPaletteFromState<AgentContextMentionItem>
       state={shellState}
       highlightedKey={highlightedKey}
       getItemKey={agentMentionItemKey}
@@ -296,17 +292,16 @@ export function AgentFileMentionPalette({
       renderListFooter={
         showFileSearchMoreHint ? () => <MentionFileSearchMoreHint /> : undefined
       }
-      onHighlightChange={onHighlightChange}
-      onSelectItem={(item) => onSelectItem(item)}
-      onSelectCategory={(categoryId) =>
-        onSelectCategory(categoryId as AgentMentionBrowseCategory["id"])
-      }
-      onSelectFilter={(nextFilter) =>
-        onSelectFilter(nextFilter as AgentMentionFilterId)
-      }
-      onExpandGroup={(groupId) => onExpandGroup(groupId as AgentMentionGroupId)}
-      onCycleFilter={() => onCycleFilter()}
-      onMoveSelection={onMoveSelection}
+      callbacks={{
+        onHighlightChange,
+        onActiveCategoryIdChange: (categoryId) => {
+          onSelectCategory(categoryId as AgentMentionBrowseCategory["id"]);
+          onSelectFilter(categoryId as AgentMentionFilterId);
+        },
+        onExpandGroup: (groupId) =>
+          onExpandGroup(groupId as AgentMentionGroupId),
+        onSelectItem
+      }}
     />
   );
 }

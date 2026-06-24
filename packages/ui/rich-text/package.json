@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./at-panel": "./src/at-panel/index.ts",
+    "./at-panel/index.css": "./src/at-panel/mentionPalette.css",
     "./at-panel/model": "./src/at-panel/model.ts",
     "./core": "./src/core/index.ts",
     "./editor": "./src/editor/index.ts",
@@ -64,6 +65,7 @@
         "types": "./dist/at-panel/index.d.ts",
         "import": "./dist/at-panel/index.js"
       },
+      "./at-panel/index.css": "./dist/at-panel/index.css",
       "./at-panel/model": {
         "types": "./dist/at-panel/model.d.ts",
         "import": "./dist/at-panel/model.js"

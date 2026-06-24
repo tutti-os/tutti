@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { MentionFileVisualKind } from "./mentionFileVisualKind.ts";
 import type {
   MentionRowStatusTone,
@@ -64,6 +65,13 @@ export interface MentionRowIssueItem {
   statusTag?: MentionRowStatusTag | null;
 }
 
+export interface MentionRowPlainItem {
+  kind: "plain";
+  label: string;
+  description?: string | null;
+  leading?: ReactNode;
+}
+
 /**
  * The kind-discriminated view-model the shared {@link MentionRow} renders.
  * Carries ONLY display-ready fields — no surface types, no i18n calls, no asset
@@ -75,4 +83,5 @@ export type MentionRowItem =
   | MentionRowAppItem
   | MentionRowAppFactoryItem
   | MentionRowSessionItem
-  | MentionRowIssueItem;
+  | MentionRowIssueItem
+  | MentionRowPlainItem;

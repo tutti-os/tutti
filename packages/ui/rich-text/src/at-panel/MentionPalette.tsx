@@ -11,7 +11,7 @@ import {
   FolderFailedFilledIcon,
   KeyboardFilledIcon
 } from "@tutti-os/ui-system/icons";
-import { Spinner, UnderlineTabs } from "@tutti-os/ui-system/components";
+import { UnderlineTabs } from "@tutti-os/ui-system/components";
 import { cn } from "@tutti-os/ui-system/utils";
 import { flattenMentionPaletteEntries } from "./mentionPaletteEntries.ts";
 import { MentionPaletteScrollbar } from "./mentionPaletteScrollbar.tsx";
@@ -67,20 +67,36 @@ function resolveMentionPaletteTheme(
   };
 }
 
+function mentionPaletteRootClassName(
+  theme: ResolvedMentionPaletteTheme
+): string {
+  return cn(
+    DEFAULT_THEME.classNames.palette,
+    theme.classNames.palette,
+    paletteStyles.palette
+  );
+}
+
 const paletteStyles = {
-  palette:
-    "nodrag grid h-full max-h-[320px] min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden text-[13px] [-webkit-app-region:no-drag]",
-  header: "relative z-10 shrink-0",
-  footer: "shrink-0",
-  scrollShell: "relative min-h-0 overflow-hidden",
-  scrollBody:
-    "h-full min-h-0 overflow-y-auto overscroll-contain px-1 pb-1 pt-2",
-  rowButton:
-    "nodrag relative flex min-h-9 w-full min-w-0 cursor-pointer select-none items-center gap-1.5 overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left text-[13px] text-[var(--text-primary)] outline-hidden transition-colors duration-200 [-webkit-app-region:no-drag] active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:min-w-0 *:[span]:last:flex-1 *:[span]:last:items-center *:[span]:last:gap-2",
-  categoryButton:
-    "nodrag flex min-h-[72px] w-full items-center gap-3.5 rounded-[6px] border-0 bg-transparent px-2.5 py-2.5 text-left text-[var(--text-primary)] transition-[background-color,color] hover:bg-[var(--transparency-block)] focus-visible:bg-[var(--transparency-block)] focus-visible:outline-none active:bg-[var(--transparency-active)]",
-  expandButton:
-    "nodrag flex w-full items-center justify-center rounded-[6px] px-3 py-2 text-[13px] font-medium text-[var(--text-secondary)] transition focus-visible:outline-none active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)]"
+  palette: "rich-text-at-mention-palette__shell",
+  header: "rich-text-at-mention-palette__header",
+  footer: "rich-text-at-mention-palette__footer",
+  scrollShell: "rich-text-at-mention-palette__scroll-shell",
+  scrollBody: "rich-text-at-mention-palette__scroll-body",
+  groups: "rich-text-at-mention-palette__groups",
+  group: "rich-text-at-mention-palette__group",
+  groupDivider: "rich-text-at-mention-palette__group-divider",
+  groupLabel: "rich-text-at-mention-palette__group-label",
+  groupItems: "rich-text-at-mention-palette__group-items",
+  groupEmpty: "rich-text-at-mention-palette__group-empty",
+  rowButton: "rich-text-at-mention-palette__row-button",
+  expandButton: "rich-text-at-mention-palette__expand-button",
+  emptyState: "rich-text-at-mention-palette__empty-state",
+  emptyStateInner: "rich-text-at-mention-palette__empty-state-inner",
+  emptyStateIcon: "rich-text-at-mention-palette__empty-state-icon",
+  emptyStateText: "rich-text-at-mention-palette__empty-state-text",
+  loading: "rich-text-at-mention-palette__loading",
+  loadingSpinner: "rich-text-at-mention-palette__loading-spinner"
 } as const;
 
 const MENTION_PALETTE_LOADING_MIN_VISIBLE_MS = 320;
@@ -148,10 +164,14 @@ export function MentionPalette<TItem>(
       highlightedElement.scrollIntoView({ block: "nearest" });
       return;
     }
-    if (!scrollHighlightedIntoViewCentered) {
+    if (scrollHighlightedIntoViewCentered) {
+      centerElementInScrollContainer(scrollContainer, highlightedElement);
       return;
     }
-    centerElementInScrollContainer(scrollContainer, highlightedElement);
+    scrollElementIntoScrollContainerNearest(
+      scrollContainer,
+      highlightedElement
+    );
   }, [highlightedKey, scrollHighlightedIntoViewCentered]);
 
   useEffect(() => {
@@ -192,7 +212,7 @@ export function MentionPalette<TItem>(
   if (state.status === "error") {
     return (
       <div
-        className={cn(theme.classNames.palette, paletteStyles.palette)}
+        className={mentionPaletteRootClassName(theme)}
         style={paletteMaxHeightStyle}
         role="listbox"
         aria-label={labels.listbox ?? labels.tabHint}
@@ -243,7 +263,7 @@ export function MentionPalette<TItem>(
 
   return (
     <div
-      className={cn(theme.classNames.palette, paletteStyles.palette)}
+      className={mentionPaletteRootClassName(theme)}
       style={paletteMaxHeightStyle}
       role="listbox"
       aria-label={labels.listbox ?? labels.tabHint}
@@ -311,6 +331,32 @@ function centerElementInScrollContainer(
   container.scrollTo({ top: nextScrollTop, behavior: "auto" });
 }
 
+function scrollElementIntoScrollContainerNearest(
+  container: HTMLElement,
+  element: HTMLElement
+): void {
+  const containerRect = container.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  let nextScrollTop = container.scrollTop;
+
+  if (elementRect.top < containerRect.top) {
+    nextScrollTop -= containerRect.top - elementRect.top;
+  } else if (elementRect.bottom > containerRect.bottom) {
+    nextScrollTop += elementRect.bottom - containerRect.bottom;
+  } else {
+    return;
+  }
+
+  const maxScrollTop = Math.max(
+    0,
+    container.scrollHeight - container.clientHeight
+  );
+  container.scrollTo({
+    top: Math.min(Math.max(0, nextScrollTop), maxScrollTop),
+    behavior: "auto"
+  });
+}
+
 function findGroup<TItem>(
   groups: MentionPaletteState<TItem>["groups"],
   groupId: string
@@ -346,29 +392,27 @@ function MentionPaletteGroups<TItem>({
   groupDividerAttribute: string;
 }): JSX.Element {
   return (
-    <div className="grid gap-3">
+    <div className={paletteStyles.groups}>
       {state.groups.map((group, index) => {
         const showGroupDivider = index > 0 && !group.hideTopDivider;
         return (
           <section
             key={group.id}
-            className={cn("grid gap-1", group.sectionClassName)}
+            className={cn(paletteStyles.group, group.sectionClassName)}
           >
             {showGroupDivider ? (
               <div
-                className="mx-3 mb-2 border-t border-[var(--line-1)]"
+                className={paletteStyles.groupDivider}
                 {...{ [groupDividerAttribute]: "true" }}
                 aria-hidden="true"
               />
             ) : null}
             {group.label ? (
-              <div className="px-3 text-[13px] font-normal text-[var(--text-secondary)]">
-                {group.label}
-              </div>
+              <div className={paletteStyles.groupLabel}>{group.label}</div>
             ) : null}
-            <div className="grid gap-1">
+            <div className={paletteStyles.groupItems}>
               {group.items.length === 0 && group.emptyLabel ? (
-                <div className="px-3 py-1 text-[13px] font-normal text-[var(--text-tertiary)]">
+                <div className={paletteStyles.groupEmpty}>
                   {group.emptyLabel}
                 </div>
               ) : null}
@@ -380,14 +424,15 @@ function MentionPaletteGroups<TItem>({
                     key={entryKey}
                     ref={isHighlighted ? highlightedOptionRef : null}
                     type="button"
-                    className={cn(
-                      paletteStyles.rowButton,
-                      isHighlighted && "bg-[var(--transparency-block)]"
-                    )}
+                    className={paletteStyles.rowButton}
                     role="option"
                     aria-selected={isHighlighted}
                     data-highlighted={isHighlighted ? "" : undefined}
-                    onMouseEnter={() => onHighlightChange(entryKey)}
+                    onPointerMove={() => {
+                      if (!isHighlighted) {
+                        onHighlightChange(entryKey);
+                      }
+                    }}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => onSelectItem(item, group)}
                   >
@@ -404,15 +449,15 @@ function MentionPaletteGroups<TItem>({
                       : null
                   }
                   type="button"
-                  className={cn(
-                    paletteStyles.expandButton,
-                    `expand:${group.id}` === highlightedKey &&
-                      "bg-[var(--transparency-block)] text-[var(--text-primary)]"
-                  )}
+                  className={paletteStyles.expandButton}
                   data-highlighted={
                     `expand:${group.id}` === highlightedKey ? "" : undefined
                   }
-                  onMouseEnter={() => onHighlightChange(`expand:${group.id}`)}
+                  onPointerMove={() => {
+                    if (`expand:${group.id}` !== highlightedKey) {
+                      onHighlightChange(`expand:${group.id}`);
+                    }
+                  }}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => onExpandGroup(group.id)}
                 >
@@ -444,16 +489,16 @@ function MentionPaletteEmptyState({
 
   return (
     <div
-      className="flex h-full min-h-0 flex-1 items-center justify-center px-4 py-6 text-center text-[13px] text-[var(--text-tertiary)]"
+      className={paletteStyles.emptyState}
       data-empty-state-icon={icon}
       data-testid={testId}
     >
-      <div className="flex max-w-[28ch] flex-col items-center justify-center gap-3">
+      <div className={paletteStyles.emptyStateInner}>
         <EmptyStateIcon
-          className="h-6 w-6 text-[var(--text-tertiary)]"
+          className={paletteStyles.emptyStateIcon}
           aria-hidden="true"
         />
-        <span className="leading-5 text-[var(--text-tertiary)]">{label}</span>
+        <span className={paletteStyles.emptyStateText}>{label}</span>
       </div>
     </div>
   );
@@ -468,11 +513,11 @@ function MentionPaletteLoading({
 }): JSX.Element {
   "use memo";
   return (
-    <div className="flex min-h-[52px] items-center gap-2 rounded-xl px-3 text-[13px] text-[var(--text-secondary)]">
-      <Spinner
-        size={16}
-        className="text-[var(--text-secondary)]"
-        testId={spinnerTestId}
+    <div className={paletteStyles.loading}>
+      <span
+        aria-hidden="true"
+        className={paletteStyles.loadingSpinner}
+        data-testid={spinnerTestId}
       />
       <span>{label}</span>
     </div>
@@ -503,17 +548,47 @@ function MentionPaletteHint({
       aria-label={ariaLabel}
       data-testid={testId}
     >
-      <button
-        className={cn(classNames.hintItem, classNames.hintButton)}
-        type="button"
-        aria-label={cycleFilterLabel}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onCycleFilter(1)}
-      >
-        {/* i18n-check-ignore: Keyboard key label. */}
-        <kbd className={classNames.shortcut}>Tab</kbd>
+      <span className={classNames.hintItem}>
+        <span className={classNames.shortcutGroup}>
+          <button
+            className={cn(classNames.shortcut, classNames.shortcutButton)}
+            type="button"
+            aria-label={`Tab ${cycleFilterLabel}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onCycleFilter(1)}
+          >
+            {/* i18n-check-ignore: Keyboard key label. */}
+            Tab
+          </button>
+          <button
+            className={cn(
+              classNames.shortcut,
+              classNames.shortcutArrow,
+              classNames.shortcutButton
+            )}
+            type="button"
+            aria-label={`← ${cycleFilterLabel}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onCycleFilter(-1)}
+          >
+            ←
+          </button>
+          <button
+            className={cn(
+              classNames.shortcut,
+              classNames.shortcutArrow,
+              classNames.shortcutButton
+            )}
+            type="button"
+            aria-label={`→ ${cycleFilterLabel}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onCycleFilter(1)}
+          >
+            →
+          </button>
+        </span>
         <span>{cycleFilterLabel}</span>
-      </button>
+      </span>
       <span className={classNames.hintSeparator} aria-hidden="true">
         ｜
       </span>

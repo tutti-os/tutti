@@ -176,16 +176,32 @@ export function renderMentionRow(
     );
   }
 
+  if (item.kind === "plain") {
+    return (
+      <span className="rich-text-at-mention-row rich-text-at-mention-row--plain">
+        {item.leading}
+        <span className="rich-text-at-mention-row__text-stack">
+          <span className="rich-text-at-mention-row__title">{item.label}</span>
+          {item.description ? (
+            <span className="rich-text-at-mention-row__description">
+              {item.description}
+            </span>
+          ) : null}
+        </span>
+      </span>
+    );
+  }
+
   if (item.kind === "session") {
     return (
-      <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-        <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+      <span className="rich-text-at-mention-row rich-text-at-mention-row--session">
+        <span className="rich-text-at-mention-row__leading">
           <MentionSessionAvatarStack
             item={item}
             classNames={resolved}
             dataAttributeMode={dataAttributeMode}
           />
-          <span className="min-w-0 truncate text-[13px] font-semibold leading-[16px] text-[var(--text-primary)]">
+          <span className="rich-text-at-mention-row__session-title">
             <MentionSessionTitle item={item} />
           </span>
         </span>
@@ -201,18 +217,18 @@ export function renderMentionRow(
 
   if (item.kind === "app") {
     return (
-      <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+      <span className="rich-text-at-mention-row rich-text-at-mention-row--app">
         <MentionWorkspaceAppIcon
           iconUrl={item.iconUrl}
           kindIconClassName={resolved.kindIcon}
           dataAttributeMode={dataAttributeMode}
         />
-        <span className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden">
-          <span className="min-w-0 max-w-[40%] shrink-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
+        <span className="rich-text-at-mention-row__app-text">
+          <span className="rich-text-at-mention-row__app-name">
             {item.name}
           </span>
           {item.description ? (
-            <span className="min-w-0 flex-1 truncate text-[13px] font-normal text-[var(--text-secondary)]">
+            <span className="rich-text-at-mention-row__app-description">
               {item.description}
             </span>
           ) : null}
@@ -224,21 +240,17 @@ export function renderMentionRow(
 
   if (item.kind === "app-factory") {
     return (
-      <span className="grid min-w-0 overflow-hidden gap-1">
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text-primary)]">
-          {item.name}
-        </span>
+      <span className="rich-text-at-mention-row__text-stack">
+        <span className="rich-text-at-mention-row__title">{item.name}</span>
       </span>
     );
   }
 
   return (
-    <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-      <span className="grid min-w-0 flex-1 overflow-hidden gap-1">
-        <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
-            {item.title}
-          </span>
+    <span className="rich-text-at-mention-row rich-text-at-mention-row--issue">
+      <span className="rich-text-at-mention-row__text-stack rich-text-at-mention-row__text-stack--fill">
+        <span className="rich-text-at-mention-row__inline">
+          <span className="rich-text-at-mention-row__title">{item.title}</span>
           {item.statusTag ? (
             <MentionStatusBadge
               statusTag={item.statusTag}
@@ -247,7 +259,7 @@ export function renderMentionRow(
           ) : null}
         </span>
         {item.creatorName ? (
-          <span className="truncate text-[13px] font-normal text-[var(--text-secondary)]">
+          <span className="rich-text-at-mention-row__description">
             {item.creatorName}
           </span>
         ) : null}
@@ -277,7 +289,7 @@ function MentionOpenReferencesButton({
       tabIndex={-1}
       aria-label={label}
       title={label}
-      className="ml-auto grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--transparency-active)] hover:text-[var(--text-secondary)]"
+      className="rich-text-at-mention-row__open-references"
       {...mentionRowDataAttribute(dataAttributeMode, "openReferences", "true")}
       onMouseDown={(event) => {
         event.preventDefault();
@@ -305,7 +317,7 @@ function MentionFileRow({
 }): React.JSX.Element {
   return (
     <span
-      className="flex min-w-0 items-center gap-2"
+      className="rich-text-at-mention-row rich-text-at-mention-row--file"
       {...mentionRowRootDataAttributes(dataAttributeMode, "file")}
       {...(item.entryKind
         ? mentionRowDataAttribute(
@@ -332,12 +344,10 @@ function MentionFileRow({
         classNames={classNames}
         dataAttributeMode={dataAttributeMode}
       />
-      <span className="flex min-w-0 items-baseline gap-1 overflow-hidden">
-        <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
-          {item.name}
-        </span>
+      <span className="rich-text-at-mention-row__file-text">
+        <span className="rich-text-at-mention-row__title">{item.name}</span>
         {item.childCountLabel ? (
-          <span className="shrink-0 text-[13px] font-normal text-[var(--text-secondary)]">
+          <span className="rich-text-at-mention-row__file-count">
             {item.childCountLabel}
           </span>
         ) : null}
@@ -367,7 +377,7 @@ function MentionFileIcon({
         <img
           src={thumbnailUrl}
           alt=""
-          className="h-full w-full object-cover"
+          className="rich-text-at-mention-row__media"
           decoding="async"
           loading="lazy"
           draggable={false}
@@ -388,7 +398,7 @@ function MentionFileIcon({
       <span
         className={cn(
           classNames.fileIcon,
-          "grid h-4 w-4 shrink-0 place-items-center text-[var(--text-secondary)]"
+          "rich-text-at-mention-file-icon--glyph"
         )}
         {...mentionRowDataAttribute(
           dataAttributeMode,
@@ -427,7 +437,7 @@ function MentionWorkspaceAppIcon({
   const normalizedIconUrl = iconUrl?.trim() ?? "";
   return (
     <span
-      className="grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-[5px] bg-block text-[var(--text-secondary)]"
+      className="rich-text-at-mention-app-icon"
       {...mentionRowDataAttribute(dataAttributeMode, "appIcon", "true")}
       data-workspace-app-icon="true"
       aria-hidden="true"
@@ -436,13 +446,18 @@ function MentionWorkspaceAppIcon({
         <img
           src={normalizedIconUrl}
           alt=""
-          className="h-full w-full object-cover"
+          className="rich-text-at-mention-row__media"
           decoding="async"
           loading="lazy"
           draggable={false}
         />
       ) : (
-        <span className={cn(kindIconClassName, "h-4 w-4")} />
+        <span
+          className={cn(
+            kindIconClassName,
+            "rich-text-at-mention-kind-icon--app"
+          )}
+        />
       )}
     </span>
   );
@@ -461,19 +476,16 @@ function MentionSessionAvatarStack({
   const placeholderUrl = item.userAvatarPlaceholderUrl;
   const userImageUrl = userAvatarUrl || placeholderUrl;
   return (
-    <span
-      className="relative isolate block h-5 w-9 shrink-0"
-      aria-hidden="true"
-    >
+    <span className="rich-text-at-mention-avatar-stack" aria-hidden="true">
       <span
-        className="absolute left-0 top-0 z-0 grid h-5 w-5 overflow-hidden rounded-full bg-block"
+        className="rich-text-at-mention-avatar rich-text-at-mention-avatar--user"
         {...mentionRowDataAttribute(dataAttributeMode, "userAvatar", "true")}
       >
         <img
           src={userImageUrl}
           alt=""
           className={cn(
-            "h-full w-full object-cover",
+            "rich-text-at-mention-row__media",
             !userAvatarUrl && classNames.avatarImgUserPlaceholder
           )}
           decoding="async"
@@ -493,13 +505,13 @@ function MentionSessionAvatarStack({
         />
       </span>
       <span
-        className="absolute left-4 top-0 z-10 grid h-5 w-5 overflow-hidden rounded-full bg-block"
+        className="rich-text-at-mention-avatar rich-text-at-mention-avatar--agent"
         {...mentionRowDataAttribute(dataAttributeMode, "agentAvatar", "true")}
       >
         <img
           src={item.agentIconUrl}
           alt=""
-          className="h-full w-full object-cover"
+          className="rich-text-at-mention-row__media"
           decoding="async"
           loading="lazy"
           draggable={false}
@@ -516,8 +528,10 @@ function MentionSessionTitle({
 }): React.JSX.Element {
   return (
     <>
-      <span className="text-[13px] leading-[16px]">{item.participant}</span>
-      <span className="text-[13px] font-normal leading-[16px] text-[var(--text-secondary)]">
+      <span className="rich-text-at-mention-row__session-participant">
+        {item.participant}
+      </span>
+      <span className="rich-text-at-mention-row__session-summary">
         {" "}
         {item.summary ?? ""}
       </span>
@@ -537,7 +551,7 @@ function MentionStatusBadge({
       <Badge
         variant="secondary"
         className={cn(
-          "shrink-0 text-[13px]",
+          "rich-text-at-mention-status rich-text-at-mention-status--issue",
           mentionStatusBadgeClassName({
             tone: statusTag.tone,
             variant: "issue"
@@ -547,6 +561,7 @@ function MentionStatusBadge({
         {...(statusTag.dataStatus
           ? { "data-status": statusTag.dataStatus }
           : {})}
+        data-tone={statusTag.tone}
       >
         {statusTag.label}
       </Badge>
@@ -557,7 +572,7 @@ function MentionStatusBadge({
     <Badge
       variant="secondary"
       className={cn(
-        "inline-flex h-5 shrink-0 items-center gap-1.5 rounded-[4px] px-2 text-[11px] font-semibold leading-none",
+        "rich-text-at-mention-status rich-text-at-mention-status--activity",
         mentionStatusBadgeClassName({
           tone: statusTag.tone,
           variant: "activity"
