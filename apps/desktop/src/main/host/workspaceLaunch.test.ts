@@ -69,7 +69,13 @@ function createTransportClient(
     async importWorkspaceApp() {
       throw new Error("not used");
     },
+    async loadLocalWorkspaceApp() {
+      throw new Error("not used");
+    },
     async replaceWorkspaceAppIcon() {
+      throw new Error("not used");
+    },
+    async reloadLocalWorkspaceApp() {
       throw new Error("not used");
     },
     async cancelWorkspaceAppFactoryJob() {

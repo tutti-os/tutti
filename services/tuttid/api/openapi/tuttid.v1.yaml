@@ -625,6 +625,39 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/load-local:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: loadLocalWorkspaceApp
+      tags:
+        - app-center
+      summary: Load one unpacked local workspace app directory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoadLocalWorkspaceAppRequest"
+      responses:
+        "200":
+          description: Local workspace app loaded and installed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAppResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/apps/start-enabled:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -697,6 +730,40 @@ paths:
       responses:
         "200":
           description: Workspace app installed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAppResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceAppNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/{appID}/reload-local:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAppID"
+    post:
+      operationId: reloadLocalWorkspaceApp
+      tags:
+        - app-center
+      summary: Reload one unpacked local workspace app directory
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReloadLocalWorkspaceAppRequest"
+      responses:
+        "200":
+          description: Local workspace app reloaded
           content:
             application/json:
               schema:
@@ -3665,10 +3732,12 @@ components:
         - builtin
         - generated
         - imported
+        - local-dev
       x-enum-varnames:
         - WorkspaceAppSourceBuiltin
         - WorkspaceAppSourceGenerated
         - WorkspaceAppSourceImported
+        - WorkspaceAppSourceLocalDev
     WorkspaceAppCatalogLoadStatus:
       type: string
       enum:
@@ -4127,6 +4196,10 @@ components:
           nullable: true
         source:
           $ref: "#/components/schemas/WorkspaceAppSource"
+        localPackageDir:
+          type: string
+          nullable: true
+          description: Absolute package directory for unpacked local development apps.
         exportable:
           type: boolean
         tags:
@@ -4176,6 +4249,25 @@ components:
         archivePath:
           type: string
           minLength: 1
+    LoadLocalWorkspaceAppRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceDir
+      properties:
+        sourceDir:
+          type: string
+          minLength: 1
+        restartRunning:
+          type: boolean
+          description: Restart the app runtime if it is already running.
+    ReloadLocalWorkspaceAppRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        restartRunning:
+          type: boolean
+          description: Restart the app runtime if it is already running.
     ExportWorkspaceAppRequest:
       type: object
       additionalProperties: false

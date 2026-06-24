@@ -28,6 +28,7 @@ func GeneratedAppFromBiz(app workspacebiz.WorkspaceApp) tuttigenerated.Workspace
 		UpdatedAtUnixMs:  app.Runtime.UpdatedAtUnixMs,
 		Source:           generatedAppSource(app.Package.Source),
 		Exportable:       app.Package.Source == workspacebiz.AppPackageSourceGenerated || app.Package.Source == workspacebiz.AppPackageSourceImported,
+		LocalPackageDir:  generatedAppLocalPackageDir(app.Package),
 		Tags:             nonNilStrings(app.Package.Manifest.Tags),
 		Localizations:    GeneratedAppLocalizationsFromBiz(app.Package.Localizations()),
 		MinimizeBehavior: tuttigenerated.WorkspaceAppMinimizeBehavior(app.Package.MinimizeBehavior()),
@@ -234,9 +235,18 @@ func generatedAppSource(source workspacebiz.AppPackageSource) tuttigenerated.Wor
 		return tuttigenerated.WorkspaceAppSourceGenerated
 	case workspacebiz.AppPackageSourceImported:
 		return tuttigenerated.WorkspaceAppSourceImported
+	case workspacebiz.AppPackageSourceLocalDev:
+		return tuttigenerated.WorkspaceAppSourceLocalDev
 	default:
 		return tuttigenerated.WorkspaceAppSourceBuiltin
 	}
+}
+
+func generatedAppLocalPackageDir(appPackage workspacebiz.AppPackage) *string {
+	if appPackage.Source != workspacebiz.AppPackageSourceLocalDev {
+		return nil
+	}
+	return nullableString(appPackage.PackageDir)
 }
 
 func generatedAppCatalogLoadStatus(status workspacebiz.AppCatalogLoadStatus) tuttigenerated.WorkspaceAppCatalogLoadStatus {

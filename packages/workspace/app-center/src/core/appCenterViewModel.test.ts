@@ -643,6 +643,90 @@ describe("createAppCenterViewModel", () => {
     assert.equal(localApp?.sourceKind, "local");
   });
 
+  it("maps local-dev apps to local grouping with reload-only local package actions", () => {
+    const viewModel = createAppCenterViewModel({
+      apps: [
+        {
+          catalog: {
+            manifest: {
+              appId: "local-dev",
+              description: "Local development app",
+              runtime: {
+                bootstrap: "bootstrap.sh",
+                healthcheckPath: "/"
+              },
+              schemaVersion: workspaceAppManifestSchemaVersion,
+              name: "Local Dev Tool",
+              version: "0.1.0"
+            },
+            source: {
+              kind: "local-dev"
+            }
+          },
+          install: { appId: "local-dev", version: "0.1.0" },
+          manifest: {
+            appId: "local-dev",
+            description: "Local development app",
+            runtime: {
+              bootstrap: "bootstrap.sh",
+              healthcheckPath: "/"
+            },
+            schemaVersion: workspaceAppManifestSchemaVersion,
+            name: "Local Dev Tool",
+            version: "0.1.0"
+          }
+        },
+        {
+          catalog: {
+            manifest: {
+              appId: "local-dev-uninstalled",
+              description: "Uninstalled local development app",
+              runtime: {
+                bootstrap: "bootstrap.sh",
+                healthcheckPath: "/"
+              },
+              schemaVersion: workspaceAppManifestSchemaVersion,
+              name: "Uninstalled Local Dev Tool",
+              version: "0.1.0"
+            },
+            source: {
+              kind: "local-dev"
+            }
+          },
+          install: null,
+          manifest: {
+            appId: "local-dev-uninstalled",
+            description: "Uninstalled local development app",
+            runtime: {
+              bootstrap: "bootstrap.sh",
+              healthcheckPath: "/"
+            },
+            schemaVersion: workspaceAppManifestSchemaVersion,
+            name: "Uninstalled Local Dev Tool",
+            version: "0.1.0"
+          }
+        }
+      ],
+      replaceableIconAppIds: ["local-dev"]
+    });
+
+    const app = viewModel.apps.find(
+      (candidate) => candidate.id === "local-dev"
+    );
+    const uninstalledApp = viewModel.apps.find(
+      (candidate) => candidate.id === "local-dev-uninstalled"
+    );
+    assert.equal(app?.sourceKind, "local");
+    assert.equal(app?.canReloadLocal, true);
+    assert.equal(app?.canExport, false);
+    assert.equal(app?.canDelete, true);
+    assert.equal(app?.canReplaceIcon, false);
+    assert.equal(app?.canOpenPackageFolder, true);
+    assert.equal(uninstalledApp?.sourceKind, "local");
+    assert.equal(uninstalledApp?.canReloadLocal, false);
+    assert.equal(uninstalledApp?.canOpenPackageFolder, false);
+  });
+
   it("exposes uninstall and delete actions by source kind and installation state", () => {
     const viewModel = createAppCenterViewModel({
       apps: [

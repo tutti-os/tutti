@@ -269,6 +269,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ImportWorkspaceApp(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/load-local", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.LoadLocalWorkspaceApp(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/install", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)
@@ -291,6 +299,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 			return
 		}
 		wrapper.ReplaceWorkspaceAppIcon(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/reload-local", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ReloadLocalWorkspaceApp(w, r)
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/references/list", func(w http.ResponseWriter, r *http.Request) {

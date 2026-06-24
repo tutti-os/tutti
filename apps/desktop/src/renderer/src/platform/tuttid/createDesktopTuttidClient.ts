@@ -67,8 +67,21 @@ export function createDesktopTuttidClient(
     async importWorkspaceApp(workspaceID, request) {
       return (await resolveClient()).importWorkspaceApp(workspaceID, request);
     },
+    async loadLocalWorkspaceApp(workspaceID, request) {
+      return (await resolveClient()).loadLocalWorkspaceApp(
+        workspaceID,
+        request
+      );
+    },
     async replaceWorkspaceAppIcon(workspaceID, appID, request) {
       return (await resolveClient()).replaceWorkspaceAppIcon(
+        workspaceID,
+        appID,
+        request
+      );
+    },
+    async reloadLocalWorkspaceApp(workspaceID, appID, request) {
+      return (await resolveClient()).reloadLocalWorkspaceApp(
         workspaceID,
         appID,
         request

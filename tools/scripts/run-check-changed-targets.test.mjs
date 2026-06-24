@@ -107,6 +107,54 @@ describe("buildPackageTestCommand", () => {
       "origin/main"
     ]);
   });
+
+  it("uses the package test script for compound vitest scripts", () => {
+    const command = buildPackageTestCommand({
+      baseRef: "origin/main",
+      packageFiles: [
+        "services/tuttid/builtin-apps/tutti-onboarding/src/App.test.jsx"
+      ],
+      packageInfo: {
+        name: "@tutti-os/builtin-tutti-onboarding",
+        root: "services/tuttid/builtin-apps/tutti-onboarding",
+        scripts: {
+          test: "vitest run && node scripts/check-assets.mjs"
+        }
+      },
+      pnpmCommand: "pnpm"
+    });
+
+    assert.deepEqual(command, [
+      "pnpm",
+      "--filter",
+      "@tutti-os/builtin-tutti-onboarding",
+      "test"
+    ]);
+  });
+
+  it("runs the full package test script for source-only compound scripts", () => {
+    const command = buildPackageTestCommand({
+      baseRef: "origin/main",
+      packageFiles: [
+        "services/tuttid/builtin-apps/tutti-onboarding/src/App.jsx"
+      ],
+      packageInfo: {
+        name: "@tutti-os/builtin-tutti-onboarding",
+        root: "services/tuttid/builtin-apps/tutti-onboarding",
+        scripts: {
+          test: "vitest run && node scripts/check-assets.mjs"
+        }
+      },
+      pnpmCommand: "pnpm"
+    });
+
+    assert.deepEqual(command, [
+      "pnpm",
+      "--filter",
+      "@tutti-os/builtin-tutti-onboarding",
+      "test"
+    ]);
+  });
 });
 
 describe("builtin onboarding ensure", () => {
@@ -135,8 +183,20 @@ describe("builtin onboarding ensure", () => {
     });
 
     assert.match(lane.command[2], /package:builtin:check/);
-    assert.match(lane.command[2], /generate:builtin-apps;/);
+    assert.match(lane.command[2], /generate:builtin-apps\) && cd/);
     assert.match(lane.command[2], /go test \.\/service\/workspace\/\.\.\./);
+  });
+  it("requires forced builtin generation before tuttid Go tests", () => {
+    const lane = buildGoTestLane({
+      moduleRoot: "services/tuttid",
+      targets: new Set(["./service/workspace/..."]),
+      pnpmCommand: "pnpm",
+      shellQuote: (value) => value,
+      forceBuiltinGenerate: true
+    });
+
+    assert.match(lane.command[2], /^pnpm generate:builtin-apps/);
+    assert.match(lane.command[2], /generate:builtin-apps && cd/);
   });
 });
 

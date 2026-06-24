@@ -9,7 +9,11 @@ export type WorkspaceAppCenterRuntimeStatus = WorkspaceAppRuntimeStatus;
 
 export type { WorkspaceAppInstallProgress, WorkspaceAppInstallUserPhase };
 
-export type WorkspaceAppCenterSource = "builtin" | "generated" | "imported";
+export type WorkspaceAppCenterSource =
+  | "builtin"
+  | "generated"
+  | "imported"
+  | "local-dev";
 
 export interface WorkspaceAppCenterLocalization {
   locale: string;
@@ -58,6 +62,7 @@ export interface WorkspaceAppCenterApp {
   installed: boolean;
   lastError?: string | null;
   cli?: WorkspaceAppCenterCliState;
+  localPackageDir?: string | null;
   localizations?: readonly WorkspaceAppCenterLocalization[];
   minimizeBehavior: WorkspaceAppMinimizeBehavior;
   name: string;
@@ -136,6 +141,15 @@ export interface WorkspaceAppFactoryProviderConfiguration {
   reasoningEffortOptions: readonly WorkspaceAppFactoryReasoningOption[];
 }
 
+export interface WorkspaceAppLocalRepairRequest {
+  projectDir: string;
+  sourceDir: string;
+}
+
+export interface WorkspaceAppLocalRepairAgentRequest extends WorkspaceAppLocalRepairRequest {
+  prompt: string;
+}
+
 export type WorkspaceAppCenterLoadStatus =
   | "idle"
   | "loading"
@@ -174,6 +188,10 @@ export interface WorkspaceAppCenterGateway {
     appId: string,
     input?: { restartRunning?: boolean }
   ): Promise<WorkspaceAppCenterSnapshot>;
+  loadLocalWorkspaceApp(
+    workspaceId: string,
+    input: { restartRunning?: boolean; sourceDir: string }
+  ): Promise<WorkspaceAppCenterSnapshot>;
   launchWorkspaceApp(
     workspaceId: string,
     appId: string
@@ -185,6 +203,11 @@ export interface WorkspaceAppCenterGateway {
   listWorkspaceApps(workspaceId: string): Promise<WorkspaceAppCenterSnapshot>;
   refreshWorkspaceAppCatalog(
     workspaceId: string
+  ): Promise<WorkspaceAppCenterSnapshot>;
+  reloadLocalWorkspaceApp(
+    workspaceId: string,
+    appId: string,
+    input?: { restartRunning?: boolean }
   ): Promise<WorkspaceAppCenterSnapshot>;
   uninstallWorkspaceApp(
     workspaceId: string,

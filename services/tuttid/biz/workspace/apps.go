@@ -424,6 +424,7 @@ const (
 	AppPackageSourceBuiltin   AppPackageSource = "builtin"
 	AppPackageSourceGenerated AppPackageSource = "generated"
 	AppPackageSourceImported  AppPackageSource = "imported"
+	AppPackageSourceLocalDev  AppPackageSource = "local-dev"
 )
 
 type AppFactoryJobStatus string

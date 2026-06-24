@@ -3,12 +3,12 @@ import type {
   DesktopRuntimeApi,
   DesktopHostWorkspaceApi
 } from "@preload/types";
-import type {
-  AgentProviderComposerOptionsResponse,
-  TuttidClient,
-  TuttidEventStreamClient
+import {
+  normalizeTuttidError,
+  type AgentProviderComposerOptionsResponse,
+  type TuttidClient,
+  type TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
-import { createWorkspaceAppCenterController } from "@tutti-os/workspace-app-center/core";
 import type {
   WorkspaceAppCenterApp,
   WorkspaceAppCenterGateway,
@@ -16,8 +16,10 @@ import type {
   WorkspaceAppCenterStoreState,
   WorkspaceAppCenterViewState,
   WorkspaceAppFactoryJob,
-  WorkspaceAppFactoryProviderConfiguration
+  WorkspaceAppFactoryProviderConfiguration,
+  WorkspaceAppLocalRepairRequest
 } from "@tutti-os/workspace-app-center";
+import { createWorkspaceAppCenterController } from "@tutti-os/workspace-app-center/core";
 import type {
   WorkspaceAppCenterController,
   WorkspaceAppCenterOperationDetails
@@ -64,6 +66,7 @@ export interface WorkspaceAppCenterServiceDependencies {
     | "revealInFolder"
     | "selectAppArchive"
     | "selectAppArchiveExportPath"
+    | "selectDirectory"
     | "selectAppIconImage"
   >;
   hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "openWorkspaceAppFolder">;
@@ -254,6 +257,33 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     }
   }
 
+  async loadLocalApp(input: {
+    workspaceId: string;
+  }): Promise<WorkspaceAppLocalRepairRequest | null> {
+    const sourceDir = await this.dependencies.hostFilesApi.selectDirectory();
+    if (!sourceDir) {
+      return null;
+    }
+    try {
+      const snapshot = await this.dependencies.gateway.loadLocalWorkspaceApp(
+        input.workspaceId,
+        { restartRunning: true, sourceDir }
+      );
+      this.controller.applySnapshot(input.workspaceId, snapshot);
+      return null;
+    } catch (error) {
+      if (isInvalidLocalAppLoadError(error)) {
+        return createLocalAppRepairRequest(sourceDir);
+      }
+      this.controller.setOperationError(error, {
+        operation: "workspace_app.load_local",
+        uiAction: "load_local_app",
+        workspaceId: input.workspaceId
+      });
+      return null;
+    }
+  }
+
   async exportApp(input: {
     appId: string;
     workspaceId: string;
@@ -309,6 +339,27 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
         appId: input.appId,
         operation: "workspace_app.replace_icon",
         uiAction: "replace_app_icon",
+        workspaceId: input.workspaceId
+      });
+    }
+  }
+
+  async reloadLocalApp(input: {
+    appId: string;
+    workspaceId: string;
+  }): Promise<void> {
+    try {
+      const snapshot = await this.dependencies.gateway.reloadLocalWorkspaceApp(
+        input.workspaceId,
+        input.appId,
+        { restartRunning: true }
+      );
+      this.controller.applySnapshot(input.workspaceId, snapshot);
+    } catch (error) {
+      this.controller.setOperationError(error, {
+        appId: input.appId,
+        operation: "workspace_app.reload_local",
+        uiAction: "reload_local_app",
         workspaceId: input.workspaceId
       });
     }
@@ -496,6 +547,21 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
       (candidate) => candidate.appId === input.appId
     );
     if (!app || app.source === "builtin") {
+      return;
+    }
+    if (app.source === "local-dev") {
+      const localPackageDir = app.localPackageDir?.trim();
+      if (!localPackageDir) {
+        return;
+      }
+      this.store.openingFolderAppId = input.appId;
+      try {
+        await this.dependencies.hostFilesApi.revealInFolder(localPackageDir);
+      } finally {
+        if (this.store.openingFolderAppId === input.appId) {
+          this.store.openingFolderAppId = null;
+        }
+      }
       return;
     }
     const version = app?.version?.trim();
@@ -884,6 +950,54 @@ interface WorkspaceAppCenterUpdateState {
 
 function getAnalyticsErrorReason(error: unknown): string {
   return getDesktopErrorCode(error) ?? "unknown";
+}
+
+function isInvalidLocalAppLoadError(error: unknown): boolean {
+  const protocolError = normalizeTuttidError(error);
+  const code = protocolError?.code ?? getDesktopErrorCode(error);
+  const reason =
+    protocolError?.reason ?? readOptionalStringProperty(error, "reason");
+  return code === "invalid_request" && reason === "malformed_request";
+}
+
+function createLocalAppRepairRequest(
+  sourceDir: string
+): WorkspaceAppLocalRepairRequest {
+  const normalizedSourceDir = trimTrailingPathSeparators(sourceDir.trim());
+  return {
+    projectDir: resolveLocalAppRepairProjectDir(normalizedSourceDir),
+    sourceDir: normalizedSourceDir
+  };
+}
+
+function resolveLocalAppRepairProjectDir(sourceDir: string): string {
+  const parts = sourceDir.split(/[\\/]+/u);
+  if (
+    parts.length >= 3 &&
+    parts[parts.length - 2] === ".tutti" &&
+    parts[parts.length - 1] === "dev-app"
+  ) {
+    const separator =
+      sourceDir.includes("\\") && !sourceDir.includes("/") ? "\\" : "/";
+    return parts.slice(0, -2).join(separator) || sourceDir;
+  }
+  return sourceDir;
+}
+
+function trimTrailingPathSeparators(value: string): string {
+  const trimmed = value.replace(/[\\/]+$/u, "");
+  return trimmed || value;
+}
+
+function readOptionalStringProperty(
+  value: unknown,
+  property: string
+): string | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const rawValue = (value as Record<string, unknown>)[property];
+  return typeof rawValue === "string" ? rawValue : null;
 }
 
 function readOptionalNumberProperty(

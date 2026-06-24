@@ -125,7 +125,6 @@ export function createWorkspaceWindow(
     }
   });
 
-  installWorkspaceWindowCloseRequest(workspaceWindow);
   installWorkspaceWindowDevelopmentReloadShortcut(workspaceWindow, {
     enabled: options.enableDevelopmentReloadShortcut === true
   });
@@ -208,23 +207,10 @@ export function loadWorkspaceWindowContent(
   );
 }
 
-function installWorkspaceWindowCloseRequest(
+export function requestWorkspaceWindowCloseFromCommandShortcut(
   workspaceWindow: BrowserWindow
 ): void {
-  workspaceWindow.on("close", (event) => {
-    if (
-      workspaceWindow.isDestroyed() ||
-      workspaceWindow.webContents.isDestroyed()
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    workspaceWindow.webContents.send(
-      desktopIpcChannels.host.window.closeRequest,
-      { reason: "window-close" } satisfies DesktopHostWindowCloseRequestPayload
-    );
-  });
+  sendWorkspaceWindowCloseRequest(workspaceWindow, { reason: "window-close" });
 }
 
 export async function requestWorkspaceWindowsClose(
@@ -294,14 +280,28 @@ function requestWorkspaceWindowClose(
       }
       finish(payload.reason === "quit" ? "blocked" : "approved");
     }, workspaceWindowQuitCloseTimeoutMs);
-    workspaceWindow.webContents.send(
-      desktopIpcChannels.host.window.closeRequest,
-      {
-        ...payload,
-        requestId
-      } satisfies DesktopHostWindowCloseRequestPayload
-    );
+    sendWorkspaceWindowCloseRequest(workspaceWindow, {
+      ...payload,
+      requestId
+    });
   });
+}
+
+function sendWorkspaceWindowCloseRequest(
+  workspaceWindow: BrowserWindow,
+  payload: DesktopHostWindowCloseRequestPayload
+): void {
+  if (
+    workspaceWindow.isDestroyed() ||
+    workspaceWindow.webContents.isDestroyed()
+  ) {
+    return;
+  }
+
+  workspaceWindow.webContents.send(
+    desktopIpcChannels.host.window.closeRequest,
+    payload
+  );
 }
 
 function createWorkspaceWindowQuitCloseRequestId(): string {

@@ -17,6 +17,15 @@ export async function confirmWorkspaceWindowClose(input: {
   tracker: WindowCloseRequestTracker;
 }): Promise<"approved" | "blocked"> {
   if (input.reason === "window-close") {
+    const host = input.host;
+    if (host) {
+      const focusedNodeId = resolveFocusedVisibleNodeId(host);
+      if (focusedNodeId) {
+        host.minimizeNode(focusedNodeId);
+        return "blocked";
+      }
+    }
+
     return requestWorkspaceWindowClose({
       requestApprovedClose: () => input.requestApprovedClose(),
       tracker: input.tracker
@@ -64,6 +73,20 @@ async function requestWorkspaceWindowClose(input: {
   } finally {
     input.tracker.finish();
   }
+}
+
+function resolveFocusedVisibleNodeId(host: WorkbenchHostHandle): string | null {
+  const snapshot = host.getSnapshot();
+  const focusedNodeId = snapshot.nodeStack.at(-1);
+  const visibleNodes = snapshot.nodes.filter((node) => !node.isMinimized);
+  if (focusedNodeId) {
+    const focusedNode = visibleNodes.find((node) => node.id === focusedNodeId);
+    if (focusedNode) {
+      return focusedNode.id;
+    }
+  }
+
+  return visibleNodes.at(-1)?.id ?? null;
 }
 
 function resolveQuitCloseNodeId(

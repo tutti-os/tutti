@@ -15,6 +15,7 @@ import (
 
 var ErrAppPackageAlreadyExists = errors.New("workspace app package already exists")
 var ErrAppPackageDeleteForbidden = errors.New("workspace app package cannot be deleted")
+var ErrLocalAppPackageInvalid = errors.New("local workspace app package is invalid")
 
 const retainedInactiveAppPackageVersions = 1
 
@@ -138,7 +139,7 @@ func (s *AppCenterService) DeletePackage(ctx context.Context, workspaceID string
 	if err != nil {
 		return err
 	}
-	if appPackage.Source != workspacebiz.AppPackageSourceGenerated && appPackage.Source != workspacebiz.AppPackageSourceImported {
+	if appPackage.Source != workspacebiz.AppPackageSourceGenerated && appPackage.Source != workspacebiz.AppPackageSourceImported && appPackage.Source != workspacebiz.AppPackageSourceLocalDev {
 		return fmt.Errorf("%w: app %q has source %q", ErrAppPackageDeleteForbidden, appPackage.AppID, appPackage.Source)
 	}
 
@@ -147,14 +148,14 @@ func (s *AppCenterService) DeletePackage(ctx context.Context, workspaceID string
 		return err
 	}
 	packageDirs := make(map[string]struct{}, len(versions)+1)
-	if dir := strings.TrimSpace(appPackage.PackageDir); dir != "" {
+	if dir := strings.TrimSpace(appPackage.PackageDir); dir != "" && appPackage.Source != workspacebiz.AppPackageSourceLocalDev {
 		packageDirs[dir] = struct{}{}
 	}
 	for _, versionPackage := range versions {
-		if versionPackage.Source != workspacebiz.AppPackageSourceGenerated && versionPackage.Source != workspacebiz.AppPackageSourceImported {
+		if versionPackage.Source != workspacebiz.AppPackageSourceGenerated && versionPackage.Source != workspacebiz.AppPackageSourceImported && versionPackage.Source != workspacebiz.AppPackageSourceLocalDev {
 			return fmt.Errorf("%w: app %q version %q has source %q", ErrAppPackageDeleteForbidden, versionPackage.AppID, versionPackage.Version, versionPackage.Source)
 		}
-		if dir := strings.TrimSpace(versionPackage.PackageDir); dir != "" {
+		if dir := strings.TrimSpace(versionPackage.PackageDir); dir != "" && versionPackage.Source != workspacebiz.AppPackageSourceLocalDev {
 			packageDirs[dir] = struct{}{}
 		}
 	}
@@ -253,7 +254,7 @@ func (s *AppCenterService) pruneInactiveAppPackageVersions(ctx context.Context, 
 		if err := s.Store.DeleteAppPackageVersion(ctx, versionPackage.AppID, versionPackage.Version); err != nil {
 			return err
 		}
-		if dir := strings.TrimSpace(versionPackage.PackageDir); dir != "" {
+		if dir := strings.TrimSpace(versionPackage.PackageDir); dir != "" && versionPackage.Source != workspacebiz.AppPackageSourceLocalDev {
 			if err := os.RemoveAll(dir); err != nil {
 				return fmt.Errorf("delete inactive workspace app package dir: %w", err)
 			}

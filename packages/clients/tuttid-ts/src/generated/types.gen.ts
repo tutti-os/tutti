@@ -330,7 +330,11 @@ export type WorkspaceAppRuntimeStatus =
   | "failed"
   | "stopping";
 
-export type WorkspaceAppSource = "builtin" | "generated" | "imported";
+export type WorkspaceAppSource =
+  | "builtin"
+  | "generated"
+  | "imported"
+  | "local-dev";
 
 export type WorkspaceAppCatalogLoadStatus =
   | "disabled"
@@ -500,6 +504,10 @@ export type WorkspaceApp = {
   startedAtUnixMs: number | null;
   updatedAtUnixMs: number | null;
   source: WorkspaceAppSource;
+  /**
+   * Absolute package directory for unpacked local development apps.
+   */
+  localPackageDir?: string | null;
   exportable: boolean;
   tags: Array<string>;
   localizations: Array<WorkspaceAppLocalization>;
@@ -518,6 +526,21 @@ export type RollbackWorkspaceAppRequest = {
 
 export type ImportWorkspaceAppRequest = {
   archivePath: string;
+};
+
+export type LoadLocalWorkspaceAppRequest = {
+  sourceDir: string;
+  /**
+   * Restart the app runtime if it is already running.
+   */
+  restartRunning?: boolean;
+};
+
+export type ReloadLocalWorkspaceAppRequest = {
+  /**
+   * Restart the app runtime if it is already running.
+   */
+  restartRunning?: boolean;
 };
 
 export type ExportWorkspaceAppRequest = {
@@ -2806,6 +2829,55 @@ export type ImportWorkspaceAppResponses = {
 export type ImportWorkspaceAppResponse =
   ImportWorkspaceAppResponses[keyof ImportWorkspaceAppResponses];
 
+export type LoadLocalWorkspaceAppData = {
+  body: LoadLocalWorkspaceAppRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/apps/load-local";
+};
+
+export type LoadLocalWorkspaceAppErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type LoadLocalWorkspaceAppError =
+  LoadLocalWorkspaceAppErrors[keyof LoadLocalWorkspaceAppErrors];
+
+export type LoadLocalWorkspaceAppResponses = {
+  /**
+   * Local workspace app loaded and installed
+   */
+  200: WorkspaceAppResponse;
+};
+
+export type LoadLocalWorkspaceAppResponse =
+  LoadLocalWorkspaceAppResponses[keyof LoadLocalWorkspaceAppResponses];
+
 export type StartEnabledWorkspaceAppsData = {
   body?: never;
   path: {
@@ -2953,6 +3025,56 @@ export type InstallWorkspaceAppResponses = {
 
 export type InstallWorkspaceAppResponse =
   InstallWorkspaceAppResponses[keyof InstallWorkspaceAppResponses];
+
+export type ReloadLocalWorkspaceAppData = {
+  body?: ReloadLocalWorkspaceAppRequest;
+  path: {
+    workspaceID: string;
+    appID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/reload-local";
+};
+
+export type ReloadLocalWorkspaceAppErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace app was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ReloadLocalWorkspaceAppError =
+  ReloadLocalWorkspaceAppErrors[keyof ReloadLocalWorkspaceAppErrors];
+
+export type ReloadLocalWorkspaceAppResponses = {
+  /**
+   * Local workspace app reloaded
+   */
+  200: WorkspaceAppResponse;
+};
+
+export type ReloadLocalWorkspaceAppResponse =
+  ReloadLocalWorkspaceAppResponses[keyof ReloadLocalWorkspaceAppResponses];
 
 export type ListWorkspaceAppReferencesData = {
   body: AppReferenceListRequest;

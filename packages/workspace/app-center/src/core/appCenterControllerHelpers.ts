@@ -37,6 +37,7 @@ export function mergeWorkspaceAppCatalogFields(
     availableVersion: snapshotApp.availableVersion,
     description: snapshotApp.description,
     iconUrl: snapshotApp.iconUrl,
+    localPackageDir: snapshotApp.localPackageDir,
     localizations: snapshotApp.localizations,
     minimizeBehavior: snapshotApp.minimizeBehavior,
     name: snapshotApp.name,
@@ -91,6 +92,7 @@ export function areWorkspaceAppCenterAppsEqual(
         rightApp.installProgress
       ) &&
       leftApp.installationId === rightApp.installationId &&
+      leftApp.localPackageDir === rightApp.localPackageDir &&
       areWorkspaceAppCenterLocalizationsEqual(
         leftApp.localizations ?? [],
         rightApp.localizations ?? []

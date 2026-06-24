@@ -203,6 +203,138 @@ test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", asy
   }
 });
 
+test("listDesktopWorkspaceAgentProbes treats Claude custom API settings as available", async () => {
+  const previousHome = process.env.HOME;
+  const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  const previousAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
+  const previousAnthropicAPIBaseUrl = process.env.ANTHROPIC_API_BASE_URL;
+  const previousAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
+  const previousAnthropicAPIKey = process.env.ANTHROPIC_API_KEY;
+  const previousFetch = globalThis.fetch;
+  const directory = await mkdtemp(join(tmpdir(), "tutti-claude-custom-api-"));
+  try {
+    process.env.HOME = directory;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.ANTHROPIC_BASE_URL;
+    delete process.env.ANTHROPIC_API_BASE_URL;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_API_KEY;
+    await mkdir(join(directory, ".claude"), { recursive: true });
+    await writeFile(
+      join(directory, ".claude", "settings.json"),
+      JSON.stringify({
+        env: {
+          ANTHROPIC_AUTH_TOKEN: "custom-token-1",
+          ANTHROPIC_BASE_URL: "https://jp.icodeeasy.cc",
+          ANTHROPIC_MODEL: "claude-sonnet-4-6"
+        }
+      })
+    );
+    globalThis.fetch = async () => {
+      throw new Error("custom API probe must not call Claude OAuth usage");
+    };
+
+    const result = await listDesktopWorkspaceAgentProbes({
+      includeUsage: true,
+      providers: ["claude-code"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    });
+
+    const provider = result.providers[0];
+    assert.equal(provider?.provider, "claude-code");
+    assert.equal(provider?.availability.status, "available");
+    assert.deepEqual(provider?.attempts, [
+      {
+        strategy: "claude-custom-api-settings",
+        success: true
+      }
+    ]);
+    assert.equal(provider?.usage?.accountTier, "custom API");
+    assert.deepEqual(provider?.usage?.quotas, []);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    restoreOptionalEnv("CLAUDE_CONFIG_DIR", previousClaudeConfigDir);
+    restoreOptionalEnv("ANTHROPIC_BASE_URL", previousAnthropicBaseUrl);
+    restoreOptionalEnv("ANTHROPIC_API_BASE_URL", previousAnthropicAPIBaseUrl);
+    restoreOptionalEnv("ANTHROPIC_AUTH_TOKEN", previousAnthropicAuthToken);
+    restoreOptionalEnv("ANTHROPIC_API_KEY", previousAnthropicAPIKey);
+    globalThis.fetch = previousFetch;
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("listDesktopWorkspaceAgentProbes requires a Claude custom API token", async () => {
+  const previousHome = process.env.HOME;
+  const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  const previousAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
+  const previousAnthropicAPIBaseUrl = process.env.ANTHROPIC_API_BASE_URL;
+  const previousAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
+  const previousAnthropicAPIKey = process.env.ANTHROPIC_API_KEY;
+  const directory = await mkdtemp(join(tmpdir(), "tutti-claude-custom-api-"));
+  try {
+    process.env.HOME = directory;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.ANTHROPIC_BASE_URL;
+    delete process.env.ANTHROPIC_API_BASE_URL;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_API_KEY;
+    await mkdir(join(directory, ".claude"), { recursive: true });
+    await writeFile(
+      join(directory, ".claude", "settings.json"),
+      JSON.stringify({
+        env: {
+          ANTHROPIC_BASE_URL: "https://jp.icodeeasy.cc",
+          ANTHROPIC_MODEL: "claude-sonnet-4-6"
+        }
+      })
+    );
+
+    const result = await listDesktopWorkspaceAgentProbes({
+      includeUsage: true,
+      providers: ["claude-code"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    });
+
+    const provider = result.providers[0];
+    assert.equal(provider?.provider, "claude-code");
+    assert.equal(provider?.availability.status, "unavailable");
+    assert.equal(provider?.lastError?.code, "auth_required");
+    assert.deepEqual(provider?.attempts, [
+      {
+        errorCode: "auth_required",
+        strategy: "claude-custom-api-settings",
+        success: false
+      }
+    ]);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    restoreOptionalEnv("CLAUDE_CONFIG_DIR", previousClaudeConfigDir);
+    restoreOptionalEnv("ANTHROPIC_BASE_URL", previousAnthropicBaseUrl);
+    restoreOptionalEnv("ANTHROPIC_API_BASE_URL", previousAnthropicAPIBaseUrl);
+    restoreOptionalEnv("ANTHROPIC_AUTH_TOKEN", previousAnthropicAuthToken);
+    restoreOptionalEnv("ANTHROPIC_API_KEY", previousAnthropicAPIKey);
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+function restoreOptionalEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}
+
 function fetchInputUrl(input: RequestInfo | URL): string {
   if (typeof input === "string") {
     return input;

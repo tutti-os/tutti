@@ -186,6 +186,32 @@ test("application menu routes Command-Q through the shortcut quit handler", () =
   assert.equal(shortcutQuitRequested, 1);
 });
 
+test("application menu routes Command-W through the shortcut close handler", () => {
+  const ownerWindow = {};
+  let receivedOwnerWindow: unknown;
+  const menu = createApplicationMenuTemplate({
+    closeFromCommandShortcut(nextOwnerWindow) {
+      receivedOwnerWindow = nextOwnerWindow;
+    },
+    platform: "darwin"
+  });
+
+  const fileMenu = menu.find((item) => item.label === "File");
+  assert.ok(fileMenu);
+  assert.ok(Array.isArray(fileMenu.submenu));
+  const closeItem = fileMenu.submenu.find((item) => item.label === "Close");
+  assert.ok(closeItem);
+  assert.equal(closeItem.accelerator, "Command+W");
+
+  closeItem.click?.(
+    {} as Parameters<NonNullable<typeof closeItem.click>>[0],
+    ownerWindow as Parameters<NonNullable<typeof closeItem.click>>[1],
+    undefined as unknown as Parameters<NonNullable<typeof closeItem.click>>[2]
+  );
+
+  assert.equal(receivedOwnerWindow, ownerWindow);
+});
+
 test("application menu exposes Perf Monitor DevTools when configured", () => {
   const ownerWindow = {};
   let receivedOwnerWindow: unknown;

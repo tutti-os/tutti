@@ -89,6 +89,48 @@ func TestSQLiteStoreWorkspaceAppsPersistPackagesAndInstallations(t *testing.T) {
 	}
 }
 
+func TestSQLiteStorePersistsLocalDevAppPackageSource(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	appPackage := workspacebiz.AppPackage{
+		AppID:      "local-dev-app",
+		Version:    "0.1.0",
+		PackageDir: "/Users/example/project/.tutti/dev-app",
+		Manifest: workspacebiz.AppManifest{
+			SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+			AppID:         "local-dev-app",
+			Version:       "0.1.0",
+			Name:          "Local Dev App",
+			Description:   "Local app",
+			Runtime: workspacebiz.AppManifestRuntime{
+				Bootstrap:       "bootstrap.sh",
+				HealthcheckPath: "/",
+			},
+		},
+		Source: workspacebiz.AppPackageSourceLocalDev,
+	}
+	if err := store.PutAppPackage(ctx, appPackage); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+
+	active, err := store.GetAppPackage(ctx, appPackage.AppID)
+	if err != nil {
+		t.Fatalf("GetAppPackage() error = %v", err)
+	}
+	if active.Source != workspacebiz.AppPackageSourceLocalDev || active.PackageDir != appPackage.PackageDir {
+		t.Fatalf("active package = %#v", active)
+	}
+	versions, err := store.ListAppPackageVersions(ctx, appPackage.AppID)
+	if err != nil {
+		t.Fatalf("ListAppPackageVersions() error = %v", err)
+	}
+	if len(versions) != 1 || versions[0].Source != workspacebiz.AppPackageSourceLocalDev {
+		t.Fatalf("versions = %#v", versions)
+	}
+}
+
 func TestSQLiteStoreListAppPackagesSkipsInvalidActivePackage(t *testing.T) {
 	t.Parallel()
 

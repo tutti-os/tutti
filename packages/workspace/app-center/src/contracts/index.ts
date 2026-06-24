@@ -21,6 +21,8 @@ export {
   type WorkspaceAppFactoryProviderConfiguration,
   type WorkspaceAppFactoryReasoningOption,
   type WorkspaceAppFactorySnapshot,
+  type WorkspaceAppLocalRepairAgentRequest,
+  type WorkspaceAppLocalRepairRequest,
   type WorkspaceAppMinimizeBehavior
 } from "./host.ts";
 export {

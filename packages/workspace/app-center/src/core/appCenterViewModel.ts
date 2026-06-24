@@ -81,6 +81,7 @@ export function createAppCenterViewModel({
         runtime?.installProgress != null || status === "installing";
       const sourceKind = resolveCatalogSourceKind(app.catalog);
       const localApp = sourceKind === "local";
+      const localDevApp = app.catalog?.source?.kind === "local-dev";
       const runtimeId = normalizeOptionalString(runtime?.runtimeId);
       const launchUrl = normalizeOptionalString(runtime?.launchUrl);
       const installedVersion = normalizeOptionalString(app.install?.version);
@@ -143,12 +144,17 @@ export function createAppCenterViewModel({
         primaryAction,
         sourceKind,
         canOpen,
-        canExport: localApp,
+        canExport: localApp && !localDevApp,
         canDelete: localApp,
-        canReplaceIcon: replaceableIconAppIdSet.has(app.manifest.appId),
+        canReloadLocal: localDevApp && installed && !installBusy,
+        canReplaceIcon:
+          !localDevApp && replaceableIconAppIdSet.has(app.manifest.appId),
         canOpenFolder: installed && !installBusy,
         canOpenPackageFolder:
-          installed && localApp && Boolean(displayVersion) && !installBusy,
+          installed &&
+          localApp &&
+          (localDevApp || Boolean(displayVersion)) &&
+          !installBusy,
         canOpenFactorySession: Boolean(factoryAgentSessionId),
         canPublishFactoryUpdate:
           installed &&
@@ -250,7 +256,9 @@ function resolveRuntimeStatusForViewModel(
 function resolveCatalogSourceKind(
   catalog: WorkspaceAppCatalogEntry | null | undefined
 ): WorkspaceAppCatalogSourceKind {
-  return catalog?.source?.kind ?? "bundled";
+  return catalog?.source?.kind === "local-dev"
+    ? "local"
+    : (catalog?.source?.kind ?? "bundled");
 }
 
 export function resolveWorkspaceAppCatalogMetadata(input: {

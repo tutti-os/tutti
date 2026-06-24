@@ -155,6 +155,43 @@ func TestCodexAppServerAdapterApplyTokenUsageFallsBackToLastTotalTokens(t *testi
 	}
 }
 
+// TestCodexAppServerAdapterApplyTokenUsageCompactFrameUsesLastTotalTokens
+// reproduces the post-compaction frame Codex app-server emits: last.inputTokens
+// is explicitly 0 while last.totalTokens carries the real compacted context size
+// (summary). The display must show the compacted size, not 0. (Captured live:
+// seed last.inputTokens=26017 -> compact last.inputTokens=0/totalTokens=5763.)
+func TestCodexAppServerAdapterApplyTokenUsageCompactFrameUsesLastTotalTokens(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+
+	// Seed turn: window is full at 26017.
+	adapter.applyTokenUsage(session.AgentSessionID, map[string]any{
+		"tokenUsage": map[string]any{
+			"last":               map[string]any{"inputTokens": int64(26017), "totalTokens": int64(26049)},
+			"total":              map[string]any{"totalTokens": int64(26049)},
+			"modelContextWindow": int64(258400),
+		},
+	})
+
+	// Compact frame: inputTokens is explicitly 0, totalTokens=5763 is the real
+	// post-compaction context size.
+	adapter.applyTokenUsage(session.AgentSessionID, map[string]any{
+		"tokenUsage": map[string]any{
+			"last":               map[string]any{"inputTokens": int64(0), "totalTokens": int64(5763)},
+			"total":              map[string]any{"totalTokens": int64(26049)},
+			"modelContextWindow": int64(258400),
+		},
+	})
+
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if used, _ := acpInt64Value(contextWindow["usedTokens"]); used != 5763 {
+		t.Fatalf("usedTokens = %v, want post-compact last.totalTokens (5763); a literal 0 inputTokens must not be shown as the context fill", used)
+	}
+}
+
 // TestCodexAppServerAdapterApplyTokenUsageNoCumulativeFalsePositive verifies
 // that repeated calls with the same per-request size do not inflate usedTokens
 // beyond the context window, which would falsely trigger the compact alert.

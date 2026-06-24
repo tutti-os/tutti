@@ -8,6 +8,8 @@ import type {
 export const defaultCatalogLoadingRefreshDelayMs = 750;
 export const defaultAppOpenLaunchWaitTimeoutMs = 35_000;
 export const defaultInstallRefreshDelayMs = 750;
+export const defaultTransientRuntimeRefreshDelayMs = 750;
+export const defaultTransientRuntimeRefreshMaxAttempts = 40;
 
 export type WorkspaceAppCenterOperation =
   | "app_center.refresh"
@@ -19,9 +21,11 @@ export type WorkspaceAppCenterOperation =
   | "workspace_app.export"
   | "workspace_app.import"
   | "workspace_app.install"
+  | "workspace_app.load_local"
   | "workspace_app.prepare_launch"
   | "workspace_app.refresh_install_state"
   | "workspace_app.refresh_launch_wait_state"
+  | "workspace_app.reload_local"
   | "workspace_app.replace_icon"
   | "workspace_app.retry"
   | "workspace_app.start_enabled"
@@ -32,12 +36,14 @@ export type WorkspaceAppCenterUiAction =
   | "export_app"
   | "import_app"
   | "install_app"
+  | "load_local_app"
   | "open_app"
   | "prepare_factory_job_modification"
   | "publish_factory_job"
   | "refresh_install_state"
   | "refresh_launch_wait_state"
   | "replace_app_icon"
+  | "reload_local_app"
   | "retry_app"
   | "update_app";
 
@@ -115,6 +121,8 @@ export interface WorkspaceAppCenterControllerDependencies {
   installRefreshDelayMs?: number;
   now?: () => number;
   store?: WorkspaceAppCenterStoreState;
+  transientRuntimeRefreshDelayMs?: number;
+  transientRuntimeRefreshMaxAttempts?: number;
 }
 
 export function createWorkspaceAppCenterStoreState(): WorkspaceAppCenterStoreState {

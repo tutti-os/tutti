@@ -113,6 +113,10 @@ func (s stubAppCenterService) Launch(ctx context.Context, workspaceID string, ap
 	return s.launchFn(ctx, workspaceID, appID)
 }
 
+func (stubAppCenterService) LoadLocalPackage(context.Context, string, string, workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
+}
+
 func (stubAppCenterService) ListReferences(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
 	return workspacebiz.AppReferenceListResult{}, nil
 }
@@ -138,6 +142,10 @@ func (stubAppCenterService) Remove(context.Context, string, string) (workspacebi
 }
 
 func (stubAppCenterService) ReplaceIcon(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
+}
+
+func (stubAppCenterService) ReloadLocalPackage(context.Context, string, string, workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error) {
 	return workspacebiz.WorkspaceApp{}, nil
 }
 

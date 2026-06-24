@@ -64,6 +64,7 @@ export interface WorkspaceAppLike {
   readonly installationId?: string | null;
   readonly lastError?: string | null;
   readonly launchUrl?: string | null;
+  readonly localPackageDir?: string | null;
   readonly localizations?: readonly WorkspaceAppLocalizationLike[];
   readonly minimizeBehavior?: "hibernate" | "keep-mounted";
   readonly port?: number | null;
@@ -117,6 +118,12 @@ export function createDesktopWorkspaceAppCenterGateway(
         await tuttidClient.listWorkspaceApps(workspaceId)
       );
     },
+    async loadLocalWorkspaceApp(workspaceId, input) {
+      await tuttidClient.loadLocalWorkspaceApp(workspaceId, input);
+      return normalizeWorkspaceAppCenterSnapshot(
+        await tuttidClient.listWorkspaceApps(workspaceId)
+      );
+    },
     async replaceWorkspaceAppIcon(workspaceId, appId, input) {
       return normalizeWorkspaceAppCenterApp(
         await tuttidClient.replaceWorkspaceAppIcon(workspaceId, appId, input)
@@ -130,6 +137,12 @@ export function createDesktopWorkspaceAppCenterGateway(
     async refreshWorkspaceAppCatalog(workspaceId) {
       return normalizeWorkspaceAppCenterSnapshot(
         await tuttidClient.refreshWorkspaceAppCatalog(workspaceId)
+      );
+    },
+    async reloadLocalWorkspaceApp(workspaceId, appId, input) {
+      await tuttidClient.reloadLocalWorkspaceApp(workspaceId, appId, input);
+      return normalizeWorkspaceAppCenterSnapshot(
+        await tuttidClient.listWorkspaceApps(workspaceId)
       );
     },
     async uninstallWorkspaceApp(workspaceId, appId) {
@@ -324,6 +337,7 @@ export function normalizeWorkspaceAppCenterApp(
     installationId: app.installationId ?? null,
     lastError: app.lastError ?? null,
     cli: normalizeWorkspaceAppCliState(app.cli),
+    localPackageDir: app.localPackageDir ?? null,
     localizations: (app.localizations ?? []).map(
       normalizeWorkspaceAppLocalization
     ),
@@ -438,6 +452,8 @@ function normalizeWorkspaceAppCenterSource(
       return "generated";
     case "imported":
       return "imported";
+    case "local-dev":
+      return "local-dev";
     default:
       return assertNever(source, "Unsupported workspace app source");
   }

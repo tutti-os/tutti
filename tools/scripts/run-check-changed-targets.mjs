@@ -126,7 +126,8 @@ export function buildPackageTestCommand({
   const changedSource = packageFiles.filter(
     (file) => isLintableCodeFile(file) && !isTestFile(file)
   );
-  const vitestInvocation = resolveVitestInvocation(packageInfo.scripts.test);
+  const testScript = packageInfo.scripts.test;
+  const vitestInvocation = resolveVitestInvocation(testScript);
 
   if (changedTests.length > 0) {
     if (vitestInvocation) {
@@ -141,6 +142,10 @@ export function buildPackageTestCommand({
           relative(packageInfo.root, file).replaceAll("\\", "/")
         )
       ];
+    }
+
+    if (isVitestScript(testScript)) {
+      return [pnpmCommand, "--filter", packageInfo.name, "test"];
     }
 
     return [
@@ -175,20 +180,32 @@ export function buildPackageTestCommand({
   return [pnpmCommand, "--filter", packageInfo.name, "test"];
 }
 
+function isVitestScript(testScript) {
+  return typeof testScript === "string" && /\bvitest\b/u.test(testScript);
+}
+
 function resolveVitestInvocation(testScript) {
-  if (typeof testScript !== "string" || !/\bvitest\b/u.test(testScript)) {
+  if (typeof testScript !== "string") {
     return null;
   }
 
-  const args = testScript.trim().split(/\s+/u).slice(1);
+  const trimmedScript = testScript.trim();
+  if (
+    !/^vitest(?:\s|$)/u.test(trimmedScript) ||
+    /(?:&&|\|\||[;|&<>])/u.test(trimmedScript)
+  ) {
+    return null;
+  }
+
+  const args = trimmedScript.split(/\s+/u).slice(1);
   return args.length > 0 ? args : ["run"];
 }
 
 function buildTuttidBuiltinEnsureCommand(pnpmCommand, { forceGenerate }) {
   if (forceGenerate) {
-    return `${pnpmCommand} generate:builtin-apps;`;
+    return `${pnpmCommand} generate:builtin-apps &&`;
   }
-  return `${pnpmCommand} --filter @tutti-os/builtin-tutti-onboarding package:builtin:check || ${pnpmCommand} generate:builtin-apps;`;
+  return `(${pnpmCommand} --filter @tutti-os/builtin-tutti-onboarding package:builtin:check || ${pnpmCommand} generate:builtin-apps) &&`;
 }
 
 function goPackagePattern(moduleRoot, file) {

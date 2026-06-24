@@ -385,6 +385,8 @@ func Classify(err error) *ProtocolError {
 		return InvalidRequest(ReasonWorkspaceAppPackageExists, WithCause(err))
 	case errors.Is(err, workspaceservice.ErrAppPackageDeleteForbidden):
 		return InvalidRequest(ReasonWorkspaceAppDeleteForbidden, WithCause(err))
+	case errors.Is(err, workspaceservice.ErrLocalAppPackageInvalid):
+		return InvalidRequest(ReasonMalformedRequest, WithCause(err))
 	case errors.Is(err, workspaceservice.ErrAppPackageIconInvalid):
 		return InvalidRequest(ReasonWorkspaceAppIconInvalid, WithCause(err))
 	case errors.Is(err, workspaceservice.ErrAppPackageIconReplaceForbidden):

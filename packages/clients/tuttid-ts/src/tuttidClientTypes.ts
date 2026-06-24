@@ -42,6 +42,7 @@ import type {
   HealthStatusResponse,
   InstallWorkspaceAppRequest,
   ImportExternalAgentSessionsRequest,
+  LoadLocalWorkspaceAppRequest,
   IssueManagerContextRefsResponse,
   IssueManagerIssue,
   IssueManagerIssueDetailResponse,
@@ -65,6 +66,7 @@ import type {
   PutDesktopPreferencesRequest,
   ImportWorkspaceAppRequest,
   ReplaceWorkspaceAppIconRequest,
+  ReloadLocalWorkspaceAppRequest,
   ResizeWorkspaceTerminalRequest,
   SendWorkspaceAgentSessionInputRequest,
   SubmitWorkspaceAgentInteractiveRequest,
@@ -318,6 +320,10 @@ export interface TuttidClient {
     workspaceID: string,
     request: ImportWorkspaceAppRequest
   ): Promise<WorkspaceApp>;
+  loadLocalWorkspaceApp(
+    workspaceID: string,
+    request: LoadLocalWorkspaceAppRequest
+  ): Promise<WorkspaceApp>;
   uninstallWorkspaceApp(
     workspaceID: string,
     appID: string
@@ -337,6 +343,11 @@ export interface TuttidClient {
     workspaceID: string,
     appID: string,
     request: ReplaceWorkspaceAppIconRequest
+  ): Promise<WorkspaceApp>;
+  reloadLocalWorkspaceApp(
+    workspaceID: string,
+    appID: string,
+    request?: ReloadLocalWorkspaceAppRequest
   ): Promise<WorkspaceApp>;
   listWorkspaceAppFactoryJobs(
     workspaceID: string

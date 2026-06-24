@@ -13,6 +13,7 @@ import {
   FolderIcon,
   MoreHorizontalIcon,
   NavApplicationsFilledIcon,
+  RefreshIcon,
   UninstallIcon,
   UploadIcon,
   cn
@@ -22,6 +23,10 @@ import type {
   WorkspaceAppCardViewModel
 } from "../contracts/viewModel.ts";
 import type { WorkspaceAppInstallProgress } from "../contracts/runtime.ts";
+import type {
+  WorkspaceAppLocalRepairAgentRequest,
+  WorkspaceAppLocalRepairRequest
+} from "../contracts/host.ts";
 import type { AppCenterI18nRuntime } from "../i18n/appCenterI18n.ts";
 
 export interface AppCenterFactoryProviderOption {
@@ -76,6 +81,11 @@ export interface AppCenterHostActions {
   ) => Promise<void> | void;
   readonly importApp?: () => Promise<void> | void;
   readonly installApp?: (appId: string) => Promise<void> | void;
+  readonly loadLocalApp?: () =>
+    | Promise<WorkspaceAppLocalRepairRequest | null | void>
+    | WorkspaceAppLocalRepairRequest
+    | null
+    | void;
   readonly openApp?: (
     appId: string,
     context?: WorkspaceAppActionContext
@@ -92,8 +102,12 @@ export interface AppCenterHostActions {
     provider?: string | null
   ) => Promise<void> | void;
   readonly publishFactoryJob?: (jobId: string) => Promise<void> | void;
+  readonly repairLocalApp?: (
+    request: WorkspaceAppLocalRepairAgentRequest
+  ) => Promise<void> | void;
   readonly replaceAppIcon?: (appId: string) => Promise<void> | void;
   readonly refreshCatalog?: () => Promise<void> | void;
+  readonly reloadLocalApp?: (appId: string) => Promise<void> | void;
   readonly retryFactoryValidation?: (jobId: string) => Promise<void> | void;
   readonly retryApp?: (appId: string) => Promise<void> | void;
   readonly updateApp?: (
@@ -156,6 +170,7 @@ export const AppCard = memo(function AppCard({
     app.canExport ||
     app.canDelete ||
     app.canReplaceIcon ||
+    app.canReloadLocal ||
     app.canOpenFolder ||
     app.canOpenPackageFolder ||
     app.canUninstall;
@@ -272,6 +287,11 @@ export const AppCard = memo(function AppCard({
                 {copy.t("labels.version", { version: app.version })}
               </span>
             ) : null}
+            {app.canReloadLocal ? (
+              <span className="min-w-0 flex-none rounded-[5px] border border-[color:var(--line-2)] px-1.5 py-0 text-[10px] font-medium leading-4 text-[var(--text-secondary)]">
+                {copy.t("labels.localDev")}
+              </span>
+            ) : null}
           </div>
           {app.description ? (
             <p className="mt-2 line-clamp-3 text-[13px] font-normal leading-[1.3] text-[var(--text-secondary)]">
@@ -361,6 +381,17 @@ function AppCardMoreActions({
       label: copy.t("actions.replaceIcon"),
       onSelect: () => {
         void actions.replaceAppIcon?.(app.id);
+      }
+    });
+  }
+
+  if (app.canReloadLocal) {
+    menuItems.push({
+      icon: <RefreshIcon />,
+      key: "reload-local",
+      label: copy.t("actions.reloadLocalApp"),
+      onSelect: () => {
+        void actions.reloadLocalApp?.(app.id);
       }
     });
   }

@@ -30,6 +30,11 @@ interface ClaudeOAuthCredentials {
   subscriptionType?: string;
 }
 
+interface ClaudeCustomAPISettings {
+  authToken: string;
+  source: "env" | "settings";
+}
+
 interface CodexUsageResponse {
   plan_type?: unknown;
   rate_limit?: {
@@ -61,6 +66,10 @@ interface ClaudeOAuthCredentialsFile {
     rateLimitTier?: unknown;
     subscriptionType?: unknown;
   } | null;
+}
+
+interface ClaudeSettingsFile {
+  env?: Record<string, unknown> | null;
 }
 
 interface ClaudeOAuthUsageResponse {
@@ -140,6 +149,52 @@ async function probeClaudeCodeProvider(
   capturedAtUnixMs: number
 ): Promise<AgentProbeProvider> {
   const attempts: AgentProbeProvider["attempts"] = [];
+  const customSettings = await loadClaudeCustomAPISettings();
+  if (customSettings) {
+    const strategy = `claude-custom-api-${customSettings.source}`;
+    if (!customSettings.authToken) {
+      return {
+        attempts: [
+          {
+            errorCode: "auth_required",
+            strategy,
+            success: false
+          }
+        ],
+        availability: {
+          checks: [{ name: "auth", passed: false }],
+          detailsVisible: false,
+          status: "unavailable"
+        },
+        lastError: {
+          code: "auth_required"
+        },
+        provider: "claude-code"
+      };
+    }
+    return {
+      attempts: [
+        {
+          strategy,
+          success: true
+        }
+      ],
+      availability: {
+        checks: [{ name: "auth", passed: true }],
+        detailsVisible: false,
+        status: "available"
+      },
+      provider: "claude-code",
+      usage: input.includeUsage
+        ? {
+            accountTier: "custom API",
+            capturedAtUnixMs,
+            quotas: []
+          }
+        : undefined
+    };
+  }
+
   let credentials: ClaudeOAuthCredentials;
   try {
     credentials = await loadClaudeOAuthCredentials();
@@ -316,6 +371,46 @@ async function probeCodexProvider(
       },
       provider: "codex"
     };
+  }
+}
+
+async function loadClaudeCustomAPISettings(): Promise<ClaudeCustomAPISettings | null> {
+  const envBaseUrl =
+    stringValue(process.env.ANTHROPIC_BASE_URL) ||
+    stringValue(process.env.ANTHROPIC_API_BASE_URL);
+  if (envBaseUrl) {
+    return {
+      authToken:
+        stringValue(process.env.ANTHROPIC_AUTH_TOKEN) ||
+        stringValue(process.env.ANTHROPIC_API_KEY),
+      source: "env"
+    };
+  }
+
+  try {
+    const content = await readFile(
+      join(
+        process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"),
+        "settings.json"
+      ),
+      "utf8"
+    );
+    const parsed = JSON.parse(content) as ClaudeSettingsFile;
+    const settingsEnv = objectValue(parsed.env);
+    const baseUrl =
+      stringValue(settingsEnv?.ANTHROPIC_BASE_URL) ||
+      stringValue(settingsEnv?.ANTHROPIC_API_BASE_URL);
+    if (!baseUrl) {
+      return null;
+    }
+    return {
+      authToken:
+        stringValue(settingsEnv?.ANTHROPIC_AUTH_TOKEN) ||
+        stringValue(settingsEnv?.ANTHROPIC_API_KEY),
+      source: "settings"
+    };
+  } catch {
+    return null;
   }
 }
 

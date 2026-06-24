@@ -51,6 +51,10 @@ import {
   type WorkspaceLaunchpadOpenTrigger
 } from "../services/workspaceLaunchpadAnalytics.ts";
 import {
+  createWorkspaceLaunchpadWheelNavigationState,
+  resolveWorkspaceLaunchpadWheelNavigation
+} from "../services/internal/workspaceLaunchpadWheelNavigation.ts";
+import {
   buildWorkspaceLaunchpadItems,
   filterWorkspaceLaunchpadItems,
   paginateWorkspaceLaunchpadItems,
@@ -112,6 +116,9 @@ export function WorkspaceLaunchpadOverlay({
   const [shouldRender, setShouldRender] = useState(open);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const wasOpenRef = useRef(false);
+  const wheelNavigationRef = useRef(
+    createWorkspaceLaunchpadWheelNavigationState()
+  );
   const { grid, ref: gridViewportRef } = useLaunchpadGridMetrics(open);
   const isClosing = shouldRender && !open;
   const launchpadAnalytics = useMemo(
@@ -247,6 +254,8 @@ export function WorkspaceLaunchpadOverlay({
   useEffect(() => {
     if (!open) {
       wasOpenRef.current = false;
+      wheelNavigationRef.current =
+        createWorkspaceLaunchpadWheelNavigationState();
       return;
     }
     if (!wasOpenRef.current) {
@@ -263,6 +272,7 @@ export function WorkspaceLaunchpadOverlay({
 
   useEffect(() => {
     setPageIndex(0);
+    wheelNavigationRef.current = createWorkspaceLaunchpadWheelNavigationState();
   }, [query]);
 
   useEffect(() => {
@@ -396,6 +406,31 @@ export function WorkspaceLaunchpadOverlay({
     },
     [closeLaunchpad, isClosing]
   );
+  const handleOverlayWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      if (!open || isClosing || isLaunchpadWheelIgnoredTarget(event.target)) {
+        return;
+      }
+
+      const result = resolveWorkspaceLaunchpadWheelNavigation({
+        currentPage: page.currentPage,
+        deltaMode: event.deltaMode,
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        pageCount: page.pageCount,
+        state: wheelNavigationRef.current,
+        timestamp: event.timeStamp
+      });
+      wheelNavigationRef.current = result.state;
+      if (result.shouldPreventDefault) {
+        event.preventDefault();
+      }
+      if (result.nextPageIndex !== null) {
+        changePage(result.nextPageIndex);
+      }
+    },
+    [changePage, isClosing, open, page.currentPage, page.pageCount]
+  );
 
   if (!shouldRender) {
     return null;
@@ -411,6 +446,7 @@ export function WorkspaceLaunchpadOverlay({
       )}
       role="dialog"
       onClick={handleOverlayClick}
+      onWheel={handleOverlayWheel}
     >
       <button
         aria-hidden="true"
@@ -916,6 +952,18 @@ function isLaunchpadInteractiveTarget(target: EventTarget | null): boolean {
         ".workspace-launchpad-overlay__topbar, .workspace-launchpad-search, .workspace-launchpad-item, .desktop-dock__hover-panel, .workspace-launchpad-pages"
       )
     )
+  );
+}
+
+function isLaunchpadWheelIgnoredTarget(target: EventTarget | null): boolean {
+  return (
+    isTextInputTarget(target) ||
+    (target instanceof HTMLElement &&
+      Boolean(
+        target.closest(
+          ".workspace-launchpad-overlay__topbar, .workspace-launchpad-search, .desktop-dock__hover-panel, .workspace-launchpad-pages"
+        )
+      ))
   );
 }
 

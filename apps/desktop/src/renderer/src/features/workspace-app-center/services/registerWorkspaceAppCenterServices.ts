@@ -23,6 +23,7 @@ export interface WorkspaceAppCenterServiceRegistrationInput {
     | "revealInFolder"
     | "selectAppArchive"
     | "selectAppArchiveExportPath"
+    | "selectDirectory"
     | "selectAppIconImage"
   >;
   hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "openWorkspaceAppFolder">;

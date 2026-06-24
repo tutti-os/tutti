@@ -229,6 +229,9 @@ import type {
   ListWorkspaceTerminalsData,
   ListWorkspaceTerminalsErrors,
   ListWorkspaceTerminalsResponses,
+  LoadLocalWorkspaceAppData,
+  LoadLocalWorkspaceAppErrors,
+  LoadLocalWorkspaceAppResponses,
   MoveWorkspaceFileEntryData,
   MoveWorkspaceFileEntryErrors,
   MoveWorkspaceFileEntryResponses,
@@ -262,6 +265,9 @@ import type {
   RefreshWorkspaceAppCatalogData,
   RefreshWorkspaceAppCatalogErrors,
   RefreshWorkspaceAppCatalogResponses,
+  ReloadLocalWorkspaceAppData,
+  ReloadLocalWorkspaceAppErrors,
+  ReloadLocalWorkspaceAppResponses,
   RemoveWorkspaceIssueContextRefData,
   RemoveWorkspaceIssueContextRefErrors,
   RemoveWorkspaceIssueContextRefResponses,
@@ -794,6 +800,26 @@ export const importWorkspaceApp = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Load one unpacked local workspace app directory
+ */
+export const loadLocalWorkspaceApp = <ThrowOnError extends boolean = false>(
+  options: Options<LoadLocalWorkspaceAppData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    LoadLocalWorkspaceAppResponses,
+    LoadLocalWorkspaceAppErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/load-local",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
  * Start enabled installed apps for one workspace
  */
 export const startEnabledWorkspaceApps = <ThrowOnError extends boolean = false>(
@@ -838,6 +864,26 @@ export const installWorkspaceApp = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/apps/{appID}/install",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Reload one unpacked local workspace app directory
+ */
+export const reloadLocalWorkspaceApp = <ThrowOnError extends boolean = false>(
+  options: Options<ReloadLocalWorkspaceAppData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ReloadLocalWorkspaceAppResponses,
+    ReloadLocalWorkspaceAppErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/reload-local",
     ...options,
     headers: {
       "Content-Type": "application/json",

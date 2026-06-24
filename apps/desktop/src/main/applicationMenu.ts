@@ -18,6 +18,7 @@ export interface ApplicationMenuOptions {
   clearDeveloperLogs?: () =>
     | ClearDeveloperLogsResult
     | Promise<ClearDeveloperLogsResult>;
+  closeFromCommandShortcut?: (ownerWindow?: BaseWindow | null) => void;
   exportDeveloperLogs?: () => unknown;
   getLocale?: () => DesktopLocale;
   logger?: DesktopLogger;
@@ -149,6 +150,7 @@ export function createApplicationMenuTemplate({
   allowDeveloperTools = process.env.NODE_ENV === "development",
   checkForUpdates,
   clearDeveloperLogs,
+  closeFromCommandShortcut,
   exportDeveloperLogs,
   getLocale = () => "en",
   logger,
@@ -200,7 +202,18 @@ export function createApplicationMenuTemplate({
   template.push(
     {
       label: translator.t("desktop.menu.file"),
-      submenu: isMac ? [{ role: "close" }] : [{ role: "quit" }]
+      submenu: isMac
+        ? [
+            closeFromCommandShortcut
+              ? {
+                  accelerator: "Command+W",
+                  label: translator.t("common.close"),
+                  click: (_menuItem, browserWindow) =>
+                    closeFromCommandShortcut(browserWindow)
+                }
+              : { role: "close" }
+          ]
+        : [{ role: "quit" }]
     },
     {
       label: translator.t("desktop.menu.edit"),
@@ -335,6 +348,15 @@ export async function configureApplicationMenu(
               }
             }
           }),
+        closeFromCommandShortcut: (ownerWindow) => {
+          if (ownerWindow instanceof BrowserWindow) {
+            void import("./windows/workspaceWindow.ts").then(
+              ({ requestWorkspaceWindowCloseFromCommandShortcut }) => {
+                requestWorkspaceWindowCloseFromCommandShortcut(ownerWindow);
+              }
+            );
+          }
+        },
         ...options
       })
     )

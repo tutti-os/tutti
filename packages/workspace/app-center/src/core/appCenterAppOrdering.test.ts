@@ -197,6 +197,7 @@ function createApp(
     canOpenFolder: false,
     canOpenPackageFolder: false,
     canPublishFactoryUpdate: false,
+    canReloadLocal: false,
     canReplaceIcon: false,
     canRetry: false,
     canUninstall: false,

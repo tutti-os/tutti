@@ -36,12 +36,14 @@ import {
   ToastProvider,
   ToastRoot,
   ToastTitle,
+  UploadFolderIcon,
   cn
 } from "@tutti-os/ui-system";
 import type {
   AppCenterViewModel,
   WorkspaceAppFactoryJobViewModel
 } from "../contracts/viewModel.ts";
+import type { WorkspaceAppLocalRepairRequest } from "../contracts/host.ts";
 import {
   sortMyAppsByCreatedDesc,
   sortRecommendedApps,
@@ -186,7 +188,10 @@ export function AppCenterPanel({
     name: string;
     sourceKind: AppCenterViewModel["apps"][number]["sourceKind"];
   } | null>(null);
+  const [pendingLocalRepairRequest, setPendingLocalRepairRequest] =
+    useState<WorkspaceAppLocalRepairRequest | null>(null);
   const [updateAppBusy, setUpdateAppBusy] = useState(false);
+  const [localRepairBusy, setLocalRepairBusy] = useState(false);
   const [pendingUpdateApp, setPendingUpdateApp] = useState<{
     id: string;
     name: string;
@@ -404,6 +409,13 @@ export function AppCenterPanel({
     }
     void actions.openFactoryJobAgentSession?.(agentSessionId, job.provider);
   };
+  const loadLocalApp = (): void => {
+    void Promise.resolve(actions.loadLocalApp?.()).then((request) => {
+      if (request) {
+        setPendingLocalRepairRequest(request);
+      }
+    });
+  };
   const cardActions = useMemo<AppCenterHostActions>(
     () => ({
       ...actions,
@@ -534,6 +546,10 @@ export function AppCenterPanel({
   const updateAppConfirmTitle = copy.t("confirmations.updateAppTitle", {
     name: pendingUpdateApp?.name ?? ""
   });
+  const localRepairDialogTitle = copy.t("localDev.repairDialog.title");
+  const localRepairDialogDescription = copy.t(
+    "localDev.repairDialog.description"
+  );
 
   return (
     <section
@@ -573,6 +589,7 @@ export function AppCenterPanel({
                   onImportApp={() => {
                     void actions.importApp?.();
                   }}
+                  onLoadLocalApp={loadLocalApp}
                 />
               ) : (
                 <AppCenterRecommendedHeaderActions
@@ -817,6 +834,37 @@ export function AppCenterPanel({
         onOpenChange={(nextOpen) => {
           if (!nextOpen && !updateAppBusy) {
             setPendingUpdateApp(null);
+          }
+        }}
+      />
+      <ConfirmationDialog
+        cancelLabel={copy.t("actions.cancel")}
+        confirmBusy={localRepairBusy}
+        confirmLabel={copy.t("localDev.repairDialog.confirm")}
+        description={localRepairDialogDescription}
+        open={pendingLocalRepairRequest != null}
+        title={localRepairDialogTitle}
+        onConfirm={() => {
+          const request = pendingLocalRepairRequest;
+          if (!request) {
+            return;
+          }
+          setLocalRepairBusy(true);
+          void Promise.resolve(
+            actions.repairLocalApp?.({
+              ...request,
+              prompt: copy.t("localDev.repairPrompt", {
+                cwd: request.projectDir
+              })
+            })
+          ).finally(() => {
+            setLocalRepairBusy(false);
+            setPendingLocalRepairRequest(null);
+          });
+        }}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !localRepairBusy) {
+            setPendingLocalRepairRequest(null);
           }
         }}
       />
@@ -1539,14 +1587,32 @@ function AppCenterStatusToast({
 function AppCenterHeaderActions({
   copy,
   onCreateApp,
-  onImportApp
+  onImportApp,
+  onLoadLocalApp
 }: {
   readonly copy: AppCenterI18nRuntime;
   readonly onCreateApp: () => void;
   readonly onImportApp: () => void;
+  readonly onLoadLocalApp: () => void;
 }): ReactElement {
   return (
     <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="default"
+            type="button"
+            variant="ghost"
+            onClick={onLoadLocalApp}
+          >
+            <UploadFolderIcon />
+            <span>{copy.t("actions.loadUnpackedApp")}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {copy.t("actions.loadUnpackedAppTooltip")}
+        </TooltipContent>
+      </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

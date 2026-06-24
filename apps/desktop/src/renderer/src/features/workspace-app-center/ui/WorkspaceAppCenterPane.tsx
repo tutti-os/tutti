@@ -10,6 +10,7 @@ import {
   createAppCenterViewModel,
   workspaceAppManifestSchemaVersion
 } from "@tutti-os/workspace-app-center";
+import { resolveDefaultAppFactoryProvider } from "@tutti-os/workspace-app-center/core";
 import { createAppCenterI18nRuntime } from "@tutti-os/workspace-app-center/i18n";
 import type {
   AppCenterAppTab,
@@ -187,6 +188,7 @@ export function WorkspaceAppCenterPane({
         service.fixFactoryJob({ jobId, prompt, workspaceId }),
       importApp: () => service.importApp({ workspaceId }),
       installApp: (appId) => service.installApp({ appId, workspaceId }),
+      loadLocalApp: () => service.loadLocalApp({ workspaceId }),
       openApp: async (appId) => {
         await service.openApp({ appId, workspaceId });
       },
@@ -219,6 +221,24 @@ export function WorkspaceAppCenterPane({
       publishFactoryJob: (jobId) =>
         service.publishFactoryJob({ jobId, workspaceId }),
       refreshCatalog: () => service.refreshCatalog(workspaceId),
+      reloadLocalApp: (appId) => service.reloadLocalApp({ appId, workspaceId }),
+      repairLocalApp: async (request) => {
+        const draftPrompt = request.prompt.trim();
+        if (!draftPrompt) {
+          return;
+        }
+        const provider = resolveDefaultAppFactoryProvider(
+          factoryProviderOptions,
+          agentProviderSnapshot.defaultProvider
+        );
+        const userProjectPath = request.projectDir.trim();
+        await requestWorkspaceAgentGuiLaunch({
+          draftPrompt,
+          provider: normalizeDesktopAgentGUIProvider(provider),
+          ...(userProjectPath ? { userProjectPath } : {}),
+          workspaceId
+        });
+      },
       retryFactoryValidation: (jobId) =>
         service.retryFactoryValidation({ jobId, workspaceId }),
       retryApp: (appId) => service.retryApp({ appId, workspaceId }),
@@ -227,7 +247,12 @@ export function WorkspaceAppCenterPane({
         service.updateApp({ appId, trigger, workspaceId }),
       uninstallApp: (appId) => service.uninstallApp({ appId, workspaceId })
     }),
-    [service, workspaceId]
+    [
+      agentProviderSnapshot.defaultProvider,
+      factoryProviderOptions,
+      service,
+      workspaceId
+    ]
   );
   const handleActiveAppTabChange = useCallback(
     (activeAppTab: AppCenterAppTab) => {
@@ -477,7 +502,12 @@ function toWorkspaceAppRecord(
       })),
       manifest,
       source: {
-        kind: app.source === "builtin" ? "bundled" : "local"
+        kind:
+          app.source === "builtin"
+            ? "bundled"
+            : app.source === "local-dev"
+              ? "local-dev"
+              : "local"
       }
     },
     category,

@@ -1,6 +1,10 @@
 import type { WorkspaceAppManifest } from "./manifest.ts";
 
-export type WorkspaceAppCatalogSourceKind = "bundled" | "local" | "remote";
+export type WorkspaceAppCatalogSourceKind =
+  | "bundled"
+  | "local"
+  | "local-dev"
+  | "remote";
 
 export interface WorkspaceAppCatalogSource {
   readonly id?: string;

@@ -28,6 +28,9 @@ export const appCenterEn = {
     importAppTooltip:
       "Only valid Tutti app .zip packages are supported. You can export an app and import it here.",
     installApp: "Install",
+    loadUnpackedApp: "Load unpacked",
+    loadUnpackedAppTooltip:
+      "Select a Tutti app directory or a project root with .tutti/dev-app.",
     moreActions: "More actions",
     openApp: "Open",
     openAppFolder: "Open data folder",
@@ -35,6 +38,7 @@ export const appCenterEn = {
     modifyAppWithAgent: "Edit with agent",
     publishAppUpdate: "Republish",
     refreshCatalog: "Refresh catalog",
+    reloadLocalApp: "Reload",
     replaceIcon: "Replace icon",
     retryApp: "Retry",
     updateApp: "Update",
@@ -242,11 +246,21 @@ export const appCenterEn = {
     failedCount: "{{count}} failed",
     installedAppsTitle: "{{count}} installed {{appLabel}}",
     installedCount: "{{count}} installed",
+    localDev: "local-dev",
     myApps: "My apps",
     recommendedApps: "Recommended apps",
     runningCount: "{{count}} running",
     updateAvailable: "Update {{version}} available",
     version: "Version {{version}}"
+  },
+  localDev: {
+    repairDialog: {
+      confirm: "Ask Agent to fix",
+      description: "Ask Agent to fix it with one click.",
+      title: ".tutti files not found"
+    },
+    repairPrompt:
+      'Load the skill https://github.com/tutti-os/tutti-agent-skills/tree/main/plugins/tutti/skills/tutti-workspace-app-factory and adapt project directory "{{cwd}}" into a Tutti local debug app. Generate .tutti/dev-app/; bootstrap.sh must read the host-injected TUTTI_APP_HOST and TUTTI_APP_PORT, and must not hard-code a port.'
   },
   messages: {
     appRuntimeFailed:
@@ -287,6 +301,9 @@ export const appCenterZhCN = {
     importAppTooltip:
       "仅支持符合规范的 Tutti 应用 .zip 包。你可以先导出应用，再在这里导入。",
     installApp: "安装",
+    loadUnpackedApp: "加载未打包的本地程序",
+    loadUnpackedAppTooltip:
+      "选择 Tutti 应用目录，或包含 .tutti/dev-app 的项目根目录。",
     moreActions: "更多操作",
     openApp: "打开",
     openAppFolder: "打开数据目录",
@@ -294,6 +311,7 @@ export const appCenterZhCN = {
     modifyAppWithAgent: "用智能体编辑",
     publishAppUpdate: "重新发布",
     refreshCatalog: "刷新目录",
+    reloadLocalApp: "重新加载",
     replaceIcon: "替换图标",
     retryApp: "重试",
     updateApp: "更新",
@@ -492,11 +510,21 @@ export const appCenterZhCN = {
     failedCount: "{{count}} 个失败",
     installedAppsTitle: "已安装 {{count}} 个 {{appLabel}}",
     installedCount: "已安装 {{count}} 个",
+    localDev: "本地调试",
     myApps: "我的应用",
     recommendedApps: "推荐应用",
     runningCount: "{{count}} 个运行中",
     updateAvailable: "可更新到 {{version}}",
     version: "版本 {{version}}"
+  },
+  localDev: {
+    repairDialog: {
+      confirm: "让 Agent 修复",
+      description: "可一键让 Agent 为你修复。",
+      title: "目录未识别到 .tutti 文件"
+    },
+    repairPrompt:
+      "加载 skill https://github.com/tutti-os/tutti-agent-skills/tree/main/plugins/tutti/skills/tutti-workspace-app-factory，将项目目录“{{cwd}}”适配成本地调试 Tutti 应用。生成 .tutti/dev-app/；bootstrap.sh 必须读取宿主注入的 TUTTI_APP_HOST 和 TUTTI_APP_PORT，不要硬编码端口。"
   },
   messages: {
     appRuntimeFailed: "应用启动失败。请打开会话或日志查看详情。",

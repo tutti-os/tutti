@@ -58,6 +58,7 @@ Rules:
 - `documentation` is optional. When present, `documentation.file` must be a relative package path to app-owned command documentation, usually `COMMANDS.md`. CLI capabilities expose the resolved absolute documentation path for help output.
 - Handler `kind` must be `http`, `method` must be `POST`, and `path` must start with `/tutti/cli/`.
 - Do not declare host, port, or full URLs; Tutti routes to the app runtime port.
+- Handler `timeoutMs`, when present, must be an integer between `1000` and `600000`.
 - Supported input schema is a small object-only subset: `type`, `properties`, `required`, and property `description`.
 - Property `type` may be `string`, `boolean`, or `integer`.
 - `defaultMode` may be `json` or `table`; table output must declare static columns.

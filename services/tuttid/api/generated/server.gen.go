@@ -172,6 +172,9 @@ type ServerInterface interface {
 	// Import one workspace app package archive
 	// (POST /v1/workspaces/{workspaceID}/apps/import)
 	ImportWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
+	// Load one unpacked local workspace app directory
+	// (POST /v1/workspaces/{workspaceID}/apps/load-local)
+	LoadLocalWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
 	// Start enabled installed apps for one workspace
 	// (POST /v1/workspaces/{workspaceID}/apps/start-enabled)
 	StartEnabledWorkspaceApps(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
@@ -199,6 +202,9 @@ type ServerInterface interface {
 	// Search file references exposed by one running workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/search)
 	SearchWorkspaceAppReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
+	// Reload one unpacked local workspace app directory
+	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/reload-local)
+	ReloadLocalWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
 	// Retry one failed installed workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/retry)
 	RetryWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
@@ -2221,6 +2227,38 @@ func (siw *ServerInterfaceWrapper) ImportWorkspaceApp(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// LoadLocalWorkspaceApp operation middleware
+func (siw *ServerInterfaceWrapper) LoadLocalWorkspaceApp(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LoadLocalWorkspaceApp(w, r, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // StartEnabledWorkspaceApps operation middleware
 func (siw *ServerInterfaceWrapper) StartEnabledWorkspaceApps(w http.ResponseWriter, r *http.Request) {
 
@@ -2563,6 +2601,47 @@ func (siw *ServerInterfaceWrapper) SearchWorkspaceAppReferences(w http.ResponseW
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SearchWorkspaceAppReferences(w, r, workspaceID, appID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReloadLocalWorkspaceApp operation middleware
+func (siw *ServerInterfaceWrapper) ReloadLocalWorkspaceApp(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "appID" -------------
+	var appID WorkspaceAppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", r.PathValue("appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReloadLocalWorkspaceApp(w, r, workspaceID, appID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5301,6 +5380,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps", wrapper.ListWorkspaceApps)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/catalog/refresh", wrapper.RefreshWorkspaceAppCatalog)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/import", wrapper.ImportWorkspaceApp)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/load-local", wrapper.LoadLocalWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/start-enabled", wrapper.StartEnabledWorkspaceApps)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/stop-all", wrapper.StopAllWorkspaceApps)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}", wrapper.DeleteWorkspaceApp)
@@ -5310,6 +5390,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/launch", wrapper.LaunchWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/references/list", wrapper.ListWorkspaceAppReferences)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/references/search", wrapper.SearchWorkspaceAppReferences)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/reload-local", wrapper.ReloadLocalWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/retry", wrapper.RetryWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/rollback", wrapper.RollbackWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uninstall", wrapper.UninstallWorkspaceApp)
@@ -10858,6 +10939,123 @@ func (response ImportWorkspaceApp503JSONResponse) VisitImportWorkspaceAppRespons
 	return err
 }
 
+type LoadLocalWorkspaceAppRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Body        *LoadLocalWorkspaceAppJSONRequestBody
+}
+
+type LoadLocalWorkspaceAppResponseObject interface {
+	VisitLoadLocalWorkspaceAppResponse(w http.ResponseWriter) error
+}
+
+type LoadLocalWorkspaceApp200JSONResponse WorkspaceAppResponse
+
+func (response LoadLocalWorkspaceApp200JSONResponse) VisitLoadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoadLocalWorkspaceApp400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response LoadLocalWorkspaceApp400JSONResponse) VisitLoadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoadLocalWorkspaceApp401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response LoadLocalWorkspaceApp401JSONResponse) VisitLoadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoadLocalWorkspaceApp404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response LoadLocalWorkspaceApp404JSONResponse) VisitLoadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoadLocalWorkspaceApp405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response LoadLocalWorkspaceApp405JSONResponse) VisitLoadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoadLocalWorkspaceApp502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response LoadLocalWorkspaceApp502JSONResponse) VisitLoadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoadLocalWorkspaceApp503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response LoadLocalWorkspaceApp503JSONResponse) VisitLoadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type StartEnabledWorkspaceAppsRequestObject struct {
 	WorkspaceID WorkspaceID `json:"workspaceID"`
 }
@@ -11903,6 +12101,124 @@ type SearchWorkspaceAppReferences503JSONResponse struct {
 }
 
 func (response SearchWorkspaceAppReferences503JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadLocalWorkspaceAppRequestObject struct {
+	WorkspaceID WorkspaceID    `json:"workspaceID"`
+	AppID       WorkspaceAppID `json:"appID"`
+	Body        *ReloadLocalWorkspaceAppJSONRequestBody
+}
+
+type ReloadLocalWorkspaceAppResponseObject interface {
+	VisitReloadLocalWorkspaceAppResponse(w http.ResponseWriter) error
+}
+
+type ReloadLocalWorkspaceApp200JSONResponse WorkspaceAppResponse
+
+func (response ReloadLocalWorkspaceApp200JSONResponse) VisitReloadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadLocalWorkspaceApp400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ReloadLocalWorkspaceApp400JSONResponse) VisitReloadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadLocalWorkspaceApp401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ReloadLocalWorkspaceApp401JSONResponse) VisitReloadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadLocalWorkspaceApp404JSONResponse struct {
+	WorkspaceAppNotFoundErrorJSONResponse
+}
+
+func (response ReloadLocalWorkspaceApp404JSONResponse) VisitReloadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadLocalWorkspaceApp405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ReloadLocalWorkspaceApp405JSONResponse) VisitReloadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadLocalWorkspaceApp502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ReloadLocalWorkspaceApp502JSONResponse) VisitReloadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadLocalWorkspaceApp503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ReloadLocalWorkspaceApp503JSONResponse) VisitReloadLocalWorkspaceAppResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -18768,6 +19084,9 @@ type StrictServerInterface interface {
 	// Import one workspace app package archive
 	// (POST /v1/workspaces/{workspaceID}/apps/import)
 	ImportWorkspaceApp(ctx context.Context, request ImportWorkspaceAppRequestObject) (ImportWorkspaceAppResponseObject, error)
+	// Load one unpacked local workspace app directory
+	// (POST /v1/workspaces/{workspaceID}/apps/load-local)
+	LoadLocalWorkspaceApp(ctx context.Context, request LoadLocalWorkspaceAppRequestObject) (LoadLocalWorkspaceAppResponseObject, error)
 	// Start enabled installed apps for one workspace
 	// (POST /v1/workspaces/{workspaceID}/apps/start-enabled)
 	StartEnabledWorkspaceApps(ctx context.Context, request StartEnabledWorkspaceAppsRequestObject) (StartEnabledWorkspaceAppsResponseObject, error)
@@ -18795,6 +19114,9 @@ type StrictServerInterface interface {
 	// Search file references exposed by one running workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/search)
 	SearchWorkspaceAppReferences(ctx context.Context, request SearchWorkspaceAppReferencesRequestObject) (SearchWorkspaceAppReferencesResponseObject, error)
+	// Reload one unpacked local workspace app directory
+	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/reload-local)
+	ReloadLocalWorkspaceApp(ctx context.Context, request ReloadLocalWorkspaceAppRequestObject) (ReloadLocalWorkspaceAppResponseObject, error)
 	// Retry one failed installed workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/retry)
 	RetryWorkspaceApp(ctx context.Context, request RetryWorkspaceAppRequestObject) (RetryWorkspaceAppResponseObject, error)
@@ -20506,6 +20828,41 @@ func (sh *strictHandler) ImportWorkspaceApp(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// LoadLocalWorkspaceApp operation middleware
+func (sh *strictHandler) LoadLocalWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
+	var request LoadLocalWorkspaceAppRequestObject
+
+	request.WorkspaceID = workspaceID
+
+	var body LoadLocalWorkspaceAppJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LoadLocalWorkspaceApp(ctx, request.(LoadLocalWorkspaceAppRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LoadLocalWorkspaceApp")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoadLocalWorkspaceAppResponseObject); ok {
+		if err := validResponse.VisitLoadLocalWorkspaceAppResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // StartEnabledWorkspaceApps operation middleware
 func (sh *strictHandler) StartEnabledWorkspaceApps(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
 	var request StartEnabledWorkspaceAppsRequestObject
@@ -20788,6 +21145,45 @@ func (sh *strictHandler) SearchWorkspaceAppReferences(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SearchWorkspaceAppReferencesResponseObject); ok {
 		if err := validResponse.VisitSearchWorkspaceAppReferencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReloadLocalWorkspaceApp operation middleware
+func (sh *strictHandler) ReloadLocalWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID) {
+	var request ReloadLocalWorkspaceAppRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AppID = appID
+
+	var body ReloadLocalWorkspaceAppJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReloadLocalWorkspaceApp(ctx, request.(ReloadLocalWorkspaceAppRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReloadLocalWorkspaceApp")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReloadLocalWorkspaceAppResponseObject); ok {
+		if err := validResponse.VisitReloadLocalWorkspaceAppResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

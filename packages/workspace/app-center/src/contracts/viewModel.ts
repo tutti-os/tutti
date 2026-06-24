@@ -55,6 +55,7 @@ export interface WorkspaceAppCardViewModel {
   readonly canOpenPackageFolder: boolean;
   readonly canExport: boolean;
   readonly canDelete: boolean;
+  readonly canReloadLocal: boolean;
   readonly canReplaceIcon: boolean;
   readonly canOpenFactorySession: boolean;
   readonly canPublishFactoryUpdate: boolean;

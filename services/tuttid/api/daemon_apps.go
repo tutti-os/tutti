@@ -148,6 +148,70 @@ func (api DaemonAPI) ImportWorkspaceApp(ctx context.Context, request tuttigenera
 	}, nil
 }
 
+func (api DaemonAPI) LoadLocalWorkspaceApp(ctx context.Context, request tuttigenerated.LoadLocalWorkspaceAppRequestObject) (tuttigenerated.LoadLocalWorkspaceAppResponseObject, error) {
+	if api.AppCenterService == nil {
+		return tuttigenerated.LoadLocalWorkspaceApp503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: workspaceAppServiceUnavailableError(),
+		}, nil
+	}
+	workspaceID := strings.TrimSpace(string(request.WorkspaceID))
+	if workspaceID == "" {
+		return tuttigenerated.LoadLocalWorkspaceApp400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.MissingWorkspaceID(
+					apierrors.WithDeveloperMessage("workspace id is required"),
+					apierrors.WithParams(map[string]any{"field": "workspaceId"}),
+				),
+			),
+		}, nil
+	}
+	if request.Body == nil || strings.TrimSpace(request.Body.SourceDir) == "" {
+		return tuttigenerated.LoadLocalWorkspaceApp400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.MalformedRequest(
+					apierrors.WithDeveloperMessage("workspace app source directory is required"),
+					apierrors.WithParams(map[string]any{"field": "sourceDir"}),
+				),
+			),
+		}, nil
+	}
+
+	app, err := api.AppCenterService.LoadLocalPackage(ctx, workspaceID, request.Body.SourceDir, installOptionsDefaultRestart(request.Body.RestartRunning))
+	if err != nil {
+		return writeLoadLocalWorkspaceAppError(err), nil
+	}
+	return tuttigenerated.LoadLocalWorkspaceApp200JSONResponse{
+		WorkspaceId: workspaceID,
+		App:         workspaceapi.GeneratedAppFromBiz(app),
+	}, nil
+}
+
+func (api DaemonAPI) ReloadLocalWorkspaceApp(ctx context.Context, request tuttigenerated.ReloadLocalWorkspaceAppRequestObject) (tuttigenerated.ReloadLocalWorkspaceAppResponseObject, error) {
+	if api.AppCenterService == nil {
+		return tuttigenerated.ReloadLocalWorkspaceApp503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: workspaceAppServiceUnavailableError(),
+		}, nil
+	}
+
+	workspaceID, appID, errResponse := validateWorkspaceAppPath(request.WorkspaceID, request.AppID)
+	if errResponse != nil {
+		return tuttigenerated.ReloadLocalWorkspaceApp400JSONResponse{InvalidRequestErrorJSONResponse: *errResponse}, nil
+	}
+
+	var restartRunning *bool
+	if request.Body != nil {
+		restartRunning = request.Body.RestartRunning
+	}
+	app, err := api.AppCenterService.ReloadLocalPackage(ctx, workspaceID, appID, installOptionsDefaultRestart(restartRunning))
+	if err != nil {
+		return writeReloadLocalWorkspaceAppError(err), nil
+	}
+	return tuttigenerated.ReloadLocalWorkspaceApp200JSONResponse{
+		WorkspaceId: workspaceID,
+		App:         workspaceapi.GeneratedAppFromBiz(app),
+	}, nil
+}
+
 func (api DaemonAPI) ExportWorkspaceApp(ctx context.Context, request tuttigenerated.ExportWorkspaceAppRequestObject) (tuttigenerated.ExportWorkspaceAppResponseObject, error) {
 	if api.AppCenterService == nil {
 		return tuttigenerated.ExportWorkspaceApp503JSONResponse{
@@ -432,6 +496,14 @@ func validateWorkspaceAppPath(workspaceIDValue tuttigenerated.WorkspaceID, appID
 	return workspaceID, appID, nil
 }
 
+func installOptionsDefaultRestart(restartRunning *bool) workspaceservice.InstallOptions {
+	options := workspaceservice.InstallOptions{RestartRunning: true}
+	if restartRunning != nil {
+		options.RestartRunning = *restartRunning
+	}
+	return options
+}
+
 func writeListWorkspaceAppsError(err error) tuttigenerated.ListWorkspaceAppsResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
@@ -535,6 +607,42 @@ func writeImportWorkspaceAppError(err error) tuttigenerated.ImportWorkspaceAppRe
 		}
 	default:
 		return tuttigenerated.ImportWorkspaceApp502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
+func writeLoadLocalWorkspaceAppError(err error) tuttigenerated.LoadLocalWorkspaceAppResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.LoadLocalWorkspaceApp404JSONResponse{
+			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.LoadLocalWorkspaceApp400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.LoadLocalWorkspaceApp502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
+func writeReloadLocalWorkspaceAppError(err error) tuttigenerated.ReloadLocalWorkspaceAppResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound, tuttigenerated.WorkspaceAppNotFound:
+		return tuttigenerated.ReloadLocalWorkspaceApp404JSONResponse{
+			WorkspaceAppNotFoundErrorJSONResponse: workspaceAppNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.ReloadLocalWorkspaceApp400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.ReloadLocalWorkspaceApp502JSONResponse{
 			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
 		}
 	}

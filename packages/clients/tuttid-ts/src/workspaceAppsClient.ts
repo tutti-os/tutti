@@ -9,12 +9,14 @@ import {
   importWorkspaceApp,
   installWorkspaceApp,
   launchWorkspaceApp,
+  loadLocalWorkspaceApp,
   listWorkspaceAppReferences,
   listWorkspaceAppFactoryJobs,
   listWorkspaceApps,
   prepareWorkspaceAppFactoryJobModification,
   publishWorkspaceAppFactoryJob,
   refreshWorkspaceAppCatalog,
+  reloadLocalWorkspaceApp,
   replaceWorkspaceAppIcon,
   retryWorkspaceApp,
   retryWorkspaceAppFactoryJobValidation,
@@ -40,6 +42,7 @@ type WorkspaceAppsClient = Pick<
   | "importWorkspaceApp"
   | "installWorkspaceApp"
   | "launchWorkspaceApp"
+  | "loadLocalWorkspaceApp"
   | "listWorkspaceAppReferences"
   | "searchWorkspaceAppReferences"
   | "listWorkspaceAppFactoryJobs"
@@ -47,6 +50,7 @@ type WorkspaceAppsClient = Pick<
   | "prepareWorkspaceAppFactoryJobModification"
   | "publishWorkspaceAppFactoryJob"
   | "refreshWorkspaceAppCatalog"
+  | "reloadLocalWorkspaceApp"
   | "replaceWorkspaceAppIcon"
   | "retryWorkspaceApp"
   | "retryWorkspaceAppFactoryJobValidation"
@@ -121,6 +125,15 @@ export function createWorkspaceAppsClient(client: Client): WorkspaceAppsClient {
       });
       return unwrapData(response, "Import workspace app request failed.").app;
     },
+    async loadLocalWorkspaceApp(workspaceID, request) {
+      const response = await loadLocalWorkspaceApp({
+        client,
+        body: request,
+        path: { workspaceID }
+      });
+      return unwrapData(response, "Load local workspace app request failed.")
+        .app;
+    },
     async uninstallWorkspaceApp(workspaceID, appID) {
       const response = await uninstallWorkspaceApp({
         client,
@@ -165,6 +178,15 @@ export function createWorkspaceAppsClient(client: Client): WorkspaceAppsClient {
         path: { appID, workspaceID }
       });
       return unwrapData(response, "Replace workspace app icon request failed.")
+        .app;
+    },
+    async reloadLocalWorkspaceApp(workspaceID, appID, request) {
+      const response = await reloadLocalWorkspaceApp({
+        ...(request ? { body: request } : {}),
+        client,
+        path: { appID, workspaceID }
+      });
+      return unwrapData(response, "Reload local workspace app request failed.")
         .app;
     },
     async startEnabledWorkspaceApps(workspaceID) {

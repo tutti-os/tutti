@@ -3,6 +3,7 @@ import type {
   WorkspaceAppCenterApp,
   WorkspaceAppFactoryJob,
   WorkspaceAppFactoryProviderConfiguration,
+  WorkspaceAppLocalRepairRequest,
   WorkspaceAppCenterReadableStoreState,
   WorkspaceAppCenterViewState
 } from "@tutti-os/workspace-app-center";
@@ -50,6 +51,9 @@ export interface IWorkspaceAppCenterService {
   }): Promise<WorkspaceAppCenterApp | null>;
   importApp(input: { workspaceId: string }): Promise<void>;
   installApp(input: { appId: string; workspaceId: string }): Promise<void>;
+  loadLocalApp(input: {
+    workspaceId: string;
+  }): Promise<WorkspaceAppLocalRepairRequest | null>;
   openAppFolder(input: { appId: string; workspaceId: string }): Promise<void>;
   openAppPackageFolder(input: {
     appId: string;
@@ -65,6 +69,7 @@ export interface IWorkspaceAppCenterService {
   }): Promise<void>;
   refresh(workspaceId: string): Promise<void>;
   refreshCatalog(workspaceId: string): Promise<void>;
+  reloadLocalApp(input: { appId: string; workspaceId: string }): Promise<void>;
   replaceAppIcon(input: { appId: string; workspaceId: string }): Promise<void>;
   retryFactoryValidation(input: {
     jobId: string;

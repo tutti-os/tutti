@@ -1161,6 +1161,7 @@ const (
 	WorkspaceAppSourceBuiltin   WorkspaceAppSource = "builtin"
 	WorkspaceAppSourceGenerated WorkspaceAppSource = "generated"
 	WorkspaceAppSourceImported  WorkspaceAppSource = "imported"
+	WorkspaceAppSourceLocalDev  WorkspaceAppSource = "local-dev"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAppSource enum.
@@ -1171,6 +1172,8 @@ func (e WorkspaceAppSource) Valid() bool {
 	case WorkspaceAppSourceGenerated:
 		return true
 	case WorkspaceAppSourceImported:
+		return true
+	case WorkspaceAppSourceLocalDev:
 		return true
 	default:
 		return false
@@ -2474,6 +2477,13 @@ type ListWorkspacesResponse struct {
 	Workspaces []WorkspaceSummary `json:"workspaces"`
 }
 
+// LoadLocalWorkspaceAppRequest defines model for LoadLocalWorkspaceAppRequest.
+type LoadLocalWorkspaceAppRequest struct {
+	// RestartRunning Restart the app runtime if it is already running.
+	RestartRunning *bool  `json:"restartRunning,omitempty"`
+	SourceDir      string `json:"sourceDir"`
+}
+
 // MoveWorkspaceFileEntryRequest defines model for MoveWorkspaceFileEntryRequest.
 type MoveWorkspaceFileEntryRequest struct {
 	Path                string `json:"path"`
@@ -2527,6 +2537,12 @@ type PutDesktopPreferencesRequest struct {
 // PutWorkspaceWorkbenchRequest defines model for PutWorkspaceWorkbenchRequest.
 type PutWorkspaceWorkbenchRequest struct {
 	Snapshot WorkbenchSnapshot `json:"snapshot"`
+}
+
+// ReloadLocalWorkspaceAppRequest defines model for ReloadLocalWorkspaceAppRequest.
+type ReloadLocalWorkspaceAppRequest struct {
+	// RestartRunning Restart the app runtime if it is already running.
+	RestartRunning *bool `json:"restartRunning,omitempty"`
 }
 
 // RenameWorkspaceFileEntryRequest defines model for RenameWorkspaceFileEntryRequest.
@@ -2850,6 +2866,9 @@ type WorkspaceApp struct {
 	Installed        bool                         `json:"installed"`
 	LastError        *string                      `json:"lastError"`
 	LaunchUrl        *string                      `json:"launchUrl"`
+
+	// LocalPackageDir Absolute package directory for unpacked local development apps.
+	LocalPackageDir  *string                      `json:"localPackageDir,omitempty"`
 	Localizations    []WorkspaceAppLocalization   `json:"localizations"`
 	MinimizeBehavior WorkspaceAppMinimizeBehavior `json:"minimizeBehavior"`
 	Port             *int                         `json:"port"`
@@ -3502,6 +3521,9 @@ type FixWorkspaceAppFactoryJobJSONRequestBody = FixWorkspaceAppFactoryJobRequest
 // ImportWorkspaceAppJSONRequestBody defines body for ImportWorkspaceApp for application/json ContentType.
 type ImportWorkspaceAppJSONRequestBody = ImportWorkspaceAppRequest
 
+// LoadLocalWorkspaceAppJSONRequestBody defines body for LoadLocalWorkspaceApp for application/json ContentType.
+type LoadLocalWorkspaceAppJSONRequestBody = LoadLocalWorkspaceAppRequest
+
 // ExportWorkspaceAppJSONRequestBody defines body for ExportWorkspaceApp for application/json ContentType.
 type ExportWorkspaceAppJSONRequestBody = ExportWorkspaceAppRequest
 
@@ -3516,6 +3538,9 @@ type ListWorkspaceAppReferencesJSONRequestBody = AppReferenceListRequest
 
 // SearchWorkspaceAppReferencesJSONRequestBody defines body for SearchWorkspaceAppReferences for application/json ContentType.
 type SearchWorkspaceAppReferencesJSONRequestBody = AppReferenceSearchRequest
+
+// ReloadLocalWorkspaceAppJSONRequestBody defines body for ReloadLocalWorkspaceApp for application/json ContentType.
+type ReloadLocalWorkspaceAppJSONRequestBody = ReloadLocalWorkspaceAppRequest
 
 // RollbackWorkspaceAppJSONRequestBody defines body for RollbackWorkspaceApp for application/json ContentType.
 type RollbackWorkspaceAppJSONRequestBody = RollbackWorkspaceAppRequest

@@ -46,3 +46,10 @@ test("App factory loading controls do not render framed pills", () => {
   );
   assert.match(source, /disabled && !loading/);
 });
+
+test("local app load repair dialog routes through the agent repair action", () => {
+  assert.match(source, /setPendingLocalRepairRequest\(request\)/);
+  assert.match(source, /copy\.t\("localDev\.repairDialog\.confirm"\)/);
+  assert.match(source, /actions\.repairLocalApp\?\.\(\{/);
+  assert.match(source, /copy\.t\("localDev\.repairPrompt"/);
+});

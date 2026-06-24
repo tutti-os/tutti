@@ -1,11 +1,16 @@
 ---
 name: tutti-workspace-app-factory
-description: "Create, convert, or repair a self-contained Tutti workspace app package from a user request or existing repository. Use for mention://workspace-app-factory/create handoffs, mention://workspace-app-factory handoffs, standalone Tutti workspace app generation, adapting existing projects into Tutti packages, repair, validation, manifests, bootstrap scripts, package-local AGENTS.md, local HTTP runtimes, healthchecks, app assets, optional app-runtime Tutti CLI integration, and TUTTI_APP_* storage rules."
+description: "Create, convert, or repair one Tutti workspace app as either a self-contained publishable package under package/ or a Chrome-style local debug app under .tutti/dev-app/. Use for mention://workspace-app-factory/create handoffs, mention://workspace-app-factory handoffs, standalone app generation, adapting existing repositories, Load unpacked repair flows for invalid local project directories, tutti.app.json and tutti.cli.json manifests, bootstrap.sh scripts, package-local AGENTS.md, local HTTP runtimes, TUTTI_APP_* host/port/storage rules, healthchecks, app assets, i18n, validation, and optional Tutti CLI integration."
 ---
 
 # Tutti Workspace App Factory
 
-Use this skill to create, convert, or repair one Tutti workspace app package. The app package must be self-contained, runnable by the Tutti custom app runtime, and safe to copy into a workspace app archive.
+Use this skill to create, convert, or repair one Tutti workspace app. Choose one output mode before editing:
+
+- **Publishable package**: create a self-contained app under `package/`, runnable by the Tutti custom app runtime and safe to copy into a workspace app archive.
+- **Local debug app**: create a small `.tutti/dev-app/` wrapper that launches the user's existing source tree through the Chrome-style "Load unpacked" flow.
+
+When the user selected a directory in App Center and Tutti reports that it cannot be loaded, treat the task as local debug repair. Adapt the selected project by creating or fixing `.tutti/dev-app/`; do not create a zip wrapper or copy the repository into `package/` unless the user explicitly asks for release packaging.
 
 For a full agent-enabled Tutti app repository with `apps/web`, `apps/server`, `packages/shared`, `@tutti-os/agent-acp-kit`, local Codex/Claude runtimes, MCP tool gateways, and an app-owned package builder, use `$tutti-agent-workspace-app` first. Return to this skill for the final package contract and validation.
 
@@ -45,9 +50,9 @@ Before generating, repairing, or validating an app package, perform a best-effor
 
 If the current working directory contains `context.json`, or the task includes `mention://workspace-app-factory/create` or `mention://workspace-app-factory`, operate in Tutti factory handoff mode. Read `context.json` before writing files, then follow its metadata, output rules, workspace context, and constraints exactly. Do not copy the context file into generated app outputs.
 
-If `context.json` is absent, operate in standalone mode. Treat the current working directory as the app authoring workspace. If the directory already contains an app or repository, adapt it into a Tutti package under `package/`; otherwise create a new package under `package/`. Infer missing metadata conservatively from the user request.
+If `context.json` is absent, operate in standalone mode. Treat the current working directory as the app authoring workspace. If the user asks for local debugging, Load unpacked support, or repair of a selected project directory, create or update `.tutti/dev-app/`. Otherwise, if the directory already contains an app or repository, adapt it into a self-contained Tutti package under `package/`; if it does not, create a new self-contained package under `package/`. Infer missing metadata conservatively from the user request.
 
-The package root is the only generated app output directory; files outside it are scratch or coordination files and will not be published.
+For publishable packages, the package root is the only generated app output directory; files outside it are scratch or coordination files and will not be published. For local debugging, `.tutti/dev-app/` is the generated dev app directory and the surrounding project source remains owned by the user repository.
 
 ## Mention Contract
 
@@ -66,7 +71,7 @@ Read `references/demos/simple-python-static-app/` only when you need a concrete 
 
 ## Output Contract
 
-Create or update these files under `output.packageRoot` from the context in handoff mode, or under `package/` in standalone mode:
+For a publishable package, create or update these files under `output.packageRoot` from the context in handoff mode, or under `package/` in standalone mode:
 
 - `tutti.app.json`: valid JSON manifest matching `references/manifest-contract.md`.
 - `tutti.cli.json`: CLI manifest matching `references/cli-manifest-contract.md`, required when the user asks to connect the app to the Tutti ecosystem; otherwise create it only when `tutti.app.json` declares `cli.manifest`.
@@ -75,6 +80,16 @@ Create or update these files under `output.packageRoot` from the context in hand
 - `locales/<locale>/manifest.json`: manifest metadata localization files, only when the user asks for localized app metadata.
 - App-owned locale dictionaries or an i18n helper/harness when the app has user-facing in-app copy in more than one language.
 - App implementation files and assets needed for the requested behavior.
+
+For a local debug app, create or update these files under `.tutti/dev-app/` instead of `package/`:
+
+- `tutti.app.json`: local debug manifest.
+- `tutti.cli.json`: CLI manifest matching `references/cli-manifest-contract.md`, only when the app exposes capabilities or `tutti.app.json` declares `cli.manifest`.
+- `bootstrap.sh`: executable shell entrypoint that reads the host-injected port and starts the source dev server.
+- `AGENTS.md`: dev-app guidance describing the project root, dev/watch command, host/port contract, source hot-reload ownership, and how to reload from App Center.
+- Optional app assets referenced by the manifest.
+
+Keep `.tutti/dev-app/` small. It should describe and launch the local app, not copy the whole project. Tutti Desktop can load either the `.tutti/dev-app/` directory directly or the project root that contains it.
 
 If the task supplies exact metadata such as `appId`, version, display name, or description, copy those values exactly into `tutti.app.json`. If metadata is missing, choose conservative defaults:
 
@@ -95,7 +110,8 @@ Build a small local HTTP app. Prefer Python standard library or Node built-ins u
 
 The runtime must:
 
-- Bind `$TUTTI_APP_HOST:$TUTTI_APP_PORT`, defaulting the host to `127.0.0.1` only when the variable is absent.
+- Bind `$TUTTI_APP_HOST:$TUTTI_APP_PORT`, defaulting the host to `127.0.0.1` only when the host variable is absent.
+- Fail startup with a clear error when `$TUTTI_APP_PORT` is absent. Do not guess, reserve, or hard-code a fallback port; the daemon owns port allocation.
 - Serve the manifest healthcheck path with a 2xx response.
 - Treat `$TUTTI_APP_PACKAGE_DIR` as read-only after startup.
 - Write durable app data only under `$TUTTI_APP_DATA_DIR`.
@@ -120,18 +136,37 @@ Generated apps must not rely on system `python`, `python3`, `node`, or `npm` com
 
 Keep generated apps small and inspectable. Do not add frameworks, background workers, databases, or network services unless they are required by the user request.
 
+## Local Debug Workflow
+
+Use this workflow when the user asks for local app debugging, load-unpacked behavior, or direct development against an existing Next/Vite/Node/Python repository.
+
+1. Create `.tutti/dev-app/tutti.app.json`, `.tutti/dev-app/bootstrap.sh`, and `.tutti/dev-app/AGENTS.md`.
+2. Keep the formal release package path separate: a future release/import package must still be self-contained under `package/`.
+3. In `bootstrap.sh`, read `$TUTTI_APP_HOST` and `$TUTTI_APP_PORT`; exit with a clear error if the port is missing. The daemon owns port allocation.
+4. If the app server lives in the project root, compute it from the dev app directory, for example `PROJECT_ROOT="$(cd "$TUTTI_APP_PACKAGE_DIR/../.." && pwd)"`, then `cd "$PROJECT_ROOT"` before launching.
+5. Translate the project's known dev/watch command explicitly. For example, run Vite with host and port flags, run Next with `-H "$TUTTI_APP_HOST" -p "$TUTTI_APP_PORT"`, or run backend servers through their watch mode such as `tsx watch`, `nodemon`, `uvicorn --reload`, `air`, or `cargo watch`. Do not depend on daemon-side framework detection.
+6. Treat source hot-reload as the project dev server's responsibility. The Tutti host does not watch the user's project root and should not be expected to restart on normal frontend or backend source edits. If a server-side project lacks a watch/dev command, add or document a project-owned one such as `dev:tutti` rather than adding daemon-side source watching.
+7. Treat `.tutti/dev-app/` files as host contract configuration. Changes to `tutti.app.json`, `tutti.cli.json`, `bootstrap.sh`, assets, or dev-app `AGENTS.md` require App Center's local-dev Reload action so the daemon rereads the manifest and restarts the runtime when needed.
+8. Use `$TUTTI_APP_NODE` and `$TUTTI_APP_NPM` for Node-based dev servers. Do not call system `node`, `npm`, `pnpm`, or `yarn` directly from `bootstrap.sh` unless the user explicitly owns that dependency and accepts the portability tradeoff.
+9. Document the source project entrypoint, the dev/watch command, which edits hot-reload through the project dev server, which edits require App Center Reload, and the fact that Tutti Desktop loads the project root or `.tutti/dev-app/` in `.tutti/dev-app/AGENTS.md`.
+10. Run `scripts/check_local_dev_app.py <project-root-or-.tutti/dev-app>` from this skill after creating or repairing `.tutti/dev-app/`. Fix every reported failure before saying the local debug repair is complete.
+11. Tell the user to retry App Center's Load unpacked action on the project root or `.tutti/dev-app/`. Do not auto-open a Tutti app window.
+
+The old zip/wrapper conversion approach is a fallback for compatibility or release packaging work only. Do not recommend it for normal local debugging; prefer `.tutti/dev-app/` plus Load unpacked.
+
 ## Conversion Workflow
 
 When converting an existing repository into a Tutti workspace app package:
 
 1. Inspect the repository shape first: package manifests, lockfiles, source directories, existing start/build scripts, ports, static assets, storage paths, and localization files.
-2. Prefer a wrapper package under `package/` that copies or references the smallest runnable subset of the existing project. Do not rewrite the original repository outside `package/` unless the user explicitly asks.
-3. Translate the existing start command into `bootstrap.sh`. If the project needs install or build work, put that in executable `prepare.sh` and keep `bootstrap.sh` launch-only.
-4. Replace hard-coded host, port, data, runtime, and log paths with the Tutti runtime environment variables from `references/runtime-env.md`.
-5. If the user asks to connect the app to the Tutti ecosystem, expose stable app capabilities through `tutti.cli.json`; otherwise, if the project already exposes commands, convert the stable user-facing commands into `tutti.cli.json`.
-6. If the project already has localized metadata or UI copy, preserve it using `localizationInfo` for manifest metadata and the i18n harness from `references/i18n-harness.md` for in-app copy.
-7. Document the adapted layout, original project entrypoints, runtime command, storage ownership, and any unsupported original features in package `AGENTS.md`.
-8. Validate the converted package against `references/validation-checklist.md`.
+2. If the user wants local debugging, use the Local Debug Workflow and generate `.tutti/dev-app/` instead of a package wrapper.
+3. For publishable packages, create a self-contained package under `package/` that copies the smallest runnable subset of the existing project. Do not reference source files outside `package/`, and do not rewrite the original repository outside `package/` unless the user explicitly asks.
+4. Translate the existing start command into `bootstrap.sh`. If the project needs install or build work for a publishable package, put that in executable `prepare.sh` and keep `bootstrap.sh` launch-only.
+5. Replace hard-coded host, port, data, runtime, and log paths with the Tutti runtime environment variables from `references/runtime-env.md`.
+6. If the user asks to connect the app to the Tutti ecosystem, expose stable app capabilities through `tutti.cli.json`; otherwise, if the project already exposes commands, convert the stable user-facing commands into `tutti.cli.json`.
+7. If the project already has localized metadata or UI copy, preserve it using `localizationInfo` for manifest metadata and the i18n harness from `references/i18n-harness.md` for in-app copy.
+8. Document the adapted layout, original project entrypoints, runtime command, storage ownership, and any unsupported original features in package `AGENTS.md` or `.tutti/dev-app/AGENTS.md`.
+9. Validate publishable packages against `references/validation-checklist.md`; for `.tutti/dev-app/`, run `scripts/check_local_dev_app.py <project-root-or-.tutti/dev-app>` and then validate any project-specific startup behavior manually.
 
 ## Implementation Workflow
 
@@ -139,8 +174,9 @@ When converting an existing repository into a Tutti workspace app package:
 2. Decide the smallest runtime shape that satisfies the requested behavior.
 3. Write the manifest, bootstrap script, package guidance, and app files.
 4. Make `bootstrap.sh` executable.
-5. Run `scripts/validate_tutti_app_package.py <package-root>` when available, then validate remaining runtime behavior against `references/validation-checklist.md`.
-6. Fix any validation failure before finishing.
+5. For publishable packages, run `scripts/validate_tutti_app_package.py <package-root>` when available, then validate remaining runtime behavior against `references/validation-checklist.md`.
+6. For local debug apps, run `scripts/check_local_dev_app.py <project-root-or-.tutti/dev-app>` from this skill, then validate remaining project-specific startup behavior manually.
+7. Fix any validation failure before finishing.
 
 ## Repair Workflow
 

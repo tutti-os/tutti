@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -219,9 +220,149 @@ func TestDaemonAPIGeneratedRoutesInstallWorkspaceAppPassesRestartOption(t *testi
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesLoadLocalWorkspaceAppPassesRequestAndReturnsLocalPackageDir(t *testing.T) {
+	mux := http.NewServeMux()
+	var gotWorkspaceID string
+	var gotSourceDir string
+	var gotOptions workspaceservice.InstallOptions
+	loadCalls := 0
+	RegisterRoutes(
+		mux,
+		NewRoutes(DaemonAPI{
+			AppCenterService: stubWorkspaceAppCenterService{
+				loadLocalPackageFn: func(_ context.Context, workspaceID string, sourceDir string, options workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error) {
+					loadCalls++
+					gotWorkspaceID = workspaceID
+					gotSourceDir = sourceDir
+					gotOptions = options
+					return workspacebiz.WorkspaceApp{
+						Package: workspacebiz.AppPackage{
+							AppID:      "local-dev",
+							Version:    "0.1.0",
+							PackageDir: "/Users/example/project/.tutti/dev-app",
+							Manifest: workspacebiz.AppManifest{
+								AppID:   "local-dev",
+								Version: "0.1.0",
+								Name:    "Local Dev",
+								Runtime: workspacebiz.AppManifestRuntime{
+									Bootstrap:       "bootstrap.sh",
+									HealthcheckPath: "/",
+								},
+							},
+							Source: workspacebiz.AppPackageSourceLocalDev,
+						},
+						Installation: &workspacebiz.AppInstallation{WorkspaceID: workspaceID, AppID: "local-dev", Enabled: true},
+						Runtime:      workspacebiz.AppRuntimeState{Status: workspacebiz.AppRuntimeStatusIdle},
+					}, nil
+				},
+			},
+		}),
+	)
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/workspace-1/apps/load-local",
+		map[string]any{"sourceDir": "/Users/example/project"},
+	)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if loadCalls != 1 {
+		t.Fatalf("expected one load call, got %d", loadCalls)
+	}
+	if gotWorkspaceID != "workspace-1" || gotSourceDir != "/Users/example/project" {
+		t.Fatalf("load target = %q/%q", gotWorkspaceID, gotSourceDir)
+	}
+	if !gotOptions.RestartRunning {
+		t.Fatal("RestartRunning = false, want default true")
+	}
+	var payload struct {
+		App struct {
+			AppID           string  `json:"appId"`
+			LocalPackageDir *string `json:"localPackageDir"`
+			Source          string  `json:"source"`
+		} `json:"app"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload.App.AppID != "local-dev" || payload.App.Source != "local-dev" {
+		t.Fatalf("response app = %#v", payload.App)
+	}
+	if payload.App.LocalPackageDir == nil || *payload.App.LocalPackageDir != "/Users/example/project/.tutti/dev-app" {
+		t.Fatalf("localPackageDir = %#v", payload.App.LocalPackageDir)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesReloadLocalWorkspaceAppPassesRestartOption(t *testing.T) {
+	mux := http.NewServeMux()
+	var gotWorkspaceID string
+	var gotAppID string
+	var gotOptions workspaceservice.InstallOptions
+	reloadCalls := 0
+	RegisterRoutes(
+		mux,
+		NewRoutes(DaemonAPI{
+			AppCenterService: stubWorkspaceAppCenterService{
+				reloadLocalPackageFn: func(_ context.Context, workspaceID string, appID string, options workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error) {
+					reloadCalls++
+					gotWorkspaceID = workspaceID
+					gotAppID = appID
+					gotOptions = options
+					return workspacebiz.WorkspaceApp{
+						Package: workspacebiz.AppPackage{
+							AppID:      appID,
+							Version:    "0.1.0",
+							PackageDir: "/Users/example/project/.tutti/dev-app",
+							Manifest: workspacebiz.AppManifest{
+								AppID:   appID,
+								Version: "0.1.0",
+								Name:    "Local Dev",
+								Runtime: workspacebiz.AppManifestRuntime{
+									Bootstrap:       "bootstrap.sh",
+									HealthcheckPath: "/",
+								},
+							},
+							Source: workspacebiz.AppPackageSourceLocalDev,
+						},
+						Installation: &workspacebiz.AppInstallation{WorkspaceID: workspaceID, AppID: appID, Enabled: true},
+						Runtime:      workspacebiz.AppRuntimeState{Status: workspacebiz.AppRuntimeStatusIdle},
+					}, nil
+				},
+			},
+		}),
+	)
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/workspace-1/apps/local-dev/reload-local",
+		map[string]any{"restartRunning": false},
+	)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if reloadCalls != 1 {
+		t.Fatalf("expected one reload call, got %d", reloadCalls)
+	}
+	if gotWorkspaceID != "workspace-1" || gotAppID != "local-dev" {
+		t.Fatalf("reload target = %q/%q", gotWorkspaceID, gotAppID)
+	}
+	if gotOptions.RestartRunning {
+		t.Fatal("RestartRunning = true, want false")
+	}
+}
+
 type stubWorkspaceAppCenterService struct {
 	listFn               func(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
 	installWithOptionsFn func(context.Context, string, string, workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error)
+	loadLocalPackageFn   func(context.Context, string, string, workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error)
+	reloadLocalPackageFn func(context.Context, string, string, workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error)
 	listReferencesFn     func(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error)
 	searchReferencesFn   func(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceListResult, error)
 }
@@ -255,6 +396,13 @@ func (s stubWorkspaceAppCenterService) InstallWithOptions(ctx context.Context, w
 
 func (stubWorkspaceAppCenterService) Launch(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
 	return workspacebiz.WorkspaceApp{}, nil
+}
+
+func (s stubWorkspaceAppCenterService) LoadLocalPackage(ctx context.Context, workspaceID string, sourceDir string, options workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error) {
+	if s.loadLocalPackageFn == nil {
+		return workspacebiz.WorkspaceApp{}, nil
+	}
+	return s.loadLocalPackageFn(ctx, workspaceID, sourceDir, options)
 }
 
 func (s stubWorkspaceAppCenterService) ListReferences(ctx context.Context, workspaceID string, appID string, input workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
@@ -292,6 +440,13 @@ func (stubWorkspaceAppCenterService) Remove(context.Context, string, string) (wo
 
 func (stubWorkspaceAppCenterService) ReplaceIcon(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error) {
 	return workspacebiz.WorkspaceApp{}, nil
+}
+
+func (s stubWorkspaceAppCenterService) ReloadLocalPackage(ctx context.Context, workspaceID string, appID string, options workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error) {
+	if s.reloadLocalPackageFn == nil {
+		return workspacebiz.WorkspaceApp{}, nil
+	}
+	return s.reloadLocalPackageFn(ctx, workspaceID, appID, options)
 }
 
 func (stubWorkspaceAppCenterService) Retry(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {

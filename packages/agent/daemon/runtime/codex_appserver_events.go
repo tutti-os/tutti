@@ -500,6 +500,11 @@ func (a *CodexAppServerAdapter) applyTokenUsage(agentSessionID string, params ma
 // Using total.totalTokens as primary causes a false compact alert: after 10
 // calls of 27 K tokens each the cumulative reaches 270 K and exceeds the 258 K
 // per-request window even though each call individually used only ~10 %.
+//
+// A non-positive last.inputTokens also triggers the fallback chain: the
+// post-compaction frame reports last.inputTokens=0 while last.totalTokens holds
+// the real compacted context size. Treating that literal 0 as the context fill
+// would display "0" right after a compaction instead of the compacted size.
 func appServerTokenUsageState(params map[string]any) (acpUsageState, bool) {
 	tokenUsage := payloadObject(params["tokenUsage"])
 	if len(tokenUsage) == 0 {
@@ -507,10 +512,10 @@ func appServerTokenUsageState(params map[string]any) (acpUsageState, bool) {
 	}
 	last := payloadObject(tokenUsage["last"])
 	used, usedOK := firstACPInt64(last, "inputTokens")
-	if !usedOK {
+	if !usedOK || used <= 0 {
 		used, usedOK = firstACPInt64(last, "totalTokens")
 	}
-	if !usedOK {
+	if !usedOK || used <= 0 {
 		used, usedOK = firstACPInt64(payloadObject(tokenUsage["total"]), "totalTokens")
 	}
 	window, windowOK := firstACPInt64(tokenUsage, "modelContextWindow")
