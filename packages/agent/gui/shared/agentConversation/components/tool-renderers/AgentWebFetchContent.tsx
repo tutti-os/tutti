@@ -1,11 +1,15 @@
 import type { JSX } from "react";
 import { translate } from "../../../../i18n/index";
 import {
+  dedupeToolSectionContent,
   ToolMarkdownBlock,
   ToolSection,
   type AgentToolRendererProps
 } from "./agentToolContentShared";
-import { getWebFetchRenderData } from "./render-data/agentToolRenderData";
+import {
+  getToolFallbackText,
+  getWebFetchRenderData
+} from "./render-data/agentToolRenderData";
 
 export function AgentWebFetchContent({
   call,
@@ -13,7 +17,23 @@ export function AgentWebFetchContent({
 }: AgentToolRendererProps): JSX.Element | null {
   "use memo";
   const web = getWebFetchRenderData(call);
-  if (!web.url && !web.visibleContent) {
+  const urlText =
+    web.url && web.domain && web.domain !== web.url
+      ? `${web.domain}\n\n${web.url}`
+      : web.url;
+  const visibleContent = dedupeToolSectionContent(
+    web.visibleContent,
+    web.url,
+    web.domain,
+    urlText
+  );
+  const fallbackText = getToolFallbackText(call);
+  const errorText = dedupeToolSectionContent(
+    fallbackText.error,
+    urlText,
+    visibleContent
+  );
+  if (!web.url && !visibleContent && !errorText) {
     return null;
   }
 
@@ -22,19 +42,15 @@ export function AgentWebFetchContent({
       {web.url ? (
         <ToolSection title={translate("agentHost.agentTool.details.url")}>
           <ToolMarkdownBlock
-            content={
-              web.domain && web.domain !== web.url
-                ? `${web.domain}\n\n${web.url}`
-                : web.url
-            }
+            content={urlText ?? ""}
             onLinkClick={onLinkClick}
           />
         </ToolSection>
       ) : null}
-      {web.visibleContent ? (
+      {visibleContent ? (
         <ToolSection title={translate("agentHost.agentTool.details.content")}>
           <ToolMarkdownBlock
-            content={web.visibleContent}
+            content={visibleContent}
             onLinkClick={onLinkClick}
             collapsible
           />
@@ -44,6 +60,15 @@ export function AgentWebFetchContent({
         <div className="text-[10px] italic text-[var(--text-tertiary)]">
           {translate("agentHost.agentTool.details.contentTruncated")}
         </div>
+      ) : null}
+      {errorText ? (
+        <ToolSection title={translate("agentHost.agentTool.details.error")}>
+          <ToolMarkdownBlock
+            content={errorText}
+            onLinkClick={onLinkClick}
+            collapsible
+          />
+        </ToolSection>
       ) : null}
     </div>
   );

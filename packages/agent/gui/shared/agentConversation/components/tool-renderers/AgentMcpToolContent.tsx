@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import { translate } from "../../../../i18n/index";
 import {
+  dedupeToolSectionContent,
   RawPayloadSection,
   ToolMarkdownBlock,
   ToolSection,
@@ -16,6 +17,10 @@ export function AgentMcpToolContent({
   "use memo";
   const payload = normalizeMcpPayload(call);
   const specialized = renderRegisteredMcp(payload);
+  const visibleText = dedupeToolSectionContent(
+    payload.text,
+    payload.inputSummary
+  );
 
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
@@ -44,10 +49,10 @@ export function AgentMcpToolContent({
         <ToolSection title={translate("agentHost.agentTool.details.output")}>
           {specialized}
         </ToolSection>
-      ) : payload.text ? (
+      ) : visibleText ? (
         <ToolSection title={translate("agentHost.agentTool.details.output")}>
           <ToolMarkdownBlock
-            content={payload.text}
+            content={visibleText}
             onLinkClick={onLinkClick}
             collapsible
           />

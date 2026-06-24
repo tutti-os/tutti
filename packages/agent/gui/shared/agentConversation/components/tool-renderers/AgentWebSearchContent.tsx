@@ -2,6 +2,7 @@ import type { JSX } from "react";
 import { translate } from "../../../../i18n/index";
 import {
   arrayValue,
+  dedupeToolSectionContent,
   optionRecord,
   stringValue,
   ToolMarkdownBlock,
@@ -21,15 +22,16 @@ export function AgentWebSearchContent({
   const queries = web.queries;
   const outputText = web.output;
   const links = normalizeLinks(call.output?.links, outputText);
-  const summary = extractSummary(outputText) ?? (call.summary.trim() || null);
-  const visibleSummary = summary ? summary.slice(0, MAX_SUMMARY_LENGTH) : null;
+  const queryText = webSearchQueryText(web.query, queries);
+  const summary = extractSummary(outputText);
+  const visibleSummary = dedupeToolSectionContent(
+    summary ? summary.slice(0, MAX_SUMMARY_LENGTH) : null,
+    queryText,
+    links.map((link) => `${link.domain} ${link.title}`).join("\n")
+  );
 
   const hasRenderableContent = Boolean(
-    web.query ||
-    queries.length > 0 ||
-    links.length > 0 ||
-    visibleSummary ||
-    web.error
+    queryText || links.length > 0 || visibleSummary || web.error
   );
   if (!hasRenderableContent) {
     return null;
@@ -37,25 +39,9 @@ export function AgentWebSearchContent({
 
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
-      {web.query ? (
+      {queryText ? (
         <ToolSection title={translate("agentHost.agentTool.details.query")}>
-          <ToolMarkdownBlock content={web.query} onLinkClick={onLinkClick} />
-        </ToolSection>
-      ) : null}
-      {queries.length > 0 ? (
-        <ToolSection title={translate("agentHost.agentTool.details.results")}>
-          <div className="workspace-agents-status-panel__detail-tool-result-list overflow-hidden rounded-[8px] border border-[var(--line-2)] bg-[var(--transparency-block)]">
-            {queries.map((candidate, index) => (
-              <div
-                key={`${candidate}:${queries.length}`}
-                className={`px-3 py-2 font-[var(--tsh-font-mono)] text-[11px] text-[var(--text-primary)] ${
-                  index > 0 ? "border-t border-[var(--line-2)]" : ""
-                }`}
-              >
-                {candidate}
-              </div>
-            ))}
-          </div>
+          <ToolMarkdownBlock content={queryText} onLinkClick={onLinkClick} />
         </ToolSection>
       ) : null}
       {links.length > 0 ? (
@@ -107,6 +93,17 @@ export function AgentWebSearchContent({
       ) : null}
     </div>
   );
+}
+
+function webSearchQueryText(
+  query: string | null,
+  queries: readonly string[]
+): string | null {
+  const candidates = queries.length > 0 ? queries : query ? [query] : [];
+  const deduped = [
+    ...new Set(candidates.map((value) => value.trim()).filter(Boolean))
+  ];
+  return deduped.length > 0 ? deduped.join("\n") : null;
 }
 
 function normalizeLinks(

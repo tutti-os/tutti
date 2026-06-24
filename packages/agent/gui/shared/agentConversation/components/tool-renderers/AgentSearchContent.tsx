@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import { translate } from "../../../../i18n/index";
 import {
+  dedupeToolSectionContent,
   ToolMarkdownBlock,
   ToolSection,
   type AgentToolRendererProps
@@ -17,7 +18,11 @@ export function AgentSearchContent({
     ? `${search.query ?? ""}\n\n${translate("agentHost.agentTool.details.scope")}: ${search.scope}`.trim()
     : search.query;
   const resultFiles = withStableOccurrenceKeys(search.files, "file");
-  const outputLines = withStableOccurrenceKeys(search.lines, "line");
+  const visibleOutput = dedupeToolSectionContent(search.output, queryText);
+  const outputLines = withStableOccurrenceKeys(
+    visibleOutput.split("\n").filter(Boolean),
+    "line"
+  );
 
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
@@ -43,7 +48,7 @@ export function AgentSearchContent({
           </div>
         </ToolSection>
       ) : null}
-      {search.mode === "content" && search.output ? (
+      {search.mode === "content" && visibleOutput ? (
         <ToolSection title={translate("agentHost.agentTool.details.output")}>
           <pre className="max-h-[320px] overflow-auto rounded-[8px] border border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-2 text-[11px] leading-5 text-[var(--text-primary)]">
             {outputLines.map(({ key, value: line }) => (
@@ -72,7 +77,7 @@ export function AgentSearchContent({
         search.mode === "list_files" ||
         search.mode === "count") &&
       search.files.length === 0 &&
-      !search.output &&
+      !visibleOutput &&
       !search.error ? (
         <ToolSection title={translate("agentHost.agentTool.details.results")}>
           <div className="text-[11px] italic text-[var(--text-tertiary)]">
@@ -80,10 +85,10 @@ export function AgentSearchContent({
           </div>
         </ToolSection>
       ) : null}
-      {search.mode === "unknown" && search.output ? (
+      {search.mode === "unknown" && visibleOutput ? (
         <ToolSection title={translate("agentHost.agentTool.details.output")}>
           <ToolMarkdownBlock
-            content={search.output}
+            content={visibleOutput}
             onLinkClick={onLinkClick}
             collapsible
           />

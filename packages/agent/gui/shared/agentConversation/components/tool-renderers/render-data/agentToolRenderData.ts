@@ -285,8 +285,7 @@ export function getWebFetchRenderData(
     contentText(call.output?.content),
     stringValue(call.output?.output),
     stringValue(call.output?.content),
-    stringValue(call.output?.stdout),
-    nonEmpty(call.summary)
+    stringValue(call.output?.stdout)
   );
   return {
     url,

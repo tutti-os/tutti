@@ -109,9 +109,13 @@ export function AgentDefaultToolContent({
 }: AgentToolRendererProps): JSX.Element | null {
   "use memo";
   const fallbackText = getToolFallbackText(call);
-  const inputText = fallbackText.input;
-  const outputText = fallbackText.output;
-  const errorText = fallbackText.error;
+  const inputText = dedupeToolSectionContent(fallbackText.input);
+  const outputText = dedupeToolSectionContent(fallbackText.output, inputText);
+  const errorText = dedupeToolSectionContent(
+    fallbackText.error,
+    inputText,
+    outputText
+  );
   const detail = dedupeToolSummary(
     call.summary.trim(),
     inputText,
@@ -550,18 +554,27 @@ function dedupeToolSummary(
   summary: string,
   ...otherValues: Array<string | null>
 ): string {
-  const normalizedSummary = summary.trim();
-  if (!normalizedSummary) {
-    return "";
-  }
-  const duplicate = otherValues.some(
-    (value) =>
-      normalizeWhitespace(value) === normalizeWhitespace(normalizedSummary)
-  );
-  return duplicate ? "" : normalizedSummary;
+  return dedupeToolSectionContent(summary, ...otherValues);
 }
 
-function normalizeWhitespace(value: string | null | undefined): string {
+export function dedupeToolSectionContent(
+  content: string | null | undefined,
+  ...previousValues: Array<string | null | undefined>
+): string {
+  const normalizedContent = content?.trim() ?? "";
+  if (!normalizedContent) {
+    return "";
+  }
+  const contentKey = normalizeToolSectionContent(normalizedContent);
+  const duplicate = previousValues.some(
+    (value) => normalizeToolSectionContent(value) === contentKey
+  );
+  return duplicate ? "" : normalizedContent;
+}
+
+export function normalizeToolSectionContent(
+  value: string | null | undefined
+): string {
   return (value ?? "").trim().replace(/\s+/g, " ");
 }
 

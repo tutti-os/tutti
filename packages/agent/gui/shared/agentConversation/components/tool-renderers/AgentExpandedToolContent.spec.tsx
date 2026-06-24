@@ -636,8 +636,9 @@ describe("AgentExpandedToolContent", () => {
       />
     );
 
-    expect(screen.getAllByText("today top news").length).toBeGreaterThan(0);
-    expect(screen.getByText("agent renderer parity")).toBeTruthy();
+    expect(screen.getByText(/today top news/)).toBeTruthy();
+    expect(screen.getByText(/agent renderer parity/)).toBeTruthy();
+    expect(screen.queryByText("Results")).toBeNull();
   });
 
   it("renders the query when web search carries no results payload", async () => {
@@ -664,6 +665,32 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.getByText("agent renderer parity")).toBeTruthy();
   });
 
+  it("does not mirror a web search query into results or output", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            toolName: "WebSearch",
+            summary: "agent renderer parity",
+            payload: {
+              input: {
+                query: "agent renderer parity",
+                action: { type: "search", query: "agent renderer parity" }
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("Query")).toBeTruthy();
+    expect(screen.getByText("agent renderer parity")).toBeTruthy();
+    expect(screen.queryByText("Results")).toBeNull();
+    expect(screen.queryByText("Output")).toBeNull();
+  });
+
   it("does not render an empty body when web search has no results", async () => {
     setAgentGuiI18nTestLocale("en");
 
@@ -683,6 +710,32 @@ describe("AgentExpandedToolContent", () => {
         ".workspace-agents-status-panel__detail-tool-body"
       )
     ).toBeNull();
+  });
+
+  it("dedupes repeated default tool input and output sections", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            toolName: "CustomTool",
+            payload: {
+              input: {
+                query: "same content"
+              },
+              output: {
+                output: "same content"
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("Input")).toBeTruthy();
+    expect(screen.getByText("same content")).toBeTruthy();
+    expect(screen.queryByText("Output")).toBeNull();
   });
 
   it("renders web fetch content with truncation notice", async () => {
@@ -708,6 +761,83 @@ describe("AgentExpandedToolContent", () => {
 
     expect(screen.getByText("docs.example.com")).toBeTruthy();
     expect(screen.getByText("Content truncated")).toBeTruthy();
+  });
+
+  it("does not mirror a web fetch domain summary into content", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            toolName: "WebFetch",
+            summary: "forecast.weather.gov",
+            payload: {
+              input: {
+                url: "https://forecast.weather.gov/zipcity.php?inputstring=10002"
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("URL")).toBeTruthy();
+    expect(
+      screen.getAllByText(/forecast\.weather\.gov/).length
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText("Content")).toBeNull();
+  });
+
+  it("falls back to structured error content when a failed typed renderer has no body", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            toolName: "WebFetch",
+            status: "Failed",
+            statusKind: "failed",
+            payload: {
+              error: {
+                message: "network request failed"
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("Error")).toBeTruthy();
+    expect(screen.getByText("network request failed")).toBeTruthy();
+  });
+
+  it("keeps real web fetch page content", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            toolName: "WebFetch",
+            summary: "forecast.weather.gov",
+            payload: {
+              input: {
+                url: "https://forecast.weather.gov/zipcity.php?inputstring=10002"
+              },
+              output: {
+                content:
+                  "Detailed Forecast\n\nWednesday: Sunny, with a high near 82."
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("Content")).toBeTruthy();
+    expect(screen.getByText(/Detailed Forecast/)).toBeTruthy();
   });
 
   it("renders todo items with semantic statuses instead of raw json", async () => {
