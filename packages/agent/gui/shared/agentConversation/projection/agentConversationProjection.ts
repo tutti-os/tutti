@@ -71,7 +71,9 @@ export function projectAgentConversationVM(
   }
 
   const normalizedRows = projectMessageCopyText(
-    mergeAdjacentAssistantMessageRows(rows),
+    mergeAdjacentAssistantMessageRows(
+      mergeAdjacentTransportRetryNoticeRows(rows)
+    ),
     {
       assistantCopyEligibleTurnIds: buildAssistantCopyEligibleTurnIds(detail)
     }
@@ -246,6 +248,74 @@ function mergeAdjacentAssistantMessageRows(
     merged.push(row);
   }
   return merged;
+}
+
+function mergeAdjacentTransportRetryNoticeRows(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const merged: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    const previous = merged.at(-1);
+    if (
+      isSingleTransportRetryNoticeRow(previous) &&
+      isSingleTransportRetryNoticeRow(row) &&
+      previous.turnId === row.turnId
+    ) {
+      const previousMessage = previous.messages[0];
+      const nextMessage = row.messages[0];
+      if (!previousMessage || !nextMessage) {
+        merged.push(row);
+        continue;
+      }
+      const sourceTimelineItems = mergeSourceTimelineItems(
+        previousMessage.sourceTimelineItems,
+        nextMessage.sourceTimelineItems
+      );
+      previous.messages[0] = {
+        ...previousMessage,
+        body: nextMessage.body || previousMessage.body,
+        systemNotice: nextMessage.systemNotice ?? previousMessage.systemNotice,
+        statusKind:
+          nextMessage.statusKind ?? previousMessage.statusKind ?? null,
+        occurredAtUnixMs:
+          nextMessage.occurredAtUnixMs ?? previousMessage.occurredAtUnixMs,
+        ...(sourceTimelineItems ? { sourceTimelineItems } : {})
+      };
+      previous.occurredAtUnixMs =
+        row.occurredAtUnixMs ?? previous.occurredAtUnixMs;
+      continue;
+    }
+    merged.push(row);
+  }
+  return merged;
+}
+
+function isSingleTransportRetryNoticeRow(
+  row: AgentTranscriptRowVM | undefined
+): row is AgentMessageRowVM {
+  if (
+    !row ||
+    row.kind !== "message" ||
+    row.speaker !== "assistant" ||
+    row.thinking.length > 0 ||
+    row.messages.length !== 1
+  ) {
+    return false;
+  }
+  return row.messages[0]?.systemNotice?.noticeKind === "transport_retry";
+}
+
+function mergeSourceTimelineItems(
+  previous: AgentMessageContentVM["sourceTimelineItems"],
+  next: AgentMessageContentVM["sourceTimelineItems"]
+): AgentMessageContentVM["sourceTimelineItems"] {
+  if (!previous || previous.length === 0) {
+    return next;
+  }
+  if (!next || next.length === 0) {
+    return previous;
+  }
+  return [...previous, ...next];
 }
 
 function projectMessageCopyText(

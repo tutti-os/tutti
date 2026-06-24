@@ -186,6 +186,111 @@ describe("projectAgentConversationVM", () => {
     expect(processing).not.toHaveProperty("noticeKind");
   });
 
+  it("merges only adjacent Codex transport retry notice rows", () => {
+    const retryNotice = (id: string, detail: string, sourceId: number) => ({
+      id,
+      body: "Codex connection interrupted. Reconnecting...",
+      occurredAtUnixMs: sourceId,
+      sourceTimelineItems: [
+        {
+          id: sourceId,
+          agentSessionId: "session-1",
+          eventId: `event-${sourceId}`,
+          actorType: "agent",
+          actorId: "codex",
+          itemType: "message",
+          role: "assistant",
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "transport_retry"
+          }
+        }
+      ],
+      systemNotice: {
+        noticeKind: "transport_retry",
+        severity: "warning",
+        title: "Codex connection interrupted. Reconnecting...",
+        detail,
+        retryable: true
+      }
+    });
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          status: "completed"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Ship it" },
+            userMessages: [{ id: "user-1", body: "Ship it" }],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: retryNotice(
+                  "assistant-retry-1",
+                  "Handled error during turn: Reconnecting... 1/5",
+                  11
+                )
+              },
+              {
+                kind: "message",
+                message: retryNotice(
+                  "assistant-retry-2",
+                  "Handled error during turn: Reconnecting... 2/5",
+                  12
+                )
+              },
+              {
+                kind: "message",
+                message: { id: "assistant-1", body: "Still working" }
+              },
+              {
+                kind: "message",
+                message: retryNotice(
+                  "assistant-retry-3",
+                  "Handled error during turn: Reconnecting... 3/5",
+                  13
+                )
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(3);
+    expect(assistantRows.map((row) => row.messages[0]?.id)).toEqual([
+      "assistant-retry-1",
+      "assistant-1",
+      "assistant-retry-3"
+    ]);
+    expect(
+      assistantRows[0]?.messages[0]?.sourceTimelineItems?.map((item) => item.id)
+    ).toEqual([11, 12]);
+    expect(assistantRows[0]?.messages[0]?.systemNotice?.detail).toBe(
+      "Handled error during turn: Reconnecting... 2/5"
+    );
+    expect(assistantRows[2]?.messages[0]?.sourceTimelineItems?.[0]?.id).toBe(
+      13
+    );
+  });
+
   it("groups bridge thinking inside completed tool disclosures", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({

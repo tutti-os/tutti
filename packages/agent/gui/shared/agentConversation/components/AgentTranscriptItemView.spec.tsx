@@ -584,7 +584,7 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(onAuthLogin).toHaveBeenCalledWith("claude-code");
   });
 
-  it("shows transport retry notices separately from markdown answers", () => {
+  it("renders transport retry notices as quiet text", () => {
     const { getByText, queryByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -600,7 +600,7 @@ describe("AgentTranscriptItemView render stability", () => {
             severity: "warning",
             title: "Codex connection interrupted. Reconnecting...",
             detail:
-              "ResponseStreamDisconnected: websocket IO error: Broken pipe",
+              "Handled error during turn: Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: None })",
             retryable: true
           }
         })}
@@ -608,16 +608,17 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    expect(
-      getByText("agentHost.agentGui.systemNoticeTransportRetry")
-    ).toBeTruthy();
-    const notice = getByText(
-      "agentHost.agentGui.systemNoticeTransportRetry"
-    ).closest("section");
-    expect(notice?.firstElementChild?.firstElementChild?.tagName).toBe("DIV");
-    expect(getByText("agentHost.agentGui.visibleErrorDetails")).toBeTruthy();
+    expect(getByText("Reconnecting... 1/5")).toBeTruthy();
+    const notice = getByText("Reconnecting... 1/5");
+    expect(notice.tagName).toBe("DIV");
+    expect(notice.className).toContain("text-[var(--text-primary)]");
+    expect(notice.className).not.toContain("rounded-[8px]");
+    expect(queryByText("agentHost.agentGui.visibleErrorDetails")).toBeNull();
     expect(
       queryByText("Codex connection interrupted. Reconnecting...")
+    ).toBeNull();
+    expect(
+      queryByText("agentHost.agentGui.systemNoticeTransportRetry")
     ).toBeNull();
   });
 

@@ -37,6 +37,8 @@ import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentat
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
 const CONTEXT_COMPACTION_NOTICE_TITLE = "Context compacted.";
+const TRANSPORT_RETRY_PROGRESS_PATTERN =
+  /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
 
 interface AgentMessageBlockProps {
   workspaceRoot: string | null;
@@ -448,6 +450,17 @@ function AgentSystemNoticeMessage({
   const notice = message.systemNotice;
   const detail = notice?.detail?.trim() ?? "";
   const title = systemNoticeTitle(message);
+  if (notice?.noticeKind === "transport_retry") {
+    const retryText = transportRetryNoticeText(message);
+    return (
+      <div
+        role="status"
+        className="box-border w-full min-w-0 py-1 text-[13px] leading-5 text-[var(--text-primary)]"
+      >
+        {retryText}
+      </div>
+    );
+  }
   if (isContextCompactionNotice(message, title)) {
     return (
       <div
@@ -481,6 +494,28 @@ function AgentSystemNoticeMessage({
       </div>
     </section>
   );
+}
+
+function transportRetryNoticeText(message: AgentMessageContentVM): string {
+  const notice = message.systemNotice;
+  const detail = notice?.detail?.trim() ?? "";
+  const progressText =
+    transportRetryProgressText(detail) ??
+    transportRetryProgressText(notice?.title ?? "") ??
+    transportRetryProgressText(message.body);
+  if (progressText) {
+    return progressText;
+  }
+  return (
+    notice?.title?.trim() ||
+    message.body.trim() ||
+    translate("agentHost.agentGui.systemNoticeTransportRetry")
+  );
+}
+
+function transportRetryProgressText(value: string): string | null {
+  const match = TRANSPORT_RETRY_PROGRESS_PATTERN.exec(value.trim());
+  return match?.[1]?.replace(/\s+/g, " ").trim() || null;
 }
 
 function isContextCompactionNotice(
