@@ -35,7 +35,6 @@ const dockPreviewMaxWidth = 260;
 const dockPreviewMaxHeight = 170;
 const dockPreviewImageCacheMaxEntries = 96;
 const inlineImageResourceCacheMaxEntries = 160;
-const minimizedGenieTextureCacheMaxEntries = 32;
 const dockAnchorFallbackSizePx = 43.2;
 const genieInlineImageMaxDevicePixelRatio = 2;
 const dockPreviewImageByNodeID = new Map<string, string>();
@@ -704,13 +703,6 @@ export function useWorkbenchGenieAnimation<TData>({
       const cache = minimizedGenieTextureByNodeIDRef.current;
       cache.delete(nodeID);
       cache.set(nodeID, texture);
-      while (cache.size > minimizedGenieTextureCacheMaxEntries) {
-        const oldestNodeID = cache.keys().next().value;
-        if (typeof oldestNodeID !== "string") {
-          break;
-        }
-        cache.delete(oldestNodeID);
-      }
     },
     []
   );
@@ -718,6 +710,26 @@ export function useWorkbenchGenieAnimation<TData>({
   const clearMinimizedGenieTexture = useCallback((nodeID: string) => {
     minimizedGenieTextureByNodeIDRef.current.delete(nodeID);
   }, []);
+
+  const pruneMinimizedGenieTextures = useCallback(
+    (retainNodeID?: string) => {
+      const minimizedNodeIDs = new Set(
+        controller
+          .getSnapshot()
+          .nodes.filter((node) => node.isMinimized === true)
+          .map((node) => node.id)
+      );
+      if (retainNodeID) {
+        minimizedNodeIDs.add(retainNodeID);
+      }
+      for (const nodeID of minimizedGenieTextureByNodeIDRef.current.keys()) {
+        if (!minimizedNodeIDs.has(nodeID)) {
+          minimizedGenieTextureByNodeIDRef.current.delete(nodeID);
+        }
+      }
+    },
+    [controller]
+  );
 
   const hideNodeForGenie = useCallback((nodeID: string) => {
     setGenieHiddenNodeIDs((current) => {
@@ -1304,6 +1316,7 @@ export function useWorkbenchGenieAnimation<TData>({
   const minimizeNodeToAnchor = useCallback(
     (nodeID: string, minimize?: () => void) => {
       void (async () => {
+        pruneMinimizedGenieTextures();
         const target = controller
           .getSnapshot()
           .nodes.find((node) => node.id === nodeID);
@@ -1567,6 +1580,7 @@ export function useWorkbenchGenieAnimation<TData>({
           });
         }
         writeMinimizedGenieTexture(nodeID, texture);
+        pruneMinimizedGenieTextures(nodeID);
 
         let minimizeCommitted = false;
         const commitMinimize = () => {
@@ -1638,6 +1652,7 @@ export function useWorkbenchGenieAnimation<TData>({
       dockPreviewCache,
       hideNodeForGenie,
       minimizeAnimation,
+      pruneMinimizedGenieTextures,
       registerMinimizedDockEnterAnimation,
       releaseMinimizedDockEnterAnimation,
       requestRenderedGeniePreviewTexture,

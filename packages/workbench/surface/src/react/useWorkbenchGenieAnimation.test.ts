@@ -178,13 +178,19 @@ test("scale, off, and genie minimize skip real-window preview capture for compon
 });
 
 test("genie restore reuses minimized or component preview texture before recapturing DOM", () => {
-  assert.match(source, /const minimizedGenieTextureCacheMaxEntries = 32;/);
+  assert.doesNotMatch(source, /minimizedGenieTextureCacheMaxEntries/);
   assert.match(
     source,
     /const minimizedGenieTextureByNodeIDRef = useRef\(\s*new Map<string, CapturedGenieTexture>\(\)\s*\);/
   );
   assert.match(source, /const readMinimizedGenieTexture = useCallback/);
   assert.match(source, /const writeMinimizedGenieTexture = useCallback/);
+  assert.match(source, /const pruneMinimizedGenieTextures = useCallback/);
+  assert.match(
+    source,
+    /nodes\.filter\(\(node\) => node\.isMinimized === true\)/
+  );
+  assert.match(source, /pruneMinimizedGenieTextures\(nodeID\);/);
   assert.match(source, /writeMinimizedGenieTexture\(nodeID, texture\);/);
   assert.match(
     source,
