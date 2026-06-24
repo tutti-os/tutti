@@ -539,6 +539,43 @@ describe("AgentTranscriptItemView render stability", () => {
     ).toBeNull();
   });
 
+  it("renders context compaction notices as an inline divider", () => {
+    const { getByRole, getByText, queryByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-notice-compaction",
+          turnId: "turn-1",
+          body: "Context compacted.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "system_notice",
+            severity: null,
+            title: "Context compacted.",
+            detail: "",
+            retryable: null
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("status");
+    expect(notice.tagName).toBe("DIV");
+    expect(notice.className).toContain("items-center");
+    expect(notice.className).toContain("text-[var(--text-secondary)]");
+    expect(notice.className).not.toContain("rounded-[8px]");
+    const dividers = notice.querySelectorAll('span[aria-hidden="true"]');
+    expect(dividers).toHaveLength(2);
+    for (const divider of dividers) {
+      expect(divider.className).toContain("bg-[var(--line-1)]");
+    }
+    expect(getByText("Context compacted.")).toBeTruthy();
+    expect(queryByText("agentHost.agentGui.systemNoticeDefault")).toBeNull();
+  });
+
   it("renders plan-tagged assistant messages as a dedicated plan card", () => {
     const { getByTestId } = render(
       <AgentMessageBlock

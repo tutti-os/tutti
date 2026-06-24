@@ -36,6 +36,7 @@ import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles"
 import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentation/renderer/components/shared/CanvasNodeGhostIconButton";
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
+const CONTEXT_COMPACTION_NOTICE_TITLE = "Context compacted.";
 
 interface AgentMessageBlockProps {
   workspaceRoot: string | null;
@@ -396,6 +397,25 @@ function AgentSystemNoticeMessage({
   "use memo";
   const notice = message.systemNotice;
   const detail = notice?.detail?.trim() ?? "";
+  const title = systemNoticeTitle(message);
+  if (isContextCompactionNotice(message, title)) {
+    return (
+      <div
+        role="status"
+        className="box-border flex w-full min-w-0 items-center gap-3 py-2 text-[12px] leading-4 text-[var(--text-secondary)]"
+      >
+        <span
+          aria-hidden="true"
+          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+        />
+        <span className="shrink-0 whitespace-nowrap">{title}</span>
+        <span
+          aria-hidden="true"
+          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+        />
+      </div>
+    );
+  }
   const isWarning =
     notice?.severity === "warning" || notice?.severity === "error";
   return (
@@ -404,14 +424,24 @@ function AgentSystemNoticeMessage({
       className="box-border w-full min-w-0 rounded-[8px] border border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)] p-3 text-[13px] leading-5 text-[var(--text-primary)]"
     >
       <div className="min-w-0">
-        <div className="font-medium text-[var(--text-primary)]">
-          {systemNoticeTitle(message)}
-        </div>
+        <div className="font-medium text-[var(--text-primary)]">{title}</div>
         {detail ? (
           <AgentMessageDetailsDisclosure detail={detail} className="mt-1" />
         ) : null}
       </div>
     </section>
+  );
+}
+
+function isContextCompactionNotice(
+  message: AgentMessageContentVM,
+  title: string
+): boolean {
+  const notice = message.systemNotice;
+  return (
+    notice?.noticeKind === "system_notice" &&
+    (notice.detail?.trim() ?? "") === "" &&
+    title.trim() === CONTEXT_COMPACTION_NOTICE_TITLE
   );
 }
 

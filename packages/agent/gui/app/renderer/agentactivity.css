@@ -623,7 +623,7 @@ aside.workspace-agents-status-panel
 
 .workspace-agents-status-panel__content--detail {
   gap: 0;
-  padding-inline: 24px;
+  padding-inline: 28px;
 }
 
 .workspace-agents-status-panel__content--detail-overlay {
@@ -2292,7 +2292,7 @@ aside.workspace-agents-status-panel
   justify-self: stretch;
   width: auto;
   gap: 0;
-  margin: 0 24px;
+  margin: 0 8px;
   padding: 0;
   background: transparent;
 }
@@ -2317,11 +2317,16 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-chrome__session-chrome:has(+ .agent-gui-chrome__session-chrome) {
-  margin-right: 36px;
-  margin-left: 36px;
+  margin-right: 16px;
+  margin-left: 16px;
 }
 
 .agent-gui-node__composer-input-group > .agent-gui-chrome__session-chrome {
+  margin-right: 8px;
+  margin-left: 8px;
+}
+
+.agent-gui-node__composer-input-group-hero > .agent-gui-chrome__session-chrome {
   margin-right: 24px;
   margin-left: 24px;
 }
@@ -2332,8 +2337,8 @@ aside.workspace-agents-status-panel
       .agent-gui-node__composer-input-group
       > .agent-gui-chrome__session-chrome
   ) {
-  margin-right: 36px;
-  margin-left: 36px;
+  margin-right: 16px;
+  margin-left: 16px;
 }
 
 .agent-gui-node__bottom-dock
@@ -2345,8 +2350,8 @@ aside.workspace-agents-status-panel
   + .agent-gui-node__composer
   .agent-gui-node__composer-input-group
   > .agent-gui-chrome__session-chrome {
-  margin-right: 24px;
-  margin-left: 24px;
+  margin-right: 8px;
+  margin-left: 8px;
 }
 
 .agent-gui-chrome__card {
@@ -2518,23 +2523,6 @@ aside.workspace-agents-status-panel
   min-height: 36px;
   padding: 4px 16px;
   cursor: pointer;
-}
-
-.agent-gui-node__empty-hero-body
-  > .agent-gui-chrome__session-chrome
-  > .agent-gui-chrome__card--danger,
-.agent-gui-node__composer-input-group
-  > .agent-gui-chrome__session-chrome
-  > .agent-gui-chrome__card--danger,
-.agent-gui-node__bottom-dock
-  > .agent-gui-chrome__session-chrome:has(+ .agent-gui-node__composer)
-  > .agent-gui-chrome__card--danger {
-  border-bottom: 1px solid
-    color-mix(
-      in srgb,
-      var(--status-danger, var(--state-danger)) 16%,
-      transparent
-    );
 }
 
 .agent-gui-chrome__card[data-has-inline-actions="true"] {
@@ -3818,7 +3806,7 @@ aside.workspace-agents-status-panel
   --agent-conversation-text: var(--text-primary);
   --agent-conversation-user-text: var(--text-primary);
   --agent-conversation-user-bg: var(--agent-gui-surface-muted);
-  --agent-gui-detail-padding-x: 24px;
+  --agent-gui-detail-padding-x: 28px;
   --agent-gui-detail-flow-max-width: 1280px;
   width: 100%;
   height: 100%;
@@ -5153,8 +5141,8 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .workspace-agents-status-panel__conversation-timeline.agent-gui-node__timeline {
-  padding-right: 24px;
-  padding-left: 24px;
+  padding-right: 28px;
+  padding-left: 28px;
 }
 
 .agent-gui-node__timeline-with-composer {

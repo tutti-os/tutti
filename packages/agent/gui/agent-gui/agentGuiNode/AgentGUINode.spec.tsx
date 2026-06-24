@@ -6057,9 +6057,15 @@ describe("AgentGUINode", () => {
       "utf8"
     );
 
-    expect(css).toMatch(/--agent-gui-detail-padding-x:\s*24px/);
+    expect(css).toMatch(/--agent-gui-detail-padding-x:\s*28px/);
+    expect(css).toMatch(
+      /\.workspace-agents-status-panel__content--detail\s*{[^}]*padding-inline:\s*28px/s
+    );
     expect(css).toMatch(
       /\.agent-gui-node__timeline\s*{[^}]*padding:\s*32px\s+var\(--agent-gui-detail-padding-x\)\s+24px/s
+    );
+    expect(css).toMatch(
+      /\.workspace-agents-status-panel__conversation-timeline\.agent-gui-node__timeline\s*{[^}]*padding-right:\s*28px[^}]*padding-left:\s*28px/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s

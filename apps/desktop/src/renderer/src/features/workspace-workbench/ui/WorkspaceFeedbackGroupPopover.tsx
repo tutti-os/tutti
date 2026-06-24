@@ -1,10 +1,11 @@
 import { forwardRef, useCallback, type ComponentPropsWithoutRef } from "react";
 import {
   Button,
-  FeedbackIcon,
+  DiscordIcon,
   Popover,
   PopoverContent,
-  PopoverTrigger
+  PopoverTrigger,
+  WeChatIcon
 } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
@@ -62,7 +63,8 @@ const WorkspaceFeedbackGroupButton = forwardRef<
   HTMLButtonElement,
   ComponentPropsWithoutRef<typeof Button>
 >(function WorkspaceFeedbackGroupButton({ className, ...props }, ref) {
-  const { t } = useTranslation();
+  const { locale, t } = useTranslation();
+  const FeedbackGroupIcon = locale === "zh-CN" ? WeChatIcon : DiscordIcon;
 
   return (
     <Button
@@ -80,7 +82,7 @@ const WorkspaceFeedbackGroupButton = forwardRef<
       variant="ghost"
       {...props}
     >
-      <FeedbackIcon className="size-4 shrink-0" />
+      <FeedbackGroupIcon className="size-4 shrink-0" />
       <span>{t("workspace.feedbackGroup.trigger")}</span>
     </Button>
   );

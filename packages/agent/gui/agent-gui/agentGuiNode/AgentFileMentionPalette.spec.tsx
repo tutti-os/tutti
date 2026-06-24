@@ -1824,11 +1824,22 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
-  it("keeps composer chrome notices inset by 24px", () => {
+  it("keeps non-hero chrome notices inset by 8px", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
+      /\.agent-gui-chrome__session-chrome\s*{[^}]*margin:\s*0 8px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*8px[^}]*margin-left:\s*8px/s
+    );
+  });
+
+  it("keeps new conversation hero composer chrome notices inset by 24px", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-input-group-hero\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
     );
   });
 
@@ -1846,11 +1857,14 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
-  it("keeps composer danger chrome outlined through the bottom edge", () => {
+  it("keeps composer danger chrome open through the bottom edge", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card--danger,[\s\S]*?\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card--danger,[\s\S]*?\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s*\)\s*>\s*\.agent-gui-chrome__card--danger\s*{[^}]*border-bottom:\s*1px solid\s+color-mix\(\s*in srgb,\s*var\(--status-danger,\s*var\(--state-danger\)\)\s*16%,\s*transparent\s*\)/s
+      /\.agent-gui-chrome__card--danger\s*{[^}]*border-bottom:\s*0/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card--danger,[\s\S]*?border-bottom:\s*1px solid/s
     );
   });
 
@@ -1861,10 +1875,10 @@ describe("AgentFileMentionPalette", () => {
       /\.agent-gui-node__bottom-dock\s*{[^}]*align-self:\s*stretch[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*{[^}]*margin-right:\s*36px[^}]*margin-left:\s*36px/s
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*{[^}]*margin-right:\s*16px[^}]*margin-left:\s*16px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*8px[^}]*margin-left:\s*8px/s
     );
   });
 

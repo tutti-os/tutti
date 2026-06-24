@@ -1564,6 +1564,34 @@
       "iconVariant": "filled"
     },
     {
+      "id": "discord-brand-filled-icon",
+      "layer": "base",
+      "name": "DiscordIcon",
+      "export": "DiscordIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Brand icon for Discord community entry actions.",
+      "useCases": ["Discord links", "Community entry buttons"],
+      "migrationHints": [],
+      "iconVariant": "filled"
+    },
+    {
+      "id": "wechat-brand-filled-icon",
+      "layer": "base",
+      "name": "WeChatIcon",
+      "export": "WeChatIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Brand icon for WeChat community or QR-code entry actions.",
+      "useCases": ["WeChat QR code triggers", "Community entry buttons"],
+      "migrationHints": [],
+      "iconVariant": "filled"
+    },
+    {
       "id": "pause-lined-icon",
       "layer": "base",
       "name": "PauseIcon",
