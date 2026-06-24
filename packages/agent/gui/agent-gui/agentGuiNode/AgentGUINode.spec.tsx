@@ -1354,33 +1354,22 @@ describe("AgentGUINode", () => {
     expect(
       screen.getByText("agentHost.agentGui.openclawGatewayStarting")
     ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "agentHost.agentGui.newConversation"
-      })
-    );
+    const newConversationButton = getChromeNewConversationButton();
+    fireEvent.click(newConversationButton);
 
     expect(
       screen.queryByRole("button", {
         name: "agentHost.agentGui.startConversation"
       })
     ).toBeNull();
-    expect(
-      screen.getByRole("button", {
-        name: "agentHost.agentGui.newConversation"
-      })
-    ).toBeDisabled();
+    expect(newConversationButton).toBeDisabled();
     expect(mockCreateConversation).not.toHaveBeenCalled();
   });
 
   it("lets the header new-conversation button receive clicks inside the node window", () => {
     renderAgentGUINode();
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "agentHost.agentGui.newConversation"
-      })
-    );
+    fireEvent.click(getChromeNewConversationButton());
 
     expect(mockCreateConversation).toHaveBeenCalledTimes(1);
     expect(mockCreateConversation).toHaveBeenCalledWith();
@@ -1390,9 +1379,7 @@ describe("AgentGUINode", () => {
     renderAgentGUINode();
 
     expect(
-      screen.getAllByRole("button", {
-        name: "agentHost.agentGui.newConversation"
-      })
+      document.querySelectorAll(".agent-gui-node__new-conversation-icon-button")
     ).toHaveLength(1);
   });
 
@@ -7004,6 +6991,16 @@ function renderAgentGUINode({
   return render(
     strictMode ? <StrictMode>{wrappedNode}</StrictMode> : wrappedNode
   );
+}
+
+function getChromeNewConversationButton(): HTMLButtonElement {
+  const button = document.querySelector<HTMLButtonElement>(
+    ".agent-gui-node__new-conversation-icon-button"
+  );
+  if (!button) {
+    throw new Error("Expected chrome new conversation button to render.");
+  }
+  return button;
 }
 
 function createWorkspaceFileReferenceAdapter(): WorkspaceFileReferenceAdapter {

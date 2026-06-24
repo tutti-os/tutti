@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from "@testing-library/react";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
@@ -330,6 +336,132 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
 
+  it("opens a new conversation draft from the ordinary conversations section", async () => {
+    const actions = createActions();
+    const conversation = createConversationSummary("session-1");
+    const { container } = renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation]
+      },
+      labels: {
+        ...createLabels(),
+        newConversation: "New session"
+      }
+    });
+    const conversationsSection = container.querySelector(
+      '.agent-gui-node__conversation-section[data-kind="conversations"]'
+    );
+    if (!conversationsSection) {
+      throw new Error("Expected conversations section to render.");
+    }
+
+    fireEvent.click(
+      within(conversationsSection as HTMLElement).getByLabelText("New session")
+    );
+
+    expect(actions.createConversation).toHaveBeenCalledWith({
+      projectPath: null
+    });
+    await waitFor(() => {
+      expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
+    });
+  });
+
+  it("opens an ordinary draft from the ordinary section when a project draft is selected", () => {
+    const actions = createActions();
+    const viewModel = createViewModel();
+    const { container } = renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...viewModel,
+        conversations: [],
+        userProjects: [
+          {
+            id: "project-app",
+            path: "/workspace/app",
+            label: "App"
+          }
+        ],
+        composerSettings: {
+          ...viewModel.composerSettings,
+          selectedProjectPath: "/workspace/app"
+        }
+      },
+      labels: {
+        ...createLabels(),
+        newConversation: "New session"
+      }
+    });
+    const conversationsSection = container.querySelector(
+      '.agent-gui-node__conversation-section[data-kind="conversations"]'
+    );
+    if (!conversationsSection) {
+      throw new Error("Expected conversations section to render.");
+    }
+
+    fireEvent.click(
+      within(conversationsSection as HTMLElement).getByLabelText("New session")
+    );
+
+    expect(actions.createConversation).toHaveBeenCalledWith({
+      projectPath: null
+    });
+  });
+
+  it("opens an empty selected project draft from the toolbar new conversation action", () => {
+    const actions = createActions();
+    const viewModel = createViewModel();
+    const { container } = renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...viewModel,
+        conversations: [],
+        userProjects: [
+          {
+            id: "project-app",
+            path: "/workspace/app",
+            label: "App"
+          }
+        ],
+        composerSettings: {
+          ...viewModel.composerSettings,
+          selectedProjectPath: "/workspace/app"
+        }
+      }
+    });
+    const newConversationButton = container.querySelector<HTMLButtonElement>(
+      ".agent-gui-node__new-conversation-icon-button"
+    );
+    if (!newConversationButton) {
+      throw new Error("Expected toolbar new conversation button to render.");
+    }
+
+    fireEvent.click(newConversationButton);
+
+    expect(actions.createConversation).toHaveBeenCalledWith({
+      projectPath: "/workspace/app"
+    });
+    expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
+  });
+
+  it("keeps ordinary conversation section actions hover and focus discoverable", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__conversation-section-more-button\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__conversation-section:hover\s+\.agent-gui-node__conversation-section-more-button,[\s\S]*?\.agent-gui-node__conversation-section:focus-within\s+\.agent-gui-node__conversation-section-more-button,[\s\S]*?\.agent-gui-node__conversation-section-more-button\[aria-expanded="true"\s*\]\s*\{[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__conversation-section\[data-kind="conversations"\]\s+\.agent-gui-node__conversation-section-actions\s*\{[^}]*min-width:\s*0;/s
+    );
+  });
+
   it("defers rendering conversation items for collapsed project sections", () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -418,9 +550,15 @@ describe("AgentGUINodeView layout persistence", () => {
         ]
       }
     });
+    const projectSection = container.querySelector(
+      '.agent-gui-node__conversation-section[data-kind="project"]'
+    );
+    if (!projectSection) {
+      throw new Error("Expected project section to render.");
+    }
 
     const tooltips = Array.from(
-      container.querySelectorAll(
+      projectSection.querySelectorAll(
         ".agent-gui-node__conversation-section-action-tooltip"
       )
     );

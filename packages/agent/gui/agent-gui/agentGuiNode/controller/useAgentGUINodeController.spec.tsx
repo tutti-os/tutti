@@ -841,6 +841,57 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.draftPrompt).toBe("web draft");
   });
 
+  it("keeps the selected project cwd when starting from a new conversation draft", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId, {
+          cwd: input.cwd
+        }),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    const exec = vi.fn(async () => ({
+      accepted: true,
+      agentSessionId: "session-created",
+      sessionStatus: "working",
+      status: "started"
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.updateSelectedProjectPath("/workspace/app");
+      result.current.actions.createConversation();
+      result.current.actions.submitPrompt(promptBlocks("start in app"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cwd: "/workspace/app",
+          initialContent: promptBlocks("start in app"),
+          mode: "new"
+        })
+      );
+    });
+  });
+
   it("prefills draft prompts without activating or executing a session", async () => {
     const activate = vi.fn(
       async (input: AgentHostActivateAgentSessionInput) => ({

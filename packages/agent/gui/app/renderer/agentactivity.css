@@ -4427,6 +4427,11 @@ button.agent-gui-node__conversation-section-toggle:hover
   pointer-events: auto;
 }
 
+.agent-gui-node__conversation-section[data-kind="conversations"]
+  .agent-gui-node__conversation-section-actions {
+  min-width: 0;
+}
+
 .agent-gui-node__conversation-section-action-tooltip-wrap {
   position: relative;
   display: inline-flex;

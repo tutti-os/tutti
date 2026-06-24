@@ -971,12 +971,20 @@ export function AgentGUINodeView({
       }
       if (options) {
         createConversationAction(options);
+      } else if (viewModel.composerSettings.selectedProjectPath) {
+        createConversationAction({
+          projectPath: viewModel.composerSettings.selectedProjectPath
+        });
       } else {
         createConversationAction();
       }
       setLocalComposerFocusRequestSequence((current) => current + 1);
     },
-    [createConversationAction, previewMode]
+    [
+      createConversationAction,
+      previewMode,
+      viewModel.composerSettings.selectedProjectPath
+    ]
   );
   useEffect(() => {
     if (
@@ -3522,6 +3530,19 @@ const AgentGUIConversationRailSection = memo(
       setVisibleItemLimit(AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE);
     }, []);
 
+    const canCreateConversationFromSection =
+      section.kind === "conversations" || Boolean(projectPath);
+    const createConversationLabel = projectPath
+      ? labels.projectSectionEdit
+      : labels.newConversation;
+    const handleCreateConversation = useCallback(() => {
+      if (projectPath) {
+        onCreateConversation({ projectPath });
+        return;
+      }
+      onCreateConversation({ projectPath: null });
+    }, [onCreateConversation, projectPath]);
+
     return (
       <section
         className={styles.conversationSection}
@@ -3555,15 +3576,15 @@ const AgentGUIConversationRailSection = memo(
               </span>
             </div>
           )}
-          {projectPath ? (
+          {canCreateConversationFromSection ? (
             <div className={styles.conversationSectionActions}>
               <span className={styles.conversationSectionActionTooltipWrap}>
                 <BareIconButton
                   className={styles.conversationSectionMoreButton}
-                  aria-label={labels.projectSectionEdit}
+                  aria-label={createConversationLabel}
                   size="sm"
                   disabled={createConversationDisabled}
-                  onClick={() => onCreateConversation({ projectPath })}
+                  onClick={handleCreateConversation}
                 >
                   <EditIcon aria-hidden="true" />
                 </BareIconButton>
@@ -3571,79 +3592,83 @@ const AgentGUIConversationRailSection = memo(
                   aria-hidden="true"
                   className={styles.conversationSectionActionTooltip}
                 >
-                  {labels.projectSectionEdit}
+                  {createConversationLabel}
                 </span>
               </span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <span className={styles.conversationSectionActionTooltipWrap}>
-                    <BareIconButton
-                      className={styles.conversationSectionMoreButton}
-                      aria-label={labels.projectSectionMoreActions}
-                      size="sm"
-                    >
-                      <MoreHorizontalIcon aria-hidden="true" />
-                    </BareIconButton>
+              {projectPath ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <span
-                      aria-hidden="true"
-                      className={styles.conversationSectionActionTooltip}
+                      className={styles.conversationSectionActionTooltipWrap}
                     >
-                      {labels.projectSectionMoreActions}
+                      <BareIconButton
+                        className={styles.conversationSectionMoreButton}
+                        aria-label={labels.projectSectionMoreActions}
+                        size="sm"
+                      >
+                        <MoreHorizontalIcon aria-hidden="true" />
+                      </BareIconButton>
+                      <span
+                        aria-hidden="true"
+                        className={styles.conversationSectionActionTooltip}
+                      >
+                        {labels.projectSectionMoreActions}
+                      </span>
                     </span>
-                  </span>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
-                  sideOffset={6}
-                >
-                  <DropdownMenuItem
-                    className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                    disabled={!onOpenProjectFiles}
-                    onSelect={() => {
-                      onOpenProjectFiles?.({
-                        directoryPath: projectPath,
-                        mode: "open-directory",
-                        path: projectPath,
-                        source: "agent-project-menu",
-                        type: "open-workspace-file",
-                        workspaceRoot: projectPath
-                      });
-                    }}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
+                    sideOffset={6}
                   >
-                    <span>{labels.projectSectionViewFiles}</span>
-                  </DropdownMenuItem>
-                  {projectConversationCount > 0 ? (
+                    <DropdownMenuItem
+                      className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                      disabled={!onOpenProjectFiles}
+                      onSelect={() => {
+                        onOpenProjectFiles?.({
+                          directoryPath: projectPath,
+                          mode: "open-directory",
+                          path: projectPath,
+                          source: "agent-project-menu",
+                          type: "open-workspace-file",
+                          workspaceRoot: projectPath
+                        });
+                      }}
+                    >
+                      <span>{labels.projectSectionViewFiles}</span>
+                    </DropdownMenuItem>
+                    {projectConversationCount > 0 ? (
+                      <DropdownMenuItem
+                        className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                        onSelect={() => {
+                          const label = projectLabel || projectPath;
+                          setPendingProjectAction({
+                            kind: "batch-delete",
+                            conversationCount: projectConversationCount,
+                            label,
+                            path: projectPath
+                          });
+                        }}
+                      >
+                        <span>{labels.batchDeleteProjectSessions}</span>
+                      </DropdownMenuItem>
+                    ) : null}
                     <DropdownMenuItem
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
                       onSelect={() => {
                         const label = projectLabel || projectPath;
                         setPendingProjectAction({
-                          kind: "batch-delete",
-                          conversationCount: projectConversationCount,
+                          kind: "remove",
                           label,
                           path: projectPath
                         });
                       }}
                     >
-                      <span>{labels.batchDeleteProjectSessions}</span>
+                      <span>{labels.removeProject}</span>
                     </DropdownMenuItem>
-                  ) : null}
-                  <DropdownMenuItem
-                    className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                    onSelect={() => {
-                      const label = projectLabel || projectPath;
-                      setPendingProjectAction({
-                        kind: "remove",
-                        label,
-                        path: projectPath
-                      });
-                    }}
-                  >
-                    <span>{labels.removeProject}</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
             </div>
           ) : null}
         </div>
