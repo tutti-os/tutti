@@ -328,7 +328,7 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   );
   assert.match(
     css,
-    /\.desktop-dock__slot--minimized\[data-presence="entering"\]\s*{[^}]*animation:\s*desktop-dock-minimized-slot-expand 720ms/s
+    /\.desktop-dock__slot--minimized\[data-presence="entering"\]\s*{[^}]*animation:\s*none;/s
   );
   assert.match(
     css,
@@ -344,11 +344,15 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   );
   assert.match(
     css,
-    /\.desktop-dock\[data-dock-placement="left"\]\s+\.desktop-dock__slot--minimized\[data-presence="entering"\]\s*{[^}]*animation-name:\s*desktop-dock-minimized-slot-expand-left;/s
+    /\.desktop-dock\[data-dock-placement="left"\]\s+\.desktop-dock__slot--minimized\[data-presence="entering"\]\s*{[^}]*animation:\s*none;/s
   );
   assert.match(
     css,
-    /@keyframes desktop-dock-minimized-slot-expand\s*{[\s\S]*?width:\s*0;[\s\S]*?margin-inline:\s*calc\(var\(--desktop-dock-gap\) \/ -2\);[\s\S]*?width:\s*var\(--desktop-dock-size\);/
+    /\.desktop-dock__slot--minimized\[data-presence="entering"\]\s+\.desktop-dock__minimized-preview,[\s\S]*?\.desktop-dock__slot--minimized\[data-presence="entering"\]\s+\.desktop-dock__minimized-stack-icon\s*{[^}]*animation:\s*desktop-dock-minimized-icon-appear 640ms/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__slot--minimized\[data-pending-minimize="true"\]\[data-presence="entering"\]\s+\.desktop-dock__minimized-preview,[\s\S]*?\.desktop-dock__slot--minimized\[data-pending-minimize="true"\]\[data-presence="entering"\]\s+\.desktop-dock__minimized-stack-icon\s*{[^}]*animation:\s*none;/s
   );
   assert.match(
     css,

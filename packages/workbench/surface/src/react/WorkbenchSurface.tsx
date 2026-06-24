@@ -92,6 +92,7 @@ export function WorkbenchSurface<TData>({
   captureNodePreviewImage,
   className,
   controller,
+  debugDiagnostics,
   dockPreviewCache,
   dockPlacement,
   interactive,
@@ -123,6 +124,7 @@ export function WorkbenchSurface<TData>({
       <WorkbenchSurfaceInner
         captureNodePreviewImage={captureNodePreviewImage}
         className={className}
+        debugDiagnostics={debugDiagnostics}
         dockPreviewCache={dockPreviewCache}
         dockPlacement={dockPlacement}
         interactive={interactive}
@@ -156,6 +158,7 @@ export function WorkbenchSurface<TData>({
 function WorkbenchSurfaceInner<TData>({
   captureNodePreviewImage,
   className,
+  debugDiagnostics,
   dockPreviewCache,
   dockPlacement,
   interactive = true,
@@ -193,6 +196,7 @@ function WorkbenchSurfaceInner<TData>({
   const genie = useWorkbenchGenieAnimation({
     captureNodePreviewImage,
     controller,
+    debugDiagnostics,
     dockPreviewCache,
     minimizeAnimation,
     renderNodeGeniePreview,

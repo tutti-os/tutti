@@ -1114,9 +1114,7 @@
 }
 
 .desktop-dock__slot--minimized[data-presence="entering"] {
-  min-width: 0;
-  animation: desktop-dock-minimized-slot-expand 720ms
-    cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: none;
 }
 
 .desktop-dock__slot--minimized[data-promoted-from-stack="true"][data-presence="entering"] {
@@ -1158,8 +1156,7 @@
 
 .desktop-dock[data-dock-placement="left"]
   .desktop-dock__slot--minimized[data-presence="entering"] {
-  min-height: 0;
-  animation-name: desktop-dock-minimized-slot-expand-left;
+  animation: none;
 }
 
 .desktop-dock__slot--minimized[data-presence="entering"]
@@ -1177,6 +1174,13 @@
   .desktop-dock__slot--minimized[data-presence="entering"]
   .desktop-dock__minimized-stack-icon {
   animation-name: desktop-dock-minimized-icon-appear-left;
+}
+
+.desktop-dock__slot--minimized[data-pending-minimize="true"][data-presence="entering"]
+  .desktop-dock__minimized-preview,
+.desktop-dock__slot--minimized[data-pending-minimize="true"][data-presence="entering"]
+  .desktop-dock__minimized-stack-icon {
+  animation: none;
 }
 
 .desktop-dock__slot[data-presence="exiting"] {
