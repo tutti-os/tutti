@@ -27,6 +27,17 @@ test("workspace settings panel lists appearance below general", () => {
   );
 });
 
+test("workspace settings backdrop preserves titlebar dragging", () => {
+  assert.match(source, /data-workspace-settings-backdrop="true"/);
+  assert.match(source, /data-workspace-settings-window-drag-region="true"/);
+  assert.match(
+    source,
+    /pointer-events-auto absolute inset-x-0 top-0 z-0 h-\[52px\] \[-webkit-app-region:drag\]/
+  );
+  assert.match(source, /data-workspace-settings-panel="true"/);
+  assert.match(source, /\[-webkit-app-region:no-drag\]/);
+});
+
 test("workspace settings agent panel lists agent controls", () => {
   assert.match(
     source,
