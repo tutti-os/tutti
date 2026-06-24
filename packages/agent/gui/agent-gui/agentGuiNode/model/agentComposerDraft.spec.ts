@@ -88,7 +88,7 @@ describe("agentComposerDraft", () => {
     ]);
   });
 
-  it("converts uploaded image drafts into url prompt content", () => {
+  it("converts staged image drafts into path prompt content", () => {
     expect(
       agentComposerDraftToPromptContent({
         draft: {
@@ -98,8 +98,8 @@ describe("agentComposerDraft", () => {
               id: "image-1",
               name: "screen.png",
               mimeType: "image/png",
-              url: "https://cdn.example.com/screen.png",
-              previewUrl: "https://cdn.example.com/screen.png"
+              path: "/var/cache/tsh/agent-assets/workspace-1/user-1/screen.png",
+              previewUrl: "data:image/png;base64,aW1hZ2U="
             }
           ]
         },
@@ -110,7 +110,7 @@ describe("agentComposerDraft", () => {
       {
         type: "image",
         mimeType: "image/png",
-        url: "https://cdn.example.com/screen.png",
+        path: "/var/cache/tsh/agent-assets/workspace-1/user-1/screen.png",
         name: "screen.png"
       }
     ]);
@@ -174,13 +174,13 @@ describe("agentComposerDraft", () => {
     });
   });
 
-  it("restores url image content into stable draft ids", () => {
+  it("restores path image content into stable draft ids", () => {
     const draft = agentPromptContentToComposerDraft(
       [
         {
           type: "image",
           mimeType: "image/png",
-          url: "https://cdn.example.com/panel.png",
+          path: "/var/cache/tsh/agent-assets/workspace-1/user-1/panel.png",
           name: "panel.png"
         }
       ],
@@ -194,8 +194,8 @@ describe("agentComposerDraft", () => {
           id: "restore-queued-1:image:0",
           name: "panel.png",
           mimeType: "image/png",
-          url: "https://cdn.example.com/panel.png",
-          previewUrl: "https://cdn.example.com/panel.png"
+          path: "/var/cache/tsh/agent-assets/workspace-1/user-1/panel.png",
+          previewUrl: "/var/cache/tsh/agent-assets/workspace-1/user-1/panel.png"
         }
       ]
     });

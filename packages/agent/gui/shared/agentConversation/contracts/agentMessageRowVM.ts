@@ -36,6 +36,7 @@ export interface AgentMessageImageVM {
   mimeType: string;
   name?: string | null;
   data?: string | null;
+  path?: string | null;
 }
 
 export interface AgentThinkingContentVM {

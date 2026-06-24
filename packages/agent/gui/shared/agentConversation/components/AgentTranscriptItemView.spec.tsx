@@ -368,6 +368,88 @@ describe("AgentTranscriptItemView render stability", () => {
     delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
   });
 
+  it("shows a loading spinner while a user prompt image is being read", async () => {
+    const readController: {
+      resolve: (value: {
+        attachmentId: string;
+        data: string;
+        mimeType: "image/png";
+        name: string;
+      }) => void;
+    } = {
+      resolve: () => {
+        throw new Error("readSessionAttachment was not called");
+      }
+    };
+    const readSessionAttachment = vi.fn(
+      () =>
+        new Promise<{
+          attachmentId: string;
+          data: string;
+          mimeType: "image/png";
+          name: string;
+        }>((resolvePromise) => {
+          readController.resolve = resolvePromise;
+        })
+    );
+    Object.defineProperty(window, "agentActivityRuntime", {
+      configurable: true,
+      value: {
+        readSessionAttachment
+      } as Partial<AgentActivityRuntime>
+    });
+
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-images-loading",
+          turnId: "turn-1",
+          body: "",
+          contentKind: "image-grid",
+          images: [
+            {
+              id: "attachment-loading",
+              workspaceId: "room-1",
+              agentSessionId: "session-1",
+              attachmentId: "attachment-loading",
+              mimeType: "image/png",
+              name: "screen.png"
+            }
+          ],
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    expect(
+      await screen.findByTestId("agent-gui-message-image-loading")
+    ).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "screen.png" })).toBeNull();
+
+    readController.resolve({
+      attachmentId: "attachment-loading",
+      data: "aW1hZ2U=",
+      mimeType: "image/png",
+      name: "screen.png"
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("agent-gui-message-image-loading")
+      ).toBeNull();
+      expect(screen.getByRole("img", { name: "screen.png" })).toHaveAttribute(
+        "src",
+        "data:image/png;base64,aW1hZ2U="
+      );
+    });
+
+    delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
+  });
+
   it("keeps assistant conversation markdown on the compact reading scale", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 

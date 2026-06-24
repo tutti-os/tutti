@@ -7,7 +7,7 @@ import {
   type JSX,
   type ReactNode
 } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, LoaderCircle } from "lucide-react";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import { Button } from "../../../app/renderer/components/ui/button";
 import { AgentPlanCard } from "./AgentPlanCard";
@@ -293,7 +293,8 @@ function AgentUserImageGrid({
 }): JSX.Element {
   "use memo";
   const images = message.images ?? [];
-  const loadedImages = useAgentMessageImageSources(images);
+  const { loadingIds, sources: loadedImages } =
+    useAgentMessageImageSources(images);
   const columnCount = Math.min(Math.max(images.length, 1), 4);
   return (
     <div
@@ -302,6 +303,7 @@ function AgentUserImageGrid({
     >
       {images.map((image) => {
         const src = loadedImages.get(image.id) ?? imageDataUrl(image);
+        const loading = !src && loadingIds.has(image.id);
         return (
           <div
             key={image.id}
@@ -314,6 +316,17 @@ function AgentUserImageGrid({
                 className="size-full object-cover"
                 draggable={false}
               />
+            ) : loading ? (
+              <div
+                className="flex size-full items-center justify-center bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]"
+                data-testid="agent-gui-message-image-loading"
+              >
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="size-5 animate-spin text-[color-mix(in_srgb,var(--text-primary)_45%,transparent)]"
+                  strokeWidth={2}
+                />
+              </div>
             ) : (
               <div className="size-full animate-pulse bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)]" />
             )}
@@ -324,11 +337,13 @@ function AgentUserImageGrid({
   );
 }
 
-function useAgentMessageImageSources(
-  images: readonly AgentMessageImageVM[]
-): ReadonlyMap<string, string> {
+function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
+  loadingIds: ReadonlySet<string>;
+  sources: ReadonlyMap<string, string>;
+} {
   const runtime = getOptionalAgentActivityRuntime();
   const [sources, setSources] = useState<Map<string, string>>(() => new Map());
+  const [loadingIds, setLoadingIds] = useState<Set<string>>(() => new Set());
   const missingImages = useMemo(
     () =>
       images.filter(
@@ -337,23 +352,45 @@ function useAgentMessageImageSources(
           !sources.has(image.id) &&
           image.workspaceId &&
           image.agentSessionId &&
-          image.attachmentId
+          (image.attachmentId || image.path)
       ),
     [images, sources]
   );
 
   useEffect(() => {
-    if (!runtime?.readSessionAttachment || missingImages.length === 0) {
+    if (
+      (!runtime?.readSessionAttachment && !runtime?.readPromptAsset) ||
+      missingImages.length === 0
+    ) {
       return;
     }
     let canceled = false;
     for (const image of missingImages) {
-      void runtime
-        .readSessionAttachment({
-          workspaceId: image.workspaceId ?? "",
-          agentSessionId: image.agentSessionId,
-          attachmentId: image.attachmentId ?? ""
-        })
+      const readImage = image.attachmentId
+        ? runtime.readSessionAttachment?.({
+            workspaceId: image.workspaceId ?? "",
+            agentSessionId: image.agentSessionId,
+            attachmentId: image.attachmentId ?? ""
+          })
+        : runtime.readPromptAsset?.({
+            workspaceId: image.workspaceId ?? "",
+            agentSessionId: image.agentSessionId,
+            mimeType: image.mimeType,
+            name: image.name,
+            path: image.path
+          });
+      if (!readImage) {
+        continue;
+      }
+      setLoadingIds((current) => {
+        if (current.has(image.id)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.add(image.id);
+        return next;
+      });
+      void readImage
         .then((attachment) => {
           if (canceled) {
             return;
@@ -370,14 +407,27 @@ function useAgentMessageImageSources(
             return next;
           });
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          if (canceled) {
+            return;
+          }
+          setLoadingIds((current) => {
+            if (!current.has(image.id)) {
+              return current;
+            }
+            const next = new Set(current);
+            next.delete(image.id);
+            return next;
+          });
+        });
     }
     return () => {
       canceled = true;
     };
   }, [missingImages, runtime]);
 
-  return sources;
+  return { loadingIds, sources };
 }
 
 function imageDataUrl(image: AgentMessageImageVM): string | null {

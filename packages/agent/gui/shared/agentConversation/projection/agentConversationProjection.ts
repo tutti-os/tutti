@@ -497,13 +497,15 @@ function projectUserMessageContentParts(
       body: "",
       contentKind: "image-grid",
       images: imageBlocks.map((image, index) => ({
-        id: image.attachmentId || `${message.id}:image:0:${index}`,
+        id:
+          image.path || image.attachmentId || `${message.id}:image:0:${index}`,
         workspaceId: image.workspaceId,
         agentSessionId: image.agentSessionId,
         attachmentId: image.attachmentId,
         mimeType: image.mimeType,
         name: image.name,
-        data: image.data
+        data: image.data,
+        path: image.path
       })),
       occurredAtUnixMs: message.occurredAtUnixMs ?? null,
       sourceTimelineItems: message.sourceTimelineItems
@@ -558,6 +560,7 @@ interface UserPromptImageBlock {
   mimeType: string;
   name?: string | null;
   data?: string | null;
+  path?: string | null;
 }
 
 function userPromptContentBlocks(
@@ -621,6 +624,10 @@ function userPromptContentBlocks(
         data:
           typeof block.data === "string" && block.data.trim()
             ? block.data.trim()
+            : null,
+        path:
+          typeof block.path === "string" && block.path.trim()
+            ? block.path.trim()
             : null
       }
     ];

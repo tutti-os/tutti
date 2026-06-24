@@ -1730,9 +1730,9 @@ export function AgentComposer({
             const uploadedImage = result.content.find(
               (block) => block.type === "image"
             );
-            const uploadedUrl = uploadedImage?.url?.trim() ?? "";
-            if (!uploadedUrl) {
-              throw new Error("Prompt image upload completed without url.");
+            const uploadedPath = uploadedImage?.path?.trim() ?? "";
+            if (!uploadedPath) {
+              throw new Error("Prompt image upload completed without path.");
             }
             const uploadedDraftImages = draftImagesRef.current.map((image) =>
               image.id === draftImage.id
@@ -1740,8 +1740,8 @@ export function AgentComposer({
                     id: image.id,
                     name: image.name,
                     mimeType: image.mimeType,
-                    url: uploadedUrl,
-                    previewUrl: uploadedUrl,
+                    path: uploadedPath,
+                    previewUrl: image.previewUrl,
                     uploading: false
                   }
                 : image

@@ -15,7 +15,7 @@ type AgentPromptImageContentBlock = AgentPromptContentBlock & {
   type: "image";
   mimeType: "image/png" | "image/jpeg" | "image/webp";
   data?: string;
-  url?: string;
+  path?: string;
 };
 
 export function emptyAgentComposerDraft(): AgentComposerDraft {
@@ -43,9 +43,9 @@ export function normalizeAgentPromptContentBlocks(
     if (block.type === "image") {
       const mimeType = block.mimeType?.trim();
       const data = block.data?.trim();
-      const url = block.url?.trim();
+      const imagePath = block.path?.trim();
       if (
-        (!data && !url) ||
+        (!data && !imagePath) ||
         (mimeType !== "image/png" &&
           mimeType !== "image/jpeg" &&
           mimeType !== "image/webp")
@@ -55,7 +55,7 @@ export function normalizeAgentPromptContentBlocks(
       result.push({
         type: "image",
         mimeType,
-        ...(url ? { url } : { data }),
+        ...(imagePath ? { path: imagePath } : { data }),
         ...(block.name?.trim() ? { name: block.name.trim() } : {})
       });
       continue;
@@ -93,7 +93,7 @@ export function agentPromptContentImageBlocks(
   return normalizeAgentPromptContentBlocks(content).filter(
     (block): block is AgentPromptImageContentBlock =>
       block.type === "image" &&
-      (typeof block.data === "string" || typeof block.url === "string") &&
+      (typeof block.data === "string" || typeof block.path === "string") &&
       typeof block.mimeType === "string"
   );
 }
@@ -136,7 +136,7 @@ export function agentComposerDraftToPromptContent(input: {
       .map((image) => ({
         type: "image" as const,
         mimeType: image.mimeType,
-        ...(image.url ? { url: image.url } : { data: image.data }),
+        ...(image.path ? { path: image.path } : { data: image.data }),
         name: image.name
       }))
   ]);
@@ -192,10 +192,10 @@ function agentPromptImageBlockToDraftImage(
     name: image.name?.trim() || `image-${index + 1}`,
     mimeType: image.mimeType,
     data: image.data,
-    url: image.url,
+    path: image.path,
     previewUrl:
       typeof image.data === "string" && image.data
         ? `data:${image.mimeType};base64,${image.data}`
-        : (image.url ?? "")
+        : (image.path ?? "")
   };
 }
