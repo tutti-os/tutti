@@ -145,16 +145,27 @@ export interface AgentActivityRuntimeReadSessionAttachmentInput {
 
 export interface AgentActivityRuntimeReadPromptAssetInput {
   agentSessionId?: string | null;
+  assetId?: string | null;
+  hostPath?: string | null;
+  kind?: string | null;
   mimeType: string;
   name?: string | null;
   path?: string | null;
   sha256?: string | null;
+  uploadStatus?: string | null;
+  uri?: string | null;
   workspaceId: string;
 }
 
 export type AgentActivityRuntimePromptContentBlock =
   AgentActivitySendInput["content"][number] & {
+    assetId?: string;
+    hostPath?: string;
+    kind?: string;
     path?: string;
+    sizeBytes?: number;
+    uploadStatus?: string;
+    uri?: string;
   };
 
 export interface AgentActivityRuntimeUploadPromptContentInput {
@@ -174,9 +185,14 @@ export interface AgentActivityRuntimeSessionAttachment {
 }
 
 export interface AgentActivityRuntimePromptAsset {
+  assetId?: string;
+  hostPath?: string;
+  kind?: string;
   mimeType: string;
   name?: string;
   path: string;
+  uploadStatus?: string;
+  uri?: string;
   data: string;
 }
 

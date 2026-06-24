@@ -1,6 +1,7 @@
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type {
   AgentComposerDraft,
+  AgentComposerDraftFile,
   AgentComposerDraftImage,
   AgentGUIProviderSkillOption
 } from "./agentGuiNodeTypes";
@@ -19,13 +20,17 @@ type AgentPromptImageContentBlock = AgentPromptContentBlock & {
 };
 
 export function emptyAgentComposerDraft(): AgentComposerDraft {
-  return { prompt: "", images: [] };
+  return { prompt: "", images: [], files: [] };
 }
 
 export function agentComposerDraftHasContent(
   draft: AgentComposerDraft
 ): boolean {
-  return draft.prompt.trim() !== "" || draft.images.length > 0;
+  return (
+    draft.prompt.trim() !== "" ||
+    draft.images.length > 0 ||
+    (draft.files?.length ?? 0) > 0
+  );
 }
 
 export function normalizeAgentPromptContentBlocks(
@@ -60,6 +65,30 @@ export function normalizeAgentPromptContentBlocks(
       });
       continue;
     }
+    if (block.type === "file") {
+      const filePath = block.path?.trim();
+      const hostPath = block.hostPath?.trim();
+      if (!filePath && !hostPath) {
+        continue;
+      }
+      result.push({
+        type: "file",
+        ...(block.mimeType?.trim() ? { mimeType: block.mimeType.trim() } : {}),
+        ...(filePath ? { path: filePath } : {}),
+        ...(hostPath ? { hostPath } : {}),
+        ...(block.name?.trim() ? { name: block.name.trim() } : {}),
+        ...(block.uri?.trim() ? { uri: block.uri.trim() } : {}),
+        ...(block.uploadStatus?.trim()
+          ? { uploadStatus: block.uploadStatus.trim() }
+          : {}),
+        ...(block.assetId?.trim() ? { assetId: block.assetId.trim() } : {}),
+        ...(typeof block.sizeBytes === "number"
+          ? { sizeBytes: block.sizeBytes }
+          : {}),
+        kind: "file"
+      });
+      continue;
+    }
     if (block.type === "skill" || block.type === "mention") {
       const name = block.name?.trim();
       const path = block.path?.trim();
@@ -87,6 +116,12 @@ export function agentPromptContentHasImage(
   return content.some((block) => block.type === "image");
 }
 
+export function agentPromptContentHasFile(
+  content: readonly AgentPromptContentBlock[]
+): boolean {
+  return content.some((block) => block.type === "file");
+}
+
 export function agentPromptContentImageBlocks(
   content: readonly AgentPromptContentBlock[]
 ): AgentPromptImageContentBlock[] {
@@ -109,7 +144,10 @@ export function agentPromptContentToComposerDraft(
       .slice(0, MAX_AGENT_COMPOSER_DRAFT_IMAGES)
       .map((image, index) =>
         agentPromptImageBlockToDraftImage(image, idPrefix, index)
-      )
+      ),
+    files: agentPromptFileBlocks(normalizedContent).map((file, index) =>
+      agentPromptFileBlockToDraftFile(file, idPrefix, index)
+    )
   };
 }
 
@@ -138,8 +176,30 @@ export function agentComposerDraftToPromptContent(input: {
         mimeType: image.mimeType,
         ...(image.path ? { path: image.path } : { data: image.data }),
         name: image.name
+      })),
+    ...(input.draft.files ?? [])
+      .filter((file) => !file.uploading && !file.uploadError)
+      .map((file) => ({
+        type: "file" as const,
+        ...(file.mimeType ? { mimeType: file.mimeType } : {}),
+        ...(file.path ? { path: file.path } : {}),
+        ...(file.hostPath ? { hostPath: file.hostPath } : {}),
+        ...(file.assetId ? { assetId: file.assetId } : {}),
+        ...(file.sizeBytes ? { sizeBytes: file.sizeBytes } : {}),
+        name: file.name,
+        kind: "file"
       }))
   ]);
+}
+
+function agentPromptFileBlocks(
+  content: readonly AgentPromptContentBlock[]
+): Array<AgentPromptContentBlock & { type: "file" }> {
+  return normalizeAgentPromptContentBlocks(content).filter(
+    (block): block is AgentPromptContentBlock & { type: "file" } =>
+      block.type === "file" &&
+      (typeof block.path === "string" || typeof block.hostPath === "string")
+  );
 }
 
 function promptItemBlocksForProviderSkills(input: {
@@ -191,11 +251,27 @@ function agentPromptImageBlockToDraftImage(
     id: `${idPrefix}:image:${index}`,
     name: image.name?.trim() || `image-${index + 1}`,
     mimeType: image.mimeType,
-    data: image.data,
-    path: image.path,
+    ...(image.data ? { data: image.data } : {}),
+    ...(image.path ? { path: image.path } : {}),
     previewUrl:
       typeof image.data === "string" && image.data
         ? `data:${image.mimeType};base64,${image.data}`
         : (image.path ?? "")
+  };
+}
+
+function agentPromptFileBlockToDraftFile(
+  file: AgentPromptContentBlock & { type: "file" },
+  idPrefix: string,
+  index: number
+): AgentComposerDraftFile {
+  return {
+    id: `${idPrefix}:file:${index}`,
+    name: file.name?.trim() || `file-${index + 1}`,
+    mimeType: file.mimeType,
+    path: file.path,
+    hostPath: file.hostPath,
+    assetId: file.assetId,
+    sizeBytes: file.sizeBytes
   };
 }

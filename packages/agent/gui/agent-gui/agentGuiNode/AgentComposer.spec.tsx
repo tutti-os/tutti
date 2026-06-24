@@ -49,7 +49,7 @@ function createDraft(
   prompt: string,
   images: AgentComposerDraft["images"] = []
 ): AgentComposerDraft {
-  return { prompt, images };
+  return { prompt, images, files: [] };
 }
 
 function createImageDataTransfer(file: File): DataTransfer {
@@ -2520,14 +2520,14 @@ describe("AgentComposer", () => {
         {
           type: "image",
           mimeType: "image/png",
-          path: "/var/cache/tsh/agent-assets/workspace-1/user-1/screen.png",
+          path: "/var/cache/tsh/local-assets/workspace-1/user-1/screen.png",
           name: "screen.png"
         }
       ]
     });
     await waitFor(() =>
       expect(draftContent.images[0]).toMatchObject({
-        path: "/var/cache/tsh/agent-assets/workspace-1/user-1/screen.png",
+        path: "/var/cache/tsh/local-assets/workspace-1/user-1/screen.png",
         uploading: false
       })
     );
@@ -2540,7 +2540,7 @@ describe("AgentComposer", () => {
       {
         type: "image",
         mimeType: "image/png",
-        path: "/var/cache/tsh/agent-assets/workspace-1/user-1/screen.png",
+        path: "/var/cache/tsh/local-assets/workspace-1/user-1/screen.png",
         name: "screen.png"
       }
     ]);

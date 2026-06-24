@@ -1439,7 +1439,7 @@ describe("AgentFileMentionPalette", () => {
 
     const hint = screen.getByTestId("agent-gui-mention-palette-hint");
 
-    fireEvent.click(within(hint).getByRole("button", { name: "切换分类" }));
+    fireEvent.click(within(hint).getByRole("button", { name: "Tab 切换分类" }));
     fireEvent.click(within(hint).getByRole("button", { name: "↑ 切换选中" }));
     fireEvent.click(within(hint).getByRole("button", { name: "↓ 切换选中" }));
 

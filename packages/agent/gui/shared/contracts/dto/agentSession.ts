@@ -175,14 +175,20 @@ export interface AgentHostExecAgentSessionInput {
 }
 
 export interface AgentPromptContentBlock {
-  type: "text" | "image" | "skill" | "mention";
+  type: "text" | "image" | "file" | "skill" | "mention";
   text?: string;
-  mimeType?: "image/png" | "image/jpeg" | "image/webp";
+  mimeType?: "image/png" | "image/jpeg" | "image/webp" | string;
   data?: string;
   url?: string;
   attachmentId?: string;
   name?: string;
   path?: string;
+  uri?: string;
+  hostPath?: string;
+  uploadStatus?: string;
+  assetId?: string;
+  kind?: string;
+  sizeBytes?: number;
 }
 
 export interface AgentHostExecAgentSessionResult {

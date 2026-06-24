@@ -15,7 +15,9 @@ import { useSnapshot } from "valtio";
 import { proxy } from "valtio/vanilla";
 import { ChevronRight, ExternalLink, Info, X } from "lucide-react";
 import type {
+  NodeRef,
   ReferenceLocateTarget,
+  ReferenceNode,
   WorkspaceFileReference,
   WorkspaceFileReferenceAdapter,
   WorkspaceFileReferenceCopy
@@ -798,6 +800,7 @@ export function AgentGUINodeView({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
+  const agentHostApi = useAgentHostApi();
   const layoutElementRef = useRef<HTMLDivElement | null>(null);
   const railResizeInteractionRef = useRef<{
     lastWidthPx: number;
@@ -825,9 +828,110 @@ export function AgentGUINodeView({
     ((result: WorkspaceReferencePickResult) => void) | null
   >(null);
   const emptyReferencePickResult: WorkspaceReferencePickResult = useMemo(
-    () => ({ files: [], mentionItems: [] }),
+    () => ({ files: [], mentionItems: [], hostAttachments: [] }),
     []
   );
+  const hostLocalFileLabel =
+    uiLanguage === "zh-CN" ? "本地文件(宿主机)" : "Local files (Host)";
+  const hostLocalFileSelectLabel =
+    uiLanguage === "zh-CN" ? "从电脑选择…" : "Choose from computer…";
+  const hostLocalFileActionPath = "host-local-file://select";
+  const referenceSourceAggregatorWithHostLocalFile = useMemo(() => {
+    if (!referenceSourceAggregator) {
+      return null;
+    }
+    const sourceId = "host-local-file";
+    const actionNode: ReferenceNode = {
+      ref: { sourceId, nodeId: "select-files" },
+      kind: "file",
+      displayName: hostLocalFileSelectLabel
+    };
+    const rootNode: ReferenceNode = {
+      ref: { sourceId, nodeId: "\u0000source-root" },
+      kind: "folder",
+      displayName: hostLocalFileLabel,
+      hasChildren: true
+    };
+    return {
+      ...referenceSourceAggregator,
+      async listSources(scope) {
+        const sources = await referenceSourceAggregator.listSources(scope);
+        return [
+          ...sources,
+          {
+            sourceId,
+            label: hostLocalFileLabel,
+            icon: "file",
+            capabilities: {
+              searchable: false,
+              previewable: false,
+              paginated: false,
+              navigable: false,
+              filterable: false
+            }
+          }
+        ];
+      },
+      async listRoot(scope) {
+        const root = await referenceSourceAggregator.listRoot(scope);
+        return [...root, rootNode];
+      },
+      async listChildren(scope, node: NodeRef, input) {
+        if (node.sourceId === sourceId) {
+          return { entries: [actionNode], nextCursor: null };
+        }
+        return await referenceSourceAggregator.listChildren(scope, node, input);
+      },
+      async search(scope, currentSourceId, input) {
+        if (currentSourceId === sourceId) {
+          return { entries: [], nextCursor: null };
+        }
+        return await referenceSourceAggregator.search(
+          scope,
+          currentSourceId,
+          input
+        );
+      },
+      async open(scope, node) {
+        if (node.ref.sourceId === sourceId) {
+          return;
+        }
+        await referenceSourceAggregator.open(scope, node);
+      },
+      async readPreview(scope, node) {
+        if (node.ref.sourceId === sourceId) {
+          return null;
+        }
+        return await referenceSourceAggregator.readPreview(scope, node);
+      },
+      resolveSelection(node) {
+        if (node.ref.sourceId === sourceId) {
+          return {
+            path: hostLocalFileActionPath,
+            kind: "file",
+            displayName: actionNode.displayName
+          };
+        }
+        return referenceSourceAggregator.resolveSelection(node);
+      },
+      async locateTarget(scope, currentSourceId, params) {
+        if (currentSourceId === sourceId) {
+          return null;
+        }
+        return await referenceSourceAggregator.locateTarget(
+          scope,
+          currentSourceId,
+          params
+        );
+      },
+      getLoadedSource(currentSourceId) {
+        if (currentSourceId === sourceId) {
+          return undefined;
+        }
+        return referenceSourceAggregator.getLoadedSource(currentSourceId);
+      }
+    } satisfies ReferenceSourceAggregator;
+  }, [hostLocalFileLabel, hostLocalFileSelectLabel, referenceSourceAggregator]);
   const requestWorkspaceReferences = useCallback(
     async (
       entity?: AgentContextMentionItem | null
@@ -836,16 +940,17 @@ export function AgentGUINodeView({
         return emptyReferencePickResult;
       }
       if (
-        (!workspaceFileReferenceAdapter && !referenceSourceAggregator) ||
+        (!workspaceFileReferenceAdapter &&
+          !referenceSourceAggregatorWithHostLocalFile) ||
         !workspaceFileReferenceCopy
       ) {
         return emptyReferencePickResult;
       }
       // 仅多源 picker(referenceSourceAggregator)支持定位;本地 picker 不支持。
       const target =
-        entity && referenceSourceAggregator
+        entity && referenceSourceAggregatorWithHostLocalFile
           ? (resolveMentionReferenceTarget?.(entity) ?? null)
-          : referenceSourceAggregator
+          : referenceSourceAggregatorWithHostLocalFile
             ? (resolveWorkspaceReferenceInitialTarget?.({
                 activeConversation: viewModel.activeConversation,
                 composerSelectedProjectPath:
@@ -862,7 +967,7 @@ export function AgentGUINodeView({
     [
       emptyReferencePickResult,
       previewMode,
-      referenceSourceAggregator,
+      referenceSourceAggregatorWithHostLocalFile,
       resolveMentionReferenceTarget,
       resolveWorkspaceReferenceInitialTarget,
       viewModel.activeConversation,
@@ -894,10 +999,32 @@ export function AgentGUINodeView({
     [onWorkspaceFileReferencesAdded]
   );
   const confirmWorkspaceReferencePicker = useCallback(
-    (refs: WorkspaceFileReference[]) => {
-      settleReferencePicker({ files: refs, mentionItems: [] }, refs);
+    async (refs: WorkspaceFileReference[]) => {
+      const wantsHostFiles = refs.some(
+        (ref) => ref.path === hostLocalFileActionPath
+      );
+      if (!wantsHostFiles) {
+        settleReferencePicker(
+          { files: refs, mentionItems: [], hostAttachments: [] },
+          refs
+        );
+        return;
+      }
+      const workspaceRefs = refs.filter(
+        (ref) => ref.path !== hostLocalFileActionPath
+      );
+      const selected = await agentHostApi.workspace.selectFiles();
+      const hostAttachments = selected.map((file) => ({
+        hostPath: file.path,
+        name: file.name || file.path.split("/").pop() || file.path,
+        mimeType: null
+      }));
+      settleReferencePicker(
+        { files: workspaceRefs, mentionItems: [], hostAttachments },
+        workspaceRefs
+      );
     },
-    [settleReferencePicker]
+    [agentHostApi.workspace, settleReferencePicker]
   );
   // 「文件夹=一个 reference 节点」确认:navigable 源文件夹折叠成 workspace-reference
   // mention item(只携带可解析句柄 source+id+groupId,不展开文件);松散文件仍按 file
@@ -938,7 +1065,7 @@ export function AgentGUINodeView({
         });
       // bundle 不再展开文件,仅松散文件计入「最近引用」跟踪。
       settleReferencePicker(
-        { files: result.files, mentionItems },
+        { files: result.files, mentionItems, hostAttachments: [] },
         result.files
       );
     },
@@ -1328,9 +1455,9 @@ export function AgentGUINodeView({
           />
         </section>
       </div>
-      {referenceSourceAggregator ? (
+      {referenceSourceAggregatorWithHostLocalFile ? (
         <ReferenceSourcePicker
-          aggregator={referenceSourceAggregator}
+          aggregator={referenceSourceAggregatorWithHostLocalFile}
           copy={
             workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy
           }

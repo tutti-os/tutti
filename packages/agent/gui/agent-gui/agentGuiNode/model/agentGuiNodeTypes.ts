@@ -85,9 +85,22 @@ export interface AgentComposerDraftImage {
   uploadError?: string;
 }
 
+export interface AgentComposerDraftFile {
+  id: string;
+  name: string;
+  mimeType?: string;
+  path?: string;
+  hostPath?: string;
+  assetId?: string;
+  sizeBytes?: number;
+  uploading?: boolean;
+  uploadError?: string;
+}
+
 export interface AgentComposerDraft {
   prompt: string;
   images: AgentComposerDraftImage[];
+  files?: AgentComposerDraftFile[];
 }
 
 export interface AgentGUIComposerSettingsVM {

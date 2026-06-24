@@ -71,7 +71,7 @@ const mockPreflightUpload = vi.fn();
 let mockViewModel: AgentGUINodeViewModel;
 
 function createDraft(prompt: string): AgentComposerDraft {
-  return { prompt, images: [] };
+  return { prompt, images: [], files: [] };
 }
 
 function textQueuedPrompt(
