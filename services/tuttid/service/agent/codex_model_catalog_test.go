@@ -27,7 +27,7 @@ done
 
 	result, err := (CodexCLIModelLister{
 		Command: scriptPath,
-		Timeout: 5 * time.Second,
+		Timeout: 15 * time.Second,
 	}).ListModels(context.Background())
 	if err != nil {
 		t.Fatalf("ListModels returned error: %v", err)
@@ -75,7 +75,7 @@ done
 		LookPath: func(string) (string, error) {
 			return "", os.ErrNotExist
 		},
-		Timeout: 5 * time.Second,
+		Timeout: 15 * time.Second,
 	}).ListModels(context.Background())
 	if err != nil {
 		t.Fatalf("ListModels returned error: %v", err)

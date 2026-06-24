@@ -56,6 +56,19 @@ func (s Service) primaryAgentNPMRegistry() string {
 	return s.agentNPMRegistries()[0]
 }
 
+// withAgentNPMRegistry returns env with exactly one npm_config_registry entry.
+func withAgentNPMRegistry(env []string, registry string) []string {
+	const prefix = "npm_config_registry="
+	result := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		if strings.HasPrefix(strings.ToLower(kv), prefix) {
+			continue
+		}
+		result = append(result, kv)
+	}
+	return append(result, prefix+registry)
+}
+
 // lookupEnv reads a single environment variable, honoring an injected Environ for
 // testability and falling back to the process environment otherwise.
 func (s Service) lookupEnv(key string) string {

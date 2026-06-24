@@ -76,6 +76,30 @@ func TestRunExternalAgentRegistryNPMInstallerFallsBackToMirror(t *testing.T) {
 	}
 }
 
+func TestRunExternalAgentRegistryNPMInstallerReplacesExistingRegistryEnv(t *testing.T) {
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := Service{
+		ManagedRuntime: fakeManagedRuntimeResolver(t, runtimeRoot),
+		Environ:        func() []string { return []string{"PATH=/usr/bin:/bin"} },
+	}
+	spec := npmInstallerSpec(t)
+	spec.RegistryNPM.Env = map[string]string{
+		"npm_config_registry": "https://registry.npmjs.org/",
+	}
+	var registriesTried []string
+	service.InstallCommand = func(_ context.Context, in InstallCommandInput) (InstallCommandResult, error) {
+		registriesTried = append(registriesTried, registryFromEnv(in.Env))
+		return InstallCommandResult{ExitCode: 0}, nil
+	}
+
+	if _, err := service.runExternalAgentRegistryNPMInstaller(context.Background(), spec); err != nil {
+		t.Fatalf("runExternalAgentRegistryNPMInstaller() error = %v", err)
+	}
+	if !slices.Equal(registriesTried, []string{"https://registry.npmjs.org"}) {
+		t.Fatalf("registries tried = %#v, want normalized official registry", registriesTried)
+	}
+}
+
 func TestResolveExternalRegistryNPMSpecExecEnvInjectsPrimaryRegistry(t *testing.T) {
 	home := t.TempDir()
 	registryStore, prefixDir := fakeClaudeExternalRegistry(t)

@@ -540,7 +540,7 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, spec 
 	registries := s.agentNPMRegistries()
 	var result InstallCommandResult
 	for i, registry := range registries {
-		env := append(slices.Clone(baseEnv), "npm_config_registry="+registry)
+		env := withAgentNPMRegistry(slices.Clone(baseEnv), registry)
 		attemptCtx, cancel := context.WithTimeout(ctx, perRegistryInstallTimeout)
 		result, err = s.installCommand(attemptCtx, InstallCommandInput{
 			Command: command,

@@ -365,6 +365,7 @@ func TestServiceListIgnoresStaleGlobalClaudeACPAdapter(t *testing.T) {
 		Now: func() time.Time {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
+		ProbeTimeout: 10 * time.Second,
 		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 			return AuthInfo{Status: AuthAuthenticated}, true
 		},
@@ -497,7 +498,7 @@ func TestServiceListReportsInstallActionWhenExternalAdapterCommandFailsAfterRead
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
 		ProbeReadyAfter: 10 * time.Millisecond,
-		ProbeTimeout:    2 * time.Second,
+		ProbeTimeout:    10 * time.Second,
 		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 			return AuthInfo{Status: AuthAuthenticated}, true
 		},

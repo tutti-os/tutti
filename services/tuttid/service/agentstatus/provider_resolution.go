@@ -139,7 +139,7 @@ func (s Service) resolveExternalRegistryNPMSpec(
 	// isn't found). This single-shot path can't retry a chain, so use the primary
 	// registry (override, else official). Harmless when running the installed bin
 	// directly, which never consults npm.
-	spec.AdapterEnv = append(spec.AdapterEnv, "npm_config_registry="+s.primaryAgentNPMRegistry())
+	spec.AdapterEnv = withAgentNPMRegistry(spec.AdapterEnv, s.primaryAgentNPMRegistry())
 	return spec
 }
 
