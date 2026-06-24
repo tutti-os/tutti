@@ -681,6 +681,9 @@ importers:
 
   packages/workspace/external-core:
     dependencies:
+      "@tutti-os/ui-rich-text":
+        specifier: workspace:*
+        version: link:../../ui/rich-text
       "@tutti-os/workspace-file-reference":
         specifier: workspace:*
         version: link:../file-reference

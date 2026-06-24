@@ -12,6 +12,8 @@ import {
   parseRichTextMentionHref,
   removeRichTextLinkFromContent,
   removeRichTextMentionFromContent,
+  sanitizeRichTextMentionForAgentContext,
+  sanitizeRichTextMentionScopeForAgentContext,
   serializeRichTextDocumentToContent
 } from "./richTextDocument.ts";
 import { createRichTextMentionAttrs } from "../plugins/mention.ts";
@@ -74,6 +76,49 @@ test("does not serialize reserved mention scope fields", () => {
   assert.equal(
     createRichTextMentionHref(mention),
     "mention://provider/entity?workspaceId=ws_1"
+  );
+});
+
+test("sanitizes rich text mention scope for agent context", () => {
+  assert.deepEqual(
+    sanitizeRichTextMentionScopeForAgentContext({
+      workspaceId: " ws_1 ",
+      topicId: "topic_1",
+      iconUrl: "DATA:image/png;base64,weather",
+      thumbnailUrl: "https://example.test/thumb.png",
+      link: "/apps/weather",
+      sourceUrl: "Blob:https://example.test/source",
+      "meta.source": "presentation",
+      large: "x".repeat(2049),
+      empty: "",
+      objectValue: { id: "not-string" }
+    }),
+    {
+      topicId: "topic_1",
+      workspaceId: "ws_1"
+    }
+  );
+});
+
+test("sanitizes rich text mention identity for agent context", () => {
+  assert.deepEqual(
+    sanitizeRichTextMentionForAgentContext({
+      providerId: " workspace-app ",
+      entityId: " weather ",
+      label: " @Weather ",
+      scope: {
+        workspaceId: "ws_1",
+        iconUrl: "data:image/png;base64,weather"
+      }
+    }),
+    {
+      providerId: "workspace-app",
+      entityId: "weather",
+      label: "Weather",
+      scope: {
+        workspaceId: "ws_1"
+      }
+    }
   );
 });
 

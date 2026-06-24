@@ -5,6 +5,9 @@ export { findWorkspaceApp } from "./services/internal/workspaceAppCenterLaunchRe
 export {
   createWorkspaceAppCenterContribution,
   createWorkspaceAppCenterDockEntries,
+  readWorkspaceAppIdFromDockEntryId,
+  readWorkspaceAppIdFromInstanceId,
+  readWorkspaceAppIdFromNodeId,
   reportWorkspaceAppOpenedFromDockEntry,
   resolveWorkspaceAppDisplayName,
   workspaceAppBrowserPartitionPrefix,

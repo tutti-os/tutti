@@ -1,12 +1,17 @@
 import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
 import type { BrowserNodeFeature } from "@tutti-os/browser-node";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import { createWorkspaceAppCenterContribution } from "@renderer/features/workspace-app-center";
+import {
+  createWorkspaceAppCenterContribution,
+  readWorkspaceAppIdFromNodeId
+} from "@renderer/features/workspace-app-center";
+import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { DesktopBrowserApi, DesktopRuntimeApi } from "@preload/types";
 import { createWorkspaceAppBrowserFeature } from "./workspaceAppBrowserFeature.ts";
 import type { WorkspaceBrowserService } from "../workspaceBrowserService.ts";
 
 interface CachedWorkspaceAppBrowserFeature {
+  appCenterService: IWorkspaceAppCenterService;
   browserApi: DesktopBrowserApi;
   feature: BrowserNodeFeature;
   runtimeApi: Pick<DesktopRuntimeApi, "logRendererDiagnostic">;
@@ -26,6 +31,7 @@ export const appCenterWorkbenchContributionFactory: DesktopWorkbenchContribution
         ? createWorkspaceAppCenterContribution({
             appCenterService: context.appCenterService,
             browserFeature: resolveWorkspaceAppBrowserFeature({
+              appCenterService: context.appCenterService,
               browserApi: context.browserApi,
               browserService: context.browserService,
               i18n: context.appI18n,
@@ -41,6 +47,7 @@ export const appCenterWorkbenchContributionFactory: DesktopWorkbenchContribution
   };
 
 function resolveWorkspaceAppBrowserFeature(input: {
+  appCenterService: IWorkspaceAppCenterService;
   browserApi: DesktopBrowserApi;
   browserService: WorkspaceBrowserService;
   i18n?: I18nRuntime<string>;
@@ -49,6 +56,7 @@ function resolveWorkspaceAppBrowserFeature(input: {
 }): BrowserNodeFeature {
   const cached = browserFeaturesByWorkspaceId.get(input.workspaceId);
   if (
+    cached?.appCenterService === input.appCenterService &&
     cached?.browserApi === input.browserApi &&
     cached.runtimeApi === input.runtimeApi
   ) {
@@ -58,14 +66,33 @@ function resolveWorkspaceAppBrowserFeature(input: {
   const feature = createWorkspaceAppBrowserFeature({
     browserApi: input.browserApi,
     browserService: input.browserService,
+    getAppLaunchUrlForNodeId: (nodeId) =>
+      resolveWorkspaceAppLaunchUrlForNodeId(input.appCenterService, nodeId),
     i18n: input.i18n,
     runtimeApi: input.runtimeApi,
     workspaceId: input.workspaceId
   });
   browserFeaturesByWorkspaceId.set(input.workspaceId, {
+    appCenterService: input.appCenterService,
     browserApi: input.browserApi,
     feature,
     runtimeApi: input.runtimeApi
   });
   return feature;
+}
+
+function resolveWorkspaceAppLaunchUrlForNodeId(
+  appCenterService: IWorkspaceAppCenterService,
+  nodeId: string
+): string | null {
+  const appId = readWorkspaceAppIdFromNodeId(nodeId);
+  if (!appId) {
+    return null;
+  }
+  for (const app of appCenterService.store.apps) {
+    if (app.appId === appId) {
+      return app.launchUrl ?? null;
+    }
+  }
+  return null;
 }

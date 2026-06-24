@@ -59,32 +59,39 @@
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
-        "import": "./dist/index.js"
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
       },
       "./at-panel": {
         "types": "./dist/at-panel/index.d.ts",
-        "import": "./dist/at-panel/index.js"
+        "import": "./dist/at-panel/index.js",
+        "default": "./dist/at-panel/index.js"
       },
       "./at-panel/index.css": "./dist/at-panel/index.css",
       "./at-panel/model": {
         "types": "./dist/at-panel/model.d.ts",
-        "import": "./dist/at-panel/model.js"
+        "import": "./dist/at-panel/model.js",
+        "default": "./dist/at-panel/model.js"
       },
       "./core": {
         "types": "./dist/core/index.d.ts",
-        "import": "./dist/core/index.js"
+        "import": "./dist/core/index.js",
+        "default": "./dist/core/index.js"
       },
       "./editor": {
         "types": "./dist/editor/index.d.ts",
-        "import": "./dist/editor/index.js"
+        "import": "./dist/editor/index.js",
+        "default": "./dist/editor/index.js"
       },
       "./plugins": {
         "types": "./dist/plugins/index.d.ts",
-        "import": "./dist/plugins/index.js"
+        "import": "./dist/plugins/index.js",
+        "default": "./dist/plugins/index.js"
       },
       "./types": {
         "types": "./dist/types/index.d.ts",
-        "import": "./dist/types/index.js"
+        "import": "./dist/types/index.js",
+        "default": "./dist/types/index.js"
       }
     },
     "types": "./dist/index.d.ts",

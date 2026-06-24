@@ -132,6 +132,18 @@ export function readWorkspaceAppIdFromInstanceId(
     : null;
 }
 
+export function readWorkspaceAppIdFromNodeId(
+  value: string | null | undefined
+): string | null {
+  const webviewPrefix = `${workspaceAppWebviewTypeID}:`;
+  return (
+    readWorkspaceAppIdFromDockEntryId(value) ??
+    (value?.startsWith(webviewPrefix)
+      ? readWorkspaceAppIdFromInstanceId(value.slice(webviewPrefix.length))
+      : null)
+  );
+}
+
 export function reportWorkspaceAppOpenedFromDockEntry(input: {
   appCenterService: IWorkspaceAppCenterService;
   entryId: string;

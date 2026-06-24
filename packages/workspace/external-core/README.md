@@ -25,3 +25,26 @@ trusted app APIs may read or update host workspace state directly.
   state.
 - `workspace.openFeature()` for user-activated host workspace navigation, such as opening the message center.
 - `logs.write()` for fire-and-forget frontend diagnostics that append to the workspace app `web.log`.
+
+## Rich Text At Providers
+
+Workspace apps that use `@tutti-os/ui-rich-text` can adapt host mention
+candidates from `window.tuttiExternal.at.query()` directly into rich-text trigger
+providers:
+
+```ts
+import { createTuttiExternalAtRichTextTriggerProviders } from "@tutti-os/workspace-external-core/rich-text";
+
+const triggerProviders = createTuttiExternalAtRichTextTriggerProviders({
+  bridge: window.tuttiExternal,
+  providerIds: ["workspace-app", "agent-session", "agent-generated-file"]
+});
+```
+
+Each external at provider becomes one `RichTextTriggerProvider` with the same
+provider id. This keeps rich-text categories and sections aligned with the host
+contract, while the app still owns local-only mention sources, caching policy,
+i18n labels, palette categories, row rendering, and insertion side effects.
+
+See `@tutti-os/ui-rich-text` for the generic trigger-provider and at-panel
+contracts.

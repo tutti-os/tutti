@@ -40,6 +40,24 @@ const RESERVED_MENTION_SCOPE_KEYS = new Set([
   "v",
   "version"
 ]);
+const PRESENTATION_MENTION_CONTEXT_KEYS = new Set([
+  "agentIconUrl",
+  "iconUrl",
+  "thumbnailUrl",
+  "userAvatarPlaceholderUrl"
+]);
+const DEFAULT_MENTION_CONTEXT_MAX_VALUE_LENGTH = 2048;
+
+export interface RichTextMentionAgentContext {
+  providerId: string;
+  entityId: string;
+  label: string;
+  scope?: Readonly<Record<string, string>>;
+}
+
+export interface SanitizeRichTextMentionContextOptions {
+  maxValueLength?: number;
+}
 
 type LegacyJSONContentNode = {
   type?: string;
@@ -160,6 +178,79 @@ function normalizeMentionLabel(value: string): string {
 
 function isReservedMentionScopeKey(key: string): boolean {
   return RESERVED_MENTION_SCOPE_KEYS.has(key) || key.startsWith("meta.");
+}
+
+function isPresentationMentionContextKey(key: string): boolean {
+  return PRESENTATION_MENTION_CONTEXT_KEYS.has(key);
+}
+
+function isUnsafeMentionContextValue(value: string, maxValueLength: number) {
+  const normalizedValue = value.toLowerCase();
+  return (
+    value.length > maxValueLength ||
+    normalizedValue.startsWith("data:") ||
+    normalizedValue.startsWith("blob:")
+  );
+}
+
+export function sanitizeRichTextMentionScopeForAgentContext(
+  scope?: Readonly<Record<string, unknown>> | null,
+  options: SanitizeRichTextMentionContextOptions = {}
+): Record<string, string> | undefined {
+  if (!scope) {
+    return undefined;
+  }
+  const maxValueLength =
+    options.maxValueLength && options.maxValueLength > 0
+      ? options.maxValueLength
+      : DEFAULT_MENTION_CONTEXT_MAX_VALUE_LENGTH;
+  const nextScope: Record<string, string> = {};
+  for (const [key, value] of Object.entries(scope).sort(([left], [right]) =>
+    left.localeCompare(right)
+  )) {
+    const nextKey = key.trim();
+    if (
+      !nextKey ||
+      isReservedMentionScopeKey(nextKey) ||
+      isPresentationMentionContextKey(nextKey) ||
+      typeof value !== "string"
+    ) {
+      continue;
+    }
+    const nextValue = value.trim();
+    if (!nextValue || isUnsafeMentionContextValue(nextValue, maxValueLength)) {
+      continue;
+    }
+    nextScope[nextKey] = nextValue;
+  }
+  return Object.keys(nextScope).length ? nextScope : undefined;
+}
+
+export function sanitizeRichTextMentionForAgentContext(
+  mention: {
+    providerId?: string | null;
+    entityId?: string | null;
+    label?: string | null;
+    scope?: Readonly<Record<string, unknown>> | null;
+  },
+  options: SanitizeRichTextMentionContextOptions = {}
+): RichTextMentionAgentContext | undefined {
+  const providerId = mention.providerId?.trim() ?? "";
+  const entityId = mention.entityId?.trim() ?? "";
+  const label = normalizeMentionLabel(mention.label ?? "") || entityId;
+  if (!providerId || !entityId || !label) {
+    return undefined;
+  }
+  const scope = sanitizeRichTextMentionScopeForAgentContext(
+    mention.scope,
+    options
+  );
+  return {
+    providerId,
+    entityId,
+    label,
+    ...(scope ? { scope } : {})
+  };
 }
 
 function createMentionQueryParams(

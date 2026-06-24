@@ -6,7 +6,8 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     "contracts/index": "src/contracts/index.ts",
-    "core/index": "src/core/index.ts"
+    "core/index": "src/core/index.ts",
+    "rich-text/index": "src/rich-text/index.ts"
   },
   format: ["esm"],
   sourcemap: true

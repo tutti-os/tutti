@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./contracts": "./src/contracts/index.ts",
-    "./core": "./src/core/index.ts"
+    "./core": "./src/core/index.ts",
+    "./rich-text": "./src/rich-text/index.ts"
   },
   "files": [
     "dist",
@@ -24,6 +25,7 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
+    "@tutti-os/ui-rich-text": "workspace:*",
     "@tutti-os/workspace-file-reference": "workspace:*",
     "@tutti-os/workspace-user-project": "workspace:*"
   },
@@ -46,8 +48,25 @@
       "./core": {
         "types": "./dist/core/index.d.ts",
         "import": "./dist/core/index.js"
+      },
+      "./rich-text": {
+        "types": "./dist/rich-text/index.d.ts",
+        "import": "./dist/rich-text/index.js"
       }
     },
-    "types": "./dist/index.d.ts"
+    "types": "./dist/index.d.ts",
+    "typesVersions": {
+      "*": {
+        "contracts": [
+          "./dist/contracts/index.d.ts"
+        ],
+        "core": [
+          "./dist/core/index.d.ts"
+        ],
+        "rich-text": [
+          "./dist/rich-text/index.d.ts"
+        ]
+      }
+    }
   }
 }

@@ -8,12 +8,29 @@ import type {
   WorkspaceAppCenterReadableStoreState
 } from "@tutti-os/workspace-app-center";
 import { createWorkspaceAppWebviewBrowserLease } from "./workspaceAppWebviewBrowserAnalytics.ts";
+import { resolveWorkspaceAppWebviewUrl } from "./workspaceAppCenterWebviewUrl.ts";
 import {
+  readWorkspaceAppIdFromNodeId,
   reportWorkspaceAppOpenedFromDockEntry,
   resolveWorkspaceAppCenterLaunchRequest,
   workspaceAppDockEntryId,
+  workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "./workspaceAppCenterLaunchRequest.ts";
+
+test("workspace app node ids resolve app ids from dock and webview node formats", () => {
+  assert.equal(
+    readWorkspaceAppIdFromNodeId(workspaceAppDockEntryId("group-chat")),
+    "group-chat"
+  );
+  assert.equal(
+    readWorkspaceAppIdFromNodeId(
+      `${workspaceAppWebviewTypeID}:${workspaceAppWebviewInstanceId("group-chat")}`
+    ),
+    "group-chat"
+  );
+  assert.equal(readWorkspaceAppIdFromNodeId("browser:browser-1"), null);
+});
 
 test("workspace app contribution reports app open from dock launch requests", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
@@ -115,6 +132,47 @@ test("workspace app launch request preserves prepared payload previous status", 
         }
       }
     ]
+  );
+});
+
+test("workspace app webview URL prefers the current launch URL over stale activation ports", () => {
+  assert.equal(
+    resolveWorkspaceAppWebviewUrl({
+      activation: {
+        payload: {
+          appId: "group-chat",
+          url: "http://127.0.0.1:4173/rooms/old"
+        },
+        sequence: 1,
+        type: "open-url"
+      },
+      appCanUseExternalState: true,
+      appLaunchUrl: "http://127.0.0.1:51234/",
+      externalNodeState: {
+        title: "Group Chat",
+        url: "http://127.0.0.1:4173/rooms/old"
+      }
+    }),
+    "http://127.0.0.1:51234/"
+  );
+});
+
+test("workspace app webview URL preserves same-origin activation deep links", () => {
+  assert.equal(
+    resolveWorkspaceAppWebviewUrl({
+      activation: {
+        payload: {
+          appId: "group-chat",
+          url: "http://127.0.0.1:51234/rooms/current"
+        },
+        sequence: 1,
+        type: "open-url"
+      },
+      appCanUseExternalState: true,
+      appLaunchUrl: "http://127.0.0.1:51234/",
+      externalNodeState: null
+    }),
+    "http://127.0.0.1:51234/rooms/current"
   );
 });
 
