@@ -11,13 +11,15 @@ import type { WorkspaceBrowserService } from "../workspaceBrowserService.ts";
 export function createWorkspaceAppBrowserFeature(input: {
   browserApi: DesktopBrowserApi;
   browserService: WorkspaceBrowserService;
+  getAppLaunchUrlForNodeId?: (nodeId: string) => string | null | undefined;
   i18n?: I18nRuntime<string>;
   runtimeApi: Pick<DesktopRuntimeApi, "logRendererDiagnostic">;
   workspaceId: string;
 }): BrowserNodeFeature {
   const feature = createBrowserNodeFeature({
     hostApi: input.browserService.createFeatureHostApi({
-      acceptsEvent: isWorkspaceAppBrowserEvent,
+      acceptsEvent: (event) =>
+        isWorkspaceAppBrowserEvent(event, input.getAppLaunchUrlForNodeId),
       source: "workspace_app",
       workspaceId: input.workspaceId
     }),
@@ -38,10 +40,35 @@ export function createWorkspaceAppBrowserFeature(input: {
   return feature;
 }
 
-function isWorkspaceAppBrowserEvent(event: BrowserNodeEvent): boolean {
+function isWorkspaceAppBrowserEvent(
+  event: BrowserNodeEvent,
+  getAppLaunchUrlForNodeId:
+    | ((nodeId: string) => string | null | undefined)
+    | undefined
+): boolean {
   const nodeId = event.type === "open-url" ? event.sourceNodeId : event.nodeId;
-  return (
+  const isWorkspaceAppNode =
     nodeId.startsWith(`${workspaceAppWebviewTypeID}:`) ||
-    nodeId.startsWith("workspace-app:")
-  );
+    nodeId.startsWith("workspace-app:");
+  if (!isWorkspaceAppNode) {
+    return false;
+  }
+  if (
+    event.type === "open-url" &&
+    hasSameUrlOrigin(event.url, getAppLaunchUrlForNodeId?.(nodeId))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function hasSameUrlOrigin(
+  left: string,
+  right: string | null | undefined
+): boolean {
+  try {
+    return right != null && new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
 }

@@ -11,7 +11,6 @@ import { resolveWorkspaceAppStatusPresentation } from "@tutti-os/workspace-app-c
 import { createAppCenterI18nRuntime } from "@tutti-os/workspace-app-center/i18n";
 import type {
   WorkbenchContribution,
-  WorkbenchHostActivation,
   WorkbenchHostDockEntry,
   WorkbenchHostExternalStateLookupInput,
   WorkbenchHostExternalStateSource,
@@ -31,6 +30,11 @@ import {
 } from "./workspaceAppCenterDockOrdering.ts";
 import { projectWorkspaceAppCenterDockApps } from "./workspaceAppCenterDockProjection.ts";
 import { workspaceAppCenterFrame } from "./workspaceAppCenterFrame.ts";
+import {
+  readWorkspaceAppOpenPayload,
+  resolveWorkspaceAppWebviewUrl,
+  type WorkspaceAppWebviewExternalState
+} from "./workspaceAppCenterWebviewUrl.ts";
 import { workspaceAppWebviewFrame } from "./workspaceAppWebviewFrame.ts";
 import {
   findWorkspaceApp,
@@ -359,11 +363,6 @@ function WorkspaceAppWebviewLoadingState({
   );
 }
 
-interface WorkspaceAppWebviewExternalState {
-  title: string | null;
-  url: string | null;
-}
-
 type WorkspaceAppCenterExternalNodeState =
   | WorkspaceAppCenterViewState
   | WorkspaceAppWebviewExternalState
@@ -439,20 +438,6 @@ function readWorkspaceAppExternalState(
     : null;
 }
 
-function resolveWorkspaceAppWebviewUrl(input: {
-  activation: WorkbenchHostActivation | null;
-  appCanUseExternalState: boolean;
-  appLaunchUrl: string | null;
-  externalNodeState: WorkspaceAppWebviewExternalState | null;
-}): string {
-  return (
-    readWorkspaceAppOpenPayload(input.activation)?.url ??
-    normalizeWorkspaceAppUrl(input.appLaunchUrl) ??
-    (input.appCanUseExternalState ? input.externalNodeState?.url : null) ??
-    "about:blank"
-  );
-}
-
 function resolveWorkspaceAppWebviewNavigationPolicy(input: {
   appCenterService: IWorkspaceAppCenterService;
   appId: string;
@@ -497,30 +482,6 @@ function normalizeWorkspaceAppUrl(
 ): string | null {
   const trimmed = value?.trim() ?? "";
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function readWorkspaceAppOpenPayload(
-  activation: WorkbenchHostActivation | null
-): { appId: string; title?: string; url: string } | null {
-  if (
-    activation?.type !== "open-url" ||
-    !activation.payload ||
-    typeof activation.payload !== "object"
-  ) {
-    return null;
-  }
-  const payload = activation.payload as {
-    appId?: unknown;
-    title?: unknown;
-    url?: unknown;
-  };
-  return typeof payload.appId === "string" && typeof payload.url === "string"
-    ? {
-        appId: payload.appId,
-        title: typeof payload.title === "string" ? payload.title : undefined,
-        url: payload.url
-      }
-    : null;
 }
 
 function workspaceAppBrowserSessionPartition(input: {

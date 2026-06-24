@@ -8,6 +8,7 @@ import type {
   WorkspaceAppCenterReadableStoreState
 } from "@tutti-os/workspace-app-center";
 import { createWorkspaceAppWebviewBrowserLease } from "./workspaceAppWebviewBrowserAnalytics.ts";
+import { resolveWorkspaceAppWebviewUrl } from "./workspaceAppCenterWebviewUrl.ts";
 import {
   reportWorkspaceAppOpenedFromDockEntry,
   resolveWorkspaceAppCenterLaunchRequest,
@@ -115,6 +116,47 @@ test("workspace app launch request preserves prepared payload previous status", 
         }
       }
     ]
+  );
+});
+
+test("workspace app webview URL prefers the current launch URL over stale activation ports", () => {
+  assert.equal(
+    resolveWorkspaceAppWebviewUrl({
+      activation: {
+        payload: {
+          appId: "group-chat",
+          url: "http://127.0.0.1:4173/rooms/old"
+        },
+        sequence: 1,
+        type: "open-url"
+      },
+      appCanUseExternalState: true,
+      appLaunchUrl: "http://127.0.0.1:51234/",
+      externalNodeState: {
+        title: "Group Chat",
+        url: "http://127.0.0.1:4173/rooms/old"
+      }
+    }),
+    "http://127.0.0.1:51234/"
+  );
+});
+
+test("workspace app webview URL preserves same-origin activation deep links", () => {
+  assert.equal(
+    resolveWorkspaceAppWebviewUrl({
+      activation: {
+        payload: {
+          appId: "group-chat",
+          url: "http://127.0.0.1:51234/rooms/current"
+        },
+        sequence: 1,
+        type: "open-url"
+      },
+      appCanUseExternalState: true,
+      appLaunchUrl: "http://127.0.0.1:51234/",
+      externalNodeState: null
+    }),
+    "http://127.0.0.1:51234/rooms/current"
   );
 });
 
