@@ -362,6 +362,49 @@ func TestAppRunnerStopProcessDoesNotOverwriteReplacementRuntime(t *testing.T) {
 	}
 }
 
+func TestAppRunnerStopProcessWaitsForProcessDoneWhenContextIsCanceled(t *testing.T) {
+	runner := &AppRunner{}
+	runner.ensure()
+	key := appRuntimeKey("ws-runner", "hello")
+	process := &appProcess{done: make(chan error)}
+	runner.mu.Lock()
+	runner.processes[key] = process
+	runner.states[key] = workspacebiz.AppRuntimeState{
+		Status: workspacebiz.AppRuntimeStatusRunning,
+	}
+	runner.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	type stopResult struct {
+		state workspacebiz.AppRuntimeState
+		err   error
+	}
+	stopped := make(chan stopResult, 1)
+	go func() {
+		state, err := runner.stopProcess(ctx, key, process)
+		stopped <- stopResult{state: state, err: err}
+	}()
+
+	select {
+	case result := <-stopped:
+		t.Fatalf("stopProcess() returned before process done: %#v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+	process.done <- nil
+	select {
+	case result := <-stopped:
+		if !errors.Is(result.err, context.Canceled) {
+			t.Fatalf("stopProcess() error = %v, want context.Canceled", result.err)
+		}
+		if result.state.Status != workspacebiz.AppRuntimeStatusFailed {
+			t.Fatalf("stopProcess() status = %q, want failed", result.state.Status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for stopProcess")
+	}
+}
+
 func TestAppRunnerStartWithoutRestartReusesQueuedStart(t *testing.T) {
 	root := t.TempDir()
 	packageDir := filepath.Join(root, "package")

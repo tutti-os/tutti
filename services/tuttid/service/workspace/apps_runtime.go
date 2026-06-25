@@ -87,7 +87,15 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 		var err error
 		builtins, err = s.refreshBuiltinCatalogForStartEnabled(ctx, workspaceID)
 		if err != nil {
-			return nil, err
+			slog.Warn(
+				"workspace app start enabled remote catalog refresh failed; continuing with cached builtin catalog",
+				"workspaceId", workspaceID,
+				"error", err,
+			)
+			builtins, err = s.builtinCatalog(ctx)
+			if err != nil {
+				return nil, err
+			}
 		}
 		slog.Info("workspace app start enabled remote catalog refresh completed", "workspaceId", workspaceID, "enabledAppCount", len(enabledAppIDs), "durationMs", time.Since(refreshStartedAt).Milliseconds())
 	} else {

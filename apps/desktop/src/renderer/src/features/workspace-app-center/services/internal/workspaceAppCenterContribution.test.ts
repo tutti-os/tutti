@@ -523,6 +523,34 @@ test("workspace app webview does not preserve idle app without recent handoff", 
   );
 });
 
+test("workspace app webview does not bridge terminal idle or failed handoff states", () => {
+  for (const runtimeStatus of ["idle", "failed"] as const) {
+    const app = createApp({
+      installed: true,
+      installProgress: null,
+      launchUrl: null,
+      runtimeStatus
+    });
+    const handoffOptions = {
+      externalNodeUrl: "http://127.0.0.1:58028/",
+      hadRecentHandoff: true
+    };
+
+    assert.equal(
+      shouldPreserveWorkspaceAppWebviewDuringHandoff(app, handoffOptions),
+      false
+    );
+    assert.equal(
+      shouldRenderWorkspaceAppBrowserNode(
+        app,
+        "http://127.0.0.1:58028/",
+        handoffOptions
+      ),
+      false
+    );
+  }
+});
+
 test("workspace app webview resumes default URL sync outside update handoff", () => {
   const runningApp = createApp({
     installed: true,

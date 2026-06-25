@@ -376,6 +376,10 @@ function WorkspaceAppWebviewBody({
       recentHandoffAppIdRef.current = null;
       return;
     }
+    if (app?.runtimeStatus === "idle" || app?.runtimeStatus === "failed") {
+      recentHandoffAppIdRef.current = null;
+      return;
+    }
     if (!app || recentHandoffAppIdRef.current !== appId) {
       recentHandoffAppIdRef.current = null;
     }

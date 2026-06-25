@@ -64,7 +64,7 @@ function shouldBridgeWorkspaceAppWebviewHandoffGap(
   return (
     options.hadRecentHandoff === true &&
     normalizeWorkspaceAppUrl(options.externalNodeUrl) !== null &&
-    (app.runtimeStatus === "stopping" || app.runtimeStatus === "idle")
+    app.runtimeStatus === "stopping"
   );
 }
 

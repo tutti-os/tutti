@@ -449,6 +449,11 @@ func (r *AppRunner) stopProcess(ctx context.Context, key string, process *appPro
 	select {
 	case <-process.done:
 	case <-ctx.Done():
+		_ = killAppProcess(process.command)
+		select {
+		case <-process.done:
+		case <-time.After(500 * time.Millisecond):
+		}
 		return r.setStoppedProcessFailed(key, process, "stop", ctx.Err()), ctx.Err()
 	case <-time.After(2 * time.Second):
 		_ = killAppProcess(process.command)

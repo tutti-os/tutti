@@ -1534,6 +1534,75 @@ func TestAppCenterServiceStartEnabledRefreshesPreferredCatalogChannel(t *testing
 	}
 }
 
+func TestAppCenterServiceStartEnabledFallsBackToCachedCatalogWhenRefreshFails(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("TUTTI_APP_CATALOG_FILE", "")
+	packageDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "tutti-onboarding",
+		Version:       "0.1.0",
+		Name:          "Getting Started",
+		Description:   "Learn Tutti and Agent collaboration",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "bootstrap.sh",
+			HealthcheckPath: "/healthz",
+			Profile:         "standalone",
+		},
+	})
+
+	store := newAppStoreStub()
+	if err := store.PutAppPackage(ctx, workspacebiz.AppPackage{
+		AppID:      "tutti-onboarding",
+		Version:    "0.1.0",
+		PackageDir: packageDir,
+		Manifest:   mustReadManifestForTest(t, packageDir),
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+	}); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	if err := store.PutWorkspaceAppInstallation(ctx, workspacebiz.AppInstallation{
+		WorkspaceID: "ws-1",
+		AppID:       "tutti-onboarding",
+		Enabled:     true,
+	}); err != nil {
+		t.Fatalf("PutWorkspaceAppInstallation() error = %v", err)
+	}
+
+	launchURL := "http://127.0.0.1:41001"
+	runner := &AppRunner{}
+	runner.ensure()
+	runner.mu.Lock()
+	runner.states[appRuntimeKey("ws-1", "tutti-onboarding")] = workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: &launchURL,
+	}
+	runner.mu.Unlock()
+
+	refreshCalls := 0
+	service := AppCenterService{
+		Store:          store,
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:         runner,
+		StateDir:       t.TempDir(),
+		RemoteCatalogRefresher: func(context.Context, string) (builtinapps.CatalogSnapshot, error) {
+			refreshCalls += 1
+			return builtinapps.CatalogSnapshot{}, errors.New("catalog unavailable")
+		},
+	}
+
+	apps, err := service.StartEnabled(ctx, "ws-1")
+	if err != nil {
+		t.Fatalf("StartEnabled() error = %v", err)
+	}
+	if refreshCalls != 1 {
+		t.Fatalf("remote catalog refresh calls = %d, want 1", refreshCalls)
+	}
+	app := findWorkspaceAppForTest(apps, "tutti-onboarding")
+	if app == nil || app.Runtime.Status != workspacebiz.AppRuntimeStatusRunning {
+		t.Fatalf("StartEnabled() app = %#v", app)
+	}
+}
+
 func TestAppCenterServiceStartEnabledDoesNotWaitForRemoteCatalogWhenNoAppsAreEnabled(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("TUTTI_APP_CATALOG_FILE", "")
