@@ -773,6 +773,35 @@ func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 	}
 }
 
+func TestServiceCreateCachesProviderAvailabilityCheck(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	checker := &fakeProviderAvailabilityChecker{
+		result: []ProviderAvailability{{
+			Provider: "codex",
+			Status:   ProviderAvailabilityAvailable,
+		}},
+	}
+	service.AvailabilityChecker = checker
+
+	for _, sessionID := range []string{"session-1", "session-2"} {
+		_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+			AgentSessionID: sessionID,
+			InitialContent: TextPromptContent("hello"),
+			Provider:       "codex",
+		})
+		if err != nil {
+			t.Fatalf("Create(%s) error = %v, want nil", sessionID, err)
+		}
+	}
+	if checker.callCount != 1 {
+		t.Fatalf("availability checker calls = %d, want 1", checker.callCount)
+	}
+	if len(runtime.startCalls) != 2 {
+		t.Fatalf("start calls = %d, want 2", len(runtime.startCalls))
+	}
+}
+
 func TestServiceSendInputRejectsUnsupportedImageBeforePersistingAttachment(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.validateErr = ErrPromptImageUnsupported

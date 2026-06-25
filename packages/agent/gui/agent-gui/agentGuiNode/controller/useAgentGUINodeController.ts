@@ -5214,6 +5214,13 @@ export function useAgentGUINodeController({
           [agentSessionId]: emptyAgentComposerDraft()
         }));
         setIsLoadingMessages(true);
+        reportAgentSubmitTraceDiagnostic({
+          event: "activation.requested",
+          runtime: agentActivityRuntime,
+          trace: submitTrace,
+          workspaceId,
+          fields: { mode: "new" }
+        });
         return activation.activate({
           mode: "new",
           agentSessionId,
@@ -5234,6 +5241,16 @@ export function useAgentGUINodeController({
           const agentSessionId = result.session.agentSessionId;
           const submitTrace = submitTraceBySessionIdRef.current[agentSessionId];
           if (submitTrace) {
+            reportAgentSubmitTraceDiagnostic({
+              event: "activation.resolved",
+              runtime: agentActivityRuntime,
+              trace: submitTrace,
+              workspaceId,
+              fields: {
+                mode: "new",
+                sessionStatus: result.session.status
+              }
+            });
             reportAgentSubmitTraceDiagnostic({
               event: "submit.accepted",
               runtime: agentActivityRuntime,
@@ -5749,6 +5766,12 @@ export function useAgentGUINodeController({
           if (!isCurrentConversation(agentSessionId)) {
             return null;
           }
+          reportAgentSubmitTraceDiagnostic({
+            event: "send_input.requested",
+            runtime: agentActivityRuntime,
+            trace: submitTrace,
+            workspaceId
+          });
           return agentActivityRuntime.sendInput({
             workspaceId,
             agentSessionId,
@@ -5763,6 +5786,16 @@ export function useAgentGUINodeController({
             return;
           }
           submitTrace.turnId = result.turnId.trim() || null;
+          reportAgentSubmitTraceDiagnostic({
+            event: "send_input.resolved",
+            runtime: agentActivityRuntime,
+            trace: submitTrace,
+            workspaceId,
+            fields: {
+              submitAvailability: result.submitAvailability,
+              turnLifecycle: result.turnLifecycle
+            }
+          });
           reportAgentSubmitTraceDiagnostic({
             event: "submit.accepted",
             runtime: agentActivityRuntime,

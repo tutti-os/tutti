@@ -26,6 +26,7 @@ type PrepareInput struct {
 	Model            string
 	ReasoningEffort  string
 	ExtraSkills      []ProviderSkillBundle
+	Metadata         map[string]any
 }
 
 type PreparedRuntime struct {

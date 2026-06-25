@@ -253,9 +253,39 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   async createSession(
     input: Parameters<AgentActivityAdapter["createSession"]>[0]
   ): Promise<AgentActivitySession> {
+    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+      agentSessionId: input.agentSessionId?.trim() ?? null,
+      event: "activity_service.create.entered",
+      metadata: input.metadata,
+      provider: input.provider,
+      workspaceId: input.workspaceId
+    });
     const entry = this.controllerEntry(input.workspaceId);
+    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+      agentSessionId: input.agentSessionId?.trim() ?? null,
+      event: "activity_service.create.adapter_requested",
+      metadata: input.metadata,
+      provider: input.provider,
+      workspaceId: input.workspaceId
+    });
     const session = await entry.adapter.createSession(input);
+    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+      agentSessionId: session.agentSessionId,
+      event: "activity_service.create.adapter_resolved",
+      metadata: input.metadata,
+      provider: session.provider,
+      workspaceId: input.workspaceId,
+      fields: { sessionStatus: session.status }
+    });
     this.upsertAuthoritativeSession(session);
+    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+      agentSessionId: session.agentSessionId,
+      event: "activity_service.create.resolved",
+      metadata: input.metadata,
+      provider: session.provider,
+      workspaceId: input.workspaceId,
+      fields: { sessionStatus: session.status }
+    });
     return session;
   }
 
@@ -266,6 +296,23 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     const requestedAgentSessionId = input.agentSessionId.trim();
     const provider = resolveDesktopAgentGUIProvider(input.provider);
     const workspaceState = desktopAgentHostWorkspaceState(workspaceId);
+    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+      agentSessionId: requestedAgentSessionId,
+      event: "activity_service.activate.entered",
+      metadata: input.metadata,
+      provider,
+      workspaceId,
+      fields: { mode: input.mode }
+    });
+    if (input.mode === "new") {
+      reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+        agentSessionId: requestedAgentSessionId,
+        event: "activity_service.activate.cwd_resolve_requested",
+        metadata: input.metadata,
+        provider,
+        workspaceId
+      });
+    }
     const resolvedCwd =
       input.mode === "new"
         ? await this.resolveWorkspaceAgentCwd({
@@ -274,25 +321,52 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
             workspaceId
           })
         : null;
-    const session =
-      input.mode === "existing"
-        ? await this.getSession(workspaceId, requestedAgentSessionId)
-        : await this.createSession({
-            workspaceId,
-            agentSessionId: requestedAgentSessionId,
-            cwd: resolvedCwd?.cwd ?? null,
-            initialContent: input.initialContent ?? [],
-            initialDisplayPrompt: input.initialDisplayPrompt ?? null,
-            metadata: input.metadata,
-            model: input.settings?.model ?? null,
-            planMode: input.settings?.planMode ?? null,
-            permissionModeId: resolveComposerPermissionMode(input.settings),
-            provider,
-            reasoningEffort: input.settings?.reasoningEffort ?? null,
-            speed: input.settings?.speed ?? null,
-            title: input.title ?? null,
-            visible: input.visible ?? true
-          });
+    if (input.mode === "new") {
+      reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+        agentSessionId: requestedAgentSessionId,
+        event: "activity_service.activate.cwd_resolved",
+        metadata: input.metadata,
+        provider,
+        workspaceId,
+        fields: { cwd: resolvedCwd?.cwd ?? null }
+      });
+    }
+    let session: AgentActivitySession;
+    if (input.mode === "existing") {
+      session = await this.getSession(workspaceId, requestedAgentSessionId);
+    } else {
+      reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+        agentSessionId: requestedAgentSessionId,
+        event: "activity_service.activate.create_requested",
+        metadata: input.metadata,
+        provider,
+        workspaceId
+      });
+      session = await this.createSession({
+        workspaceId,
+        agentSessionId: requestedAgentSessionId,
+        cwd: resolvedCwd?.cwd ?? null,
+        initialContent: input.initialContent ?? [],
+        initialDisplayPrompt: input.initialDisplayPrompt ?? null,
+        metadata: input.metadata,
+        model: input.settings?.model ?? null,
+        planMode: input.settings?.planMode ?? null,
+        permissionModeId: resolveComposerPermissionMode(input.settings),
+        provider,
+        reasoningEffort: input.settings?.reasoningEffort ?? null,
+        speed: input.settings?.speed ?? null,
+        title: input.title ?? null,
+        visible: input.visible ?? true
+      });
+      reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+        agentSessionId: session.agentSessionId,
+        event: "activity_service.activate.create_resolved",
+        metadata: input.metadata,
+        provider: session.provider,
+        workspaceId,
+        fields: { sessionStatus: session.status }
+      });
+    }
     rememberAgentSessionStateDefaults(
       workspaceState,
       session.agentSessionId,
@@ -309,6 +383,17 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     });
     const activationFailed = hostSession.status === "failed";
     const activationError = agentSessionActivationError(session);
+    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+      agentSessionId: session.agentSessionId,
+      event: "activity_service.activate.resolved",
+      metadata: input.metadata,
+      provider: session.provider,
+      workspaceId,
+      fields: {
+        mode: input.mode,
+        sessionStatus: hostSession.status
+      }
+    });
     return {
       activation: {
         mode: input.mode,
@@ -328,6 +413,12 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   ): ReturnType<IWorkspaceAgentActivityService["sendInput"]> {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
+    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+      agentSessionId,
+      event: "activity_service.send.entered",
+      metadata: input.metadata,
+      workspaceId
+    });
     const entry = this.controllerEntry(workspaceId);
     const previousSession =
       entry.controller
@@ -345,9 +436,27 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       );
     }
     try {
+      reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+        agentSessionId,
+        event: "activity_service.send.adapter_requested",
+        metadata: input.metadata,
+        workspaceId
+      });
       const result = await entry.adapter.sendInput({
         ...input,
         workspaceId
+      });
+      reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
+        agentSessionId,
+        event: "activity_service.send.adapter_resolved",
+        metadata: input.metadata,
+        provider: result.session.provider,
+        workspaceId,
+        fields: {
+          sessionStatus: result.session.status,
+          turnId: result.turnId,
+          turnPhase: result.turnLifecycle?.phase ?? null
+        }
       });
       const nextSession = shouldPreserveOptimisticWorkingAfterSend(
         result.session
@@ -1050,6 +1159,69 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     }
     return true;
   }
+}
+
+function reportAgentSubmitTraceDiagnostic(
+  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">,
+  input: {
+    agentSessionId: string | null;
+    event: string;
+    metadata: Record<string, unknown> | undefined;
+    workspaceId: string;
+    provider?: string | null;
+    fields?: Record<string, unknown>;
+  }
+): void {
+  const clientSubmitId = stringMetadata(input.metadata, "clientSubmitId");
+  if (!clientSubmitId) {
+    return;
+  }
+  const submittedAtUnixMs = numberMetadata(
+    input.metadata,
+    "clientSubmittedAtUnixMs"
+  );
+  try {
+    void runtimeApi
+      .logTerminalDiagnostic({
+        details: {
+          agentSessionId: input.agentSessionId,
+          clientSubmitId,
+          clientSubmittedAtUnixMs: submittedAtUnixMs,
+          elapsedSinceClientSubmitMs:
+            submittedAtUnixMs > 0
+              ? Math.max(0, Date.now() - submittedAtUnixMs)
+              : null,
+          provider: input.provider ?? null,
+          traceEvent: input.event,
+          ...(input.fields ?? {})
+        },
+        event: "agent.submit.trace",
+        level: "info",
+        workspaceId: input.workspaceId
+      })
+      .catch(() => {});
+  } catch {
+    // Diagnostic logging must not affect agent submission.
+  }
+}
+
+function stringMetadata(
+  metadata: Record<string, unknown> | undefined,
+  key: string
+): string | null {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numberMetadata(
+  metadata: Record<string, unknown> | undefined,
+  key: string
+): number {
+  const value = metadata?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  return 0;
 }
 
 function normalizeWorkspaceId(workspaceId: string): string {

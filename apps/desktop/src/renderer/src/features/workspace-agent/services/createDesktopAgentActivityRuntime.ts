@@ -60,8 +60,31 @@ export function createDesktopAgentActivityRuntime(
   });
   return {
     async activateSession(input) {
+      reportAgentSubmitTraceDiagnostic({
+        agentSessionId: input.agentSessionId,
+        event: "activity_runtime.activate.entered",
+        metadata: input.metadata,
+        runtimeApi: options.runtimeApi,
+        workspaceId: input.workspaceId,
+        fields: {
+          mode: input.mode,
+          provider: resolveDesktopAgentGUIProvider(input.provider)
+        }
+      });
       const activation =
         await workspaceAgentActivityService.activateSession(input);
+      reportAgentSubmitTraceDiagnostic({
+        agentSessionId: activation.session.agentSessionId,
+        event: "activity_runtime.activate.resolved",
+        metadata: input.metadata,
+        runtimeApi: options.runtimeApi,
+        workspaceId: input.workspaceId,
+        fields: {
+          mode: input.mode,
+          provider: activation.session.provider,
+          sessionStatus: activation.session.status
+        }
+      });
       const activationFailed = activation.activation.status === "failed";
       if (input.mode === "new" && !activationFailed) {
         await sessionStartedTracker.track({
@@ -115,7 +138,27 @@ export function createDesktopAgentActivityRuntime(
     retainSessionEvents: (input) =>
       workspaceAgentActivityService.retainSessionEvents(input),
     async sendInput(input) {
+      reportAgentSubmitTraceDiagnostic({
+        agentSessionId: input.agentSessionId,
+        event: "activity_runtime.send.entered",
+        metadata: input.metadata,
+        runtimeApi: options.runtimeApi,
+        workspaceId: input.workspaceId
+      });
       const result = await workspaceAgentActivityService.sendInput(input);
+      reportAgentSubmitTraceDiagnostic({
+        agentSessionId: result.session.agentSessionId,
+        event: "activity_runtime.send.resolved",
+        metadata: input.metadata,
+        runtimeApi: options.runtimeApi,
+        workspaceId: input.workspaceId,
+        fields: {
+          provider: result.session.provider,
+          sessionStatus: result.session.status,
+          turnId: result.turnId,
+          turnPhase: result.turnLifecycle?.phase ?? null
+        }
+      });
       await messageSentTracker.track({
         agentSessionId: result.session.agentSessionId,
         prompt: promptContentDisplayText(input.content),
@@ -256,6 +299,68 @@ export function createDesktopAgentActivityRuntime(
     subscribe: (workspaceId, listener) =>
       workspaceAgentActivityService.subscribe(workspaceId, listener)
   };
+}
+
+function reportAgentSubmitTraceDiagnostic(input: {
+  agentSessionId: string | null;
+  event: string;
+  metadata: Record<string, unknown> | undefined;
+  runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  workspaceId: string;
+  fields?: Record<string, unknown>;
+}): void {
+  if (!input.runtimeApi) {
+    return;
+  }
+  const clientSubmitId = stringMetadata(input.metadata, "clientSubmitId");
+  if (!clientSubmitId) {
+    return;
+  }
+  const submittedAtUnixMs = numberMetadata(
+    input.metadata,
+    "clientSubmittedAtUnixMs"
+  );
+  try {
+    void input.runtimeApi
+      .logTerminalDiagnostic({
+        details: {
+          agentSessionId: input.agentSessionId,
+          clientSubmitId,
+          clientSubmittedAtUnixMs: submittedAtUnixMs,
+          elapsedSinceClientSubmitMs:
+            submittedAtUnixMs > 0
+              ? Math.max(0, Date.now() - submittedAtUnixMs)
+              : null,
+          traceEvent: input.event,
+          ...(input.fields ?? {})
+        },
+        event: "agent.submit.trace",
+        level: "info",
+        workspaceId: input.workspaceId
+      })
+      .catch(() => {});
+  } catch {
+    // Diagnostic logging must not affect agent submission.
+  }
+}
+
+function stringMetadata(
+  metadata: Record<string, unknown> | undefined,
+  key: string
+): string | null {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numberMetadata(
+  metadata: Record<string, unknown> | undefined,
+  key: string
+): number {
+  const value = metadata?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  return 0;
 }
 
 function promptContentDisplayText(

@@ -22,18 +22,25 @@ func (CodexPreparer) Provider() string {
 
 func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
 	codexHome := filepath.Join(input.RuntimeRoot, "codex-home")
+	logRuntimePrepareTrace("runtime_prepare.codex.entered", input.PrepareInput, nil)
 	if err := prepareCodexHome(codexHome, input.PrepareInput); err != nil {
 		return ProviderPrepareResult{}, err
 	}
+	logRuntimePrepareTrace("runtime_prepare.codex.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(codexHome, "AGENTS.md")
+	logRuntimePrepareTrace("runtime_prepare.codex.instructions_write_requested", input.PrepareInput, nil)
 	writeResult, err := input.Store.WriteManagedBlock(instructionsPath, tuttiCLIPolicy(input.PrepareInput))
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
+	logRuntimePrepareTrace("runtime_prepare.codex.instructions_write_resolved", input.PrepareInput, map[string]any{
+		"created": writeResult.Created,
+	})
 	if input.Manifest != nil {
 		input.Manifest.RecordManagedFile(instructionsPath, "provider-instructions", writeResult.Created)
 		input.Manifest.RecordManagedFile(codexHome, "codex-home", true)
 	}
+	logRuntimePrepareTrace("runtime_prepare.codex.resolved", input.PrepareInput, nil)
 	return ProviderPrepareResult{
 		Cwd: input.Cwd,
 		Env: []string{
@@ -43,22 +50,40 @@ func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pro
 }
 
 func prepareCodexHome(codexHome string, input PrepareInput) error {
+	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_requested", input, nil)
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		return fmt.Errorf("create codex home: %w", err)
 	}
+	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_resolved", input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.user_files_requested", input, nil)
 	if err := exposeUserCodexFiles(codexHome); err != nil {
 		return err
 	}
+	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.session_config_requested", input, nil)
 	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml")); err != nil {
 		return err
 	}
+	logRuntimePrepareTrace("runtime_prepare.codex.session_config_resolved", input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_requested", input, nil)
 	if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), input); err != nil {
 		return err
 	}
-	if _, err := installProviderNativeSkills(filepath.Join(codexHome, "skills"), input); err != nil {
+	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_resolved", input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_requested", input, nil)
+	skillPaths, err := installProviderNativeSkills(filepath.Join(codexHome, "skills"), input)
+	if err != nil {
 		return err
 	}
-	return installCodexApprovalRules(codexHome, input)
+	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_resolved", input, map[string]any{
+		"skill_count": len(skillPaths),
+	})
+	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_requested", input, nil)
+	if err := installCodexApprovalRules(codexHome, input); err != nil {
+		return err
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_resolved", input, nil)
+	return nil
 }
 
 func installCodexApprovalRules(codexHome string, input PrepareInput) error {

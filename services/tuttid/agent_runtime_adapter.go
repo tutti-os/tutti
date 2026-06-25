@@ -75,6 +75,9 @@ func (a agentRuntimeAdapter) Close(ctx context.Context, input agentservice.Runti
 }
 
 func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.RuntimeExecInput) (agentservice.RuntimeExecResult, error) {
+	agentservice.LogSubmitTrace("runtime_adapter.exec.entered", input.WorkspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+		"content_block_count": len(input.Content),
+	})
 	result, err := a.controller.Exec(ctx, agentruntime.ExecInput{
 		RoomID:         input.WorkspaceID,
 		AgentSessionID: input.AgentSessionID,
@@ -83,8 +86,16 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		Metadata:       cloneRuntimeContext(input.Metadata),
 	})
 	if err != nil {
+		agentservice.LogSubmitTrace("runtime_adapter.exec.failed", input.WorkspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+			"error": err.Error(),
+		})
 		return agentservice.RuntimeExecResult{}, mapAgentRuntimeError(err)
 	}
+	agentservice.LogSubmitTrace("runtime_adapter.exec.resolved", input.WorkspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+		"turn_id":        result.TurnID,
+		"session_status": result.SessionStatus,
+		"turn_phase":     result.TurnLifecycle.Phase,
+	})
 	return agentservice.RuntimeExecResult{
 		AgentSessionID:     result.AgentSessionID,
 		Status:             result.Status,

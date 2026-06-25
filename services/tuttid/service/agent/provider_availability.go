@@ -106,11 +106,10 @@ func (s *Service) ListProviderAvailability(ctx context.Context, input ProviderAv
 }
 
 func (s *Service) ensureProviderRuntimeInstalled(ctx context.Context, provider string) error {
-	checker := s.AvailabilityChecker
-	if checker == nil {
+	if s.AvailabilityChecker == nil {
 		return nil
 	}
-	availability, err := checker.ListProviderAvailability(ctx, []string{provider})
+	availability, err := s.ListProviderAvailability(ctx, ProviderAvailabilityInput{Provider: provider})
 	if err != nil {
 		return err
 	}

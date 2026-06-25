@@ -459,9 +459,17 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if err != nil {
 		return ExecResult{}, err
 	}
+	metadata := cloneExecMetadata(input.Metadata)
+	logAgentSubmitTrace("runtime.exec.entered", session, "", metadata, map[string]any{
+		"content_block_count": len(input.Content),
+	})
 	if err := c.ensureLiveAdapterSession(ctx, session, adapter); err != nil {
+		logAgentSubmitTrace("runtime.exec.ensure_live_failed", session, "", metadata, map[string]any{
+			"error": err.Error(),
+		})
 		return ExecResult{}, err
 	}
+	logAgentSubmitTrace("runtime.exec.adapter_session_ready", session, "", metadata, nil)
 	if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
 		session = refreshed
 	}
@@ -477,7 +485,6 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	}
 	turnID := newID()
 	runCtx, cancel := context.WithCancel(context.Background())
-	metadata := cloneExecMetadata(input.Metadata)
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(runCtx, execMetadataContextKey{}, metadata)
 	}

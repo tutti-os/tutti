@@ -61,18 +61,29 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	if cwd == "" {
 		return PreparedRuntime{}, errors.New("agent runtime prepare requires cwd")
 	}
+	input.WorkspaceID = workspaceID
+	input.AgentSessionID = agentSessionID
+	input.Provider = providerID
+	input.Cwd = cwd
+	logRuntimePrepareTrace("runtime_prepare.entered", input, map[string]any{
+		"provider": providerID,
+		"cwd":      cwd,
+	})
 	if err := ensureCwdDirectory(cwd); err != nil {
 		return PreparedRuntime{}, err
 	}
+	logRuntimePrepareTrace("runtime_prepare.cwd_checked", input, nil)
 
 	store := p.runtimeStore()
 	runtimeRoot, err := store.RuntimeRoot(workspaceID, agentSessionID)
 	if err != nil {
 		return PreparedRuntime{}, err
 	}
+	logRuntimePrepareTrace("runtime_prepare.runtime_root_resolved", input, nil)
 	if err := store.EnsureRuntimeRoot(runtimeRoot); err != nil {
 		return PreparedRuntime{}, err
 	}
+	logRuntimePrepareTrace("runtime_prepare.runtime_root_ensured", input, nil)
 
 	manifest := agentsidecarbiz.NewManifest(agentsidecarbiz.ManifestInput{
 		AgentSessionID: agentSessionID,
@@ -80,15 +91,18 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 		Cwd:            cwd,
 		RuntimeRoot:    runtimeRoot,
 	})
-	input.WorkspaceID = workspaceID
-	input.AgentSessionID = agentSessionID
-	input.Provider = providerID
-	input.Cwd = cwd
 	input.CLICommand = firstNonEmptyText(input.CLICommand, p.CLICommand, resolveCLICommand(p.StateDir))
 	input.CommandGuide = commandGuideFromCatalog(ctx, p.CommandCatalog, workspaceID, input.CLICommand)
+	logRuntimePrepareTrace("runtime_prepare.input_normalized", input, map[string]any{
+		"cli_command":          input.CLICommand,
+		"command_guide_length": len(input.CommandGuide),
+	})
 
 	result := ProviderPrepareResult{Cwd: cwd}
 	if provider := p.provider(providerID); provider != nil {
+		logRuntimePrepareTrace("runtime_prepare.provider_requested", input, map[string]any{
+			"provider": providerID,
+		})
 		result, err = provider.Prepare(ctx, ProviderPrepareInput{
 			PrepareInput: input,
 			RuntimeRoot:  runtimeRoot,
@@ -98,14 +112,22 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 		if err != nil {
 			return PreparedRuntime{}, err
 		}
+		logRuntimePrepareTrace("runtime_prepare.provider_resolved", input, map[string]any{
+			"provider_env_count": len(result.Env),
+			"cwd":                result.Cwd,
+		})
 	}
 	if result.Cwd == "" {
 		result.Cwd = cwd
 	}
 	result.Env = append(defaultRuntimeEnv(input, p.StateDir), result.Env...)
+	logRuntimePrepareTrace("runtime_prepare.env_prepared", input, map[string]any{
+		"env_count": len(result.Env),
+	})
 	if err := store.SaveManifest(runtimeRoot, manifest); err != nil {
 		return PreparedRuntime{}, err
 	}
+	logRuntimePrepareTrace("runtime_prepare.manifest_saved", input, nil)
 	return PreparedRuntime(result), nil
 }
 
