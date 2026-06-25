@@ -9,6 +9,8 @@ import (
 
 var ErrPromptImageUnsupported = errors.New("agent prompt image input is unsupported")
 
+const clientSubmitUserMessageIDPrefix = "client-submit:user:"
+
 func normalizeRuntimePromptContent(content []PromptContentBlock) []PromptContentBlock {
 	out := make([]PromptContentBlock, 0, len(content))
 	for _, block := range content {
@@ -149,7 +151,18 @@ func userPromptActivityPayloadExtraFromExecMetadata(ctx context.Context, extra m
 		payload = map[string]any{}
 	}
 	payload["clientSubmitId"] = clientSubmitID
+	if strings.TrimSpace(payloadString(payload, "messageId")) == "" {
+		payload["messageId"] = userPromptActivityMessageIDFromClientSubmitID(clientSubmitID)
+	}
 	return payload
+}
+
+func userPromptActivityMessageIDFromClientSubmitID(clientSubmitID string) string {
+	normalized := strings.TrimSpace(clientSubmitID)
+	if normalized == "" {
+		return ""
+	}
+	return clientSubmitUserMessageIDPrefix + normalized
 }
 
 func promptContentForACP(content []PromptContentBlock) []map[string]any {

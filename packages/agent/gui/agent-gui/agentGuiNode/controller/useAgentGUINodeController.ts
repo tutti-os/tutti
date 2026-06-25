@@ -92,6 +92,7 @@ import { isWorkspaceAgentUntitledTask } from "../../../shared/workspaceAgentLate
 import { projectWorkspaceAgentMessagesToTimelineItems } from "../../../shared/agentConversation/projection/workspaceAgentMessageProjection";
 import { mergeWorkspaceAgentMessages } from "../../../host/workspaceAgentSessionMessages";
 import {
+  createWorkspaceAgentActivityUserMessageIdFromClientSubmitId,
   mergeWorkspaceAgentActivityDurableAndOverlayMessages,
   selectWorkspaceAgentActivityOverlayMessages,
   type WorkspaceAgentActivityMessage,
@@ -1449,18 +1450,22 @@ function createOptimisticPromptMessage(input: {
   workspaceId: string;
   agentSessionId: string;
   turnId: string;
-  messageId?: string;
   clientSubmitId?: string;
   userId: string;
   prompt: string;
   content: AgentPromptContentBlock[];
   occurredAtUnixMs: number;
 }): WorkspaceAgentActivityMessage {
+  const clientSubmitMessageId = input.clientSubmitId
+    ? createWorkspaceAgentActivityUserMessageIdFromClientSubmitId(
+        input.clientSubmitId
+      )
+    : null;
   return {
     id: Math.max(1, Math.floor(input.occurredAtUnixMs)),
     workspaceId: input.workspaceId,
     agentSessionId: input.agentSessionId,
-    messageId: input.messageId ?? `optimistic:user:${input.turnId}`,
+    messageId: clientSubmitMessageId ?? `optimistic:user:${input.turnId}`,
     version: Math.max(1, Math.floor(input.occurredAtUnixMs)),
     turnId: input.turnId,
     role: "user",
@@ -1475,12 +1480,6 @@ function createOptimisticPromptMessage(input: {
     occurredAtUnixMs: input.occurredAtUnixMs,
     startedAtUnixMs: input.occurredAtUnixMs
   };
-}
-
-function createInitialOptimisticPromptMessageId(
-  agentSessionId: string
-): string {
-  return `optimistic:user:initial:${agentSessionId}`;
 }
 
 function createPendingOptimisticTurnId(clientSubmitId: string): string {
@@ -5171,7 +5170,6 @@ export function useAgentGUINodeController({
             workspaceId,
             agentSessionId,
             turnId: createPendingOptimisticTurnId(submitTrace.clientSubmitId),
-            messageId: createInitialOptimisticPromptMessageId(agentSessionId),
             clientSubmitId: submitTrace.clientSubmitId,
             userId: currentUserId?.trim() || "user",
             prompt: normalizedInitialPrompt,

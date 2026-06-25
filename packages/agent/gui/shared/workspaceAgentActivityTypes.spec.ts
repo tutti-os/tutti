@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  createWorkspaceAgentActivityUserMessageIdFromClientSubmitId,
   isWorkspaceAgentActivityRuntimeSessionOrigin,
+  mergeWorkspaceAgentActivityDurableAndOverlayMessages,
   selectWorkspaceAgentActivityOverlayMessages,
   WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN
 } from "./workspaceAgentActivityTypes";
@@ -32,6 +34,42 @@ describe("isWorkspaceAgentActivityRuntimeSessionOrigin", () => {
 });
 
 describe("selectWorkspaceAgentActivityOverlayMessages", () => {
+  it("uses the same client submit derived message id for optimistic and durable user messages", () => {
+    const messageId =
+      createWorkspaceAgentActivityUserMessageIdFromClientSubmitId("submit-1");
+    const durableMessage = userMessage({
+      id: 2,
+      messageId: messageId ?? "",
+      version: 2,
+      payload: {
+        content: [{ text: "hello", type: "text" }],
+        text: "hello"
+      },
+      turnId: "turn-1"
+    });
+    const optimisticMessage = userMessage({
+      messageId: messageId ?? "",
+      payload: {
+        __agentGuiOptimisticPrompt: true,
+        clientSubmitId: "submit-1",
+        content: [
+          { type: "skill", name: "caveman", path: "$caveman" },
+          { type: "text", text: "hello" }
+        ],
+        text: "hello"
+      },
+      turnId: "pending:submit-1"
+    });
+
+    expect(messageId).toBe("client-submit:user:submit-1");
+    expect(
+      mergeWorkspaceAgentActivityDurableAndOverlayMessages({
+        durableMessages: [durableMessage],
+        localMessages: [optimisticMessage]
+      })
+    ).toEqual([durableMessage]);
+  });
+
   it("drops an optimistic user prompt by matching client submit id", () => {
     const durableMessage = userMessage({
       messageId: "durable-user-1",

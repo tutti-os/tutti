@@ -330,7 +330,8 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 
 	session := reportTestSession()
 	userEvent := newTurnActivityEventWithID(session, "user-event-1", EventMessage, "turn-1", messageStreamStateCompleted, RoleUser, "inspect repo", map[string]any{
-		"messageId": "user-message-1",
+		"clientSubmitId": "submit-1",
+		"messageId":      "client-submit:user:submit-1",
 	})
 	userEvent.OccurredAtUnixMS = 101
 	assistantEvent := newTurnActivityEventWithID(session, "assistant-event-1", EventMessage, "turn-1", messageStreamStateCompleted, RoleAssistant, "found README", map[string]any{
@@ -351,14 +352,15 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 	}
 	user := report.MessageUpdates[0]
 	if user.AgentSessionID != session.AgentSessionID ||
-		user.MessageID != "user-message-1" ||
+		user.MessageID != "client-submit:user:submit-1" ||
 		user.Seq != uint64(userEvent.OccurredAtUnixMS) ||
 		user.TurnID != "turn-1" ||
 		user.Role != "user" ||
 		user.Kind != "text" ||
 		user.OccurredAtUnixMS != userEvent.OccurredAtUnixMS ||
 		user.Payload["content"] != "inspect repo" ||
-		user.Payload["source"] != "runtime" {
+		user.Payload["source"] != "runtime" ||
+		user.Payload["clientSubmitId"] != "submit-1" {
 		t.Fatalf("user message update = %#v", user)
 	}
 	assistant := report.MessageUpdates[1]

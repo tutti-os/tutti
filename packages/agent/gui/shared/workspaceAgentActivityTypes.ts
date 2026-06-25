@@ -38,6 +38,13 @@ export function isWorkspaceAgentActivityRuntimeSessionOrigin(
   );
 }
 
+export function createWorkspaceAgentActivityUserMessageIdFromClientSubmitId(
+  clientSubmitId: string
+): string | null {
+  const normalized = clientSubmitId.trim();
+  return normalized ? `client-submit:user:${normalized}` : null;
+}
+
 export type WorkspaceAgentActivitySyncStatus =
   | "pending"
   | "synced"
@@ -274,6 +281,10 @@ export function selectWorkspaceAgentActivityOverlayMessages(input: {
       .filter((signature): signature is string => signature !== null)
   );
   return localMessages.filter((message) => {
+    const identity = workspaceAgentActivityMessageIdentity(message);
+    if (identity !== null && durableIdentities.has(identity)) {
+      return false;
+    }
     if (isWorkspaceAgentActivityOptimisticMessage(message)) {
       const clientSubmitId = workspaceAgentActivityClientSubmitId(message);
       if (
@@ -285,8 +296,7 @@ export function selectWorkspaceAgentActivityOverlayMessages(input: {
       const signature = workspaceAgentActivityUserPromptSignature(message);
       return signature === null || !durableUserPromptSignatures.has(signature);
     }
-    const identity = workspaceAgentActivityMessageIdentity(message);
-    return identity === null || !durableIdentities.has(identity);
+    return true;
   });
 }
 

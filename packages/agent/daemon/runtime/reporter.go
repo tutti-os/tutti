@@ -366,6 +366,9 @@ func textMessageUpdateFromSessionEvent(
 	if displayPrompt := stringFromPayload(event.Payload.Metadata, "displayPrompt"); displayPrompt != "" {
 		payload["displayPrompt"] = displayPrompt
 	}
+	if clientSubmitID := stringFromPayload(event.Payload.Metadata, "clientSubmitId"); clientSubmitID != "" {
+		payload["clientSubmitId"] = clientSubmitID
+	}
 	update := agentsessionstore.WorkspaceAgentMessageUpdate{
 		AgentSessionID:   strings.TrimSpace(sessionID),
 		MessageID:        messageID,
