@@ -9045,7 +9045,7 @@ type SendWorkspaceAgentSessionInputResponseObject interface {
 	VisitSendWorkspaceAgentSessionInputResponse(w http.ResponseWriter) error
 }
 
-type SendWorkspaceAgentSessionInput200JSONResponse WorkspaceAgentSessionResponse
+type SendWorkspaceAgentSessionInput200JSONResponse SendWorkspaceAgentSessionInputResponse
 
 func (response SendWorkspaceAgentSessionInput200JSONResponse) VisitSendWorkspaceAgentSessionInputResponse(w http.ResponseWriter) error {
 

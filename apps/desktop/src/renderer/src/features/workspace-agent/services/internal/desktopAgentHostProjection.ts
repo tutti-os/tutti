@@ -205,6 +205,10 @@ export function toAgentHostAgentSessionState(
     providerSessionId: session.id,
     resumable: session.resumable ?? false,
     status: toAgentHostAgentSessionStatus(session.status),
+    ...(session.turnLifecycle ? { turnLifecycle: session.turnLifecycle } : {}),
+    ...(session.submitAvailability
+      ? { submitAvailability: session.submitAvailability }
+      : {}),
     ...(session.lastError ? { lastError: session.lastError } : {}),
     updatedAtUnixMs: toUnixMs(session.updatedAt ?? session.createdAt),
     workspaceId

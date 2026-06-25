@@ -84,6 +84,7 @@ export function createDesktopAgentHostAgentSessionsApi({
       agentSessionId: string;
       cwd?: string;
       initialContent?: AgentActivitySendInput["content"];
+      metadata?: Record<string, unknown>;
       mode: "existing" | "new";
       provider?: string;
       settings?: {
@@ -143,22 +144,24 @@ export function createDesktopAgentHostAgentSessionsApi({
     async exec(payload: {
       agentSessionId: string;
       content: AgentActivitySendInput["content"];
+      metadata?: Record<string, unknown>;
     }) {
       const tuttidSessionId = resolveTuttidSessionId(payload.agentSessionId);
-      const session = await agentActivityService.sendInput({
+      const result = await agentActivityService.sendInput({
         workspaceId,
         agentSessionId: tuttidSessionId,
-        content: [...payload.content]
+        content: [...payload.content],
+        ...(payload.metadata ? { metadata: payload.metadata } : {})
       });
       await messageSentTracker.track({
-        agentSessionId: session.agentSessionId,
+        agentSessionId: result.session.agentSessionId,
         prompt: promptContentDisplayText(payload.content),
-        provider: session.provider
+        provider: result.session.provider
       });
       return {
         accepted: true,
-        agentSessionId: session.agentSessionId,
-        sessionStatus: toAgentHostAgentSessionStatus(session.status),
+        agentSessionId: result.session.agentSessionId,
+        sessionStatus: toAgentHostAgentSessionStatus(result.session.status),
         status: "started"
       };
     },

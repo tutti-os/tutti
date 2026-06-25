@@ -640,6 +640,10 @@ func appServerSystemNoticeEvent(session Session, turnID string, noticeKind strin
 	if title != "" {
 		update["title"] = title
 	}
+	if title == "Context compacted." {
+		update["noticeCommand"] = "compact"
+		update["noticeCommandStatus"] = "completed"
+	}
 	if detail != "" {
 		update["detail"] = detail
 	}

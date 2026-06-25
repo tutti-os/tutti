@@ -272,12 +272,13 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	session, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
+	result, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
 		Content: agentservice.TextPromptContent(input.Prompt),
 	})
 	if err != nil {
 		return nil, err
 	}
+	session := result.Session
 	return sessionActionResult{Session: session}, nil
 }
 

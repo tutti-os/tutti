@@ -182,6 +182,54 @@ test("desktop agent activity adapter returns cancel result metadata", async () =
   assert.equal(result.session.status, "created");
 });
 
+test("desktop agent activity adapter forwards submit diagnostic metadata", async () => {
+  const calls: unknown[] = [];
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async sendWorkspaceAgentSessionInput(
+        requestWorkspaceId,
+        agentSessionId,
+        request
+      ) {
+        calls.push({
+          agentSessionId,
+          request,
+          workspaceId: requestWorkspaceId
+        });
+        return createSendInputResponse(
+          createSession({ id: agentSessionId, status: "running" })
+        );
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await adapter.sendInput({
+    workspaceId,
+    agentSessionId: "agent-session-1",
+    content: [{ type: "text", text: "hello" }],
+    metadata: {
+      clientSubmitId: "submit-1",
+      clientSubmittedAtUnixMs: 1234
+    }
+  });
+
+  assert.deepEqual(calls, [
+    {
+      agentSessionId: "agent-session-1",
+      request: {
+        content: [{ type: "text", text: "hello" }],
+        displayPrompt: null,
+        metadata: {
+          clientSubmitId: "submit-1",
+          clientSubmittedAtUnixMs: 1234
+        }
+      },
+      workspaceId
+    }
+  ]);
+});
+
 test("desktop agent activity adapter requires an injected session event subscription", async () => {
   const diagnostics: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
@@ -383,6 +431,11 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
     agentSessionId: "22222222-2222-4222-8222-222222222222",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
+    metadata: {
+      "": "drop",
+      clientSubmitId: "submit-create-1",
+      clientSubmittedAtUnixMs: 12345
+    },
     model: "gpt-5.5-codex-spark",
     permissionModeId: "read-only",
     planMode: true,
@@ -402,6 +455,11 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
         cwd: "/workspace",
         initialContent: [{ type: "text", text: "hello" }],
         initialDisplayPrompt: null,
+        metadata: {
+          "": "drop",
+          clientSubmitId: "submit-create-1",
+          clientSubmittedAtUnixMs: 12345
+        },
         model: "gpt-5.5-codex-spark",
         permissionModeId: "read-only",
         planMode: true,
@@ -717,12 +775,14 @@ test("desktop agent activity adapter promotes Claude draft on first prompt", asy
         request
       ) {
         calls.push(`send:${agentSessionId}:${request.content[0]?.text}`);
-        return createSession({
-          id: agentSessionId,
-          provider: "claude-code",
-          status: "running",
-          visible: true
-        });
+        return createSendInputResponse(
+          createSession({
+            id: agentSessionId,
+            provider: "claude-code",
+            status: "running",
+            visible: true
+          })
+        );
       }
     }),
     runtimeApi: createRuntimeApi()
@@ -875,7 +935,7 @@ function createTuttidClient(
       return createSession();
     },
     async sendWorkspaceAgentSessionInput() {
-      return createSession({ status: "running" });
+      return createSendInputResponse(createSession({ status: "running" }));
     },
     async updateWorkspaceAgentSessionVisibility(
       _workspaceId: string,
@@ -914,6 +974,21 @@ function createSession(
     updatedAt: "2026-01-01T00:01:00.000Z",
     visible: true,
     ...overrides
+  };
+}
+
+function createSendInputResponse(session: WorkspaceAgentSession) {
+  return {
+    session,
+    turnId: "turn-1",
+    turnLifecycle: {
+      activeTurnId: "turn-1",
+      phase: "submitted"
+    },
+    submitAvailability: {
+      reason: "active_turn",
+      state: "blocked"
+    }
   };
 }
 

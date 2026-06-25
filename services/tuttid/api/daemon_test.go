@@ -294,8 +294,8 @@ func (stubAgentSessionService) Cancel(context.Context, string, string) (agentser
 	return agentservice.CancelSessionResult{}, nil
 }
 
-func (stubAgentSessionService) SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.Session, error) {
-	return agentservice.Session{}, nil
+func (stubAgentSessionService) SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error) {
+	return agentservice.SendInputResult{}, nil
 }
 
 func (s stubAgentSessionService) UpdatePin(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (agentservice.Session, error) {

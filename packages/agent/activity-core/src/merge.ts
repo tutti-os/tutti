@@ -76,6 +76,7 @@ export function areAgentActivityMessagesEqual(
     left.role === right.role &&
     left.kind === right.kind &&
     Object.is(left.status, right.status) &&
+    areJsonLikeValuesEqual(left.semantics, right.semantics) &&
     Object.is(left.occurredAtUnixMs, right.occurredAtUnixMs) &&
     Object.is(left.startedAtUnixMs, right.startedAtUnixMs) &&
     Object.is(left.completedAtUnixMs, right.completedAtUnixMs) &&
@@ -88,6 +89,7 @@ export function cloneAgentActivityMessage<
 >(message: T): T {
   return {
     ...message,
+    semantics: message.semantics ? { ...message.semantics } : undefined,
     payload: { ...message.payload }
   };
 }
@@ -99,6 +101,12 @@ function mergeAgentActivityMessage<T extends AgentActivityMessage>(
   return {
     ...existing,
     ...incoming,
+    semantics: incoming.semantics
+      ? {
+          ...existing.semantics,
+          ...incoming.semantics
+        }
+      : existing.semantics,
     payload: {
       ...existing.payload,
       ...incoming.payload

@@ -58,22 +58,24 @@ type ComposerCapabilityLister interface {
 }
 
 type Session struct {
-	ID                string
-	Provider          string
-	ProviderSessionID string
-	Cwd               string
-	Status            string
-	Visible           bool
-	Resumable         bool
-	Settings          *ComposerSettings
-	PermissionConfig  PermissionConfig
-	RuntimeContext    map[string]any
-	Title             *string
-	PinnedAtUnixMS    int64
-	CreatedAt         time.Time
-	UpdatedAt         *time.Time
-	EndedAt           *time.Time
-	LastError         *string
+	ID                 string
+	Provider           string
+	ProviderSessionID  string
+	Cwd                string
+	Status             string
+	TurnLifecycle      *TurnLifecycle
+	SubmitAvailability *SubmitAvailability
+	Visible            bool
+	Resumable          bool
+	Settings           *ComposerSettings
+	PermissionConfig   PermissionConfig
+	RuntimeContext     map[string]any
+	Title              *string
+	PinnedAtUnixMS     int64
+	CreatedAt          time.Time
+	UpdatedAt          *time.Time
+	EndedAt            *time.Time
+	LastError          *string
 }
 
 type CancelReason string
@@ -156,21 +158,23 @@ type SessionPinUpdater interface {
 }
 
 type RuntimeSession struct {
-	ID                string
-	WorkspaceID       string
-	Provider          string
-	ProviderSessionID string
-	Cwd               string
-	Env               []string
-	Settings          *ComposerSettings
-	RuntimeContext    map[string]any
-	Status            string
-	Visible           bool
-	Title             string
-	LastError         string
-	PinnedAtUnixMS    int64
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
+	ID                 string
+	WorkspaceID        string
+	Provider           string
+	ProviderSessionID  string
+	Cwd                string
+	Env                []string
+	Settings           *ComposerSettings
+	RuntimeContext     map[string]any
+	Status             string
+	TurnLifecycle      *TurnLifecycle
+	SubmitAvailability *SubmitAvailability
+	Visible            bool
+	Title              string
+	LastError          string
+	PinnedAtUnixMS     int64
+	CreatedAtUnixMS    int64
+	UpdatedAtUnixMS    int64
 }
 
 type RuntimeStartInput struct {
@@ -210,14 +214,35 @@ type RuntimeExecInput struct {
 	AgentSessionID string
 	Content        []PromptContentBlock
 	DisplayPrompt  string
+	Metadata       map[string]any
 }
 
 type RuntimeExecResult struct {
-	AgentSessionID string
-	Status         string
-	TurnID         string
-	Accepted       bool
-	SessionStatus  string
+	AgentSessionID     string
+	Status             string
+	TurnID             string
+	Accepted           bool
+	SessionStatus      string
+	TurnLifecycle      TurnLifecycle
+	SubmitAvailability SubmitAvailability
+}
+
+type CompletedCommand struct {
+	Kind   string
+	Status string
+}
+
+type SubmitAvailability struct {
+	State  string
+	Reason string
+}
+
+type TurnLifecycle struct {
+	ActiveTurnID     *string
+	Phase            string
+	Settling         bool
+	Outcome          *string
+	CompletedCommand *CompletedCommand
 }
 
 type RuntimeCancelInput struct {
@@ -277,6 +302,7 @@ type CreateSessionInput struct {
 	Provider             string
 	InitialContent       []PromptContentBlock
 	InitialDisplayPrompt string
+	Metadata             map[string]any
 	Title                *string
 	Cwd                  *string
 	PermissionModeID     *string
@@ -298,6 +324,14 @@ type SessionSkillBundle struct {
 type SendInput struct {
 	Content       []PromptContentBlock
 	DisplayPrompt string
+	Metadata      map[string]any
+}
+
+type SendInputResult struct {
+	Session            Session
+	TurnID             string
+	TurnLifecycle      TurnLifecycle
+	SubmitAvailability SubmitAvailability
 }
 
 type PromptContentBlock struct {

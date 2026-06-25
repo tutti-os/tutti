@@ -222,6 +222,7 @@ func sessionMessageUpdateFromActivityMessageUpdate(update agentsessionstore.Work
 		Role:              strings.TrimSpace(update.Role),
 		Kind:              strings.TrimSpace(update.Kind),
 		Status:            strings.TrimSpace(update.Status),
+		Semantics:         cloneMessageSemantics(update.Semantics),
 		Payload:           payload,
 		OccurredAtUnixMS:  update.OccurredAtUnixMS,
 		StartedAtUnixMS:   update.StartedAtUnixMS,
@@ -231,26 +232,32 @@ func sessionMessageUpdateFromActivityMessageUpdate(update agentsessionstore.Work
 
 func sessionStateUpdateFromStatePatch(patch agentsessionstore.WorkspaceAgentStatePatch) agentsessionstore.WorkspaceAgentSessionStateUpdate {
 	out := agentsessionstore.WorkspaceAgentSessionStateUpdate{
-		Provider:          strings.TrimSpace(patch.Provider),
-		ProviderSessionID: strings.TrimSpace(patch.ProviderSessionID),
-		Model:             strings.TrimSpace(patch.Model),
-		Settings:          clonePayload(patch.Settings),
-		RuntimeContext:    clonePayload(patch.RuntimeContext),
-		CWD:               strings.TrimSpace(patch.CWD),
-		Title:             strings.TrimSpace(patch.Title),
-		LifecycleStatus:   strings.TrimSpace(patch.LifecycleStatus),
-		CurrentPhase:      strings.TrimSpace(patch.CurrentPhase),
-		LastError:         strings.TrimSpace(patch.LastError),
-		OccurredAtUnixMS:  patch.OccurredAtUnixMS,
+		Provider:           strings.TrimSpace(patch.Provider),
+		ProviderSessionID:  strings.TrimSpace(patch.ProviderSessionID),
+		Model:              strings.TrimSpace(patch.Model),
+		Settings:           clonePayload(patch.Settings),
+		RuntimeContext:     clonePayload(patch.RuntimeContext),
+		TurnLifecycle:      cloneTurnLifecycle(patch.TurnLifecycle),
+		SubmitAvailability: cloneSubmitAvailability(patch.SubmitAvailability),
+		CWD:                strings.TrimSpace(patch.CWD),
+		Title:              strings.TrimSpace(patch.Title),
+		LifecycleStatus:    strings.TrimSpace(patch.LifecycleStatus),
+		CurrentPhase:       strings.TrimSpace(patch.CurrentPhase),
+		LastError:          strings.TrimSpace(patch.LastError),
+		OccurredAtUnixMS:   patch.OccurredAtUnixMS,
 	}
 	if patch.Turn != nil {
 		out.Turn = &agentsessionstore.WorkspaceAgentTurnStateUpdate{
-			TurnID:            strings.TrimSpace(patch.Turn.TurnID),
-			Phase:             strings.TrimSpace(patch.Turn.Phase),
-			Outcome:           strings.TrimSpace(patch.Turn.Outcome),
-			FileChanges:       clonePayload(patch.Turn.FileChanges),
-			StartedAtUnixMS:   patch.Turn.StartedAtUnixMS,
-			CompletedAtUnixMS: patch.Turn.CompletedAtUnixMS,
+			TurnID:             strings.TrimSpace(patch.Turn.TurnID),
+			ActiveTurnID:       cloneStringPointer(patch.Turn.ActiveTurnID),
+			Phase:              strings.TrimSpace(patch.Turn.Phase),
+			Outcome:            strings.TrimSpace(patch.Turn.Outcome),
+			Settling:           patch.Turn.Settling,
+			CompletedCommand:   cloneCompletedCommand(patch.Turn.CompletedCommand),
+			SubmitAvailability: cloneSubmitAvailability(patch.Turn.SubmitAvailability),
+			FileChanges:        clonePayload(patch.Turn.FileChanges),
+			StartedAtUnixMS:    patch.Turn.StartedAtUnixMS,
+			CompletedAtUnixMS:  patch.Turn.CompletedAtUnixMS,
 		}
 	}
 	return out
@@ -378,8 +385,31 @@ func textMessageUpdateFromSessionEvent(
 	if messageKind := stringFromPayload(event.Payload.Metadata, "messageKind"); messageKind != "" {
 		update.Payload["messageKind"] = messageKind
 	}
+	update.Semantics = messageSemanticsFromMetadata(event.Payload.Metadata)
 	forwardSystemNoticeMessageMetadata(update.Payload, event.Payload.Metadata)
 	return update, true
+}
+
+func messageSemanticsFromMetadata(metadata map[string]any) *agentsessionstore.WorkspaceAgentMessageSemantics {
+	if len(metadata) == 0 {
+		return nil
+	}
+	semantics := agentsessionstore.WorkspaceAgentMessageSemantics{}
+	if value, ok := metadata["userVisibleAssistantResponse"].(bool); ok {
+		semantics.UserVisibleAssistantResponse = value
+	}
+	if value, ok := metadata["turnSettling"].(bool); ok {
+		semantics.TurnSettling = value
+	}
+	semantics.NoticeCommand = stringFromPayload(metadata, "noticeCommand")
+	semantics.NoticeCommandStatus = stringFromPayload(metadata, "noticeCommandStatus")
+	if !semantics.UserVisibleAssistantResponse &&
+		!semantics.TurnSettling &&
+		semantics.NoticeCommand == "" &&
+		semantics.NoticeCommandStatus == "" {
+		return nil
+	}
+	return &semantics
 }
 
 func forwardSystemNoticeMessageMetadata(payload map[string]any, metadata map[string]any) {
@@ -393,6 +423,8 @@ func forwardSystemNoticeMessageMetadata(payload map[string]any, metadata map[str
 		"title",
 		"detail",
 		"additionalDetails",
+		"noticeCommand",
+		"noticeCommandStatus",
 	} {
 		if value := stringFromPayload(metadata, key); value != "" {
 			payload[key] = value
@@ -704,6 +736,7 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 			Outcome: strings.TrimSpace(event.Payload.TurnOutcome),
 		}
 	}
+	applyExplicitTurnLifecycleToPatch(&patch, event)
 	switch event.Type {
 	case activityshared.EventSessionStarted:
 		patch.LifecycleStatus = firstNonEmptyString(patch.LifecycleStatus, string(activityshared.SessionLifecycleStatusActive))
@@ -741,6 +774,160 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		}
 	}
 	return patch, true
+}
+
+func cloneMessageSemantics(value *agentsessionstore.WorkspaceAgentMessageSemantics) *agentsessionstore.WorkspaceAgentMessageSemantics {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := strings.TrimSpace(*value)
+	return &cloned
+}
+
+func cloneCompletedCommand(value *agentsessionstore.WorkspaceAgentCompletedCommand) *agentsessionstore.WorkspaceAgentCompletedCommand {
+	if value == nil {
+		return nil
+	}
+	return &agentsessionstore.WorkspaceAgentCompletedCommand{
+		Kind:   strings.TrimSpace(value.Kind),
+		Status: strings.TrimSpace(value.Status),
+	}
+}
+
+func cloneSubmitAvailability(value *agentsessionstore.WorkspaceAgentSubmitAvailability) *agentsessionstore.WorkspaceAgentSubmitAvailability {
+	if value == nil {
+		return nil
+	}
+	return &agentsessionstore.WorkspaceAgentSubmitAvailability{
+		State:  strings.TrimSpace(value.State),
+		Reason: strings.TrimSpace(value.Reason),
+	}
+}
+
+func cloneTurnLifecycle(value *agentsessionstore.WorkspaceAgentTurnLifecycle) *agentsessionstore.WorkspaceAgentTurnLifecycle {
+	if value == nil {
+		return nil
+	}
+	return &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		ActiveTurnID:     cloneStringPointer(value.ActiveTurnID),
+		Phase:            strings.TrimSpace(value.Phase),
+		Settling:         value.Settling,
+		Outcome:          cloneStringPointer(value.Outcome),
+		CompletedCommand: cloneCompletedCommand(value.CompletedCommand),
+	}
+}
+
+func applyExplicitTurnLifecycleToPatch(patch *agentsessionstore.WorkspaceAgentStatePatch, event activityshared.Event) {
+	if patch == nil || strings.TrimSpace(patch.Provider) != ProviderCodex {
+		return
+	}
+	turnID := strings.TrimSpace(event.Payload.TurnID)
+	if turnID == "" {
+		return
+	}
+	lifecyclePhase := codexLifecyclePhaseFromActivityEvent(event)
+	if lifecyclePhase == "" {
+		return
+	}
+	activeTurnID := turnID
+	turnActive := &activeTurnID
+	outcome := strings.TrimSpace(event.Payload.TurnOutcome)
+	if lifecyclePhase == "settled" {
+		turnActive = nil
+		outcome = codexLifecycleOutcomeFromActivityEvent(event)
+	}
+	if patch.Turn == nil {
+		patch.Turn = &agentsessionstore.WorkspaceAgentTurnPatch{TurnID: turnID}
+	}
+	patch.Turn.Phase = lifecyclePhase
+	patch.Turn.ActiveTurnID = turnActive
+	patch.Turn.Outcome = outcome
+	patch.Turn.SubmitAvailability = codexSubmitAvailabilityForLifecyclePhase(lifecyclePhase)
+	if command := completedCommandFromEventMetadata(event.Payload.Metadata); command != nil {
+		patch.Turn.CompletedCommand = command
+	}
+	patch.SubmitAvailability = cloneSubmitAvailability(patch.Turn.SubmitAvailability)
+	patch.TurnLifecycle = &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		ActiveTurnID:     turnActive,
+		Phase:            lifecyclePhase,
+		Outcome:          nil,
+		CompletedCommand: cloneCompletedCommand(patch.Turn.CompletedCommand),
+	}
+	if outcome != "" {
+		patch.TurnLifecycle.Outcome = &outcome
+	}
+}
+
+func completedCommandFromEventMetadata(metadata map[string]any) *agentsessionstore.WorkspaceAgentCompletedCommand {
+	kind := firstNonEmptyString(
+		stringFromPayload(metadata, "completedCommandKind"),
+		stringFromPayload(metadata, "noticeCommand"),
+	)
+	status := firstNonEmptyString(
+		stringFromPayload(metadata, "completedCommandStatus"),
+		stringFromPayload(metadata, "noticeCommandStatus"),
+	)
+	if kind == "" || status == "" {
+		return nil
+	}
+	return &agentsessionstore.WorkspaceAgentCompletedCommand{
+		Kind:   kind,
+		Status: status,
+	}
+}
+
+func codexLifecyclePhaseFromActivityEvent(event activityshared.Event) string {
+	switch event.Type {
+	case activityshared.EventTurnStarted:
+		return "running"
+	case activityshared.EventTurnUpdated:
+		switch strings.TrimSpace(event.Payload.TurnPhase) {
+		case "submitted":
+			return "submitted"
+		case string(activityshared.TurnPhaseWaiting), string(activityshared.TurnPhaseWaitingApproval), string(activityshared.TurnPhaseWaitingInput):
+			return "waiting"
+		case string(activityshared.TurnPhaseRunning), string(activityshared.TurnPhaseWorking):
+			return "running"
+		}
+	case activityshared.EventTurnCompleted, activityshared.EventTurnFailed:
+		return "settled"
+	}
+	return ""
+}
+
+func codexLifecycleOutcomeFromActivityEvent(event activityshared.Event) string {
+	switch event.Type {
+	case activityshared.EventTurnFailed:
+		return "failed"
+	case activityshared.EventTurnCompleted:
+		if strings.TrimSpace(event.Payload.TurnOutcome) == string(activityshared.TurnOutcomeInterrupted) {
+			return "canceled"
+		}
+		return "completed"
+	default:
+		return strings.TrimSpace(event.Payload.TurnOutcome)
+	}
+}
+
+func codexSubmitAvailabilityForLifecyclePhase(phase string) *agentsessionstore.WorkspaceAgentSubmitAvailability {
+	switch phase {
+	case "settled":
+		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "available"}
+	case "waiting":
+		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "waiting"}
+	case "submitted", "running":
+		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "active_turn"}
+	default:
+		return nil
+	}
 }
 
 func statePatchLastError(event activityshared.Event) string {

@@ -17,7 +17,7 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
       listWorkspaceAgentSessions: async () => ({ sessions: [readySession] }),
-      sendWorkspaceAgentSessionInput: async () => readySession
+      sendWorkspaceAgentSessionInput: async () => ({ session: readySession })
     } as unknown as TuttidClient,
     runtimeApi: {
       logTerminalDiagnostic: async () => {}
@@ -35,8 +35,8 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
     .getSnapshot("ws-1")
     .sessions.find((session) => session.agentSessionId === "session-1");
 
-  assert.equal(result.status, "working");
-  assert.equal(result.currentPhase, "working");
+  assert.equal(result.session.status, "working");
+  assert.equal(result.session.currentPhase, "working");
   assert.equal(snapshotSession?.status, "working");
   assert.equal(snapshotSession?.currentPhase, "working");
 });

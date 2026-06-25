@@ -11,6 +11,7 @@ Current documents:
 - [Agent Activity Packages](./agent-activity-packages.md)
 - [Business Event Stream](./business-event-stream.md)
 - [Browser Node Package](./browser-node-package.md)
+- [Codex App Server Fast Submit Plan](./codex-appserver-fast-submit-plan.md)
 - [Desktop Backend Access](./desktop-backend-access.md)
 - [Desktop Transport](./desktop-transport.md)
 - [Desktop Windows](./desktop-windows.md)

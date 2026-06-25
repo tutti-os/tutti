@@ -27,7 +27,7 @@ type AgentSessions interface {
 	ListActivePeers(context.Context, string) (agentservice.ActivePeers, error)
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	ListProviderAvailability(context.Context, agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error)
-	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.Session, error)
+	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 }
 
 type AgentGUILaunchPublisher interface {

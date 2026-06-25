@@ -9,6 +9,7 @@ import type {
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
   AgentActivitySendInput,
+  AgentActivitySendInputResult,
   AgentActivitySession,
   AgentActivitySessionEventEnvelope,
   AgentActivitySessionList,
@@ -47,7 +48,9 @@ export interface AgentActivityAdapter {
   createSession(
     input: AgentActivityCreateSessionInput
   ): Promise<AgentActivitySession>;
-  sendInput(input: AgentActivitySendInput): Promise<AgentActivitySession>;
+  sendInput(
+    input: AgentActivitySendInput
+  ): Promise<AgentActivitySendInputResult>;
   cancelSession(
     input: AgentActivityCancelSessionInput
   ): Promise<AgentActivityCancelSessionResult>;

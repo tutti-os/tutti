@@ -514,6 +514,14 @@ function cloneAgentActivitySession(
 ): AgentActivitySession {
   return {
     ...session,
+    turnLifecycle: session.turnLifecycle
+      ? (cloneJSONValue(
+          session.turnLifecycle
+        ) as AgentActivitySession["turnLifecycle"])
+      : session.turnLifecycle,
+    submitAvailability: session.submitAvailability
+      ? { ...session.submitAvailability }
+      : session.submitAvailability,
     runtimeContext: cloneJSONRecord(session.runtimeContext)
   };
 }
@@ -1078,6 +1086,9 @@ function messageFromEvent(
     role,
     kind,
     status: nullableStringValue(source.status),
+    semantics: recordValue(source.semantics)
+      ? (cloneJSONValue(source.semantics) as AgentActivityMessage["semantics"])
+      : undefined,
     payload: recordValue(source.payload) ?? {},
     occurredAtUnixMs: numberValue(source.occurredAtUnixMs),
     startedAtUnixMs: numberValue(source.startedAtUnixMs),
@@ -1105,6 +1116,16 @@ function sessionFromEvent(
     cwd: stringValue(source.cwd),
     title: stringValue(source.title),
     status: stringValue(source.status) || "unknown",
+    turnLifecycle: recordValue(source.turnLifecycle)
+      ? (cloneJSONValue(
+          source.turnLifecycle
+        ) as AgentActivitySession["turnLifecycle"])
+      : undefined,
+    submitAvailability: recordValue(source.submitAvailability)
+      ? (cloneJSONValue(
+          source.submitAvailability
+        ) as AgentActivitySession["submitAvailability"])
+      : undefined,
     resumable: booleanValue(source.resumable),
     currentPhase: nullableStringValue(source.currentPhase),
     lastError: nullableStringValue(source.lastError),
@@ -1183,6 +1204,11 @@ function agentActivityMessageFromInlineMessage(input: {
     role: stringValue(input.message.role),
     kind: stringValue(input.message.kind),
     status: nullableStringValue(input.message.status),
+    semantics: recordValue(input.message.semantics)
+      ? (cloneJSONValue(
+          input.message.semantics
+        ) as AgentActivityMessage["semantics"])
+      : undefined,
     payload: recordValue(input.message.payload) ?? {},
     occurredAtUnixMs: numberValue(input.message.occurredAtUnixMs),
     startedAtUnixMs: numberValue(input.message.startedAtUnixMs),
@@ -1199,6 +1225,7 @@ function inlineStatePatchFromActivityUpdateData(
     return null;
   }
   const turn = recordValue(source.turn);
+  const submitAvailability = recordValue(source.submitAvailability);
   return {
     agentSessionId,
     currentPhase: stringValue(source.currentPhase) || undefined,
@@ -1218,13 +1245,46 @@ function inlineStatePatchFromActivityUpdateData(
     title: stringValue(source.title) || undefined,
     turn: turn
       ? {
+          ...(turn.activeTurnId !== undefined
+            ? { activeTurnId: nullableStringValue(turn.activeTurnId) }
+            : {}),
+          ...(recordValue(turn.completedCommand)
+            ? {
+                completedCommand: cloneJSONValue(
+                  turn.completedCommand
+                ) as NonNullable<
+                  NonNullable<
+                    AgentActivityStatePatch["turn"]
+                  >["completedCommand"]
+                >
+              }
+            : {}),
           completedAtUnixMs: numberValue(turn.completedAtUnixMs),
           fileChanges: turn.fileChanges,
           outcome: stringValue(turn.outcome) || undefined,
           phase: stringValue(turn.phase) || undefined,
+          ...(turn.settling !== undefined
+            ? { settling: booleanValue(turn.settling) }
+            : {}),
+          ...(recordValue(turn.submitAvailability)
+            ? {
+                submitAvailability: cloneJSONValue(
+                  turn.submitAvailability
+                ) as NonNullable<
+                  NonNullable<
+                    AgentActivityStatePatch["turn"]
+                  >["submitAvailability"]
+                >
+              }
+            : {}),
           startedAtUnixMs: numberValue(turn.startedAtUnixMs),
           turnId: stringValue(turn.turnId)
         }
+      : undefined,
+    submitAvailability: submitAvailability
+      ? (cloneJSONValue(
+          submitAvailability
+        ) as AgentActivityStatePatch["submitAvailability"])
       : undefined,
     workspaceId: stringValue(source.workspaceId) || undefined
   };
@@ -1259,6 +1319,15 @@ function agentActivitySessionFromInlineStatePatch(input: {
     cwd: input.patch.cwd ?? input.existingSession.cwd,
     title: input.patch.title ?? input.existingSession.title,
     status: input.patch.lifecycleStatus ?? input.existingSession.status,
+    turnLifecycle:
+      turnLifecycleFromStatePatch(input.patch) ??
+      (cloneJSONValue(
+        input.existingSession.turnLifecycle
+      ) as AgentActivitySession["turnLifecycle"]),
+    submitAvailability:
+      input.patch.submitAvailability ??
+      input.patch.turn?.submitAvailability ??
+      input.existingSession.submitAvailability,
     currentPhase:
       input.patch.currentPhase ??
       input.patch.turn?.phase ??
@@ -1288,7 +1357,51 @@ function cloneAgentActivityStatePatch(
   return {
     ...statePatch,
     runtimeContext: cloneJSONRecord(statePatch.runtimeContext),
-    turn: statePatch.turn ? { ...statePatch.turn } : undefined
+    ...(statePatch.submitAvailability
+      ? { submitAvailability: { ...statePatch.submitAvailability } }
+      : {}),
+    turn: statePatch.turn
+      ? {
+          ...statePatch.turn,
+          ...(statePatch.turn.completedCommand
+            ? {
+                completedCommand: {
+                  ...statePatch.turn.completedCommand
+                }
+              }
+            : {}),
+          ...(statePatch.turn.submitAvailability
+            ? {
+                submitAvailability: {
+                  ...statePatch.turn.submitAvailability
+                }
+              }
+            : {})
+        }
+      : undefined
+  };
+}
+
+function turnLifecycleFromStatePatch(
+  patch: AgentActivityStatePatch
+): AgentActivitySession["turnLifecycle"] | undefined {
+  const turn = patch.turn;
+  if (!turn?.phase) {
+    return undefined;
+  }
+  const phase = turn.phase;
+  const activeTurnId =
+    turn.activeTurnId !== undefined
+      ? turn.activeTurnId
+      : phase === "settled"
+        ? null
+        : turn.turnId || null;
+  return {
+    activeTurnId,
+    phase,
+    settling: turn.settling,
+    outcome: turn.outcome ?? null,
+    completedCommand: turn.completedCommand ?? null
   };
 }
 

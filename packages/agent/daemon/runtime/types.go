@@ -91,6 +91,7 @@ type ExecInput struct {
 	AgentSessionID string
 	Content        []PromptContentBlock
 	DisplayPrompt  string
+	Metadata       map[string]any
 }
 
 type CancelInput struct {
@@ -152,21 +153,23 @@ type PromptContentBlock struct {
 }
 
 type Session struct {
-	RoomID               string           `json:"roomId"`
-	AgentSessionID       string           `json:"agentSessionId"`
-	Provider             string           `json:"provider"`
-	ProviderSessionID    string           `json:"providerSessionId"`
-	CWD                  string           `json:"cwd,omitempty"`
-	Env                  []string         `json:"-"`
-	Status               string           `json:"status"`
-	Title                string           `json:"title,omitempty"`
-	LastError            string           `json:"lastError,omitempty"`
-	Visible              bool             `json:"visible"`
-	OpenclawGatewayReady bool             `json:"-"`
-	PermissionModeID     string           `json:"permissionModeId,omitempty"`
-	Settings             *SessionSettings `json:"settings,omitempty"`
-	CreatedAtUnixMS      int64            `json:"createdAtUnixMs"`
-	UpdatedAtUnixMS      int64            `json:"updatedAtUnixMs"`
+	RoomID               string              `json:"roomId"`
+	AgentSessionID       string              `json:"agentSessionId"`
+	Provider             string              `json:"provider"`
+	ProviderSessionID    string              `json:"providerSessionId"`
+	CWD                  string              `json:"cwd,omitempty"`
+	Env                  []string            `json:"-"`
+	Status               string              `json:"status"`
+	TurnLifecycle        *TurnLifecycle      `json:"turnLifecycle,omitempty"`
+	SubmitAvailability   *SubmitAvailability `json:"submitAvailability,omitempty"`
+	Title                string              `json:"title,omitempty"`
+	LastError            string              `json:"lastError,omitempty"`
+	Visible              bool                `json:"visible"`
+	OpenclawGatewayReady bool                `json:"-"`
+	PermissionModeID     string              `json:"permissionModeId,omitempty"`
+	Settings             *SessionSettings    `json:"settings,omitempty"`
+	CreatedAtUnixMS      int64               `json:"createdAtUnixMs"`
+	UpdatedAtUnixMS      int64               `json:"updatedAtUnixMs"`
 }
 
 type SessionInteractivePrompt struct {
@@ -186,6 +189,8 @@ type SessionStateSnapshot struct {
 	Provider           string                    `json:"provider"`
 	ProviderSessionID  string                    `json:"providerSessionId,omitempty"`
 	Status             string                    `json:"status"`
+	TurnLifecycle      *TurnLifecycle            `json:"turnLifecycle,omitempty"`
+	SubmitAvailability *SubmitAvailability       `json:"submitAvailability,omitempty"`
 	PermissionModeID   string                    `json:"permissionModeId,omitempty"`
 	Settings           *SessionSettings          `json:"settings,omitempty"`
 	AuthState          string                    `json:"authState,omitempty"`
@@ -251,11 +256,31 @@ type CloseResult struct {
 }
 
 type ExecResult struct {
-	AgentSessionID string `json:"agentSessionId"`
-	Status         string `json:"status"`
-	TurnID         string `json:"turnId,omitempty"`
-	Accepted       bool   `json:"accepted"`
-	SessionStatus  string `json:"sessionStatus"`
+	AgentSessionID     string             `json:"agentSessionId"`
+	Status             string             `json:"status"`
+	TurnID             string             `json:"turnId,omitempty"`
+	Accepted           bool               `json:"accepted"`
+	SessionStatus      string             `json:"sessionStatus"`
+	TurnLifecycle      TurnLifecycle      `json:"turnLifecycle"`
+	SubmitAvailability SubmitAvailability `json:"submitAvailability"`
+}
+
+type CompletedCommand struct {
+	Kind   string `json:"kind"`
+	Status string `json:"status"`
+}
+
+type SubmitAvailability struct {
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type TurnLifecycle struct {
+	ActiveTurnID     *string           `json:"activeTurnId"`
+	Phase            string            `json:"phase"`
+	Settling         bool              `json:"settling,omitempty"`
+	Outcome          *string           `json:"outcome,omitempty"`
+	CompletedCommand *CompletedCommand `json:"completedCommand,omitempty"`
 }
 
 type CancelResult struct {

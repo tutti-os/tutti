@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -135,6 +136,19 @@ func userPromptActivityPayload(content []PromptContentBlock, displayPrompt strin
 	if explicitDisplayPrompt := strings.TrimSpace(displayPrompt); explicitDisplayPrompt != "" {
 		payload["displayPrompt"] = explicitDisplayPrompt
 	}
+	return payload
+}
+
+func userPromptActivityPayloadExtraFromExecMetadata(ctx context.Context, extra map[string]any) map[string]any {
+	clientSubmitID := metadataString(execMetadataFromContext(ctx), "clientSubmitId")
+	if clientSubmitID == "" {
+		return clonePayload(extra)
+	}
+	payload := clonePayload(extra)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["clientSubmitId"] = clientSubmitID
 	return payload
 }
 

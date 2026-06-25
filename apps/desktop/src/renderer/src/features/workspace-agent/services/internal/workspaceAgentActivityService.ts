@@ -283,6 +283,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
             cwd: resolvedCwd?.cwd ?? null,
             initialContent: input.initialContent ?? [],
             initialDisplayPrompt: input.initialDisplayPrompt ?? null,
+            metadata: input.metadata,
             model: input.settings?.model ?? null,
             planMode: input.settings?.planMode ?? null,
             permissionModeId: resolveComposerPermissionMode(input.settings),
@@ -324,7 +325,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
 
   async sendInput(
     input: Parameters<AgentActivityAdapter["sendInput"]>[0]
-  ): Promise<AgentActivitySession> {
+  ): ReturnType<IWorkspaceAgentActivityService["sendInput"]> {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
     const entry = this.controllerEntry(workspaceId);
@@ -344,18 +345,23 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       );
     }
     try {
-      const session = await entry.adapter.sendInput({
+      const result = await entry.adapter.sendInput({
         ...input,
         workspaceId
       });
-      const nextSession = shouldPreserveOptimisticWorkingAfterSend(session)
+      const nextSession = shouldPreserveOptimisticWorkingAfterSend(
+        result.session
+      )
         ? optimisticWorkingAgentActivitySession(
-            session,
+            result.session,
             optimisticUpdatedAtUnixMs
           )
-        : session;
+        : result.session;
       this.upsertAuthoritativeSession(nextSession);
-      return nextSession;
+      return {
+        ...result,
+        session: nextSession
+      };
     } catch (error) {
       if (
         previousSession &&

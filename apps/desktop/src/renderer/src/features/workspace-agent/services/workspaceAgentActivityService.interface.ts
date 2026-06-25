@@ -9,6 +9,7 @@ import type {
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
   AgentActivitySendInput,
+  AgentActivitySendInputResult,
   AgentActivitySession,
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
@@ -137,7 +138,9 @@ export interface IWorkspaceAgentActivityService {
   retainSessionEvents(
     input: WorkspaceAgentActivityRetainSessionInput
   ): () => void;
-  sendInput(input: AgentActivitySendInput): Promise<AgentActivitySession>;
+  sendInput(
+    input: AgentActivitySendInput
+  ): Promise<AgentActivitySendInputResult>;
   readSessionAttachment(input: {
     agentSessionId: string;
     attachmentId: string;

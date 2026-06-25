@@ -1062,12 +1062,17 @@ function fakeAdapter(
       status: "working"
     }),
     sendInput: async (input) => ({
-      workspaceId: input.workspaceId,
-      agentSessionId: input.agentSessionId,
-      provider: "codex",
-      cwd: "",
-      title: "",
-      status: "working"
+      session: {
+        workspaceId: input.workspaceId,
+        agentSessionId: input.agentSessionId,
+        provider: "codex",
+        cwd: "",
+        title: "",
+        status: "working"
+      },
+      turnId: "turn-1",
+      turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" },
+      submitAvailability: { state: "blocked", reason: "active_turn" }
     }),
     cancelSession: async (input) => ({
       canceled: true,

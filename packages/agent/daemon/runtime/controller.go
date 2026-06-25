@@ -3,6 +3,7 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,6 +24,8 @@ var (
 const defaultStreamingReportCoalesceWindow = 50 * time.Millisecond
 const interactiveDenyFollowUpStartTimeout = 30 * time.Second
 const interactiveDenyFollowUpPollInterval = 25 * time.Millisecond
+
+type execMetadataContextKey struct{}
 
 type Controller struct {
 	startMu                     sync.Mutex
@@ -474,18 +477,32 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	}
 	turnID := newID()
 	runCtx, cancel := context.WithCancel(context.Background())
+	metadata := cloneExecMetadata(input.Metadata)
+	if len(metadata) > 0 {
+		runCtx = context.WithValue(runCtx, execMetadataContextKey{}, metadata)
+	}
 	session, err = c.beginTurn(session, turnID, cancel)
 	if err != nil {
 		cancel()
 		return ExecResult{}, err
 	}
+	submitEvents := submittedTurnActivityEvents(session, turnID)
+	if len(submitEvents) > 0 {
+		c.publish(session, submitEvents)
+		c.enqueueSessionReport(ctx, session, submitEvents)
+	}
+	logAgentSubmitTrace("runtime.submitted", session, turnID, metadata, map[string]any{
+		"phase": "submitted",
+	})
 	go c.runExecTurn(runCtx, session, adapter, content, displayPrompt, turnID)
 	return ExecResult{
-		AgentSessionID: session.AgentSessionID,
-		Status:         ExecStatusStarted,
-		TurnID:         turnID,
-		Accepted:       true,
-		SessionStatus:  session.Status,
+		AgentSessionID:     session.AgentSessionID,
+		Status:             ExecStatusStarted,
+		TurnID:             turnID,
+		Accepted:           true,
+		SessionStatus:      session.Status,
+		TurnLifecycle:      *session.TurnLifecycle,
+		SubmitAvailability: *session.SubmitAvailability,
 	}, nil
 }
 
@@ -530,6 +547,8 @@ func (c *Controller) beginTurn(session Session, turnID string, cancel context.Ca
 	}
 	key := sessionKey(session.RoomID, session.AgentSessionID)
 	session.Status = SessionStatusWorking
+	session.TurnLifecycle = submittedTurnLifecycle(turnID)
+	session.SubmitAvailability = blockedSubmitAvailability("active_turn")
 	session.UpdatedAtUnixMS = unixMS(now())
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -543,12 +562,15 @@ func (c *Controller) beginTurn(session Session, turnID string, cancel context.Ca
 
 func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter Adapter, content []PromptContentBlock, displayPrompt string, turnID string) {
 	var emitted []activityshared.Event
+	metadata := execMetadataFromContext(ctx)
+	logAgentSubmitTrace("runtime.turn_goroutine_started", session, turnID, metadata, nil)
 	emit := func(events []activityshared.Event) {
 		if len(events) == 0 {
 			return
 		}
 		previousStatus := session.Status
 		session = applySessionEvents(session, events)
+		session = applyTurnLifecycleFromEvents(session, events)
 		session = c.preserveActiveTurnStatus(session, turnID, previousStatus)
 		if shouldAdvanceSessionUpdatedAtFromEvents(events) {
 			session.UpdatedAtUnixMS = unixMS(now())
@@ -557,6 +579,11 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		emitted = append(emitted, events...)
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
+		logAgentSubmitTrace("runtime.events_emitted", session, turnID, metadata, map[string]any{
+			"activity_event_count": len(events),
+			"session_status":       session.Status,
+			"turn_phase":           turnLifecyclePhaseFromEvents(events),
+		})
 	}
 	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
 		c.applyCommandSnapshot(session, snapshot)
@@ -586,11 +613,234 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		statusEvents = emitted
 	}
 	session = applySessionEvents(session, statusEvents)
+	session = applyTurnLifecycleFromEvents(session, statusEvents)
 	session.Status = deriveSessionStatusFromEvents(statusEvents, SessionStatusWorking)
 	if shouldAdvanceSessionUpdatedAtFromEvents(statusEvents) {
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
 	c.finishTurn(session, turnID)
+}
+
+func submittedTurnLifecycle(turnID string) *TurnLifecycle {
+	activeTurnID := strings.TrimSpace(turnID)
+	return &TurnLifecycle{
+		ActiveTurnID: &activeTurnID,
+		Phase:        "submitted",
+	}
+}
+
+func execMetadataFromContext(ctx context.Context) map[string]any {
+	if ctx == nil {
+		return nil
+	}
+	metadata, _ := ctx.Value(execMetadataContextKey{}).(map[string]any)
+	return cloneExecMetadata(metadata)
+}
+
+func cloneExecMetadata(metadata map[string]any) map[string]any {
+	if len(metadata) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		if trimmed := strings.TrimSpace(key); trimmed != "" {
+			cloned[trimmed] = value
+		}
+	}
+	return cloned
+}
+
+func logAgentSubmitTrace(event string, session Session, turnID string, metadata map[string]any, fields map[string]any) {
+	clientSubmitID := metadataString(metadata, "clientSubmitId")
+	if clientSubmitID == "" {
+		return
+	}
+	args := []any{
+		"event", "agent.submit.trace",
+		"trace_event", event,
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"provider", session.Provider,
+		"provider_session_id", session.ProviderSessionID,
+		"turn_id", strings.TrimSpace(turnID),
+		"client_submit_id", clientSubmitID,
+	}
+	if submittedAt := metadataInt64(metadata, "clientSubmittedAtUnixMs"); submittedAt > 0 {
+		args = append(args,
+			"client_submitted_at_unix_ms", submittedAt,
+			"elapsed_since_client_submit_ms", unixMS(now())-submittedAt,
+		)
+	}
+	for key, value := range fields {
+		if trimmed := strings.TrimSpace(key); trimmed != "" {
+			args = append(args, trimmed, value)
+		}
+	}
+	slog.Info("agent submit trace", args...)
+}
+
+func metadataString(metadata map[string]any, key string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	value, _ := metadata[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func metadataInt64(metadata map[string]any, key string) int64 {
+	if len(metadata) == 0 {
+		return 0
+	}
+	switch value := metadata[key].(type) {
+	case int64:
+		return value
+	case int:
+		return int64(value)
+	case float64:
+		return int64(value)
+	case json.Number:
+		parsed, _ := value.Int64()
+		return parsed
+	default:
+		return 0
+	}
+}
+
+func turnLifecyclePhaseFromEvents(events []activityshared.Event) string {
+	for _, event := range events {
+		if phase := turnLifecyclePhaseFromEvent(event); phase != "" {
+			return phase
+		}
+	}
+	return ""
+}
+
+func blockedSubmitAvailability(reason string) *SubmitAvailability {
+	return &SubmitAvailability{
+		State:  "blocked",
+		Reason: strings.TrimSpace(reason),
+	}
+}
+
+func availableSubmitAvailability() *SubmitAvailability {
+	return &SubmitAvailability{State: "available"}
+}
+
+func submittedTurnActivityEvents(session Session, turnID string) []activityshared.Event {
+	ctx, ok := activityEventContext(session, "turn-submitted:"+turnID, turnID)
+	if !ok {
+		return nil
+	}
+	return []activityshared.Event{
+		activityshared.NewTurnUpdated(ctx, turnID, activityshared.TurnPhaseSubmitted),
+	}
+}
+
+func applyTurnLifecycleFromEvents(session Session, events []activityshared.Event) Session {
+	for _, event := range events {
+		phase := turnLifecyclePhaseFromEvent(event)
+		if phase == "" {
+			continue
+		}
+		turnID := strings.TrimSpace(event.Payload.TurnID)
+		if turnID == "" {
+			continue
+		}
+		lifecycle := TurnLifecycle{Phase: phase}
+		if phase == "settled" {
+			outcome := turnLifecycleOutcomeFromEvent(event)
+			if outcome != "" {
+				lifecycle.Outcome = &outcome
+			}
+			session.SubmitAvailability = availableSubmitAvailability()
+		} else {
+			activeTurnID := turnID
+			lifecycle.ActiveTurnID = &activeTurnID
+			if phase == "waiting" {
+				session.SubmitAvailability = blockedSubmitAvailability("waiting")
+			} else {
+				session.SubmitAvailability = blockedSubmitAvailability("active_turn")
+			}
+		}
+		session.TurnLifecycle = &lifecycle
+	}
+	return session
+}
+
+func turnLifecyclePhaseFromEvent(event activityshared.Event) string {
+	switch event.Type {
+	case activityshared.EventTurnStarted:
+		return "running"
+	case activityshared.EventTurnUpdated:
+		switch strings.TrimSpace(event.Payload.TurnPhase) {
+		case "submitted":
+			return "submitted"
+		case string(activityshared.TurnPhaseWaiting), string(activityshared.TurnPhaseWaitingApproval), string(activityshared.TurnPhaseWaitingInput):
+			return "waiting"
+		case string(activityshared.TurnPhaseRunning), string(activityshared.TurnPhaseWorking):
+			return "running"
+		}
+	case activityshared.EventTurnCompleted, activityshared.EventTurnFailed:
+		return "settled"
+	}
+	return ""
+}
+
+func turnLifecycleOutcomeFromEvent(event activityshared.Event) string {
+	switch event.Type {
+	case activityshared.EventTurnFailed:
+		return "failed"
+	case activityshared.EventTurnCompleted:
+		if strings.TrimSpace(event.Payload.TurnOutcome) == string(activityshared.TurnOutcomeInterrupted) {
+			return "canceled"
+		}
+		return "completed"
+	default:
+		return strings.TrimSpace(event.Payload.TurnOutcome)
+	}
+}
+
+func cloneRuntimeSubmitAvailability(value *SubmitAvailability) *SubmitAvailability {
+	if value == nil {
+		return nil
+	}
+	return &SubmitAvailability{
+		State:  strings.TrimSpace(value.State),
+		Reason: strings.TrimSpace(value.Reason),
+	}
+}
+
+func cloneRuntimeCompletedCommand(value *CompletedCommand) *CompletedCommand {
+	if value == nil {
+		return nil
+	}
+	return &CompletedCommand{
+		Kind:   strings.TrimSpace(value.Kind),
+		Status: strings.TrimSpace(value.Status),
+	}
+}
+
+func cloneRuntimeTurnLifecycle(value *TurnLifecycle) *TurnLifecycle {
+	if value == nil {
+		return nil
+	}
+	var activeTurnID *string
+	if value.ActiveTurnID != nil {
+		active := strings.TrimSpace(*value.ActiveTurnID)
+		activeTurnID = &active
+	}
+	var outcome *string
+	if value.Outcome != nil {
+		next := strings.TrimSpace(*value.Outcome)
+		outcome = &next
+	}
+	return &TurnLifecycle{
+		ActiveTurnID:     activeTurnID,
+		Phase:            strings.TrimSpace(value.Phase),
+		Settling:         value.Settling,
+		Outcome:          outcome,
+		CompletedCommand: cloneRuntimeCompletedCommand(value.CompletedCommand),
+	}
 }
 
 func (c *Controller) preserveActiveTurnStatus(session Session, turnID string, previousStatus string) Session {
@@ -839,13 +1089,15 @@ func (c *Controller) State(roomID, agentSessionID string) (SessionStateSnapshot,
 		return SessionStateSnapshot{}, err
 	}
 	snapshot := SessionStateSnapshot{
-		RoomID:            session.RoomID,
-		AgentSessionID:    session.AgentSessionID,
-		Provider:          session.Provider,
-		ProviderSessionID: session.ProviderSessionID,
-		Status:            session.Status,
-		PermissionModeID:  session.PermissionModeID,
-		Settings:          normalizeOptionalSessionSettings(session.Settings, session.Provider, session.PermissionModeID),
+		RoomID:             session.RoomID,
+		AgentSessionID:     session.AgentSessionID,
+		Provider:           session.Provider,
+		ProviderSessionID:  session.ProviderSessionID,
+		Status:             session.Status,
+		TurnLifecycle:      cloneRuntimeTurnLifecycle(session.TurnLifecycle),
+		SubmitAvailability: cloneRuntimeSubmitAvailability(session.SubmitAvailability),
+		PermissionModeID:   session.PermissionModeID,
+		Settings:           normalizeOptionalSessionSettings(session.Settings, session.Provider, session.PermissionModeID),
 		RuntimeContext: map[string]any{
 			"cwd":              session.CWD,
 			"title":            session.Title,
@@ -876,6 +1128,12 @@ func (c *Controller) State(roomID, agentSessionID string) (SessionStateSnapshot,
 		}
 		if override.Status != "" {
 			snapshot.Status = override.Status
+		}
+		if override.TurnLifecycle != nil {
+			snapshot.TurnLifecycle = cloneRuntimeTurnLifecycle(override.TurnLifecycle)
+		}
+		if override.SubmitAvailability != nil {
+			snapshot.SubmitAvailability = cloneRuntimeSubmitAvailability(override.SubmitAvailability)
 		}
 		if override.PermissionModeID != "" {
 			snapshot.PermissionModeID = normalizePermissionModeIDWithFallback(
@@ -1970,7 +2228,9 @@ func deriveSessionStatusFromEvents(events []activityshared.Event, fallback strin
 			if event.Payload.TurnPhase == string(activityshared.TurnPhaseWaitingApproval) ||
 				event.Payload.TurnPhase == string(activityshared.TurnPhaseWaitingInput) {
 				status = SessionStatusWaiting
-			} else if event.Payload.TurnPhase == string(activityshared.TurnPhaseWorking) {
+			} else if event.Payload.TurnPhase == string(activityshared.TurnPhaseWorking) ||
+				event.Payload.TurnPhase == string(activityshared.TurnPhaseRunning) ||
+				event.Payload.TurnPhase == string(activityshared.TurnPhaseSubmitted) {
 				status = SessionStatusWorking
 			}
 		case activityshared.EventSessionUpdated:

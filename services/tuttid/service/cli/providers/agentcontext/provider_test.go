@@ -250,11 +250,13 @@ func (f *fakeAgentSessions) ListMessages(_ context.Context, workspaceID string, 
 	}, nil
 }
 
-func (f *fakeAgentSessions) SendInput(_ context.Context, workspaceID string, sessionID string, input agentservice.SendInput) (agentservice.Session, error) {
+func (f *fakeAgentSessions) SendInput(_ context.Context, workspaceID string, sessionID string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
 	f.workspaceID = workspaceID
 	f.sessionID = sessionID
 	f.sendInput = input
-	return agentservice.Session{ID: sessionID, Provider: "codex", Status: "working", Visible: true}, nil
+	return agentservice.SendInputResult{
+		Session: agentservice.Session{ID: sessionID, Provider: "codex", Status: "working", Visible: true},
+	}, nil
 }
 
 type fakeAgentGUILaunchPublisher struct {

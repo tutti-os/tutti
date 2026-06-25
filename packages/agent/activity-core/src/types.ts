@@ -25,6 +25,8 @@ export interface AgentActivitySession {
   cwd: string;
   title: string;
   status: AgentActivitySessionStatus | (string & {});
+  turnLifecycle?: AgentActivityTurnLifecycle | null;
+  submitAvailability?: AgentActivitySubmitAvailability | null;
   visible?: boolean;
   resumable?: boolean;
   currentPhase?: string | null;
@@ -60,6 +62,7 @@ export interface AgentActivityMessage {
   role: string;
   kind: string;
   status?: string | null;
+  semantics?: AgentActivityMessageSemantics;
   payload: Record<string, unknown>;
   occurredAtUnixMs?: number;
   startedAtUnixMs?: number;
@@ -214,13 +217,18 @@ export interface AgentActivityStatePatch {
   providerSessionId?: string;
   runtimeContext?: Record<string, unknown>;
   startedAtUnixMs?: number;
+  submitAvailability?: AgentActivitySubmitAvailability;
   endedAtUnixMs?: number;
   title?: string;
   turn?: {
+    activeTurnId?: string | null;
+    completedCommand?: AgentActivityCompletedCommand | null;
     completedAtUnixMs?: number;
     fileChanges?: unknown;
     outcome?: string;
     phase?: string;
+    settling?: boolean;
+    submitAvailability?: AgentActivitySubmitAvailability;
     startedAtUnixMs?: number;
     turnId: string;
   };
@@ -241,6 +249,7 @@ export interface AgentActivityCreateSessionInput {
   initialContent?: AgentPromptContentBlock[] | null;
   /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
+  metadata?: Record<string, unknown>;
   model?: string | null;
   planMode?: boolean | null;
   permissionModeId?: string | null;
@@ -258,7 +267,57 @@ export interface AgentActivitySendInput {
   content: AgentPromptContentBlock[];
   /** 仅展示用文本(bundle 折叠成一个 chip);content 仍带展开后的文件。 */
   displayPrompt?: string | null;
+  metadata?: Record<string, unknown>;
   signal?: AbortSignal;
+}
+
+export type AgentActivityTurnPhase =
+  | "submitted"
+  | "running"
+  | "waiting"
+  | "settled";
+
+export type AgentActivityTurnOutcome =
+  | "completed"
+  | "failed"
+  | "canceled"
+  | (string & {});
+
+export interface AgentActivityCompletedCommand {
+  kind: "compact" | "review" | "undo" | "goal" | (string & {});
+  status: "completed" | "failed" | "canceled" | (string & {});
+}
+
+export interface AgentActivityTurnLifecycle {
+  activeTurnId: string | null;
+  phase: AgentActivityTurnPhase | (string & {});
+  settling?: boolean;
+  outcome?: AgentActivityTurnOutcome | null;
+  completedCommand?: AgentActivityCompletedCommand | null;
+}
+
+export interface AgentActivitySubmitAvailability {
+  state: "available" | "blocked" | "queueable" | (string & {});
+  reason?: string;
+}
+
+export interface AgentActivityMessageSemantics {
+  userVisibleAssistantResponse?: boolean;
+  turnSettling?: boolean;
+  noticeCommand?: "compact" | "review" | "undo" | "goal" | (string & {});
+  noticeCommandStatus?:
+    | "running"
+    | "completed"
+    | "failed"
+    | "canceled"
+    | (string & {});
+}
+
+export interface AgentActivitySendInputResult {
+  session: AgentActivitySession;
+  turnId: string;
+  turnLifecycle: AgentActivityTurnLifecycle;
+  submitAvailability: AgentActivitySubmitAvailability;
 }
 
 export interface AgentPromptContentBlock {

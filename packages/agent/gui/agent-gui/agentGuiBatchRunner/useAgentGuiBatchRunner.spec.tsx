@@ -261,12 +261,23 @@ function installAgentActivityRuntime(
     listSessionMessages,
     load: async (workspaceId) => getSnapshot(workspaceId),
     retainSessionEvents: vi.fn(() => () => {}),
-    sendInput: vi.fn(async (input) => ({
-      ...upsertSession(input.workspaceId, input.agentSessionId, {
-        status: "working"
-      }),
-      turnId: `turn-${input.agentSessionId}`
-    })),
+    sendInput: vi.fn(async (input) => {
+      const turnId = `turn-${input.agentSessionId}`;
+      return {
+        session: upsertSession(input.workspaceId, input.agentSessionId, {
+          status: "working"
+        }),
+        turnId,
+        turnLifecycle: {
+          activeTurnId: turnId,
+          phase: "submitted"
+        },
+        submitAvailability: {
+          reason: "active_turn",
+          state: "blocked"
+        }
+      };
+    }),
     setSessionPinned: async (input) => ({
       workspaceId: input.workspaceId,
       agentSessionId: input.agentSessionId,

@@ -186,12 +186,18 @@ export function createDesktopAgentActivityAdapter({
     if (claudeDrafts.get(input.workspaceId) === entry) {
       claudeDrafts.delete(input.workspaceId);
     }
-    const session = await tuttidClient.sendWorkspaceAgentSessionInput(
+    const result = await tuttidClient.sendWorkspaceAgentSessionInput(
       input.workspaceId,
       agentSessionId,
-      { content: initialContent }
+      {
+        content: initialContent,
+        ...(input.metadata ? { metadata: input.metadata } : {})
+      }
     );
-    return agentActivitySessionFromTuttidSession(input.workspaceId, session);
+    return agentActivitySessionFromTuttidSession(
+      input.workspaceId,
+      result.session
+    );
   };
 
   return {
@@ -292,6 +298,7 @@ export function createDesktopAgentActivityAdapter({
             input.initialContent ?? []
           ),
           initialDisplayPrompt: input.initialDisplayPrompt ?? null,
+          ...(input.metadata ? { metadata: input.metadata } : {}),
           model: input.model ?? null,
           planMode: input.planMode ?? null,
           permissionModeId: input.permissionModeId ?? null,
@@ -305,15 +312,24 @@ export function createDesktopAgentActivityAdapter({
       return agentActivitySessionFromTuttidSession(input.workspaceId, session);
     },
     async sendInput(input) {
-      const session = await tuttidClient.sendWorkspaceAgentSessionInput(
+      const result = await tuttidClient.sendWorkspaceAgentSessionInput(
         input.workspaceId,
         input.agentSessionId,
         {
           content: toTuttidPromptContentBlocks(input.content),
-          displayPrompt: input.displayPrompt ?? null
+          displayPrompt: input.displayPrompt ?? null,
+          ...(input.metadata ? { metadata: input.metadata } : {})
         }
       );
-      return agentActivitySessionFromTuttidSession(input.workspaceId, session);
+      return {
+        session: agentActivitySessionFromTuttidSession(
+          input.workspaceId,
+          result.session
+        ),
+        turnId: result.turnId,
+        turnLifecycle: result.turnLifecycle,
+        submitAvailability: result.submitAvailability
+      };
     },
     async cancelSession(input) {
       const result = await tuttidClient.cancelWorkspaceAgentSessionWithResult(
@@ -486,6 +502,12 @@ export function agentActivitySessionFromTuttidSession(
     status: session.status,
     visible: session.visible ?? true,
     resumable: session.resumable ?? false,
+    ...(session.turnLifecycle != null
+      ? { turnLifecycle: session.turnLifecycle }
+      : {}),
+    ...(session.submitAvailability != null
+      ? { submitAvailability: session.submitAvailability }
+      : {}),
     lastError: session.lastError ?? null,
     ...(session.runtimeContext != null
       ? { runtimeContext: recordValue(session.runtimeContext) }
@@ -513,6 +535,7 @@ export function agentActivityMessageFromTuttidMessage(
     occurredAtUnixMs: message.occurredAtUnixMs ?? undefined,
     payload: recordValue(message.payload),
     role: message.role,
+    ...(message.semantics != null ? { semantics: message.semantics } : {}),
     startedAtUnixMs: message.startedAtUnixMs ?? undefined,
     status: message.status ?? undefined,
     turnId: message.turnId ?? undefined,

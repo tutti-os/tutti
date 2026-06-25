@@ -14,6 +14,7 @@ interface AgentGUIActivateInput {
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
+  metadata?: Record<string, unknown>;
   mode: "existing" | "new";
   openclawGatewayReady?: boolean;
   provider?: string;
@@ -71,6 +72,7 @@ export function useAgentGUIActivation({
                 cwd: input.cwd,
                 initialContent: input.initialContent,
                 initialDisplayPrompt: input.initialDisplayPrompt,
+                metadata: input.metadata,
                 title: input.title,
                 settings: input.settings,
                 visible: input.visible,

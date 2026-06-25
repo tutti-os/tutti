@@ -129,9 +129,9 @@ func (s *factoryAgentSessionServiceStub) Create(_ context.Context, workspaceID s
 	return agentservice.Session{ID: input.AgentSessionID, Provider: input.Provider}, nil
 }
 
-func (s *factoryAgentSessionServiceStub) SendInput(_ context.Context, _ string, _ string, input agentservice.SendInput) (agentservice.Session, error) {
+func (s *factoryAgentSessionServiceStub) SendInput(_ context.Context, _ string, _ string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
 	s.sendInput = input
-	return agentservice.Session{}, nil
+	return agentservice.SendInputResult{}, nil
 }
 
 func (s *factoryAgentSessionServiceStub) Cancel(_ context.Context, _ string, sessionID string) (agentservice.CancelSessionResult, error) {

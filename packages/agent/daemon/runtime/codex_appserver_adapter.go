@@ -1011,7 +1011,7 @@ func (a *CodexAppServerAdapter) Exec(
 		session.Title = fallbackTitle
 	}
 	startEvents = append(startEvents,
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, nil)),
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, nil))),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", nil),
 	)
 	emitEvents(startEvents)
@@ -1034,7 +1034,7 @@ func (a *CodexAppServerAdapter) Exec(
 		return snapshotEvents(), err
 	}
 
-	trace := newCodexAppServerTurnTrace(session, turnID)
+	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
 	turnParams := appServerTurnStartParams(session, appSession.threadID, content, appSession.planModeMask, appSession.defaultModel)
 	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, content))
 	turnStartedAt := time.Now()
@@ -1186,9 +1186,9 @@ func (a *CodexAppServerAdapter) steerActiveTurn(
 		return nil, err
 	}
 	events := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, displayPrompt, userPromptActivityPayload(content, explicitDisplayPrompt, map[string]any{
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, displayPrompt, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"steered": true,
-		})),
+		}))),
 	}
 	if emit != nil {
 		emit(events)
@@ -1243,7 +1243,9 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		emitTerminal(append(
 			normalizer.FinishCompleted(session, turnID),
 			newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
-				"stopReason": "end_turn",
+				"stopReason":             "end_turn",
+				"completedCommandKind":   "compact",
+				"completedCommandStatus": "completed",
 			}),
 		))
 		return true, nil

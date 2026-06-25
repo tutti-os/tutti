@@ -94,29 +94,53 @@ func (r *ReportSessionStateReply) UnmarshalJSON(data []byte) error {
 }
 
 type WorkspaceAgentSessionStateUpdate struct {
-	Provider          string                         `json:"provider,omitempty"`
-	ProviderSessionID string                         `json:"providerSessionId,omitempty"`
-	Model             string                         `json:"model,omitempty"`
-	Settings          map[string]any                 `json:"settings,omitempty"`
-	RuntimeContext    map[string]any                 `json:"runtimeContext,omitempty"`
-	CWD               string                         `json:"cwd,omitempty"`
-	Title             string                         `json:"title,omitempty"`
-	LifecycleStatus   string                         `json:"lifecycleStatus,omitempty"`
-	CurrentPhase      string                         `json:"currentPhase,omitempty"`
-	LastError         string                         `json:"lastError,omitempty"`
-	OccurredAtUnixMS  int64                          `json:"occurredAtUnixMs,omitempty"`
-	StartedAtUnixMS   int64                          `json:"startedAtUnixMs,omitempty"`
-	EndedAtUnixMS     int64                          `json:"endedAtUnixMs,omitempty"`
-	Turn              *WorkspaceAgentTurnStateUpdate `json:"turn,omitempty"`
+	Provider           string                            `json:"provider,omitempty"`
+	ProviderSessionID  string                            `json:"providerSessionId,omitempty"`
+	Model              string                            `json:"model,omitempty"`
+	Settings           map[string]any                    `json:"settings,omitempty"`
+	RuntimeContext     map[string]any                    `json:"runtimeContext,omitempty"`
+	TurnLifecycle      *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
+	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	CWD                string                            `json:"cwd,omitempty"`
+	Title              string                            `json:"title,omitempty"`
+	LifecycleStatus    string                            `json:"lifecycleStatus,omitempty"`
+	CurrentPhase       string                            `json:"currentPhase,omitempty"`
+	LastError          string                            `json:"lastError,omitempty"`
+	OccurredAtUnixMS   int64                             `json:"occurredAtUnixMs,omitempty"`
+	StartedAtUnixMS    int64                             `json:"startedAtUnixMs,omitempty"`
+	EndedAtUnixMS      int64                             `json:"endedAtUnixMs,omitempty"`
+	Turn               *WorkspaceAgentTurnStateUpdate    `json:"turn,omitempty"`
 }
 
 type WorkspaceAgentTurnStateUpdate struct {
-	TurnID            string         `json:"turnId"`
-	Phase             string         `json:"phase,omitempty"`
-	Outcome           string         `json:"outcome,omitempty"`
-	FileChanges       map[string]any `json:"fileChanges,omitempty"`
-	StartedAtUnixMS   int64          `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS int64          `json:"completedAtUnixMs,omitempty"`
+	TurnID             string                            `json:"turnId"`
+	ActiveTurnID       *string                           `json:"activeTurnId,omitempty"`
+	Phase              string                            `json:"phase,omitempty"`
+	Outcome            string                            `json:"outcome,omitempty"`
+	Settling           bool                              `json:"settling,omitempty"`
+	CompletedCommand   *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
+	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	FileChanges        map[string]any                    `json:"fileChanges,omitempty"`
+	StartedAtUnixMS    int64                             `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS  int64                             `json:"completedAtUnixMs,omitempty"`
+}
+
+type WorkspaceAgentCompletedCommand struct {
+	Kind   string `json:"kind"`
+	Status string `json:"status"`
+}
+
+type WorkspaceAgentSubmitAvailability struct {
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type WorkspaceAgentTurnLifecycle struct {
+	ActiveTurnID     *string                         `json:"activeTurnId"`
+	Phase            string                          `json:"phase"`
+	Settling         bool                            `json:"settling,omitempty"`
+	Outcome          *string                         `json:"outcome,omitempty"`
+	CompletedCommand *WorkspaceAgentCompletedCommand `json:"completedCommand,omitempty"`
 }
 
 type ReportSessionMessagesInput struct {
@@ -156,16 +180,17 @@ func (r *ReportSessionMessagesReply) UnmarshalJSON(data []byte) error {
 }
 
 type WorkspaceAgentSessionMessageUpdate struct {
-	MessageID         string         `json:"messageId"`
-	TurnID            string         `json:"turnId,omitempty"`
-	Role              string         `json:"role"`
-	Kind              string         `json:"kind"`
-	Status            string         `json:"status,omitempty"`
-	ContentDelta      string         `json:"contentDelta,omitempty"`
-	Payload           map[string]any `json:"payload,omitempty"`
-	OccurredAtUnixMS  int64          `json:"occurredAtUnixMs,omitempty"`
-	StartedAtUnixMS   int64          `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS int64          `json:"completedAtUnixMs,omitempty"`
+	MessageID         string                          `json:"messageId"`
+	TurnID            string                          `json:"turnId,omitempty"`
+	Role              string                          `json:"role"`
+	Kind              string                          `json:"kind"`
+	Status            string                          `json:"status,omitempty"`
+	Semantics         *WorkspaceAgentMessageSemantics `json:"semantics,omitempty"`
+	ContentDelta      string                          `json:"contentDelta,omitempty"`
+	Payload           map[string]any                  `json:"payload,omitempty"`
+	OccurredAtUnixMS  int64                           `json:"occurredAtUnixMs,omitempty"`
+	StartedAtUnixMS   int64                           `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS int64                           `json:"completedAtUnixMs,omitempty"`
 }
 
 type ListSessionMessagesInput struct {
@@ -205,46 +230,48 @@ func (r *ListSessionMessagesReply) UnmarshalJSON(data []byte) error {
 }
 
 type WorkspaceAgentSessionMessage struct {
-	ID                uint64         `json:"id"`
-	AgentSessionID    string         `json:"agentSessionId"`
-	MessageID         string         `json:"messageId"`
-	TurnID            string         `json:"turnId,omitempty"`
-	Role              string         `json:"role"`
-	Kind              string         `json:"kind"`
-	Status            string         `json:"status,omitempty"`
-	Payload           map[string]any `json:"payload,omitempty"`
-	OccurredAtUnixMS  int64          `json:"occurredAtUnixMs,omitempty"`
-	StartedAtUnixMS   int64          `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS int64          `json:"completedAtUnixMs,omitempty"`
-	CreatedAtUnixMS   int64          `json:"createdAtUnixMs,omitempty"`
-	UpdatedAtUnixMS   int64          `json:"updatedAtUnixMs,omitempty"`
-	Version           uint64         `json:"version"`
+	ID                uint64                          `json:"id"`
+	AgentSessionID    string                          `json:"agentSessionId"`
+	MessageID         string                          `json:"messageId"`
+	TurnID            string                          `json:"turnId,omitempty"`
+	Role              string                          `json:"role"`
+	Kind              string                          `json:"kind"`
+	Status            string                          `json:"status,omitempty"`
+	Semantics         *WorkspaceAgentMessageSemantics `json:"semantics,omitempty"`
+	Payload           map[string]any                  `json:"payload,omitempty"`
+	OccurredAtUnixMS  int64                           `json:"occurredAtUnixMs,omitempty"`
+	StartedAtUnixMS   int64                           `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS int64                           `json:"completedAtUnixMs,omitempty"`
+	CreatedAtUnixMS   int64                           `json:"createdAtUnixMs,omitempty"`
+	UpdatedAtUnixMS   int64                           `json:"updatedAtUnixMs,omitempty"`
+	Version           uint64                          `json:"version"`
 }
 
 func (m *WorkspaceAgentSessionMessage) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		ID                     flexibleUint64 `json:"id"`
-		AgentSessionID         string         `json:"agentSessionId"`
-		AgentSessionIDSnake    string         `json:"agent_session_id"`
-		MessageID              string         `json:"messageId"`
-		MessageIDSnake         string         `json:"message_id"`
-		TurnID                 string         `json:"turnId"`
-		TurnIDSnake            string         `json:"turn_id"`
-		Role                   string         `json:"role"`
-		Kind                   string         `json:"kind"`
-		Status                 string         `json:"status"`
-		Payload                map[string]any `json:"payload"`
-		OccurredAtUnixMS       flexibleInt64  `json:"occurredAtUnixMs"`
-		OccurredAtUnixMSSnake  flexibleInt64  `json:"occurred_at_unix_ms"`
-		StartedAtUnixMS        flexibleInt64  `json:"startedAtUnixMs"`
-		StartedAtUnixMSSnake   flexibleInt64  `json:"started_at_unix_ms"`
-		CompletedAtUnixMS      flexibleInt64  `json:"completedAtUnixMs"`
-		CompletedAtUnixMSSnake flexibleInt64  `json:"completed_at_unix_ms"`
-		CreatedAtUnixMS        flexibleInt64  `json:"createdAtUnixMs"`
-		CreatedAtUnixMSSnake   flexibleInt64  `json:"created_at_unix_ms"`
-		UpdatedAtUnixMS        flexibleInt64  `json:"updatedAtUnixMs"`
-		UpdatedAtUnixMSSnake   flexibleInt64  `json:"updated_at_unix_ms"`
-		Version                flexibleUint64 `json:"version"`
+		ID                     flexibleUint64                  `json:"id"`
+		AgentSessionID         string                          `json:"agentSessionId"`
+		AgentSessionIDSnake    string                          `json:"agent_session_id"`
+		MessageID              string                          `json:"messageId"`
+		MessageIDSnake         string                          `json:"message_id"`
+		TurnID                 string                          `json:"turnId"`
+		TurnIDSnake            string                          `json:"turn_id"`
+		Role                   string                          `json:"role"`
+		Kind                   string                          `json:"kind"`
+		Status                 string                          `json:"status"`
+		Semantics              *WorkspaceAgentMessageSemantics `json:"semantics"`
+		Payload                map[string]any                  `json:"payload"`
+		OccurredAtUnixMS       flexibleInt64                   `json:"occurredAtUnixMs"`
+		OccurredAtUnixMSSnake  flexibleInt64                   `json:"occurred_at_unix_ms"`
+		StartedAtUnixMS        flexibleInt64                   `json:"startedAtUnixMs"`
+		StartedAtUnixMSSnake   flexibleInt64                   `json:"started_at_unix_ms"`
+		CompletedAtUnixMS      flexibleInt64                   `json:"completedAtUnixMs"`
+		CompletedAtUnixMSSnake flexibleInt64                   `json:"completed_at_unix_ms"`
+		CreatedAtUnixMS        flexibleInt64                   `json:"createdAtUnixMs"`
+		CreatedAtUnixMSSnake   flexibleInt64                   `json:"created_at_unix_ms"`
+		UpdatedAtUnixMS        flexibleInt64                   `json:"updatedAtUnixMs"`
+		UpdatedAtUnixMSSnake   flexibleInt64                   `json:"updated_at_unix_ms"`
+		Version                flexibleUint64                  `json:"version"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -257,6 +284,7 @@ func (m *WorkspaceAgentSessionMessage) UnmarshalJSON(data []byte) error {
 		Role:           raw.Role,
 		Kind:           raw.Kind,
 		Status:         raw.Status,
+		Semantics:      raw.Semantics,
 		Payload:        raw.Payload,
 		OccurredAtUnixMS: int64(firstNonZeroFlexibleInt64(
 			raw.OccurredAtUnixMS,
@@ -298,30 +326,36 @@ type EventSource struct {
 }
 
 type WorkspaceAgentStatePatch struct {
-	AgentSessionID    string                      `json:"agentSessionId"`
-	Provider          string                      `json:"provider,omitempty"`
-	ProviderSessionID string                      `json:"providerSessionId,omitempty"`
-	Model             string                      `json:"model,omitempty"`
-	PermissionModeID  string                      `json:"permissionModeId,omitempty"`
-	Settings          map[string]any              `json:"settings,omitempty"`
-	RuntimeContext    map[string]any              `json:"runtimeContext,omitempty"`
-	CWD               string                      `json:"cwd,omitempty"`
-	Title             string                      `json:"title,omitempty"`
-	LifecycleStatus   string                      `json:"lifecycleStatus,omitempty"`
-	CurrentPhase      string                      `json:"currentPhase,omitempty"`
-	LastError         string                      `json:"lastError,omitempty"`
-	OccurredAtUnixMS  int64                       `json:"occurredAtUnixMs,omitempty"`
-	Turn              *WorkspaceAgentTurnPatch    `json:"turn,omitempty"`
-	Entities          []WorkspaceAgentEntityPatch `json:"entities,omitempty"`
+	AgentSessionID     string                            `json:"agentSessionId"`
+	Provider           string                            `json:"provider,omitempty"`
+	ProviderSessionID  string                            `json:"providerSessionId,omitempty"`
+	Model              string                            `json:"model,omitempty"`
+	PermissionModeID   string                            `json:"permissionModeId,omitempty"`
+	Settings           map[string]any                    `json:"settings,omitempty"`
+	RuntimeContext     map[string]any                    `json:"runtimeContext,omitempty"`
+	TurnLifecycle      *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
+	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	CWD                string                            `json:"cwd,omitempty"`
+	Title              string                            `json:"title,omitempty"`
+	LifecycleStatus    string                            `json:"lifecycleStatus,omitempty"`
+	CurrentPhase       string                            `json:"currentPhase,omitempty"`
+	LastError          string                            `json:"lastError,omitempty"`
+	OccurredAtUnixMS   int64                             `json:"occurredAtUnixMs,omitempty"`
+	Turn               *WorkspaceAgentTurnPatch          `json:"turn,omitempty"`
+	Entities           []WorkspaceAgentEntityPatch       `json:"entities,omitempty"`
 }
 
 type WorkspaceAgentTurnPatch struct {
-	TurnID            string         `json:"turnId"`
-	Phase             string         `json:"phase,omitempty"`
-	Outcome           string         `json:"outcome,omitempty"`
-	FileChanges       map[string]any `json:"fileChanges,omitempty"`
-	StartedAtUnixMS   int64          `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS int64          `json:"completedAtUnixMs,omitempty"`
+	TurnID             string                            `json:"turnId"`
+	ActiveTurnID       *string                           `json:"activeTurnId,omitempty"`
+	Phase              string                            `json:"phase,omitempty"`
+	Outcome            string                            `json:"outcome,omitempty"`
+	Settling           bool                              `json:"settling,omitempty"`
+	CompletedCommand   *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
+	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	FileChanges        map[string]any                    `json:"fileChanges,omitempty"`
+	StartedAtUnixMS    int64                             `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS  int64                             `json:"completedAtUnixMs,omitempty"`
 }
 
 type WorkspaceAgentEntityPatch struct {
@@ -338,40 +372,49 @@ type WorkspaceAgentEntityPatch struct {
 }
 
 type WorkspaceAgentMessageUpdate struct {
-	AgentSessionID    string         `json:"agentSessionId"`
-	MessageID         string         `json:"messageId"`
-	Seq               uint64         `json:"seq"`
-	TurnID            string         `json:"turnId,omitempty"`
-	Role              string         `json:"role"`
-	Kind              string         `json:"kind"`
-	Status            string         `json:"status,omitempty"`
-	CallID            string         `json:"callId,omitempty"`
-	ParentCallID      string         `json:"parentCallId,omitempty"`
-	RootCallID        string         `json:"rootCallId,omitempty"`
-	Title             string         `json:"title,omitempty"`
-	Payload           map[string]any `json:"payload"`
-	OccurredAtUnixMS  int64          `json:"occurredAtUnixMs,omitempty"`
-	StartedAtUnixMS   int64          `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS int64          `json:"completedAtUnixMs,omitempty"`
+	AgentSessionID    string                          `json:"agentSessionId"`
+	MessageID         string                          `json:"messageId"`
+	Seq               uint64                          `json:"seq"`
+	TurnID            string                          `json:"turnId,omitempty"`
+	Role              string                          `json:"role"`
+	Kind              string                          `json:"kind"`
+	Status            string                          `json:"status,omitempty"`
+	Semantics         *WorkspaceAgentMessageSemantics `json:"semantics,omitempty"`
+	CallID            string                          `json:"callId,omitempty"`
+	ParentCallID      string                          `json:"parentCallId,omitempty"`
+	RootCallID        string                          `json:"rootCallId,omitempty"`
+	Title             string                          `json:"title,omitempty"`
+	Payload           map[string]any                  `json:"payload"`
+	OccurredAtUnixMS  int64                           `json:"occurredAtUnixMs,omitempty"`
+	StartedAtUnixMS   int64                           `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS int64                           `json:"completedAtUnixMs,omitempty"`
+}
+
+type WorkspaceAgentMessageSemantics struct {
+	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse,omitempty"`
+	TurnSettling                 bool   `json:"turnSettling,omitempty"`
+	NoticeCommand                string `json:"noticeCommand,omitempty"`
+	NoticeCommandStatus          string `json:"noticeCommandStatus,omitempty"`
 }
 
 func (u *WorkspaceAgentMessageUpdate) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		AgentSessionID    string         `json:"agentSessionId"`
-		MessageID         string         `json:"messageId"`
-		Seq               flexibleUint64 `json:"seq"`
-		TurnID            string         `json:"turnId"`
-		Role              string         `json:"role"`
-		Kind              string         `json:"kind"`
-		Status            string         `json:"status"`
-		CallID            string         `json:"callId"`
-		ParentCallID      string         `json:"parentCallId"`
-		RootCallID        string         `json:"rootCallId"`
-		Title             string         `json:"title"`
-		Payload           map[string]any `json:"payload"`
-		OccurredAtUnixMS  flexibleInt64  `json:"occurredAtUnixMs"`
-		StartedAtUnixMS   flexibleInt64  `json:"startedAtUnixMs"`
-		CompletedAtUnixMS flexibleInt64  `json:"completedAtUnixMs"`
+		AgentSessionID    string                          `json:"agentSessionId"`
+		MessageID         string                          `json:"messageId"`
+		Seq               flexibleUint64                  `json:"seq"`
+		TurnID            string                          `json:"turnId"`
+		Role              string                          `json:"role"`
+		Kind              string                          `json:"kind"`
+		Status            string                          `json:"status"`
+		Semantics         *WorkspaceAgentMessageSemantics `json:"semantics"`
+		CallID            string                          `json:"callId"`
+		ParentCallID      string                          `json:"parentCallId"`
+		RootCallID        string                          `json:"rootCallId"`
+		Title             string                          `json:"title"`
+		Payload           map[string]any                  `json:"payload"`
+		OccurredAtUnixMS  flexibleInt64                   `json:"occurredAtUnixMs"`
+		StartedAtUnixMS   flexibleInt64                   `json:"startedAtUnixMs"`
+		CompletedAtUnixMS flexibleInt64                   `json:"completedAtUnixMs"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -384,6 +427,7 @@ func (u *WorkspaceAgentMessageUpdate) UnmarshalJSON(data []byte) error {
 		Role:              raw.Role,
 		Kind:              raw.Kind,
 		Status:            raw.Status,
+		Semantics:         raw.Semantics,
 		CallID:            raw.CallID,
 		ParentCallID:      raw.ParentCallID,
 		RootCallID:        raw.RootCallID,
@@ -422,66 +466,72 @@ type WorkspaceAgentPresence struct {
 }
 
 type WorkspaceAgentSession struct {
-	ID                uint64                   `json:"id"`
-	AgentSessionID    string                   `json:"agentSessionId"`
-	PresenceID        uint64                   `json:"presenceId"`
-	UserID            string                   `json:"userId"`
-	Provider          string                   `json:"provider"`
-	ProviderSessionID string                   `json:"providerSessionId"`
-	SessionOrigin     string                   `json:"sessionOrigin,omitempty"`
-	CWD               string                   `json:"cwd"`
-	Status            string                   `json:"status"`
-	LifecycleStatus   string                   `json:"lifecycleStatus"`
-	TurnPhase         string                   `json:"turnPhase"`
-	StartedAtUnixMS   int64                    `json:"startedAtUnixMs"`
-	EndedAtUnixMS     int64                    `json:"endedAtUnixMs"`
-	CreatedAtUnixMS   int64                    `json:"createdAtUnixMs"`
-	UpdatedAtUnixMS   int64                    `json:"updatedAtUnixMs"`
-	EffectiveStatus   string                   `json:"effectiveStatus"`
-	Title             string                   `json:"title,omitempty"`
-	SyncState         *WorkspaceAgentSyncState `json:"syncState,omitempty"`
+	ID                 uint64                            `json:"id"`
+	AgentSessionID     string                            `json:"agentSessionId"`
+	PresenceID         uint64                            `json:"presenceId"`
+	UserID             string                            `json:"userId"`
+	Provider           string                            `json:"provider"`
+	ProviderSessionID  string                            `json:"providerSessionId"`
+	SessionOrigin      string                            `json:"sessionOrigin,omitempty"`
+	CWD                string                            `json:"cwd"`
+	Status             string                            `json:"status"`
+	TurnLifecycle      *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
+	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	LifecycleStatus    string                            `json:"lifecycleStatus"`
+	TurnPhase          string                            `json:"turnPhase"`
+	StartedAtUnixMS    int64                             `json:"startedAtUnixMs"`
+	EndedAtUnixMS      int64                             `json:"endedAtUnixMs"`
+	CreatedAtUnixMS    int64                             `json:"createdAtUnixMs"`
+	UpdatedAtUnixMS    int64                             `json:"updatedAtUnixMs"`
+	EffectiveStatus    string                            `json:"effectiveStatus"`
+	Title              string                            `json:"title,omitempty"`
+	SyncState          *WorkspaceAgentSyncState          `json:"syncState,omitempty"`
 }
 
 func (s WorkspaceAgentSession) MarshalJSON() ([]byte, error) {
 	type output struct {
-		ID                uint64                   `json:"id"`
-		AgentSessionID    string                   `json:"agentSessionId"`
-		PresenceID        uint64                   `json:"presenceId"`
-		UserID            string                   `json:"userId"`
-		Provider          string                   `json:"provider"`
-		ProviderSessionID string                   `json:"providerSessionId"`
-		SessionOrigin     string                   `json:"sessionOrigin,omitempty"`
-		CWD               string                   `json:"cwd"`
-		Status            string                   `json:"status"`
-		LifecycleStatus   string                   `json:"lifecycleStatus,omitempty"`
-		TurnPhase         string                   `json:"turnPhase,omitempty"`
-		EffectiveStatus   string                   `json:"effectiveStatus,omitempty"`
-		StartedAtUnixMS   int64                    `json:"startedAtUnixMs"`
-		EndedAtUnixMS     int64                    `json:"endedAtUnixMs"`
-		CreatedAtUnixMS   int64                    `json:"createdAtUnixMs"`
-		UpdatedAtUnixMS   int64                    `json:"updatedAtUnixMs"`
-		Title             string                   `json:"title,omitempty"`
-		SyncState         *WorkspaceAgentSyncState `json:"syncState,omitempty"`
+		ID                 uint64                            `json:"id"`
+		AgentSessionID     string                            `json:"agentSessionId"`
+		PresenceID         uint64                            `json:"presenceId"`
+		UserID             string                            `json:"userId"`
+		Provider           string                            `json:"provider"`
+		ProviderSessionID  string                            `json:"providerSessionId"`
+		SessionOrigin      string                            `json:"sessionOrigin,omitempty"`
+		CWD                string                            `json:"cwd"`
+		Status             string                            `json:"status"`
+		TurnLifecycle      *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
+		SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+		LifecycleStatus    string                            `json:"lifecycleStatus,omitempty"`
+		TurnPhase          string                            `json:"turnPhase,omitempty"`
+		EffectiveStatus    string                            `json:"effectiveStatus,omitempty"`
+		StartedAtUnixMS    int64                             `json:"startedAtUnixMs"`
+		EndedAtUnixMS      int64                             `json:"endedAtUnixMs"`
+		CreatedAtUnixMS    int64                             `json:"createdAtUnixMs"`
+		UpdatedAtUnixMS    int64                             `json:"updatedAtUnixMs"`
+		Title              string                            `json:"title,omitempty"`
+		SyncState          *WorkspaceAgentSyncState          `json:"syncState,omitempty"`
 	}
 	return json.Marshal(output{
-		ID:                s.ID,
-		AgentSessionID:    s.AgentSessionID,
-		PresenceID:        s.PresenceID,
-		UserID:            s.UserID,
-		Provider:          s.Provider,
-		ProviderSessionID: s.ProviderSessionID,
-		SessionOrigin:     s.SessionOrigin,
-		CWD:               s.CWD,
-		Status:            s.Status,
-		LifecycleStatus:   s.LifecycleStatus,
-		TurnPhase:         s.TurnPhase,
-		EffectiveStatus:   s.EffectiveStatus,
-		StartedAtUnixMS:   s.StartedAtUnixMS,
-		EndedAtUnixMS:     s.EndedAtUnixMS,
-		CreatedAtUnixMS:   s.CreatedAtUnixMS,
-		UpdatedAtUnixMS:   s.UpdatedAtUnixMS,
-		Title:             s.Title,
-		SyncState:         cloneSyncState(s.SyncState),
+		ID:                 s.ID,
+		AgentSessionID:     s.AgentSessionID,
+		PresenceID:         s.PresenceID,
+		UserID:             s.UserID,
+		Provider:           s.Provider,
+		ProviderSessionID:  s.ProviderSessionID,
+		SessionOrigin:      s.SessionOrigin,
+		CWD:                s.CWD,
+		Status:             s.Status,
+		TurnLifecycle:      s.TurnLifecycle,
+		SubmitAvailability: s.SubmitAvailability,
+		LifecycleStatus:    s.LifecycleStatus,
+		TurnPhase:          s.TurnPhase,
+		EffectiveStatus:    s.EffectiveStatus,
+		StartedAtUnixMS:    s.StartedAtUnixMS,
+		EndedAtUnixMS:      s.EndedAtUnixMS,
+		CreatedAtUnixMS:    s.CreatedAtUnixMS,
+		UpdatedAtUnixMS:    s.UpdatedAtUnixMS,
+		Title:              s.Title,
+		SyncState:          cloneSyncState(s.SyncState),
 	})
 }
 

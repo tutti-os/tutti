@@ -162,6 +162,7 @@ func SessionMessageUpdateFromActivityUpdate(update WorkspaceAgentMessageUpdate) 
 		Role:              strings.TrimSpace(update.Role),
 		Kind:              strings.TrimSpace(update.Kind),
 		Status:            strings.TrimSpace(update.Status),
+		Semantics:         cloneMessageSemantics(update.Semantics),
 		Payload:           payload,
 		OccurredAtUnixMS:  update.OccurredAtUnixMS,
 		StartedAtUnixMS:   update.StartedAtUnixMS,
@@ -175,28 +176,83 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		currentPhase = deriveCurrentPhaseFromEntityPatches(patch.Entities)
 	}
 	out := WorkspaceAgentSessionStateUpdate{
-		Provider:          strings.TrimSpace(patch.Provider),
-		ProviderSessionID: strings.TrimSpace(patch.ProviderSessionID),
-		Model:             strings.TrimSpace(patch.Model),
-		Settings:          clonePayloadMap(patch.Settings),
-		RuntimeContext:    clonePayloadMap(patch.RuntimeContext),
-		CWD:               strings.TrimSpace(patch.CWD),
-		Title:             strings.TrimSpace(patch.Title),
-		LifecycleStatus:   strings.TrimSpace(patch.LifecycleStatus),
-		CurrentPhase:      currentPhase,
-		OccurredAtUnixMS:  patch.OccurredAtUnixMS,
+		Provider:           strings.TrimSpace(patch.Provider),
+		ProviderSessionID:  strings.TrimSpace(patch.ProviderSessionID),
+		Model:              strings.TrimSpace(patch.Model),
+		Settings:           clonePayloadMap(patch.Settings),
+		RuntimeContext:     clonePayloadMap(patch.RuntimeContext),
+		TurnLifecycle:      cloneTurnLifecycle(patch.TurnLifecycle),
+		SubmitAvailability: cloneSubmitAvailability(patch.SubmitAvailability),
+		CWD:                strings.TrimSpace(patch.CWD),
+		Title:              strings.TrimSpace(patch.Title),
+		LifecycleStatus:    strings.TrimSpace(patch.LifecycleStatus),
+		CurrentPhase:       currentPhase,
+		OccurredAtUnixMS:   patch.OccurredAtUnixMS,
 	}
 	if patch.Turn != nil {
 		out.Turn = &WorkspaceAgentTurnStateUpdate{
-			TurnID:            strings.TrimSpace(patch.Turn.TurnID),
-			Phase:             strings.TrimSpace(patch.Turn.Phase),
-			Outcome:           strings.TrimSpace(patch.Turn.Outcome),
-			FileChanges:       clonePayloadMap(patch.Turn.FileChanges),
-			StartedAtUnixMS:   patch.Turn.StartedAtUnixMS,
-			CompletedAtUnixMS: patch.Turn.CompletedAtUnixMS,
+			TurnID:             strings.TrimSpace(patch.Turn.TurnID),
+			ActiveTurnID:       cloneStringPointer(patch.Turn.ActiveTurnID),
+			Phase:              strings.TrimSpace(patch.Turn.Phase),
+			Outcome:            strings.TrimSpace(patch.Turn.Outcome),
+			Settling:           patch.Turn.Settling,
+			CompletedCommand:   cloneCompletedCommand(patch.Turn.CompletedCommand),
+			SubmitAvailability: cloneSubmitAvailability(patch.Turn.SubmitAvailability),
+			FileChanges:        clonePayloadMap(patch.Turn.FileChanges),
+			StartedAtUnixMS:    patch.Turn.StartedAtUnixMS,
+			CompletedAtUnixMS:  patch.Turn.CompletedAtUnixMS,
 		}
 	}
 	return out
+}
+
+func cloneMessageSemantics(value *WorkspaceAgentMessageSemantics) *WorkspaceAgentMessageSemantics {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := strings.TrimSpace(*value)
+	return &cloned
+}
+
+func cloneCompletedCommand(value *WorkspaceAgentCompletedCommand) *WorkspaceAgentCompletedCommand {
+	if value == nil {
+		return nil
+	}
+	return &WorkspaceAgentCompletedCommand{
+		Kind:   strings.TrimSpace(value.Kind),
+		Status: strings.TrimSpace(value.Status),
+	}
+}
+
+func cloneSubmitAvailability(value *WorkspaceAgentSubmitAvailability) *WorkspaceAgentSubmitAvailability {
+	if value == nil {
+		return nil
+	}
+	return &WorkspaceAgentSubmitAvailability{
+		State:  strings.TrimSpace(value.State),
+		Reason: strings.TrimSpace(value.Reason),
+	}
+}
+
+func cloneTurnLifecycle(value *WorkspaceAgentTurnLifecycle) *WorkspaceAgentTurnLifecycle {
+	if value == nil {
+		return nil
+	}
+	return &WorkspaceAgentTurnLifecycle{
+		ActiveTurnID:     cloneStringPointer(value.ActiveTurnID),
+		Phase:            strings.TrimSpace(value.Phase),
+		Settling:         value.Settling,
+		Outcome:          cloneStringPointer(value.Outcome),
+		CompletedCommand: cloneCompletedCommand(value.CompletedCommand),
+	}
 }
 
 func deriveCurrentPhaseFromEntityPatches(entities []WorkspaceAgentEntityPatch) string {

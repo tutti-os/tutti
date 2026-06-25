@@ -846,6 +846,12 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 		Provider:             "codex",
 		InitialContent:       TextPromptContent("real automation prompt"),
 		InitialDisplayPrompt: "Run Automation",
+		Metadata: map[string]any{
+			"":                        "drop",
+			"clientSubmitId":          "submit-create-1",
+			"clientSubmittedAtUnixMs": int64(12345),
+			" spacedDiagnosticKey ":   "trimmed",
+		},
 	})
 	if err != nil {
 		t.Fatalf("Create error = %v", err)
@@ -859,6 +865,12 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	}
 	if call.DisplayPrompt != "Run Automation" {
 		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
+	}
+	if call.Metadata["clientSubmitId"] != "submit-create-1" || call.Metadata["spacedDiagnosticKey"] != "trimmed" {
+		t.Fatalf("runtime metadata = %#v", call.Metadata)
+	}
+	if _, ok := call.Metadata[""]; ok {
+		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
 	}
 }
 
@@ -955,6 +967,12 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
 		Content:       TextPromptContent("real repair prompt"),
 		DisplayPrompt: "Fix the app",
+		Metadata: map[string]any{
+			"clientSubmitId":             "submit-1",
+			"clientSubmittedAtUnixMs":    int64(1234),
+			" ignoredBlankKeyIsRemoved ": true,
+			"":                           "drop",
+		},
 	})
 	if err != nil {
 		t.Fatalf("SendInput error = %v", err)
@@ -968,6 +986,14 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	}
 	if call.DisplayPrompt != "Fix the app" {
 		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
+	}
+	if call.Metadata["clientSubmitId"] != "submit-1" ||
+		call.Metadata["clientSubmittedAtUnixMs"] != int64(1234) ||
+		call.Metadata["ignoredBlankKeyIsRemoved"] != true {
+		t.Fatalf("runtime metadata = %#v", call.Metadata)
+	}
+	if _, ok := call.Metadata[""]; ok {
+		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
 	}
 }
 
@@ -2468,10 +2494,11 @@ func TestServiceResumesPersistedSessionBeforeInput(t *testing.T) {
 		},
 	}
 
-	session, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")})
+	result, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")})
 	if err != nil {
 		t.Fatalf("SendInput returned error: %v", err)
 	}
+	session := result.Session
 	if session.ID != "session-1" {
 		t.Fatalf("session id = %q", session.ID)
 	}
@@ -2501,10 +2528,11 @@ func TestServiceSendInputReturnsRuntimeExecStatusOverStalePersistedStatus(t *tes
 		},
 	}
 
-	session, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")})
+	result, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")})
 	if err != nil {
 		t.Fatalf("SendInput returned error: %v", err)
 	}
+	session := result.Session
 	if session.Status != "running" {
 		t.Fatalf("session status = %q, want running", session.Status)
 	}

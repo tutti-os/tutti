@@ -1,9 +1,12 @@
 import {
   mergeAgentActivityMessages,
   AgentActivityMessage,
+  AgentActivityMessageSemantics,
   AgentActivityPresence,
   AgentActivitySession,
-  AgentActivitySnapshot
+  AgentActivitySnapshot,
+  AgentActivitySubmitAvailability,
+  AgentActivityTurnLifecycle
 } from "@tutti-os/agent-activity-core";
 
 export type WorkspaceAgentActivityProvider = "codex" | "claude-code" | string;
@@ -87,6 +90,8 @@ export interface WorkspaceAgentActivitySession extends Omit<
   endedAtUnixMs?: number;
   effectiveStatus?: string;
   status?: string;
+  turnLifecycle?: AgentActivityTurnLifecycle | null;
+  submitAvailability?: AgentActivitySubmitAvailability | null;
   title?: string;
   pinnedAtUnixMs?: number | null;
   syncState?: WorkspaceAgentActivitySyncState;
@@ -136,6 +141,7 @@ export interface WorkspaceAgentActivityMessage extends Omit<
   id?: number;
   turnId?: string | null;
   status?: string | null;
+  semantics?: AgentActivityMessageSemantics;
 }
 
 export interface WorkspaceAgentActivitySnapshot extends Omit<
@@ -155,6 +161,13 @@ export interface WorkspaceAgentActivityTurnStatePatch {
   fileChanges?: Record<string, unknown>;
   startedAtUnixMs?: number;
   completedAtUnixMs?: number;
+  activeTurnId?: string | null;
+  settling?: boolean;
+  completedCommand?: {
+    kind: string;
+    status: string;
+  } | null;
+  submitAvailability?: AgentActivitySubmitAvailability;
 }
 
 export interface WorkspaceAgentActivityEntityStatePatch {
@@ -185,6 +198,7 @@ export interface WorkspaceAgentActivityStatePatch {
   currentPhase?: string;
   lastError?: string;
   occurredAtUnixMs?: number;
+  submitAvailability?: AgentActivitySubmitAvailability;
   turn?: WorkspaceAgentActivityTurnStatePatch;
   entities?: WorkspaceAgentActivityEntityStatePatch[];
 }
@@ -247,9 +261,29 @@ export function selectWorkspaceAgentActivityOverlayMessages(input: {
       .map(workspaceAgentActivityMessageIdentity)
       .filter((identity): identity is string => identity !== null)
   );
+  const durableClientSubmitIds = new Set(
+    durableMessages
+      .map(workspaceAgentActivityClientSubmitId)
+      .filter(
+        (clientSubmitId): clientSubmitId is string => clientSubmitId !== null
+      )
+  );
+  const durableUserPromptSignatures = new Set(
+    durableMessages
+      .map(workspaceAgentActivityUserPromptSignature)
+      .filter((signature): signature is string => signature !== null)
+  );
   return localMessages.filter((message) => {
     if (isWorkspaceAgentActivityOptimisticMessage(message)) {
-      return true;
+      const clientSubmitId = workspaceAgentActivityClientSubmitId(message);
+      if (
+        clientSubmitId !== null &&
+        durableClientSubmitIds.has(clientSubmitId)
+      ) {
+        return false;
+      }
+      const signature = workspaceAgentActivityUserPromptSignature(message);
+      return signature === null || !durableUserPromptSignatures.has(signature);
     }
     const identity = workspaceAgentActivityMessageIdentity(message);
     return identity === null || !durableIdentities.has(identity);
@@ -278,4 +312,104 @@ function workspaceAgentActivityMessageIdentity(
     return `version:${message.version}`;
   }
   return null;
+}
+
+function workspaceAgentActivityClientSubmitId(
+  message: WorkspaceAgentActivityMessage
+): string | null {
+  const clientSubmitId = message.payload?.clientSubmitId;
+  return typeof clientSubmitId === "string" && clientSubmitId.trim()
+    ? `${message.agentSessionId}\u0000${clientSubmitId.trim()}`
+    : null;
+}
+
+function workspaceAgentActivityUserPromptSignature(
+  message: WorkspaceAgentActivityMessage
+): string | null {
+  if (message.role !== "user") {
+    return null;
+  }
+  const text = workspaceAgentActivityPayloadText(message.payload).trim();
+  const content = workspaceAgentActivityPayloadContentSignature(
+    message.payload
+  );
+  if (!text && content === null) {
+    return null;
+  }
+  return [message.agentSessionId, text, content ?? ""].join("\u0000");
+}
+
+function workspaceAgentActivityPayloadText(
+  payload: Record<string, unknown> | undefined
+): string {
+  const text = payload?.text;
+  return typeof text === "string" ? text : "";
+}
+
+function workspaceAgentActivityPayloadContentSignature(
+  payload: Record<string, unknown> | undefined
+): string | null {
+  if (!payload || !Object.prototype.hasOwnProperty.call(payload, "content")) {
+    return null;
+  }
+  const content = payload.content;
+  if (!Array.isArray(content)) {
+    return null;
+  }
+  const parts: string[] = [];
+  for (const block of content) {
+    const signature = workspaceAgentActivityPromptBlockSignature(block);
+    if (signature === null) {
+      return null;
+    }
+    parts.push(signature);
+  }
+  return parts.join("\u0001");
+}
+
+function workspaceAgentActivityPromptBlockSignature(
+  block: unknown
+): string | null {
+  if (!block || typeof block !== "object") {
+    return null;
+  }
+  const record = block as Record<string, unknown>;
+  const type = workspaceAgentActivityStringField(record, "type");
+  if (!type) {
+    return null;
+  }
+  const fields = [
+    "text",
+    "mimeType",
+    "data",
+    "url",
+    "attachmentId",
+    "name",
+    "path",
+    "uri",
+    "hostPath",
+    "uploadStatus",
+    "assetId",
+    "kind"
+  ];
+  const parts = [`type=${type}`];
+  for (const field of fields) {
+    const value = workspaceAgentActivityStringField(record, field);
+    if (value) {
+      parts.push(`${field}=${value}`);
+    }
+  }
+  const sizeBytes = record.sizeBytes;
+  if (typeof sizeBytes === "number" && Number.isFinite(sizeBytes)) {
+    parts.push(`sizeBytes=${sizeBytes}`);
+  }
+  return parts.join("\u0002");
+}
+
+function workspaceAgentActivityStringField(
+  record: Record<string, unknown>,
+  field: string
+): string {
+  const value = record[field];
+  return typeof value === "string" ? value.trim() : "";
 }

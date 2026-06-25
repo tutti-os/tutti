@@ -98,6 +98,8 @@ export interface AgentHostAgentSessionState {
   providerSessionId?: string;
   resumable?: boolean;
   status: AgentHostAgentSession["status"];
+  turnLifecycle?: AgentHostAgentActivityTurnLifecycle | null;
+  submitAvailability?: AgentHostAgentActivitySubmitAvailability | null;
   permissionModeId?: string;
   permissionConfig?: AgentHostAgentSessionPermissionConfig;
   settings?: AgentHostAgentSessionComposerSettings;
@@ -106,6 +108,24 @@ export interface AgentHostAgentSessionState {
   pinnedAtUnixMs?: number | null;
   pendingInteractive?: AgentHostAgentSessionInteractivePrompt | null;
   updatedAtUnixMs: number;
+}
+
+export interface AgentHostAgentActivityCompletedCommand {
+  kind: string;
+  status: string;
+}
+
+export interface AgentHostAgentActivityTurnLifecycle {
+  activeTurnId: string | null;
+  phase: string;
+  settling?: boolean;
+  outcome?: string | null;
+  completedCommand?: AgentHostAgentActivityCompletedCommand | null;
+}
+
+export interface AgentHostAgentActivitySubmitAvailability {
+  state: string;
+  reason?: string;
 }
 export type AgentHostAgentSessionActivationMode = "new" | "existing";
 export type AgentHostAgentSessionActivationStatus =
@@ -130,6 +150,7 @@ export interface AgentHostActivateNewAgentSessionInput extends AgentHostActivate
   cwd: string;
   title: string;
   settings: AgentHostAgentSessionComposerSettings;
+  metadata?: Record<string, unknown>;
   openclawGatewayReady?: boolean;
 }
 

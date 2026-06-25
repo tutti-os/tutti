@@ -1442,6 +1442,35 @@ type AddIssueManagerContextRefsRequest struct {
 	Refs []AddIssueManagerContextRefItem `json:"refs"`
 }
 
+// AgentActivityCompletedCommand defines model for AgentActivityCompletedCommand.
+type AgentActivityCompletedCommand struct {
+	Kind   string `json:"kind"`
+	Status string `json:"status"`
+}
+
+// AgentActivityMessageSemantics defines model for AgentActivityMessageSemantics.
+type AgentActivityMessageSemantics struct {
+	NoticeCommand                *string `json:"noticeCommand,omitempty"`
+	NoticeCommandStatus          *string `json:"noticeCommandStatus,omitempty"`
+	TurnSettling                 *bool   `json:"turnSettling,omitempty"`
+	UserVisibleAssistantResponse *bool   `json:"userVisibleAssistantResponse,omitempty"`
+}
+
+// AgentActivitySubmitAvailability defines model for AgentActivitySubmitAvailability.
+type AgentActivitySubmitAvailability struct {
+	Reason *string `json:"reason,omitempty"`
+	State  string  `json:"state"`
+}
+
+// AgentActivityTurnLifecycle defines model for AgentActivityTurnLifecycle.
+type AgentActivityTurnLifecycle struct {
+	ActiveTurnId     *string                        `json:"activeTurnId"`
+	CompletedCommand *AgentActivityCompletedCommand `json:"completedCommand,omitempty"`
+	Outcome          *string                        `json:"outcome,omitempty"`
+	Phase            string                         `json:"phase"`
+	Settling         *bool                          `json:"settling,omitempty"`
+}
+
 // AgentPromptContentBlock defines model for AgentPromptContentBlock.
 type AgentPromptContentBlock struct {
 	AttachmentId *string                          `json:"attachmentId,omitempty"`
@@ -1944,15 +1973,18 @@ type CreateWorkspaceAgentSessionRequest struct {
 	InitialContent []AgentPromptContentBlock `json:"initialContent"`
 
 	// InitialDisplayPrompt Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
-	InitialDisplayPrompt *string                `json:"initialDisplayPrompt,omitempty"`
-	Model                *string                `json:"model,omitempty"`
-	PermissionModeId     *string                `json:"permissionModeId,omitempty"`
-	PlanMode             *bool                  `json:"planMode,omitempty"`
-	Provider             WorkspaceAgentProvider `json:"provider"`
-	ReasoningEffort      *string                `json:"reasoningEffort,omitempty"`
-	Speed                *string                `json:"speed,omitempty"`
-	Title                *string                `json:"title,omitempty"`
-	Visible              *bool                  `json:"visible,omitempty"`
+	InitialDisplayPrompt *string `json:"initialDisplayPrompt,omitempty"`
+
+	// Metadata Optional client-provided diagnostic metadata for the first turn, such as submit trace ids. This metadata is not provider prompt content.
+	Metadata         *map[string]interface{} `json:"metadata,omitempty"`
+	Model            *string                 `json:"model,omitempty"`
+	PermissionModeId *string                 `json:"permissionModeId,omitempty"`
+	PlanMode         *bool                   `json:"planMode,omitempty"`
+	Provider         WorkspaceAgentProvider  `json:"provider"`
+	ReasoningEffort  *string                 `json:"reasoningEffort,omitempty"`
+	Speed            *string                 `json:"speed,omitempty"`
+	Title            *string                 `json:"title,omitempty"`
+	Visible          *bool                   `json:"visible,omitempty"`
 }
 
 // CreateWorkspaceAppFactoryJobRequest defines model for CreateWorkspaceAppFactoryJobRequest.
@@ -2638,6 +2670,17 @@ type SendWorkspaceAgentSessionInputRequest struct {
 
 	// DisplayPrompt Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
 	DisplayPrompt *string `json:"displayPrompt,omitempty"`
+
+	// Metadata Optional client-provided diagnostic metadata, such as submit trace ids. This metadata is not provider prompt content.
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// SendWorkspaceAgentSessionInputResponse defines model for SendWorkspaceAgentSessionInputResponse.
+type SendWorkspaceAgentSessionInputResponse struct {
+	Session            WorkspaceAgentSession           `json:"session"`
+	SubmitAvailability AgentActivitySubmitAvailability `json:"submitAvailability"`
+	TurnId             string                          `json:"turnId"`
+	TurnLifecycle      AgentActivityTurnLifecycle      `json:"turnLifecycle"`
 }
 
 // StartupWorkspaceResponse defines model for StartupWorkspaceResponse.
@@ -2815,22 +2858,24 @@ type WorkspaceAgentProvider string
 
 // WorkspaceAgentSession defines model for WorkspaceAgentSession.
 type WorkspaceAgentSession struct {
-	CreatedAt         time.Time                     `json:"createdAt"`
-	Cwd               *string                       `json:"cwd"`
-	EndedAt           *time.Time                    `json:"endedAt,omitempty"`
-	Id                string                        `json:"id"`
-	LastError         *string                       `json:"lastError,omitempty"`
-	PermissionConfig  *PermissionConfig             `json:"permissionConfig,omitempty"`
-	PinnedAtUnixMs    *int64                        `json:"pinnedAtUnixMs,omitempty"`
-	Provider          WorkspaceAgentProvider        `json:"provider"`
-	ProviderSessionId *string                       `json:"providerSessionId,omitempty"`
-	Resumable         *bool                         `json:"resumable,omitempty"`
-	RuntimeContext    *map[string]interface{}       `json:"runtimeContext,omitempty"`
-	Settings          *AgentSessionComposerSettings `json:"settings,omitempty"`
-	Status            WorkspaceAgentSessionStatus   `json:"status"`
-	Title             *string                       `json:"title,omitempty"`
-	UpdatedAt         *time.Time                    `json:"updatedAt"`
-	Visible           bool                          `json:"visible"`
+	CreatedAt          time.Time                        `json:"createdAt"`
+	Cwd                *string                          `json:"cwd"`
+	EndedAt            *time.Time                       `json:"endedAt,omitempty"`
+	Id                 string                           `json:"id"`
+	LastError          *string                          `json:"lastError,omitempty"`
+	PermissionConfig   *PermissionConfig                `json:"permissionConfig,omitempty"`
+	PinnedAtUnixMs     *int64                           `json:"pinnedAtUnixMs,omitempty"`
+	Provider           WorkspaceAgentProvider           `json:"provider"`
+	ProviderSessionId  *string                          `json:"providerSessionId,omitempty"`
+	Resumable          *bool                            `json:"resumable,omitempty"`
+	RuntimeContext     *map[string]interface{}          `json:"runtimeContext,omitempty"`
+	Settings           *AgentSessionComposerSettings    `json:"settings,omitempty"`
+	Status             WorkspaceAgentSessionStatus      `json:"status"`
+	SubmitAvailability *AgentActivitySubmitAvailability `json:"submitAvailability,omitempty"`
+	Title              *string                          `json:"title,omitempty"`
+	TurnLifecycle      *AgentActivityTurnLifecycle      `json:"turnLifecycle,omitempty"`
+	UpdatedAt          *time.Time                       `json:"updatedAt"`
+	Visible            bool                             `json:"visible"`
 }
 
 // WorkspaceAgentSessionAttachmentResponse defines model for WorkspaceAgentSessionAttachmentResponse.
@@ -2882,20 +2927,21 @@ type WorkspaceAgentSessionListResponse struct {
 
 // WorkspaceAgentSessionMessage defines model for WorkspaceAgentSessionMessage.
 type WorkspaceAgentSessionMessage struct {
-	AgentSessionId    string                  `json:"agentSessionId"`
-	CompletedAtUnixMs *int64                  `json:"completedAtUnixMs,omitempty"`
-	CreatedAtUnixMs   *int64                  `json:"createdAtUnixMs,omitempty"`
-	Id                int64                   `json:"id"`
-	Kind              string                  `json:"kind"`
-	MessageId         string                  `json:"messageId"`
-	OccurredAtUnixMs  *int64                  `json:"occurredAtUnixMs,omitempty"`
-	Payload           *map[string]interface{} `json:"payload,omitempty"`
-	Role              string                  `json:"role"`
-	StartedAtUnixMs   *int64                  `json:"startedAtUnixMs,omitempty"`
-	Status            *string                 `json:"status,omitempty"`
-	TurnId            *string                 `json:"turnId,omitempty"`
-	UpdatedAtUnixMs   *int64                  `json:"updatedAtUnixMs,omitempty"`
-	Version           int64                   `json:"version"`
+	AgentSessionId    string                         `json:"agentSessionId"`
+	CompletedAtUnixMs *int64                         `json:"completedAtUnixMs,omitempty"`
+	CreatedAtUnixMs   *int64                         `json:"createdAtUnixMs,omitempty"`
+	Id                int64                          `json:"id"`
+	Kind              string                         `json:"kind"`
+	MessageId         string                         `json:"messageId"`
+	OccurredAtUnixMs  *int64                         `json:"occurredAtUnixMs,omitempty"`
+	Payload           *map[string]interface{}        `json:"payload,omitempty"`
+	Role              string                         `json:"role"`
+	Semantics         *AgentActivityMessageSemantics `json:"semantics,omitempty"`
+	StartedAtUnixMs   *int64                         `json:"startedAtUnixMs,omitempty"`
+	Status            *string                        `json:"status,omitempty"`
+	TurnId            *string                        `json:"turnId,omitempty"`
+	UpdatedAtUnixMs   *int64                         `json:"updatedAtUnixMs,omitempty"`
+	Version           int64                          `json:"version"`
 }
 
 // WorkspaceAgentSessionMessagesResponse defines model for WorkspaceAgentSessionMessagesResponse.

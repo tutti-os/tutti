@@ -1387,9 +1387,14 @@ function createWorkspaceAgentActivityService(
     },
     async sendInput(input) {
       return {
-        ...emptySession(),
-        agentSessionId: input.agentSessionId,
-        status: "working"
+        session: {
+          ...emptySession(),
+          agentSessionId: input.agentSessionId,
+          status: "working"
+        },
+        turnId: "turn-1",
+        turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" },
+        submitAvailability: { state: "blocked", reason: "active_turn" }
       };
     },
     async readSessionAttachment(input) {

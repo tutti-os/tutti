@@ -820,7 +820,7 @@ func (a *standardACPAdapter) Exec(
 		session.Title = fallbackTitle
 	}
 	startEvents = append(startEvents,
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, nil)),
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, nil))),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", nil),
 	)
 	if event, ok := a.mirrorClaudeGoalSlashPrompt(session, visibleText); ok {

@@ -2065,7 +2065,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkspaceAgentSessionResponse"
+                $ref: "#/components/schemas/SendWorkspaceAgentSessionInputResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -5463,6 +5463,10 @@ components:
           nullable: true
         status:
           $ref: "#/components/schemas/WorkspaceAgentSessionStatus"
+        turnLifecycle:
+          $ref: "#/components/schemas/AgentActivityTurnLifecycle"
+        submitAvailability:
+          $ref: "#/components/schemas/AgentActivitySubmitAvailability"
         visible:
           type: boolean
         settings:
@@ -5530,6 +5534,81 @@ components:
             - active_turn_canceled
             - no_active_turn
             - stale_turn_reconciled
+    SendWorkspaceAgentSessionInputResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+        - turnId
+        - turnLifecycle
+        - submitAvailability
+      properties:
+        session:
+          $ref: "#/components/schemas/WorkspaceAgentSession"
+        turnId:
+          type: string
+          minLength: 1
+        turnLifecycle:
+          $ref: "#/components/schemas/AgentActivityTurnLifecycle"
+        submitAvailability:
+          $ref: "#/components/schemas/AgentActivitySubmitAvailability"
+    AgentActivityTurnLifecycle:
+      type: object
+      additionalProperties: false
+      required:
+        - activeTurnId
+        - phase
+      properties:
+        activeTurnId:
+          type: string
+          nullable: true
+        phase:
+          type: string
+          minLength: 1
+        settling:
+          type: boolean
+        outcome:
+          type: string
+          nullable: true
+        completedCommand:
+          $ref: "#/components/schemas/AgentActivityCompletedCommand"
+          nullable: true
+    AgentActivityCompletedCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - status
+      properties:
+        kind:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          minLength: 1
+    AgentActivitySubmitAvailability:
+      type: object
+      additionalProperties: false
+      required:
+        - state
+      properties:
+        state:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+    AgentActivityMessageSemantics:
+      type: object
+      additionalProperties: false
+      properties:
+        userVisibleAssistantResponse:
+          type: boolean
+        turnSettling:
+          type: boolean
+        noticeCommand:
+          type: string
+        noticeCommandStatus:
+          type: string
     WorkspaceAgentSessionMessage:
       type: object
       additionalProperties: false
@@ -5561,6 +5640,8 @@ components:
           minLength: 1
         status:
           type: string
+        semantics:
+          $ref: "#/components/schemas/AgentActivityMessageSemantics"
         payload:
           type: object
           additionalProperties: true
@@ -5915,6 +5996,10 @@ components:
           type: string
           nullable: true
           description: Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional client-provided diagnostic metadata for the first turn, such as submit trace ids. This metadata is not provider prompt content.
         title:
           type: string
           nullable: true
@@ -5957,6 +6042,10 @@ components:
           type: string
           nullable: true
           description: Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional client-provided diagnostic metadata, such as submit trace ids. This metadata is not provider prompt content.
     AgentPromptContentBlock:
       type: object
       additionalProperties: false

@@ -299,7 +299,9 @@ test("desktop agent host api routes session commands through injected tuttid cli
           args: [requestWorkspaceId, agentSessionId, request],
           method: "input"
         });
-        return createSession({ id: agentSessionId, status: "running" });
+        return createSendInputResponse(
+          createSession({ id: agentSessionId, status: "running" })
+        );
       }
     })
   });
@@ -2198,11 +2200,13 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
           args: [requestWorkspaceId, agentSessionId, request],
           method: "input"
         });
-        return createSession({
-          id: agentSessionId,
-          resumable: true,
-          status: "running"
-        });
+        return createSendInputResponse(
+          createSession({
+            id: agentSessionId,
+            resumable: true,
+            status: "running"
+          })
+        );
       }
     })
   });
@@ -2639,6 +2643,21 @@ function createSession(
   };
 }
 
+function createSendInputResponse(session: WorkspaceAgentSession) {
+  return {
+    session,
+    turnId: "turn-1",
+    turnLifecycle: {
+      activeTurnId: "turn-1",
+      phase: "submitted"
+    },
+    submitAvailability: {
+      reason: "active_turn",
+      state: "blocked"
+    }
+  };
+}
+
 function requestPermissionModeValue(
   input:
     | {
@@ -2887,7 +2906,9 @@ function createTuttidClient(
       _workspaceId: string,
       agentSessionId: string
     ) {
-      return createSession({ id: agentSessionId, status: "running" });
+      return createSendInputResponse(
+        createSession({ id: agentSessionId, status: "running" })
+      );
     },
     async updateWorkspaceAgentSessionSettings(
       _workspaceId: string,

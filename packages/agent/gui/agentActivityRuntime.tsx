@@ -14,6 +14,7 @@ import type {
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
   AgentActivitySendInput,
+  AgentActivitySendInputResult,
   AgentActivitySession,
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
@@ -123,6 +124,7 @@ export interface AgentActivityRuntimeActivateSessionInput {
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
+  metadata?: Record<string, unknown>;
   mode: "existing" | "new";
   openclawGatewayReady?: boolean;
   provider?: string;
@@ -243,7 +245,9 @@ export interface AgentActivityRuntime {
   retainSessionEvents(
     input: AgentActivityRuntimeRetainSessionEventsInput
   ): () => void;
-  sendInput(input: AgentActivitySendInput): Promise<AgentActivitySession>;
+  sendInput(
+    input: AgentActivitySendInput
+  ): Promise<AgentActivitySendInputResult>;
   uploadPromptContent?(
     input: AgentActivityRuntimeUploadPromptContentInput
   ): Promise<AgentActivityRuntimeUploadPromptContentResult>;

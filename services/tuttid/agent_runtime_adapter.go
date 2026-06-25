@@ -80,17 +80,55 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		AgentSessionID: input.AgentSessionID,
 		Content:        runtimePromptContentFromService(input.Content),
 		DisplayPrompt:  input.DisplayPrompt,
+		Metadata:       cloneRuntimeContext(input.Metadata),
 	})
 	if err != nil {
 		return agentservice.RuntimeExecResult{}, mapAgentRuntimeError(err)
 	}
 	return agentservice.RuntimeExecResult{
-		AgentSessionID: result.AgentSessionID,
-		Status:         result.Status,
-		TurnID:         result.TurnID,
-		Accepted:       result.Accepted,
-		SessionStatus:  result.SessionStatus,
+		AgentSessionID:     result.AgentSessionID,
+		Status:             result.Status,
+		TurnID:             result.TurnID,
+		Accepted:           result.Accepted,
+		SessionStatus:      result.SessionStatus,
+		TurnLifecycle:      serviceTurnLifecycleFromRuntime(result.TurnLifecycle),
+		SubmitAvailability: serviceSubmitAvailabilityFromRuntime(result.SubmitAvailability),
 	}, nil
+}
+
+func serviceSubmitAvailabilityFromRuntime(value agentruntime.SubmitAvailability) agentservice.SubmitAvailability {
+	return agentservice.SubmitAvailability{
+		State:  value.State,
+		Reason: value.Reason,
+	}
+}
+
+func serviceCompletedCommandFromRuntime(value *agentruntime.CompletedCommand) *agentservice.CompletedCommand {
+	if value == nil {
+		return nil
+	}
+	return &agentservice.CompletedCommand{
+		Kind:   value.Kind,
+		Status: value.Status,
+	}
+}
+
+func serviceTurnLifecycleFromRuntime(value agentruntime.TurnLifecycle) agentservice.TurnLifecycle {
+	return agentservice.TurnLifecycle{
+		ActiveTurnID:     cloneStringPointer(value.ActiveTurnID),
+		Phase:            value.Phase,
+		Settling:         value.Settling,
+		Outcome:          cloneStringPointer(value.Outcome),
+		CompletedCommand: serviceCompletedCommandFromRuntime(value.CompletedCommand),
+	}
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func (a agentRuntimeAdapter) ValidatePromptContent(ctx context.Context, input agentservice.RuntimeExecInput) error {
@@ -246,19 +284,21 @@ func agentRuntimeStreamEvents(events <-chan agentruntime.StreamEvent) <-chan age
 
 func agentRuntimeSession(session agentruntime.Session) agentservice.RuntimeSession {
 	return agentservice.RuntimeSession{
-		ID:                session.AgentSessionID,
-		WorkspaceID:       session.RoomID,
-		Provider:          session.Provider,
-		ProviderSessionID: session.ProviderSessionID,
-		Cwd:               session.CWD,
-		Env:               append([]string(nil), session.Env...),
-		Settings:          agentRuntimeComposerSettings(session.Settings),
-		Status:            session.Status,
-		Visible:           session.Visible,
-		Title:             session.Title,
-		LastError:         session.LastError,
-		CreatedAtUnixMS:   session.CreatedAtUnixMS,
-		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
+		ID:                 session.AgentSessionID,
+		WorkspaceID:        session.RoomID,
+		Provider:           session.Provider,
+		ProviderSessionID:  session.ProviderSessionID,
+		Cwd:                session.CWD,
+		Env:                append([]string(nil), session.Env...),
+		Settings:           agentRuntimeComposerSettings(session.Settings),
+		Status:             session.Status,
+		TurnLifecycle:      serviceTurnLifecyclePointerFromRuntime(session.TurnLifecycle),
+		SubmitAvailability: serviceSubmitAvailabilityPointerFromRuntime(session.SubmitAvailability),
+		Visible:            session.Visible,
+		Title:              session.Title,
+		LastError:          session.LastError,
+		CreatedAtUnixMS:    session.CreatedAtUnixMS,
+		UpdatedAtUnixMS:    session.UpdatedAtUnixMS,
 	}
 }
 
@@ -274,6 +314,12 @@ func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Sessio
 	if state.Status != "" {
 		result.Status = state.Status
 	}
+	if state.TurnLifecycle != nil {
+		result.TurnLifecycle = serviceTurnLifecyclePointerFromRuntime(state.TurnLifecycle)
+	}
+	if state.SubmitAvailability != nil {
+		result.SubmitAvailability = serviceSubmitAvailabilityPointerFromRuntime(state.SubmitAvailability)
+	}
 	if state.Settings != nil {
 		result.Settings = agentRuntimeComposerSettings(state.Settings)
 	}
@@ -282,6 +328,22 @@ func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Sessio
 		result.UpdatedAtUnixMS = state.UpdatedAtUnixMS
 	}
 	return result
+}
+
+func serviceSubmitAvailabilityPointerFromRuntime(value *agentruntime.SubmitAvailability) *agentservice.SubmitAvailability {
+	if value == nil {
+		return nil
+	}
+	converted := serviceSubmitAvailabilityFromRuntime(*value)
+	return &converted
+}
+
+func serviceTurnLifecyclePointerFromRuntime(value *agentruntime.TurnLifecycle) *agentservice.TurnLifecycle {
+	if value == nil {
+		return nil
+	}
+	converted := serviceTurnLifecycleFromRuntime(*value)
+	return &converted
 }
 
 func agentRuntimeComposerSettings(settings *agentruntime.SessionSettings) *agentservice.ComposerSettings {

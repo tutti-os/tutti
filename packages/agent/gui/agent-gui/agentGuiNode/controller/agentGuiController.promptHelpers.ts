@@ -28,6 +28,7 @@ export function createOptimisticPromptMessage(input: {
   workspaceId: string;
   agentSessionId: string;
   turnId: string;
+  clientSubmitId?: string;
   userId: string;
   prompt: string;
   content: AgentPromptContentBlock[];
@@ -45,6 +46,7 @@ export function createOptimisticPromptMessage(input: {
     payload: {
       __agentGuiOptimisticPrompt: true,
       actorId: input.userId,
+      ...(input.clientSubmitId ? { clientSubmitId: input.clientSubmitId } : {}),
       content: input.content,
       text: input.prompt
     },

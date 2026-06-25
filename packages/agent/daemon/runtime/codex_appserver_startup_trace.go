@@ -36,19 +36,27 @@ func newCodexAppServerStartupTrace(session Session) *codexAppServerStartupTrace 
 	return trace
 }
 
-func newCodexAppServerTurnTrace(session Session, turnID string) *codexAppServerStartupTrace {
+func newCodexAppServerTurnTrace(session Session, turnID string, metadata map[string]any) *codexAppServerStartupTrace {
 	settings := session.SettingsValue()
 	trace := &codexAppServerStartupTrace{
 		startedAt: time.Now(),
 		session:   session,
 		path:      codexAppServerStartupTracePath(),
 	}
-	trace.Log("turn.begin", map[string]any{
+	fields := map[string]any{
 		"turn_id":            strings.TrimSpace(turnID),
 		"permission_mode_id": session.PermissionModeID,
 		"settings_model":     settings.Model,
 		"settings_plan_mode": settings.PlanMode,
-	})
+	}
+	if clientSubmitID := metadataString(metadata, "clientSubmitId"); clientSubmitID != "" {
+		fields["client_submit_id"] = clientSubmitID
+	}
+	if submittedAt := metadataInt64(metadata, "clientSubmittedAtUnixMs"); submittedAt > 0 {
+		fields["client_submitted_at_unix_ms"] = submittedAt
+		fields["elapsed_since_client_submit_ms"] = time.Now().UnixMilli() - submittedAt
+	}
+	trace.Log("turn.begin", fields)
 	return trace
 }
 

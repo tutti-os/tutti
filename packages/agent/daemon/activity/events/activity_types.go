@@ -67,9 +67,13 @@ type TurnPhase string
 
 const (
 	TurnPhaseIdle            TurnPhase = "idle"
+	TurnPhaseSubmitted       TurnPhase = "submitted"
 	TurnPhaseWorking         TurnPhase = "working"
+	TurnPhaseRunning         TurnPhase = "running"
 	TurnPhaseWaitingApproval TurnPhase = "waiting_approval"
 	TurnPhaseWaitingInput    TurnPhase = "waiting_input"
+	TurnPhaseWaiting         TurnPhase = "waiting"
+	TurnPhaseSettled         TurnPhase = "settled"
 	TurnPhaseFailed          TurnPhase = "failed"
 )
 

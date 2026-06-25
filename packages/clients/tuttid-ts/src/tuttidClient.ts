@@ -762,8 +762,7 @@ export function createTuttidClient(
         body: request,
         path: { agentSessionID, workspaceID }
       });
-      return unwrapData(response, "Send workspace agent session input failed.")
-        .session;
+      return unwrapData(response, "Send workspace agent session input failed.");
     },
     async readWorkspaceAgentSessionAttachment(
       workspaceID,

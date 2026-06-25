@@ -115,13 +115,13 @@ export function createDesktopAgentActivityRuntime(
     retainSessionEvents: (input) =>
       workspaceAgentActivityService.retainSessionEvents(input),
     async sendInput(input) {
-      const session = await workspaceAgentActivityService.sendInput(input);
+      const result = await workspaceAgentActivityService.sendInput(input);
       await messageSentTracker.track({
-        agentSessionId: session.agentSessionId,
+        agentSessionId: result.session.agentSessionId,
         prompt: promptContentDisplayText(input.content),
-        provider: session.provider
+        provider: result.session.provider
       });
-      return session;
+      return result;
     },
     readSessionAttachment: (input) =>
       workspaceAgentActivityService.readSessionAttachment(input),

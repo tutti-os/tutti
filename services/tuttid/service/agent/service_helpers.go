@@ -63,6 +63,8 @@ func cloneSession(session Session) Session {
 	cloned := session
 	cloned.Settings = cloneComposerSettingsPointer(session.Settings)
 	cloned.RuntimeContext = clonePayload(session.RuntimeContext)
+	cloned.TurnLifecycle = cloneTurnLifecycle(session.TurnLifecycle)
+	cloned.SubmitAvailability = cloneSubmitAvailability(session.SubmitAvailability)
 	if session.Title != nil {
 		title := *session.Title
 		cloned.Title = &title
@@ -80,6 +82,49 @@ func cloneSession(session Session) Session {
 		cloned.LastError = &lastError
 	}
 	return cloned
+}
+
+func cloneSubmitAvailability(value *SubmitAvailability) *SubmitAvailability {
+	if value == nil {
+		return nil
+	}
+	return &SubmitAvailability{
+		State:  strings.TrimSpace(value.State),
+		Reason: strings.TrimSpace(value.Reason),
+	}
+}
+
+func cloneCompletedCommand(value *CompletedCommand) *CompletedCommand {
+	if value == nil {
+		return nil
+	}
+	return &CompletedCommand{
+		Kind:   strings.TrimSpace(value.Kind),
+		Status: strings.TrimSpace(value.Status),
+	}
+}
+
+func cloneTurnLifecycle(value *TurnLifecycle) *TurnLifecycle {
+	if value == nil {
+		return nil
+	}
+	var activeTurnID *string
+	if value.ActiveTurnID != nil {
+		active := strings.TrimSpace(*value.ActiveTurnID)
+		activeTurnID = &active
+	}
+	var outcome *string
+	if value.Outcome != nil {
+		next := strings.TrimSpace(*value.Outcome)
+		outcome = &next
+	}
+	return &TurnLifecycle{
+		ActiveTurnID:     activeTurnID,
+		Phase:            strings.TrimSpace(value.Phase),
+		Settling:         value.Settling,
+		Outcome:          outcome,
+		CompletedCommand: cloneCompletedCommand(value.CompletedCommand),
+	}
 }
 
 func clonePayload(payload map[string]any) map[string]any {
@@ -244,6 +289,19 @@ func stringPointer(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func cloneMetadata(metadata map[string]any) map[string]any {
+	if len(metadata) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		if trimmed := strings.TrimSpace(key); trimmed != "" {
+			cloned[trimmed] = value
+		}
+	}
+	return cloned
 }
 
 func normalizeRuntimeError(err error) error {

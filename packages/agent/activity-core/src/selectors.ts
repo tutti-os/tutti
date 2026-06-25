@@ -33,7 +33,8 @@ export function selectSessionDisplayStatuses(
       session.agentSessionId,
       normalizeAgentActivityDisplayStatus(session.status, {
         currentPhase: session.currentPhase,
-        needsAttention: needsAttentionSessionIds.has(session.agentSessionId)
+        needsAttention: needsAttentionSessionIds.has(session.agentSessionId),
+        turnLifecyclePhase: session.turnLifecycle?.phase
       })
     ])
   );
@@ -44,10 +45,22 @@ export function normalizeAgentActivityDisplayStatus(
   options: {
     currentPhase?: string | null;
     needsAttention?: boolean;
+    turnLifecyclePhase?: string | null;
   } = {}
 ): AgentActivityDisplayStatus {
   if (options.needsAttention) {
     return "waiting";
+  }
+  switch (normalizeStatus(options.turnLifecyclePhase)) {
+    case "settled":
+      break;
+    case "waiting":
+      return "waiting";
+    case "running":
+    case "submitted":
+      return "working";
+    default:
+      break;
   }
   const normalizedStatus = normalizeStatus(status);
   const normalizedCurrentPhase = normalizeStatus(options.currentPhase);

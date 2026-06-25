@@ -28,7 +28,12 @@ const WAITING_APPROVAL_TOKENS = new Set([
 ]);
 const WAITING_INPUT_TOKENS = new Set(["waiting_input"]);
 const WAITING_STATUS_TOKENS = new Set(["waiting"]);
-const WORKING_STATUS_TOKENS = new Set(["working", "running", "streaming"]);
+const WORKING_STATUS_TOKENS = new Set([
+  "submitted",
+  "working",
+  "running",
+  "streaming"
+]);
 const READY_STATUS_TOKENS = new Set(["ready", "idle"]);
 
 export function normalizeWorkspaceAgentStatus(

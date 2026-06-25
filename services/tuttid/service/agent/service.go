@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 )
 
@@ -185,6 +184,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		AgentSessionID: session.ID,
 		Content:        content,
 		DisplayPrompt:  displayPrompt,
+		Metadata:       cloneMetadata(input.Metadata),
 	}); err != nil {
 		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
 			WorkspaceID:    workspaceID,
@@ -539,20 +539,20 @@ func cancelReasonFromRuntimeResult(result RuntimeCancelResult) CancelReason {
 	return CancelReasonNoActiveTurn
 }
 
-func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (Session, error) {
+func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
 	if _, err := s.ensureRuntimeSession(ctx, workspaceID, agentSessionID); err != nil {
-		return Session{}, err
+		return SendInputResult{}, err
 	}
 	normalizedContent, _, err := normalizePromptContent(input.Content)
 	if err != nil {
-		return Session{}, err
+		return SendInputResult{}, err
 	}
 	if err := s.validatePromptContentForExec(ctx, workspaceID, agentSessionID, normalizedContent); err != nil {
-		return Session{}, err
+		return SendInputResult{}, err
 	}
 	content, _, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, "")
 	if err != nil {
-		return Session{}, err
+		return SendInputResult{}, err
 	}
 	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
 	result, err := s.controller().Exec(ctx, RuntimeExecInput{
@@ -560,19 +560,27 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		AgentSessionID: agentSessionID,
 		Content:        content,
 		DisplayPrompt:  displayPrompt,
+		Metadata:       cloneMetadata(input.Metadata),
 	})
 	if err != nil {
-		return Session{}, normalizeRuntimeError(err)
+		return SendInputResult{}, normalizeRuntimeError(err)
 	}
 	session, err := s.Get(ctx, workspaceID, agentSessionID)
 	if err != nil {
-		return Session{}, err
+		return SendInputResult{}, err
 	}
 	if strings.TrimSpace(result.SessionStatus) != "" {
 		session.Status = serviceStatus(result.SessionStatus)
 		session.EndedAt = endedAtForStatus(result.SessionStatus, session.UpdatedAt)
 	}
-	return session, nil
+	session.TurnLifecycle = cloneTurnLifecycle(&result.TurnLifecycle)
+	session.SubmitAvailability = cloneSubmitAvailability(&result.SubmitAvailability)
+	return SendInputResult{
+		Session:            session,
+		TurnID:             strings.TrimSpace(result.TurnID),
+		TurnLifecycle:      result.TurnLifecycle,
+		SubmitAvailability: result.SubmitAvailability,
+	}, nil
 }
 
 func (s *Service) validatePromptContentForExec(ctx context.Context, workspaceID, agentSessionID string, content []PromptContentBlock) error {
@@ -748,87 +756,4 @@ func (s *Service) ensureRuntimeSessionResult(
 		return ensuredRuntimeSession{}, err
 	}
 	return ensuredRuntimeSession{Session: session, StaleTurnReconciled: staleTurnReconciled}, nil
-}
-
-func (s *Service) reconcilePersistedStaleTurn(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	if s.SessionReader == nil {
-		return false, nil
-	}
-	persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID)
-	if !ok {
-		return false, nil
-	}
-	return s.reconcileStaleTurnOnResume(ctx, persisted)
-}
-
-func (s *Service) reconcileStaleTurnOnResume(ctx context.Context, session PersistedSession) (bool, error) {
-	shouldReconcile, err := s.shouldReconcileStaleTurn(session)
-	if err != nil {
-		return false, err
-	}
-	if !shouldReconcile {
-		return false, nil
-	}
-	reconciler, ok := s.SessionReader.(StaleTurnResumeReconciler)
-	if !ok || reconciler == nil {
-		return false, nil
-	}
-	if err := reconciler.ReconcileStaleTurnOnResume(ctx, session); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func (s *Service) shouldReconcileStaleTurn(session PersistedSession) (bool, error) {
-	if strings.TrimSpace(session.Origin) == WorkspaceAgentSessionOriginImported {
-		return false, nil
-	}
-	if isResumeStaleTurnStatus(session.Status) || isResumeStaleTurnStatus(session.CurrentPhase) {
-		return true, nil
-	}
-	if s == nil || s.MessageReader == nil {
-		return false, nil
-	}
-	page, ok := s.MessageReader.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
-		WorkspaceID:    strings.TrimSpace(session.WorkspaceID),
-		AgentSessionID: strings.TrimSpace(session.ID),
-		Limit:          100,
-		Order:          agentactivitybiz.MessageOrderDesc,
-	})
-	if !ok {
-		return false, nil
-	}
-	return hasStaleResumeOpenToolCall(page.Messages), nil
-}
-
-func hasStaleResumeOpenToolCall(messages []SessionMessage) bool {
-	for _, message := range messages {
-		if isStaleResumeOpenToolCall(message) {
-			return true
-		}
-	}
-	return false
-}
-
-func isResumeStaleTurnStatus(status string) bool {
-	switch strings.TrimSpace(status) {
-	case "working", "waiting":
-		return true
-	default:
-		return false
-	}
-}
-
-func isRuntimeActiveTurnStatus(status string) bool {
-	switch strings.TrimSpace(status) {
-	case "working", "waiting":
-		return true
-	default:
-		return false
-	}
-}
-
-func (s *Service) prepareRuntimeForResume(ctx context.Context, session PersistedSession) (preparedRuntime, error) {
-	input := createSessionInputFromPersisted(session)
-	return s.prepareRuntime(ctx, strings.TrimSpace(session.WorkspaceID), strings.TrimSpace(session.Cwd), input)
 }

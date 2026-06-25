@@ -29,7 +29,7 @@ type AgentSessionService interface {
 	Clear(context.Context, string) (agentservice.ClearSessionsResult, error)
 	Delete(context.Context, string, string) (bool, error)
 	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
-	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.Session, error)
+	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 	UpdatePin(context.Context, string, string, bool) (agentservice.Session, error)
 	UpdateVisible(context.Context, string, string, bool) (agentservice.Session, error)
 	UpdateSettings(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
@@ -146,6 +146,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		Cwd:                  request.Body.Cwd,
 		InitialContent:       agentPromptContentFromGenerated(request.Body.InitialContent),
 		InitialDisplayPrompt: stringPtrValue(request.Body.InitialDisplayPrompt),
+		Metadata:             mapValue(request.Body.Metadata),
 		Model:                request.Body.Model,
 		PermissionModeID:     request.Body.PermissionModeId,
 		PlanMode:             request.Body.PlanMode,
@@ -306,15 +307,19 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body"))),
 		}, nil
 	}
-	session, err := api.AgentSessionService.SendInput(ctx, string(request.WorkspaceID), string(request.AgentSessionID), agentservice.SendInput{
+	result, err := api.AgentSessionService.SendInput(ctx, string(request.WorkspaceID), string(request.AgentSessionID), agentservice.SendInput{
 		Content:       agentPromptContentFromGenerated(request.Body.Content),
 		DisplayPrompt: stringPtrValue(request.Body.DisplayPrompt),
+		Metadata:      mapValue(request.Body.Metadata),
 	})
 	if err != nil {
 		return writeSendWorkspaceAgentSessionInputError(err), nil
 	}
 	return tuttigenerated.SendWorkspaceAgentSessionInput200JSONResponse{
-		Session: generatedAgentSession(session),
+		Session:            generatedAgentSession(result.Session),
+		TurnId:             result.TurnID,
+		TurnLifecycle:      generatedAgentTurnLifecycle(result.TurnLifecycle),
+		SubmitAvailability: generatedAgentSubmitAvailability(result.SubmitAvailability),
 	}, nil
 }
 
@@ -725,23 +730,68 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 	}
 	runtimeContext := clonePayloadPointer(session.RuntimeContext)
 	return tuttigenerated.WorkspaceAgentSession{
-		CreatedAt:         session.CreatedAt,
-		Cwd:               stringPointer(strings.TrimSpace(session.Cwd)),
-		EndedAt:           session.EndedAt,
-		Id:                session.ID,
-		LastError:         session.LastError,
-		PermissionConfig:  permissionConfigPointer(session.PermissionConfig),
-		Provider:          tuttigenerated.WorkspaceAgentProvider(session.Provider),
-		ProviderSessionId: stringPointer(strings.TrimSpace(session.ProviderSessionID)),
-		PinnedAtUnixMs:    int64Pointer(session.PinnedAtUnixMS),
-		Resumable:         boolPointer(session.Resumable),
-		RuntimeContext:    runtimeContext,
-		Settings:          settings,
-		Status:            tuttigenerated.WorkspaceAgentSessionStatus(session.Status),
-		Title:             session.Title,
-		UpdatedAt:         session.UpdatedAt,
-		Visible:           session.Visible,
+		CreatedAt:          session.CreatedAt,
+		Cwd:                stringPointer(strings.TrimSpace(session.Cwd)),
+		EndedAt:            session.EndedAt,
+		Id:                 session.ID,
+		LastError:          session.LastError,
+		PermissionConfig:   permissionConfigPointer(session.PermissionConfig),
+		Provider:           tuttigenerated.WorkspaceAgentProvider(session.Provider),
+		ProviderSessionId:  stringPointer(strings.TrimSpace(session.ProviderSessionID)),
+		PinnedAtUnixMs:     int64Pointer(session.PinnedAtUnixMS),
+		Resumable:          boolPointer(session.Resumable),
+		RuntimeContext:     runtimeContext,
+		Settings:           settings,
+		Status:             tuttigenerated.WorkspaceAgentSessionStatus(session.Status),
+		TurnLifecycle:      generatedAgentTurnLifecyclePointer(session.TurnLifecycle),
+		SubmitAvailability: generatedAgentSubmitAvailabilityPointer(session.SubmitAvailability),
+		Title:              session.Title,
+		UpdatedAt:          session.UpdatedAt,
+		Visible:            session.Visible,
 	}
+}
+
+func generatedAgentSubmitAvailability(value agentservice.SubmitAvailability) tuttigenerated.AgentActivitySubmitAvailability {
+	return tuttigenerated.AgentActivitySubmitAvailability{
+		State:  value.State,
+		Reason: stringPointer(strings.TrimSpace(value.Reason)),
+	}
+}
+
+func generatedAgentSubmitAvailabilityPointer(value *agentservice.SubmitAvailability) *tuttigenerated.AgentActivitySubmitAvailability {
+	if value == nil {
+		return nil
+	}
+	converted := generatedAgentSubmitAvailability(*value)
+	return &converted
+}
+
+func generatedAgentCompletedCommand(value *agentservice.CompletedCommand) *tuttigenerated.AgentActivityCompletedCommand {
+	if value == nil {
+		return nil
+	}
+	return &tuttigenerated.AgentActivityCompletedCommand{
+		Kind:   value.Kind,
+		Status: value.Status,
+	}
+}
+
+func generatedAgentTurnLifecycle(value agentservice.TurnLifecycle) tuttigenerated.AgentActivityTurnLifecycle {
+	return tuttigenerated.AgentActivityTurnLifecycle{
+		ActiveTurnId:     value.ActiveTurnID,
+		Phase:            value.Phase,
+		Settling:         boolPointer(value.Settling),
+		Outcome:          value.Outcome,
+		CompletedCommand: generatedAgentCompletedCommand(value.CompletedCommand),
+	}
+}
+
+func generatedAgentTurnLifecyclePointer(value *agentservice.TurnLifecycle) *tuttigenerated.AgentActivityTurnLifecycle {
+	if value == nil {
+		return nil
+	}
+	converted := generatedAgentTurnLifecycle(*value)
+	return &converted
 }
 
 func permissionConfigPointer(config agentservice.PermissionConfig) *tuttigenerated.PermissionConfig {
@@ -765,4 +815,17 @@ func clonePayloadPointer(payload map[string]any) *map[string]any {
 		out[key] = value
 	}
 	return &out
+}
+
+func mapValue(payload *map[string]any) map[string]any {
+	if payload == nil || len(*payload) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(*payload))
+	for key, value := range *payload {
+		if trimmed := strings.TrimSpace(key); trimmed != "" {
+			out[trimmed] = value
+		}
+	}
+	return out
 }

@@ -335,8 +335,16 @@ func TestControllerReportsMessageUpdateOnlyRuntimeBatch(t *testing.T) {
 		t.Fatalf("Exec result = %#v, want accepted", execResult)
 	}
 
-	reports := reporter.waitForCalls(t, 1)
-	report := reports[0].report
+	reports := reporter.waitForCalls(t, 2)
+	var report agentsessionstore.ReportActivityInput
+	for _, call := range reports {
+		if len(call.report.MessageUpdates) == 1 &&
+			len(call.report.TimelineItems) == 0 &&
+			len(call.report.StatePatches) == 0 {
+			report = call.report
+			break
+		}
+	}
 	if len(report.TimelineItems) != 0 || len(report.StatePatches) != 0 {
 		t.Fatalf("report = %#v, want message-update-only report", report)
 	}
@@ -2696,7 +2704,8 @@ func streamEventMatches(event StreamEvent, eventType string, callType string, st
 			return false
 		}
 		if status == SessionStatusCanceled {
-			return patch.Turn.Outcome == string(activityshared.TurnOutcomeInterrupted)
+			return patch.Turn.Outcome == SessionStatusCanceled ||
+				patch.Turn.Outcome == string(activityshared.TurnOutcomeInterrupted)
 		}
 		if status == SessionStatusWorking {
 			return patch.CurrentPhase == string(activityshared.TurnPhaseWorking)

@@ -2610,7 +2610,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("keeps the hero draft visible while activation is pending, then clears it after switching to the new session", async () => {
+  it("switches to the optimistic new session while activation is pending", async () => {
     let resolveActivation:
       | ((value: AgentHostActivateAgentSessionResult) => void)
       | undefined;
@@ -2656,11 +2656,16 @@ describe("useAgentGUINodeController", () => {
       );
     });
 
-    expect(result.current.viewModel.activeConversationId).toBeNull();
-    expect(result.current.viewModel.isCreatingConversation).toBe(true);
-    expect(result.current.viewModel.draftPrompt).toBe("first prompt");
-
     const createdId = activate.mock.calls[0]![0].agentSessionId;
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    });
+    expect(result.current.viewModel.isCreatingConversation).toBe(true);
+    expect(result.current.viewModel.draftPrompt).toBe("");
+    expect(
+      result.current.viewModel.conversationDetail?.turns[0]?.userMessages
+    ).toEqual([expect.objectContaining({ body: "first prompt" })]);
+
     act(() => {
       resolveActivation?.({
         session: agentSession(createdId),
@@ -2846,7 +2851,16 @@ describe("useAgentGUINodeController", () => {
       })
     );
     expect(result.current.viewModel.conversations).toEqual([]);
-    expect(result.current.viewModel.activeConversation).toBeNull();
+    expect(result.current.viewModel.activeConversation).toEqual(
+      expect.objectContaining({
+        provider: "hermes",
+        status: "working",
+        title: "hello from hero"
+      })
+    );
+    expect(
+      result.current.viewModel.conversationDetail?.turns[0]?.userMessages
+    ).toEqual([expect.objectContaining({ body: "hello from hero" })]);
   });
 
   it("blocks OpenClaw conversation creation until the gateway is ready", async () => {
@@ -12811,10 +12825,14 @@ function installAgentActivityRuntimeForHostMocks({
         agentSessionId: input.agentSessionId,
         status
       });
+      const turnId =
+        typeof result?.turnId === "string" ? result.turnId : "turn-1";
       return {
-        ...session,
-        ...(typeof result?.turnId === "string" ? { turnId: result.turnId } : {})
-      } as AgentActivitySession;
+        session,
+        turnId,
+        turnLifecycle: { activeTurnId: turnId, phase: "submitted" },
+        submitAvailability: { state: "blocked", reason: "active_turn" }
+      };
     },
     async setSessionPinned(input) {
       await setSessionPinned({
@@ -12994,12 +13012,19 @@ function installNoopAgentActivityRuntimeForTests(): void {
       load: async (workspaceId) => getSnapshot(workspaceId),
       ensureSessionSynchronized: () => () => {},
       retainSessionEvents: () => () => {},
-      sendInput: async (input) =>
-        upsertRuntimeSession(
+      sendInput: async (input) => {
+        const session = upsertRuntimeSession(
           (workspaceId, updater) => updater(getSnapshot(workspaceId)),
           input.workspaceId,
           { agentSessionId: input.agentSessionId, status: "working" }
-        ),
+        );
+        return {
+          session,
+          turnId: "turn-1",
+          turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" },
+          submitAvailability: { state: "blocked", reason: "active_turn" }
+        };
+      },
       setSessionPinned: async (input) =>
         upsertRuntimeSession(
           (workspaceId, updater) => updater(getSnapshot(workspaceId)),
