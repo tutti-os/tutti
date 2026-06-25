@@ -19,6 +19,7 @@ The package builder should:
 - Include package-local `AGENTS.md`, optional `COMMANDS.md`, icons, locales, docs needed by agents, built web assets, and server bundle.
 - Reject symlinks and missing required files.
 - Validate package manifest, CLI manifest linkage, references endpoint linkage, and bootstrap executability.
+- For cloud-compatible agent apps, include the same server routes that call `@tutti-os/agent-acp-kit` managed header context helpers. The package script should package those routes; it must not add separate credential body fields, browser JSB fallback, managed cwd remapping, or `CODEX_HOME` setup.
 
 ## Bootstrap
 
@@ -30,6 +31,7 @@ Generated `bootstrap.sh` should:
 - Use `TUTTI_APP_DATA_DIR`, `TUTTI_APP_RUNTIME_DIR`, and `TUTTI_APP_LOG_DIR` for mutable files.
 - Set a package-local path for bundled MCP tools when local agents need them.
 - Start all required child processes and clean them up on `INT`/`TERM`.
+- Leave managed-agent credential, managed run cwd, and Codex home policy to `@tutti-os/agent-acp-kit` server calls. Do not export credentials or synthesize `CODEX_HOME` in `bootstrap.sh`.
 
 Pattern:
 
