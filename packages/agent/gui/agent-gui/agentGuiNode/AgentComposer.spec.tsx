@@ -2779,7 +2779,7 @@ describe("AgentComposer", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("keeps pasted image previews visible while the prompt is submitting", () => {
+  it("clears pasted image drafts immediately after submitting", () => {
     let draftContent = createDraft("");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
       draftContent = nextDraft;
@@ -2838,18 +2838,13 @@ describe("AgentComposer", () => {
       }
     ]);
 
-    rerender(renderComposer(true));
-
-    const submittedPreview = screen.getByTestId(
-      "agent-gui-composer-image-drafts"
-    );
-    expect(submittedPreview).toHaveAttribute("data-submitted-preview", "true");
-    expect(screen.getByRole("img", { name: "screen.png" })).toHaveAttribute(
-      "src",
-      "data:image/png;base64,aW1hZ2U="
-    );
+    rerender(renderComposer(false));
     expect(
-      screen.queryByRole("button", { name: "移除引用" })
+      screen.queryByTestId("agent-gui-composer-image-drafts")
+    ).not.toBeInTheDocument();
+    rerender(renderComposer(true));
+    expect(
+      screen.queryByTestId("agent-gui-composer-image-drafts")
     ).not.toBeInTheDocument();
   });
 

@@ -753,9 +753,6 @@ export function AgentComposer({
     useState<AgentFileMentionSuggestionState | null>(null);
   const [isSelectedProjectMissing, setIsSelectedProjectMissing] =
     useState(false);
-  const [submittedImagePreview, setSubmittedImagePreview] = useState<
-    AgentComposerDraftImage[]
-  >([]);
   const [isSlashStatusPanelOpen, setIsSlashStatusPanelOpen] = useState(false);
   const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
   const previousSlashStatusAgentSessionIdRef = useRef<string | null>(
@@ -781,7 +778,6 @@ export function AgentComposer({
   const draftPromptRef = useRef(draftPrompt);
   const draftImagesRef = useRef<AgentComposerDraftImage[]>(draftImages);
   const draftFilesRef = useRef<AgentComposerDraftFile[]>(draftFiles);
-  const submittedImagePreviewObservedBusyRef = useRef(false);
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
   const mentionControllerRef = useRef<AgentMentionSearchController | null>(
     null
@@ -1315,13 +1311,6 @@ export function AgentComposer({
       skills: availableSkills
     });
     onSubmit(submitContent);
-    if (draftImages.length > 0 && !canQueueWhileBusy) {
-      setSubmittedImagePreview(draftImages);
-      submittedImagePreviewObservedBusyRef.current = false;
-    } else {
-      setSubmittedImagePreview([]);
-      submittedImagePreviewObservedBusyRef.current = false;
-    }
     draftPromptRef.current = "";
     setPaletteDraftPrompt("");
     onDraftContentChange(emptyAgentComposerDraft());
@@ -1666,8 +1655,6 @@ export function AgentComposer({
       draftPromptRef.current = nextDraft;
       setPaletteDraftPrompt(nextDraft);
       setIsPaletteOpen(true);
-      setSubmittedImagePreview([]);
-      submittedImagePreviewObservedBusyRef.current = false;
       onDraftContentChange({ ...draftContent, prompt: nextDraft });
     }
   );
@@ -1681,8 +1668,6 @@ export function AgentComposer({
         onPromptImagesUnsupported?.();
         return;
       }
-      setSubmittedImagePreview([]);
-      submittedImagePreviewObservedBusyRef.current = false;
       const currentDraftImages = draftImagesRef.current;
       const remainingSlots = Math.max(
         0,
@@ -2262,28 +2247,7 @@ export function AgentComposer({
       : null;
   const disabledReasonText = disabledReason?.trim() ?? "";
   const effectivePlaceholder = disabledReasonText || placeholder;
-  const showingSubmittedImagePreview =
-    draftImages.length === 0 && submittedImagePreview.length > 0;
-  const visibleDraftImages =
-    draftImages.length > 0 ? draftImages : submittedImagePreview;
   const visibleDraftFiles = draftFiles;
-
-  useEffect(() => {
-    if (submittedImagePreview.length === 0) {
-      submittedImagePreviewObservedBusyRef.current = false;
-      return;
-    }
-    const busy = isSubmittingPrompt || isSendingTurn;
-    if (busy) {
-      submittedImagePreviewObservedBusyRef.current = true;
-      return;
-    }
-    if (submittedImagePreviewObservedBusyRef.current) {
-      submittedImagePreviewObservedBusyRef.current = false;
-      setSubmittedImagePreview([]);
-    }
-  }, [isSendingTurn, isSubmittingPrompt, submittedImagePreview.length]);
-
   useEffect(() => {
     if (previousSelectedProjectPathRef.current === selectedProjectPath) {
       return;
@@ -2452,15 +2416,12 @@ export function AgentComposer({
           >
             <PopoverAnchor asChild>
               <div ref={promptInputAreaRef} className="min-w-0 self-start">
-                {visibleDraftImages.length > 0 ? (
+                {draftImages.length > 0 ? (
                   <div
                     className="mb-2 grid max-w-[320px] grid-cols-[repeat(auto-fill,minmax(56px,1fr))] gap-2"
                     data-testid="agent-gui-composer-image-drafts"
-                    data-submitted-preview={
-                      showingSubmittedImagePreview ? "true" : undefined
-                    }
                   >
-                    {visibleDraftImages.map((image) => (
+                    {draftImages.map((image) => (
                       <div
                         key={image.id}
                         className={cn(
@@ -2495,17 +2456,15 @@ export function AgentComposer({
                             />
                           </div>
                         ) : null}
-                        {showingSubmittedImagePreview ? null : (
-                          <button
-                            type="button"
-                            className="absolute right-1 top-1 inline-flex size-5 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--text-primary)_16%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_88%,transparent)] text-[var(--text-primary)] opacity-90 shadow-sm transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)]"
-                            aria-label={labels.removeMention}
-                            title={labels.removeMention}
-                            onClick={() => removeDraftImage(image.id)}
-                          >
-                            <X size={12} strokeWidth={2.4} aria-hidden />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          className="absolute right-1 top-1 inline-flex size-5 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--text-primary)_16%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_88%,transparent)] text-[var(--text-primary)] opacity-90 shadow-sm transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)]"
+                          aria-label={labels.removeMention}
+                          title={labels.removeMention}
+                          onClick={() => removeDraftImage(image.id)}
+                        >
+                          <X size={12} strokeWidth={2.4} aria-hidden />
+                        </button>
                       </div>
                     ))}
                   </div>
