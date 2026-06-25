@@ -210,6 +210,39 @@ func TestRunDynamicCommandMatchesMultiSegmentPath(t *testing.T) {
 	}
 }
 
+func TestRunDynamicCommandAggregatesRepeatedFlags(t *testing.T) {
+	var invokedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"workspace-apps.app.open","path":["app","open"],"summary":"Open app","inputSchema":{"type":"object","required":["app-id"],"properties":{"app-id":{"type":"string"},"param":{"type":"string"},"route":{"type":"string"}}},"output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/workspace-apps.app.open/invoke":
+			if err := json.NewDecoder(r.Body).Decode(&invokedBody); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"app", "open", "--app-id", "docs", "--route", "/files", "--param", "path=/tmp/a", "--param", "mode=preview"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	input := invokedBody["input"].(map[string]any)
+	params, ok := input["param"].([]any)
+	if !ok || len(params) != 2 || params[0] != "path=/tmp/a" || params[1] != "mode=preview" {
+		t.Fatalf("param input = %#v", input["param"])
+	}
+}
+
 func TestRunDynamicCommandHelpRendersInputSchema(t *testing.T) {
 	invoked := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

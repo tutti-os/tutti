@@ -243,6 +243,17 @@ func parseCommandInput(command daemon.Capability, args []string) (map[string]any
 		if strings.TrimSpace(name) == "" {
 			return nil, fmt.Errorf("invalid flag %q", arg)
 		}
+		if existing, ok := input[name]; ok {
+			switch typed := existing.(type) {
+			case []string:
+				input[name] = append(typed, value)
+			case string:
+				input[name] = []string{typed, value}
+			default:
+				input[name] = value
+			}
+			continue
+		}
 		input[name] = value
 	}
 	return input, nil

@@ -488,6 +488,43 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
     ]);
   });
 
+  it("builds compact summaries for Codex Edit changes arrays", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    const view = buildWorkspaceAgentSessionDetailViewModel({
+      activity,
+      session,
+      timelineItems: [
+        item({
+          id: 31,
+          turnId: "turn-codex-array-edit",
+          itemType: "call.tool",
+          status: "completed",
+          payload: {
+            toolName: "Edit",
+            input: {
+              file_path: "/workspace/deck/assets/styles.css",
+              changes: [
+                {
+                  path: "/workspace/deck/slides/02-why-now.html",
+                  kind: { type: "add" },
+                  diff: "<section>Why now</section>\n"
+                },
+                {
+                  path: "/workspace/deck/slides/01-cover.html",
+                  kind: { type: "update" },
+                  diff: "@@ -1 +1 @@\n-Old\n+New\n"
+                }
+              ]
+            }
+          }
+        })
+      ]
+    });
+
+    expect(view.turns[0]?.toolCalls[0]?.summary).toBe("2 files");
+  });
+
   it("keeps durable approval items in the transcript as specialized tool calls", async () => {
     setAgentGuiI18nTestLocale("en");
 

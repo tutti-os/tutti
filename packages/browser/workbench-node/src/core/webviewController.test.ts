@@ -96,6 +96,95 @@ test("Browser Node webview controller unregisters guests after release", async (
   assert.deepEqual(unregisterCalls, [17]);
 });
 
+test("Browser Node webview controller tolerates webviews before dom-ready exposes webContentsId", async () => {
+  const registerCalls: number[] = [];
+  const feature = createBrowserNodeFeature({
+    hostApi: createBrowserNodeHostApi({
+      registerGuest(payload) {
+        registerCalls.push(payload.webContentsId);
+        return Promise.resolve();
+      }
+    })
+  });
+
+  const controller = acquireBrowserNodeWebviewController({
+    feature,
+    initialUrl: "https://example.com/",
+    lifecycle: "active",
+    nodeId: "browser-dom-ready-late",
+    profileId: null,
+    sessionMode: "shared"
+  });
+
+  const webview = new MockBrowserNodeWebviewTag(18);
+  webview.throwWhenReadingWebContentsId = true;
+  controller.setWebview(webview as unknown as BrowserNodeWebviewTag);
+  assert.doesNotThrow(() => controller.retain());
+  webview.emit("did-attach");
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(registerCalls, []);
+
+  webview.throwWhenReadingWebContentsId = false;
+  webview.emit("dom-ready");
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(registerCalls, [18]);
+  controller.release();
+});
+
+test("Browser Node webview controller keeps a pending guest alive when the node is retained again", async () => {
+  const registerCalls: number[] = [];
+  const unregisterCalls: number[] = [];
+  const feature = createBrowserNodeFeature({
+    hostApi: createBrowserNodeHostApi({
+      registerGuest(payload) {
+        registerCalls.push(payload.webContentsId);
+        return Promise.resolve();
+      },
+      unregisterGuest(payload) {
+        unregisterCalls.push(payload.webContentsId);
+        return Promise.resolve();
+      }
+    })
+  });
+
+  const first = acquireBrowserNodeWebviewController({
+    feature,
+    initialUrl: "https://example.com/",
+    lifecycle: "active",
+    nodeId: "browser-retained-again",
+    profileId: null,
+    sessionMode: "shared"
+  });
+
+  const webview = new MockBrowserNodeWebviewTag(19);
+  first.retain();
+  first.setWebview(webview as unknown as BrowserNodeWebviewTag);
+  webview.emit("did-attach");
+  await Promise.resolve();
+  await Promise.resolve();
+
+  first.release();
+  const second = acquireBrowserNodeWebviewController({
+    feature,
+    initialUrl: "https://example.com/",
+    lifecycle: "active",
+    nodeId: "browser-retained-again",
+    profileId: null,
+    sessionMode: "shared"
+  });
+  second.retain();
+
+  await waitForTimers();
+  assert.deepEqual(registerCalls, [19]);
+  assert.deepEqual(unregisterCalls, []);
+
+  second.release();
+  await waitForTimers();
+  assert.deepEqual(unregisterCalls, [19]);
+});
+
 test("Browser Node webview controller keeps shared guest registration alive until the last consumer releases", async () => {
   const registerCalls: number[] = [];
   const unregisterCalls: number[] = [];
@@ -152,6 +241,7 @@ test("Browser Node webview controller resyncs webview state when context changes
     nodeId: string;
     profileId: string | null;
     sessionMode: string;
+    url: string | undefined;
   }> = [];
   const feature = createBrowserNodeFeature({
     hostApi: createBrowserNodeHostApi({
@@ -159,7 +249,8 @@ test("Browser Node webview controller resyncs webview state when context changes
         prepareCalls.push({
           nodeId: payload.nodeId,
           profileId: payload.profileId,
-          sessionMode: payload.sessionMode
+          sessionMode: payload.sessionMode,
+          url: payload.url
         });
         return Promise.resolve();
       }
@@ -200,7 +291,50 @@ test("Browser Node webview controller resyncs webview state when context changes
   );
   assert.equal(prepareCalls.at(-1)?.profileId, "profile-1");
   assert.equal(prepareCalls.at(-1)?.sessionMode, "profile");
+  assert.equal(prepareCalls.at(-1)?.url, "https://openai.com/");
   second.release();
+});
+
+test("Browser Node webview controller passes the current URL when registering guests", async () => {
+  const registerCalls: Array<{
+    url: string | undefined;
+    webContentsId: number;
+  }> = [];
+  const feature = createBrowserNodeFeature({
+    hostApi: createBrowserNodeHostApi({
+      registerGuest(payload) {
+        registerCalls.push({
+          url: payload.url,
+          webContentsId: payload.webContentsId
+        });
+        return Promise.resolve();
+      }
+    })
+  });
+
+  const controller = acquireBrowserNodeWebviewController({
+    feature,
+    initialUrl: "https://openai.com/",
+    lifecycle: "active",
+    nodeId: "browser-register-url",
+    profileId: null,
+    sessionMode: "shared"
+  });
+
+  const webview = new MockBrowserNodeWebviewTag(31);
+  controller.retain();
+  controller.setWebview(webview as unknown as BrowserNodeWebviewTag);
+  webview.emit("did-attach");
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(registerCalls, [
+    {
+      url: "https://openai.com/",
+      webContentsId: 31
+    }
+  ]);
+  controller.release();
 });
 
 test("Browser Node webview controller opens a devtools context menu before opening devtools", async () => {
@@ -350,6 +484,7 @@ class MockBrowserNodeWebviewTag extends EventTarget {
     y: 200,
     toJSON: () => ({})
   };
+  throwWhenReadingWebContentsId = false;
 
   constructor(webContentsId: number) {
     super();
@@ -357,6 +492,9 @@ class MockBrowserNodeWebviewTag extends EventTarget {
   }
 
   getWebContentsId(): number {
+    if (this.throwWhenReadingWebContentsId) {
+      throw new Error("The WebView must be attached to the DOM");
+    }
     return this.webContentsId;
   }
 

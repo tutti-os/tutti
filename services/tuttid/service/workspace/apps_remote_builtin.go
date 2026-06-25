@@ -248,7 +248,11 @@ func (s *AppCenterService) refreshBuiltinCatalogAndWait(ctx context.Context) (bu
 	if builtinapps.RemoteCatalogEnvOverrideActive() {
 		return builtinapps.RefreshRemoteCatalogAndWait(ctx)
 	}
-	return builtinapps.RefreshRemoteCatalogAndWaitForRemoteURL(ctx, s.appCatalogRemoteURL(ctx))
+	catalogURL := s.appCatalogRemoteURL(ctx)
+	if s.RemoteCatalogRefresher != nil {
+		return s.RemoteCatalogRefresher(ctx, catalogURL)
+	}
+	return builtinapps.RefreshRemoteCatalogAndWaitForRemoteURL(ctx, catalogURL)
 }
 
 func (s *AppCenterService) appCatalogRemoteURL(ctx context.Context) string {

@@ -91,6 +91,71 @@ describe("projectAgentTurnSummaryRowForTurn", () => {
     ]);
   });
 
+  it("extracts Codex array-style Edit changes for summary rows", () => {
+    const rows = projectAgentTurnSummaryRowForTurn(
+      {
+        id: "turn-codex-array-edit",
+        userMessage: null,
+        userMessages: [],
+        agentMessages: [],
+        toolCalls: [
+          {
+            id: "call:edit-array",
+            name: "Edit files",
+            toolName: "Edit",
+            callType: "tool",
+            status: "Completed",
+            statusKind: "completed",
+            summary: "Edited slide deck",
+            occurredAtUnixMs: 14,
+            payload: {
+              input: {
+                file_path: "/workspace/deck/assets/styles.css",
+                changes: [
+                  {
+                    path: "/workspace/deck/slides/02-why-now.html",
+                    kind: { type: "add" },
+                    diff: "<section>Why now</section>\n"
+                  },
+                  {
+                    path: "/workspace/deck/slides/01-cover.html",
+                    kind: { type: "update" },
+                    diff: "@@ -1 +1 @@\n-Old\n+New\n"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        toolCallCount: 1,
+        hasFailedToolCall: false,
+        agentItems: []
+      } satisfies WorkspaceAgentSessionDetailTurn,
+      { workspaceRoot: "/workspace" }
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      fileCount: 2,
+      modifiedCount: 1,
+      createdCount: 1
+    });
+    expect(rows[0]?.files).toEqual([
+      expect.objectContaining({
+        path: "/workspace/deck/slides/02-why-now.html",
+        fileName: "02-why-now.html",
+        changeType: "created",
+        toolName: "Edit"
+      }),
+      expect.objectContaining({
+        path: "/workspace/deck/slides/01-cover.html",
+        fileName: "01-cover.html",
+        changeType: "modified",
+        toolName: "Edit"
+      })
+    ]);
+  });
+
   it("extracts nested task step file changes for durable reopen summaries", () => {
     const rows = projectAgentTurnSummaryRowForTurn(
       {
@@ -235,6 +300,51 @@ describe("projectAgentTurnSummaryRowForTurn", () => {
       expect.objectContaining({
         path: "/workspace/docs/spec.md",
         changeType: "created"
+      })
+    ]);
+  });
+
+  it("filters private tmp file paths from summary rows", () => {
+    const rows = projectAgentTurnSummaryRowForTurn(
+      {
+        id: "turn-private-tmp",
+        userMessage: null,
+        userMessages: [],
+        agentMessages: [],
+        toolCalls: [
+          {
+            id: "call:write-private-tmp",
+            name: "Write files",
+            toolName: "Write",
+            callType: "tool",
+            status: "Completed",
+            statusKind: "completed",
+            summary: "Write temp and workspace files",
+            occurredAtUnixMs: 26,
+            payload: {
+              fileChanges: {
+                files: [
+                  {
+                    path: "/private/tmp/workspace/rendered-preview.html",
+                    change: "added"
+                  },
+                  { path: "src/app.ts", change: "modified" }
+                ]
+              }
+            }
+          }
+        ],
+        toolCallCount: 1,
+        hasFailedToolCall: false,
+        agentItems: []
+      } satisfies WorkspaceAgentSessionDetailTurn,
+      { workspaceRoot: "/private/tmp/workspace" }
+    );
+
+    expect(rows[0]?.files).toEqual([
+      expect.objectContaining({
+        path: "src/app.ts",
+        label: "app.ts"
       })
     ]);
   });
@@ -609,6 +719,50 @@ describe("projectAgentTurnSummaryRows", () => {
       expect.objectContaining({
         path: "/repo/docs/spec.md",
         label: "spec.md"
+      })
+    ]);
+  });
+
+  it("filters private tmp paths from activity changed files fallback", () => {
+    const rows = projectAgentTurnSummaryRows({
+      activity: {
+        id: "activity-session-private-tmp",
+        sessionId: "session-private-tmp",
+        userId: "user-a",
+        userName: "Jessica",
+        agentProvider: "gemini",
+        agentName: "Gemini",
+        title: "Completed session",
+        status: "completed",
+        latestActivitySummary: "Completed",
+        changedFiles: [
+          {
+            path: "/private/tmp/workspace/rendered-preview.html",
+            label: "rendered-preview.html"
+          },
+          { path: "src/app.ts", label: "src/app.ts" }
+        ],
+        sortTimeUnixMs: 1_000
+      },
+      session: {
+        id: 1,
+        agentSessionId: "session-private-tmp",
+        presenceId: 1,
+        provider: "gemini",
+        providerSessionId: "provider-1",
+        cwd: "/private/tmp/workspace",
+        status: "completed",
+        updatedAtUnixMs: 1_000
+      },
+      cwd: "/private/tmp/workspace",
+      workspaceRoot: "/private/tmp/workspace",
+      turns: []
+    } satisfies WorkspaceAgentSessionDetailViewModel);
+
+    expect(rows[0]?.files).toEqual([
+      expect.objectContaining({
+        path: "src/app.ts",
+        label: "app.ts"
       })
     ]);
   });

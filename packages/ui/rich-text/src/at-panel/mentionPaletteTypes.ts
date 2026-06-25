@@ -127,7 +127,11 @@ export interface MentionPaletteProps<TItem> {
      */
     listbox?: string;
   };
-  hintLabels: { cycleFilter: string; moveSelection: string };
+  hintLabels: {
+    cycleFilter: string;
+    moveSelection: string;
+    navigateHierarchy?: string;
+  };
   maxHeightPx: number;
   onHighlightChange: (key: string) => void;
   onSelectItem: (item: TItem, group: MentionPaletteGroup<TItem>) => void;
@@ -136,6 +140,7 @@ export interface MentionPaletteProps<TItem> {
   onExpandGroup: (groupId: MentionPaletteGroupId) => void;
   onCycleFilter: (delta: 1 | -1) => void;
   onMoveSelection: (delta: 1 | -1) => void;
+  onNavigateHierarchy?: (delta: 1 | -1) => void;
   /** Rendered after the groups, before the keyboard hint bar. */
   renderListFooter?: () => ReactNode;
   /**

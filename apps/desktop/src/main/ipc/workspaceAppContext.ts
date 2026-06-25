@@ -47,7 +47,8 @@ import type {
   TuttiExternalPdfPrintHtmlResult,
   TuttiExternalPermissionRequestInput,
   TuttiExternalPermissionRequestResult,
-  TuttiExternalUploadedFile
+  TuttiExternalUploadedFile,
+  TuttiExternalWorkspaceOpenRouteIntent
 } from "@tutti-os/workspace-external-core/contracts";
 import { isTuttiExternalManagedAiModelProviderId } from "@tutti-os/workspace-external-core/core";
 import type { DesktopLocale } from "../../shared/i18n";
@@ -71,6 +72,10 @@ import { resolveWorkspaceAppOpenFilePayload } from "../host/workspaceAppFileOpen
 
 const workspaceAppGuestWebContents = new Set<WebContents>();
 const workspaceAppGuestContexts = new Map<number, WorkspaceAppGuestContext>();
+const workspaceAppInitialLaunchIntents = new Map<
+  string,
+  TuttiExternalWorkspaceOpenRouteIntent
+>();
 let workspaceAppFrontendLogWriter: WorkspaceAppFrontendLogWriter | null = null;
 let workspaceAppGuestLogRateLimiter: WorkspaceAppGuestLogRateLimiter | null =
   null;
@@ -78,6 +83,7 @@ type WorkspaceAppPrintLoadListener = (...args: unknown[]) => void;
 
 interface WorkspaceAppGuestContext {
   appID: string;
+  launchIntent?: TuttiExternalWorkspaceOpenRouteIntent;
   ownerWindow: BrowserWindow;
   workspaceID: string;
 }
@@ -678,8 +684,17 @@ function forwardWorkspaceAppExternalRendererEvent(
   ownerContents: WebContents,
   rendererEvent: DesktopWorkspaceAppExternalRendererEvent
 ): void {
+  if (rendererEvent.type === "workspace.launchIntent") {
+    persistWorkspaceAppInitialLaunchIntent(ownerContents.id, rendererEvent);
+  }
   for (const [guestWebContentsId, context] of workspaceAppGuestContexts) {
     if (context.workspaceID !== rendererEvent.workspaceId) {
+      continue;
+    }
+    if (
+      rendererEvent.type === "workspace.launchIntent" &&
+      context.appID !== rendererEvent.appId
+    ) {
       continue;
     }
     if (context.ownerWindow.webContents.id !== ownerContents.id) {
@@ -697,6 +712,33 @@ function forwardWorkspaceAppExternalRendererEvent(
       desktopIpcChannels.appExternal.guestEvent,
       rendererEvent
     );
+  }
+}
+
+function persistWorkspaceAppInitialLaunchIntent(
+  ownerWebContentsId: number,
+  event: Extract<
+    DesktopWorkspaceAppExternalRendererEvent,
+    { type: "workspace.launchIntent" }
+  >
+): void {
+  const key = workspaceAppInitialLaunchIntentKey({
+    appID: event.appId,
+    ownerWebContentsId,
+    workspaceID: event.workspaceId
+  });
+  let matchedGuest = false;
+  for (const context of workspaceAppGuestContexts.values()) {
+    if (
+      context.appID === event.appId &&
+      context.workspaceID === event.workspaceId &&
+      context.ownerWindow.webContents.id === ownerWebContentsId
+    ) {
+      matchedGuest = true;
+    }
+  }
+  if (!matchedGuest) {
+    workspaceAppInitialLaunchIntents.set(key, event.intent);
   }
 }
 
@@ -1173,6 +1215,8 @@ function createWorkspaceAppContext(
   }
   const issuer = new URL(resolveDesktopDaemonBaseUrl(endpoint)).origin;
   const installationId = `${context.workspaceID}:${context.appID}`;
+  const launchIntent = context.launchIntent;
+  delete context.launchIntent;
   return {
     appId: context.appID,
     capabilities: [
@@ -1188,6 +1232,7 @@ function createWorkspaceAppContext(
     }),
     installationId,
     issuer,
+    ...(launchIntent ? { launchIntent } : {}),
     locale,
     workspaceId: context.workspaceID
   };
@@ -1249,11 +1294,33 @@ function readWorkspaceAppGuestContext(
   if (separator <= 0 || separator >= value.length - 1) {
     return null;
   }
+  const workspaceID = decodeURIComponent(value.slice(0, separator));
+  const appID = decodeURIComponent(value.slice(separator + 1));
+  const intentKey = workspaceAppInitialLaunchIntentKey({
+    appID,
+    ownerWebContentsId: ownerWindow.webContents.id,
+    workspaceID
+  });
+  const launchIntent = workspaceAppInitialLaunchIntents.get(intentKey);
+  workspaceAppInitialLaunchIntents.delete(intentKey);
   return {
-    appID: decodeURIComponent(value.slice(separator + 1)),
+    ...(launchIntent ? { launchIntent } : {}),
+    appID,
     ownerWindow,
-    workspaceID: decodeURIComponent(value.slice(0, separator))
+    workspaceID
   };
+}
+
+function workspaceAppInitialLaunchIntentKey(input: {
+  appID: string;
+  ownerWebContentsId: number;
+  workspaceID: string;
+}): string {
+  return [
+    String(input.ownerWebContentsId),
+    encodeURIComponent(input.workspaceID),
+    encodeURIComponent(input.appID)
+  ].join(":");
 }
 
 function isWorkspaceAppDiagnosticPayload(
@@ -1268,10 +1335,16 @@ function isWorkspaceAppExternalRendererEvent(
   if (!isRecord(value)) {
     return false;
   }
-  if (value.type !== "userProjects.changed") {
+  if (typeof value.workspaceId !== "string") {
     return false;
   }
-  if (typeof value.workspaceId !== "string") {
+  if (value.type === "workspace.launchIntent") {
+    return (
+      typeof value.appId === "string" &&
+      isWorkspaceAppOpenRouteIntent(value.intent)
+    );
+  }
+  if (value.type !== "userProjects.changed") {
     return false;
   }
   if (!isRecord(value.snapshot)) {
@@ -1285,6 +1358,37 @@ function isWorkspaceAppExternalRendererEvent(
     Array.isArray(snapshot.projects) &&
     typeof snapshot.revision === "number"
   );
+}
+
+function isWorkspaceAppOpenRouteIntent(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (value.kind !== "open-route" || typeof value.route !== "string") {
+    return false;
+  }
+  const route = value.route.trim();
+  if (
+    !route.startsWith("/") ||
+    route.startsWith("//") ||
+    route.includes("://")
+  ) {
+    return false;
+  }
+  if (value.params !== undefined && !isStringRecord(value.params)) {
+    return false;
+  }
+  if (value.state !== undefined && !isRecord(value.state)) {
+    return false;
+  }
+  return true;
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.values(value).every((entry) => typeof entry === "string");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -14,14 +14,14 @@ import (
 )
 
 const (
-	TopicAnalyticsDebugReported            = "analytics.debug.reported"
-	TopicAgentActivityUpdated              = "agent.activity.updated"
-	TopicAgentGUILaunchRequested           = "agent.gui.launch.requested"
-	TopicPreferencesDesktopUpdateRequested = "preferences.desktop.update.requested"
-	TopicPreferencesDesktopUpdated         = "preferences.desktop.updated"
-	TopicWorkspaceIssueUpdated             = "workspace.issue.updated"
-	TopicWorkspaceAppFactoryJobUpdated     = "workspace.appfactory.job.updated"
-	TopicWorkspaceAppUpdated               = "workspace.app.updated"
+	TopicAnalyticsDebugReported                = "analytics.debug.reported"
+	TopicAgentActivityUpdated                  = "agent.activity.updated"
+	TopicPreferencesDesktopUpdateRequested     = "preferences.desktop.update.requested"
+	TopicPreferencesDesktopUpdated             = "preferences.desktop.updated"
+	TopicWorkspaceIssueUpdated                 = "workspace.issue.updated"
+	TopicWorkspaceAppFactoryJobUpdated         = "workspace.appfactory.job.updated"
+	TopicWorkspaceAppUpdated                   = "workspace.app.updated"
+	TopicWorkspaceWorkbenchNodeLaunchRequested = "workspace.workbench.node.launch.requested"
 )
 
 type Direction string
@@ -116,16 +116,6 @@ func DefaultCatalog() StaticCatalog {
 			},
 		},
 		{
-			Name:               TopicAgentGUILaunchRequested,
-			ClientCanPublish:   false,
-			ClientCanSubscribe: true,
-			Version:            1,
-			directions:         []Direction{DirectionServerToClient},
-			validators: map[Direction]PayloadValidator{
-				DirectionServerToClient: validateAgentGUILaunchRequestedPayload,
-			},
-		},
-		{
 			Name:               TopicPreferencesDesktopUpdateRequested,
 			ClientCanPublish:   true,
 			ClientCanSubscribe: false,
@@ -173,6 +163,16 @@ func DefaultCatalog() StaticCatalog {
 			directions:         []Direction{DirectionServerToClient},
 			validators: map[Direction]PayloadValidator{
 				DirectionServerToClient: validateWorkspaceAppFactoryJobUpdatedPayload,
+			},
+		},
+		{
+			Name:               TopicWorkspaceWorkbenchNodeLaunchRequested,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateWorkspaceWorkbenchNodeLaunchRequestedPayload,
 			},
 		},
 	})
@@ -339,13 +339,14 @@ type agentActivityStateTurnData struct {
 	CompletedAtUnixMS *int64 `json:"completedAtUnixMs,omitempty"`
 }
 
-type agentGUILaunchRequestedPayload struct {
-	WorkspaceID    string `json:"workspaceId"`
-	AgentSessionID string `json:"agentSessionId"`
-	Provider       string `json:"provider"`
-	Source         string `json:"source"`
-	Reason         string `json:"reason,omitempty"`
-	RequestID      string `json:"requestId,omitempty"`
+type workbenchNodeLaunchRequestedPayload struct {
+	WorkspaceID  string          `json:"workspaceId"`
+	TypeID       string          `json:"typeId"`
+	Source       string          `json:"source"`
+	LaunchSource string          `json:"launchSource,omitempty"`
+	DockEntryID  string          `json:"dockEntryId,omitempty"`
+	RequestID    string          `json:"requestId,omitempty"`
+	Payload      json.RawMessage `json:"payload,omitempty"`
 }
 
 type workspaceIssueUpdatedPayload struct {
@@ -658,25 +659,25 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 	return nil
 }
 
-func validateAgentGUILaunchRequestedPayload(payload []byte) error {
-	var decoded agentGUILaunchRequestedPayload
+func validateWorkspaceWorkbenchNodeLaunchRequestedPayload(payload []byte) error {
+	var decoded workbenchNodeLaunchRequestedPayload
 	if err := json.Unmarshal(payload, &decoded); err != nil {
 		return fmt.Errorf("decode payload: %w", err)
 	}
 	if strings.TrimSpace(decoded.WorkspaceID) == "" {
 		return fmt.Errorf("workspaceId is required")
 	}
-	if strings.TrimSpace(decoded.AgentSessionID) == "" {
-		return fmt.Errorf("agentSessionId is required")
-	}
-	if strings.TrimSpace(decoded.Provider) == "" {
-		return fmt.Errorf("provider is required")
+	if strings.TrimSpace(decoded.TypeID) == "" {
+		return fmt.Errorf("typeId is required")
 	}
 	if strings.TrimSpace(decoded.Source) == "" {
 		return fmt.Errorf("source is required")
 	}
-	if decoded.Reason != "" && strings.TrimSpace(decoded.Reason) == "" {
-		return fmt.Errorf("reason must not be blank")
+	if decoded.LaunchSource != "" && strings.TrimSpace(decoded.LaunchSource) == "" {
+		return fmt.Errorf("launchSource must not be blank")
+	}
+	if decoded.DockEntryID != "" && strings.TrimSpace(decoded.DockEntryID) == "" {
+		return fmt.Errorf("dockEntryId must not be blank")
 	}
 	if decoded.RequestID != "" && strings.TrimSpace(decoded.RequestID) == "" {
 		return fmt.Errorf("requestId must not be blank")

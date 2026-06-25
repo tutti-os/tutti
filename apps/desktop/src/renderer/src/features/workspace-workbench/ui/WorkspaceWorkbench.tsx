@@ -63,6 +63,7 @@ import {
   registerWorkspaceIssueManagerLaunchHandler,
   type WorkspaceIssueManagerLaunchRequest
 } from "../services/workspaceIssueManagerLaunchCoordinator.ts";
+import { registerWorkspaceWorkbenchNodeLaunchHandler } from "../services/workspaceWorkbenchNodeLaunchCoordinator.ts";
 import {
   buildGroupChatDeepLinkUrl,
   registerGroupChatLaunchHandler,
@@ -89,7 +90,11 @@ import { useWorkspaceWorkbenchShellRuntime } from "./useWorkspaceWorkbenchShellR
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
 import type { DesktopWorkspaceAppExternalHostApi } from "@preload/types";
-import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-core/contracts";
+import type { DesktopWorkspaceAppExternalRendererEvent } from "@shared/contracts/ipc";
+import type {
+  TuttiExternalFileOpenInput,
+  TuttiExternalWorkspaceOpenRouteIntent
+} from "@tutti-os/workspace-external-core/contracts";
 
 const temporaryWorkspaceAppDockRetentionActionPrefix =
   "temporary-workspace-app-dock-retention:";
@@ -185,6 +190,7 @@ function ReadyWorkspaceWorkbench({
   const unregisterFilesLaunchRef = useRef<(() => void) | null>(null);
   const unregisterIssueManagerLaunchRef = useRef<(() => void) | null>(null);
   const unregisterGroupChatLaunchRef = useRef<(() => void) | null>(null);
+  const unregisterWorkbenchNodeLaunchRef = useRef<(() => void) | null>(null);
   const closeLaunchpad = useCallback(() => {
     setLaunchpadOpen(false);
   }, []);
@@ -288,6 +294,8 @@ function ReadyWorkspaceWorkbench({
       unregisterIssueManagerLaunchRef.current = null;
       unregisterGroupChatLaunchRef.current?.();
       unregisterGroupChatLaunchRef.current = null;
+      unregisterWorkbenchNodeLaunchRef.current?.();
+      unregisterWorkbenchNodeLaunchRef.current = null;
 
       if (!host) {
         return;
@@ -345,8 +353,48 @@ function ReadyWorkspaceWorkbench({
             return openWorkspaceBrowserNode(host, request);
           }
         );
+      unregisterWorkbenchNodeLaunchRef.current =
+        registerWorkspaceWorkbenchNodeLaunchHandler(
+          state.workspace.id,
+          async (request) => {
+            const shouldPrepublishIntent =
+              shouldPublishWorkspaceAppLaunchIntentBeforeLaunch({
+                appCenterService,
+                payload: request.payload,
+                typeId: request.typeId
+              });
+            if (shouldPrepublishIntent) {
+              publishWorkspaceAppLaunchIntent({
+                api: workspaceAppExternalApi,
+                payload: request.payload,
+                typeId: request.typeId,
+                workspaceId: state.workspace.id
+              });
+            }
+            const nodeId = await host.launchNode({
+              ...(request.dockEntryId
+                ? { dockEntryId: request.dockEntryId }
+                : {}),
+              ...(request.launchSource
+                ? { launchSource: request.launchSource }
+                : {}),
+              payload: request.payload,
+              reason: "host",
+              typeId: request.typeId
+            });
+            if (nodeId && !shouldPrepublishIntent) {
+              publishWorkspaceAppLaunchIntent({
+                api: workspaceAppExternalApi,
+                payload: request.payload,
+                typeId: request.typeId,
+                workspaceId: state.workspace.id
+              });
+            }
+            return nodeId !== null;
+          }
+        );
     },
-    [appCenterService, runtime, state.workspace.id]
+    [appCenterService, runtime, state.workspace.id, workspaceAppExternalApi]
   );
   const windowManagement = useMemo<WorkbenchWindowManagementConfig>(
     () => ({
@@ -370,6 +418,8 @@ function ReadyWorkspaceWorkbench({
       unregisterIssueManagerLaunchRef.current = null;
       unregisterGroupChatLaunchRef.current?.();
       unregisterGroupChatLaunchRef.current = null;
+      unregisterWorkbenchNodeLaunchRef.current?.();
+      unregisterWorkbenchNodeLaunchRef.current = null;
     };
   }, []);
 
@@ -716,6 +766,99 @@ function readWorkspaceAppIdFromDockEntryId(
   return value?.startsWith(prefix)
     ? decodeURIComponent(value.slice(prefix.length))
     : null;
+}
+
+function publishWorkspaceAppLaunchIntent(input: {
+  api: DesktopWorkspaceAppExternalHostApi | undefined;
+  payload: unknown;
+  typeId: string;
+  workspaceId: string;
+}): void {
+  if (!input.api || input.typeId !== workspaceAppWebviewTypeID) {
+    return;
+  }
+  const event = readWorkspaceAppLaunchIntentEvent(
+    input.payload,
+    input.workspaceId
+  );
+  if (!event) {
+    return;
+  }
+  input.api.sendEvent(event);
+}
+
+function readWorkspaceAppLaunchIntentEvent(
+  payload: unknown,
+  workspaceId: string
+): DesktopWorkspaceAppExternalRendererEvent | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  const appId = typeof record.appId === "string" ? record.appId.trim() : "";
+  const intent = readWorkspaceAppOpenRouteIntent(record.intent);
+  if (!appId || !intent) {
+    return null;
+  }
+  return {
+    appId,
+    intent,
+    type: "workspace.launchIntent",
+    workspaceId
+  };
+}
+
+function readWorkspaceAppOpenRouteIntent(
+  value: unknown
+): TuttiExternalWorkspaceOpenRouteIntent | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (record.kind !== "open-route" || typeof record.route !== "string") {
+    return null;
+  }
+  const route = record.route.trim();
+  if (
+    !route.startsWith("/") ||
+    route.startsWith("//") ||
+    route.includes("://")
+  ) {
+    return null;
+  }
+  return {
+    kind: "open-route",
+    ...(isStringRecord(record.params) ? { params: record.params } : {}),
+    route,
+    ...(isRecord(record.state) ? { state: record.state } : {})
+  };
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.values(value).every((entry) => typeof entry === "string");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function shouldPublishWorkspaceAppLaunchIntentBeforeLaunch(input: {
+  appCenterService: IWorkspaceAppCenterService;
+  payload: unknown;
+  typeId: string;
+}): boolean {
+  if (input.typeId !== workspaceAppWebviewTypeID) {
+    return false;
+  }
+  const event = readWorkspaceAppLaunchIntentEvent(input.payload, "workspace");
+  const app =
+    event?.type === "workspace.launchIntent"
+      ? findWorkspaceApp(input.appCenterService, event.appId)
+      : null;
+  return app?.runtimeStatus === "installed_pending_restart";
 }
 
 async function openWorkspaceFilesNode(

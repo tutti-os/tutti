@@ -2281,10 +2281,14 @@ aside.workspace-agents-status-panel
 }
 
 [data-agent-file-mention="true"][data-agent-mention-kind="file"][data-agent-file-visual-kind="back"]
-  .agent-gui-node__mention-file-icon {
-  background-color: var(--text-secondary);
-  mask-image: url("./assets/icons/arrow-left-filled.svg");
-  -webkit-mask-image: url("./assets/icons/arrow-left-filled.svg");
+  .agent-gui-node__mention-file-icon.rich-text-at-mention-file-icon--glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  mask-image: none;
+  -webkit-mask-image: none;
+  color: currentColor;
 }
 
 .agent-gui-chrome__session-chrome {
@@ -2331,14 +2335,25 @@ aside.workspace-agents-status-panel
   margin-left: 24px;
 }
 
+.agent-gui-node__bottom-dock > .agent-gui-chrome__session-chrome {
+  margin-right: 24px;
+  margin-left: 24px;
+}
+
+.agent-gui-node__bottom-dock
+  > .agent-gui-chrome__session-chrome:has(+ .agent-gui-chrome__session-chrome) {
+  margin-right: 36px;
+  margin-left: 36px;
+}
+
 .agent-gui-node__bottom-dock
   > .agent-gui-chrome__session-chrome:has(
     + .agent-gui-node__composer
       .agent-gui-node__composer-input-group
       > .agent-gui-chrome__session-chrome
   ) {
-  margin-right: 16px;
-  margin-left: 16px;
+  margin-right: 36px;
+  margin-left: 36px;
 }
 
 .agent-gui-node__bottom-dock
@@ -2350,8 +2365,8 @@ aside.workspace-agents-status-panel
   + .agent-gui-node__composer
   .agent-gui-node__composer-input-group
   > .agent-gui-chrome__session-chrome {
-  margin-right: 8px;
-  margin-left: 8px;
+  margin-right: 24px;
+  margin-left: 24px;
 }
 
 .agent-gui-chrome__card {
@@ -5477,11 +5492,16 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__provider-setup-notice {
+  position: absolute;
+  top: 16px;
+  right: var(--agent-gui-detail-padding-x);
+  left: var(--agent-gui-detail-padding-x);
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 8px;
   box-sizing: border-box;
-  margin: 16px var(--agent-gui-detail-padding-x) 8px;
+  margin: 0;
   border: 1px solid
     color-mix(
       in srgb,
@@ -5498,6 +5518,11 @@ button.agent-gui-node__conversation-section-toggle:hover
   );
   font-size: 13px;
   line-height: 18px;
+  pointer-events: auto;
+}
+
+.agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice {
+  top: calc(64px + 8px);
 }
 
 .agent-gui-node__provider-setup-notice-icon {
@@ -6822,6 +6847,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   );
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.agent-gui-node__composer-menu-content
+  [data-workspace-user-project-action-separator="true"] {
+  margin-inline: 12px;
+  background: var(--agent-gui-border-subtle, var(--line-2));
 }
 
 .agent-gui-node__composer-menu-label {

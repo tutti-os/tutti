@@ -71,8 +71,10 @@ export function projectAgentConversationVM(
   }
 
   const normalizedRows = projectMessageCopyText(
-    mergeAdjacentAssistantMessageRows(
-      mergeAdjacentTransportRetryNoticeRows(rows)
+    dropRedundantErrorWarningNotices(
+      mergeAdjacentAssistantMessageRows(
+        mergeAdjacentTransportRetryNoticeRows(rows)
+      )
     ),
     {
       assistantCopyEligibleTurnIds: buildAssistantCopyEligibleTurnIds(detail)
@@ -248,6 +250,60 @@ function mergeAdjacentAssistantMessageRows(
     merged.push(row);
   }
   return merged;
+}
+
+function dropRedundantErrorWarningNotices(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const turnsWithVisibleError = new Set<string>();
+  for (const row of rows) {
+    if (row.kind !== "message" || row.speaker !== "assistant") {
+      continue;
+    }
+    for (const message of row.messages) {
+      if (message.visibleError) {
+        turnsWithVisibleError.add(row.turnId);
+      }
+    }
+  }
+  if (turnsWithVisibleError.size === 0) {
+    return [...rows];
+  }
+
+  const filteredRows: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    if (row.kind !== "message" || row.speaker !== "assistant") {
+      filteredRows.push(row);
+      continue;
+    }
+    if (!turnsWithVisibleError.has(row.turnId)) {
+      filteredRows.push(row);
+      continue;
+    }
+    const messages = row.messages.filter(
+      (message) => !isRedundantErrorWarningNotice(message)
+    );
+    if (messages.length === 0) {
+      continue;
+    }
+    if (messages.length === row.messages.length) {
+      filteredRows.push(row);
+      continue;
+    }
+    filteredRows.push({ ...row, messages });
+  }
+  return filteredRows;
+}
+
+function isRedundantErrorWarningNotice(
+  message: AgentMessageContentVM
+): boolean {
+  const notice = message.systemNotice;
+  if (!notice || notice.noticeKind !== "warning") {
+    return false;
+  }
+  const title = notice.title?.trim() ?? "";
+  return title === "Codex reported an error.";
 }
 
 function mergeAdjacentTransportRetryNoticeRows(

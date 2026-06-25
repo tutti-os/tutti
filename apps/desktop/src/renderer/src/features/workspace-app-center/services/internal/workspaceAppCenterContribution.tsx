@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from "react";
+import { createElement, useEffect, useRef, type ReactNode } from "react";
 import {
   type BrowserNodeNavigationPolicy,
   type BrowserNodeRuntimeState,
@@ -14,6 +14,7 @@ import type {
   WorkbenchHostDockEntry,
   WorkbenchHostExternalStateLookupInput,
   WorkbenchHostExternalStateSource,
+  WorkbenchHostNodeBodyContext,
   WorkbenchHostNodeDefinition
 } from "@tutti-os/workbench-surface";
 import { WorkspaceAppCenterPane } from "../../ui/WorkspaceAppCenterPane.tsx";
@@ -36,6 +37,11 @@ import {
   type WorkspaceAppWebviewExternalState
 } from "./workspaceAppCenterWebviewUrl.ts";
 import { workspaceAppWebviewFrame } from "./workspaceAppWebviewFrame.ts";
+import {
+  shouldPreserveWorkspaceAppWebviewDuringHandoff,
+  shouldRenderWorkspaceAppBrowserNode,
+  shouldSyncWorkspaceAppWebviewDefaultUrl
+} from "./workspaceAppCenterWebviewHandoff.ts";
 import {
   findWorkspaceApp,
   readWorkspaceAppIdFromInstanceId,
@@ -272,48 +278,16 @@ function createWorkspaceAppWebviewNodeDefinition(input: {
     instance: {
       mode: "multi"
     },
-    renderBody: (context) => {
-      const appId =
-        readWorkspaceAppIdFromInstanceId(context.node.data.instanceId) ??
-        readWorkspaceAppOpenPayload(context.activation)?.appId ??
-        "unknown";
-      const app = findWorkspaceApp(input.appCenterService, appId);
-      const defaultUrl = resolveWorkspaceAppWebviewUrl({
-        activation: context.activation,
-        appCanUseExternalState: app ? app.runtimeStatus === "running" : false,
-        appLaunchUrl: app?.launchUrl ?? null,
-        externalNodeState: context.externalNodeState
-      });
-      const navigationPolicy = resolveWorkspaceAppWebviewNavigationPolicy({
-        appCenterService: input.appCenterService,
-        appId,
-        fallbackUrl: defaultUrl
-      });
-      if (!isWorkspaceAppWebviewReady(app, defaultUrl)) {
-        return (
-          <WorkspaceAppWebviewLoadingState
-            app={app}
-            copy={appCenterCopy}
-            fallbackLabel={input.i18n.t("common.loading")}
-          />
-        );
-      }
-      return (
-        <BrowserNode
-          defaultUrl={defaultUrl}
-          feature={input.browserFeature}
-          navigationPolicy={navigationPolicy}
-          nodeId={context.node.id}
-          onFocusRequest={context.isFocused ? undefined : () => context.focus()}
-          sessionPartition={workspaceAppBrowserSessionPartition({
-            appId,
-            workspaceId: input.workspaceId
-          })}
-          showHeader={false}
-          syncDefaultUrl={true}
-        />
-      );
-    },
+    renderBody: (context) => (
+      <WorkspaceAppWebviewBody
+        appCenterCopy={appCenterCopy}
+        appCenterService={input.appCenterService}
+        browserFeature={input.browserFeature}
+        context={context}
+        fallbackLabel={input.i18n.t("common.loading")}
+        workspaceId={input.workspaceId}
+      />
+    ),
     title: input.i18n.t("workspace.workbenchDesktop.nodes.appWebview"),
     typeId: workspaceAppWebviewTypeID,
     window: {
@@ -334,6 +308,118 @@ function createWorkspaceAppWebviewNodeDefinition(input: {
       restoreOnLoad: true
     }
   };
+}
+
+function WorkspaceAppWebviewBody({
+  appCenterCopy,
+  appCenterService,
+  browserFeature,
+  context,
+  fallbackLabel,
+  workspaceId
+}: {
+  appCenterCopy: ReturnType<typeof createAppCenterI18nRuntime>;
+  appCenterService: IWorkspaceAppCenterService;
+  browserFeature: BrowserNodeFeature;
+  context: WorkbenchHostNodeBodyContext<
+    WorkspaceAppWebviewExternalState | null,
+    unknown
+  >;
+  fallbackLabel: string;
+  workspaceId: string;
+}): ReactNode {
+  const recentHandoffAppIdRef = useRef<string | null>(null);
+  const appId =
+    readWorkspaceAppIdFromInstanceId(context.node.data.instanceId) ??
+    readWorkspaceAppOpenPayload(context.activation)?.appId ??
+    "unknown";
+  const app = findWorkspaceApp(appCenterService, appId);
+  const externalNodeUrl = context.externalNodeState?.url ?? null;
+  const handoffOptions = {
+    externalNodeUrl,
+    hadRecentHandoff: recentHandoffAppIdRef.current === appId
+  };
+  const hasDirectHandoffState =
+    shouldPreserveWorkspaceAppWebviewDuringHandoff(app);
+  const preserveWebviewDuringHandoff =
+    shouldPreserveWorkspaceAppWebviewDuringHandoff(app, handoffOptions);
+  const shouldSyncDefaultUrl = shouldSyncWorkspaceAppWebviewDefaultUrl(
+    app,
+    handoffOptions
+  );
+  const defaultUrl = resolveWorkspaceAppWebviewUrl({
+    activation: context.activation,
+    appCanUseExternalState: app
+      ? app.runtimeStatus === "running" || preserveWebviewDuringHandoff
+      : false,
+    appLaunchUrl: app?.launchUrl ?? null,
+    externalNodeState: context.externalNodeState,
+    preferExternalState: preserveWebviewDuringHandoff && !shouldSyncDefaultUrl
+  });
+  const shouldRenderBrowserNode = shouldRenderWorkspaceAppBrowserNode(
+    app,
+    defaultUrl,
+    handoffOptions
+  );
+  const navigationPolicy = resolveWorkspaceAppWebviewNavigationPolicy({
+    appCenterService,
+    appId,
+    fallbackUrl: defaultUrl
+  });
+
+  useEffect(() => {
+    if (hasDirectHandoffState) {
+      recentHandoffAppIdRef.current = appId;
+      return;
+    }
+    if (app?.runtimeStatus === "running" && app.installProgress == null) {
+      recentHandoffAppIdRef.current = null;
+      return;
+    }
+    if (app?.runtimeStatus === "idle" || app?.runtimeStatus === "failed") {
+      recentHandoffAppIdRef.current = null;
+      return;
+    }
+    if (!app || recentHandoffAppIdRef.current !== appId) {
+      recentHandoffAppIdRef.current = null;
+    }
+  }, [app, appId, hasDirectHandoffState]);
+
+  if (!shouldRenderBrowserNode) {
+    return (
+      <WorkspaceAppWebviewLoadingState
+        app={app}
+        copy={appCenterCopy}
+        fallbackLabel={fallbackLabel}
+      />
+    );
+  }
+  return (
+    <div className="relative h-full min-h-0 w-full overflow-hidden bg-[var(--background-panel)]">
+      <BrowserNode
+        defaultUrl={defaultUrl}
+        feature={browserFeature}
+        navigationPolicy={navigationPolicy}
+        nodeId={context.node.id}
+        onFocusRequest={context.isFocused ? undefined : () => context.focus()}
+        sessionPartition={workspaceAppBrowserSessionPartition({
+          appId,
+          workspaceId
+        })}
+        showHeader={false}
+        syncDefaultUrl={shouldSyncDefaultUrl}
+      />
+      {preserveWebviewDuringHandoff ? (
+        <div className="pointer-events-auto absolute inset-0 z-20">
+          <WorkspaceAppWebviewLoadingState
+            app={app}
+            copy={appCenterCopy}
+            fallbackLabel={fallbackLabel}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function WorkspaceAppWebviewLoadingState({
@@ -462,16 +548,6 @@ function resolveWorkspaceAppWebviewNavigationPolicy(input: {
   };
 }
 
-function isWorkspaceAppWebviewReady(
-  app: WorkspaceAppCenterApp | null,
-  defaultUrl: string
-): boolean {
-  const url = normalizeWorkspaceAppUrl(defaultUrl);
-  return (
-    app?.runtimeStatus === "running" && url !== null && url !== "about:blank"
-  );
-}
-
 function shouldKeepWorkspaceAppWebviewMountedWhenMinimized(input: {
   appCenterService: IWorkspaceAppCenterService;
   instanceId: string;
@@ -479,13 +555,6 @@ function shouldKeepWorkspaceAppWebviewMountedWhenMinimized(input: {
   const appId = readWorkspaceAppIdFromInstanceId(input.instanceId);
   const app = appId ? findWorkspaceApp(input.appCenterService, appId) : null;
   return app?.minimizeBehavior !== "hibernate";
-}
-
-function normalizeWorkspaceAppUrl(
-  value: string | null | undefined
-): string | null {
-  const trimmed = value?.trim() ?? "";
-  return trimmed.length > 0 ? trimmed : null;
 }
 
 function workspaceAppBrowserSessionPartition(input: {

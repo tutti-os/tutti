@@ -368,10 +368,15 @@ export function useWorkspaceWorkbenchShellRuntime({
       );
       appCenterService.setWorkspaceAppLauncher(
         host
-          ? async ({ appId, prepared, prevStatus }) => {
+          ? async ({ appId, intent, prepared, prevStatus }) => {
               return (
                 (await host.launchNode({
-                  payload: { appId, prepared, prevStatus },
+                  payload: {
+                    appId,
+                    ...(intent ? { intent } : {}),
+                    prepared,
+                    prevStatus
+                  },
                   reason: "host",
                   typeId: workspaceAppWebviewTypeID,
                   // 让 onboarding 应用打开时播放“从底部进入并展开”的动画。

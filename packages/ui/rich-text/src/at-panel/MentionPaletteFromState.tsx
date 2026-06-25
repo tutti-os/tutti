@@ -20,6 +20,7 @@ export interface MentionPaletteFromStateProps<
   loadingBanner?: ReactNode;
   scrollHighlightedIntoViewCentered?: boolean;
   theme?: MentionPaletteTheme;
+  onNavigateHierarchy?: MentionPaletteProps<TItem>["onNavigateHierarchy"];
 }
 
 export function MentionPaletteFromState<TItem>(
@@ -35,6 +36,7 @@ export function MentionPaletteFromState<TItem>(
     loadingBanner,
     scrollHighlightedIntoViewCentered,
     theme,
+    onNavigateHierarchy,
     ...adapterInput
   } = props;
   const adapter = createMentionPaletteStateAdapter(adapterInput);
@@ -50,6 +52,7 @@ export function MentionPaletteFromState<TItem>(
       loadingBanner={loadingBanner}
       scrollHighlightedIntoViewCentered={scrollHighlightedIntoViewCentered}
       theme={theme}
+      onNavigateHierarchy={onNavigateHierarchy}
     />
   );
 }

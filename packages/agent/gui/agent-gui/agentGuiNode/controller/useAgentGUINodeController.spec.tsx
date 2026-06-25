@@ -11435,6 +11435,97 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.draftPrompt).toBe("keep this draft");
   });
 
+  it("clears submitted image draft content when prompt submission settles", async () => {
+    const imagePromptContent: AgentPromptContentBlock[] = [
+      { type: "text", text: "describe this" },
+      {
+        type: "image",
+        mimeType: "image/png",
+        data: "aW1hZ2U=",
+        name: "panel.png"
+      }
+    ];
+    let resolveExec:
+      | ((result: {
+          accepted: boolean;
+          agentSessionId: string;
+          turnId: string;
+          sessionStatus: string;
+        }) => void)
+      | undefined;
+    const exec = vi.fn(
+      () =>
+        new Promise<{
+          accepted: boolean;
+          agentSessionId: string;
+          turnId: string;
+          sessionStatus: string;
+        }>((resolve) => {
+          resolveExec = resolve;
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.updateDraftContent({
+        prompt: "describe this",
+        images: [
+          {
+            id: "draft-image-1",
+            name: "panel.png",
+            mimeType: "image/png",
+            data: "aW1hZ2U=",
+            previewUrl: "data:image/png;base64,aW1hZ2U="
+          }
+        ]
+      });
+      result.current.actions.submitPrompt(imagePromptContent);
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        content: imagePromptContent
+      });
+    });
+
+    act(() => {
+      resolveExec?.({
+        accepted: true,
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        sessionStatus: "working"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.isSubmitting).toBe(false);
+    });
+    expect(result.current.viewModel.draftPrompt).toBe("");
+    expect(result.current.viewModel.draftContent.images).toEqual([]);
+  });
+
   it("edits a local queued prompt back into the draft", async () => {
     installAgentHostApi({
       list: vi.fn(async () => snapshotWithWaitingSession("session-1")),

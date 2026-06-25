@@ -166,6 +166,59 @@ test("workspace app browser feature keeps current app runtime URLs inside the ap
   ]);
 });
 
+test("workspace app browser feature keeps runtime-origin open-url inside the app during launch url handoff", async () => {
+  const requests: WorkspaceBrowserLaunchRequest[] = [];
+  let emitBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
+  const browserApi = createBrowserApi({
+    onEvent(listener) {
+      emitBrowserEvent = listener;
+      return () => {
+        emitBrowserEvent = () => undefined;
+      };
+    }
+  });
+  createWorkspaceAppBrowserFeature({
+    browserApi,
+    browserService: createWorkspaceBrowserService({ browserApi }),
+    getAppLaunchUrlForNodeId: (nodeId) =>
+      nodeId === "workspace-app-webview:app:group-chat"
+        ? "http://127.0.0.1:4173/"
+        : null,
+    runtimeApi: createRuntimeApi(),
+    workspaceId: "workspace-app-runtime-handoff-open-url"
+  });
+  const disposeLaunchHandler = registerWorkspaceBrowserLaunchHandler(
+    "workspace-app-runtime-handoff-open-url",
+    (request) => {
+      requests.push(request);
+      return true;
+    }
+  );
+
+  emitBrowserEvent({
+    canGoBack: false,
+    canGoForward: false,
+    isAttachedToWindow: true,
+    isLoading: false,
+    isOccluded: false,
+    lifecycle: "active",
+    nodeId: "workspace-app-webview:app:group-chat",
+    title: null,
+    type: "state",
+    url: "http://127.0.0.1:55765/"
+  });
+  emitBrowserEvent({
+    reuseIfOpen: true,
+    sourceNodeId: "workspace-app-webview:app:group-chat",
+    type: "open-url",
+    url: "http://127.0.0.1:55765/"
+  });
+  await Promise.resolve();
+
+  disposeLaunchHandler();
+  assert.deepEqual(requests, []);
+});
+
 test("workspace app browser feature keeps dock entry runtime URLs inside the app webview", async () => {
   const requests: WorkspaceBrowserLaunchRequest[] = [];
   let emitBrowserEvent = (_event: BrowserNodeEvent): void => undefined;

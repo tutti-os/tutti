@@ -67,6 +67,53 @@ test("workspace app external bridge subscribes to app context", () => {
   assert.deepEqual(contexts, [context]);
 });
 
+test("workspace app external bridge replays initial launch intent from app context", async () => {
+  const intent = {
+    kind: "open-route" as const,
+    params: { mode: "preview" },
+    route: "/files",
+    state: { selectedPath: "/tmp/a.md" }
+  };
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return {
+          appId: "docs",
+          launchIntent: intent,
+          locale: "en",
+          workspaceId: "workspace-1"
+        };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => true,
+    send: unexpectedSend,
+    subscribeToWorkspaceLaunchIntents() {
+      return () => undefined;
+    },
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+  const intents: unknown[] = [];
+
+  const unsubscribe = bridge.workspace.onLaunchIntent((nextIntent) => {
+    intents.push(nextIntent);
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  unsubscribe();
+  const unsubscribeAgain = bridge.workspace.onLaunchIntent((nextIntent) => {
+    intents.push(nextIntent);
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  unsubscribeAgain();
+  assert.deepEqual(intents, [intent]);
+});
+
 test("workspace app external bridge invokes at query without user activation", async () => {
   const calls: Array<{ channel: string; payload?: unknown }> = [];
   const bridge = createWorkspaceAppExternalBridge({

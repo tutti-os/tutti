@@ -7,6 +7,7 @@ Use these environment variables:
 - `TUTTI_APP_HOST`: host to bind, normally `127.0.0.1`.
 - `TUTTI_APP_PORT`: port to bind.
 - `TUTTI_APP_BASE_URL`: local base URL.
+- `TUTTI_APP_ID`: current workspace app id from `tutti.app.json`.
 - `TUTTI_APP_PACKAGE_DIR`: package files, read-only at runtime.
 - `TUTTI_APP_RUNTIME_DIR`: scratch/runtime files.
 - `TUTTI_APP_DATA_DIR`: durable app data.

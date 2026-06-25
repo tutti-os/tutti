@@ -4,6 +4,7 @@ import type {
   DesktopWorkspaceAppContext,
   DesktopWorkspaceAppExternalRendererEvent
 } from "../../shared/contracts/ipc";
+import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
 import { createWorkspaceAppExternalBridge } from "./workspaceAppExternalBridge.ts";
 import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
 import { createWorkspaceAppUserProjectSnapshotBridge } from "./workspaceAppUserProjectSnapshots.ts";
@@ -40,6 +41,9 @@ export interface WorkspaceAppHostContext {
 
 const contextListeners = new Set<
   (context: DesktopWorkspaceAppContext) => void
+>();
+const launchIntentListeners = new Set<
+  (intent: TuttiExternalWorkspaceOpenRouteIntent) => void
 >();
 const userProjectSnapshots = createWorkspaceAppUserProjectSnapshotBridge();
 let cachedContext: DesktopWorkspaceAppContext | null = null;
@@ -92,6 +96,12 @@ const tuttiExternal = createWorkspaceAppExternalBridge({
   send(channel, payload) {
     ipcRenderer.send(channel, payload);
   },
+  subscribeToWorkspaceLaunchIntents(listener) {
+    launchIntentListeners.add(listener);
+    return () => {
+      launchIntentListeners.delete(listener);
+    };
+  },
   subscribeToUserProjects(listener) {
     return userProjectSnapshots.subscribe(listener);
   }
@@ -117,6 +127,12 @@ ipcRenderer.on(
     }
     if (payload.type === "userProjects.changed") {
       userProjectSnapshots.publish(payload.snapshot);
+      return;
+    }
+    if (payload.type === "workspace.launchIntent") {
+      for (const listener of launchIntentListeners) {
+        listener(payload.intent);
+      }
     }
   }
 );
@@ -176,7 +192,12 @@ function isWorkspaceAppExternalRendererEvent(
   }
   const record = value as Record<string, unknown>;
   if (record.type !== "userProjects.changed") {
-    return false;
+    return (
+      record.type === "workspace.launchIntent" &&
+      typeof record.workspaceId === "string" &&
+      typeof record.appId === "string" &&
+      isWorkspaceAppOpenRouteIntent(record.intent)
+    );
   }
   if (typeof record.workspaceId !== "string") {
     return false;
@@ -194,6 +215,45 @@ function isWorkspaceAppExternalRendererEvent(
     Array.isArray(snapshotRecord.projects) &&
     typeof snapshotRecord.revision === "number"
   );
+}
+
+function isWorkspaceAppOpenRouteIntent(
+  value: unknown
+): value is TuttiExternalWorkspaceOpenRouteIntent {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  if (record.kind !== "open-route" || typeof record.route !== "string") {
+    return false;
+  }
+  const route = record.route.trim();
+  if (
+    !route.startsWith("/") ||
+    route.startsWith("//") ||
+    route.includes("://")
+  ) {
+    return false;
+  }
+  if (record.params !== undefined && !isStringRecord(record.params)) {
+    return false;
+  }
+  if (
+    record.state !== undefined &&
+    (!record.state ||
+      typeof record.state !== "object" ||
+      Array.isArray(record.state))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value).every((entry) => typeof entry === "string");
 }
 
 contextBridge.exposeInMainWorld("tuttiExternal", tuttiExternal);

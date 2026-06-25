@@ -82,7 +82,7 @@ const WorkspaceFeedbackGroupButton = forwardRef<
       variant="ghost"
       {...props}
     >
-      <FeedbackGroupIcon className="size-4 shrink-0" />
+      <FeedbackGroupIcon className="size-5 shrink-0" size={20} />
       <span>{t("workspace.feedbackGroup.trigger")}</span>
     </Button>
   );

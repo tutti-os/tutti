@@ -128,12 +128,13 @@ func (a *CodexAppServerAdapter) appServerNotificationEvents(
 		}
 		return nil
 	case appServerNotifyError:
-		turnError := payloadObject(params["error"])
-		detail := asString(turnError["message"])
 		if willRetry, _ := params["willRetry"].(bool); willRetry {
+			turnError := payloadObject(params["error"])
+			detail := asString(turnError["message"])
 			return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "transport_retry", "", detail)}
 		}
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "warning", "Codex reported an error.", detail)}
+		// Terminal turn failures already surface as agent_visible_error in the GUI.
+		return nil
 	case appServerNotifyWarning:
 		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "warning", "", asString(params["message"]))}
 	case appServerNotifyDeprecation:

@@ -510,6 +510,23 @@ export class AgentMentionSearchController {
     return false;
   }
 
+  exitAgentGeneratedBrowse(): boolean {
+    if (!this.agentGeneratedBrowsePath) {
+      return false;
+    }
+    this.resetAgentGeneratedBrowsePath();
+    this.setState({
+      status: this.state.status === "loading" ? "loading" : "ready",
+      query: this.currentQuery,
+      mode: this.currentQuery ? "results" : "browse",
+      filter: this.currentFilter,
+      categories: buildBrowseCategories(),
+      groups: this.groupsFromRawGroups(),
+      error: null
+    });
+    return true;
+  }
+
   expandGroup(groupId: AgentMentionGroupId): void {
     const pageSize = mentionGroupPageSize(this.currentFilter, groupId);
     const current = this.expandedCounts[groupId] ?? pageSize;

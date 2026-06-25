@@ -3,6 +3,7 @@ export interface AtPanelKeyboardActions {
   commitSelection: () => void;
   close: () => void;
   cycleFilter?: (delta: 1 | -1) => void;
+  navigateHierarchy?: (delta: 1 | -1) => boolean;
 }
 
 export interface AtPanelKeyboardEventLike {
@@ -33,15 +34,19 @@ export function makeAtPanelKeyDown(actions: AtPanelKeyboardActions) {
       actions.cycleFilter(event.shiftKey ? -1 : 1);
       return true;
     }
-    if (event.key === "ArrowRight" && actions.cycleFilter) {
-      event.preventDefault();
-      actions.cycleFilter(1);
-      return true;
+    if (event.key === "ArrowRight" && actions.navigateHierarchy) {
+      if (actions.navigateHierarchy(1)) {
+        event.preventDefault();
+        return true;
+      }
+      return false;
     }
-    if (event.key === "ArrowLeft" && actions.cycleFilter) {
-      event.preventDefault();
-      actions.cycleFilter(-1);
-      return true;
+    if (event.key === "ArrowLeft" && actions.navigateHierarchy) {
+      if (actions.navigateHierarchy(-1)) {
+        event.preventDefault();
+        return true;
+      }
+      return false;
     }
     if (event.key === "Enter") {
       event.preventDefault();

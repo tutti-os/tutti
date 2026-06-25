@@ -1,5 +1,6 @@
 import type { AgentHostUserInfo } from "./contracts/dto";
 import { translate } from "../i18n/index";
+import { fileChangePathsFromChanges } from "./workspaceAgentFileChangePayload";
 import { normalizeAgentTitleText } from "./utils/agentTitleText";
 import { workspaceAgentProviderLabel } from "./workspaceAgentProviderLabel";
 import { normalizeWorkspaceAgentStatus } from "./workspaceAgentStatusNormalizer";
@@ -862,11 +863,7 @@ function changeMapPaths(
   value: unknown,
   normalizePath: ChangedFilePathNormalizer = defaultChangedFilePathNormalizer
 ): string[] {
-  const changes = objectValue(value);
-  if (!changes) {
-    return [];
-  }
-  return Object.keys(changes)
+  return fileChangePathsFromChanges(value)
     .map((path) => normalizePath(path))
     .filter((path): path is string => path !== null);
 }

@@ -15,7 +15,7 @@ export {
 } from "./eventStreamClient.ts";
 export type {
   AgentActivityUpdatedEventV1,
-  AgentGuiLaunchRequestedEventV1,
+  WorkspaceWorkbenchNodeLaunchRequestedEventV1,
   WorkspaceIssueUpdatedEventV1
 } from "@tutti-os/event-protocol";
 export {

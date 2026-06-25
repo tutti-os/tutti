@@ -4,6 +4,7 @@ import {
   extractImageGenerationPreview,
   resolveImageGenerationCanonicalToolName
 } from "./imageGenerationTool";
+import { fileChangeCountFromChanges } from "./workspaceAgentFileChangePayload";
 import {
   resolveCanonicalToolName,
   resolveLiveCanonicalToolName
@@ -489,7 +490,12 @@ function toolCallDetail(
     summarizeToolInput(payloadInput)
   );
   const normalizedToolName = normalizeToolNameToken(toolName);
-  const multiFileSummary = summarizeFileChangeCount(payloadOutput);
+  const multiFileSummary = summarizeFileChangeCount(
+    payloadOutput,
+    payloadInput,
+    item.payload,
+    metadataInput
+  );
   const todoSummary = summarizeTodoProgress(payloadInput);
   const webDomainSummary = summarizeWebDomain(webTarget);
   const imageGeneration = extractImageGenerationPreview({
@@ -897,18 +903,24 @@ function summarizeToolInput(
 }
 
 function summarizeFileChangeCount(
-  value: Record<string, unknown> | undefined
+  ...values: Array<Record<string, unknown> | undefined>
 ): string | null {
-  const structuredPatch = arrayRecordValue(value, "structuredPatch");
-  if (structuredPatch.length > 1) {
-    return `${structuredPatch.length} files`;
-  }
-  const fileChanges = arrayRecordValue(
-    recordValue(value, "fileChanges"),
-    "files"
-  );
-  if (fileChanges.length > 1) {
-    return `${fileChanges.length} files`;
+  for (const value of values) {
+    const structuredPatch = arrayRecordValue(value, "structuredPatch");
+    if (structuredPatch.length > 1) {
+      return `${structuredPatch.length} files`;
+    }
+    const fileChanges = arrayRecordValue(
+      recordValue(value, "fileChanges"),
+      "files"
+    );
+    if (fileChanges.length > 1) {
+      return `${fileChanges.length} files`;
+    }
+    const changesCount = fileChangeCountFromChanges(value?.changes);
+    if (changesCount > 1) {
+      return `${changesCount} files`;
+    }
   }
   return null;
 }

@@ -6,20 +6,20 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:1f4baa742a2dbf19"
+	BusinessEventCatalogRevision = "sha256:7de58350911c2aa6"
 )
 
 type Topic string
 
 const (
-	TopicAgentActivityUpdated              Topic = "agent.activity.updated"
-	TopicAgentGuiLaunchRequested           Topic = "agent.gui.launch.requested"
-	TopicAnalyticsDebugReported            Topic = "analytics.debug.reported"
-	TopicPreferencesDesktopUpdateRequested Topic = "preferences.desktop.update.requested"
-	TopicPreferencesDesktopUpdated         Topic = "preferences.desktop.updated"
-	TopicWorkspaceAppUpdated               Topic = "workspace.app.updated"
-	TopicWorkspaceAppfactoryJobUpdated     Topic = "workspace.appfactory.job.updated"
-	TopicWorkspaceIssueUpdated             Topic = "workspace.issue.updated"
+	TopicAgentActivityUpdated                  Topic = "agent.activity.updated"
+	TopicAnalyticsDebugReported                Topic = "analytics.debug.reported"
+	TopicPreferencesDesktopUpdateRequested     Topic = "preferences.desktop.update.requested"
+	TopicPreferencesDesktopUpdated             Topic = "preferences.desktop.updated"
+	TopicWorkspaceAppUpdated                   Topic = "workspace.app.updated"
+	TopicWorkspaceAppfactoryJobUpdated         Topic = "workspace.appfactory.job.updated"
+	TopicWorkspaceIssueUpdated                 Topic = "workspace.issue.updated"
+	TopicWorkspaceWorkbenchNodeLaunchRequested Topic = "workspace.workbench.node.launch.requested"
 )
 
 type Direction string
@@ -184,15 +184,6 @@ type AgentActivityUpdatedPayload struct {
 	Data           any    `json:"data"`
 }
 
-type AgentGuiLaunchRequestedPayload struct {
-	WorkspaceId    string  `json:"workspaceId"`
-	AgentSessionId string  `json:"agentSessionId"`
-	Provider       string  `json:"provider"`
-	Source         string  `json:"source"`
-	Reason         *string `json:"reason,omitempty"`
-	RequestId      *string `json:"requestId,omitempty"`
-}
-
 type AnalyticsDebugReportedPayload struct {
 	Events []struct {
 		Name     string         `json:"name"`
@@ -226,6 +217,16 @@ type WorkspaceIssueUpdatedPayload struct {
 	ChangeKind  string  `json:"changeKind"`
 }
 
+type WorkspaceWorkbenchNodeLaunchRequestedPayload struct {
+	WorkspaceId  string  `json:"workspaceId"`
+	TypeId       string  `json:"typeId"`
+	Source       string  `json:"source"`
+	LaunchSource *string `json:"launchSource,omitempty"`
+	DockEntryId  *string `json:"dockEntryId,omitempty"`
+	RequestId    *string `json:"requestId,omitempty"`
+	Payload      any     `json:"payload,omitempty"`
+}
+
 type AgentActivityUpdatedEvent struct {
 	ID        string                      `json:"id"`
 	Topic     Topic                       `json:"topic"`
@@ -233,15 +234,6 @@ type AgentActivityUpdatedEvent struct {
 	EmittedAt string                      `json:"emittedAt"`
 	Scope     *EventScope                 `json:"scope,omitempty"`
 	Payload   AgentActivityUpdatedPayload `json:"payload"`
-}
-
-type AgentGuiLaunchRequestedEvent struct {
-	ID        string                         `json:"id"`
-	Topic     Topic                          `json:"topic"`
-	Version   int                            `json:"version"`
-	EmittedAt string                         `json:"emittedAt"`
-	Scope     *EventScope                    `json:"scope,omitempty"`
-	Payload   AgentGuiLaunchRequestedPayload `json:"payload"`
 }
 
 type AnalyticsDebugReportedEvent struct {
@@ -296,6 +288,15 @@ type WorkspaceIssueUpdatedEvent struct {
 	EmittedAt string                       `json:"emittedAt"`
 	Scope     *EventScope                  `json:"scope,omitempty"`
 	Payload   WorkspaceIssueUpdatedPayload `json:"payload"`
+}
+
+type WorkspaceWorkbenchNodeLaunchRequestedEvent struct {
+	ID        string                                       `json:"id"`
+	Topic     Topic                                        `json:"topic"`
+	Version   int                                          `json:"version"`
+	EmittedAt string                                       `json:"emittedAt"`
+	Scope     *EventScope                                  `json:"scope,omitempty"`
+	Payload   WorkspaceWorkbenchNodeLaunchRequestedPayload `json:"payload"`
 }
 
 type ClientSubscribeFrame struct {
@@ -365,13 +366,6 @@ var BusinessEventDefinitions = []EventDefinition{
 		Scope:     ScopeNameWorkspace,
 	},
 	{
-		Topic:     TopicAgentGuiLaunchRequested,
-		Version:   1,
-		Direction: DirectionServerToClient,
-		Owner:     "agent",
-		Scope:     ScopeNameWorkspace,
-	},
-	{
 		Topic:     TopicAnalyticsDebugReported,
 		Version:   1,
 		Direction: DirectionServerToClient,
@@ -413,17 +407,24 @@ var BusinessEventDefinitions = []EventDefinition{
 		Owner:     "workspace",
 		Scope:     ScopeNameWorkspace,
 	},
+	{
+		Topic:     TopicWorkspaceWorkbenchNodeLaunchRequested,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "core",
+		Scope:     ScopeNameWorkspace,
+	},
 }
 
 var businessEventDefinitionByTopic = map[Topic]EventDefinition{
-	TopicAgentActivityUpdated:              BusinessEventDefinitions[0],
-	TopicAgentGuiLaunchRequested:           BusinessEventDefinitions[1],
-	TopicAnalyticsDebugReported:            BusinessEventDefinitions[2],
-	TopicPreferencesDesktopUpdateRequested: BusinessEventDefinitions[3],
-	TopicPreferencesDesktopUpdated:         BusinessEventDefinitions[4],
-	TopicWorkspaceAppUpdated:               BusinessEventDefinitions[5],
-	TopicWorkspaceAppfactoryJobUpdated:     BusinessEventDefinitions[6],
-	TopicWorkspaceIssueUpdated:             BusinessEventDefinitions[7],
+	TopicAgentActivityUpdated:                  BusinessEventDefinitions[0],
+	TopicAnalyticsDebugReported:                BusinessEventDefinitions[1],
+	TopicPreferencesDesktopUpdateRequested:     BusinessEventDefinitions[2],
+	TopicPreferencesDesktopUpdated:             BusinessEventDefinitions[3],
+	TopicWorkspaceAppUpdated:                   BusinessEventDefinitions[4],
+	TopicWorkspaceAppfactoryJobUpdated:         BusinessEventDefinitions[5],
+	TopicWorkspaceIssueUpdated:                 BusinessEventDefinitions[6],
+	TopicWorkspaceWorkbenchNodeLaunchRequested: BusinessEventDefinitions[7],
 }
 
 var ClientToServerTopics = []Topic{
@@ -432,12 +433,12 @@ var ClientToServerTopics = []Topic{
 
 var ServerToClientTopics = []Topic{
 	TopicAgentActivityUpdated,
-	TopicAgentGuiLaunchRequested,
 	TopicAnalyticsDebugReported,
 	TopicPreferencesDesktopUpdated,
 	TopicWorkspaceAppUpdated,
 	TopicWorkspaceAppfactoryJobUpdated,
 	TopicWorkspaceIssueUpdated,
+	TopicWorkspaceWorkbenchNodeLaunchRequested,
 }
 
 func LookupEventDefinition(topic Topic) (EventDefinition, bool) {
@@ -463,8 +464,6 @@ func IsServerToClientTopic(topic Topic) bool {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return true
-	case TopicAgentGuiLaunchRequested:
-		return true
 	case TopicAnalyticsDebugReported:
 		return true
 	case TopicPreferencesDesktopUpdated:
@@ -475,6 +474,8 @@ func IsServerToClientTopic(topic Topic) bool {
 		return true
 	case TopicWorkspaceIssueUpdated:
 		return true
+	case TopicWorkspaceWorkbenchNodeLaunchRequested:
+		return true
 	default:
 		return false
 	}
@@ -484,8 +485,6 @@ func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedPayload{}, true
-	case TopicAgentGuiLaunchRequested:
-		return &AgentGuiLaunchRequestedPayload{}, true
 	case TopicAnalyticsDebugReported:
 		return &AnalyticsDebugReportedPayload{}, true
 	case TopicPreferencesDesktopUpdateRequested:
@@ -498,6 +497,8 @@ func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 		return &WorkspaceAppfactoryJobUpdatedPayload{}, true
 	case TopicWorkspaceIssueUpdated:
 		return &WorkspaceIssueUpdatedPayload{}, true
+	case TopicWorkspaceWorkbenchNodeLaunchRequested:
+		return &WorkspaceWorkbenchNodeLaunchRequestedPayload{}, true
 	default:
 		return nil, false
 	}
@@ -507,8 +508,6 @@ func EventPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedEvent{}, true
-	case TopicAgentGuiLaunchRequested:
-		return &AgentGuiLaunchRequestedEvent{}, true
 	case TopicAnalyticsDebugReported:
 		return &AnalyticsDebugReportedEvent{}, true
 	case TopicPreferencesDesktopUpdateRequested:
@@ -521,6 +520,8 @@ func EventPrototypeForTopic(topic Topic) (any, bool) {
 		return &WorkspaceAppfactoryJobUpdatedEvent{}, true
 	case TopicWorkspaceIssueUpdated:
 		return &WorkspaceIssueUpdatedEvent{}, true
+	case TopicWorkspaceWorkbenchNodeLaunchRequested:
+		return &WorkspaceWorkbenchNodeLaunchRequestedEvent{}, true
 	default:
 		return nil, false
 	}

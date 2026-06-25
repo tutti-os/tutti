@@ -549,6 +549,15 @@ export function createBrowserGuestManager({
     return { action: "deny" };
   };
 
+  const resolveOptionalDesiredUrl = (
+    url: string | undefined
+  ): string | undefined => {
+    if (url === undefined) {
+      return undefined;
+    }
+    return resolveHostBrowserNavigationUrl(url).url ?? undefined;
+  };
+
   return {
     async activate(input) {
       const resolved = resolveHostBrowserNavigationUrl(input.url);
@@ -693,7 +702,8 @@ export function createBrowserGuestManager({
         navigationPolicy: input.navigationPolicy,
         profileId: input.profileId,
         sessionMode: input.sessionMode,
-        sessionPartition: input.sessionPartition
+        sessionPartition: input.sessionPartition,
+        url: resolveOptionalDesiredUrl(input.url)
       });
     },
     async registerGuest(input) {
@@ -722,7 +732,8 @@ export function createBrowserGuestManager({
         navigationPolicy: input.navigationPolicy,
         profileId: input.profileId,
         sessionMode: input.sessionMode,
-        sessionPartition: input.sessionPartition
+        sessionPartition: input.sessionPartition,
+        url: resolveOptionalDesiredUrl(input.url)
       });
       if (
         session.webContentsId === input.webContentsId &&
@@ -738,11 +749,6 @@ export function createBrowserGuestManager({
       session.webContentsId = input.webContentsId;
       nodeIdByWebContentsId.set(input.webContentsId, input.nodeId);
       session.lifecycle = "active";
-      logger?.info?.("Browser Node registered guest owner", {
-        nodeId: input.nodeId,
-        sessionPartition: session.sessionPartition,
-        webContentsId: input.webContentsId
-      });
       contents.setWindowOpenHandler?.(({ url }) => {
         if (isGoogleGisOAuthPopupUrl(url)) {
           logger?.info?.("Browser Node allowing Google GIS OAuth popup", {

@@ -7,6 +7,7 @@ import type {
   WorkspaceAppCenterReadableStoreState,
   WorkspaceAppCenterViewState
 } from "@tutti-os/workspace-app-center";
+import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
 
 export interface IWorkspaceAppCenterService {
   readonly _serviceBrand: undefined;
@@ -73,6 +74,7 @@ export interface IWorkspaceAppCenterService {
   replaceAppIcon(input: { appId: string; workspaceId: string }): Promise<void>;
   restartAndOpenApp(input: {
     appId: string;
+    intent?: TuttiExternalWorkspaceOpenRouteIntent;
     workspaceId: string;
   }): Promise<boolean>;
   retryFactoryValidation(input: {
@@ -88,6 +90,7 @@ export interface IWorkspaceAppCenterService {
     launcher:
       | ((input: {
           appId: string;
+          intent?: TuttiExternalWorkspaceOpenRouteIntent;
           prepared: boolean;
           prevStatus?: WorkspaceAppCenterApp["runtimeStatus"];
           workspaceId: string;

@@ -8,7 +8,11 @@ test("makeAtPanelKeyDown maps navigation and commit keys", () => {
     close: () => calls.push("close"),
     commitSelection: () => calls.push("commit"),
     cycleFilter: (delta) => calls.push(`cycle:${delta}`),
-    moveSelection: (delta) => calls.push(`move:${delta}`)
+    moveSelection: (delta) => calls.push(`move:${delta}`),
+    navigateHierarchy: (delta) => {
+      calls.push(`hierarchy:${delta}`);
+      return true;
+    }
   });
 
   assert.equal(onKeyDown(keyEvent("ArrowDown")), true);
@@ -27,10 +31,27 @@ test("makeAtPanelKeyDown maps navigation and commit keys", () => {
     "commit",
     "cycle:1",
     "cycle:-1",
-    "cycle:1",
-    "cycle:-1",
+    "hierarchy:1",
+    "hierarchy:-1",
     "close"
   ]);
+});
+
+test("makeAtPanelKeyDown ignores hierarchy keys when navigation is unavailable", () => {
+  const calls: string[] = [];
+  const onKeyDown = makeAtPanelKeyDown({
+    close: () => calls.push("close"),
+    commitSelection: () => calls.push("commit"),
+    moveSelection: (delta) => calls.push(`move:${delta}`),
+    navigateHierarchy: () => {
+      calls.push("hierarchy");
+      return false;
+    }
+  });
+
+  assert.equal(onKeyDown(keyEvent("ArrowRight")), false);
+  assert.equal(onKeyDown(keyEvent("ArrowLeft")), false);
+  assert.deepEqual(calls, ["hierarchy", "hierarchy"]);
 });
 
 function keyEvent(

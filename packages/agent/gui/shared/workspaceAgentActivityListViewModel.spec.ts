@@ -1194,6 +1194,123 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     ]);
   });
 
+  it("keeps changed file keys from lightweight change maps", () => {
+    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+      presences: [],
+      sessions: [
+        {
+          id: 20,
+          agentSessionId: "session-20",
+          presenceId: 0,
+          provider: "codex",
+          providerSessionId: "provider-20",
+          cwd: "/repo",
+          status: "completed",
+          title: "编辑文件"
+        }
+      ]
+    };
+
+    const view = buildWorkspaceAgentActivityListViewModel(snapshot, {
+      sessionMessagesById: {
+        "session-20": [
+          callItem({
+            id: 1,
+            agentSessionId: "session-20",
+            name: "apply_patch",
+            itemType: "call.completed",
+            status: "completed",
+            payload: {
+              toolName: "apply_patch",
+              output: {
+                changes: {
+                  "/workspace/ws-1/src/a.ts": "add",
+                  "/workspace/ws-1/src/b.ts": null
+                }
+              }
+            }
+          })
+        ]
+      }
+    });
+
+    expect(view.activities[0]?.changedFiles).toEqual([
+      {
+        path: "/workspace/ws-1/src/a.ts",
+        label: "a.ts"
+      },
+      {
+        path: "/workspace/ws-1/src/b.ts",
+        label: "b.ts"
+      }
+    ]);
+  });
+
+  it("extracts changed files from Codex Edit changes arrays", () => {
+    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+      presences: [],
+      sessions: [
+        {
+          id: 20,
+          agentSessionId: "session-20",
+          presenceId: 0,
+          provider: "codex",
+          providerSessionId: "provider-20",
+          cwd: "/repo",
+          status: "completed",
+          title: "编辑 html 文件"
+        }
+      ]
+    };
+
+    const view = buildWorkspaceAgentActivityListViewModel(snapshot, {
+      sessionMessagesById: {
+        "session-20": [
+          callItem({
+            id: 1,
+            agentSessionId: "session-20",
+            name: "Edit",
+            itemType: "call.completed",
+            status: "completed",
+            payload: {
+              toolName: "Edit",
+              input: {
+                file_path: "/workspace/deck/assets/styles.css",
+                changes: [
+                  {
+                    path: "/workspace/deck/slides/02-why-now.html",
+                    kind: { type: "add" },
+                    diff: "<section>Why now</section>\n"
+                  },
+                  {
+                    path: "/workspace/deck/slides/01-cover.html",
+                    kind: { type: "update" },
+                    diff: "@@ -1 +1 @@\n-Old\n+New\n"
+                  }
+                ]
+              }
+            }
+          })
+        ]
+      }
+    });
+
+    expect(view.activities[0]?.changedFiles).toEqual([
+      {
+        path: "/workspace/deck/slides/02-why-now.html",
+        label: "02-why-now.html"
+      },
+      {
+        path: "/workspace/deck/slides/01-cover.html",
+        label: "01-cover.html"
+      },
+      {
+        path: "/workspace/deck/assets/styles.css",
+        label: "styles.css"
+      }
+    ]);
+  });
+
   it("does not infer changed files from failed writes without fileChanges metadata", () => {
     const snapshot: AgentHostWorkspaceAgentSnapshot = {
       presences: [],
@@ -1393,6 +1510,125 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       {
         path: "/workspace/output/image.png",
         label: "image.png"
+      }
+    ]);
+  });
+
+  it("collects agent-generated files from Codex Edit changes arrays", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-20",
+          cwd: "/Users/demo/project",
+          provider: "codex",
+          status: "completed",
+          title: "Completed session",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-20": [
+          {
+            agentSessionId: "session-20",
+            kind: "tool_call",
+            messageId: "message-1",
+            payload: {
+              toolName: "Edit",
+              input: {
+                file_path: "assets/styles.css",
+                changes: [
+                  {
+                    path: "slides/02-why-now.html",
+                    kind: { type: "add" },
+                    diff: "<section>Why now</section>\n"
+                  },
+                  {
+                    path: "/Users/demo/project/slides/01-cover.html",
+                    kind: { type: "update" },
+                    diff: "@@ -1 +1 @@\n-Old\n+New\n"
+                  }
+                ]
+              }
+            },
+            role: "assistant",
+            status: "completed",
+            version: 1
+          }
+        ]
+      }
+    };
+
+    const files = collectWorkspaceAgentGeneratedFiles(snapshot, {
+      workspaceRoot: "/Users/demo/project"
+    });
+
+    expect(files).toEqual([
+      {
+        path: "/Users/demo/project/slides/02-why-now.html",
+        label: "02-why-now.html"
+      },
+      {
+        path: "/Users/demo/project/slides/01-cover.html",
+        label: "01-cover.html"
+      },
+      {
+        path: "/Users/demo/project/assets/styles.css",
+        label: "styles.css"
+      }
+    ]);
+  });
+
+  it("collects agent-generated files from lightweight change maps", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-20",
+          cwd: "/Users/demo/project",
+          provider: "codex",
+          status: "completed",
+          title: "Completed session",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-20": [
+          {
+            agentSessionId: "session-20",
+            kind: "tool_call",
+            messageId: "message-1",
+            payload: {
+              toolName: "apply_patch",
+              output: {
+                changes: {
+                  "src/a.ts": "add",
+                  "/Users/demo/project/src/b.ts": null
+                }
+              }
+            },
+            role: "assistant",
+            status: "completed",
+            version: 1
+          }
+        ]
+      }
+    };
+
+    const files = collectWorkspaceAgentGeneratedFiles(snapshot, {
+      workspaceRoot: "/Users/demo/project"
+    });
+
+    expect(files).toEqual([
+      {
+        path: "/Users/demo/project/src/a.ts",
+        label: "a.ts"
+      },
+      {
+        path: "/Users/demo/project/src/b.ts",
+        label: "b.ts"
       }
     ]);
   });

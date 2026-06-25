@@ -93,6 +93,7 @@ export interface BrowserNodePrepareSessionInput {
   profileId: string | null;
   sessionMode: BrowserNodeSessionMode;
   sessionPartition?: string | null;
+  url?: string;
 }
 
 export interface BrowserNodeRegisterGuestInput {
@@ -101,6 +102,7 @@ export interface BrowserNodeRegisterGuestInput {
   profileId: string | null;
   sessionMode: BrowserNodeSessionMode;
   sessionPartition?: string | null;
+  url?: string;
   webContentsId: number;
 }
 

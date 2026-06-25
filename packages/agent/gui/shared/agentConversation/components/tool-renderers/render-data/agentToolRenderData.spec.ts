@@ -306,6 +306,41 @@ describe("agentToolRenderData", () => {
     ]);
   });
 
+  it("extracts file changes from Codex array-style changes", () => {
+    const changes = getFileChangeRenderData(
+      makeCall({
+        toolName: "Edit",
+        input: {
+          changes: [
+            {
+              path: "/workspace/deck/slides/02-why-now.html",
+              kind: { type: "add" },
+              diff: "<section>Why now</section>\n"
+            },
+            {
+              path: "/workspace/deck/slides/01-cover.html",
+              kind: { type: "update" },
+              diff: "@@ -1 +1 @@\n-Old\n+New\n"
+            }
+          ]
+        }
+      })
+    );
+
+    expect(changes).toEqual([
+      expect.objectContaining({
+        path: "/workspace/deck/slides/02-why-now.html",
+        changeType: "created",
+        language: "html"
+      }),
+      expect.objectContaining({
+        path: "/workspace/deck/slides/01-cover.html",
+        changeType: "modified",
+        language: "html"
+      })
+    ]);
+  });
+
   it("extracts file changes from ACP diff content blocks backed by change maps", () => {
     const changes = getFileChangeRenderData(
       makeCall({

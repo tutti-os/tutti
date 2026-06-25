@@ -44,6 +44,7 @@ import type {
   TuttiExternalUserProjectCreateInput,
   TuttiExternalUserProjectPathInput,
   TuttiExternalUserProjectRememberDefaultSelectionInput,
+  TuttiExternalWorkspaceOpenRouteIntent,
   TuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/contracts";
 import type {
@@ -369,6 +370,7 @@ export interface DesktopWorkspaceAppContext {
   contextToken?: string;
   installationId?: string;
   issuer?: string;
+  launchIntent?: TuttiExternalWorkspaceOpenRouteIntent;
   locale: DesktopLocale;
   workspaceId?: string;
 }
@@ -530,11 +532,18 @@ export interface DesktopWorkspaceAppExternalRendererResponse {
   result: DesktopIpcResult<DesktopWorkspaceAppExternalRendererResult>;
 }
 
-export type DesktopWorkspaceAppExternalRendererEvent = {
-  snapshot: WorkspaceUserProjectServiceSnapshot;
-  type: "userProjects.changed";
-  workspaceId: string;
-};
+export type DesktopWorkspaceAppExternalRendererEvent =
+  | {
+      snapshot: WorkspaceUserProjectServiceSnapshot;
+      type: "userProjects.changed";
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      intent: TuttiExternalWorkspaceOpenRouteIntent;
+      type: "workspace.launchIntent";
+      workspaceId: string;
+    };
 
 export type DesktopWorkspaceAppExternalRendererRequest =
   TuttiExternalRendererRequest;

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
+	workbenchbiz "github.com/tutti-os/tutti/services/tuttid/biz/workbench"
 )
 
 type AgentGUILaunchPublisher struct {
@@ -24,24 +25,26 @@ func (p AgentGUILaunchPublisher) PublishAgentGUILaunchRequested(
 	if request.WorkspaceID == "" || request.AgentSessionID == "" || request.Provider == "" {
 		return fmt.Errorf("agent gui launch request requires workspaceId, agentSessionId, and provider")
 	}
-	payload := agentGUILaunchRequestedPayload{
-		WorkspaceID:    request.WorkspaceID,
+	payload, err := json.Marshal(agentGUIWorkbenchLaunchPayload{
 		AgentSessionID: request.AgentSessionID,
 		Provider:       request.Provider,
-		Source:         firstNonEmptyString(request.Source, "cli"),
-		Reason:         strings.TrimSpace(request.Reason),
-		RequestID:      strings.TrimSpace(request.RequestID),
-	}
-	encoded, err := json.Marshal(payload)
+	})
 	if err != nil {
-		return fmt.Errorf("marshal agent gui launch requested payload: %w", err)
+		return fmt.Errorf("marshal agent gui workbench launch payload: %w", err)
 	}
-	return p.Service.PublishFromServerScoped(
-		ctx,
-		TopicAgentGUILaunchRequested,
-		encoded,
-		EventScope{WorkspaceID: request.WorkspaceID},
-	)
+	return WorkbenchNodeLaunchPublisher(p).PublishWorkbenchNodeLaunchRequested(ctx, workbenchbiz.NodeLaunchRequest{
+		WorkspaceID:  request.WorkspaceID,
+		TypeID:       "agent-gui",
+		Source:       firstNonEmptyString(request.Source, "cli"),
+		LaunchSource: firstNonEmptyString(request.Source, "cli"),
+		RequestID:    strings.TrimSpace(request.RequestID),
+		Payload:      payload,
+	})
+}
+
+type agentGUIWorkbenchLaunchPayload struct {
+	AgentSessionID string `json:"agentSessionId"`
+	Provider       string `json:"provider"`
 }
 
 func firstNonEmptyString(values ...string) string {

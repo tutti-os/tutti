@@ -40,6 +40,7 @@ import { AppCenterCatalogRefreshedReporter } from "../../../analytics/reporters/
 import { AppCenterFactoryJobCreatedReporter } from "../../../analytics/reporters/app-center-factory-job-created/appCenterFactoryJobCreatedReporter.ts";
 import { ErrorAppRuntimeFailedReporter } from "../../../analytics/reporters/error-app-runtime-failed/errorAppRuntimeFailedReporter.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
+import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface";
 import {
   normalizeWorkspaceAppCenterApp,
@@ -78,6 +79,7 @@ export interface WorkspaceAppCenterServiceDependencies {
 
 type WorkspaceAppLauncher = (input: {
   appId: string;
+  intent?: TuttiExternalWorkspaceOpenRouteIntent;
   prepared: boolean;
   prevStatus?: WorkspaceAppCenterRuntimeStatus;
   workspaceId: string;
@@ -594,7 +596,54 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     trigger: "badge_button" | "primary_action";
     workspaceId: string;
   }): Promise<void> {
-    await this.controller.updateApp(input);
+    const previousApp = this.store.apps.find(
+      (candidate) => candidate.appId === input.appId
+    );
+    const shouldRecordHandoff =
+      previousApp?.installed === true &&
+      previousApp.runtimeStatus === "running";
+    const startedAt = shouldRecordHandoff ? Date.now() : 0;
+
+    if (shouldRecordHandoff) {
+      this.recordWorkspaceAppUpdateHandoff({
+        app: previousApp,
+        phase: "started",
+        trigger: input.trigger,
+        workspaceId: input.workspaceId
+      });
+    }
+
+    try {
+      await this.controller.updateApp(input);
+    } catch (error) {
+      if (shouldRecordHandoff) {
+        this.recordWorkspaceAppUpdateHandoff({
+          app:
+            this.store.apps.find(
+              (candidate) => candidate.appId === input.appId
+            ) ?? null,
+          durationMs: Date.now() - startedAt,
+          error,
+          phase: "failed",
+          trigger: input.trigger,
+          workspaceId: input.workspaceId
+        });
+      }
+      throw error;
+    }
+
+    if (shouldRecordHandoff) {
+      this.recordWorkspaceAppUpdateHandoff({
+        app:
+          this.store.apps.find(
+            (candidate) => candidate.appId === input.appId
+          ) ?? null,
+        durationMs: Date.now() - startedAt,
+        phase: "completed",
+        trigger: input.trigger,
+        workspaceId: input.workspaceId
+      });
+    }
   }
 
   async retryApp(input: { appId: string; workspaceId: string }): Promise<void> {
@@ -603,6 +652,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
 
   async restartAndOpenApp(input: {
     appId: string;
+    intent?: TuttiExternalWorkspaceOpenRouteIntent;
     workspaceId: string;
   }): Promise<boolean> {
     const previousApp = this.store.apps.find(
@@ -616,6 +666,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     return (
       (await this.workspaceAppLauncher?.({
         appId: launchableApp.appId,
+        ...(input.intent ? { intent: input.intent } : {}),
         prepared: true,
         prevStatus: previousApp?.runtimeStatus ?? launchableApp.runtimeStatus,
         workspaceId: input.workspaceId
@@ -781,6 +832,33 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
         workspaceId: input.workspaceId
       })
       .catch(() => undefined);
+  }
+
+  private recordWorkspaceAppUpdateHandoff(input: {
+    app: WorkspaceAppCenterApp | null;
+    durationMs?: number;
+    error?: unknown;
+    phase: "started" | "completed" | "failed";
+    trigger: "badge_button" | "primary_action";
+    workspaceId: string;
+  }): void {
+    this.recordRendererDiagnostic({
+      details: {
+        appId: input.app?.appId ?? null,
+        durationMs: input.durationMs ?? null,
+        errorCode: input.error ? getDesktopErrorCode(input.error) : null,
+        errorMessage: input.error instanceof Error ? input.error.message : null,
+        launchUrlOrigin: resolveUrlOriginForDiagnostic(input.app?.launchUrl),
+        operation: "app_center.update.running_handoff",
+        phase: input.phase,
+        runtimeStatus: input.app?.runtimeStatus ?? null,
+        trigger: input.trigger,
+        version: input.app?.version ?? null
+      },
+      event: "workspace_app_center_update_handoff",
+      level: input.phase === "failed" ? "warn" : "debug",
+      workspaceId: input.workspaceId
+    });
   }
 
   private closeWorkspaceAppViews(
@@ -1343,6 +1421,20 @@ function summarizeFactoryJobsForDiagnostic(
     status: job.status,
     updatedAtUnixMs: job.updatedAtUnixMs
   }));
+}
+
+function resolveUrlOriginForDiagnostic(
+  value: string | null | undefined
+): string | null {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return null;
+  }
 }
 
 function noop(): void {}

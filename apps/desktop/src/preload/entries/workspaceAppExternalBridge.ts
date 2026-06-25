@@ -24,6 +24,7 @@ import type {
   TuttiExternalUserProjectCreateInput,
   TuttiExternalUserProjectPathInput,
   TuttiExternalUserProjectRememberDefaultSelectionInput,
+  TuttiExternalWorkspaceOpenRouteIntent,
   TuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/contracts";
 import {
@@ -53,6 +54,9 @@ export interface WorkspaceAppExternalBridgeDependencies {
   send(channel: string, payload?: unknown): void;
   subscribeToUserProjects?(
     listener: (snapshot: WorkspaceUserProjectServiceSnapshot) => void
+  ): () => void;
+  subscribeToWorkspaceLaunchIntents?(
+    listener: (intent: TuttiExternalWorkspaceOpenRouteIntent) => void
   ): () => void;
 }
 
@@ -103,9 +107,12 @@ export const workspaceAppExternalChannels = {
   workspaceFeatureOpen: "workspace-app-feature:open"
 } as const;
 
+const noop = () => {};
+
 export function createWorkspaceAppExternalBridge(
   dependencies: WorkspaceAppExternalBridgeDependencies
 ): TuttiExternalBridge {
+  let initialLaunchIntentConsumed = false;
   return {
     app: {
       getContext() {
@@ -294,6 +301,28 @@ export function createWorkspaceAppExternalBridge(
       }
     },
     workspace: {
+      onLaunchIntent(listener) {
+        let active = true;
+        const unsubscribe =
+          dependencies.subscribeToWorkspaceLaunchIntents?.(listener) ?? noop;
+        void dependencies.appContext
+          .get()
+          .then((context) => {
+            if (
+              active &&
+              context.launchIntent &&
+              !initialLaunchIntentConsumed
+            ) {
+              initialLaunchIntentConsumed = true;
+              listener(context.launchIntent);
+            }
+          })
+          .catch(() => {});
+        return () => {
+          active = false;
+          unsubscribe();
+        };
+      },
       openFeature(input: TuttiExternalWorkspaceOpenFeatureInput) {
         requireUserActivation(
           dependencies.isUserActivationActive(),

@@ -16,10 +16,6 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import {
-  isDesktopAgentGUIProvider,
-  normalizeDesktopAgentGUIProvider
-} from "../../desktopAgentGUINodeState.ts";
-import {
   agentActivitySessionFromTuttidSession,
   createDesktopAgentActivityAdapter
 } from "../desktopAgentActivityAdapter.ts";
@@ -36,7 +32,6 @@ import {
   rememberAgentSessionVisibility
 } from "./desktopAgentHostWorkspaceState.ts";
 import { loadWorkspaceAgentSessionControlState } from "./workspaceAgentSessionControlState.ts";
-import { requestWorkspaceAgentGuiLaunch } from "../workspaceAgentGuiLaunchCoordinator.ts";
 import type {
   IWorkspaceAgentActivityService,
   WorkspaceAgentActivityListMessagesInput,
@@ -676,39 +671,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
           data: payload.data,
           eventType: payload.eventType,
           workspaceId
-        });
-      },
-      { scope: { workspaceId } }
-    );
-    eventStreamClient.subscribe(
-      "agent.gui.launch.requested",
-      (event) => {
-        const payload = event.payload;
-        if (payload.workspaceId.trim() !== workspaceId) {
-          return;
-        }
-        const rawProvider = payload.provider.trim();
-        if (!isDesktopAgentGUIProvider(rawProvider)) {
-          void this.dependencies.runtimeApi.logTerminalDiagnostic({
-            details: { provider: payload.provider },
-            event: "agent.gui.launch.unsupported_provider",
-            level: "warn",
-            workspaceId
-          });
-          return;
-        }
-        const provider = normalizeDesktopAgentGUIProvider(rawProvider);
-        void requestWorkspaceAgentGuiLaunch({
-          agentSessionId: payload.agentSessionId,
-          provider,
-          workspaceId
-        }).catch((error: unknown) => {
-          void this.dependencies.runtimeApi.logTerminalDiagnostic({
-            details: { error: stringifyError(error) },
-            event: "agent.gui.launch.request_failed",
-            level: "warn",
-            workspaceId
-          });
         });
       },
       { scope: { workspaceId } }

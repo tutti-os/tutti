@@ -32,7 +32,8 @@ import { mentionStatusBadgeClassName } from "./mentionStatusTone.ts";
  * (`agentactivity.css`: folder-filled / doc-filled / code-filled / image-filled
  * / video-filled / arrow-left-filled) using ui-system icon components, so a
  * file row renders a real glyph without `agentactivity.css`. The agent composer
- * passes its own `fileIcon` class and keeps rendering the masked `<span>`.
+ * passes its own `fileIcon` class and keeps rendering masked `<span>` glyphs,
+ * except `back` rows which always use {@link ArrowLeftIcon}.
  */
 const MENTION_FILE_VISUAL_KIND_ICON: Record<
   MentionFileVisualKind,
@@ -386,6 +387,27 @@ function MentionFileIcon({
     );
   }
 
+  // Back navigation always renders the ui-system back glyph so every surface
+  // (including the agent composer's CSS-masked file icons) shares one source.
+  if (item.visualKind === "back") {
+    return (
+      <span
+        className={cn(
+          classNames.fileIcon,
+          "rich-text-at-mention-file-icon--glyph"
+        )}
+        {...mentionRowDataAttribute(
+          dataAttributeMode,
+          "fileVisualKind",
+          item.visualKind
+        )}
+        aria-hidden="true"
+      >
+        <ArrowLeftIcon size={16} />
+      </span>
+    );
+  }
+
   // Surfaces that ship a custom file-icon stylesheet (e.g. the agent composer
   // via `agentactivity.css`) render the empty CSS-masked `<span>` so their DOM
   // stays byte-identical. Surfaces using the package default class have no such
@@ -472,6 +494,33 @@ function MentionSessionAvatarStack({
   classNames: Required<MentionRowClassNames>;
   dataAttributeMode: MentionRowDataAttributeMode;
 }): React.JSX.Element {
+  const showUserAvatar = item.showUserAvatar !== false;
+  if (!showUserAvatar) {
+    return (
+      <span
+        className={cn(
+          "rich-text-at-mention-avatar-stack",
+          "rich-text-at-mention-avatar-stack--agent-only"
+        )}
+        aria-hidden="true"
+      >
+        <span
+          className="rich-text-at-mention-avatar rich-text-at-mention-avatar--agent"
+          {...mentionRowDataAttribute(dataAttributeMode, "agentAvatar", "true")}
+        >
+          <img
+            src={item.agentIconUrl}
+            alt=""
+            className="rich-text-at-mention-row__media"
+            decoding="async"
+            loading="lazy"
+            draggable={false}
+          />
+        </span>
+      </span>
+    );
+  }
+
   const userAvatarUrl = item.userAvatarUrl?.trim() ?? "";
   const placeholderUrl = item.userAvatarPlaceholderUrl;
   const userImageUrl = userAvatarUrl || placeholderUrl;
@@ -550,6 +599,7 @@ function MentionStatusBadge({
     return (
       <Badge
         variant="secondary"
+        size="sm"
         className={cn(
           "rich-text-at-mention-status rich-text-at-mention-status--issue",
           mentionStatusBadgeClassName({
@@ -571,6 +621,7 @@ function MentionStatusBadge({
   return (
     <Badge
       variant="secondary"
+      size="sm"
       className={cn(
         "rich-text-at-mention-status rich-text-at-mention-status--activity",
         mentionStatusBadgeClassName({

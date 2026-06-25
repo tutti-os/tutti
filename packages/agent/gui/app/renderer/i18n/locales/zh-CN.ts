@@ -613,7 +613,6 @@ export const zhCN = {
       contextPickerBrowseHint: "根据你输入的内容搜索工作区文件",
       contextPickerBrowseFileHint:
         "暂无已打开或 Agent 生成的文件，继续输入文件名可搜索本机文件",
-      mentionFileSearchMoreHint: "继续输入文件名可搜索更多本机文件",
       contextPickerBrowseAppHint: "输入内容以搜索应用",
       contextPickerBrowseSessionHint: "输入内容以搜索我发起的 Agent 会话",
       contextPickerBrowseCollabHint: "输入内容以搜索其他人和 Agent 的会话",
@@ -783,7 +782,7 @@ export const zhCN = {
       fileMentionLoading: "正在搜索工作区...",
       fileMentionEmpty: "根据你输入的内容搜索工作区文件",
       fileMentionError: "无法搜索工作区文件。",
-      fileMentionTabHint: "Tab 切换分类 ｜ ↑↓ 切换选中",
+      fileMentionTabHint: "Tab 切换分类 ｜ ←→ 进入/返回文件夹 ｜ ↑↓ 切换选中",
       addReference: "添加引用",
       referenceWorkspaceFiles: "引用空间文件",
       referencePicker: {
@@ -826,6 +825,7 @@ export const zhCN = {
       projectLocked: "会话开始后项目不可更改",
       projectMissingDescription: "此对话的工作目录已不存在",
       fileMentionSwitchCategory: "切换分类",
+      fileMentionNavigateHierarchy: "进入/返回文件夹",
       fileMentionSwitchSelection: "切换选中",
       mentionFilterFile: "文件",
       mentionFilterApp: "应用",
@@ -852,7 +852,7 @@ export const zhCN = {
         "Dock 栏暂无已打开文件，输入关键词可搜索工作区文件",
       mentionEmptyAgentGeneratedFiles: "暂无 Agent 生成的文件",
       mentionAgentGeneratedFolderBack: "返回",
-      mentionAgentGeneratedFolderFileCount: "{{count}} 个文件",
+      mentionAgentGeneratedFolderFileCount: "包含 {{count}} 个文件",
       mentionNoMatchingFiles: "没有匹配到文件",
       mentionOpenReferences: "查看产物文件",
       issueRunPrompt: {

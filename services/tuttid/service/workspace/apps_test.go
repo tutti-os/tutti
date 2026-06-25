@@ -1440,6 +1440,169 @@ func TestAppCenterServiceStartEnabledWaitsForRemoteCatalogRefresh(t *testing.T) 
 	}
 }
 
+func TestAppCenterServiceStartEnabledRefreshesPreferredCatalogChannel(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("TUTTI_APP_CATALOG_FILE", "")
+	oldDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "large-builtin",
+		Version:       "1.0.0",
+		Name:          "Large Builtin",
+		Description:   "Old large app",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "bootstrap.sh",
+			HealthcheckPath: "/",
+		},
+	})
+
+	store := newAppStoreStub()
+	if err := store.PutAppPackage(ctx, workspacebiz.AppPackage{
+		AppID:      "large-builtin",
+		Version:    "1.0.0",
+		PackageDir: oldDir,
+		Manifest:   mustReadManifestForTest(t, oldDir),
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+	}); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	if err := store.PutWorkspaceAppInstallation(ctx, workspacebiz.AppInstallation{
+		WorkspaceID: "ws-1",
+		AppID:       "large-builtin",
+		Enabled:     true,
+	}); err != nil {
+		t.Fatalf("PutWorkspaceAppInstallation() error = %v", err)
+	}
+
+	fetcher := newBlockingArtifactFetcher()
+	close(fetcher.release)
+	refreshedURLs := make([]string, 0, 1)
+	service := AppCenterService{
+		Store:           store,
+		WorkspaceStore:  &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:          &AppRunner{RuntimeResolver: &preloadThenFailRuntimeResolver{called: make(chan struct{}), startErr: errors.New("skip runtime")}},
+		StateDir:        t.TempDir(),
+		ArtifactFetcher: fetcher,
+		PreferencesStore: appCenterPreferencesStoreStub{
+			preferences: preferencesbiz.DesktopPreferences{
+				AppCatalogChannel: "staging",
+			},
+		},
+		RemoteCatalogRefresher: func(_ context.Context, catalogURL string) (builtinapps.CatalogSnapshot, error) {
+			refreshedURLs = append(refreshedURLs, catalogURL)
+			return builtinapps.CatalogSnapshot{
+				Apps: []builtinapps.App{
+					{
+						Manifest: workspacebiz.AppManifest{
+							SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+							AppID:         "large-builtin",
+							Version:       "1.1.0",
+							Name:          "Large Builtin",
+							Description:   "New large app",
+							Runtime: workspacebiz.AppManifestRuntime{
+								Bootstrap:       "bootstrap.sh",
+								HealthcheckPath: "/",
+							},
+						},
+						Distribution: builtinapps.Distribution{
+							Kind:           builtinapps.DistributionRemote,
+							ArtifactURL:    "https://cdn.example.test/large-builtin.zip",
+							ArtifactSHA256: "sha256",
+							IconURL:        "https://cdn.example.test/large-builtin.png",
+						},
+					},
+				},
+				RemoteCatalog: builtinapps.RemoteCatalogLoadState{Status: builtinapps.RemoteCatalogLoadStatusReady},
+			}, nil
+		},
+	}
+
+	apps, err := service.StartEnabled(ctx, "ws-1")
+	if err != nil {
+		t.Fatalf("StartEnabled() error = %v", err)
+	}
+	if len(refreshedURLs) != 1 || refreshedURLs[0] != builtinapps.StagingRemoteCatalogURL {
+		t.Fatalf("refreshed catalog URLs = %#v, want %#v", refreshedURLs, []string{builtinapps.StagingRemoteCatalogURL})
+	}
+	app := findWorkspaceAppForTest(apps, "large-builtin")
+	if app == nil || !app.UpdateAvailable || app.AvailableVersion == nil || *app.AvailableVersion != "1.1.0" {
+		t.Fatalf("StartEnabled() app = %#v", app)
+	}
+	select {
+	case <-fetcher.started:
+	case <-time.After(time.Second):
+		t.Fatal("background staging remote builtin update did not start")
+	}
+}
+
+func TestAppCenterServiceStartEnabledFallsBackToCachedCatalogWhenRefreshFails(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("TUTTI_APP_CATALOG_FILE", "")
+	packageDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "tutti-onboarding",
+		Version:       "0.1.0",
+		Name:          "Getting Started",
+		Description:   "Learn Tutti and Agent collaboration",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "bootstrap.sh",
+			HealthcheckPath: "/healthz",
+			Profile:         "standalone",
+		},
+	})
+
+	store := newAppStoreStub()
+	if err := store.PutAppPackage(ctx, workspacebiz.AppPackage{
+		AppID:      "tutti-onboarding",
+		Version:    "0.1.0",
+		PackageDir: packageDir,
+		Manifest:   mustReadManifestForTest(t, packageDir),
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+	}); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	if err := store.PutWorkspaceAppInstallation(ctx, workspacebiz.AppInstallation{
+		WorkspaceID: "ws-1",
+		AppID:       "tutti-onboarding",
+		Enabled:     true,
+	}); err != nil {
+		t.Fatalf("PutWorkspaceAppInstallation() error = %v", err)
+	}
+
+	launchURL := "http://127.0.0.1:41001"
+	runner := &AppRunner{}
+	runner.ensure()
+	runner.mu.Lock()
+	runner.states[appRuntimeKey("ws-1", "tutti-onboarding")] = workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: &launchURL,
+	}
+	runner.mu.Unlock()
+
+	refreshCalls := 0
+	service := AppCenterService{
+		Store:          store,
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:         runner,
+		StateDir:       t.TempDir(),
+		RemoteCatalogRefresher: func(context.Context, string) (builtinapps.CatalogSnapshot, error) {
+			refreshCalls += 1
+			return builtinapps.CatalogSnapshot{}, errors.New("catalog unavailable")
+		},
+	}
+
+	apps, err := service.StartEnabled(ctx, "ws-1")
+	if err != nil {
+		t.Fatalf("StartEnabled() error = %v", err)
+	}
+	if refreshCalls != 1 {
+		t.Fatalf("remote catalog refresh calls = %d, want 1", refreshCalls)
+	}
+	app := findWorkspaceAppForTest(apps, "tutti-onboarding")
+	if app == nil || app.Runtime.Status != workspacebiz.AppRuntimeStatusRunning {
+		t.Fatalf("StartEnabled() app = %#v", app)
+	}
+}
+
 func TestAppCenterServiceStartEnabledDoesNotWaitForRemoteCatalogWhenNoAppsAreEnabled(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("TUTTI_APP_CATALOG_FILE", "")

@@ -419,20 +419,47 @@ func TestSQLiteStoreListsWorkspaceGeneratedFiles(t *testing.T) {
 		WorkspaceID:    "ws-agent-generated-files",
 		AgentSessionID: "session-1",
 		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		Messages: []agentactivitybiz.MessageUpdate{{
-			MessageID: "message-1",
-			Role:      "assistant",
-			Kind:      "tool_call",
-			Status:    "completed",
-			Payload: map[string]any{
-				"fileChanges": map[string]any{
-					"files": []any{
-						map[string]any{"path": "report.md"},
+		Messages: []agentactivitybiz.MessageUpdate{
+			{
+				MessageID: "message-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "completed",
+				Payload: map[string]any{
+					"fileChanges": map[string]any{
+						"files": []any{
+							map[string]any{"path": "report.md"},
+						},
 					},
 				},
+				OccurredAtUnixMS: 110,
 			},
-			OccurredAtUnixMS: 110,
-		}},
+			{
+				MessageID: "message-1b",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "completed",
+				Payload: map[string]any{
+					"toolName": "Edit",
+					"input": map[string]any{
+						"file_path": "assets/styles.css",
+						"changes": []any{
+							map[string]any{
+								"path": "slides/02-why-now.html",
+								"kind": map[string]any{"type": "add"},
+								"diff": "<section>Why now</section>\n",
+							},
+							map[string]any{
+								"path": "slides/01-cover.html",
+								"kind": map[string]any{"type": "update"},
+								"diff": "@@ -1 +1 @@\n-Old\n+New\n",
+							},
+						},
+					},
+				},
+				OccurredAtUnixMS: 115,
+			},
+		},
 	}); err != nil {
 		t.Fatalf("ReportSessionMessages(session-1) error = %v", err)
 	}
@@ -473,6 +500,26 @@ func TestSQLiteStoreListsWorkspaceGeneratedFiles(t *testing.T) {
 	}
 	if result.Files[0].Path != "/workspace/report.md" || result.Files[0].Label != "report.md" {
 		t.Fatalf("file = %#v, want /workspace/report.md report.md", result.Files[0])
+	}
+
+	arrayResult, ok, err := store.ListWorkspaceGeneratedFiles(ctx, agentactivitybiz.ListWorkspaceGeneratedFilesInput{
+		WorkspaceID: "ws-agent-generated-files",
+		SessionCwd:  "/workspace",
+		Query:       "slides",
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListWorkspaceGeneratedFiles(array changes) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("ListWorkspaceGeneratedFiles(array changes) ok = false, want true")
+	}
+	if len(arrayResult.Files) != 2 {
+		t.Fatalf("len(array files) = %d, want 2: %#v", len(arrayResult.Files), arrayResult.Files)
+	}
+	if arrayResult.Files[0].Path != "/workspace/slides/02-why-now.html" ||
+		arrayResult.Files[1].Path != "/workspace/slides/01-cover.html" {
+		t.Fatalf("array files = %#v, want Codex Edit changes array paths", arrayResult.Files)
 	}
 }
 

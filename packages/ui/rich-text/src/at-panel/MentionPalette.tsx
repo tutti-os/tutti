@@ -120,6 +120,7 @@ export function MentionPalette<TItem>(
     onExpandGroup,
     onCycleFilter,
     onMoveSelection,
+    onNavigateHierarchy,
     renderListFooter,
     loadingBanner,
     scrollHighlightedIntoViewCentered = false,
@@ -303,8 +304,10 @@ export function MentionPalette<TItem>(
           ariaLabel={labels.tabHint}
           cycleFilterLabel={hintLabels.cycleFilter}
           moveSelectionLabel={hintLabels.moveSelection}
+          navigateHierarchyLabel={hintLabels.navigateHierarchy}
           onCycleFilter={onCycleFilter}
           onMoveSelection={onMoveSelection}
+          onNavigateHierarchy={onNavigateHierarchy}
           classNames={theme.classNames}
           testId={theme.testIds.hint}
         />
@@ -528,20 +531,27 @@ function MentionPaletteHint({
   ariaLabel,
   cycleFilterLabel,
   moveSelectionLabel,
+  navigateHierarchyLabel,
   onCycleFilter,
   onMoveSelection,
+  onNavigateHierarchy,
   classNames,
   testId
 }: {
   ariaLabel: string;
   cycleFilterLabel: string;
   moveSelectionLabel: string;
+  navigateHierarchyLabel?: string;
   onCycleFilter: (delta: 1 | -1) => void;
   onMoveSelection: (delta: 1 | -1) => void;
+  onNavigateHierarchy?: (delta: 1 | -1) => void;
   classNames: ResolvedMentionPaletteTheme["classNames"];
   testId: string;
 }): JSX.Element {
   "use memo";
+  const showHierarchyHints = Boolean(
+    navigateHierarchyLabel && onNavigateHierarchy
+  );
   return (
     <div
       className={classNames.hint}
@@ -560,35 +570,77 @@ function MentionPaletteHint({
             {/* i18n-check-ignore: Keyboard key label. */}
             Tab
           </button>
-          <button
-            className={cn(
-              classNames.shortcut,
-              classNames.shortcutArrow,
-              classNames.shortcutButton
-            )}
-            type="button"
-            aria-label={`← ${cycleFilterLabel}`}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onCycleFilter(-1)}
-          >
-            ←
-          </button>
-          <button
-            className={cn(
-              classNames.shortcut,
-              classNames.shortcutArrow,
-              classNames.shortcutButton
-            )}
-            type="button"
-            aria-label={`→ ${cycleFilterLabel}`}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onCycleFilter(1)}
-          >
-            →
-          </button>
+          {!showHierarchyHints ? (
+            <>
+              <button
+                className={cn(
+                  classNames.shortcut,
+                  classNames.shortcutArrow,
+                  classNames.shortcutButton
+                )}
+                type="button"
+                aria-label={`← ${cycleFilterLabel}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onCycleFilter(-1)}
+              >
+                ←
+              </button>
+              <button
+                className={cn(
+                  classNames.shortcut,
+                  classNames.shortcutArrow,
+                  classNames.shortcutButton
+                )}
+                type="button"
+                aria-label={`→ ${cycleFilterLabel}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onCycleFilter(1)}
+              >
+                →
+              </button>
+            </>
+          ) : null}
         </span>
         <span>{cycleFilterLabel}</span>
       </span>
+      {showHierarchyHints ? (
+        <>
+          <span className={classNames.hintSeparator} aria-hidden="true">
+            ｜
+          </span>
+          <span className={classNames.hintItem}>
+            <span className={classNames.shortcutGroup}>
+              <button
+                className={cn(
+                  classNames.shortcut,
+                  classNames.shortcutArrow,
+                  classNames.shortcutButton
+                )}
+                type="button"
+                aria-label={`← ${navigateHierarchyLabel}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onNavigateHierarchy?.(-1)}
+              >
+                ←
+              </button>
+              <button
+                className={cn(
+                  classNames.shortcut,
+                  classNames.shortcutArrow,
+                  classNames.shortcutButton
+                )}
+                type="button"
+                aria-label={`→ ${navigateHierarchyLabel}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onNavigateHierarchy?.(1)}
+              >
+                →
+              </button>
+            </span>
+            <span>{navigateHierarchyLabel}</span>
+          </span>
+        </>
+      ) : null}
       <span className={classNames.hintSeparator} aria-hidden="true">
         ｜
       </span>

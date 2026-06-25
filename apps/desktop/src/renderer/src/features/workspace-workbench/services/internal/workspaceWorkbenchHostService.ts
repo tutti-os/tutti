@@ -114,6 +114,7 @@ import type {
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
 import { serializeWorkspaceAppExternalAtMatch } from "./workspaceAppExternalAtSerialization.ts";
+import { requestWorkspaceWorkbenchNodeLaunch } from "../workspaceWorkbenchNodeLaunchCoordinator.ts";
 
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
@@ -244,6 +245,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     this.dependencies.repository.subscribe(() => {
       this.notifyWallpaperListeners();
     });
+    this.subscribeWorkbenchNodeLaunchRequests();
     void this.loadCustomWallpaper();
   }
 
@@ -610,6 +612,43 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     this.dependencies.hostWorkspaceApi.broadcastAgentStatus(payload);
   }
 
+  private subscribeWorkbenchNodeLaunchRequests(): void {
+    const eventStreamClient = this.dependencies.eventStreamClient;
+    if (!eventStreamClient) {
+      return;
+    }
+    eventStreamClient.subscribe(
+      "workspace.workbench.node.launch.requested",
+      (event) => {
+        const payload = event.payload;
+        void requestWorkspaceWorkbenchNodeLaunch({
+          ...(payload.dockEntryId ? { dockEntryId: payload.dockEntryId } : {}),
+          ...(payload.launchSource
+            ? { launchSource: payload.launchSource }
+            : {}),
+          payload: payload.payload,
+          typeId: payload.typeId,
+          workspaceId: payload.workspaceId
+        }).catch((error: unknown) => {
+          void this.dependencies.runtimeApi.logTerminalDiagnostic({
+            details: { error: formatDiagnosticError(error) },
+            event: "workbench.node.launch.request_failed",
+            level: "warn",
+            workspaceId: payload.workspaceId
+          });
+        });
+      }
+    );
+    void eventStreamClient.connect().catch((error: unknown) => {
+      void this.dependencies.runtimeApi.logTerminalDiagnostic({
+        details: { error: formatDiagnosticError(error) },
+        event: "workbench.node.launch.event_stream_connect_failed",
+        level: "warn",
+        workspaceId: null
+      });
+    });
+  }
+
   private async persistPendingWallpaperSettings(
     workspaceId: string
   ): Promise<void> {
@@ -891,6 +930,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     cached.dynamicHostInput = dynamicHostInput;
     return dynamicHostInput;
   }
+}
+
+function formatDiagnosticError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function createDesktopWorkspaceNodePreviewCapture(

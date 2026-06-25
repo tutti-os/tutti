@@ -15,6 +15,7 @@ import {
   workspaceAppWebviewTypeID
 } from "../workspaceAppCenterLaunchIds.ts";
 import { workspaceAppWebviewFrame } from "./workspaceAppWebviewFrame.ts";
+import type { WorkspaceAppOpenRouteIntent } from "./workspaceAppCenterWebviewUrl.ts";
 
 export { workspaceAppCenterNodeID, workspaceAppWebviewTypeID };
 
@@ -49,6 +50,7 @@ export async function resolveWorkspaceAppCenterLaunchRequest(input: {
   ) {
     await input.appCenterService.restartAndOpenApp({
       appId,
+      ...(payload?.intent ? { intent: payload.intent } : {}),
       workspaceId: input.request.workspaceId
     });
     return null;
@@ -70,15 +72,17 @@ export async function resolveWorkspaceAppCenterLaunchRequest(input: {
     reporterService: input.reporterService
   });
   const appTitle = resolveWorkspaceAppDisplayName(app);
+  const url = resolveWorkspaceAppOpenUrl(app.launchUrl, payload?.intent);
 
   return {
     activation: {
       payload: {
         appId: app.appId,
+        ...(payload?.intent ? { intent: payload.intent } : {}),
         title: appTitle,
-        url: app.launchUrl
+        url
       },
-      type: "open-url"
+      type: payload?.intent ? "workspace-app:open" : "open-url"
     },
     defaultFrame: workspaceAppWebviewFrame,
     dockEntryId: workspaceAppDockEntryId(app.appId),
@@ -173,6 +177,7 @@ export function reportWorkspaceAppOpenedFromDockEntry(input: {
 
 function readWorkspaceAppLaunchPayload(request: WorkbenchHostLaunchRequest): {
   appId: string;
+  intent?: WorkspaceAppOpenRouteIntent;
   prepared: boolean;
   prevStatus?: AppCenterAppOpenedParams["prevStatus"];
 } | null {
@@ -180,6 +185,7 @@ function readWorkspaceAppLaunchPayload(request: WorkbenchHostLaunchRequest): {
     request.payload && typeof request.payload === "object"
       ? (request.payload as {
           appId?: unknown;
+          intent?: unknown;
           prepared?: unknown;
           prevStatus?: unknown;
         })
@@ -193,11 +199,70 @@ function readWorkspaceAppLaunchPayload(request: WorkbenchHostLaunchRequest): {
     isWorkspaceAppOpenPrevStatus(payload.prevStatus)
       ? payload.prevStatus
       : undefined;
+  const intent = readWorkspaceAppOpenRouteIntent(payload?.intent);
   return {
     appId,
+    ...(intent ? { intent } : {}),
     prepared: payload?.prepared === true,
     prevStatus
   };
+}
+
+function readWorkspaceAppOpenRouteIntent(
+  value: unknown
+): WorkspaceAppOpenRouteIntent | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (record.kind !== "open-route" || typeof record.route !== "string") {
+    return null;
+  }
+  const route = record.route.trim();
+  if (
+    !route.startsWith("/") ||
+    route.startsWith("//") ||
+    route.includes("://")
+  ) {
+    return null;
+  }
+  return {
+    kind: "open-route",
+    ...(isStringRecord(record.params) ? { params: record.params } : {}),
+    route,
+    ...(isRecord(record.state) ? { state: record.state } : {})
+  };
+}
+
+function resolveWorkspaceAppOpenUrl(
+  launchUrl: string,
+  intent: WorkspaceAppOpenRouteIntent | undefined
+): string {
+  if (!intent) {
+    return launchUrl;
+  }
+  try {
+    const url = new URL(launchUrl);
+    url.pathname = intent.route;
+    url.search = "";
+    for (const [key, value] of Object.entries(intent.params ?? {})) {
+      url.searchParams.append(key, value);
+    }
+    return url.toString();
+  } catch {
+    return launchUrl;
+  }
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.values(value).every((entry) => typeof entry === "string");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isWorkspaceAppOpenPrevStatus(

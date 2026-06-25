@@ -164,6 +164,15 @@ func appendPathValues(payload map[string]any, appendPath func(any)) {
 			}
 		}
 	}
+	if values, ok := payload["changes"].([]any); ok {
+		for _, value := range values {
+			if valueObject, ok := value.(map[string]any); ok {
+				appendPathValues(valueObject, appendPath)
+				continue
+			}
+			appendPath(value)
+		}
+	}
 }
 
 func objectField(payload map[string]any, key string) (map[string]any, bool) {

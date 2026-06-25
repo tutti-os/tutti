@@ -706,6 +706,16 @@
   flex: 0 0 36px;
 }
 
+.rich-text-at-mention-avatar-stack--agent-only {
+  width: 20px;
+  flex: 0 0 20px;
+}
+
+.rich-text-at-mention-avatar-stack--agent-only
+  .rich-text-at-mention-avatar--agent {
+  left: 0;
+}
+
 .rich-text-at-mention-avatar {
   position: absolute;
   top: 0;
@@ -732,22 +742,12 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  gap: 6px;
-  height: 20px;
+  gap: 4px;
   min-width: 0;
   width: fit-content;
-  padding: 0 8px;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
   white-space: nowrap;
-}
-
-.rich-text-at-mention-status--issue {
-  font-size: 13px;
 }
 
 .rich-text-at-mention-status[data-tone="blue"] {

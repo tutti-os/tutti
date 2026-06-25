@@ -67,6 +67,7 @@ export interface AgentFileMentionPaletteProps {
   onSelectCategory: (categoryId: AgentMentionBrowseCategory["id"]) => void;
   onSelectFilter: (filter: AgentMentionFilterId) => void;
   onExpandGroup: (groupId: AgentMentionGroupId) => void;
+  onNavigateHierarchy?: (delta: 1 | -1) => void;
   /**
    * 可选:点击 issue / app 行末尾的「查看产物文件」图标时回调(打开引用 picker 并定位)。
    * 仅 workspace-issue / workspace-app 行渲染该入口。
@@ -190,6 +191,7 @@ export function AgentFileMentionPalette({
   onSelectCategory,
   onSelectFilter,
   onExpandGroup,
+  onNavigateHierarchy,
   onOpenReferences
 }: AgentFileMentionPaletteProps): React.JSX.Element {
   "use memo";
@@ -248,13 +250,6 @@ export function AgentFileMentionPalette({
         query: state.query
       });
 
-  const showFileSearchMoreHint = shouldShowFileSearchMoreHint({
-    filter,
-    groups: state.groups,
-    mode: state.mode,
-    query: state.query
-  });
-
   return (
     <MentionPaletteFromState<AgentContextMentionItem>
       state={shellState}
@@ -283,15 +278,15 @@ export function AgentFileMentionPalette({
         cycleFilter: translate("agentHost.agentGui.fileMentionSwitchCategory"),
         moveSelection: translate(
           "agentHost.agentGui.fileMentionSwitchSelection"
+        ),
+        navigateHierarchy: translate(
+          "agentHost.agentGui.fileMentionNavigateHierarchy"
         )
       }}
       maxHeightPx={maxHeightPx}
       scrollHighlightedIntoViewCentered={shouldCenterHighlightedItem}
       loadingBanner={<MentionPaletteLoadingBanner label={loadingLabel} />}
       theme={AGENT_MENTION_PALETTE_THEME}
-      renderListFooter={
-        showFileSearchMoreHint ? () => <MentionFileSearchMoreHint /> : undefined
-      }
       callbacks={{
         onHighlightChange,
         onActiveCategoryIdChange: (categoryId) => {
@@ -302,6 +297,7 @@ export function AgentFileMentionPalette({
           onExpandGroup(groupId as AgentMentionGroupId),
         onSelectItem
       }}
+      onNavigateHierarchy={onNavigateHierarchy}
     />
   );
 }
@@ -367,18 +363,6 @@ function MentionPaletteLoadingBanner({
       />
       <span>{label}</span>
     </div>
-  );
-}
-
-function MentionFileSearchMoreHint(): React.JSX.Element {
-  "use memo";
-  return (
-    <p
-      className="px-3 pb-1 pt-2 text-center text-[13px] leading-5 text-[var(--text-tertiary)]"
-      data-agent-mention-file-search-hint="true"
-    >
-      {translate("agentHost.agentGui.mentionFileSearchMoreHint")}
-    </p>
   );
 }
 
@@ -470,15 +454,19 @@ function agentMentionItemToRowItem(
   }
 
   if (item.kind === "session") {
+    const isMySession = item.scope === "my_sessions";
     return {
       kind: "session",
-      participant: `${item.initiatorName} & ${item.agentName}`,
+      participant: isMySession
+        ? item.agentName
+        : `${item.initiatorName} & ${item.agentName}`,
       summary: item.title,
-      userAvatarUrl: item.initiatorAvatarUrl ?? null,
+      userAvatarUrl: isMySession ? null : (item.initiatorAvatarUrl ?? null),
       userAvatarPlaceholderUrl,
       agentIconUrl: managedAgentRoundedIconUrl(
         mentionSessionAgentProvider(item) ?? item.agentName
       ),
+      showUserAvatar: !isMySession,
       statusTag: agentSessionStatusTag(item.status)
     };
   }
@@ -621,33 +609,6 @@ function isFileBrowseGroupsOnlyEmpty(
   return fileGroups.every(
     (group) => group.items.length === 0 && !group.hasMore
   );
-}
-
-function hasVisibleFileGroupEntries(
-  groups: ReadonlyArray<AgentMentionGroup>
-): boolean {
-  return groups.some(
-    (group) =>
-      (group.id === "files" ||
-        group.id === "opened_files" ||
-        group.id === "agent_generated_files") &&
-      (group.items.length > 0 || group.hasMore)
-  );
-}
-
-function shouldShowFileSearchMoreHint(input: {
-  filter: AgentMentionFilterId;
-  groups: ReadonlyArray<AgentMentionGroup>;
-  mode: AgentMentionSearchState["mode"];
-  query: string;
-}): boolean {
-  if (input.filter !== "file" || input.query.trim()) {
-    return false;
-  }
-  if (input.mode !== "browse" && input.mode !== "results") {
-    return false;
-  }
-  return hasVisibleFileGroupEntries(input.groups);
 }
 
 function shouldShowBrowseSearchHint(input: {

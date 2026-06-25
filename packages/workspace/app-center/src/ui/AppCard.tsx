@@ -156,6 +156,9 @@ export const AppCard = memo(function AppCard({
             ? copy.t("actions.restartAndOpenApp")
             : copy.t("actions.openApp");
   const canExecutePrimaryAction = app.primaryAction !== "none";
+  const primaryActionTitle = canExecutePrimaryAction
+    ? primaryActionLabel
+    : statusButtonTitle;
   const canOpenFromCard = app.canOpen;
   const canPublishFactoryUpdate =
     app.canPublishFactoryUpdate && !!app.factoryJobId;
@@ -231,13 +234,13 @@ export const AppCard = memo(function AppCard({
       onClick={executeCardAction}
       onKeyDown={handleCardKeyDown}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex min-w-0 items-start justify-between gap-3">
         <AppIcon
           app={app}
           replaceIconLabel={copy.t("actions.replaceIcon")}
           onReplaceIcon={handleReplaceIcon}
         />
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
           <div className="flex size-8 shrink-0 items-center justify-center">
             {hasMoreActions ? (
               <AppCardMoreActions
@@ -249,10 +252,10 @@ export const AppCard = memo(function AppCard({
               />
             ) : null}
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             <Button
               className={cn(
-                "min-w-[56px] shrink-0",
+                "min-w-0 max-w-full shrink truncate px-2",
                 !canExecutePrimaryAction ? "cursor-default" : null,
                 canExecutePrimaryAction
                   ? app.primaryAction === "retry"
@@ -262,7 +265,7 @@ export const AppCard = memo(function AppCard({
               )}
               disabled={!canExecutePrimaryAction}
               size="default"
-              title={statusButtonTitle}
+              title={primaryActionTitle}
               type="button"
               variant="ghost"
               onClick={(event) => {
@@ -270,7 +273,9 @@ export const AppCard = memo(function AppCard({
                 executePrimaryAction();
               }}
             >
-              {canExecutePrimaryAction ? primaryActionLabel : busyStatusLabel}
+              <span className="block min-w-0 max-w-full truncate">
+                {canExecutePrimaryAction ? primaryActionLabel : busyStatusLabel}
+              </span>
             </Button>
             {showInstallProgressRing ? (
               <AppInstallProgressRing

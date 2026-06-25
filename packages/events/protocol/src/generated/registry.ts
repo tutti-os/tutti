@@ -10,8 +10,6 @@ import type {
 
 export const businessEventTopicAgentActivityUpdated =
   "agent.activity.updated" as const;
-export const businessEventTopicAgentGuiLaunchRequested =
-  "agent.gui.launch.requested" as const;
 export const businessEventTopicAnalyticsDebugReported =
   "analytics.debug.reported" as const;
 export const businessEventTopicPreferencesDesktopUpdateRequested =
@@ -24,6 +22,8 @@ export const businessEventTopicWorkspaceAppfactoryJobUpdated =
   "workspace.appfactory.job.updated" as const;
 export const businessEventTopicWorkspaceIssueUpdated =
   "workspace.issue.updated" as const;
+export const businessEventTopicWorkspaceWorkbenchNodeLaunchRequested =
+  "workspace.workbench.node.launch.requested" as const;
 
 export interface BusinessEventDefinition {
   topic: BusinessEventTopic;
@@ -33,18 +33,11 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:1f4baa742a2dbf19" as const;
+export const businessEventCatalogRevision = "sha256:7de58350911c2aa6" as const;
 
 export const businessEventDefinitions = [
   {
     topic: "agent.activity.updated",
-    version: 1,
-    direction: "server->client",
-    owner: "agent",
-    scope: "workspace"
-  },
-  {
-    topic: "agent.gui.launch.requested",
     version: 1,
     direction: "server->client",
     owner: "agent",
@@ -91,19 +84,19 @@ export const businessEventDefinitions = [
     direction: "server->client",
     owner: "workspace",
     scope: "workspace"
+  },
+  {
+    topic: "workspace.workbench.node.launch.requested",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "workspace"
   }
 ] as const satisfies readonly BusinessEventDefinition[];
 
 export const businessEventDefinitionByTopic = {
   "agent.activity.updated": {
     topic: "agent.activity.updated",
-    version: 1,
-    direction: "server->client",
-    owner: "agent",
-    scope: "workspace"
-  },
-  "agent.gui.launch.requested": {
-    topic: "agent.gui.launch.requested",
     version: 1,
     direction: "server->client",
     owner: "agent",
@@ -149,6 +142,13 @@ export const businessEventDefinitionByTopic = {
     version: 1,
     direction: "server->client",
     owner: "workspace",
+    scope: "workspace"
+  },
+  "workspace.workbench.node.launch.requested": {
+    topic: "workspace.workbench.node.launch.requested",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
     scope: "workspace"
   }
 } as const satisfies Record<BusinessEventTopic, BusinessEventDefinition>;

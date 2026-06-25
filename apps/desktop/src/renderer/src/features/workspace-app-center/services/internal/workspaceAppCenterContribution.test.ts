@@ -8,6 +8,11 @@ import type {
   WorkspaceAppCenterReadableStoreState
 } from "@tutti-os/workspace-app-center";
 import { createWorkspaceAppWebviewBrowserLease } from "./workspaceAppWebviewBrowserAnalytics.ts";
+import {
+  shouldPreserveWorkspaceAppWebviewDuringHandoff,
+  shouldRenderWorkspaceAppBrowserNode,
+  shouldSyncWorkspaceAppWebviewDefaultUrl
+} from "./workspaceAppCenterWebviewHandoff.ts";
 import { resolveWorkspaceAppWebviewUrl } from "./workspaceAppCenterWebviewUrl.ts";
 import {
   readWorkspaceAppIdFromNodeId,
@@ -167,6 +172,54 @@ test("workspace app launch request restarts pending app from dock", async () => 
   ]);
 });
 
+test("workspace app launch request preserves open-route intent across pending restart", async () => {
+  const app = createApp({
+    appId: "docs",
+    runtimeStatus: "installed_pending_restart",
+    launchUrl: "http://127.0.0.1:3000"
+  });
+  const restartCalls: Array<
+    Parameters<IWorkspaceAppCenterService["restartAndOpenApp"]>[0]
+  > = [];
+  const result = await resolveWorkspaceAppCenterLaunchRequest({
+    appCenterService: createAppCenterService([app], {
+      restartAndOpenApp: async (input) => {
+        restartCalls.push(input);
+        return true;
+      }
+    }),
+    request: {
+      ...createLaunchRequestContext(),
+      payload: {
+        appId: "docs",
+        intent: {
+          kind: "open-route",
+          params: { mode: "preview" },
+          route: "/files",
+          state: { selectedPath: "/tmp/a.md" }
+        }
+      },
+      reason: "host",
+      typeId: workspaceAppWebviewTypeID,
+      workspaceId: "workspace-1"
+    }
+  });
+
+  assert.equal(result, null);
+  assert.deepEqual(restartCalls, [
+    {
+      appId: "docs",
+      intent: {
+        kind: "open-route",
+        params: { mode: "preview" },
+        route: "/files",
+        state: { selectedPath: "/tmp/a.md" }
+      },
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("workspace app webview URL prefers the current launch URL over stale activation ports", () => {
   assert.equal(
     resolveWorkspaceAppWebviewUrl({
@@ -189,6 +242,29 @@ test("workspace app webview URL prefers the current launch URL over stale activa
   );
 });
 
+test("workspace app webview URL preserves external runtime URL during update handoff", () => {
+  assert.equal(
+    resolveWorkspaceAppWebviewUrl({
+      activation: {
+        payload: {
+          appId: "group-chat",
+          url: "http://127.0.0.1:4173/rooms/old"
+        },
+        sequence: 1,
+        type: "open-url"
+      },
+      appCanUseExternalState: true,
+      appLaunchUrl: "http://127.0.0.1:51234/",
+      externalNodeState: {
+        title: "Group Chat",
+        url: "http://127.0.0.1:4173/rooms/old"
+      },
+      preferExternalState: true
+    }),
+    "http://127.0.0.1:4173/rooms/old"
+  );
+});
+
 test("workspace app webview URL preserves same-origin activation deep links", () => {
   assert.equal(
     resolveWorkspaceAppWebviewUrl({
@@ -205,6 +281,332 @@ test("workspace app webview URL preserves same-origin activation deep links", ()
       externalNodeState: null
     }),
     "http://127.0.0.1:51234/rooms/current"
+  );
+});
+
+test("workspace app webview URL supports open-route activation payloads", () => {
+  assert.equal(
+    resolveWorkspaceAppWebviewUrl({
+      activation: {
+        payload: {
+          appId: "docs",
+          intent: {
+            kind: "open-route",
+            params: { mode: "preview" },
+            route: "/files"
+          },
+          url: "http://127.0.0.1:51234/files?mode=preview"
+        },
+        sequence: 1,
+        type: "workspace-app:open"
+      },
+      appCanUseExternalState: true,
+      appLaunchUrl: "http://127.0.0.1:51234/",
+      externalNodeState: null
+    }),
+    "http://127.0.0.1:51234/files?mode=preview"
+  );
+});
+
+test("workspace app open-route resolves from the app origin root", async () => {
+  const app = createApp({
+    appId: "docs",
+    runtimeStatus: "running",
+    launchUrl: "http://127.0.0.1:51234/app-shell/"
+  });
+
+  const result = await resolveWorkspaceAppCenterLaunchRequest({
+    appCenterService: createAppCenterService([app]),
+    request: {
+      ...createLaunchRequestContext(),
+      payload: {
+        appId: "docs",
+        intent: {
+          kind: "open-route",
+          params: { mode: "preview" },
+          route: "/files"
+        }
+      },
+      reason: "host",
+      typeId: workspaceAppWebviewTypeID,
+      workspaceId: "workspace-1"
+    }
+  });
+
+  assert.equal(result?.activation?.type, "workspace-app:open");
+  assert.deepEqual(result?.activation?.payload, {
+    appId: "docs",
+    intent: {
+      kind: "open-route",
+      params: { mode: "preview" },
+      route: "/files"
+    },
+    title: "Ready",
+    url: "http://127.0.0.1:51234/files?mode=preview"
+  });
+});
+
+test("workspace app open-route rejects protocol-relative routes", async () => {
+  const app = createApp({
+    appId: "docs",
+    runtimeStatus: "running",
+    launchUrl: "http://127.0.0.1:51234/app-shell/"
+  });
+
+  const result = await resolveWorkspaceAppCenterLaunchRequest({
+    appCenterService: createAppCenterService([app]),
+    request: {
+      ...createLaunchRequestContext(),
+      payload: {
+        appId: "docs",
+        intent: {
+          kind: "open-route",
+          route: "//example.com/files"
+        }
+      },
+      reason: "host",
+      typeId: workspaceAppWebviewTypeID,
+      workspaceId: "workspace-1"
+    }
+  });
+
+  assert.equal(result?.activation?.type, "open-url");
+  assert.deepEqual(result?.activation?.payload, {
+    appId: "docs",
+    title: "Ready",
+    url: "http://127.0.0.1:51234/app-shell/"
+  });
+});
+
+test("workspace app webview stays mounted during running app update handoff", () => {
+  const installingApp = createApp({
+    installed: true,
+    launchUrl: "http://127.0.0.1:51234/",
+    runtimeStatus: "installing"
+  });
+
+  assert.equal(
+    shouldPreserveWorkspaceAppWebviewDuringHandoff(installingApp),
+    true
+  );
+  assert.equal(
+    shouldRenderWorkspaceAppBrowserNode(
+      installingApp,
+      "http://127.0.0.1:51234/"
+    ),
+    true
+  );
+});
+
+test("workspace app webview shows update handoff while progress is published for a running app", () => {
+  const downloadingApp = createApp({
+    installed: true,
+    installProgress: {
+      downloadedBytes: null,
+      indeterminate: false,
+      overallPercent: 0,
+      totalBytes: null,
+      userPhase: "downloading"
+    },
+    launchUrl: "http://127.0.0.1:51234/",
+    runtimeStatus: "running"
+  });
+
+  assert.equal(
+    shouldPreserveWorkspaceAppWebviewDuringHandoff(downloadingApp),
+    true
+  );
+  assert.equal(
+    shouldRenderWorkspaceAppBrowserNode(
+      downloadingApp,
+      "http://127.0.0.1:51234/"
+    ),
+    true
+  );
+  assert.equal(shouldSyncWorkspaceAppWebviewDefaultUrl(downloadingApp), false);
+});
+
+test("workspace app webview handoff does not mount without a usable URL", () => {
+  const installingApp = createApp({
+    installed: true,
+    launchUrl: null,
+    runtimeStatus: "installing"
+  });
+
+  assert.equal(
+    shouldRenderWorkspaceAppBrowserNode(installingApp, "about:blank"),
+    false
+  );
+});
+
+test("workspace app webview stays mounted while installed package is waiting for restart", () => {
+  const pendingRestartApp = createApp({
+    installed: true,
+    installProgress: null,
+    launchUrl: "http://127.0.0.1:51234/",
+    runtimeStatus: "installed_pending_restart"
+  });
+
+  assert.equal(
+    shouldPreserveWorkspaceAppWebviewDuringHandoff(pendingRestartApp),
+    true
+  );
+  assert.equal(
+    shouldRenderWorkspaceAppBrowserNode(
+      pendingRestartApp,
+      "http://127.0.0.1:51234/"
+    ),
+    true
+  );
+  assert.equal(
+    shouldSyncWorkspaceAppWebviewDefaultUrl(pendingRestartApp),
+    false
+  );
+});
+
+test("workspace app webview bridges transient stopping during update handoff", () => {
+  const stoppingApp = createApp({
+    installed: true,
+    installProgress: null,
+    launchUrl: null,
+    runtimeStatus: "stopping"
+  });
+
+  assert.equal(
+    shouldPreserveWorkspaceAppWebviewDuringHandoff(stoppingApp, {
+      externalNodeUrl: "http://127.0.0.1:58028/",
+      hadRecentHandoff: true
+    }),
+    true
+  );
+  assert.equal(
+    shouldRenderWorkspaceAppBrowserNode(
+      stoppingApp,
+      "http://127.0.0.1:58028/",
+      {
+        externalNodeUrl: "http://127.0.0.1:58028/",
+        hadRecentHandoff: true
+      }
+    ),
+    true
+  );
+  assert.equal(
+    shouldSyncWorkspaceAppWebviewDefaultUrl(stoppingApp, {
+      externalNodeUrl: "http://127.0.0.1:58028/",
+      hadRecentHandoff: true
+    }),
+    false
+  );
+});
+
+test("workspace app webview does not preserve idle app without recent handoff", () => {
+  const idleApp = createApp({
+    installed: true,
+    installProgress: null,
+    launchUrl: null,
+    runtimeStatus: "idle"
+  });
+
+  assert.equal(
+    shouldPreserveWorkspaceAppWebviewDuringHandoff(idleApp, {
+      externalNodeUrl: "http://127.0.0.1:58028/",
+      hadRecentHandoff: false
+    }),
+    false
+  );
+  assert.equal(
+    shouldRenderWorkspaceAppBrowserNode(idleApp, "http://127.0.0.1:58028/", {
+      externalNodeUrl: "http://127.0.0.1:58028/",
+      hadRecentHandoff: false
+    }),
+    false
+  );
+});
+
+test("workspace app webview does not bridge terminal idle or failed handoff states", () => {
+  for (const runtimeStatus of ["idle", "failed"] as const) {
+    const app = createApp({
+      installed: true,
+      installProgress: null,
+      launchUrl: null,
+      runtimeStatus
+    });
+    const handoffOptions = {
+      externalNodeUrl: "http://127.0.0.1:58028/",
+      hadRecentHandoff: true
+    };
+
+    assert.equal(
+      shouldPreserveWorkspaceAppWebviewDuringHandoff(app, handoffOptions),
+      false
+    );
+    assert.equal(
+      shouldRenderWorkspaceAppBrowserNode(
+        app,
+        "http://127.0.0.1:58028/",
+        handoffOptions
+      ),
+      false
+    );
+  }
+});
+
+test("workspace app webview resumes default URL sync outside update handoff", () => {
+  const runningApp = createApp({
+    installed: true,
+    installProgress: null,
+    launchUrl: "http://127.0.0.1:51234/",
+    runtimeStatus: "running"
+  });
+
+  assert.equal(shouldSyncWorkspaceAppWebviewDefaultUrl(runningApp), true);
+});
+
+test("workspace app webview keeps handoff cover while syncing to the restarted runtime URL", () => {
+  const runningApp = createApp({
+    installed: true,
+    installProgress: null,
+    launchUrl: "http://127.0.0.1:59636",
+    runtimeStatus: "running"
+  });
+  const handoffOptions = {
+    externalNodeUrl: "http://127.0.0.1:59586/",
+    hadRecentHandoff: true
+  };
+
+  assert.equal(
+    shouldPreserveWorkspaceAppWebviewDuringHandoff(runningApp, handoffOptions),
+    true
+  );
+  assert.equal(
+    shouldRenderWorkspaceAppBrowserNode(
+      runningApp,
+      "http://127.0.0.1:59636",
+      handoffOptions
+    ),
+    true
+  );
+  assert.equal(
+    shouldSyncWorkspaceAppWebviewDefaultUrl(runningApp, handoffOptions),
+    true
+  );
+  assert.equal(
+    resolveWorkspaceAppWebviewUrl({
+      activation: null,
+      appCanUseExternalState: true,
+      appLaunchUrl: runningApp.launchUrl ?? null,
+      externalNodeState: {
+        title: "Group Chat",
+        url: handoffOptions.externalNodeUrl
+      },
+      preferExternalState:
+        shouldPreserveWorkspaceAppWebviewDuringHandoff(
+          runningApp,
+          handoffOptions
+        ) &&
+        !shouldSyncWorkspaceAppWebviewDefaultUrl(runningApp, handoffOptions)
+    }),
+    "http://127.0.0.1:59636"
   );
 });
 

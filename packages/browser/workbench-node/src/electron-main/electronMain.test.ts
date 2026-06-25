@@ -1096,6 +1096,36 @@ test("keeps Browser Node navigation failures as the final emitted event", async 
   );
 });
 
+test("uses registerGuest URL before loading a newly attached guest", async () => {
+  const contents = new MockBrowserGuestWebContents(21);
+  const manager = createBrowserGuestManager({
+    emit: () => undefined,
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.prepareSession({
+    nodeId: "browser-stale-desired",
+    profileId: null,
+    sessionMode: "shared",
+    url: "http://127.0.0.1:50158/"
+  });
+
+  await manager.registerGuest({
+    nodeId: "browser-stale-desired",
+    profileId: null,
+    sessionMode: "shared",
+    url: "http://127.0.0.1:51103/",
+    webContentsId: 21
+  });
+
+  assert.deepEqual(contents.loadedUrls, ["http://127.0.0.1:51103/"]);
+  assert.equal(
+    manager.debugDump({ nodeId: "browser-stale-desired" })?.desiredUrl,
+    "http://127.0.0.1:51103/"
+  );
+});
+
 test("deduplicates Browser Node did-fail-load and loadURL rejection errors", async () => {
   const events: BrowserNodeEvent[] = [];
   const contents = new MockBrowserGuestWebContents(20);

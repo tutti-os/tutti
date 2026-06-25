@@ -8,13 +8,13 @@ export type BusinessEventScopeName = "global" | "desktop" | "workspace";
 
 export type BusinessEventTopic =
   | "agent.activity.updated"
-  | "agent.gui.launch.requested"
   | "analytics.debug.reported"
   | "preferences.desktop.update.requested"
   | "preferences.desktop.updated"
   | "workspace.app.updated"
   | "workspace.appfactory.job.updated"
-  | "workspace.issue.updated";
+  | "workspace.issue.updated"
+  | "workspace.workbench.node.launch.requested";
 
 export interface BusinessEventScopeV1 {
   workspaceId?: string;
@@ -258,15 +258,6 @@ export type AgentActivityUpdatedPayloadV1 =
       };
     };
 
-export interface AgentGuiLaunchRequestedPayloadV1 {
-  workspaceId: string;
-  agentSessionId: string;
-  provider: string;
-  source: string;
-  reason?: string;
-  requestId?: string;
-}
-
 export interface AnalyticsDebugReportedPayloadV1 {
   events: readonly {
     name: string;
@@ -310,15 +301,19 @@ export interface WorkspaceIssueUpdatedPayloadV1 {
     | "run_completed";
 }
 
+export interface WorkspaceWorkbenchNodeLaunchRequestedPayloadV1 {
+  workspaceId: string;
+  typeId: string;
+  source: string;
+  launchSource?: string;
+  dockEntryId?: string;
+  requestId?: string;
+  payload?: unknown;
+}
+
 export type AgentActivityUpdatedEventV1 = BusinessEventEnvelopeV1<
   "agent.activity.updated",
   AgentActivityUpdatedPayloadV1,
-  1
->;
-
-export type AgentGuiLaunchRequestedEventV1 = BusinessEventEnvelopeV1<
-  "agent.gui.launch.requested",
-  AgentGuiLaunchRequestedPayloadV1,
   1
 >;
 
@@ -358,27 +353,34 @@ export type WorkspaceIssueUpdatedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type WorkspaceWorkbenchNodeLaunchRequestedEventV1 =
+  BusinessEventEnvelopeV1<
+    "workspace.workbench.node.launch.requested",
+    WorkspaceWorkbenchNodeLaunchRequestedPayloadV1,
+    1
+  >;
+
 export type ClientToServerEventTopic = "preferences.desktop.update.requested";
 
 export type ServerToClientEventTopic =
   | "agent.activity.updated"
-  | "agent.gui.launch.requested"
   | "analytics.debug.reported"
   | "preferences.desktop.updated"
   | "workspace.app.updated"
   | "workspace.appfactory.job.updated"
-  | "workspace.issue.updated";
+  | "workspace.issue.updated"
+  | "workspace.workbench.node.launch.requested";
 
 export type ClientToServerEventV1 = PreferencesDesktopUpdateRequestedEventV1;
 
 export type ServerToClientEventV1 =
   | AgentActivityUpdatedEventV1
-  | AgentGuiLaunchRequestedEventV1
   | AnalyticsDebugReportedEventV1
   | PreferencesDesktopUpdatedEventV1
   | WorkspaceAppUpdatedEventV1
   | WorkspaceAppfactoryJobUpdatedEventV1
-  | WorkspaceIssueUpdatedEventV1;
+  | WorkspaceIssueUpdatedEventV1
+  | WorkspaceWorkbenchNodeLaunchRequestedEventV1;
 
 export type BusinessEventV1 = ClientToServerEventV1 | ServerToClientEventV1;
 

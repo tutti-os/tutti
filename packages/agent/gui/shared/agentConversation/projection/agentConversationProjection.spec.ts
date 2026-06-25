@@ -291,6 +291,70 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("drops redundant Codex error warning notices when a visible error is present", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          status: "failed"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Ship it" },
+            userMessages: [{ id: "user-1", body: "Ship it" }],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-warning-1",
+                  body: "Codex reported an error.",
+                  systemNotice: {
+                    noticeKind: "warning",
+                    severity: "warning",
+                    title: "Codex reported an error.",
+                    detail: "stream disconnected",
+                    retryable: false
+                  }
+                }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-visible-error-1",
+                  body: "Codex request failed.",
+                  visibleError: {
+                    code: "request_failed",
+                    phase: "turn",
+                    provider: "codex",
+                    detail: "stream disconnected",
+                    retryable: false
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages[0]?.visibleError?.provider).toBe("codex");
+    expect(assistantRows[0]?.messages[0]?.systemNotice).toBeNull();
+  });
+
   it("groups bridge thinking inside completed tool disclosures", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({

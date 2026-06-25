@@ -339,6 +339,81 @@ function cancelResultSessionStatusIsNonBusy(
   );
 }
 
+function shouldClearSubmittedDraft(input: {
+  currentDraft: AgentComposerDraft | undefined;
+  submittedContent: readonly AgentPromptContentBlock[];
+}): boolean {
+  const currentDraft = input.currentDraft;
+  if (!currentDraft) {
+    return false;
+  }
+  const submittedPrompt = agentPromptContentDisplayText(
+    input.submittedContent
+  ).trim();
+  if (currentDraft.prompt.trim() !== submittedPrompt) {
+    return false;
+  }
+  const submittedImages = input.submittedContent.filter(
+    (block): block is AgentPromptContentBlock & { type: "image" } =>
+      block.type === "image"
+  );
+  if (currentDraft.images.length !== submittedImages.length) {
+    return false;
+  }
+  const imagesMatch = currentDraft.images.every((image, index) => {
+    const submittedImage = submittedImages[index];
+    if (!submittedImage || image.mimeType !== submittedImage.mimeType) {
+      return false;
+    }
+    const draftPath = image.path?.trim() ?? "";
+    const submittedPath = submittedImage.path?.trim() ?? "";
+    const draftData = image.data?.trim() ?? "";
+    const submittedData = submittedImage.data?.trim() ?? "";
+    const draftName = image.name.trim();
+    const submittedName = submittedImage.name?.trim() ?? "";
+    return (
+      draftPath === submittedPath &&
+      draftData === submittedData &&
+      draftName === submittedName
+    );
+  });
+  if (!imagesMatch) {
+    return false;
+  }
+  const currentFiles = currentDraft.files ?? [];
+  const submittedFiles = input.submittedContent.filter(
+    (block): block is AgentPromptContentBlock & { type: "file" } =>
+      block.type === "file"
+  );
+  if (currentFiles.length !== submittedFiles.length) {
+    return false;
+  }
+  return currentFiles.every((file, index) => {
+    const submittedFile = submittedFiles[index];
+    if (!submittedFile) {
+      return false;
+    }
+    const draftPath = file.path?.trim() ?? "";
+    const submittedPath = submittedFile.path?.trim() ?? "";
+    const draftHostPath = file.hostPath?.trim() ?? "";
+    const submittedHostPath = submittedFile.hostPath?.trim() ?? "";
+    const draftAssetId = file.assetId?.trim() ?? "";
+    const submittedAssetId = submittedFile.assetId?.trim() ?? "";
+    const draftMimeType = file.mimeType?.trim() ?? "";
+    const submittedMimeType = submittedFile.mimeType?.trim() ?? "";
+    const draftName = file.name.trim();
+    const submittedName = submittedFile.name?.trim() ?? "";
+    return (
+      draftPath === submittedPath &&
+      draftHostPath === submittedHostPath &&
+      draftAssetId === submittedAssetId &&
+      draftMimeType === submittedMimeType &&
+      draftName === submittedName &&
+      file.sizeBytes === submittedFile.sizeBytes
+    );
+  });
+}
+
 function cancelBusySource(input: {
   conversationStatus?: string | null;
   hasActivePrompt?: boolean;
@@ -5348,8 +5423,10 @@ export function useAgentGUINodeController({
             setDraftBySessionId((current) => {
               const currentDraft = current[agentSessionId];
               if (
-                currentDraft?.prompt.trim() !== submittedPromptText ||
-                currentDraft.images.length > 0
+                !shouldClearSubmittedDraft({
+                  currentDraft,
+                  submittedContent: normalizedContent
+                })
               ) {
                 return current;
               }

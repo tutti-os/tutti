@@ -1343,14 +1343,18 @@ describe("AgentGUINodeView provider setup notice", () => {
     expect(notice).toHaveAttribute("role", "status");
   });
 
-  it("keeps breathing room above the setup notice", () => {
+  it("floats the setup notice above the detail content without affecting layout", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
     const setupNoticeRule = css.match(
       /\.agent-gui-node__provider-setup-notice\s*{[^}]*}/s
     )?.[0];
 
-    expect(setupNoticeRule).toContain(
-      "margin: 16px var(--agent-gui-detail-padding-x) 8px;"
+    expect(setupNoticeRule).toContain("position: absolute;");
+    expect(setupNoticeRule).toContain("top: 16px;");
+    expect(setupNoticeRule).toContain("z-index: 2;");
+    expect(setupNoticeRule).toContain("margin: 0;");
+    expect(css).toContain(
+      ".agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice"
     );
   });
 

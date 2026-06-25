@@ -55,6 +55,8 @@ export interface MentionRowSessionItem {
   userAvatarUrl?: string | null;
   userAvatarPlaceholderUrl: string;
   agentIconUrl: string;
+  /** When false, only the agent avatar is shown (e.g. local/my sessions). */
+  showUserAvatar?: boolean;
   statusTag?: MentionRowStatusTag | null;
 }
 

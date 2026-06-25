@@ -3,6 +3,10 @@ import {
   extractAgentPatchPath,
   inferAgentPatchChangeType
 } from "../../../rules/agentPatchMetadata";
+import {
+  fileChangeEntriesFromChanges,
+  fileChangeTypeValue
+} from "../../../../workspaceAgentFileChangePayload";
 
 export interface AgentFileChangeRenderData {
   path: string;
@@ -288,14 +292,10 @@ function fileChangesFiles(value: unknown): AgentFileChangeRenderData[] {
 }
 
 function changeMapFiles(value: unknown): AgentFileChangeRenderData[] {
-  const record = recordValue(value);
-  if (!record) {
-    return [];
-  }
-  return Object.entries(record).flatMap(([path, rawChange]) => {
-    const change = recordValue(rawChange);
-    const normalizedPath = path.trim();
-    if (!normalizedPath || !change) {
+  return fileChangeEntriesFromChanges(value).flatMap((entry) => {
+    const change = entry.change;
+    const normalizedPath = entry.path.trim();
+    if (!normalizedPath) {
       return [];
     }
     const unifiedDiff = firstString(
@@ -305,7 +305,7 @@ function changeMapFiles(value: unknown): AgentFileChangeRenderData[] {
       stringValue(change.patch)
     );
     const explicitContent = stringValue(change.content);
-    const normalizedType = normalizeChangeType(stringValue(change.type));
+    const normalizedType = normalizeChangeType(fileChangeTypeValue(change));
     let oldString = firstString(
       stringValue(change.old_string),
       stringValue(change.oldString)
@@ -389,7 +389,12 @@ function contentDiffFiles(
   if (!items) {
     return [];
   }
-  const changes = recordValue(changesValue);
+  const changesByPath = new Map(
+    fileChangeEntriesFromChanges(changesValue).map((entry) => [
+      entry.path,
+      entry.change
+    ])
+  );
   return items.flatMap((item) => {
     const record = recordValue(item);
     if (!record) {
@@ -403,7 +408,7 @@ function contentDiffFiles(
     if (!path) {
       return [];
     }
-    const relatedChange = recordValue(changes?.[path]);
+    const relatedChange = changesByPath.get(path) ?? null;
     const unifiedDiff = firstString(
       stringValue(record.diff),
       stringValue(record.patch),
@@ -411,7 +416,7 @@ function contentDiffFiles(
       stringValue(relatedChange?.unifiedDiff)
     );
     const normalizedType = normalizeChangeType(
-      stringValue(relatedChange?.type)
+      relatedChange ? fileChangeTypeValue(relatedChange) : null
     );
     let oldString = firstString(
       stringValue(record.oldText),

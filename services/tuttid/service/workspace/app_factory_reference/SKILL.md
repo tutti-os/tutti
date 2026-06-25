@@ -102,7 +102,7 @@ If the task supplies exact metadata such as `appId`, version, display name, or d
 - `runtime.healthcheckPath`: `/healthz`
 - `localizationInfo`: omit unless the user asks for localized app metadata; when needed, follow `references/manifest-contract.md` and create each referenced locale file.
 
-If the user asks to connect the app to the Tutti ecosystem, expose at least one app capability through `tutti.cli.json` and declare it from `tutti.app.json`. If the app has no obvious domain command yet, add a small useful command such as `status`, `summary`, or `open-context` so other Tutti apps and agents can discover and call it.
+If the user asks to connect the app to the Tutti ecosystem, expose at least one app capability through `tutti.cli.json` and declare it from `tutti.app.json`. If the app has a UI, include a business-level open command when there is a meaningful target to open, such as `open-project`, `open-file`, `open-run`, or `open-context`. The command should accept stable domain identifiers, validate them, map them to an app-owned origin-root route, and request opening this same app through `$TUTTI_CLI --json app open --app-id "$TUTTI_APP_ID" --route ...`. Do not expose raw frontend route construction as the public contract; callers should not need to know the app's internal router.
 
 ## Runtime Rules
 
@@ -121,6 +121,7 @@ The runtime must:
 - Prefer `window.tuttiExternal?.logs?.write?.()` for browser-side diagnostics in Tutti Desktop; reserve `$TUTTI_APP_LOG_DIR` for backend process logs.
 - Read `$TUTTI_WORKSPACE_ROOT` only when the app needs workspace context.
 - Launch Python with `$TUTTI_APP_PYTHON` and Node with `$TUTTI_APP_NODE`; use `$TUTTI_APP_NPM` for npm install/build work.
+- When the app exposes an open command, support the routed pages in the app runtime itself: direct navigation to the route must render the intended page, and an already-mounted frontend should handle repeated open intents through `window.tuttiExternal?.workspace?.onLaunchIntent?.(...)`.
 - When the generated app calls another local Tutti capability at runtime, use `$TUTTI_CLI` and follow `references/tutti-cli-commands.md`.
 - Read the current UI locale from the optional host-injected app context when localized in-app copy is needed. Do not pass locale in the launch URL query.
 - Keep localized in-app copy behind stable keys and use the harness pattern in `references/i18n-harness.md` so future edits can check locale parity.

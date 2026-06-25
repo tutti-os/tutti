@@ -12,6 +12,10 @@ import {
   extractAgentPatchPath,
   inferAgentPatchChangeType
 } from "../rules/agentPatchMetadata";
+import {
+  fileChangeEntriesFromChanges,
+  fileChangeTypeValue
+} from "../../workspaceAgentFileChangePayload";
 
 type AgentTurnSummaryChangeType = AgentTurnSummaryFileVM["changeType"];
 
@@ -76,6 +80,7 @@ function normalizedActivityFilePath(
   const path = value?.trim() ?? "";
   return path &&
     !isStructuredPayloadPath(path) &&
+    !isIgnoredFilePath(path) &&
     resolveWorkspaceFilePathCandidate({
       path,
       workspaceRoot: options.workspaceRoot
@@ -250,11 +255,12 @@ function extractFileChanges(input: {
   if (isFailedToolStatus(input.statusKind)) {
     return [];
   }
-  const changes =
-    objectValue(input.output?.changes) ??
-    objectValue(payload?.changes) ??
-    objectValue(input.input?.changes) ??
-    objectValue(rawInput?.changes);
+  const changes = firstFileChangeValue(
+    input.output?.changes,
+    payload?.changes,
+    input.input?.changes,
+    rawInput?.changes
+  );
 
   const filesFromMetadata = collectMetadataFiles(
     input.id,
@@ -500,19 +506,16 @@ function collectChangeMapFiles(
   messageId: string,
   toolName: string | null,
   occurredAtUnixMs: number | null,
-  changes: Record<string, unknown> | null,
+  changes: unknown,
   options: AgentTurnSummaryProjectionOptions
 ): AgentTurnSummaryFileVM[] {
-  if (!changes) {
-    return [];
-  }
-  return Object.entries(changes).flatMap(([path, rawChange], index) => {
-    const change = objectValue(rawChange);
-    const normalizedPath = normalizedFilePath(path, options);
-    if (!change || !normalizedPath) {
+  return fileChangeEntriesFromChanges(changes).flatMap((entry) => {
+    const change = entry.change;
+    const normalizedPath = normalizedFilePath(entry.path, options);
+    if (!normalizedPath) {
       return [];
     }
-    const normalizedType = normalizeChangeType(stringValue(change.type));
+    const normalizedType = normalizeChangeType(fileChangeTypeValue(change));
     const unifiedDiff = firstNonEmptyString(
       stringValue(change.unified_diff),
       stringValue(change.unifiedDiff),
@@ -568,7 +571,7 @@ function collectChangeMapFiles(
     }
     return [
       buildFileChange({
-        id: `${messageId}:change:${index + 1}`,
+        id: `${messageId}:change:${entry.index + 1}`,
         toolName,
         path: normalizedPath,
         changeType: normalizedType ?? inferAgentPatchChangeType(unifiedDiff),
@@ -587,12 +590,18 @@ function collectContentDiffFiles(
   toolName: string | null,
   occurredAtUnixMs: number | null,
   contentItems: unknown[] | null,
-  changes: Record<string, unknown> | null,
+  changes: unknown,
   options: AgentTurnSummaryProjectionOptions
 ): AgentTurnSummaryFileVM[] {
   if (!contentItems) {
     return [];
   }
+  const changesByPath = new Map(
+    fileChangeEntriesFromChanges(changes).map((entry) => [
+      entry.path,
+      entry.change
+    ])
+  );
   return contentItems.flatMap((value, index) => {
     const item = objectValue(value);
     if (!item) {
@@ -606,9 +615,9 @@ function collectContentDiffFiles(
     if (!path) {
       return [];
     }
-    const relatedChange = objectValue(changes?.[path]);
+    const relatedChange = changesByPath.get(path) ?? null;
     const normalizedType = normalizeChangeType(
-      stringValue(relatedChange?.type)
+      relatedChange ? fileChangeTypeValue(relatedChange) : null
     );
     const unifiedDiff = firstNonEmptyString(
       stringValue(item.diff),
@@ -745,7 +754,13 @@ function normalizedFilePath(
 }
 
 function isIgnoredFilePath(path: string): boolean {
-  return path === "/dev/null" || path === "NUL";
+  const normalizedPath = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  return (
+    normalizedPath === "/dev/null" ||
+    normalizedPath === "NUL" ||
+    normalizedPath === "/private/tmp" ||
+    normalizedPath.startsWith("/private/tmp/")
+  );
 }
 
 function isStructuredPayloadPath(path: string): boolean {
@@ -944,6 +959,15 @@ function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function firstFileChangeValue(...values: unknown[]): unknown {
+  for (const value of values) {
+    if (fileChangeEntriesFromChanges(value).length > 0) {
+      return value;
+    }
+  }
+  return null;
 }
 
 function arrayValue(value: unknown): unknown[] | null {
