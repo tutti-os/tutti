@@ -1434,6 +1434,19 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function appServerStartupMetadata(
+  runtimeContext: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null {
+  return recordValue(runtimeContext?.appServerStartup);
+}
+
+function isAppServerStartupLoading(
+  runtimeContext: Record<string, unknown> | null | undefined,
+  key: "models" | "rateLimits"
+): boolean {
+  return appServerStartupMetadata(runtimeContext)?.[key] === "loading";
+}
+
 function draftAgentSessionIdFromComposerOptions(
   options: AgentActivityComposerOptions | null | undefined
 ): string | null {
@@ -1723,6 +1736,8 @@ function areComposerSettingsVMsEqual(
     (left.supportsComputerUse ?? false) ===
       (right.supportsComputerUse ?? false) &&
     left.isSettingsLoading === right.isSettingsLoading &&
+    Boolean(left.isModelOptionsLoading) ===
+      Boolean(right.isModelOptionsLoading) &&
     left.modelUnavailable === right.modelUnavailable &&
     left.reasoningUnavailable === right.reasoningUnavailable &&
     left.speedUnavailable === right.speedUnavailable &&
@@ -7749,6 +7764,10 @@ export function useAgentGUINodeController({
       (!composerSupport.model || activeSessionModelSelection !== null) &&
       (!composerSupport.reasoning || activeSessionReasoningSelection !== null);
     const isSettingsLoading = !hasACPSettings;
+    const isModelOptionsLoading = isAppServerStartupLoading(
+      activeSessionRuntimeContext,
+      "models"
+    );
     const selectedModelValue = draftModel;
     const selectedReasoningEffortValue =
       draftReasoningEffort as AgentSessionReasoningEffort | null;
@@ -7779,6 +7798,7 @@ export function useAgentGUINodeController({
       supportsPlanMode: composerSupport.plan,
       planExclusiveWithPermissionMode: data.provider === "claude-code",
       isSettingsLoading,
+      isModelOptionsLoading,
       modelUnavailable:
         activeConversationId !== null &&
         sessionSettings === null &&
@@ -7837,6 +7857,7 @@ export function useAgentGUINodeController({
     activeSessionModelSelection,
     activeSessionReasoningSelection,
     activeSessionSpeedSelection,
+    activeSessionRuntimeContext,
     data.provider,
     draftSettings.permissionModeId,
     draftSettings.planMode,

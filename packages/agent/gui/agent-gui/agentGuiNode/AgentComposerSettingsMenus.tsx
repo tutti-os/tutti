@@ -507,7 +507,9 @@ export function AgentModelReasoningDropdown({
         styles.composerMenuTrigger,
         menuDisabled &&
           "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:text-[var(--agent-gui-text-tertiary)]",
-        composerSettings.isSettingsLoading && "animate-pulse"
+        (composerSettings.isSettingsLoading ||
+          composerSettings.isModelOptionsLoading) &&
+          "animate-pulse"
       )}
       aria-label={`${labels.modelLabel} / ${labels.reasoningLabel}`}
       data-agent-model-reasoning-trigger="true"

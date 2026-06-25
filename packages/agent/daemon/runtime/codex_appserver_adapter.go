@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
 )
@@ -92,16 +94,19 @@ type CodexAppServerAdapter struct {
 	mu          sync.Mutex
 	sessions    map[string]*codexAppServerSession
 	commandSink CommandSnapshotSink
+	eventSink   SessionEventSink
 	configSink  ConfigOptionsUpdateSink
 }
 
 type codexAppServerSession struct {
-	client     *acpClient
-	threadID   string
-	serverInfo map[string]any
-	account    map[string]any
-	rateLimits map[string]any
-	goal       map[string]any
+	client                 *acpClient
+	threadID               string
+	serverInfo             map[string]any
+	account                map[string]any
+	rateLimits             map[string]any
+	goal                   map[string]any
+	startupModelsReady     bool
+	startupRateLimitsReady bool
 	// planModeMask is the Plan preset mask from collaborationMode/list
 	// (flat name/mode/model/reasoning_effort fields); nil when the binary
 	// does not expose collaboration modes. defaultModel backs the required
@@ -165,6 +170,15 @@ func (a *CodexAppServerAdapter) SetCommandSnapshotSink(sink CommandSnapshotSink)
 	a.mu.Unlock()
 }
 
+func (a *CodexAppServerAdapter) SetSessionEventSink(sink SessionEventSink) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.eventSink = sink
+	a.mu.Unlock()
+}
+
 func (a *CodexAppServerAdapter) SetConfigOptionsUpdateSink(sink ConfigOptionsUpdateSink) {
 	if a == nil {
 		return
@@ -183,8 +197,12 @@ func (a *CodexAppServerAdapter) commandString() string {
 	return codexAppServerCommand + " " + codexAppServerSubcmd
 }
 
-func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
-	client, initializeResult, err := a.startInitializedClient(ctx, session)
+func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (events []activityshared.Event, err error) {
+	trace := newCodexAppServerStartupTrace(session)
+	defer func() {
+		trace.Finish(err)
+	}()
+	client, initializeResult, err := a.startInitializedClient(ctx, session, trace)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +224,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) ([]a
 		pendingRequests: make(map[string]*pendingACPRequest),
 	})
 
-	account, authRequired := a.fetchAccount(ctx, client, session)
+	account, authRequired := a.fetchAccount(ctx, client, session, trace)
 	if authRequired {
 		a.storeSession(session.AgentSessionID, &codexAppServerSession{
 			serverInfo:      serverInfo,
@@ -226,13 +244,18 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) ([]a
 			"authMessage":      codexAppServerAuthRequiredMessage,
 		})}, nil
 	}
-	models := a.fetchModels(ctx, client, session)
-	rateLimits := a.fetchRateLimits(ctx, client, session)
-	planModeMask := a.fetchPlanCollaborationMode(ctx, client, session)
+	models := []map[string]any(nil)
+	if codexAppServerNeedsSynchronousModels(session) {
+		models = a.fetchModels(ctx, client, session, trace)
+	}
+	planModeMask := a.fetchPlanCollaborationMode(ctx, client, session, trace)
 
-	threadResult, err := client.CallWithTimeout(ctx, acpStartCallTimeout, appServerMethodThreadStart,
-		appServerThreadStartParams(session, a.sessionCWD(session)),
+	threadParams := appServerThreadStartParams(session, a.sessionCWD(session))
+	trace.Log("thread.start.params", codexAppServerTraceThreadStartParams(session, threadParams, false))
+	threadResult, err := trace.Call(ctx, client, acpStartCallTimeout, appServerMethodThreadStart,
+		threadParams,
 		func(ctx context.Context, message acpMessage) error {
+			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
 			_, err := a.handleAppServerMessage(ctx, client, session, "", message, nil, nil, nil)
 			return err
 		})
@@ -264,6 +287,9 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) ([]a
 		return nil, err
 	}
 	session.ProviderSessionID = threadID
+	trace.Log("thread.id.resolved", map[string]any{
+		"thread_id": threadID,
+	})
 	slog.Info("agent session app-server thread started",
 		"event", "agent_session.app_server.thread_start.succeeded",
 		"provider", ProviderCodex,
@@ -277,24 +303,23 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) ([]a
 	liveState.availableCommands = codexAppServerCommands()
 	liveState.commandsKnown = true
 	applyACPConfigOptionDescriptors(&liveState, codexAppServerConfigOptionDescriptors(models, session, threadResult))
-	if quotas := appServerRateLimitQuotas(rateLimits); len(quotas) > 0 {
-		liveState.usage = mergeACPUsageState(liveState.usage, acpUsageState{quotas: quotas})
-	}
 
 	started = true
 	keepSession = true
 	a.storeSession(session.AgentSessionID, &codexAppServerSession{
-		client:          client,
-		threadID:        threadID,
-		serverInfo:      serverInfo,
-		account:         account,
-		rateLimits:      rateLimits,
-		planModeMask:    planModeMask,
-		defaultModel:    codexAppServerDefaultModel(models),
-		authState:       "authenticated",
-		acpLiveState:    liveState,
-		pendingRequests: make(map[string]*pendingACPRequest),
+		client:                 client,
+		threadID:               threadID,
+		serverInfo:             serverInfo,
+		account:                account,
+		startupModelsReady:     len(models) > 0,
+		startupRateLimitsReady: false,
+		planModeMask:           planModeMask,
+		defaultModel:           codexAppServerSessionDefaultModel(session, models),
+		authState:              "authenticated",
+		acpLiveState:           liveState,
+		pendingRequests:        make(map[string]*pendingACPRequest),
 	})
+	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, true, trace)
 	a.emitCommandSnapshot(AgentSessionCommandSnapshot{
 		AgentSessionID: strings.TrimSpace(session.AgentSessionID),
 		Commands:       codexAppServerCommands(),
@@ -307,11 +332,18 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) ([]a
 	})}, nil
 }
 
-func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) error {
+func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (err error) {
 	if strings.TrimSpace(session.ProviderSessionID) == "" {
 		return missingProviderSessionResumeError(session)
 	}
-	client, initializeResult, err := a.startInitializedClient(ctx, session)
+	trace := newCodexAppServerStartupTrace(session)
+	defer func() {
+		trace.Finish(err)
+	}()
+	trace.Log("resume.begin", map[string]any{
+		"thread_id": strings.TrimSpace(session.ProviderSessionID),
+	})
+	client, initializeResult, err := a.startInitializedClient(ctx, session, trace)
 	if err != nil {
 		return err
 	}
@@ -332,7 +364,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) err
 	}()
 	serverInfo := appServerInfo(initializeResult)
 
-	account, authRequired := a.fetchAccount(ctx, client, session)
+	account, authRequired := a.fetchAccount(ctx, client, session, trace)
 	if authRequired {
 		a.storeSession(session.AgentSessionID, &codexAppServerSession{
 			threadID:        session.ProviderSessionID,
@@ -346,20 +378,24 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) err
 		keepSession = true
 		return nil
 	}
-	models := a.fetchModels(ctx, client, session)
-	rateLimits := a.fetchRateLimits(ctx, client, session)
-	planModeMask := a.fetchPlanCollaborationMode(ctx, client, session)
+	models := []map[string]any(nil)
+	if codexAppServerNeedsSynchronousModels(session) {
+		models = a.fetchModels(ctx, client, session, trace)
+	}
+	planModeMask := a.fetchPlanCollaborationMode(ctx, client, session, trace)
 
 	params := appServerThreadStartParams(session, a.sessionCWD(session))
 	params["threadId"] = strings.TrimSpace(session.ProviderSessionID)
+	trace.Log("thread.start.params", codexAppServerTraceThreadStartParams(session, params, true))
 	// codex replays thread/tokenUsage/updated during thread/resume so the GUI
 	// can show context fill before a new turn runs. The resumed session is not
 	// stored yet, so applyTokenUsage cannot reach it; capture the replayed
 	// usage here and fold it into the live state below.
 	var replayedUsage acpUsageState
 	replayedUsageKnown := false
-	threadResult, err := client.CallWithTimeout(ctx, acpStartCallTimeout, appServerMethodThreadResume, params,
+	threadResult, err := trace.Call(ctx, client, acpStartCallTimeout, appServerMethodThreadResume, params,
 		func(ctx context.Context, message acpMessage) error {
+			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
 			if message.Method == appServerNotifyTokenUsage && len(message.Params) > 0 {
 				tokenParams := map[string]any{}
 				if json.Unmarshal(message.Params, &tokenParams) == nil {
@@ -380,9 +416,6 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) err
 	liveState.availableCommands = codexAppServerCommands()
 	liveState.commandsKnown = true
 	applyACPConfigOptionDescriptors(&liveState, codexAppServerConfigOptionDescriptors(models, session, threadResult))
-	if quotas := appServerRateLimitQuotas(rateLimits); len(quotas) > 0 {
-		liveState.usage = mergeACPUsageState(liveState.usage, acpUsageState{quotas: quotas})
-	}
 	if replayedUsageKnown {
 		liveState.usage = mergeACPUsageState(liveState.usage, replayedUsage)
 	}
@@ -390,17 +423,19 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) err
 	started = true
 	keepSession = true
 	a.storeSession(session.AgentSessionID, &codexAppServerSession{
-		client:          client,
-		threadID:        strings.TrimSpace(session.ProviderSessionID),
-		serverInfo:      serverInfo,
-		account:         account,
-		rateLimits:      rateLimits,
-		planModeMask:    planModeMask,
-		defaultModel:    codexAppServerDefaultModel(models),
-		authState:       "authenticated",
-		acpLiveState:    liveState,
-		pendingRequests: make(map[string]*pendingACPRequest),
+		client:                 client,
+		threadID:               strings.TrimSpace(session.ProviderSessionID),
+		serverInfo:             serverInfo,
+		account:                account,
+		startupModelsReady:     len(models) > 0,
+		startupRateLimitsReady: false,
+		planModeMask:           planModeMask,
+		defaultModel:           codexAppServerSessionDefaultModel(session, models),
+		authState:              "authenticated",
+		acpLiveState:           liveState,
+		pendingRequests:        make(map[string]*pendingACPRequest),
 	})
+	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, true, trace)
 	// Mirror Start: push the command snapshot so a resumed session advertises
 	// review/compact/undo to the GUI (otherwise the slash palette and the
 	// review picker only work on freshly created sessions).
@@ -439,10 +474,16 @@ func (a *CodexAppServerAdapter) Close(_ context.Context, session Session) error 
 func (a *CodexAppServerAdapter) startInitializedClient(
 	ctx context.Context,
 	session Session,
+	trace *codexAppServerStartupTrace,
 ) (*acpClient, json.RawMessage, error) {
 	if a == nil || a.transport == nil {
 		return nil, nil, errors.New("app-server process transport is unavailable")
 	}
+	trace.Log("process.start.begin", map[string]any{
+		"command": strings.Join([]string{codexAppServerCommand, codexAppServerSubcmd}, " "),
+		"cwd":     a.sessionCWD(session),
+	})
+	processStartedAt := time.Now()
 	conn, err := a.transport.Start(ctx, ProcessSpec{
 		Provider:       ProviderCodex,
 		AgentSessionID: session.AgentSessionID,
@@ -452,9 +493,17 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 		Env:            append(codexACPEnv(session, a.host), session.Env...),
 	})
 	if err != nil {
+		trace.Log("process.start.failed", map[string]any{
+			"duration_ms": time.Since(processStartedAt).Milliseconds(),
+			"error":       err.Error(),
+		})
 		return nil, nil, err
 	}
+	trace.Log("process.start.succeeded", map[string]any{
+		"duration_ms": time.Since(processStartedAt).Milliseconds(),
+	})
 	client := newAppServerJSONRPCClient(conn)
+	client.SetStderrSink(trace.LogStderr)
 	// The session-level handler receives every message that arrives outside
 	// an in-flight RPC. Because turn/start responds immediately while the
 	// turn keeps streaming, this is the main delivery path for turn output:
@@ -486,12 +535,13 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 		}
 	}()
 
-	initializeResult, err := client.CallWithTimeout(ctx, acpStartCallTimeout, appServerMethodInitialize, map[string]any{
+	initializeResult, err := trace.Call(ctx, client, acpStartCallTimeout, appServerMethodInitialize, map[string]any{
 		"clientInfo": a.host.clientInfoParams(),
 		"capabilities": map[string]any{
 			"experimentalApi": true,
 		},
 	}, func(ctx context.Context, message acpMessage) error {
+		trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
 		_, err := a.handleAppServerMessage(ctx, client, session, "", message, nil, nil, nil)
 		return err
 	})
@@ -504,9 +554,18 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 		)
 		return nil, nil, err
 	}
+	trace.Log("initialized.notify.begin", nil)
+	notifyStartedAt := time.Now()
 	if err := client.Notify(ctx, appServerMethodInitialized, nil); err != nil {
+		trace.Log("initialized.notify.failed", map[string]any{
+			"duration_ms": time.Since(notifyStartedAt).Milliseconds(),
+			"error":       err.Error(),
+		})
 		return nil, nil, err
 	}
+	trace.Log("initialized.notify.succeeded", map[string]any{
+		"duration_ms": time.Since(notifyStartedAt).Milliseconds(),
+	})
 	started = true
 	return client, initializeResult, nil
 }
@@ -515,9 +574,11 @@ func (a *CodexAppServerAdapter) fetchAccount(
 	ctx context.Context,
 	client *acpClient,
 	session Session,
+	trace *codexAppServerStartupTrace,
 ) (map[string]any, bool) {
-	result, err := client.CallWithTimeout(ctx, acpStartCallTimeout, appServerMethodAccountRead, map[string]any{},
+	result, err := trace.Call(ctx, client, acpStartCallTimeout, appServerMethodAccountRead, map[string]any{},
 		func(ctx context.Context, message acpMessage) error {
+			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
 			_, err := a.handleAppServerMessage(ctx, client, session, "", message, nil, nil, nil)
 			return err
 		})
@@ -533,6 +594,10 @@ func (a *CodexAppServerAdapter) fetchAccount(
 	if err := json.Unmarshal(result, &payload); err != nil {
 		return nil, false
 	}
+	trace.Log("account.parsed", map[string]any{
+		"has_account":          payload.Account != nil,
+		"requires_openai_auth": payload.RequiresOpenaiAuth,
+	})
 	return payload.Account, payload.RequiresOpenaiAuth && payload.Account == nil
 }
 
@@ -540,9 +605,11 @@ func (a *CodexAppServerAdapter) fetchModels(
 	ctx context.Context,
 	client *acpClient,
 	session Session,
+	trace *codexAppServerStartupTrace,
 ) []map[string]any {
-	result, err := client.CallWithTimeout(ctx, acpStartCallTimeout, appServerMethodModelList, map[string]any{},
+	result, err := trace.Call(ctx, client, acpStartCallTimeout, appServerMethodModelList, map[string]any{},
 		func(ctx context.Context, message acpMessage) error {
+			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
 			_, err := a.handleAppServerMessage(ctx, client, session, "", message, nil, nil, nil)
 			return err
 		})
@@ -555,6 +622,30 @@ func (a *CodexAppServerAdapter) fetchModels(
 	if err := json.Unmarshal(result, &payload); err != nil {
 		return nil
 	}
+	trace.Log("models.parsed", map[string]any{
+		"count": len(payload.Data),
+	})
+	return payload.Data
+}
+
+func (a *CodexAppServerAdapter) fetchModelsNoHandler(
+	ctx context.Context,
+	client *acpClient,
+	trace *codexAppServerStartupTrace,
+) []map[string]any {
+	result, err := trace.CallNoHandler(ctx, client, acpStartCallTimeout, appServerMethodModelList, map[string]any{})
+	if err != nil {
+		return nil
+	}
+	var payload struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(result, &payload); err != nil {
+		return nil
+	}
+	trace.Log("background_models.parsed", map[string]any{
+		"count": len(payload.Data),
+	})
 	return payload.Data
 }
 
@@ -562,9 +653,11 @@ func (a *CodexAppServerAdapter) fetchRateLimits(
 	ctx context.Context,
 	client *acpClient,
 	session Session,
+	trace *codexAppServerStartupTrace,
 ) map[string]any {
-	result, err := client.CallWithTimeout(ctx, acpStartCallTimeout, appServerMethodRateLimitsRead, nil,
+	result, err := trace.Call(ctx, client, acpStartCallTimeout, appServerMethodRateLimitsRead, nil,
 		func(ctx context.Context, message acpMessage) error {
+			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
 			_, err := a.handleAppServerMessage(ctx, client, session, "", message, nil, nil, nil)
 			return err
 		})
@@ -577,6 +670,30 @@ func (a *CodexAppServerAdapter) fetchRateLimits(
 	if err := json.Unmarshal(result, &payload); err != nil {
 		return nil
 	}
+	trace.Log("rate_limits.parsed", map[string]any{
+		"has_rate_limits": payload.RateLimits != nil,
+	})
+	return payload.RateLimits
+}
+
+func (a *CodexAppServerAdapter) fetchRateLimitsNoHandler(
+	ctx context.Context,
+	client *acpClient,
+	trace *codexAppServerStartupTrace,
+) map[string]any {
+	result, err := trace.CallNoHandler(ctx, client, acpStartCallTimeout, appServerMethodRateLimitsRead, nil)
+	if err != nil {
+		return nil
+	}
+	var payload struct {
+		RateLimits map[string]any `json:"rateLimits"`
+	}
+	if err := json.Unmarshal(result, &payload); err != nil {
+		return nil
+	}
+	trace.Log("background_rate_limits.parsed", map[string]any{
+		"has_rate_limits": payload.RateLimits != nil,
+	})
 	return payload.RateLimits
 }
 
@@ -589,9 +706,11 @@ func (a *CodexAppServerAdapter) fetchPlanCollaborationMode(
 	ctx context.Context,
 	client *acpClient,
 	session Session,
+	trace *codexAppServerStartupTrace,
 ) map[string]any {
-	result, err := client.CallWithTimeout(ctx, acpStartCallTimeout, appServerMethodCollaborationModeList, map[string]any{},
+	result, err := trace.Call(ctx, client, acpStartCallTimeout, appServerMethodCollaborationModeList, map[string]any{},
 		func(ctx context.Context, message acpMessage) error {
+			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
 			_, err := a.handleAppServerMessage(ctx, client, session, "", message, nil, nil, nil)
 			return err
 		})
@@ -604,13 +723,18 @@ func (a *CodexAppServerAdapter) fetchPlanCollaborationMode(
 	if err := json.Unmarshal(result, &payload); err != nil {
 		return nil
 	}
+	trace.Log("collaboration_modes.parsed", map[string]any{
+		"count": len(payload.Data),
+	})
 	for _, preset := range payload.Data {
 		mode := strings.ToLower(strings.TrimSpace(firstNonEmpty(asString(preset["mode"]), asString(preset["name"]))))
 		if mode != "plan" {
 			continue
 		}
+		trace.Log("plan_collaboration_mode.found", nil)
 		return clonePayload(preset)
 	}
+	trace.Log("plan_collaboration_mode.missing", nil)
 	return nil
 }
 
@@ -630,6 +754,192 @@ func codexAppServerDefaultModel(models []map[string]any) string {
 		}
 	}
 	return ""
+}
+
+func codexAppServerNeedsSynchronousModels(session Session) bool {
+	return strings.TrimSpace(session.SettingsValue().Model) == ""
+}
+
+func codexAppServerSessionDefaultModel(session Session, models []map[string]any) string {
+	return firstNonEmpty(strings.TrimSpace(session.SettingsValue().Model), codexAppServerDefaultModel(models))
+}
+
+func codexAppServerTraceThreadStartParams(session Session, params map[string]any, resume bool) map[string]any {
+	settings := session.SettingsValue()
+	fields := map[string]any{
+		"resume":             resume,
+		"cwd":                asString(params["cwd"]),
+		"has_thread_id":      strings.TrimSpace(asString(params["threadId"])) != "",
+		"model":              asString(params["model"]),
+		"settings_model":     settings.Model,
+		"settings_plan_mode": settings.PlanMode,
+		"permission_mode_id": session.PermissionModeID,
+		"approval_policy":    asString(params["approvalPolicy"]),
+		"sandbox":            asString(params["sandbox"]),
+		"env_count":          len(session.Env),
+	}
+	if config := payloadObject(params["config"]); len(config) > 0 {
+		fields["config_keys"] = sortedMapKeys(config)
+		fields["reasoning_effort"] = asString(config["model_reasoning_effort"])
+		fields["service_tier"] = asString(config["service_tier"])
+		fields["reasoning_summary"] = asString(config[codexACPConfigModelReasoningSummary])
+	}
+	return fields
+}
+
+func codexAppServerTraceTurnStartParams(session Session, params map[string]any, content []PromptContentBlock) map[string]any {
+	settings := session.SettingsValue()
+	fields := map[string]any{
+		"thread_id":          asString(params["threadId"]),
+		"has_thread_id":      strings.TrimSpace(asString(params["threadId"])) != "",
+		"model":              asString(params["model"]),
+		"effort":             asString(params["effort"]),
+		"summary":            asString(params["summary"]),
+		"settings_model":     settings.Model,
+		"settings_plan_mode": settings.PlanMode,
+		"permission_mode_id": session.PermissionModeID,
+		"approval_policy":    asString(params["approvalPolicy"]),
+		"content":            codexAppServerTracePromptContent(content),
+	}
+	if sandboxPolicy := payloadObject(params["sandboxPolicy"]); len(sandboxPolicy) > 0 {
+		fields["sandbox_policy_keys"] = sortedMapKeys(sandboxPolicy)
+	}
+	if collaborationMode := payloadObject(params["collaborationMode"]); len(collaborationMode) > 0 {
+		fields["collaboration_mode_keys"] = sortedMapKeys(collaborationMode)
+		fields["collaboration_mode"] = firstNonEmpty(asString(collaborationMode["mode"]), asString(collaborationMode["name"]))
+	}
+	return fields
+}
+
+func codexAppServerTracePromptContent(content []PromptContentBlock) map[string]any {
+	typeCounts := map[string]int{}
+	textBytes := 0
+	dataBytes := 0
+	attachments := 0
+	paths := 0
+	for _, block := range content {
+		blockType := strings.TrimSpace(block.Type)
+		if blockType == "" {
+			blockType = "unknown"
+		}
+		typeCounts[blockType]++
+		textBytes += len(block.Text)
+		dataBytes += len(block.Data)
+		if strings.TrimSpace(block.AttachmentID) != "" {
+			attachments++
+		}
+		if strings.TrimSpace(block.Path) != "" {
+			paths++
+		}
+	}
+	return map[string]any{
+		"block_count":      len(content),
+		"type_counts":      typeCounts,
+		"text_bytes":       textBytes,
+		"data_bytes":       dataBytes,
+		"attachment_count": attachments,
+		"path_count":       paths,
+	}
+}
+
+func sortedMapKeys(values map[string]any) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (a *CodexAppServerAdapter) refreshStartupMetadataAsync(
+	session Session,
+	threadResult json.RawMessage,
+	fetchModels bool,
+	fetchRateLimits bool,
+	trace *codexAppServerStartupTrace,
+) {
+	if a == nil || (!fetchModels && !fetchRateLimits) {
+		return
+	}
+	a.mu.Lock()
+	hasEventSink := a.eventSink != nil
+	a.mu.Unlock()
+	if !hasEventSink {
+		return
+	}
+	agentSessionID := strings.TrimSpace(session.AgentSessionID)
+	if agentSessionID == "" {
+		return
+	}
+	threadResult = append(json.RawMessage(nil), threadResult...)
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				trace.Log("background_metadata.panic", map[string]any{
+					"panic": fmt.Sprint(recovered),
+				})
+			}
+		}()
+		appSession := a.getSession(agentSessionID)
+		if appSession == nil || appSession.client == nil {
+			return
+		}
+		ctx := context.Background()
+		updated := false
+		if fetchModels {
+			models := a.fetchModelsNoHandler(ctx, appSession.client, trace)
+			if a.applyStartupModels(agentSessionID, session, threadResult, models) {
+				updated = true
+			}
+		}
+		if fetchRateLimits {
+			rateLimits := a.fetchRateLimitsNoHandler(ctx, appSession.client, trace)
+			if a.applyRateLimits(agentSessionID, rateLimits) {
+				updated = true
+			}
+		}
+		if updated {
+			a.emitSessionEvents(agentSessionID, []activityshared.Event{
+				newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
+					"appServerMetadataRefresh": true,
+				}),
+			})
+		}
+	}()
+}
+
+func (a *CodexAppServerAdapter) applyStartupModels(
+	agentSessionID string,
+	session Session,
+	threadResult json.RawMessage,
+	models []map[string]any,
+) bool {
+	if len(models) == 0 {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return false
+	}
+	applyACPConfigOptionDescriptors(&appSession.acpLiveState, codexAppServerConfigOptionDescriptors(models, session, threadResult))
+	appSession.defaultModel = codexAppServerSessionDefaultModel(session, models)
+	appSession.startupModelsReady = true
+	return true
+}
+
+func (a *CodexAppServerAdapter) emitSessionEvents(agentSessionID string, events []activityshared.Event) {
+	if a == nil || len(events) == 0 {
+		return
+	}
+	a.mu.Lock()
+	sink := a.eventSink
+	a.mu.Unlock()
+	if sink == nil {
+		return
+	}
+	sink(agentSessionID, events)
 }
 
 func (a *CodexAppServerAdapter) Exec(
@@ -724,13 +1034,22 @@ func (a *CodexAppServerAdapter) Exec(
 		return snapshotEvents(), err
 	}
 
-	result, err := appSession.client.Call(ctx, appServerMethodTurnStart, appServerTurnStartParams(session, appSession.threadID, content, appSession.planModeMask, appSession.defaultModel),
+	trace := newCodexAppServerTurnTrace(session, turnID)
+	turnParams := appServerTurnStartParams(session, appSession.threadID, content, appSession.planModeMask, appSession.defaultModel)
+	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, content))
+	turnStartedAt := time.Now()
+	result, err := appSession.client.Call(ctx, appServerMethodTurnStart, turnParams,
 		func(ctx context.Context, message acpMessage) error {
+			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
 			next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
 			emitEvents(next)
 			return err
 		})
 	if err != nil {
+		trace.Log("turn.start.failed", map[string]any{
+			"duration_ms": time.Since(turnStartedAt).Milliseconds(),
+			"error":       err.Error(),
+		})
 		a.endActiveTurn(session.AgentSessionID, appTurn)
 		if errors.Is(err, context.Canceled) || errors.Is(err, errPermissionRequestCanceled) {
 			terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
@@ -746,6 +1065,10 @@ func (a *CodexAppServerAdapter) Exec(
 		}
 		return snapshotEvents(), nil
 	}
+	trace.Log("turn.start.succeeded", map[string]any{
+		"duration_ms": time.Since(turnStartedAt).Milliseconds(),
+		"result_size": len(result),
+	})
 
 	// The app-server responds to turn/start immediately with the inProgress
 	// turn; the real output streams as notifications and the final turn
@@ -1153,6 +1476,10 @@ func (a *CodexAppServerAdapter) SessionState(session Session) SessionStateSnapsh
 	if len(state.rateLimits) > 0 {
 		snapshot.RuntimeContext["rateLimits"] = state.rateLimits
 	}
+	snapshot.RuntimeContext["appServerStartup"] = map[string]any{
+		"models":     codexAppServerStartupStatus(state.startupModelsReady),
+		"rateLimits": codexAppServerStartupStatus(state.startupRateLimitsReady),
+	}
 	if len(state.goal) > 0 {
 		snapshot.RuntimeContext["goal"] = state.goal
 	}
@@ -1203,14 +1530,23 @@ func (a *CodexAppServerAdapter) SessionState(session Session) SessionStateSnapsh
 	return snapshot
 }
 
+func codexAppServerStartupStatus(ready bool) string {
+	if ready {
+		return "ready"
+	}
+	return "loading"
+}
+
 type codexAppServerSessionStateSnapshot struct {
-	serverInfo        map[string]any
-	account           map[string]any
-	rateLimits        map[string]any
-	goal              map[string]any
-	authState         string
-	authMessage       string
-	planModeSupported bool
+	serverInfo             map[string]any
+	account                map[string]any
+	rateLimits             map[string]any
+	startupModelsReady     bool
+	startupRateLimitsReady bool
+	goal                   map[string]any
+	authState              string
+	authMessage            string
+	planModeSupported      bool
 	acpLiveStateSnapshot
 	pendingPrompt *SessionInteractivePrompt
 }
@@ -1231,15 +1567,17 @@ func (a *CodexAppServerAdapter) snapshotSessionState(agentSessionID string) (cod
 		break
 	}
 	return codexAppServerSessionStateSnapshot{
-		serverInfo:           clonePayload(appSession.serverInfo),
-		account:              clonePayload(appSession.account),
-		rateLimits:           clonePayload(appSession.rateLimits),
-		goal:                 clonePayload(appSession.goal),
-		authState:            strings.TrimSpace(appSession.authState),
-		authMessage:          strings.TrimSpace(appSession.authMessage),
-		planModeSupported:    appSession.planModeMask != nil,
-		acpLiveStateSnapshot: snapshotACPLiveState(appSession.acpLiveState),
-		pendingPrompt:        prompt,
+		serverInfo:             clonePayload(appSession.serverInfo),
+		account:                clonePayload(appSession.account),
+		rateLimits:             clonePayload(appSession.rateLimits),
+		startupModelsReady:     appSession.startupModelsReady,
+		startupRateLimitsReady: appSession.startupRateLimitsReady,
+		goal:                   clonePayload(appSession.goal),
+		authState:              strings.TrimSpace(appSession.authState),
+		authMessage:            strings.TrimSpace(appSession.authMessage),
+		planModeSupported:      appSession.planModeMask != nil,
+		acpLiveStateSnapshot:   snapshotACPLiveState(appSession.acpLiveState),
+		pendingPrompt:          prompt,
 	}, true
 }
 

@@ -128,6 +128,7 @@ export interface AgentGUIComposerSettingsVM {
   supportsBrowser?: boolean;
   supportsComputerUse?: boolean;
   isSettingsLoading: boolean;
+  isModelOptionsLoading?: boolean;
   modelUnavailable: boolean;
   reasoningUnavailable: boolean;
   speedUnavailable: boolean;

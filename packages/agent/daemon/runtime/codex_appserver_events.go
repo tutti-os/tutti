@@ -530,21 +530,23 @@ func appServerTokenUsageState(params map[string]any) (acpUsageState, bool) {
 	}, true
 }
 
-func (a *CodexAppServerAdapter) applyRateLimits(agentSessionID string, snapshot map[string]any) {
+func (a *CodexAppServerAdapter) applyRateLimits(agentSessionID string, snapshot map[string]any) bool {
 	if len(snapshot) == 0 {
-		return
+		return false
 	}
 	quotas := appServerRateLimitQuotas(snapshot)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession == nil {
-		return
+		return false
 	}
 	appSession.rateLimits = clonePayload(snapshot)
+	appSession.startupRateLimitsReady = true
 	if len(quotas) > 0 {
 		appSession.usage = mergeACPUsageState(appSession.usage, acpUsageState{quotas: quotas})
 	}
+	return true
 }
 
 func (a *CodexAppServerAdapter) applyAccountUpdate(agentSessionID string, params map[string]any) {
@@ -1427,6 +1429,7 @@ func codexAppServerConfigOptionDescriptors(
 	}
 
 	modelOptions := make([]any, 0, len(models))
+	modelOptionValues := map[string]struct{}{}
 	var effortValues []string
 	for _, model := range models {
 		if hidden, _ := model["hidden"].(bool); hidden {
@@ -1440,6 +1443,7 @@ func codexAppServerConfigOptionDescriptors(
 			"value": value,
 			"name":  firstNonEmpty(asString(model["displayName"]), value),
 		})
+		modelOptionValues[value] = struct{}{}
 		if value == currentModel || (currentModel == "" && truthyBool(model["isDefault"])) {
 			effortValues = appServerSupportedEfforts(model)
 			if currentModel == "" {
@@ -1448,6 +1452,14 @@ func codexAppServerConfigOptionDescriptors(
 			if currentEffort == "" {
 				currentEffort = asString(model["defaultReasoningEffort"])
 			}
+		}
+	}
+	if currentModel != "" {
+		if _, ok := modelOptionValues[currentModel]; !ok {
+			modelOptions = append(modelOptions, map[string]any{
+				"value": currentModel,
+				"name":  currentModel,
+			})
 		}
 	}
 	if len(effortValues) == 0 {

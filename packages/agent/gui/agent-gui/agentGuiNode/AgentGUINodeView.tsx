@@ -571,6 +571,16 @@ function numberValue(value: unknown): number | null {
   return null;
 }
 
+function isAppServerStartupLoading(
+  rawState: AgentGUISessionChrome["rawState"],
+  key: "models" | "rateLimits"
+): boolean {
+  return (
+    objectRecord(rawState?.runtimeContext?.appServerStartup)?.[key] ===
+    "loading"
+  );
+}
+
 function resolveSlashStatus({
   rawState,
   limits,
@@ -605,7 +615,8 @@ function resolveSlashStatus({
     agentSessionId: rawState?.agentSessionId ?? null,
     baseUrl: stringValue(providerConfig?.baseUrl) || null,
     limits,
-    limitsLoading,
+    limitsLoading:
+      limitsLoading || isAppServerStartupLoading(rawState, "rateLimits"),
     contextWindow: contextWindow
       ? {
           usedTokens:

@@ -1889,10 +1889,6 @@ func TestCodexAppServerAdapterSessionStateIncludesModelsAccountAndRateLimits(t *
 	if asString(account["email"]) != "dev@example.com" || asString(account["planType"]) != "pro" {
 		t.Fatalf("account = %#v", account)
 	}
-	rateLimits, _ := state.RuntimeContext["rateLimits"].(map[string]any)
-	if rateLimits == nil {
-		t.Fatalf("missing rateLimits runtime context: %#v", state.RuntimeContext)
-	}
 	capabilities, _ := state.RuntimeContext["capabilities"].([]string)
 	if !containsString(capabilities, "steer") || !containsString(capabilities, "rateLimits") {
 		t.Fatalf("capabilities = %#v", capabilities)
@@ -1901,6 +1897,111 @@ func TestCodexAppServerAdapterSessionStateIncludesModelsAccountAndRateLimits(t *
 	if !containsString(commands, "review") || !containsString(commands, "compact") || !containsString(commands, "undo") || !containsString(commands, "goal") {
 		t.Fatalf("commands = %#v", commands)
 	}
+	startup, _ := state.RuntimeContext["appServerStartup"].(map[string]any)
+	if asString(startup["models"]) != "ready" || asString(startup["rateLimits"]) != "loading" {
+		t.Fatalf("appServerStartup = %#v", startup)
+	}
+}
+
+func TestCodexAppServerAdapterStartSkipsSlowStartupProbesWhenModelIsSpecified(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.Settings = &SessionSettings{Model: "gpt-5.3-codex-spark", ReasoningEffort: "high"}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodModelList); len(requests) != 0 {
+		t.Fatalf("model/list requests = %d, want 0 on startup with explicit model", len(requests))
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodRateLimitsRead); len(requests) != 0 {
+		t.Fatalf("rateLimits/read requests = %d, want 0 on startup", len(requests))
+	}
+	state := adapter.SessionState(session)
+	options, _ := state.RuntimeContext["configOptions"].([]map[string]any)
+	modelOption := configOptionByID(options, "model")
+	if modelOption == nil {
+		t.Fatalf("missing minimal model config option: %#v", options)
+	}
+	if asString(modelOption["currentValue"]) != "gpt-5.3-codex-spark" {
+		t.Fatalf("model option = %#v, want explicit current model", modelOption)
+	}
+	values := configOptionValues(modelOption)
+	if !containsString(values, "gpt-5.3-codex-spark") {
+		t.Fatalf("model option values = %#v, want explicit model", values)
+	}
+	startup, _ := state.RuntimeContext["appServerStartup"].(map[string]any)
+	if asString(startup["models"]) != "loading" || asString(startup["rateLimits"]) != "loading" {
+		t.Fatalf("appServerStartup = %#v, want startup probes loading", startup)
+	}
+}
+
+func TestCodexAppServerAdapterRefreshesStartupMetadataAsync(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	controller := NewDefaultControllerWithProcessTransport(nil, transport)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		CWD:            "/workspace/room-1",
+		Settings: &SessionSettings{
+			Model:           "gpt-5.3-codex-spark",
+			ReasoningEffort: "high",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if started.Error != nil {
+		t.Fatalf("Start error = %#v", started.Error)
+	}
+	waitForCondition(t, func() bool {
+		state, err := controller.State("room-1", started.Session.AgentSessionID)
+		if err != nil {
+			return false
+		}
+		rateLimits, _ := state.RuntimeContext["rateLimits"].(map[string]any)
+		if rateLimits == nil {
+			return false
+		}
+		startup, _ := state.RuntimeContext["appServerStartup"].(map[string]any)
+		if asString(startup["models"]) != "ready" || asString(startup["rateLimits"]) != "ready" {
+			return false
+		}
+		options, _ := state.RuntimeContext["configOptions"].([]map[string]any)
+		modelOption := configOptionByID(options, "model")
+		values := configOptionValues(modelOption)
+		return containsString(values, "gpt-5.1-codex") &&
+			containsString(values, "gpt-5.3-codex-spark")
+	})
+}
+
+func configOptionByID(options []map[string]any, id string) map[string]any {
+	for _, option := range options {
+		if asString(option["id"]) == id {
+			return option
+		}
+	}
+	return nil
+}
+
+func configOptionValues(option map[string]any) []string {
+	if len(option) == 0 {
+		return nil
+	}
+	raw, _ := option["options"].([]any)
+	values := make([]string, 0, len(raw))
+	for _, entry := range raw {
+		entryMap, _ := entry.(map[string]any)
+		if value := asString(entryMap["value"]); value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
 }
 
 func TestCodexAppServerAdapterSessionCommandSnapshot(t *testing.T) {

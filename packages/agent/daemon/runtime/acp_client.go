@@ -27,6 +27,7 @@ type acpClient struct {
 	pending             map[int64]*acpPendingCall
 	active              *acpActiveHandler
 	handler             acpMessageHandler
+	stderrSink          func([]byte)
 	done                chan struct{}
 	doneErr             error
 	doneOnce            sync.Once
@@ -121,6 +122,15 @@ func (c *acpClient) SetMessageHandler(handler acpMessageHandler) {
 	}
 	c.mu.Lock()
 	c.handler = handler
+	c.mu.Unlock()
+}
+
+func (c *acpClient) SetStderrSink(sink func([]byte)) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.stderrSink = sink
 	c.mu.Unlock()
 }
 
@@ -299,6 +309,27 @@ func (c *acpClient) CallNoHandler(ctx context.Context, method string, params any
 	}
 }
 
+func (c *acpClient) CallNoHandlerWithTimeout(
+	ctx context.Context,
+	timeout time.Duration,
+	method string,
+	params any,
+) (json.RawMessage, error) {
+	if c == nil {
+		return nil, errors.New("acp client is nil")
+	}
+	if timeout <= 0 {
+		return c.CallNoHandler(ctx, method, params)
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	result, err := c.CallNoHandler(callCtx, method, params)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return nil, fmt.Errorf("acp %s timed out after %s", method, timeout)
+	}
+	return result, err
+}
+
 func (c *acpClient) registerCall(id int64, pending *acpPendingCall, active *acpActiveHandler) {
 	c.mu.Lock()
 	if c.pending == nil {
@@ -363,6 +394,12 @@ func (c *acpClient) readLoop() {
 			stderrTail = append(stderrTail, frame.Stderr...)
 			if len(stderrTail) > 8192 {
 				stderrTail = stderrTail[len(stderrTail)-8192:]
+			}
+			c.mu.Lock()
+			stderrSink := c.stderrSink
+			c.mu.Unlock()
+			if stderrSink != nil {
+				stderrSink(frame.Stderr)
 			}
 			if c.stderrMessageMapper != nil {
 				if message, ok := c.stderrMessageMapper(frame.Stderr); ok {
