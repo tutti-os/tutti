@@ -4,42 +4,42 @@ const launchpadWheelNavigationThresholdPx = 64;
 const launchpadWheelNavigationCooldownMs = 420;
 const launchpadWheelHorizontalIntentRatio = 1.2;
 
-export interface WorkspaceLaunchpadWheelNavigationState {
+export interface WorkbenchLaunchpadWheelNavigationState {
   accumulatedDeltaX: number;
   lastNavigationAt: number;
 }
 
-export interface WorkspaceLaunchpadWheelNavigationResult {
+export interface WorkbenchLaunchpadWheelNavigationResult {
   nextPageIndex: number | null;
   shouldPreventDefault: boolean;
-  state: WorkspaceLaunchpadWheelNavigationState;
+  state: WorkbenchLaunchpadWheelNavigationState;
 }
 
-export function createWorkspaceLaunchpadWheelNavigationState(): WorkspaceLaunchpadWheelNavigationState {
+export function createWorkbenchLaunchpadWheelNavigationState(): WorkbenchLaunchpadWheelNavigationState {
   return {
     accumulatedDeltaX: 0,
     lastNavigationAt: 0
   };
 }
 
-export function resolveWorkspaceLaunchpadWheelNavigation(input: {
+export function resolveWorkbenchLaunchpadWheelNavigation(input: {
   currentPage: number;
   deltaMode?: number;
   deltaX: number;
   deltaY: number;
   pageCount: number;
-  state: WorkspaceLaunchpadWheelNavigationState;
+  state: WorkbenchLaunchpadWheelNavigationState;
   timestamp: number;
-}): WorkspaceLaunchpadWheelNavigationResult {
+}): WorkbenchLaunchpadWheelNavigationResult {
   if (input.pageCount <= 1) {
     return {
       nextPageIndex: null,
       shouldPreventDefault: false,
-      state: createWorkspaceLaunchpadWheelNavigationState()
+      state: createWorkbenchLaunchpadWheelNavigationState()
     };
   }
 
-  const delta = normalizeWorkspaceLaunchpadWheelDelta(input);
+  const delta = normalizeWorkbenchLaunchpadWheelDelta(input);
   const absDeltaX = Math.abs(delta.x);
   const absDeltaY = Math.abs(delta.y);
   const isHorizontalIntent =
@@ -111,7 +111,7 @@ export function resolveWorkspaceLaunchpadWheelNavigation(input: {
   };
 }
 
-function normalizeWorkspaceLaunchpadWheelDelta(input: {
+function normalizeWorkbenchLaunchpadWheelDelta(input: {
   deltaMode?: number;
   deltaX: number;
   deltaY: number;

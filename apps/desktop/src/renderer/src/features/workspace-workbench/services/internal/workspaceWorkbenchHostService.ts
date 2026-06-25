@@ -85,7 +85,7 @@ import { runWorkspaceAgentProviderDockAction } from "./workspaceAgentProviderDoc
 import { createWindowCloseDialogRequest } from "./workspaceCloseDialogRequests.ts";
 import { assignWorkspaceTaskDockSection } from "./workspaceDockSections.ts";
 import { createWorkspaceDynamicDockSignature } from "./workspaceDynamicDockSignature.ts";
-import { createWorkspaceLaunchpadDockEntry } from "./workspaceLaunchpadDockEntry.ts";
+import { createWorkbenchLaunchpadDockEntry } from "@tutti-os/workbench-launchpad";
 import { createDesktopWorkspaceDockPreviewCache } from "./desktopWorkspaceDockPreviewCache.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type {
@@ -820,7 +820,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       snapshotRepository: this.dependencies.repository,
       workspaceId: input.workspaceId
     };
-    this.cachedHostInputs.set(input.workspaceId, {
+    const cachedHostInput: CachedWorkspaceWorkbenchHostInput = {
       appI18n: input.appI18n,
       baseHostInput,
       capabilitySettingsRequestRef,
@@ -831,10 +831,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       i18n: input.i18n,
       renderFilesNodeBodyRef,
       themeAppearance: input.themeAppearance
-    });
-    const nextCached = this.cachedHostInputs.get(input.workspaceId);
+    };
+    this.cachedHostInputs.set(input.workspaceId, cachedHostInput);
     return this.createHostInputWithDynamicDockEntries(
-      nextCached,
+      cachedHostInput,
       baseHostInput,
       {
         appI18n: input.appI18n,
@@ -844,7 +844,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   }
 
   private createHostInputWithDynamicDockEntries(
-    cached: CachedWorkspaceWorkbenchHostInput | undefined,
+    cached: CachedWorkspaceWorkbenchHostInput,
     baseHostInput: WorkspaceWorkbenchHostInput,
     input: {
       appI18n: I18nRuntime<string>;
@@ -878,23 +878,17 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
             i18n: input.appI18n
           })
         ),
-        createWorkspaceLaunchpadDockEntry({
-          agentStatuses:
-            this.dependencies.agentProviderStatusService.getSnapshot().statuses,
-          apps: this.dependencies.appCenterService.store.apps,
-          fallbackIconUrl: cached?.dockIcons.applications ?? "",
+        createWorkbenchLaunchpadDockEntry({
           label: input.desktopI18n.t(
             workspaceWorkbenchDesktopI18nKeys.launchpad.dockLabel
           ),
-          tileIconUrls: cached?.dockIcons.launchpadTiles
+          tileIconUrls: cached.dockIcons.launchpadTiles
         })
       ]
     );
-    if (cached) {
-      cached.dynamicAppI18n = input.appI18n;
-      cached.dynamicDockSignature = dockSignature;
-      cached.dynamicHostInput = dynamicHostInput;
-    }
+    cached.dynamicAppI18n = input.appI18n;
+    cached.dynamicDockSignature = dockSignature;
+    cached.dynamicHostInput = dynamicHostInput;
     return dynamicHostInput;
   }
 }

@@ -13,5 +13,6 @@
 @source "../../../../../packages/workspace/user-project/src";
 @import "@tutti-os/ui-system/styles.css";
 @import "@tutti-os/workbench-surface/styles.css";
+@import "@tutti-os/workbench-launchpad/styles.css";
 @import "@tutti-os/agent-gui/styles.css";
 @import "@tutti-os/workspace-terminal/styles.css";

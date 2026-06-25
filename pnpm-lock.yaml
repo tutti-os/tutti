@@ -99,6 +99,9 @@ importers:
       "@tutti-os/ui-system":
         specifier: workspace:*
         version: link:../../packages/ui/system
+      "@tutti-os/workbench-launchpad":
+        specifier: workspace:*
+        version: link:../../packages/workbench/launchpad
       "@tutti-os/workbench-snapshot":
         specifier: workspace:*
         version: link:../../packages/workbench/snapshot
@@ -596,6 +599,37 @@ importers:
       vite:
         specifier: ^6.4.2
         version: 6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0)
+
+  packages/workbench/launchpad:
+    dependencies:
+      "@tutti-os/ui-system":
+        specifier: workspace:*
+        version: link:../../ui/system
+      "@tutti-os/workbench-surface":
+        specifier: workspace:*
+        version: link:../surface
+    devDependencies:
+      "@tutti-os/config-tsconfig":
+        specifier: workspace:*
+        version: link:../../configs/tsconfig
+      "@types/node":
+        specifier: ^24.0.1
+        version: 24.12.4
+      "@types/react":
+        specifier: ^19.1.6
+        version: 19.2.15
+      "@types/react-dom":
+        specifier: ^19.1.5
+        version: 19.2.3(@types/react@19.2.15)
+      react:
+        specifier: ^19.1.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.6(react@19.2.6)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   packages/workbench/snapshot:
     devDependencies:

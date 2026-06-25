@@ -38,6 +38,7 @@ const allowedCssFiles = new Set([
   "apps/desktop/src/renderer/src/style.css",
   "apps/ui-storyboard/src/style.css",
   "packages/agent/gui/app/renderer/agentactivity.css",
+  "packages/workbench/launchpad/src/styles/workbench-launchpad.css",
   "packages/workspace/terminal/src/styles/terminal.css",
   "packages/workbench/surface/src/styles/workbench.css",
   "tools/fixtures/ui-system-external-vite/src/style.css"

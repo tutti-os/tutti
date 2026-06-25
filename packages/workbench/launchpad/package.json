@@ -1,0 +1,53 @@
+{
+  "name": "@tutti-os/workbench-launchpad",
+  "version": "0.0.26-beta.0",
+  "private": false,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles/workbench-launchpad.css"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/workbench/launchpad"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/styles dist/styles",
+    "test": "node --test --experimental-strip-types ./src/**/*.test.ts",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "dependencies": {
+    "@tutti-os/ui-system": "workspace:*",
+    "@tutti-os/workbench-surface": "workspace:*"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./styles.css": "./dist/styles/workbench-launchpad.css"
+    },
+    "types": "./dist/index.d.ts"
+  }
+}

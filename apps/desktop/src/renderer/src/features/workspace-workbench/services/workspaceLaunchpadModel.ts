@@ -1,15 +1,14 @@
 export {
-  buildWorkspaceLaunchpadItems,
-  filterWorkspaceLaunchpadItems,
-  paginateWorkspaceLaunchpadItems,
-  resolveWorkspaceLaunchpadGrid,
-  resolveWorkspaceLaunchpadPreviewIconUrls,
-  workspaceLaunchpadDockActionId,
-  workspaceLaunchpadDockEntryId,
-  type WorkspaceLaunchpadAgentDescriptor,
-  type WorkspaceLaunchpadCopy,
-  type WorkspaceLaunchpadGridMetrics,
-  type WorkspaceLaunchpadItem,
-  type WorkspaceLaunchpadNodeDescriptor,
-  type WorkspaceLaunchpadPage
-} from "./internal/workspaceLaunchpadModel.ts";
+  buildWorkbenchLaunchpadItems as buildWorkspaceLaunchpadItems,
+  filterWorkbenchLaunchpadItems as filterWorkspaceLaunchpadItems,
+  paginateWorkbenchLaunchpadItems as paginateWorkspaceLaunchpadItems,
+  resolveWorkbenchLaunchpadGrid as resolveWorkspaceLaunchpadGrid,
+  resolveWorkbenchLaunchpadPreviewIconUrls as resolveWorkspaceLaunchpadPreviewIconUrls,
+  workbenchLaunchpadDockActionId as workspaceLaunchpadDockActionId,
+  workbenchLaunchpadDockEntryId as workspaceLaunchpadDockEntryId,
+  type WorkbenchLaunchpadAgentDescriptor as WorkspaceLaunchpadAgentDescriptor,
+  type WorkbenchLaunchpadGridMetrics as WorkspaceLaunchpadGridMetrics,
+  type WorkbenchLaunchpadItem as WorkspaceLaunchpadItem,
+  type WorkbenchLaunchpadNodeDescriptor as WorkspaceLaunchpadNodeDescriptor,
+  type WorkbenchLaunchpadPage as WorkspaceLaunchpadPage
+} from "@tutti-os/workbench-launchpad";

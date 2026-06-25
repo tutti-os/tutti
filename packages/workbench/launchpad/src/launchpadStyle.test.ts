@@ -1,0 +1,59 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const css = readFileSync(
+  fileURLToPath(new URL("./styles/workbench-launchpad.css", import.meta.url)),
+  "utf8"
+);
+
+test("launchpad dock icon adapts to wallpaper tone", () => {
+  assert.match(
+    css,
+    /\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*var\(--transparency-block\);[^}]*--workspace-launchpad-dock-icon-border:\s*var\(--line-1\);[^}]*background:\s*var\(--workspace-launchpad-dock-icon-bg\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__slot\[data-wallpaper-tone="dark"\]\s+\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*rgb\(255 255 255 \/ 18%\);[^}]*--workspace-launchpad-dock-icon-border:\s*rgb\(255 255 255 \/ 15%\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__slot\[data-wallpaper-tone="light"\]\s+\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*rgb\(0 0 0 \/ 10%\);[^}]*--workspace-launchpad-dock-icon-border:\s*rgb\(0 0 0 \/ 10%\);/s
+  );
+});
+
+test("launchpad top bar remains draggable without stealing controls", () => {
+  assert.match(
+    css,
+    /\.workspace-launchpad-overlay__content\s*{[^}]*-webkit-app-region:\s*drag;/s
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-overlay__topbar\s*{[^}]*-webkit-app-region:\s*drag;/s
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-search\s*{[^}]*-webkit-app-region:\s*no-drag;/s
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-grid-viewport\s*{[^}]*-webkit-app-region:\s*no-drag;/s
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-grid-viewport\s*{[^}]*overflow:\s*visible;/s
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-dock-hover-panel\s*{[^}]*--workspace-launchpad-hover-panel-shift:\s*0px;[^}]*left:\s*50%;[^}]*right:\s*auto;[^}]*max-width:\s*min\(240px, calc\(100vw - 32px\)\);[^}]*transform:\s*translateX\(\s*calc\(-50% \+ var\(--workspace-launchpad-hover-panel-shift\)\)\s*\)/s
+  );
+  assert.doesNotMatch(
+    css,
+    /workspace-launchpad-dock-hover-panel\[data-hover-panel-align=/
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-pages\s*{[^}]*-webkit-app-region:\s*no-drag;/s
+  );
+});
