@@ -19,17 +19,18 @@ import (
 )
 
 type AppCenterService struct {
-	Store                 workspacedata.AppStore
-	AppFactoryStore       workspacedata.AppFactoryStore
-	WorkspaceRootResolver WorkspaceRootResolver
-	WorkspaceStore        workspacedata.CatalogStore
-	PreferencesStore      workspacedata.PreferencesStore
-	Runner                *AppRunner
-	AppCLIRegistry        *appcliservice.Registry
-	StateDir              string
-	Publisher             WorkspaceAppEventPublisher
-	BuiltinCatalog        func() ([]builtinapps.App, error)
-	ArtifactFetcher       AppArtifactFetcher
+	Store                  workspacedata.AppStore
+	AppFactoryStore        workspacedata.AppFactoryStore
+	WorkspaceRootResolver  WorkspaceRootResolver
+	WorkspaceStore         workspacedata.CatalogStore
+	PreferencesStore       workspacedata.PreferencesStore
+	Runner                 *AppRunner
+	AppCLIRegistry         *appcliservice.Registry
+	StateDir               string
+	Publisher              WorkspaceAppEventPublisher
+	BuiltinCatalog         func() ([]builtinapps.App, error)
+	ArtifactFetcher        AppArtifactFetcher
+	RemoteCatalogRefresher func(context.Context, string) (builtinapps.CatalogSnapshot, error)
 
 	mu                     sync.Mutex
 	stateRevisions         map[string]int64
@@ -145,6 +146,10 @@ func (s *AppCenterService) List(ctx context.Context, workspaceID string) ([]work
 	if err != nil {
 		return nil, err
 	}
+	return s.listWithBuiltins(ctx, workspaceID, builtins)
+}
+
+func (s *AppCenterService) listWithBuiltins(ctx context.Context, workspaceID string, builtins []builtinapps.App) ([]workspacebiz.WorkspaceApp, error) {
 	packages, err := s.Store.ListAppPackages(ctx)
 	if err != nil {
 		return nil, err

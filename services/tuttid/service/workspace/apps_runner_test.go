@@ -295,6 +295,73 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 	}
 }
 
+func TestAppRunnerStopProcessDoesNotOverwriteReplacementRuntime(t *testing.T) {
+	runner := &AppRunner{}
+	runner.ensure()
+	key := appRuntimeKey("ws-runner", "hello")
+	oldURL := "http://127.0.0.1:41001"
+	newURL := "http://127.0.0.1:41002"
+	oldPort := 41001
+	newPort := 41002
+	oldProcess := &appProcess{done: make(chan error, 1)}
+	newProcess := &appProcess{done: make(chan error, 1)}
+
+	runner.mu.Lock()
+	runner.processes[key] = oldProcess
+	runner.states[key] = workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: &oldURL,
+		Port:      &oldPort,
+	}
+	runner.mu.Unlock()
+
+	type stopResult struct {
+		state workspacebiz.AppRuntimeState
+		err   error
+	}
+	stopped := make(chan stopResult, 1)
+	go func() {
+		state, err := runner.stopProcess(context.Background(), key, oldProcess)
+		stopped <- stopResult{state: state, err: err}
+	}()
+
+	waitForRunnerStatus(t, runner, "ws-runner", "hello", workspacebiz.AppRuntimeStatusStopping)
+
+	runner.mu.Lock()
+	runner.processes[key] = newProcess
+	runner.states[key] = workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: &newURL,
+		Port:      &newPort,
+	}
+	runner.mu.Unlock()
+
+	oldProcess.done <- nil
+
+	select {
+	case result := <-stopped:
+		if result.err != nil {
+			t.Fatalf("stopProcess() error = %v", result.err)
+		}
+		if result.state.Status != workspacebiz.AppRuntimeStatusRunning {
+			t.Fatalf("stopProcess() status = %q, want running", result.state.Status)
+		}
+		if result.state.LaunchURL == nil || *result.state.LaunchURL != newURL {
+			t.Fatalf("stopProcess() launchURL = %v, want %q", result.state.LaunchURL, newURL)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for stopProcess")
+	}
+
+	state := runner.State("ws-runner", "hello")
+	if state.Status != workspacebiz.AppRuntimeStatusRunning {
+		t.Fatalf("runner state = %q, want running", state.Status)
+	}
+	if state.LaunchURL == nil || *state.LaunchURL != newURL {
+		t.Fatalf("runner launchURL = %v, want %q", state.LaunchURL, newURL)
+	}
+}
+
 func TestAppRunnerStartWithoutRestartReusesQueuedStart(t *testing.T) {
 	root := t.TempDir()
 	packageDir := filepath.Join(root, "package")

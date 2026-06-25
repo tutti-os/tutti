@@ -405,6 +405,93 @@ test("WorkspaceAppCenterService keeps update disabled while update install is pe
   assert.equal(service.store.apps[0]?.version, "1.1.0");
 });
 
+test("WorkspaceAppCenterService records low-volume diagnostics for running app update handoff", async () => {
+  const diagnostics: DesktopRendererDiagnosticPayload[] = [];
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      installWorkspaceApp: async () =>
+        createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              availableVersion: null,
+              installed: true,
+              launchUrl: "http://127.0.0.1:51234/",
+              runtimeStatus: "running",
+              source: "builtin",
+              stateRevision: 4,
+              updateAvailable: false,
+              version: "1.1.0"
+            })
+          ]
+        }),
+      listWorkspaceApps: async () =>
+        createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              availableVersion: "1.1.0",
+              installed: true,
+              launchUrl: "http://127.0.0.1:50405/",
+              runtimeStatus: "running",
+              source: "builtin",
+              stateRevision: 3,
+              updateAvailable: true,
+              version: "1.0.0"
+            })
+          ]
+        })
+    }),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi(),
+    runtimeApi: {
+      async logRendererDiagnostic(payload) {
+        diagnostics.push(payload);
+      }
+    }
+  });
+
+  await service.refresh("workspace-1");
+  await service.updateApp({
+    appId: "app-1",
+    trigger: "primary_action",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(
+    diagnostics.map((entry) => {
+      const details = entry.details ?? {};
+      return {
+        event: entry.event,
+        launchUrlOrigin: details.launchUrlOrigin,
+        level: entry.level,
+        phase: details.phase,
+        runtimeStatus: details.runtimeStatus,
+        version: details.version
+      };
+    }),
+    [
+      {
+        event: "workspace_app_center_update_handoff",
+        launchUrlOrigin: "http://127.0.0.1:50405",
+        level: "debug",
+        phase: "started",
+        runtimeStatus: "running",
+        version: "1.0.0"
+      },
+      {
+        event: "workspace_app_center_update_handoff",
+        launchUrlOrigin: "http://127.0.0.1:51234",
+        level: "debug",
+        phase: "completed",
+        runtimeStatus: "running",
+        version: "1.1.0"
+      }
+    ]
+  );
+});
+
 test("WorkspaceAppCenterService waits for async install completion before tracking app install", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   let listCalls = 0;

@@ -251,7 +251,7 @@ export const appCenterEn = {
     myApps: "My apps",
     recommendedApps: "Recommended apps",
     runningCount: "{{count}} running",
-    updateAvailable: "Update {{version}} available",
+    updateAvailable: "Update to {{version}}",
     version: "Version {{version}}"
   },
   localDev: {
@@ -517,7 +517,7 @@ export const appCenterZhCN = {
     myApps: "我的应用",
     recommendedApps: "推荐应用",
     runningCount: "{{count}} 个运行中",
-    updateAvailable: "可更新到 {{version}}",
+    updateAvailable: "更新到 {{version}}",
     version: "版本 {{version}}"
   },
   localDev: {

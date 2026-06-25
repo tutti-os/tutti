@@ -240,14 +240,20 @@ function reconcileBrowserNodeWebviewControllerState(
     if (entry.context.lifecycle === "cold") {
       scheduleBrowserNodeGuestUnregister(entry);
     } else {
-      clearPendingBrowserNodeGuestUnregister(entry.context.nodeId);
+      const pendingGuestId = clearPendingBrowserNodeGuestUnregister(
+        entry.context.nodeId
+      );
+      if (entry.registeredGuestId === null && pendingGuestId !== null) {
+        entry.registeredGuestId = pendingGuestId;
+      }
       void entry.context.feature.hostApi
         .prepareSession({
           navigationPolicy: entry.context.navigationPolicy,
           nodeId: entry.context.nodeId,
           profileId: entry.context.profileId,
           sessionMode: entry.context.sessionMode,
-          sessionPartition: entry.context.sessionPartition
+          sessionPartition: entry.context.sessionPartition,
+          url: entry.context.initialUrl
         })
         .catch(() => undefined);
     }
@@ -297,13 +303,17 @@ function notifyBrowserNodeWebviewControllerListeners(
   }
 }
 
-function clearPendingBrowserNodeGuestUnregister(nodeId: string): void {
+function clearPendingBrowserNodeGuestUnregister(nodeId: string): number | null {
   const timerId = pendingUnregisterTimersByNodeId.get(nodeId);
   if (timerId !== undefined) {
     globalThis.clearTimeout(timerId);
     pendingUnregisterTimersByNodeId.delete(nodeId);
   }
+  const pendingGuestId = pendingGuestIdsByNodeId.get(nodeId);
   pendingGuestIdsByNodeId.delete(nodeId);
+  return typeof pendingGuestId === "number" && Number.isFinite(pendingGuestId)
+    ? pendingGuestId
+    : null;
 }
 
 function scheduleBrowserNodeGuestUnregister(
@@ -328,6 +338,17 @@ function scheduleBrowserNodeGuestUnregister(
       typeof pendingGuestId !== "number" ||
       !Number.isFinite(pendingGuestId)
     ) {
+      return;
+    }
+    const currentEntry = webviewControllerRegistry.get(nodeId);
+    if (
+      currentEntry &&
+      currentEntry.refCount > 0 &&
+      currentEntry.state.shouldRenderWebview
+    ) {
+      if (currentEntry.registeredGuestId === null) {
+        currentEntry.registeredGuestId = pendingGuestId;
+      }
       return;
     }
 
@@ -363,7 +384,7 @@ function attachBrowserNodeWebview(
   }
 
   const registerGuest = async (): Promise<void> => {
-    const guestId = webview.getWebContentsId?.();
+    const guestId = readBrowserNodeWebContentsId(webview);
     if (
       typeof guestId !== "number" ||
       !Number.isFinite(guestId) ||
@@ -383,6 +404,7 @@ function attachBrowserNodeWebview(
         profileId: entry.context.profileId,
         sessionMode: entry.context.sessionMode,
         sessionPartition: entry.context.sessionPartition,
+        url: entry.context.initialUrl,
         webContentsId: guestId
       });
       entry.registeredGuestId = guestId;
@@ -485,7 +507,12 @@ function readFiniteNumber(value: unknown): number | null {
 function readBrowserNodeWebContentsId(
   webview: BrowserNodeWebviewTag | null
 ): number | null {
-  const webContentsId = webview?.getWebContentsId?.();
+  let webContentsId: number | undefined;
+  try {
+    webContentsId = webview?.getWebContentsId?.();
+  } catch {
+    return null;
+  }
   return typeof webContentsId === "number" && Number.isFinite(webContentsId)
     ? webContentsId
     : null;
@@ -497,12 +524,16 @@ function reportBrowserNodeWebviewDiagnostic(
   details: Record<string, unknown>,
   level: "debug" | "info" | "warn" | "error" = "info"
 ): void {
-  entry.context.feature.reportDiagnostic?.({
-    details: {
-      ...details,
-      nodeId: entry.context.nodeId
-    },
-    event,
-    level
-  });
+  try {
+    entry.context.feature.reportDiagnostic?.({
+      details: {
+        ...details,
+        nodeId: entry.context.nodeId
+      },
+      event,
+      level
+    });
+  } catch {
+    // Diagnostics must never affect BrowserNode lifecycle.
+  }
 }

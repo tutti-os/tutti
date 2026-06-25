@@ -16,10 +16,15 @@ export function createWorkspaceAppBrowserFeature(input: {
   runtimeApi: Pick<DesktopRuntimeApi, "logRendererDiagnostic">;
   workspaceId: string;
 }): BrowserNodeFeature {
-  const feature = createBrowserNodeFeature({
+  let feature: BrowserNodeFeature | null = null;
+  feature = createBrowserNodeFeature({
     hostApi: input.browserService.createFeatureHostApi({
       acceptsEvent: (event) =>
-        isWorkspaceAppBrowserEvent(event, input.getAppLaunchUrlForNodeId),
+        isWorkspaceAppBrowserEvent(event, {
+          getAppLaunchUrlForNodeId: input.getAppLaunchUrlForNodeId,
+          getCurrentUrlForNodeId: (nodeId) =>
+            feature?.runtimeStore.getNodeState(nodeId).url
+        }),
       source: "workspace_app",
       workspaceId: input.workspaceId
     }),
@@ -42,9 +47,12 @@ export function createWorkspaceAppBrowserFeature(input: {
 
 function isWorkspaceAppBrowserEvent(
   event: BrowserNodeEvent,
-  getAppLaunchUrlForNodeId:
-    | ((nodeId: string) => string | null | undefined)
-    | undefined
+  input: {
+    getAppLaunchUrlForNodeId?:
+      | ((nodeId: string) => string | null | undefined)
+      | undefined;
+    getCurrentUrlForNodeId: (nodeId: string) => string | null | undefined;
+  }
 ): boolean {
   const nodeId = event.type === "open-url" ? event.sourceNodeId : event.nodeId;
   const isWorkspaceAppNode =
@@ -55,11 +63,25 @@ function isWorkspaceAppBrowserEvent(
   }
   if (
     event.type === "open-url" &&
-    hasSameUrlOrigin(event.url, getAppLaunchUrlForNodeId?.(nodeId))
+    shouldKeepWorkspaceAppOpenUrlInsideApp({
+      currentUrl: input.getCurrentUrlForNodeId(nodeId),
+      event,
+      launchUrl: input.getAppLaunchUrlForNodeId?.(nodeId)
+    })
   ) {
     return false;
   }
   return true;
+}
+
+function shouldKeepWorkspaceAppOpenUrlInsideApp(input: {
+  currentUrl: string | null | undefined;
+  event: Extract<BrowserNodeEvent, { type: "open-url" }>;
+  launchUrl: string | null | undefined;
+}): boolean {
+  const sameAsLaunchUrl = hasSameUrlOrigin(input.event.url, input.launchUrl);
+  const sameAsCurrentUrl = hasSameUrlOrigin(input.event.url, input.currentUrl);
+  return sameAsLaunchUrl || sameAsCurrentUrl;
 }
 
 function hasSameUrlOrigin(

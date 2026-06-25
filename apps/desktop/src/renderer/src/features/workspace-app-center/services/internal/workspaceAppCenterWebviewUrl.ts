@@ -24,21 +24,26 @@ export function resolveWorkspaceAppWebviewUrl(input: {
   appCanUseExternalState: boolean;
   appLaunchUrl: string | null;
   externalNodeState: WorkspaceAppWebviewExternalState | null;
+  preferExternalState?: boolean;
 }): string {
   const activationUrl = normalizeWorkspaceAppUrl(
     readWorkspaceAppOpenPayload(input.activation)?.url
   );
   const appLaunchUrl = normalizeWorkspaceAppUrl(input.appLaunchUrl);
+  const externalNodeUrl = input.appCanUseExternalState
+    ? normalizeWorkspaceAppUrl(input.externalNodeState?.url)
+    : null;
+  if (input.preferExternalState === true && externalNodeUrl) {
+    return activationUrl && hasSameUrlOrigin(activationUrl, externalNodeUrl)
+      ? activationUrl
+      : externalNodeUrl;
+  }
   if (appLaunchUrl) {
     return activationUrl && hasSameUrlOrigin(activationUrl, appLaunchUrl)
       ? activationUrl
       : appLaunchUrl;
   }
-  return (
-    activationUrl ??
-    (input.appCanUseExternalState ? input.externalNodeState?.url : null) ??
-    "about:blank"
-  );
+  return activationUrl ?? externalNodeUrl ?? "about:blank";
 }
 
 function normalizeWorkspaceAppUrl(

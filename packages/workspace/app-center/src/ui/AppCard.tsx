@@ -252,7 +252,7 @@ export const AppCard = memo(function AppCard({
           <div className="flex items-center gap-1.5">
             <Button
               className={cn(
-                "min-w-[56px] shrink-0",
+                "min-w-[56px] max-w-[140px] shrink-0 overflow-hidden",
                 !canExecutePrimaryAction ? "cursor-default" : null,
                 canExecutePrimaryAction
                   ? app.primaryAction === "retry"
@@ -270,7 +270,9 @@ export const AppCard = memo(function AppCard({
                 executePrimaryAction();
               }}
             >
-              {canExecutePrimaryAction ? primaryActionLabel : busyStatusLabel}
+              <span className="block min-w-0 max-w-full truncate">
+                {canExecutePrimaryAction ? primaryActionLabel : busyStatusLabel}
+              </span>
             </Button>
             {showInstallProgressRing ? (
               <AppInstallProgressRing
