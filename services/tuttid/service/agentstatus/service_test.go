@@ -1115,7 +1115,10 @@ func TestServiceRunActionSerializesConcurrentExternalRegistryNPMInstalls(t *test
 		secondDone <- runResult{result: result, err: err}
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	// Give the second install attempt enough time to reach the install lock. The
+	// lock polls, so a short sleep can let the second goroutine start only after
+	// the first install has completed.
+	time.Sleep(2 * npmGlobalInstallLockPollInterval)
 	if got := npmInstallCalls.Load(); got != 1 {
 		t.Fatalf("npm install calls before releasing first install = %d, want 1", got)
 	}

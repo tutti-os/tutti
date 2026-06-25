@@ -8,6 +8,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   writeFile
@@ -86,8 +87,16 @@ async function packageBuiltin({ checkOnly = false } = {}) {
     await writePackageFiles(manifest);
     await validatePackageRoot(packageRoot);
     await mkdir(generatedDir, { recursive: true });
-    await rm(zipPath, { force: true });
-    await run("zip", ["-qry", zipPath, "."], { cwd: packageRoot });
+    const tempZipPath = path.join(
+      generatedDir,
+      `.${path.basename(zipPath)}.${process.pid}.${randomUUID()}.tmp`
+    );
+    try {
+      await run("zip", ["-qry", tempZipPath, "."], { cwd: packageRoot });
+      await rename(tempZipPath, zipPath);
+    } finally {
+      await rm(tempZipPath, { force: true });
+    }
     console.log(`Created ${zipPath}`);
     return zipPath;
   });

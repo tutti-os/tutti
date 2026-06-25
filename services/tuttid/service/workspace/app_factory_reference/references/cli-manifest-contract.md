@@ -68,6 +68,8 @@ Rules:
 
 When an app has pages, records, projects, files, runs, or other deep-linkable UI targets, expose a business-level open command instead of making callers build raw frontend routes.
 
+The business open command should be the complete integration surface. Callers, including agents and other apps, should call `open-project`, `open-file`, `open-run`, or a similar app-owned command and stop there. Do not make callers interpret a returned route or parameter payload and then decide whether to invoke daemon-owned `app open`; the app handler owns target resolution, route construction, and desktop activation.
+
 Good command paths:
 
 - `open-project` with `project-id`
@@ -111,7 +113,8 @@ Handler rules:
 
 - Validate `body.input` against the declared schema, then verify the target exists or can be resolved.
 - Map the validated business input to an app-owned origin-root route such as `/projects/<encoded-id>` or `/runs/<encoded-id>`. The route must start with `/` and must not be a full URL or protocol-relative URL.
-- Request desktop activation by invoking `$TUTTI_CLI` with an argv list equivalent to `--json app open --app-id "$TUTTI_APP_ID" --route "<route>"`. Do not build a shell string. Add `--param key=value` only for small stable view options, and `--state-json` only for non-essential view state; keep primary target identity in the route.
+- Request desktop activation from inside the handler by invoking `$TUTTI_CLI` with an argv list equivalent to `--json app open --app-id "$TUTTI_APP_ID" --route "<route>"`. `--json` requests machine-readable CLI output. Do not build a shell string. Add `--param key=value` only for small stable view options, and `--state-json` only for non-essential view state; keep primary target identity in the route.
+- If `$TUTTI_CLI` is missing or daemon-owned `app open` fails, return a concise JSON status such as `{"openRequested":false,"route":"/projects/123","projectId":"123","reason":"tutti_cli_unavailable"}` instead of handing the route back for the caller to finish. Normal browser or dev environments should stay usable without desktop activation.
 - Return a concise JSON output such as `{"openRequested":true,"route":"/projects/123","projectId":"123"}`. Treat the command as an activation request, not proof that the user has seen the page.
 - Do not require callers to pass `app-id`; the running app should use `$TUTTI_APP_ID`.
 - Do not call the app's own open CLI command recursively. Use the daemon-owned `app open` command only to activate the webview after resolving the target.

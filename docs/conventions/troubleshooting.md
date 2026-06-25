@@ -841,3 +841,34 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 - References:
   [main.tsx](../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)
+
+### Browser Node focus pings miss iframe-hosted editors
+
+- Symptom:
+  Clicking or typing inside a workspace app selects text or edits content, but
+  the owning Browser Node does not become the active node. This commonly shows
+  up in rich document editors that render the editable surface inside a
+  same-origin `iframe` or `srcdoc` frame.
+- Quick checks:
+  Inspect whether the app portals or mounts its editor into an iframe document.
+  If the top-level workspace app preload listens on `window.document` only, the
+  host will not receive pointer, focus, or keyboard pings from that child frame.
+- Root cause:
+  DOM events do not bubble from iframe documents to the parent document. Electron
+  webview preloads also do not run in subframes unless the host enables
+  `nodeIntegrationInSubFrames`, so iframe-hosted editors can interact normally
+  while the Browser Node focus bridge stays silent.
+- Fix:
+  Enable subframe preload execution only for host-controlled Browser Node or
+  workspace app guest preloads. Keep privileged workspace app bridges, such as
+  `tuttiExternal`, and behavior-changing guest logic, such as `_blank` link
+  interception, main-frame-only via `process.isMainFrame`. Install only passive
+  interaction forwarding in subframes.
+- Validation:
+  Run Browser Node and desktop preload tests, desktop typecheck, and the desktop
+  build. For workspace app preloads, inspect the built preload output so the
+  guest files remain self-contained.
+- References:
+  [webviewSecurity.ts](../../packages/browser/workbench-node/src/electron-main/webviewSecurity.ts)
+  [workspaceApp.ts](../../apps/desktop/src/preload/entries/workspaceApp.ts)
+  [workspaceAppInteractionForwarding.ts](../../apps/desktop/src/preload/entries/workspaceAppInteractionForwarding.ts)

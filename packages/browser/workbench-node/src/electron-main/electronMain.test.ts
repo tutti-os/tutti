@@ -43,6 +43,7 @@ test("enforces Browser Node webview security policy", () => {
   assert.equal(params.src, "https://example.com/");
   assert.equal(webPreferences.contextIsolation, true);
   assert.equal(webPreferences.nodeIntegration, false);
+  assert.equal(webPreferences.nodeIntegrationInSubFrames, false);
   assert.equal(webPreferences.preload, undefined);
   assert.equal(webPreferences.sandbox, true);
   assert.equal(webPreferences.webSecurity, true);
@@ -108,6 +109,7 @@ test("applies host-controlled Browser Node guest preload after validation", () =
   );
 
   assert.equal(resolvedSrc, "https://example.com/");
+  assert.equal(webPreferences.nodeIntegrationInSubFrames, true);
   assert.equal(webPreferences.preload, "/tmp/host-browser-guest-preload.js");
 
   let invalidResolverCalls = 0;
