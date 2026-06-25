@@ -6,21 +6,26 @@ const browserGuestDiagnosticChannel = "browser:guestDiagnostic";
 const browserGuestInteractionHostChannel = "browser-node:guest-interaction";
 const browserGuestOpenUrlChannel = "browser:guestOpenUrl";
 
-installBrowserNodeGuestLinkInterception({
-  reportDiagnostic(diagnostic) {
-    ipcRenderer.send(browserGuestDiagnosticChannel, diagnostic);
-  },
-  scope: globalThis.window,
-  sendOpenUrl(url) {
-    ipcRenderer.send(browserGuestOpenUrlChannel, { url });
-  }
-});
 installBrowserNodeGuestInteractionForwarding({
   scope: globalThis.window,
   sendToHost(channel, payload) {
     ipcRenderer.sendToHost(channel, payload);
   }
 });
+
+// Subframes only need passive interaction pings; keep click behavior changes in
+// the main frame so embedded app frames own their own link handling.
+if (process.isMainFrame) {
+  installBrowserNodeGuestLinkInterception({
+    reportDiagnostic(diagnostic) {
+      ipcRenderer.send(browserGuestDiagnosticChannel, diagnostic);
+    },
+    scope: globalThis.window,
+    sendOpenUrl(url) {
+      ipcRenderer.send(browserGuestOpenUrlChannel, { url });
+    }
+  });
+}
 
 type BrowserNodeGuestInteractionType = "focusin" | "keydown" | "pointerdown";
 

@@ -107,6 +107,7 @@ export function enforceBrowserWebviewSecurity({
   webPreferences.contextIsolation = true;
   webPreferences.javascript = true;
   webPreferences.nodeIntegration = false;
+  webPreferences.nodeIntegrationInSubFrames = false;
   webPreferences.plugins = false;
   webPreferences.sandbox = true;
   webPreferences.webSecurity = true;
@@ -140,6 +141,9 @@ export function enforceBrowserWebviewSecurity({
   const resolvedPreload = typeof preload === "string" ? preload.trim() : "";
   if (resolvedPreload.length > 0) {
     webPreferences.preload = resolvedPreload;
+    // Iframe-hosted editors still need the guest preload to report interactions
+    // so the host can focus the owning Browser Node.
+    webPreferences.nodeIntegrationInSubFrames = true;
   }
 
   return { allowed: true, reason: null };
