@@ -61,7 +61,7 @@ test("launchpad top bar remains draggable without stealing controls", () => {
 test("launchpad search focus stays neutral", () => {
   assert.match(
     css,
-    /\.workspace-launchpad-search__input:focus,\s*\.workspace-launchpad-search__input:focus-visible\s*{[^}]*border-color:\s*var\(--border-1\);[^}]*box-shadow:\s*none;/s
+    /\.workspace-launchpad-search__input:focus,\s*\.workspace-launchpad-search__input:focus-visible\s*{[^}]*border-color:\s*color-mix\(in srgb,\s*var\(--text-primary\)\s*18%,\s*var\(--border-1\)\);[^}]*box-shadow:\s*0 0 0 2px\s*color-mix\(in srgb,\s*var\(--text-primary\)\s*10%,\s*transparent\);/s
   );
   assert.doesNotMatch(
     css,
