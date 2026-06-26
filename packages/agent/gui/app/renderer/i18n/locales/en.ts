@@ -538,6 +538,7 @@ export const en = {
       planImplementationSkip: "Stay in Plan Mode",
       noRunningResponse: "No running response to stop.",
       copyMessage: "Copy message",
+      copyImage: "Copy image",
       messageCopied: "Copied",
       promptTipsPrefix: "Tips: ",
       reviewPicker: {

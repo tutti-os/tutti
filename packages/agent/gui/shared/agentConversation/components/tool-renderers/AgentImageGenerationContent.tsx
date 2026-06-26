@@ -1,4 +1,5 @@
 import { useEffect, useState, type JSX } from "react";
+import { ConversationImageContextMenu } from "../ConversationImageContextMenu";
 import { ZoomableImage } from "../../../../app/renderer/components/ZoomableImage";
 import { cn } from "../../../../app/renderer/lib/utils";
 import { resolveWorkspaceImageMimeType } from "@tutti-os/workspace-file-manager/services";
@@ -116,14 +117,16 @@ function ImageGenerationPreview({
 
   return (
     <ToolSection title={translate("agentHost.agentTool.details.output")}>
-      <ZoomableImage
-        alt={translate("agentHost.agentTool.details.imagePreviewAlt")}
-        className={cn(
-          "block max-h-[360px] max-w-full rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] object-contain"
-        )}
-        src={src}
-        wrapElement="span"
-      />
+      <ConversationImageContextMenu src={src}>
+        <ZoomableImage
+          alt={translate("agentHost.agentTool.details.imagePreviewAlt")}
+          className={cn(
+            "block max-h-[360px] max-w-full rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] object-contain"
+          )}
+          src={src}
+          wrapElement="span"
+        />
+      </ConversationImageContextMenu>
     </ToolSection>
   );
 }
