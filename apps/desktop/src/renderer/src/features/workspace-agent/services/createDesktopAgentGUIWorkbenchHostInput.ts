@@ -35,6 +35,7 @@ import {
 } from "../../workspace-file-manager/services/desktopWorkspaceFileLocations.ts";
 import { createDesktopAgentActivityRuntime } from "./createDesktopAgentActivityRuntime.ts";
 import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
+import { createAgentChatReadyTracker } from "./internal/agentChatReadyAnalytics.ts";
 import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
@@ -46,6 +47,7 @@ export interface DesktopAgentGUIWorkbenchHostInput {
   contextMentionProviders: NonNullable<
     AgentGUIProps["contextMentionProviders"]
   >;
+  trackAgentProviderChatReady: (input: { provider: string }) => Promise<void>;
   trackWorkspaceFileReferences: (input: {
     provider?: string | null;
     references: readonly WorkspaceFileReference[];
@@ -134,6 +136,10 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       reporterNow,
       reporterService
     });
+  const chatReadyTracker = createAgentChatReadyTracker({
+    reporterNow,
+    reporterService
+  });
   const workspaceFileReferenceAdapter =
     createDesktopWorkspaceFileReferenceAdapter({
       hostFilesApi,
@@ -189,6 +195,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
         workspaceId
       })
       .map(richTextTriggerProviderToContextMentionProvider),
+    trackAgentProviderChatReady: (input) => chatReadyTracker.track(input),
     trackWorkspaceFileReferences: (input) =>
       workspaceFileReferenceTracker.track(input),
     workspaceFileReferenceAdapter,

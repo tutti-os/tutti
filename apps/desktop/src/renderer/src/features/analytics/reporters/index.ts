@@ -47,6 +47,10 @@ export { AgentProviderLoginInitiatedReporter } from "./agent-provider-login-init
 export type { AgentProviderLoginInitiatedParams } from "./agent-provider-login-initiated";
 export { AgentProviderLoginResultReporter } from "./agent-provider-login-result";
 export type { AgentProviderLoginResultParams } from "./agent-provider-login-result";
+export { AgentProviderReadyReporter } from "./agent-provider-ready";
+export type { AgentProviderReadyParams } from "./agent-provider-ready";
+export { AgentChatReadyReporter } from "./agent-chat-ready";
+export type { AgentChatReadyParams } from "./agent-chat-ready";
 export { AgentConversationPinnedReporter } from "./agent-conversation-pinned";
 export type { AgentConversationPinnedParams } from "./agent-conversation-pinned";
 export { AgentConversationUnpinnedReporter } from "./agent-conversation-unpinned";

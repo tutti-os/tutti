@@ -16,6 +16,7 @@ import {
 } from "../../../agentActivityRuntime";
 import { useAgentHostApi } from "../../../agentActivityHost";
 import {
+  loadAllAgentSessionMessages,
   resolveAgentActivityCapability,
   resolveAgentActivityUsage,
   selectSessionDisplayStatuses
@@ -4274,15 +4275,28 @@ export function useAgentGUINodeController({
         setIsLoadingMessages(true);
       }
       try {
-        const page = await agentActivityRuntime.listSessionMessages({
-          workspaceId,
-          agentSessionId: normalizedAgentSessionId
-        });
-        if (
-          !isMountedRef.current ||
-          activeConversationIdRef.current !== normalizedAgentSessionId ||
-          selectedConversationMessageLoadSeqRef.current !== requestId
-        ) {
+        // Walk the entire transcript. The daemon caps each response and signals
+        // `hasMore`; fetching only the first page silently truncated long
+        // conversations to their oldest ~100 messages. `loadAllAgentSessionMessages`
+        // follows the version cursor to completion and bails if the user has
+        // navigated away mid-load.
+        const { messages: pagedMessages, aborted } =
+          await loadAllAgentSessionMessages<WorkspaceAgentActivityMessage>({
+            shouldAbort: () =>
+              !isMountedRef.current ||
+              activeConversationIdRef.current !== normalizedAgentSessionId ||
+              selectedConversationMessageLoadSeqRef.current !== requestId,
+            listPage: (afterVersion) =>
+              agentActivityRuntime.listSessionMessages({
+                workspaceId,
+                agentSessionId: normalizedAgentSessionId,
+                afterVersion
+              }) as Promise<{
+                messages: WorkspaceAgentActivityMessage[];
+                hasMore?: boolean;
+              }>
+          });
+        if (aborted) {
           return;
         }
         selectedConversationInitialMessagesLoadedIdsRef.current.add(
@@ -4302,7 +4316,7 @@ export function useAgentGUINodeController({
             ?.overlayMessages ?? [];
         const localMessages = mergeWorkspaceAgentMessages(
           currentOverlayMessages,
-          page.messages as WorkspaceAgentActivityMessage[]
+          pagedMessages
         );
         const overlayMessages = selectWorkspaceAgentActivityOverlayMessages({
           durableMessages,

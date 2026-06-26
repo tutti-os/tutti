@@ -120,11 +120,101 @@ test("runAction tracks provider login initiation and successful status result", 
     },
     {
       clientTS: 1749124800000,
+      name: "agent.provider_ready",
+      params: {
+        became_ready_via: "login",
+        previous_status: "auth_required",
+        provider: "codex"
+      }
+    },
+    {
+      clientTS: 1749124800000,
       name: "agent.provider_login_result",
       params: {
         error_reason: null,
         provider: "codex",
         success: true
+      }
+    }
+  ]);
+});
+
+test("requestStatuses reports an already-ready provider as an activation signal", async () => {
+  const events: ReporterEventInput[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready"
+          })
+        ])
+      ]
+    }),
+    reporterNow: () => 1749124800000,
+    reporterService: {
+      async trackEvents(nextEvents) {
+        events.push(...nextEvents);
+      }
+    },
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await flushAsyncWork();
+
+  assert.deepEqual(events, [
+    {
+      clientTS: 1749124800000,
+      name: "agent.provider_ready",
+      params: {
+        became_ready_via: "already_ready",
+        previous_status: "absent",
+        provider: "codex"
+      }
+    }
+  ]);
+});
+
+test("requestStatuses does not re-report a provider that was already ready", async () => {
+  const events: ReporterEventInput[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready" })
+        ]),
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready" })
+        ])
+      ]
+    }),
+    reporterNow: () => 1749124800000,
+    reporterService: {
+      async trackEvents(nextEvents) {
+        events.push(...nextEvents);
+      }
+    },
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await service.refresh();
+  await flushAsyncWork();
+
+  assert.deepEqual(events, [
+    {
+      clientTS: 1749124800000,
+      name: "agent.provider_ready",
+      params: {
+        became_ready_via: "already_ready",
+        previous_status: "absent",
+        provider: "codex"
       }
     }
   ]);

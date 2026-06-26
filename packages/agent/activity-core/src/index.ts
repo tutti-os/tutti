@@ -20,6 +20,12 @@ export {
   mergeAgentActivityMessages
 } from "./merge.ts";
 export {
+  loadAllAgentSessionMessages,
+  type AgentActivityMessagePageLike,
+  type LoadAllAgentSessionMessagesInput,
+  type LoadAllAgentSessionMessagesResult
+} from "./pagination.ts";
+export {
   normalizeAgentActivityDisplayStatus,
   selectNeedsAttentionCount,
   selectNeedsAttentionItems,

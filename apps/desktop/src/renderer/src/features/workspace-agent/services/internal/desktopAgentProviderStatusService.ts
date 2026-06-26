@@ -7,6 +7,7 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import { AgentProviderLoginInitiatedReporter } from "../../../analytics/reporters/agent-provider-login-initiated/agentProviderLoginInitiatedReporter.ts";
 import { AgentProviderLoginResultReporter } from "../../../analytics/reporters/agent-provider-login-result/agentProviderLoginResultReporter.ts";
+import { AgentProviderReadyReporter } from "../../../analytics/reporters/agent-provider-ready/agentProviderReadyReporter.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type {
   AgentProviderStatusActionContext,
@@ -152,18 +153,27 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     )
       .then((response) => {
         if (this.requestSequence === requestId) {
+          const previousStatuses = this.snapshot.statuses;
+          const reconciledStatuses = this.reconcileProviderStatuses(
+            previousStatuses,
+            response.providers,
+            input.providers
+          );
           this.setSnapshot({
             capturedAt: response.capturedAt,
             defaultProvider: response.defaultProvider,
             error: null,
             isLoading: false,
             pendingActions: this.snapshot.pendingActions,
-            statuses: this.reconcileProviderStatuses(
-              this.snapshot.statuses,
-              response.providers,
-              input.providers
-            )
+            statuses: reconciledStatuses
           });
+          // Report provider_ready before reportCompletedLoginResults so the
+          // pendingLoginResults set is still populated when we classify how a
+          // provider became ready (login vs. already-ready vs. external).
+          this.reportProviderReadyTransitions(
+            previousStatuses,
+            reconciledStatuses
+          );
           void this.reportCompletedLoginResults(response.providers);
         }
         return response;
@@ -521,6 +531,57 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       this.pendingLoginResults.delete(status.provider);
       this.stopLoginStatusPolling(status.provider);
       await this.reportLoginResult(status.provider, true, null);
+    }
+  }
+
+  private reportProviderReadyTransitions(
+    previousStatuses: readonly AgentProviderStatus[],
+    nextStatuses: readonly AgentProviderStatus[]
+  ): void {
+    const previousByProvider = new Map(
+      previousStatuses.map((status) => [status.provider, status])
+    );
+    for (const status of nextStatuses) {
+      if (status.availability.status !== "ready") {
+        continue;
+      }
+      const previous = previousByProvider.get(status.provider);
+      // Only a transition into "ready" is an activation signal. A provider that
+      // was already ready in the prior snapshot re-reports nothing, so the event
+      // naturally de-dupes within a session without extra bookkeeping.
+      if (previous?.availability.status === "ready") {
+        continue;
+      }
+      const becameReadyVia = this.pendingLoginResults.has(status.provider)
+        ? "login"
+        : previous
+          ? "external"
+          : "already_ready";
+      void this.reportProviderReady(
+        status.provider,
+        becameReadyVia,
+        previous?.availability.status ?? "absent"
+      );
+    }
+  }
+
+  private async reportProviderReady(
+    provider: WorkspaceAgentProvider,
+    becameReadyVia: string,
+    previousStatus: string
+  ): Promise<void> {
+    try {
+      await new AgentProviderReadyReporter(
+        { becameReadyVia, previousStatus, provider },
+        {
+          now: this.dependencies.reporterNow,
+          reporterService: createOptionalReporterService(
+            this.dependencies.reporterService
+          )
+        }
+      ).report();
+    } catch {
+      // Analytics must not block agent provider actions.
     }
   }
 

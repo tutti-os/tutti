@@ -369,6 +369,42 @@ test("desktop agent GUI workbench host input tracks workspace file references", 
   ]);
 });
 
+test("desktop agent GUI workbench host input tracks agent provider chat ready", async () => {
+  const reporterCalls: ReporterEventInput[][] = [];
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    agentHostApi: {
+      meta: { workspaceId }
+    } as unknown as AgentHostInputApi,
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    reporterNow: () => 1749124800000,
+    reporterService: {
+      async trackEvents(events) {
+        reporterCalls.push(events);
+      }
+    },
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
+    workspaceId
+  });
+
+  await hostInput.trackAgentProviderChatReady({ provider: "codex" });
+
+  assert.deepEqual(reporterCalls, [
+    [
+      {
+        clientTS: 1749124800000,
+        name: "agent.chat_ready",
+        params: {
+          provider: "codex"
+        }
+      }
+    ]
+  ]);
+});
+
 test("desktop agent GUI workbench host input tracks runtime message stops", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({

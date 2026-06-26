@@ -1,3 +1,4 @@
+import { loadAllAgentSessionMessages } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityMessage } from "../shared/workspaceAgentActivityTypes";
 
 const DEFAULT_WORKSPACE_AGENT_MESSAGES_LIMIT = 20;
@@ -35,42 +36,29 @@ export async function loadWorkspaceAgentSessionMessagePages({
     payload: WorkspaceAgentActivityListSessionMessagesInput
   ) => Promise<WorkspaceAgentActivitySessionMessagesPage>;
 }): Promise<WorkspaceAgentActivityMessage[]> {
-  const messages: WorkspaceAgentActivityMessage[] = [];
   const normalizedWorkspaceId = workspaceId?.trim() || "";
-  let cursor = afterVersion;
-
-  for (let page = 0; page < maxPages; page += 1) {
-    const response = await listSessionMessages({
-      workspaceId: normalizedWorkspaceId,
-      agentSessionId,
-      afterVersion: cursor,
-      limit
+  const { messages } =
+    await loadAllAgentSessionMessages<WorkspaceAgentActivityMessage>({
+      afterVersion,
+      maxPages,
+      listPage: async (cursor) => {
+        const response = await listSessionMessages({
+          workspaceId: normalizedWorkspaceId,
+          agentSessionId,
+          afterVersion: cursor,
+          limit
+        });
+        return {
+          messages: response.messages,
+          // Preserve the server's signal, falling back to a full-page heuristic
+          // for sources that omit `hasMore`.
+          hasMore:
+            typeof response.hasMore === "boolean"
+              ? response.hasMore
+              : response.messages.length >= limit
+        };
+      }
     });
-    messages.push(...response.messages);
-
-    const returnedMaxVersion = response.messages.reduce(
-      (max, message) => Math.max(max, message.version ?? 0),
-      cursor
-    );
-    const nextCursor =
-      Number.isFinite(response.latestVersion) &&
-      response.latestVersion !== undefined
-        ? Math.max(0, Math.trunc(response.latestVersion))
-        : returnedMaxVersion;
-    const cursorAdvanced = nextCursor > cursor;
-    const hasMore =
-      typeof response.hasMore === "boolean"
-        ? response.hasMore
-        : response.messages.length >= limit;
-    const shouldContinue = hasMore && cursorAdvanced;
-    if (cursorAdvanced) {
-      cursor = nextCursor;
-    }
-    if (!shouldContinue) {
-      break;
-    }
-  }
-
   return messages;
 }
 

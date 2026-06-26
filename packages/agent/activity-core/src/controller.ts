@@ -5,6 +5,7 @@ import {
   latestAgentActivityMessageVersion,
   mergeAgentActivityMessages
 } from "./merge.ts";
+import { loadAllAgentSessionMessages } from "./pagination.ts";
 import type {
   AgentActivityComposerOptions,
   AgentActivityLoadComposerOptionsInput,
@@ -387,21 +388,27 @@ export function createAgentActivityController({
     }
     const cachedMessages = snapshot.sessionMessagesById[agentSessionId] ?? [];
     const afterVersion = latestAgentActivityMessageVersion(cachedMessages);
-    const sync = adapter
-      .listSessionMessages({
-        workspaceId,
-        agentSessionId,
-        afterVersion,
-        signal
-      })
-      .then((response) => {
-        if (signal?.aborted) {
-          return;
-        }
+    // Walk the full history, not just the first page: the daemon caps each
+    // response and reports `hasMore`, so a single fetch left long transcripts
+    // truncated to their oldest ~100 messages. Each page merges into the
+    // snapshot as it arrives.
+    const sync = loadAllAgentSessionMessages({
+      afterVersion,
+      shouldAbort: () => signal?.aborted ?? false,
+      listPage: (cursor) =>
+        adapter.listSessionMessages({
+          workspaceId,
+          agentSessionId,
+          afterVersion: cursor,
+          signal
+        }),
+      onPage: (messages) => {
         updateSnapshot((current) =>
-          mergeSnapshotMessages(current, agentSessionId, response.messages)
+          mergeSnapshotMessages(current, agentSessionId, messages)
         );
-      })
+      }
+    })
+      .then(() => {})
       .catch(() => {})
       .finally(() => {
         if (activeMessageSyncs.get(agentSessionId) === sync) {

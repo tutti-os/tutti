@@ -29,6 +29,8 @@ const expectedAnalyticsEvents = [
   "agent.workspace_file_referenced",
   "agent.provider_login_initiated",
   "agent.provider_login_result",
+  "agent.provider_ready",
+  "agent.chat_ready",
   "agent.conversation_pinned",
   "agent.conversation_unpinned",
   "agent.settings.model_changed",

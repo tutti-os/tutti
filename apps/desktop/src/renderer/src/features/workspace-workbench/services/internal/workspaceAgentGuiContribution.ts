@@ -134,6 +134,8 @@ export function createWorkspaceAgentGuiContribution(input: {
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
       runtimeApi: input.runtimeApi,
+      trackAgentProviderChatReady:
+        agentGUIWorkbenchHostInput.trackAgentProviderChatReady,
       trackWorkspaceFileReferences:
         agentGUIWorkbenchHostInput.trackWorkspaceFileReferences,
       workspaceFileReferenceAdapter:

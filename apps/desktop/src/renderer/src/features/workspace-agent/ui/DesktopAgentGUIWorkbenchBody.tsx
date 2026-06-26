@@ -102,6 +102,7 @@ interface DesktopAgentGUIWorkbenchBodyProps {
     AgentGUIProps["contextMentionProviders"]
   >;
   runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  trackAgentProviderChatReady?: (input: { provider: string }) => Promise<void>;
   trackWorkspaceFileReferences?: AgentGUIProps["onWorkspaceFileReferencesAdded"];
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspaceFileReferenceAdapter"]
@@ -158,6 +159,7 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.previewMode === next.previewMode &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.runtimeApi === next.runtimeApi &&
+    previous.trackAgentProviderChatReady === next.trackAgentProviderChatReady &&
     previous.trackWorkspaceFileReferences ===
       next.trackWorkspaceFileReferences &&
     previous.workspaceFileReferenceAdapter ===
@@ -229,6 +231,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   previewMode = false,
   contextMentionProviders,
   runtimeApi,
+  trackAgentProviderChatReady,
   trackWorkspaceFileReferences,
   workspaceFileReferenceAdapter,
   onRequestGitBranches,
@@ -307,6 +310,34 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     { ensureLoaded: !previewMode }
   );
   const provider = desktopAgentGUIProviderFromInstanceId(context.instanceId);
+  // Activation funnel stage ③ "saw a chattable surface": the agent workbench
+  // body is mounted (not a dock preview) and the active provider is ready, so
+  // the composer is interactive. reportProviderReady (stage ②) can fire while
+  // no agent surface is open; this fires only when the user is actually here.
+  const isActiveAgentProviderChatReady =
+    !previewMode &&
+    agentProviderStatusService?.getStatus(provider)?.availability.status ===
+      "ready";
+  const chatReadyReportedProvidersRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (
+      previewMode ||
+      !isActiveAgentProviderChatReady ||
+      !trackAgentProviderChatReady
+    ) {
+      return;
+    }
+    if (chatReadyReportedProvidersRef.current.has(provider)) {
+      return;
+    }
+    chatReadyReportedProvidersRef.current.add(provider);
+    void trackAgentProviderChatReady({ provider });
+  }, [
+    isActiveAgentProviderChatReady,
+    previewMode,
+    provider,
+    trackAgentProviderChatReady
+  ]);
   useEffect(() => {
     if (previewMode || !computerUseApi) {
       setComputerUseStatus(null);
