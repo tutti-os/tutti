@@ -105,6 +105,39 @@ describe("agentGuiConversationModel", () => {
     ).toBeNull();
   });
 
+  it("keeps generated-looking cwd values grouped under real parent projects without host no-project context", () => {
+    expect(
+      resolveAgentGUIConversationProject(
+        "/repo/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
+        [userProject("repo", "/repo", "Repo")]
+      )
+    ).toEqual({
+      id: "repo",
+      path: "/repo",
+      label: "Repo"
+    });
+  });
+
+  it("keeps an explicit project whose path looks like a generated no-project cwd", () => {
+    expect(
+      resolveAgentGUIConversationProject(
+        "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
+        [
+          userProject("home", "/Users/local", "Home"),
+          userProject(
+            "odd",
+            "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
+            "Odd project"
+          )
+        ]
+      )
+    ).toEqual({
+      id: "odd",
+      path: "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
+      label: "Odd project"
+    });
+  });
+
   it("builds no-project runtime sessions without parent project assignment", () => {
     const noProjectPath =
       "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444";

@@ -104,6 +104,10 @@ function resolveAgentGUIConversationProjectFromIndex(
   projectByNormalizedPath: ReadonlyMap<string, AgentGUIConversationUserProject>,
   options: AgentGUIConversationProjectResolutionOptions
 ): AgentGUIConversationProjectSummary | null {
+  const exactProject = projectByNormalizedPath.get(normalizedCwd);
+  if (exactProject) {
+    return agentGUIConversationProjectSummaryFromProject(exactProject);
+  }
   if (options.isNoProjectPath?.({ path: normalizedCwd })) {
     return null;
   }
@@ -114,6 +118,12 @@ function resolveAgentGUIConversationProjectFromIndex(
   if (!matchedProject) {
     return null;
   }
+  return agentGUIConversationProjectSummaryFromProject(matchedProject);
+}
+
+function agentGUIConversationProjectSummaryFromProject(
+  matchedProject: AgentGUIConversationUserProject
+): AgentGUIConversationProjectSummary {
   const summary: AgentGUIConversationProjectSummary = {
     id: matchedProject.id,
     path: matchedProject.path,

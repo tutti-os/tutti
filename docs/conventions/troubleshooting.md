@@ -366,6 +366,41 @@ delimited by ---`, and the composer skill picker may show partial or
   [desktopRichTextAtService.ts](../../apps/desktop/src/renderer/src/features/rich-text-at/services/internal/desktopRichTextAtService.ts)
   [desktopAgentProviderStatusService.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
 
+### Agent GUI no-project sessions appear under a user project
+
+- Symptom:
+  A conversation started with the "No project" selection appears in the Agent
+  GUI rail under a parent user-project group such as the user's home directory.
+- Quick checks:
+  Inspect the session `cwd` from the activity snapshot. Generated no-project
+  sessions should resolve as no-project before `cwd` is matched against parent
+  user-project paths. Check both the in-memory `rememberNoProjectPath` path and
+  the restart fallback that recognizes `Documents/tutti/session-<uuid>`.
+- Root cause:
+  Conversation project grouping is a view-model join of `cwd x userProjects`.
+  If a generated no-project cwd is not recognized before prefix/parent project
+  matching, the longest-parent project match can assign the session to a broad
+  project such as `$HOME`. Keep generated-path recognition in the host
+  `isNoProjectPath` callback because it has the user home-directory context;
+  a package-level suffix check would misclassify real projects that contain a
+  `Documents/tutti/session-<uuid>` subdirectory.
+- Fix:
+  Treat exact user-project path matches as explicit user intent, then call the
+  host no-project resolver before parent project matching. The desktop resolver
+  should recognize generated `$HOME/Documents/tutti/session-<uuid>` cwd values
+  while allowing explicit registered projects to override them. Keep the project
+  field derived in the Agent GUI view-model rather than writing it back into the
+  conversation store.
+- Validation:
+  Run
+  `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
+  `node --import ./test/register-asset-stub.mjs --test --experimental-strip-types ./src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.test.ts`
+  from `apps/desktop`, then run `pnpm check:changed`.
+- References:
+  [desktopWorkspaceUserProjectService.ts](../../apps/desktop/src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.ts)
+  [agentGuiConversationProjectResolver.ts](../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationProjectResolver.ts)
+  [agentGuiConversationListStore.ts](../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
+
 ### Electron main/preload crashes on a workspace package `.ts` export
 
 - Symptom:
