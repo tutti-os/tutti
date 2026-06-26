@@ -222,9 +222,10 @@ export function AgentEnvPanel({
   const snapshot = useStatusSnapshot(agentProviderStatusService);
   const [copied, setCopied] = useState(false);
   const [logExpanded, setLogExpanded] = useState(false);
-  // "上报异常" flow: idle → (no prior consent) confirming → reported.
+  // "上报异常" flow. The consent prompt pops up on its own when an anomaly is
+  // detected; "dismissed" remembers a decline so it doesn't re-pop this open.
   const [reportState, setReportState] = useState<
-    "idle" | "confirming" | "reported"
+    "idle" | "confirming" | "reported" | "dismissed"
   >("idle");
   // Step-by-step reveal cursor: walks the stage track on open so each stage
   // visibly checks off one at a time instead of all flashing complete at once.
@@ -534,6 +535,28 @@ export function AgentEnvPanel({
   const blockingStageId: AgentSetupStageId | null =
     blockingStage && revealIndex >= blockingIndex ? blockingStage.id : null;
 
+  // An anomaly is a real failure (a stage in error — version/adapter/network —
+  // or a failed action), as opposed to the normal "not set up yet" flow. When
+  // one is detected we proactively offer to report it.
+  const hasAnomaly =
+    stages.some((entry) => entry.status === "error") ||
+    Boolean(activeAction?.error);
+
+  // Proactively surface the report flow on an anomaly: ask for consent inline
+  // (first time), or — if the user already agreed before — send it once. Sits
+  // idle again only after the user acts (agree / decline / report).
+  useEffect(() => {
+    if (!open || !hasAnomaly || reportState !== "idle") {
+      return;
+    }
+    if (agentProviderStatusService.getDiagnosticsConsent()) {
+      void agentProviderStatusService.reportEnvIssue(provider);
+      setReportState("reported");
+    } else {
+      setReportState("confirming");
+    }
+  }, [open, hasAnomaly, reportState, agentProviderStatusService, provider]);
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="flex max-h-[min(640px,calc(100vh-32px))] flex-col gap-0 overflow-hidden bg-[var(--background-fronted)] p-0 sm:max-w-[560px]">
@@ -591,11 +614,15 @@ export function AgentEnvPanel({
           )}
         </div>
 
-        {/* Consent ask for "上报异常": shown only the first time, before any
-            fuller diagnostics are sent. Once agreed it is remembered. */}
+        {/* Consent ask for the diagnostic report. Pops up on its own when an
+            anomaly is detected (or via the manual button); shown only before any
+            fuller diagnostics are sent, and remembered once agreed. */}
         {reportState === "confirming" ? (
           <div className="shrink-0 border-t border-[var(--border-1)] bg-[var(--transparency-block)] px-5 py-3">
-            <p className="m-0 text-[12px] text-[var(--text-secondary)]">
+            <p className="m-0 text-[13px] font-medium text-[var(--text-primary)]">
+              {t("workspace.agentEnv.reportConsentTitle")}
+            </p>
+            <p className="m-0 mt-1 text-[12px] text-[var(--text-secondary)]">
               {t("workspace.agentEnv.reportConsentBody")}
             </p>
             <div className="mt-2 flex justify-end gap-2">
@@ -603,7 +630,7 @@ export function AgentEnvPanel({
                 size="sm"
                 type="button"
                 variant="ghost"
-                onClick={() => setReportState("idle")}
+                onClick={() => setReportState("dismissed")}
               >
                 {t("workspace.agentEnv.reportConsentCancel")}
               </Button>
@@ -629,17 +656,19 @@ export function AgentEnvPanel({
               <RefreshIcon className="size-4" />
               {t("workspace.agentEnv.actionDetect")}
             </Button>
-            <Button
-              size="dialog"
-              type="button"
-              variant="ghost"
-              disabled={reportState === "reported"}
-              onClick={handleReportIssue}
-            >
-              {reportState === "reported"
-                ? t("workspace.agentEnv.reportDone")
-                : t("workspace.agentEnv.actionReportIssue")}
-            </Button>
+            {hasAnomaly ? (
+              <Button
+                size="dialog"
+                type="button"
+                variant="ghost"
+                disabled={reportState === "reported"}
+                onClick={handleReportIssue}
+              >
+                {reportState === "reported"
+                  ? t("workspace.agentEnv.reportDone")
+                  : t("workspace.agentEnv.actionReportIssue")}
+              </Button>
+            ) : null}
           </div>
           <Button
             size="dialog"

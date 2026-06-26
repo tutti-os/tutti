@@ -210,6 +210,7 @@ export const en = {
       stageDoLogin: "Sign in",
       stageDoRedetect: "Re-check",
       actionReportIssue: "Report problem",
+      reportConsentTitle: "An environment problem was detected",
       reportConsentBody:
         "This sends fuller diagnostics (CLI paths, endpoints, proxy address, error details) to help us debug. Send it?",
       reportConsentAgree: "Agree & send",
