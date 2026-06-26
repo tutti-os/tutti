@@ -2090,10 +2090,12 @@ describe("useAgentGUINodeController", () => {
     const listSessionTimeline = vi.fn(
       async ({
         agentSessionId,
+        afterVersion,
         beforeVersion,
         order
       }: {
         agentSessionId: string;
+        afterVersion?: number;
         beforeVersion?: number;
         order?: string;
       }) => {
@@ -2105,6 +2107,22 @@ describe("useAgentGUINodeController", () => {
             timelineItems: allTimelineItems.slice(160).reverse(),
             latestVersion: 260,
             hasMore: true
+          };
+        }
+        if (afterVersion === 260) {
+          return {
+            timelineItems: [
+              timelineMessage({
+                agentSessionId: "session-2",
+                id: 261,
+                eventId: "message-261",
+                role: "user",
+                content: "message 261",
+                turnId: "turn-131"
+              })
+            ],
+            latestVersion: 261,
+            hasMore: false
           };
         }
         return { timelineItems: [], latestVersion: 260, hasMore: false };
@@ -2162,6 +2180,27 @@ describe("useAgentGUINodeController", () => {
       const bodies = conversationBodies(result.current.viewModel);
       expect(bodies).toContain("message 161");
       expect(bodies).toContain("message 260");
+      expect(bodies).not.toContain("message 1");
+      expect(bodies).not.toContain("message 160");
+    });
+
+    await act(async () => {
+      await (
+        window as { agentActivityRuntime?: AgentActivityRuntime }
+      ).agentActivityRuntime?.listSessionMessages({
+        workspaceId: "room-1",
+        agentSessionId: "session-2",
+        afterVersion: 260
+      });
+    });
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      const bodies = conversationBodies(result.current.viewModel);
+      expect(bodies).toContain("message 161");
+      expect(bodies).toContain("message 261");
       expect(bodies).not.toContain("message 1");
       expect(bodies).not.toContain("message 160");
     });

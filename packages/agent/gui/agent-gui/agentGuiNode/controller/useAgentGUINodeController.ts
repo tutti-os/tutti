@@ -3812,10 +3812,26 @@ export function useAgentGUINodeController({
       const detailMessages =
         getAgentSessionView(sessionViewRef(normalizedAgentSessionId))
           ?.detailMessages ?? [];
+      const durableTailMessages =
+        detailMessages.length > 0
+          ? filterMessagesForDetailWindowOverlay({
+              detailMessages,
+              durableMessages,
+              localMessages: durableMessages
+            })
+          : [];
       const baseMessages =
-        detailMessages.length > 0 ? detailMessages : durableMessages;
+        detailMessages.length > 0
+          ? mergeWorkspaceAgentMessages(detailMessages, durableTailMessages)
+          : durableMessages;
+      if (durableTailMessages.length > 0) {
+        mergeAgentSessionViewDetailMessages(
+          sessionViewRef(normalizedAgentSessionId),
+          durableTailMessages
+        );
+      }
       const windowLocalMessages = filterMessagesForDetailWindowOverlay({
-        detailMessages,
+        detailMessages: baseMessages,
         durableMessages,
         localMessages
       });
