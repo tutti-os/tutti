@@ -38,9 +38,15 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh refreshes managed provide
       }
     },
     {
-      document: documentStub,
+      document: documentStub as Pick<
+        Document,
+        "addEventListener" | "removeEventListener" | "visibilityState"
+      >,
       minIntervalMs: 0,
-      window: windowStub
+      window: windowStub as Pick<
+        Window,
+        "addEventListener" | "removeEventListener"
+      >
     }
   );
 
@@ -74,7 +80,10 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh skips hidden documents", 
         removeEventListener(type: string, listener: () => void) {
           listeners.get(type)?.delete(listener);
         }
-      },
+      } as Pick<
+        Document,
+        "addEventListener" | "removeEventListener" | "visibilityState"
+      >,
       minIntervalMs: 0,
       window: {
         addEventListener(type: string, listener: () => void) {
@@ -85,7 +94,7 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh skips hidden documents", 
         removeEventListener(type: string, listener: () => void) {
           listeners.get(type)?.delete(listener);
         }
-      }
+      } as Pick<Window, "addEventListener" | "removeEventListener">
     }
   );
 
