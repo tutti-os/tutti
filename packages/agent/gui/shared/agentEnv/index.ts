@@ -9,14 +9,11 @@ export type {
   AgentEnvPanelRequest,
   OpenAgentEnvPanelInput
 } from "./agentEnvPanelStore.ts";
-export {
-  CODEX_ERROR_CODES,
-  resolveCodexErrorPresentation
-} from "./codexErrorPresentation.ts";
+export { resolveAgentErrorPresentation } from "./agentErrorPresentation.ts";
 export type {
-  CodexErrorCode,
-  CodexErrorPresentation
-} from "./codexErrorPresentation.ts";
+  AgentErrorPresentation,
+  AgentRunErrorCode
+} from "./agentErrorPresentation.ts";
 export { readCodexSetupActiveAction } from "./codexSetupContract.ts";
 export type {
   CodexSetupActiveAction,
@@ -29,12 +26,16 @@ export {
   deriveAgentSetupStages,
   projectRevealedStages,
   resolveWizardAutoStartAction,
-  shouldAdvanceReveal
+  shouldAdvanceReveal,
+  stageRemediation
 } from "./agentEnvWizardFlow.ts";
 export type {
   AgentSetupStage,
   AgentSetupStageId,
   AgentSetupStageLabels,
   DeriveAgentSetupStagesInput,
-  ResolveWizardAutoStartInput
+  ResolveWizardAutoStartInput,
+  StageActionId,
+  StageProblem,
+  StageRemediation
 } from "./agentEnvWizardFlow.ts";

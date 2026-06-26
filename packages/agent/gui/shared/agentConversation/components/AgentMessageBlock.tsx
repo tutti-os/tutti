@@ -24,7 +24,7 @@ import { AgentRichTextReadonly } from "../../AgentRichTextReadonly";
 import { resolveAgentConversationLinkAction } from "../actions/agentConversationLinkActions";
 import { workspaceAgentProviderLabel } from "../../workspaceAgentProviderLabel";
 import { openAgentEnvPanel } from "../../agentEnv/agentEnvPanelStore";
-import { resolveCodexErrorPresentation } from "../../agentEnv/codexErrorPresentation";
+import { resolveAgentErrorPresentation } from "../../agentEnv/agentErrorPresentation";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type {
   AgentMessageContentVM,
@@ -565,50 +565,20 @@ function AgentVisibleErrorMessage({
   const error = message.visibleError;
   const detail = error?.detail?.trim() ?? "";
 
-  // Domain-coded path (CODEX_*). A recognised structured code collapses the
-  // card down to exactly one human sentence, one primary remediation button
-  // (deep-linking into the env setup panel), and the raw payload tucked into a
-  // single CollapsibleReveal — instead of repeating the raw message three times.
-  const presentation = resolveCodexErrorPresentation(error?.code);
-  if (presentation) {
-    const provider = error?.provider ?? "codex";
-    return (
-      <section
-        role="alert"
-        className="box-border w-full min-w-0 rounded-[8px] border border-[var(--on-danger-hover)] bg-[var(--on-danger)] p-3 text-[13px] leading-5 text-[var(--state-danger)]"
-      >
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="font-medium text-[var(--text-primary)]">
-              {translate(presentation.messageKey)}
-            </div>
-            {detail ? (
-              <AgentMessageDetailsDisclosure
-                detail={detail}
-                className="mt-1"
-                label={translate("agentHost.agentGui.visibleErrorRawDetails")}
-              />
-            ) : null}
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mt-0.5 shrink-0"
-            onClick={() =>
-              openAgentEnvPanel({ provider, focus: presentation.focus })
-            }
-          >
-            {translate(presentation.actionKey)}
-          </Button>
-        </div>
-      </section>
-    );
-  }
-
-  // Legacy path: lowercase transport codes (auth_required, request_timed_out,
-  // …) that have not yet been migrated to structured domain codes (片4).
-  const title = visibleErrorTitle(message);
+  // One card for every run-failure code. The presentation (keyed on the codes
+  // the daemon actually emits — see agentErrorPresentation) supplies a granular,
+  // provider-aware message and, when the failure is something the env wizard can
+  // detect or repair, a single deep-linking call-to-action. Transient/server-side
+  // failures resolve to no focus, so no (misleading) wizard button is shown.
+  const providerLabel = workspaceAgentProviderLabel(
+    error?.provider ?? "unknown"
+  );
+  const presentation = resolveAgentErrorPresentation(error?.code);
+  const headline = presentation?.messageKey
+    ? translate(presentation.messageKey, { provider: providerLabel })
+    : visibleErrorTitle(message);
+  const focus = presentation?.focus ?? null;
+  const actionKey = presentation?.actionKey ?? null;
   const hint = visibleErrorHint(message);
   return (
     <section
@@ -617,17 +587,23 @@ function AgentVisibleErrorMessage({
     >
       <div className="flex min-w-0 items-start gap-3">
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-[var(--text-primary)]">{title}</div>
+          <div className="font-medium text-[var(--text-primary)]">
+            {headline}
+          </div>
           {hint ? (
             <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
               {hint}
             </div>
           ) : null}
           {detail ? (
-            <AgentMessageDetailsDisclosure detail={detail} className="mt-1" />
+            <AgentMessageDetailsDisclosure
+              detail={detail}
+              className="mt-1"
+              label={translate("agentHost.agentGui.visibleErrorRawDetails")}
+            />
           ) : null}
         </div>
-        {error?.code === "auth_required" ? (
+        {focus && actionKey ? (
           <Button
             type="button"
             variant="ghost"
@@ -636,11 +612,11 @@ function AgentVisibleErrorMessage({
             onClick={() =>
               openAgentEnvPanel({
                 provider: error?.provider ?? "codex",
-                focus: "auth"
+                focus
               })
             }
           >
-            {translate("agentHost.agentGui.authLogin")}
+            {translate(actionKey)}
           </Button>
         ) : null}
       </div>

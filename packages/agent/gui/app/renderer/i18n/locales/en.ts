@@ -755,21 +755,23 @@ export const en = {
         "{{provider}} request failed because a quota or rate limit was reached",
       visibleErrorDetails: "View details",
       visibleErrorRawDetails: "Raw error",
-      visibleErrorCodexCliMissing:
-        "Codex isn't installed yet, so it can't start.",
-      visibleErrorCodexPlatformPkgIncomplete:
-        "Codex is installed but missing its platform binary, so it can't start.",
-      visibleErrorCodexVersionTooOld:
-        "Your Codex version is too old for this request.",
-      visibleErrorCodexAuthRequired:
-        "Codex needs you to sign in before it can run.",
-      visibleErrorCodexNetwork:
-        "Codex couldn't reach the network to complete this request.",
-      visibleErrorActionInstall: "Set up Codex",
-      visibleErrorActionRepair: "Repair install",
-      visibleErrorActionUpgrade: "Upgrade Codex",
+      visibleErrorCliNotFound:
+        "{{provider}} CLI wasn't found, so it couldn't run. Set it up to continue.",
+      visibleErrorVersionUnsupported:
+        "{{provider}}'s installed version is unsupported for this request. Upgrade to continue.",
+      visibleErrorNetwork:
+        "{{provider}} couldn't reach the network to complete this request.",
+      visibleErrorConfigTimeout:
+        "{{provider}} couldn't apply session settings before the request timed out. Try again in a moment.",
+      visibleErrorStreamDisconnected:
+        "{{provider}}'s response was interrupted before it completed. Try again in a moment.",
+      visibleErrorConcurrencyLimit:
+        "{{provider}} is handling too many requests right now. Try again after another task finishes.",
+      visibleErrorActionInstall: "Set up",
+      visibleErrorActionUpgrade: "Upgrade",
       visibleErrorActionRelogin: "Sign in",
-      visibleErrorActionRetry: "Open setup",
+      visibleErrorActionCheckNetwork: "Check network",
+      visibleErrorActionDetect: "Open setup",
       systemNoticeTransportRetry:
         "Codex connection interrupted. Reconnecting...",
       systemNoticeTransportFallback: "Codex switched to HTTPS transport",

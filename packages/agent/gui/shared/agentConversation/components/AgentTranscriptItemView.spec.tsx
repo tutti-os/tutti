@@ -580,7 +580,7 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(
       getByText("agentHost.agentGui.visibleErrorAuthRequiredLocalAgentHint")
     ).toBeTruthy();
-    fireEvent.click(getByText("agentHost.agentGui.authLogin"));
+    fireEvent.click(getByText("agentHost.agentGui.visibleErrorActionRelogin"));
     const store = getAgentEnvPanelStore();
     expect(store.open).toBe(true);
     expect(store.provider).toBe("claude-code");

@@ -948,6 +948,26 @@ export type AgentProviderStatus = {
   adapter: AgentProviderAdapterStatus;
   auth: AgentProviderAuthInfo;
   actions: Array<AgentProviderAction>;
+  network?: AgentProviderNetworkStatus | null;
+};
+
+export type AgentProviderNetworkStatus = {
+  registry: AgentProviderNetworkEndpoint;
+  providerApi?: AgentProviderNetworkEndpoint | null;
+  proxy?: AgentProviderNetworkProxy | null;
+};
+
+export type AgentProviderNetworkProxy = {
+  configured: boolean;
+  url?: string | null;
+  reachable: boolean;
+  reasonCode?: string | null;
+};
+
+export type AgentProviderNetworkEndpoint = {
+  reachable: boolean;
+  endpoint?: string | null;
+  reasonCode?: string | null;
 };
 
 export type AgentProviderStatusListResponse = {

@@ -83,7 +83,9 @@ export function resolveAgentProviderDockStatusProps(input: {
         ...dockOrderProp(input.order),
         state: {
           kind: "disabled",
-          reason: input.copy.login
+          // Describe the problem ("sign in to use this agent"), not just the
+          // action label — the hover action already carries the verb.
+          reason: input.copy.loginRequired
         }
       };
     case "unsupported":

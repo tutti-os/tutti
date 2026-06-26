@@ -5403,6 +5403,57 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentProviderAction"
+        network:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderNetworkStatus"
+          nullable: true
+    AgentProviderNetworkStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - registry
+      properties:
+        registry:
+          $ref: "#/components/schemas/AgentProviderNetworkEndpoint"
+        providerApi:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderNetworkEndpoint"
+          nullable: true
+        proxy:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderNetworkProxy"
+          nullable: true
+    AgentProviderNetworkProxy:
+      type: object
+      additionalProperties: false
+      required:
+        - configured
+        - reachable
+      properties:
+        configured:
+          type: boolean
+        url:
+          type: string
+          nullable: true
+        reachable:
+          type: boolean
+        reasonCode:
+          type: string
+          nullable: true
+    AgentProviderNetworkEndpoint:
+      type: object
+      additionalProperties: false
+      required:
+        - reachable
+      properties:
+        reachable:
+          type: boolean
+        endpoint:
+          type: string
+          nullable: true
+        reasonCode:
+          type: string
+          nullable: true
     AgentProviderStatusListResponse:
       type: object
       additionalProperties: false

@@ -1560,6 +1560,28 @@ type AgentProviderComposerOptionsResponse struct {
 	SpeedConfig       *AgentProviderComposerConfig    `json:"speedConfig,omitempty"`
 }
 
+// AgentProviderNetworkEndpoint defines model for AgentProviderNetworkEndpoint.
+type AgentProviderNetworkEndpoint struct {
+	Endpoint   *string `json:"endpoint,omitempty"`
+	Reachable  bool    `json:"reachable"`
+	ReasonCode *string `json:"reasonCode,omitempty"`
+}
+
+// AgentProviderNetworkProxy defines model for AgentProviderNetworkProxy.
+type AgentProviderNetworkProxy struct {
+	Configured bool    `json:"configured"`
+	Reachable  bool    `json:"reachable"`
+	ReasonCode *string `json:"reasonCode,omitempty"`
+	Url        *string `json:"url,omitempty"`
+}
+
+// AgentProviderNetworkStatus defines model for AgentProviderNetworkStatus.
+type AgentProviderNetworkStatus struct {
+	ProviderApi *AgentProviderNetworkEndpoint `json:"providerApi,omitempty"`
+	Proxy       *AgentProviderNetworkProxy    `json:"proxy,omitempty"`
+	Registry    AgentProviderNetworkEndpoint  `json:"registry"`
+}
+
 // AgentProviderProbeResponse defines model for AgentProviderProbeResponse.
 type AgentProviderProbeResponse struct {
 	BinaryPath *string                  `json:"binaryPath,omitempty"`
@@ -1589,12 +1611,13 @@ type AgentProviderSkillOptionSourceKind string
 
 // AgentProviderStatus defines model for AgentProviderStatus.
 type AgentProviderStatus struct {
-	Actions      []AgentProviderAction      `json:"actions"`
-	Adapter      AgentProviderAdapterStatus `json:"adapter"`
-	Auth         AgentProviderAuthInfo      `json:"auth"`
-	Availability AgentProviderAvailability  `json:"availability"`
-	Cli          AgentProviderCliStatus     `json:"cli"`
-	Provider     WorkspaceAgentProvider     `json:"provider"`
+	Actions      []AgentProviderAction       `json:"actions"`
+	Adapter      AgentProviderAdapterStatus  `json:"adapter"`
+	Auth         AgentProviderAuthInfo       `json:"auth"`
+	Availability AgentProviderAvailability   `json:"availability"`
+	Cli          AgentProviderCliStatus      `json:"cli"`
+	Network      *AgentProviderNetworkStatus `json:"network,omitempty"`
+	Provider     WorkspaceAgentProvider      `json:"provider"`
 }
 
 // AgentProviderStatusListResponse defines model for AgentProviderStatusListResponse.

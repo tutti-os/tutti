@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -113,6 +114,7 @@ type ProviderStatus struct {
 	Adapter      AdapterStatus
 	Auth         AuthInfo
 	Actions      []Action
+	Network      *NetworkStatus
 	Checks       []ProviderCheck
 	LastError    *ProviderLastError
 	ActiveAction *ActiveAction
@@ -190,6 +192,7 @@ type Service struct {
 	FileExists                  func(string) bool
 	HomeDir                     func() (string, error)
 	HTTPClient                  *http.Client
+	ResolveProxy                func(*http.Request) (*url.URL, error)
 	LookPath                    func(string) (string, error)
 	InstallCommand              func(context.Context, InstallCommandInput) (InstallCommandResult, error)
 	InstallTimeout              time.Duration
@@ -223,6 +226,22 @@ func (s Service) List(ctx context.Context, input ListInput) (Snapshot, error) {
 	statuses := make([]ProviderStatus, 0, len(specs))
 	for _, spec := range specs {
 		statuses = append(statuses, s.statusForSpec(ctx, spec, now))
+	}
+
+	// Registry reachability (install path) and proxy detection are provider-
+	// independent, so probe them once; the API endpoint (run/login path) differs
+	// per provider, so probe that per status. All are reported separately on each
+	// provider's Network.
+	if len(statuses) > 0 {
+		registry := s.probeRegistry(ctx)
+		proxy := s.probeProxy(ctx)
+		for i := range statuses {
+			statuses[i].Network = &NetworkStatus{
+				Registry:    registry,
+				ProviderAPI: s.probeProviderAPI(ctx, statuses[i].Provider),
+				Proxy:       proxy,
+			}
+		}
 	}
 
 	return Snapshot{

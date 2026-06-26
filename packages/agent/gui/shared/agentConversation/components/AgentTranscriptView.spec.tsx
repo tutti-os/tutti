@@ -1024,7 +1024,7 @@ describe("AgentTranscriptView", () => {
       screen.getByText("agentHost.agentGui.visibleErrorStartFailed")
     ).toBeTruthy();
     const detailsToggle = screen.getByRole("button", {
-      name: "agentHost.agentGui.visibleErrorDetails"
+      name: "agentHost.agentGui.visibleErrorRawDetails"
     });
     expect(detailsToggle.parentElement).toHaveClass("mt-1");
     expect(detailsToggle).toHaveAttribute("aria-expanded", "false");

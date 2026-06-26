@@ -180,11 +180,35 @@ export const en = {
       actionFailed: "That step failed. Check the log and try again.",
       providerUnsupported: "This agent has no managed environment setup yet.",
       stageDetect: "Detecting environment",
+      stageNetwork: "Network check",
+      stageDetectDone: "Environment detected",
+      stageNetworkDone: "Network checked",
+      stageInstallDone: "CLI installed",
+      stageAdapterDone: "Adapter installed",
+      stageLoginDone: "Signed in",
+      stageReadyDone: "Ready",
+      networkCheckRegistry: "Install source",
+      networkCheckApi: "Service API",
+      networkCheckProxy: "Proxy",
+      networkProxyNone: "Not configured (direct)",
+      networkUnreachable: "Unreachable",
       stageInstall: "Install CLI",
       stageAdapter: "Install adapter",
       stageLogin: "Sign in",
       stageReady: "Ready",
-      stageRetry: "Retry"
+      stageRetry: "Retry",
+      setupRemaining:
+        "Detection complete. Finish the steps below to enable {{provider}}.",
+      stageProblemNetworkUnreachable: "Can't reach the network",
+      stageProblemInstallMissing: "{{provider}} CLI not installed",
+      stageProblemInstallOutdated: "{{provider}} CLI version unsupported",
+      stageProblemAdapterMissing: "Adapter not installed",
+      stageProblemAdapterMismatch: "Adapter version unsupported",
+      stageProblemLoginMissing: "Not signed in",
+      stageDoInstall: "Install",
+      stageDoUpgrade: "Upgrade",
+      stageDoLogin: "Sign in",
+      stageDoRedetect: "Re-check"
     },
     referenceSources: {
       appSourceLabel: "Apps",
@@ -632,8 +656,8 @@ export const en = {
         login: "Sign in",
         loginFailed: "Sign-in failed",
         loginRequired: "Sign in to the local CLI to use this agent",
-        refresh: "Refresh",
-        unknown: "Unable to confirm local CLI status"
+        refresh: "Re-check",
+        unknown: "Unable to confirm local CLI status — refresh to re-check"
       },
       launchpad: {
         agentUnavailable: "Unavailable",

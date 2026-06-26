@@ -37,7 +37,7 @@ test("dock login link opens the wizard with auth focus, runs nothing", async () 
   assertPanel({ open: true, provider: "codex", focus: "auth" });
 });
 
-test("dock refresh link runs the action directly, does not open the wizard", async () => {
+test("dock re-detect link opens the wizard at detect focus, runs nothing", async () => {
   getAgentEnvPanelStore().open = false;
   const forwarded: string[] = [];
   await runWorkspaceAgentProviderDockAction({
@@ -47,8 +47,10 @@ test("dock refresh link runs the action directly, does not open the wizard", asy
     host,
     workspaceId: "workspace-1"
   });
-  assert.deepEqual(forwarded, ["refresh"]);
-  assert.equal(getAgentEnvPanelStore().open, false);
+  // Re-detect now surfaces in the wizard (which runs detection there) rather
+  // than silently re-probing in the background.
+  assert.deepEqual(forwarded, []);
+  assertPanel({ open: true, provider: "codex", focus: "detect" });
 });
 
 test("non-agent dock entries are ignored", async () => {

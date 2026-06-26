@@ -21,7 +21,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DownloadIcon,
   LoadingIcon,
   RefreshIcon,
   SuccessFilledIcon,
@@ -35,11 +34,13 @@ import {
   projectRevealedStages,
   resolveWizardAutoStartAction,
   shouldAdvanceReveal,
-  type AgentEnvPanelFocus,
+  stageRemediation,
   type AgentSetupStage,
   type AgentSetupStageId,
   type CodexSetupPhase,
-  type CodexSetupStepStatus
+  type CodexSetupStepStatus,
+  type StageActionId,
+  type StageProblem
 } from "@tutti-os/agent-gui/agent-env";
 import { useTranslation } from "@renderer/i18n";
 import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
@@ -57,6 +58,12 @@ interface AgentEnvPanelProps {
 // Cadence of the step-by-step reveal — each already-satisfied stage waits this
 // long before checking off, so the track animates instead of flashing complete.
 const REVEAL_STEP_MS = 450;
+
+// A reveal cursor parked past the last step: every step shows its real status
+// immediately, with no walk-through animation. Used when opening onto an
+// already-known status so the track doesn't replay from step 1 on every open —
+// the animation is reserved for an actual re-detect.
+const REVEAL_ALL = Number.MAX_SAFE_INTEGER;
 
 const PROVIDER_LABELS: Partial<Record<WorkspaceAgentProvider, string>> = {
   codex: "Codex",
@@ -79,6 +86,26 @@ function resolveProviderLabel(provider: WorkspaceAgentProvider): string {
   return PROVIDER_LABELS[provider] ?? provider;
 }
 
+// Trim an endpoint URL down to its host for display, e.g.
+// "https://registry.npmjs.org" -> "registry.npmjs.org".
+function endpointHost(endpoint: string | null | undefined): string | null {
+  if (!endpoint) {
+    return null;
+  }
+  return endpoint.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || null;
+}
+
+// The network step shows its checks separately: the npm registry (install path),
+// the provider's API (run/login path), and the proxy in front of them.
+interface NetworkCheck {
+  kind: "registry" | "api" | "proxy";
+  reachable: boolean;
+  host: string | null;
+  // Proxy-only: whether a proxy is configured at all. When false, the line reads
+  // "direct / not configured" and never counts as a connectivity failure.
+  configured?: boolean;
+}
+
 function useStatusSnapshot(service: IAgentProviderStatusService) {
   return useSyncExternalStore(
     (listener) => service.subscribe(listener),
@@ -87,23 +114,79 @@ function useStatusSnapshot(service: IAgentProviderStatusService) {
 }
 
 /**
- * The deep-link focus picks which remediation the user landed for; it maps to a
- * primary action id so that button is emphasised when the panel opens.
+ * Maps a blocked stage's problem token onto the "未xxx" headline and the
+ * "进行xxx" action label, plus whether it reads as an error (version problem)
+ * or a not-yet-done warning. The action id itself comes from stageRemediation.
  */
-function focusToActionId(focus: AgentEnvPanelFocus | null): string | null {
-  switch (focus) {
-    case "install":
-    case "repair":
-    case "upgrade":
-      return "install";
-    case "auth":
-      return "login";
+function describeStageProblem(
+  problem: StageProblem,
+  providerLabel: string,
+  t: ReturnType<typeof useTranslation>["t"]
+): { headline: string; actionLabel: string; isError: boolean } {
+  switch (problem) {
+    case "network-unreachable":
+      return {
+        headline: t("workspace.agentEnv.stageProblemNetworkUnreachable"),
+        actionLabel: t("workspace.agentEnv.stageDoRedetect"),
+        isError: true
+      };
+    case "install-missing":
+      return {
+        headline: t("workspace.agentEnv.stageProblemInstallMissing", {
+          provider: providerLabel
+        }),
+        actionLabel: t("workspace.agentEnv.stageDoInstall"),
+        isError: false
+      };
+    case "install-outdated":
+      return {
+        headline: t("workspace.agentEnv.stageProblemInstallOutdated", {
+          provider: providerLabel
+        }),
+        actionLabel: t("workspace.agentEnv.stageDoUpgrade"),
+        isError: true
+      };
+    case "adapter-missing":
+      return {
+        headline: t("workspace.agentEnv.stageProblemAdapterMissing"),
+        actionLabel: t("workspace.agentEnv.stageDoInstall"),
+        isError: false
+      };
+    case "adapter-mismatch":
+      return {
+        headline: t("workspace.agentEnv.stageProblemAdapterMismatch"),
+        actionLabel: t("workspace.agentEnv.stageDoUpgrade"),
+        isError: true
+      };
+    case "login-missing":
+      return {
+        headline: t("workspace.agentEnv.stageProblemLoginMissing"),
+        actionLabel: t("workspace.agentEnv.stageDoLogin"),
+        isError: false
+      };
+  }
+}
+
+// A completed step reads in the done tense ("已安装 CLI") rather than the
+// imperative track label ("安装 CLI"); the imperative is kept for pending/running
+// rows where the step is still a to-do.
+function doneStageLabel(
+  stageId: AgentSetupStageId,
+  t: ReturnType<typeof useTranslation>["t"]
+): string {
+  switch (stageId) {
     case "detect":
+      return t("workspace.agentEnv.stageDetectDone");
     case "network":
-    case "registry":
-      return "refresh";
-    default:
-      return null;
+      return t("workspace.agentEnv.stageNetworkDone");
+    case "install":
+      return t("workspace.agentEnv.stageInstallDone");
+    case "adapter":
+      return t("workspace.agentEnv.stageAdapterDone");
+    case "login":
+      return t("workspace.agentEnv.stageLoginDone");
+    case "ready":
+      return t("workspace.agentEnv.stageReadyDone");
   }
 }
 
@@ -168,23 +251,49 @@ export function AgentEnvPanel({
   const open = request.open;
   const providerLabel = resolveProviderLabel(provider);
 
-  // Live detection: every open (or re-open via a fresh deep-link) re-checks the
-  // provider so the mode is driven by reality, never a persisted install flag.
+  // Opening the panel neither re-probes nor replays the step animation: it
+  // reuses the already-loaded snapshot (`ensureLoaded`, the dock loads it) and
+  // parks the reveal cursor past the end so every known step shows at once. A
+  // real re-detect — which DOES animate from step 1 — happens only when the user
+  // asks: the "重新检测" footer button (handleRedetect) or opening via the dock's
+  // re-detect action (focus "detect").
   useEffect(() => {
     if (!open) {
       return;
     }
     setCopied(false);
     setLogExpanded(false);
-    setRevealIndex(0);
-    void agentProviderStatusService.refresh([provider]);
-  }, [open, provider, request.requestSequence, agentProviderStatusService]);
+    if (request.focus === "detect") {
+      setRevealIndex(0);
+      void agentProviderStatusService.refresh([provider]);
+    } else {
+      setRevealIndex(REVEAL_ALL);
+      void agentProviderStatusService.ensureLoaded({ providers: [provider] });
+    }
+  }, [
+    open,
+    provider,
+    request.requestSequence,
+    request.focus,
+    agentProviderStatusService
+  ]);
 
   const handleClose = useCallback((next: boolean) => {
     if (!next) {
       closeAgentEnvPanel();
     }
   }, []);
+
+  // Re-detect restarts the whole flow: rewind the reveal cursor to step 1 and
+  // clear transient UI so the track animates from the top, then re-run live
+  // detection. Without the rewind the steps would stay checked off instead of
+  // visibly re-running as the user asked.
+  const handleRedetect = useCallback(() => {
+    setCopied(false);
+    setLogExpanded(false);
+    setRevealIndex(0);
+    void agentProviderStatusService.refresh([provider]);
+  }, [agentProviderStatusService, provider]);
 
   const runAction = useCallback(
     (actionId: string) => {
@@ -280,10 +389,50 @@ export function AgentEnvPanel({
     activeAction?.phase === "install" ||
     activeAction?.phase === "repair" ||
     activeAction?.phase === "verify";
-  const primaryActionId = focusToActionId(request.focus);
 
   const reasonCode = (status?.availability.reasonCode ?? "").toLowerCase();
   const versionTooOld = reasonCode.includes("version");
+
+  // Both connectivity checks are shown separately under the network step.
+  const networkChecks: NetworkCheck[] = status?.network
+    ? [
+        {
+          kind: "registry",
+          reachable: status.network.registry.reachable,
+          host: endpointHost(status.network.registry.endpoint)
+        },
+        ...(status.network.providerApi
+          ? [
+              {
+                kind: "api" as const,
+                reachable: status.network.providerApi.reachable,
+                host: endpointHost(status.network.providerApi.endpoint)
+              }
+            ]
+          : []),
+        ...(status.network.proxy
+          ? [
+              {
+                kind: "proxy" as const,
+                // A proxy that isn't configured is not a failure (direct
+                // connection); only a configured-but-unreachable proxy blocks.
+                reachable:
+                  !status.network.proxy.configured ||
+                  status.network.proxy.reachable,
+                host: status.network.proxy.url ?? null,
+                configured: status.network.proxy.configured
+              }
+            ]
+          : [])
+      ]
+    : [];
+  // The step is blocked only when a probed endpoint is unreachable; no network
+  // data at all (older daemon) stays null so it doesn't hold up the flow.
+  const networkReachable =
+    networkChecks.length === 0
+      ? null
+      : networkChecks.every((check) => check.reachable);
+
   const stages: AgentSetupStage[] = deriveAgentSetupStages({
     detected: status !== null,
     cliInstalled: status?.cli.installed ?? false,
@@ -296,15 +445,31 @@ export function AgentEnvPanel({
     activePhase: activeAction?.phase ?? null,
     installActionPending: installPending,
     loginPending,
-    cliVersionDetail: status?.cli.version ?? null,
+    networkReachable,
+    // Each completed step carries its own info inline (decision: unified track,
+    // detail lines only). Install shows version + CLI path; login shows the
+    // account, falling back to "signed in" when the provider exposes no label.
+    cliVersionDetail: status?.cli.installed
+      ? [status.cli.version, status.cli.binaryPath]
+          .filter((part): part is string => Boolean(part))
+          .join(" · ") || null
+      : (status?.cli.version ?? null),
     adapterDetail:
       status?.adapter.binaryPath ??
       (status?.adapter.command?.length
         ? status.adapter.command.join(" ")
         : null),
-    accountDetail: status?.auth.accountLabel ?? null,
+    accountDetail:
+      status?.auth.accountLabel ??
+      (status?.auth.status === "authenticated"
+        ? t("workspace.agentEnv.valueSignedIn")
+        : null),
+    // The network step renders its two checks as sub-lines (see SetupTrack), so
+    // it carries no single detail string of its own.
+    networkDetail: null,
     labels: {
       detect: t("workspace.agentEnv.stageDetect"),
+      network: t("workspace.agentEnv.stageNetwork"),
       install: t("workspace.agentEnv.stageInstall"),
       adapter: t("workspace.agentEnv.stageAdapter"),
       login: t("workspace.agentEnv.stageLogin"),
@@ -328,21 +493,25 @@ export function AgentEnvPanel({
     return () => window.clearTimeout(timer);
   }, [open, canAdvanceReveal, revealIndex]);
 
-  const displayStages = projectRevealedStages(stages, revealIndex);
-
-  // When the CLI + adapter are in place and the only thing left is signing in,
-  // the primary action is login — not install/repair. Without this the wizard
-  // parks on the "login" stage with no way forward.
-  const stageStatus = (id: AgentSetupStageId): CodexSetupStepStatus | null =>
-    stages.find((entry) => entry.id === id)?.status ?? null;
-  const authActionable =
-    !ready &&
-    stageStatus("install") === "ok" &&
-    stageStatus("adapter") === "ok" &&
-    stageStatus("login") !== "ok";
-
   const manualCommand = MANUAL_INSTALL_COMMANDS[provider] ?? null;
   const registry = activeAction?.registry ?? null;
+
+  // Registry is the ready step's completed-state detail; it has no bearing on
+  // any step's status, so fold it in before the reveal projection.
+  const stagesWithDetail = registry
+    ? stages.map((entry) =>
+        entry.id === "ready" ? { ...entry, detail: registry } : entry
+      )
+    : stages;
+  const displayStages = projectRevealedStages(stagesWithDetail, revealIndex);
+
+  // The blocking step is the first stage that is not yet ok — surfaced (with its
+  // inline "进行xxx" fix) only once the reveal cursor has walked to it, so dimmed
+  // not-yet-revealed steps below never sprout a button.
+  const blockingIndex = stages.findIndex((entry) => entry.status !== "ok");
+  const blockingStage = blockingIndex >= 0 ? stages[blockingIndex] : undefined;
+  const blockingStageId: AgentSetupStageId | null =
+    blockingStage && revealIndex >= blockingIndex ? blockingStage.id : null;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -371,13 +540,14 @@ export function AgentEnvPanel({
             <p className="m-0 text-[13px] text-[var(--text-secondary)]">
               {t("workspace.agentEnv.providerUnsupported")}
             </p>
-          ) : ready ? (
-            <ConfigPanelBody status={status} registry={registry} t={t} />
           ) : (
-            <WizardBody
+            <SetupTrack
+              ready={ready}
               busy={Boolean(busy)}
               providerLabel={providerLabel}
               stages={displayStages}
+              blockingStageId={blockingStageId}
+              networkChecks={networkChecks}
               activePhase={activeAction?.phase ?? null}
               log={activeAction?.log ?? []}
               registry={registry}
@@ -388,86 +558,52 @@ export function AgentEnvPanel({
               onCopyManualCommand={(command) =>
                 void handleCopyManualCommand(command)
               }
-              onRetryStage={(stageId) =>
-                runAction(stageId === "login" ? "login" : "install")
+              onRunStageAction={(actionId) =>
+                actionId === "redetect" ? handleRedetect() : runAction(actionId)
               }
-              onLogin={() => runAction("login")}
-              authActionable={authActionable}
+              redetecting={snapshot.isLoading}
               loginPending={loginPending}
+              installPending={installPending}
               error={activeAction?.error ?? null}
               t={t}
             />
           )}
         </div>
 
-        <DialogFooter className="flex shrink-0 flex-wrap gap-2 border-t border-[var(--border-1)] px-5 py-4">
+        {/* Re-detect (rewinds the whole flow) sits on the left; the right holds
+            the single confirm/dismiss. All per-step actions — install, sign in,
+            re-login — live inline on their step, never in the footer. */}
+        <DialogFooter className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border-1)] px-5 py-4">
           <Button
             size="dialog"
             type="button"
             variant="ghost"
             disabled={snapshot.isLoading}
-            onClick={() => void agentProviderStatusService.refresh([provider])}
+            onClick={handleRedetect}
           >
             <RefreshIcon className="size-4" />
             {t("workspace.agentEnv.actionDetect")}
           </Button>
-          {ready ? (
-            <>
-              <Button
-                size="dialog"
-                type="button"
-                variant={primaryActionId === "install" ? undefined : "ghost"}
-                disabled={busy}
-                onClick={() => runAction("install")}
-              >
-                {t("workspace.agentEnv.actionUpgrade")}
-              </Button>
-              <Button
-                size="dialog"
-                type="button"
-                variant={primaryActionId === "login" ? undefined : "ghost"}
-                disabled={loginPending}
-                onClick={() => runAction("login")}
-              >
-                {t("workspace.agentEnv.actionRelogin")}
-              </Button>
-            </>
-          ) : authActionable ? (
-            <Button
-              size="dialog"
-              type="button"
-              disabled={loginPending}
-              onClick={() => runAction("login")}
-            >
-              {t("workspace.agentEnv.actionLogin")}
-            </Button>
-          ) : (
-            <Button
-              size="dialog"
-              type="button"
-              disabled={busy}
-              onClick={() => runAction("install")}
-            >
-              {busy ? (
-                <LoadingIcon className="size-4 animate-spin" />
-              ) : (
-                <DownloadIcon className="size-4" />
-              )}
-              {status?.cli.installed
-                ? t("workspace.agentEnv.actionRepair")
-                : t("workspace.agentEnv.actionInstall")}
-            </Button>
-          )}
+          <Button
+            size="dialog"
+            type="button"
+            onClick={() => closeAgentEnvPanel()}
+          >
+            {t("workspace.agentEnv.actionClose")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function WizardBody({
+function SetupTrack({
+  ready,
   busy,
   providerLabel,
   stages,
+  blockingStageId,
+  networkChecks,
   activePhase,
   log,
   registry,
@@ -476,16 +612,19 @@ function WizardBody({
   manualCommand,
   copied,
   onCopyManualCommand,
-  onRetryStage,
-  onLogin,
-  authActionable,
+  onRunStageAction,
   loginPending,
+  installPending,
+  redetecting,
   error,
   t
 }: {
+  ready: boolean;
   busy: boolean;
   providerLabel: string;
   stages: AgentSetupStage[];
+  blockingStageId: AgentSetupStageId | null;
+  networkChecks: NetworkCheck[];
   activePhase: CodexSetupPhase | null;
   log: string[];
   registry: string | null;
@@ -494,84 +633,176 @@ function WizardBody({
   manualCommand: string | null;
   copied: boolean;
   onCopyManualCommand: (command: string) => void;
-  onRetryStage: (stageId: AgentSetupStageId) => void;
-  onLogin: () => void;
-  authActionable: boolean;
+  onRunStageAction: (actionId: StageActionId) => void;
   loginPending: boolean;
+  installPending: boolean;
+  redetecting: boolean;
   error: { code: string | null; message: string | null } | null;
   t: ReturnType<typeof useTranslation>["t"];
 }): JSX.Element {
+  const detectRunning =
+    stages.find((entry) => entry.id === "detect")?.status === "running";
   return (
     <div className="flex flex-col gap-4">
-      <p className="m-0 text-[13px] text-[var(--text-secondary)]">
-        {busy
-          ? t("workspace.agentEnv.busyInstalling", { provider: providerLabel })
-          : t("workspace.agentEnv.detecting", { provider: providerLabel })}
-      </p>
+      {ready ? null : (
+        <p className="m-0 text-[13px] text-[var(--text-secondary)]">
+          {busy
+            ? t("workspace.agentEnv.busyInstalling", {
+                provider: providerLabel
+              })
+            : detectRunning
+              ? t("workspace.agentEnv.detecting", { provider: providerLabel })
+              : t("workspace.agentEnv.setupRemaining", {
+                  provider: providerLabel
+                })}
+        </p>
+      )}
 
       <ol className="m-0 flex list-none flex-col gap-2 p-0">
         {stages.map((stage) => {
           const isActive = stage.status === "running";
-          const isError = stage.status === "error";
           const dimmed = stage.status === "pending";
+          const hasLog = isActive && log.length > 0;
+          // Single-line rows center vertically; rows that stack content under
+          // their label (the running log, the network sub-checks) top-align so
+          // the icon lines up with the first line.
+          const multiLine =
+            hasLog || (stage.id === "network" && networkChecks.length > 0);
+          // The single blocking step states the problem ("未xxx") and offers the
+          // inline fix ("进行xxx"); every other row just reflects its status.
+          const remediation =
+            blockingStageId === stage.id ? stageRemediation(stage) : null;
+          const problem = remediation
+            ? describeStageProblem(remediation.problem, providerLabel, t)
+            : null;
+          const actionPending =
+            remediation?.actionId === "login"
+              ? loginPending
+              : remediation?.actionId === "redetect"
+                ? redetecting
+                : installPending;
           return (
             <li
               key={stage.id}
               data-stage={stage.id}
               data-status={stage.status}
-              className={`flex items-start gap-2.5 rounded-[8px] bg-[var(--transparency-block)] p-3 ${
-                dimmed ? "opacity-50" : ""
-              }`}
+              className={`flex gap-2.5 rounded-[8px] bg-[var(--transparency-block)] p-3 ${
+                multiLine ? "items-start" : "items-center"
+              } ${dimmed && !problem ? "opacity-50" : ""}`}
             >
-              <span className="mt-0.5 shrink-0">
-                <StepStatusIcon status={stage.status} />
+              <span className={`shrink-0 ${multiLine ? "mt-0.5" : ""}`}>
+                {problem ? (
+                  <WarningFilledIcon
+                    className={`size-4 ${
+                      problem.isError
+                        ? "text-[var(--state-danger)]"
+                        : "text-[var(--state-warning)]"
+                    }`}
+                  />
+                ) : (
+                  <StepStatusIcon status={stage.status} />
+                )}
               </span>
               <span className="min-w-0 flex-1">
-                <span
-                  className={`block text-[13px] font-medium ${
-                    isError
-                      ? "text-[var(--state-danger)]"
-                      : "text-[var(--text-primary)]"
-                  }`}
-                >
-                  {stage.label}
+                {/* Label + detail sit on one baseline-aligned row; the detail
+                    (version / path / account) truncates so the step stays a
+                    single line whenever it fits. */}
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span
+                    className={`shrink-0 text-[13px] font-medium ${
+                      problem
+                        ? problem.isError
+                          ? "text-[var(--state-danger)]"
+                          : "text-[var(--state-warning)]"
+                        : "text-[var(--text-primary)]"
+                    }`}
+                  >
+                    {problem
+                      ? problem.headline
+                      : stage.status === "ok"
+                        ? doneStageLabel(stage.id, t)
+                        : stage.label}
+                  </span>
+                  {!problem && stage.detail ? (
+                    <span className="min-w-0 truncate text-[12px] text-[var(--text-secondary)]">
+                      {stage.detail}
+                    </span>
+                  ) : null}
                 </span>
-                {stage.detail ? (
-                  <span className="mt-0.5 block truncate text-[12px] text-[var(--text-secondary)]">
-                    {stage.detail}
+                {stage.id === "network" && networkChecks.length > 0 ? (
+                  <span className="mt-1.5 flex flex-col gap-1">
+                    {networkChecks.map((check) => {
+                      const label =
+                        check.kind === "registry"
+                          ? t("workspace.agentEnv.networkCheckRegistry")
+                          : check.kind === "api"
+                            ? t("workspace.agentEnv.networkCheckApi")
+                            : t("workspace.agentEnv.networkCheckProxy");
+                      const proxyAbsent =
+                        check.kind === "proxy" && check.configured === false;
+                      const value = proxyAbsent
+                        ? t("workspace.agentEnv.networkProxyNone")
+                        : check.reachable
+                          ? (check.host ?? "")
+                          : t("workspace.agentEnv.networkUnreachable");
+                      return (
+                        <span
+                          key={check.kind}
+                          className="flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)]"
+                        >
+                          {proxyAbsent ? (
+                            <span
+                              aria-hidden="true"
+                              className="size-3.5 shrink-0 rounded-full border border-[var(--border-1)]"
+                            />
+                          ) : check.reachable ? (
+                            <SuccessFilledIcon className="size-3.5 shrink-0 text-[var(--tutti-purple)]" />
+                          ) : (
+                            <WarningFilledIcon className="size-3.5 shrink-0 text-[var(--state-danger)]" />
+                          )}
+                          <span className="min-w-0 truncate">
+                            {label}
+                            {value ? ` · ${value}` : ""}
+                          </span>
+                        </span>
+                      );
+                    })}
                   </span>
                 ) : null}
-                {isActive && log.length > 0 ? (
+                {hasLog ? (
                   <pre className="mt-2 max-h-[160px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[var(--background-fronted)] px-2 py-1.5 text-[11px] leading-5 text-[var(--text-secondary)]">
                     {log.join("\n")}
                   </pre>
                 ) : null}
-                {isError ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="mt-2"
-                    onClick={() => onRetryStage(stage.id)}
-                  >
-                    <RefreshIcon className="size-4" />
-                    {t("workspace.agentEnv.stageRetry")}
-                  </Button>
-                ) : null}
               </span>
-              {stage.id === "login" &&
-              authActionable &&
-              stage.status !== "ok" ? (
+              {remediation && problem ? (
                 <Button
                   type="button"
                   size="sm"
+                  disabled={actionPending}
+                  onClick={() => onRunStageAction(remediation.actionId)}
+                >
+                  {actionPending ? (
+                    <LoadingIcon className="size-4 animate-spin" />
+                  ) : null}
+                  {problem.actionLabel}
+                </Button>
+              ) : stage.id === "login" && stage.status === "ok" ? (
+                // Sign-in management lives on the step it concerns, not the
+                // footer: a signed-in account can re-authenticate right here.
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
                   disabled={loginPending}
-                  onClick={onLogin}
+                  onClick={() => onRunStageAction("login")}
                 >
                   {loginPending ? (
                     <LoadingIcon className="size-4 animate-spin" />
-                  ) : null}
-                  {t("workspace.agentEnv.actionLogin")}
+                  ) : (
+                    <RefreshIcon className="size-4" />
+                  )}
+                  {t("workspace.agentEnv.actionRelogin")}
                 </Button>
               ) : null}
             </li>
@@ -637,76 +868,6 @@ function WizardBody({
           </div>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function ConfigPanelBody({
-  status,
-  registry,
-  t
-}: {
-  status: AgentProviderStatus | null;
-  registry: string | null;
-  t: ReturnType<typeof useTranslation>["t"];
-}): JSX.Element {
-  const unknown = t("workspace.agentEnv.valueUnknown");
-  const rows: { label: string; value: string }[] = [
-    {
-      label: t("workspace.agentEnv.fieldVersion"),
-      value: status?.cli.version ?? unknown
-    },
-    {
-      label: t("workspace.agentEnv.fieldPath"),
-      value: status?.cli.binaryPath ?? t("workspace.agentEnv.valueNotInstalled")
-    },
-    {
-      label: t("workspace.agentEnv.fieldTargetNode"),
-      value: status?.adapter.command?.join(" ") || unknown
-    },
-    {
-      label: t("workspace.agentEnv.fieldAccount"),
-      // Some providers (e.g. codex) authenticate without exposing an account
-      // label; show "signed in" rather than the contradictory "not signed in"
-      // when auth is confirmed but no label is available.
-      value:
-        status?.auth.accountLabel ??
-        (status?.auth.status === "authenticated"
-          ? t("workspace.agentEnv.valueSignedIn")
-          : t("workspace.agentEnv.valueNotSignedIn"))
-    },
-    {
-      label: t("workspace.agentEnv.fieldRegistry"),
-      value: registry ?? unknown
-    }
-  ];
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 rounded-[8px] bg-[var(--transparency-block)] p-3">
-        <SuccessFilledIcon className="size-5 text-[var(--tutti-purple)]" />
-        <span className="text-[13px] font-medium text-[var(--text-primary)]">
-          {t("workspace.agentEnv.ready", {
-            provider: status
-              ? resolveProviderLabel(status.provider)
-              : t("workspace.agentEnv.valueUnknown")
-          })}
-        </span>
-      </div>
-      <dl className="m-0 flex flex-col gap-2">
-        {rows.map((row) => (
-          <div
-            key={row.label}
-            className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-3"
-          >
-            <dt className="text-[12px] text-[var(--text-secondary)]">
-              {row.label}
-            </dt>
-            <dd className="m-0 min-w-0 truncate text-[13px] text-[var(--text-primary)]">
-              {row.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
     </div>
   );
 }

@@ -694,17 +694,22 @@ export const zhCN = {
         "{{provider}} 请求失败：额度或频率限制已触发",
       visibleErrorDetails: "查看详情",
       visibleErrorRawDetails: "原始错误",
-      visibleErrorCodexCliMissing: "Codex 尚未安装，无法启动。",
-      visibleErrorCodexPlatformPkgIncomplete:
-        "Codex 已安装但缺少平台二进制文件，无法启动。",
-      visibleErrorCodexVersionTooOld: "当前 Codex 版本过旧，无法处理此请求。",
-      visibleErrorCodexAuthRequired: "Codex 需要先登录才能运行。",
-      visibleErrorCodexNetwork: "Codex 无法连接网络以完成此请求。",
-      visibleErrorActionInstall: "设置 Codex",
-      visibleErrorActionRepair: "修复安装",
-      visibleErrorActionUpgrade: "升级 Codex",
+      visibleErrorCliNotFound:
+        "未检测到 {{provider}} CLI，无法运行。请先完成安装。",
+      visibleErrorVersionUnsupported:
+        "当前 {{provider}} 版本过旧，不支持此请求。请先升级。",
+      visibleErrorNetwork: "{{provider}} 无法连接网络以完成此请求。",
+      visibleErrorConfigTimeout:
+        "{{provider}} 在请求超时前未能应用会话设置。请稍后重试。",
+      visibleErrorStreamDisconnected:
+        "{{provider}} 的响应在完成前被中断。请稍后重试。",
+      visibleErrorConcurrencyLimit:
+        "{{provider}} 当前处理的请求过多。请在其他任务完成后再试。",
+      visibleErrorActionInstall: "去安装",
+      visibleErrorActionUpgrade: "去升级",
       visibleErrorActionRelogin: "登录",
-      visibleErrorActionRetry: "打开设置",
+      visibleErrorActionCheckNetwork: "检测网络",
+      visibleErrorActionDetect: "打开检测",
       systemNoticeTransportRetry: "Codex 连接中断，正在重连",
       systemNoticeTransportFallback: "Codex 已切换到 HTTPS 传输",
       systemNoticeWarning: "Codex 警告",

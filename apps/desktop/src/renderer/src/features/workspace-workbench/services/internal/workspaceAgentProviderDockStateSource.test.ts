@@ -48,7 +48,7 @@ test("agent provider dock state source resolves dynamic login state", () => {
       order: 0,
       state: {
         kind: "disabled",
-        reason: "login"
+        reason: "login required"
       },
       visibility: "always"
     }
@@ -172,7 +172,7 @@ test("agent provider dock state source reads latest service snapshot without rec
       order: 0,
       state: {
         kind: "disabled",
-        reason: "login"
+        reason: "login required"
       },
       visibility: "always"
     }

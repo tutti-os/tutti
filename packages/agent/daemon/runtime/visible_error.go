@@ -185,6 +185,18 @@ func visibleFailureCode(detail string) string {
 		strings.Contains(normalized, "login") ||
 		strings.Contains(normalized, "token"):
 		return "auth_required"
+	// A run that can't find its CLI binary surfaces as an exec/ENOENT error. This
+	// is the real "not installed / not on PATH" failure the env wizard can fix, so
+	// it is split out of the generic process_exited bucket and checked before it.
+	case codexErrorLooksLikeMissingBinary(normalized):
+		return "cli_not_found"
+	// The installed CLI/adapter is too old for this request — the wizard can
+	// upgrade it.
+	case strings.Contains(normalized, "requires a newer version") ||
+		strings.Contains(normalized, "version is too old") ||
+		strings.Contains(normalized, "version too old") ||
+		strings.Contains(normalized, "unsupported version"):
+		return "cli_version_unsupported"
 	case strings.Contains(normalized, "concurrency limit exceeded"):
 		return "provider_concurrency_limit"
 	case strings.Contains(normalized, "session/set_config_option") &&
@@ -193,6 +205,12 @@ func visibleFailureCode(detail string) string {
 	case strings.Contains(normalized, "stream disconnected before completion") ||
 		strings.Contains(normalized, "stream closed before response.completed"):
 		return "provider_stream_disconnected"
+	// Network failures (DNS/connection level) are an environment problem the
+	// wizard can help diagnose. Checked after the stream/concurrency cases so a
+	// stream-disconnect that merely mentions "network error" keeps its specific
+	// code, but before request_timed_out so a low-level ETIMEDOUT reads as network.
+	case codexErrorLooksLikeNetwork(normalized):
+		return "network_error"
 	case strings.Contains(normalized, "quota") ||
 		strings.Contains(normalized, "rate limit") ||
 		strings.Contains(normalized, "limit exceeded") ||
@@ -202,9 +220,7 @@ func visibleFailureCode(detail string) string {
 		return "quota_or_rate_limit"
 	case strings.Contains(normalized, "process exited") ||
 		strings.Contains(normalized, "exited with code") ||
-		strings.Contains(normalized, "exit status") ||
-		strings.Contains(normalized, "fork/exec") ||
-		strings.Contains(normalized, "no such file or directory"):
+		strings.Contains(normalized, "exit status"):
 		return "process_exited"
 	case strings.Contains(normalized, "deadline exceeded") ||
 		strings.Contains(normalized, "timed out"):
@@ -221,8 +237,45 @@ func visibleFailureCode(detail string) string {
 	}
 }
 
+// codexErrorLooksLikeMissingBinary reports whether the detail describes a CLI
+// binary that could not be located/executed (as opposed to a binary that ran and
+// exited non-zero).
+func codexErrorLooksLikeMissingBinary(lower string) bool {
+	for _, marker := range []string{
+		"no such file or directory",
+		"fork/exec",
+		"command not found",
+		"executable file not found",
+		"enoent",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// codexErrorLooksLikeNetwork reports whether the detail describes a DNS or
+// connection-level network failure.
+func codexErrorLooksLikeNetwork(lower string) bool {
+	for _, marker := range []string{
+		"enotfound",
+		"econnrefused",
+		"econnreset",
+		"etimedout",
+		"getaddrinfo",
+		"socket hang up",
+		"dns",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func visibleFailureRetryable(code string, detail string) bool {
-	if code == "runtime_unavailable" || code == "request_timed_out" {
+	if code == "runtime_unavailable" || code == "request_timed_out" || code == "network_error" {
 		return true
 	}
 	normalized := strings.ToLower(detail)
@@ -235,6 +288,12 @@ func visibleFailureContent(provider string, phase string, code string) string {
 		switch code {
 		case "auth_required":
 			return fmt.Sprintf("%s needs authentication or configuration.", name)
+		case "cli_not_found":
+			return fmt.Sprintf("%s could not start because its CLI was not found. Set it up to continue.", name)
+		case "cli_version_unsupported":
+			return fmt.Sprintf("%s could not start because its installed version is unsupported. Upgrade to continue.", name)
+		case "network_error":
+			return fmt.Sprintf("%s could not start because the network is unreachable.", name)
 		case "provider_concurrency_limit":
 			return fmt.Sprintf("%s could not start because too many requests are already running for this user. Try again after another task finishes.", name)
 		case "provider_config_timeout":
@@ -252,6 +311,12 @@ func visibleFailureContent(provider string, phase string, code string) string {
 	switch code {
 	case "auth_required":
 		return fmt.Sprintf("%s needs authentication or configuration.", name)
+	case "cli_not_found":
+		return fmt.Sprintf("%s could not run because its CLI was not found. Set it up to continue.", name)
+	case "cli_version_unsupported":
+		return fmt.Sprintf("%s could not run because its installed version is unsupported. Upgrade to continue.", name)
+	case "network_error":
+		return fmt.Sprintf("%s could not reach the network to complete this request.", name)
 	case "provider_concurrency_limit":
 		return fmt.Sprintf("%s is handling too many requests for this user. Try again after another task finishes.", name)
 	case "provider_config_timeout":

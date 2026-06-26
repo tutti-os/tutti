@@ -237,7 +237,38 @@ func generatedAgentProviderStatus(status agentstatusservice.ProviderStatus) tutt
 		Auth:         generatedAgentProviderAuthInfo(status.Auth),
 		Availability: generatedAgentProviderAvailability(status.Availability),
 		Cli:          generatedAgentProviderCLIStatus(status.CLI),
+		Network:      generatedAgentProviderNetworkStatus(status.Network),
 		Provider:     tuttigenerated.WorkspaceAgentProvider(status.Provider),
+	}
+}
+
+func generatedAgentProviderNetworkStatus(network *agentstatusservice.NetworkStatus) *tuttigenerated.AgentProviderNetworkStatus {
+	if network == nil {
+		return nil
+	}
+	result := tuttigenerated.AgentProviderNetworkStatus{
+		Registry: generatedAgentProviderNetworkEndpoint(network.Registry),
+	}
+	if network.ProviderAPI != nil {
+		api := generatedAgentProviderNetworkEndpoint(*network.ProviderAPI)
+		result.ProviderApi = &api
+	}
+	if network.Proxy != nil {
+		result.Proxy = &tuttigenerated.AgentProviderNetworkProxy{
+			Configured: network.Proxy.Configured,
+			Reachable:  network.Proxy.Reachable,
+			Url:        stringPointerIfNotBlank(network.Proxy.URL),
+			ReasonCode: stringPointerIfNotBlank(network.Proxy.ReasonCode),
+		}
+	}
+	return &result
+}
+
+func generatedAgentProviderNetworkEndpoint(endpoint agentstatusservice.NetworkEndpointStatus) tuttigenerated.AgentProviderNetworkEndpoint {
+	return tuttigenerated.AgentProviderNetworkEndpoint{
+		Reachable:  endpoint.Reachable,
+		Endpoint:   stringPointerIfNotBlank(endpoint.Endpoint),
+		ReasonCode: stringPointerIfNotBlank(endpoint.ReasonCode),
 	}
 }
 

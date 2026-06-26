@@ -50,32 +50,32 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("AgentVisibleErrorMessage domain-coded card", () => {
-  it("shows one human sentence + one primary button and deep-links into the env panel", () => {
+describe("AgentVisibleErrorMessage", () => {
+  it("routes an env-fixable run failure to the matching wizard step", () => {
     const { getByText, getAllByRole } = renderBlock(
       buildRow(
         {
-          code: "CODEX_VERSION_TOO_OLD",
+          // The real code a missing CLI surfaces as at run time.
+          code: "cli_not_found",
           phase: "start",
           provider: "codex",
-          detail: '{"raw":"requires a newer version"}',
+          detail: "spawn codex ENOENT",
           retryable: false
         },
         // The raw body must NOT be surfaced as the card title.
-        "codex exited: requires a newer version"
+        "codex exited: spawn codex ENOENT"
       )
     );
 
     expect(
-      getByText("Your Codex version is too old for this request.")
+      getByText(
+        "Codex CLI wasn't found, so it couldn't run. Set it up to continue."
+      )
     ).toBeTruthy();
-    // Legacy generic title (the raw body) must not also render — no triple
-    // rendering of the same error.
-    expect(() => getByText("codex exited: requires a newer version")).toThrow();
+    expect(() => getByText("codex exited: spawn codex ENOENT")).toThrow();
 
-    const buttons = getAllByRole("button");
-    const action = buttons.find(
-      (button) => button.textContent === "Upgrade Codex"
+    const action = getAllByRole("button").find(
+      (button) => button.textContent === "Set up"
     );
     expect(action).toBeTruthy();
 
@@ -83,13 +83,32 @@ describe("AgentVisibleErrorMessage domain-coded card", () => {
     const store = getAgentEnvPanelStore();
     expect(store.open).toBe(true);
     expect(store.provider).toBe("codex");
-    expect(store.focus).toBe("upgrade");
+    expect(store.focus).toBe("install");
   });
 
-  it("tucks the raw payload behind a single collapsible disclosure", () => {
+  it("offers a self-detect escape hatch for ambiguous hard failures", () => {
+    const { getAllByRole } = renderBlock(
+      buildRow({
+        code: "process_exited",
+        phase: "turn",
+        provider: "codex",
+        detail: "exited with code 1",
+        retryable: false
+      })
+    );
+
+    const action = getAllByRole("button").find(
+      (button) => button.textContent === "Open setup"
+    );
+    expect(action).toBeTruthy();
+    fireEvent.click(action as HTMLButtonElement);
+    expect(getAgentEnvPanelStore().focus).toBe("detect");
+  });
+
+  it("tucks the raw payload behind a single 'Raw error' disclosure", () => {
     const { getByText, queryByText } = renderBlock(
       buildRow({
-        code: "CODEX_CLI_MISSING",
+        code: "cli_not_found",
         phase: "start",
         provider: "codex",
         detail: "spawn codex ENOENT",
@@ -97,26 +116,26 @@ describe("AgentVisibleErrorMessage domain-coded card", () => {
       })
     );
 
-    // Collapsed by default: the raw payload is not yet visible.
     expect(queryByText("spawn codex ENOENT")).toBeNull();
     fireEvent.click(getByText("Raw error"));
     expect(getByText("spawn codex ENOENT")).toBeTruthy();
   });
 
-  it("falls back to the legacy title for unrecognised codes", () => {
+  it("shows accurate copy but NO wizard CTA for transient/server-side failures", () => {
     const { getByText, queryByText } = renderBlock(
       buildRow({
-        code: "runtime_unavailable",
-        phase: "start",
+        code: "request_timed_out",
+        phase: "turn",
         provider: "codex",
         detail: null,
-        retryable: false
+        retryable: true
       })
     );
 
-    expect(
-      getByText("Codex could not start because the runtime is unavailable")
-    ).toBeTruthy();
-    expect(queryByText("Upgrade Codex")).toBeNull();
+    expect(getByText("Codex request timed out")).toBeTruthy();
+    // No env-panel call-to-action — the wizard cannot fix a transient timeout.
+    expect(queryByText("Set up")).toBeNull();
+    expect(queryByText("Open setup")).toBeNull();
+    expect(queryByText("Sign in")).toBeNull();
   });
 });

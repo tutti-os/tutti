@@ -118,7 +118,7 @@ test("agent provider dock status shows login reason with login and refresh actio
     ],
     state: {
       kind: "disabled",
-      reason: "login"
+      reason: "login required"
     }
   });
 });

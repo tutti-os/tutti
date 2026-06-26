@@ -14,11 +14,13 @@ export interface WorkspaceAgentProviderDockActionInput {
   workspaceId: string;
 }
 
-// Remediation actions funnel into the setup wizard (which auto-starts the
-// focused stage); only the lightweight re-detect keeps running in place.
+// Every dock action funnels into the setup wizard: remediation actions auto-start
+// their focused stage, and re-detect opens the wizard and re-runs detection there
+// (rather than silently re-probing in the background with no visible result).
 const DOCK_ACTION_FOCUS: Record<string, AgentEnvPanelFocus> = {
   install: "install",
-  login: "auth"
+  login: "auth",
+  refresh: "detect"
 };
 
 export async function runWorkspaceAgentProviderDockAction(

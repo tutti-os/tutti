@@ -4,12 +4,14 @@ import {
   projectRevealedStages,
   resolveWizardAutoStartAction,
   shouldAdvanceReveal,
+  stageRemediation,
   type AgentSetupStage,
   type DeriveAgentSetupStagesInput
 } from "./agentEnvWizardFlow";
 
 const labels = {
   detect: "Detect",
+  network: "Network",
   install: "Install",
   adapter: "Adapter",
   login: "Login",
@@ -31,19 +33,22 @@ function input(
     activePhase: null,
     installActionPending: false,
     loginPending: false,
+    networkReachable: true,
     cliVersionDetail: null,
     adapterDetail: null,
     accountDetail: null,
+    networkDetail: null,
     labels,
     ...overrides
   };
 }
 
 describe("deriveAgentSetupStages", () => {
-  it("renders the fixed 5-stage track in order", () => {
+  it("renders the fixed 6-stage track in order", () => {
     const stages = deriveAgentSetupStages(input());
     expect(stages.map((s) => s.id)).toEqual([
       "detect",
+      "network",
       "install",
       "adapter",
       "login",
@@ -55,6 +60,7 @@ describe("deriveAgentSetupStages", () => {
     const stages = deriveAgentSetupStages(input({ detected: false }));
     expect(stages.map((s) => [s.id, s.status])).toEqual([
       ["detect", "running"],
+      ["network", "pending"],
       ["install", "pending"],
       ["adapter", "pending"],
       ["login", "pending"],
@@ -162,8 +168,39 @@ describe("deriveAgentSetupStages", () => {
         accountDetail: "user@example.com"
       })
     );
-    expect(stages.map((s) => s.status)).toEqual(["ok", "ok", "ok", "ok", "ok"]);
+    expect(stages.map((s) => s.status)).toEqual([
+      "ok",
+      "ok",
+      "ok",
+      "ok",
+      "ok",
+      "ok"
+    ]);
     expect(stage(stages, "login").detail).toBe("user@example.com");
+  });
+
+  it("flags the network stage as error when connectivity is unreachable", () => {
+    const stages = deriveAgentSetupStages(
+      input({ networkReachable: false, networkDetail: null })
+    );
+    expect(stage(stages, "network").status).toBe("error");
+    // A blocked network keeps the downstream install step pending, not running.
+    expect(stage(stages, "install").status).toBe("pending");
+  });
+
+  it("shows the network stage ok with its registry detail when reachable", () => {
+    const stages = deriveAgentSetupStages(
+      input({ networkReachable: true, networkDetail: "registry.npmjs.org" })
+    );
+    expect(stage(stages, "network")).toMatchObject({
+      status: "ok",
+      detail: "registry.npmjs.org"
+    });
+  });
+
+  it("treats an unknown (null) network verdict as non-blocking", () => {
+    const stages = deriveAgentSetupStages(input({ networkReachable: null }));
+    expect(stage(stages, "network").status).toBe("ok");
   });
 });
 
@@ -217,6 +254,63 @@ describe("projectRevealedStages / shouldAdvanceReveal", () => {
     expect(stage(projectRevealedStages(errored, 1), "install").status).toBe(
       "error"
     );
+  });
+});
+
+describe("stageRemediation", () => {
+  const mk = (
+    id: AgentSetupStage["id"],
+    status: AgentSetupStage["status"]
+  ): AgentSetupStage => ({ id, label: id, status, detail: null });
+
+  it("returns null for ok or running stages", () => {
+    expect(stageRemediation(mk("install", "ok"))).toBeNull();
+    expect(stageRemediation(mk("install", "running"))).toBeNull();
+    expect(stageRemediation(mk("login", "ok"))).toBeNull();
+  });
+
+  it("returns null for detect and ready (prerequisite stages, not user actions)", () => {
+    expect(stageRemediation(mk("detect", "pending"))).toBeNull();
+    expect(stageRemediation(mk("ready", "pending"))).toBeNull();
+  });
+
+  it("maps an unreachable network to a re-detect remediation", () => {
+    expect(stageRemediation(mk("network", "error"))).toEqual({
+      actionId: "redetect",
+      problem: "network-unreachable"
+    });
+  });
+
+  it("maps a pending install to install-missing → install", () => {
+    expect(stageRemediation(mk("install", "pending"))).toEqual({
+      actionId: "install",
+      problem: "install-missing"
+    });
+  });
+
+  it("maps an errored install to install-outdated → install", () => {
+    expect(stageRemediation(mk("install", "error"))).toEqual({
+      actionId: "install",
+      problem: "install-outdated"
+    });
+  });
+
+  it("maps the adapter stage to adapter problems, fixed by install", () => {
+    expect(stageRemediation(mk("adapter", "pending"))).toEqual({
+      actionId: "install",
+      problem: "adapter-missing"
+    });
+    expect(stageRemediation(mk("adapter", "error"))).toEqual({
+      actionId: "install",
+      problem: "adapter-mismatch"
+    });
+  });
+
+  it("maps a pending login to login-missing → login", () => {
+    expect(stageRemediation(mk("login", "pending"))).toEqual({
+      actionId: "login",
+      problem: "login-missing"
+    });
   });
 });
 

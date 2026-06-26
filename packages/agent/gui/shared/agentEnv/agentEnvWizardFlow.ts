@@ -6,6 +6,7 @@ import type {
 
 export type AgentSetupStageId =
   | "detect"
+  | "network"
   | "install"
   | "adapter"
   | "login"
@@ -20,6 +21,7 @@ export interface AgentSetupStage {
 
 export interface AgentSetupStageLabels {
   detect: string;
+  network: string;
   install: string;
   adapter: string;
   login: string;
@@ -44,9 +46,16 @@ export interface DeriveAgentSetupStagesInput {
    */
   installActionPending: boolean;
   loginPending: boolean;
+  /**
+   * Active connectivity probe verdict: true (reachable), false (offline), or
+   * null when the daemon reported no network info (older daemon / not probed) —
+   * null is treated as "don't block".
+   */
+  networkReachable: boolean | null;
   cliVersionDetail: string | null;
   adapterDetail: string | null;
   accountDetail: string | null;
+  networkDetail: string | null;
   labels: AgentSetupStageLabels;
 }
 
@@ -74,6 +83,16 @@ export function deriveAgentSetupStages(
     (input.activePhase ? INSTALLING_PHASES.has(input.activePhase) : false);
 
   const detectStatus: CodexSetupStepStatus = input.detected ? "ok" : "running";
+
+  // Network is an independent live-connectivity check (registry + provider API),
+  // so it is NOT folded into the `ready` short-circuit — a real outage shows even
+  // when the CLI is otherwise configured. It can only be judged once detection
+  // has run; `false` is the only blocking value (null = no daemon verdict).
+  const networkStatus: CodexSetupStepStatus = !input.detected
+    ? "pending"
+    : input.networkReachable === false
+      ? "error"
+      : "ok";
 
   // A satisfied CLI stays checked even while an install runs, so the spinner
   // lands on the stage actually being worked on (e.g. the adapter during a
@@ -111,6 +130,12 @@ export function deriveAgentSetupStages(
       label: input.labels.detect,
       status: detectStatus,
       detail: null
+    },
+    {
+      id: "network",
+      label: input.labels.network,
+      status: networkStatus,
+      detail: input.networkDetail
     },
     {
       id: "install",
@@ -184,6 +209,64 @@ export function shouldAdvanceReveal(
     return false;
   }
   return cursor.status === "ok" || cursor.status === "skipped";
+}
+
+export type StageActionId = "install" | "login" | "redetect";
+
+/**
+ * The problem token a blocked stage represents. The UI maps this to "未xxx"
+ * copy; keeping it i18n-agnostic here lets the mapping stay tested without
+ * pulling translation strings into the pure flow module.
+ */
+export type StageProblem =
+  | "network-unreachable"
+  | "install-missing"
+  | "install-outdated"
+  | "adapter-missing"
+  | "adapter-mismatch"
+  | "login-missing";
+
+export interface StageRemediation {
+  actionId: StageActionId;
+  problem: StageProblem;
+}
+
+/**
+ * For a stage the user must act on (idle `pending`/`error`, never `running` or
+ * `ok`), returns what is wrong and which action fixes it. `detect`/`ready` never
+ * carry their own remediation — they reflect prerequisites, not user actions.
+ *
+ * `error` means a version problem on the install/adapter stages (the only stages
+ * derive marks `error`); `pending` means the step simply has not run yet.
+ */
+export function stageRemediation(
+  stage: AgentSetupStage
+): StageRemediation | null {
+  if (stage.status !== "pending" && stage.status !== "error") {
+    return null;
+  }
+  switch (stage.id) {
+    case "network":
+      // Connectivity isn't fixed by an install/login action — re-running
+      // detection (which re-probes the network) is the remediation.
+      return { actionId: "redetect", problem: "network-unreachable" };
+    case "install":
+      return {
+        actionId: "install",
+        problem:
+          stage.status === "error" ? "install-outdated" : "install-missing"
+      };
+    case "adapter":
+      return {
+        actionId: "install",
+        problem:
+          stage.status === "error" ? "adapter-mismatch" : "adapter-missing"
+      };
+    case "login":
+      return { actionId: "login", problem: "login-missing" };
+    default:
+      return null;
+  }
 }
 
 export interface ResolveWizardAutoStartInput {
