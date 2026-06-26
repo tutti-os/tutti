@@ -3131,6 +3131,7 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-conversation__user-message-flow {
+  row-gap: 14px;
   justify-items: end;
 }
 
@@ -5430,58 +5431,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   background: var(--transparency-hover);
   color: var(--text-primary);
   outline: none;
-}
-
-.agent-gui-node__usage-alert-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0 24px;
-  border-radius: 8px 8px 0 0;
-  padding: 6px 10px;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 16px;
-  color: var(--agent-gui-warning, var(--cove-label-orange));
-  background: color-mix(
-    in srgb,
-    var(--agent-gui-warning, var(--cove-label-orange)) 12%,
-    transparent
-  );
-}
-
-.agent-gui-node__usage-alert-banner[data-usage-alert-tier="critical"] {
-  color: var(--agent-gui-danger, var(--state-danger));
-  background: color-mix(
-    in srgb,
-    var(--agent-gui-danger, var(--state-danger)) 12%,
-    transparent
-  );
-}
-
-.agent-gui-node__usage-alert-message {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.agent-gui-node__usage-alert-actions {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 4px;
-}
-
-.agent-gui-node__usage-alert-dismiss {
-  flex: 0 0 auto;
-  border-radius: 4px;
-  color: inherit;
-}
-
-.agent-gui-node__usage-alert-dismiss:hover,
-.agent-gui-node__usage-alert-dismiss:focus-visible {
-  background: color-mix(in srgb, currentColor 12%, transparent);
-  color: inherit;
 }
 
 .agent-gui-node__provider-setup-notice {

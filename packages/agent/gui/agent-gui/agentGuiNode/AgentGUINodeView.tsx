@@ -13,7 +13,7 @@ import {
 } from "react";
 import { useSnapshot } from "valtio";
 import { proxy } from "valtio/vanilla";
-import { ChevronRight, ExternalLink, Info, Wrench, X } from "lucide-react";
+import { ChevronRight, ExternalLink, Info, Wrench } from "lucide-react";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
 import type {
   ReferenceLocateTarget,
@@ -97,10 +97,6 @@ import {
   type AgentComposerSlashStatus,
   type WorkspaceReferencePickResult
 } from "./AgentComposer";
-import {
-  USAGE_CRITICAL_PERCENT,
-  USAGE_WARN_PERCENT
-} from "./model/agentUsageThresholds";
 import {
   createAgentGUIBottomDockStore,
   syncAgentGUIBottomDockStore,
@@ -378,9 +374,6 @@ export interface AgentGUIViewLabels {
   usageTokensLabel: string;
   usageLimitsLabel: string;
   usageCompactAction: string;
-  usageAlertWarnMessage: (input: { percent: number }) => string;
-  usageAlertCriticalMessage: (input: { percent: number }) => string;
-  usageAlertDismiss: string;
   planImplementationLead: string;
   planImplementationConfirm: string;
   planImplementationFeedbackPlaceholder: string;
@@ -428,8 +421,6 @@ interface AgentGUINodeViewProps {
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
-    submitCompact: () => Promise<void> | void;
-    dismissUsageAlert: () => void;
     loadOlderConversationMessages: () => void;
     showPromptImagesUnsupported: () => void;
     submitApprovalOption: (requestId: string, optionId: string) => void;
@@ -2002,10 +1993,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
   }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
-  const handleUsageAlertCompact = useCallback(() => {
-    actions.submitCompact();
-    actions.dismissUsageAlert();
-  }, [actions]);
   const submitApprovalOption = useStableEventCallback(
     actions.submitApprovalOption
   );
@@ -2458,12 +2445,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           bottomDockRef={bottomDockRef}
           bottomDockLiftedPrompt={bottomDockLiftedPrompt}
           bottomDockReplacementPrompt={bottomDockReplacementPrompt}
-          usageAlert={viewModel.usageAlert}
-          usagePercent={viewModel.usage?.percentUsed ?? null}
-          usageAlertShowCompactAction={viewModel.compactSupported !== false}
-          usageAlertLabels={labels}
-          onUsageAlertCompact={handleUsageAlertCompact}
-          onUsageAlertDismiss={actions.dismissUsageAlert}
           store={bottomDockStore}
           storeRevision={bottomDockStoreRevision}
           keyboardShortcutsEnabled={isActive}
@@ -2724,76 +2705,6 @@ function EmptyHeroTitle({
   );
 }
 
-type AgentUsageAlertBannerLabels = Pick<
-  AgentGUIViewLabels,
-  | "usageAlertWarnMessage"
-  | "usageAlertCriticalMessage"
-  | "usageAlertDismiss"
-  | "usageCompactAction"
->;
-
-function AgentUsageAlertBanner({
-  tier,
-  percent,
-  showCompactAction,
-  labels,
-  onCompact,
-  onDismiss
-}: {
-  tier: NonNullable<AgentGUINodeViewModel["usageAlert"]>;
-  percent: number | null;
-  showCompactAction: boolean;
-  labels: AgentUsageAlertBannerLabels;
-  onCompact: () => void;
-  onDismiss: () => void;
-}): React.JSX.Element {
-  "use memo";
-
-  const resolvedPercent =
-    percent ??
-    (tier === "critical" ? USAGE_CRITICAL_PERCENT : USAGE_WARN_PERCENT);
-  const message =
-    tier === "critical"
-      ? labels.usageAlertCriticalMessage({ percent: resolvedPercent })
-      : labels.usageAlertWarnMessage({ percent: resolvedPercent });
-
-  return (
-    <div
-      className={styles.usageAlertBanner}
-      data-testid="agent-gui-usage-alert"
-      data-usage-alert-tier={tier}
-      role={tier === "critical" ? "alert" : "status"}
-    >
-      <span className={styles.usageAlertMessage}>{message}</span>
-      <span className={styles.usageAlertActions}>
-        {tier === "critical" && showCompactAction ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            data-testid="agent-gui-usage-alert-compact"
-            onClick={onCompact}
-          >
-            {labels.usageCompactAction}
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          className={styles.usageAlertDismiss}
-          data-testid="agent-gui-usage-alert-dismiss"
-          aria-label={labels.usageAlertDismiss}
-          title={labels.usageAlertDismiss}
-          onClick={onDismiss}
-        >
-          <X size={14} strokeWidth={2} aria-hidden="true" />
-        </Button>
-      </span>
-    </div>
-  );
-}
-
 interface AgentGUIBottomDockPaneProps {
   bottomDockRef: React.RefObject<HTMLDivElement | null>;
   // Approval / ask-user prompts lifted above the inline notice (composer stays
@@ -2812,12 +2723,6 @@ interface AgentGUIBottomDockPaneProps {
   store: AgentGUIBottomDockStore;
   storeRevision: string;
   keyboardShortcutsEnabled: boolean;
-  usageAlert: AgentGUINodeViewModel["usageAlert"];
-  usagePercent: number | null;
-  usageAlertShowCompactAction: boolean;
-  usageAlertLabels: AgentUsageAlertBannerLabels;
-  onUsageAlertCompact: () => void;
-  onUsageAlertDismiss: () => void;
   chromeLabels: ChromeLabels;
   goalBannerLabels: AgentGoalBannerLabels;
   promptLabels: InteractivePromptLabels;
@@ -2835,12 +2740,6 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   store,
   storeRevision: _storeRevision,
   keyboardShortcutsEnabled,
-  usageAlert,
-  usagePercent,
-  usageAlertShowCompactAction,
-  usageAlertLabels,
-  onUsageAlertCompact,
-  onUsageAlertDismiss,
   chromeLabels,
   goalBannerLabels,
   promptLabels,
@@ -2891,16 +2790,6 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
             labels={promptLabels}
           />
         </div>
-      ) : null}
-      {usageAlert ? (
-        <AgentUsageAlertBanner
-          tier={usageAlert}
-          percent={usagePercent}
-          showCompactAction={usageAlertShowCompactAction}
-          labels={usageAlertLabels}
-          onCompact={onUsageAlertCompact}
-          onDismiss={onUsageAlertDismiss}
-        />
       ) : null}
       {inlineNoticeChrome ? (
         <AgentSessionChrome

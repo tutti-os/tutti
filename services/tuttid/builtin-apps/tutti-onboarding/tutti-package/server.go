@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"mime"
 	"net/http"
@@ -24,6 +25,10 @@ func main() {
 			response.WriteHeader(http.StatusNoContent)
 			return
 		}
+		if request.URL.Path == "/tutti/cli/read" {
+			handleReadGuide(response, request, packageDir)
+			return
+		}
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
 			writeJSON(response, http.StatusMethodNotAllowed, map[string]string{"error": "Method Not Allowed"})
 			return
@@ -40,6 +45,32 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+func handleReadGuide(response http.ResponseWriter, request *http.Request, packageDir string) {
+	if request.Method != http.MethodPost {
+		writeJSON(response, http.StatusMethodNotAllowed, map[string]string{"error": "Method Not Allowed"})
+		return
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(request.Body, 1024*1024))
+	content, err := os.ReadFile(filepath.Join(packageDir, "tutti-guide.md"))
+	if err != nil {
+		writeJSON(response, http.StatusInternalServerError, map[string]any{
+			"error": map[string]string{
+				"code":    "guide_unavailable",
+				"message": "Tutti guide is unavailable.",
+			},
+		})
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{
+		"kind": "json",
+		"value": map[string]any{
+			"title":   "Tutti 产品知识库",
+			"format":  "markdown",
+			"content": string(content),
+		},
+	})
 }
 
 func envValue(key string, fallback string) string {

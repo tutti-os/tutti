@@ -100,7 +100,8 @@ func TestServiceListReportsLoginAndRefreshActionsWhenAuthMarkerMissing(t *testin
 	if action.ID != ActionLogin {
 		t.Fatalf("first action ID = %q, want %q", action.ID, ActionLogin)
 	}
-	if action.Command == nil || action.Command.Input != "/usr/local/bin/codex login\n" {
+	if action.Command == nil || action.Command.Input != `/usr/local/bin/codex login -c 'service_tier="fast"'
+` {
 		t.Fatalf("login command = %#v", action.Command)
 	}
 	if status.Actions[1].ID != ActionRefresh || status.Actions[1].Kind != ActionKindRefresh {
@@ -208,7 +209,8 @@ func TestServiceListReportsReadyWhenInstalledAndAuthenticated(t *testing.T) {
 	if action.ID != ActionLogin {
 		t.Fatalf("first action ID = %q, want %q", action.ID, ActionLogin)
 	}
-	if action.Command == nil || action.Command.Input != "/usr/local/bin/codex login\n" {
+	if action.Command == nil || action.Command.Input != `/usr/local/bin/codex login -c 'service_tier="fast"'
+` {
 		t.Fatalf("login command = %#v", action.Command)
 	}
 }
@@ -221,8 +223,8 @@ func TestServiceListUsesCodexLoginStatusCommand(t *testing.T) {
 		if spec.Provider != "codex" {
 			t.Fatalf("Provider = %q, want codex", spec.Provider)
 		}
-		if strings.Join(spec.AuthStatusCommand, " ") != "login status" {
-			t.Fatalf("AuthStatusCommand = %v, want login status", spec.AuthStatusCommand)
+		if strings.Join(spec.AuthStatusCommand, " ") != `login -c service_tier="fast" status` {
+			t.Fatalf("AuthStatusCommand = %v, want login service tier override status", spec.AuthStatusCommand)
 		}
 		if binaryPath != "/usr/local/bin/codex" {
 			t.Fatalf("binaryPath = %q, want /usr/local/bin/codex", binaryPath)
@@ -1068,6 +1070,34 @@ func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
 	result := <-done
 	if result.Status != RunActionCompleted {
 		t.Fatalf("Status = %q, want completed; result=%#v", result.Status, result)
+	}
+}
+
+func TestServiceDownloadFileRetriesRetryableStatus(t *testing.T) {
+	var attempts atomic.Int32
+	installerServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if attempts.Add(1) < 3 {
+			http.Error(writer, "try again", http.StatusInternalServerError)
+			return
+		}
+		_, _ = writer.Write([]byte("downloaded"))
+	}))
+	defer installerServer.Close()
+
+	service := Service{HTTPClient: installerServer.Client()}
+	destinationPath := filepath.Join(t.TempDir(), "asset.txt")
+	if err := service.downloadFile(context.Background(), installerServer.URL+"/asset.txt", destinationPath); err != nil {
+		t.Fatalf("downloadFile() error = %v", err)
+	}
+	if attempts.Load() != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts.Load())
+	}
+	content, err := os.ReadFile(destinationPath)
+	if err != nil {
+		t.Fatalf("read destination: %v", err)
+	}
+	if string(content) != "downloaded" {
+		t.Fatalf("downloaded content = %q, want downloaded", string(content))
 	}
 }
 

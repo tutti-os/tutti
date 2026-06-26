@@ -71,7 +71,11 @@ func runtimeCommandFromCapability(cliName string, capability cliservice.Capabili
 	if id == "agent-context.agent.skill-bundle" || id == "agent-context.agent.tutti-cli-skill-bundle" {
 		return runtimeCommand{}, false
 	}
-	if capability.Source.Kind != cliservice.CapabilitySourceApp && !strings.HasPrefix(id, "issue-manager.") && !strings.HasPrefix(id, "agent-context.") && !strings.HasPrefix(id, "browser.") {
+	if capability.Source.Kind != cliservice.CapabilitySourceApp &&
+		id != "workspace-apps.app.open" &&
+		!strings.HasPrefix(id, "issue-manager.") &&
+		!strings.HasPrefix(id, "agent-context.") &&
+		!strings.HasPrefix(id, "browser.") {
 		return runtimeCommand{}, false
 	}
 	path := commandPath(capability.Path)
@@ -79,6 +83,12 @@ func runtimeCommandFromCapability(cliName string, capability cliservice.Capabili
 		return runtimeCommand{}, false
 	}
 	description := strings.TrimSpace(capability.Description)
+	if id == "workspace-apps.app.open" {
+		if description != "" {
+			description += " "
+		}
+		description += "Use only when the user explicitly asks to open or show an app window, or confirms an app window should be opened; prefer app-specific CLI commands for ordinary app work."
+	}
 	if capability.Source.Kind == cliservice.CapabilitySourceApp && strings.TrimSpace(capability.Source.AppName) != "" {
 		if description != "" {
 			description += " "
@@ -176,6 +186,8 @@ func commandExampleSuffix(id string) string {
 		return " --uid <uid> --value <text>"
 	case "browser.eval":
 		return " --script '() => document.title'"
+	case "workspace-apps.app.open":
+		return " --json"
 	default:
 		return ""
 	}
@@ -238,6 +250,8 @@ func commandRank(id string) int {
 		return 120
 	case "agent-context.agent.active-peers":
 		return 130
+	case "workspace-apps.app.open":
+		return 135
 	default:
 		return 140
 	}
@@ -260,6 +274,7 @@ func fallbackCommandGuide(cliName string) string {
 		fmt.Sprintf("- List agent sessions: `%s agent sessions`", cliName),
 		fmt.Sprintf("- Get agent session summary: `%s agent session-summary --session-id <session-id> --json`", cliName),
 		fmt.Sprintf("- Show active peer agents: `%s agent active-peers --json`", cliName),
+		fmt.Sprintf("- Open an app window: `%s app open --app-id <app-id> --json` - Use only when the user explicitly asks to open or show an app window, or confirms an app window should be opened; prefer app-specific CLI commands for ordinary app work.", cliName),
 	}, "\n")
 }
 

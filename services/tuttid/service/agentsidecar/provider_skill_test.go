@@ -12,8 +12,12 @@ func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentLaunchers(t *testing.T) 
 	for _, want := range []string{
 		"tutti-dev codex start --prompt <task> --show --json",
 		"tutti-dev claude start --prompt <task> --show --json",
+		"tutti-dev app open --app-id <appId> --json",
+		"Built-in app ids include",
+		"tutti-onboarding",
+		"Do not call `app open` by default",
 		"Do not ask for a missing model",
-		"If `appId` is `issue-manager`, read and follow the injected `issue-manager` skill",
+		"If `appId` is `issue-manager` and the user asks issue/task work",
 		"`tutti-dev <scope> <command>`",
 	} {
 		if !strings.Contains(skill, want) {
@@ -40,8 +44,12 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 	for _, want := range []string{
 		"tutti-dev codex start --prompt <task> --show --json",
 		"tutti-dev claude start --prompt <task> --show --json",
+		"tutti-dev app open --app-id <appId> --json",
+		"Built-in app ids include",
+		"tutti-onboarding",
+		"Do not use `app open` by default",
 		"do not ask for a missing model",
-		"if it is `issue-manager`, use the `issue-manager` workflow",
+		"if it is `issue-manager` and the user asks issue/task work",
 	} {
 		if !strings.Contains(policy, want) {
 			t.Fatalf("tutti CLI policy missing %q: %q", want, policy)

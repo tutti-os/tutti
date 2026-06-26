@@ -180,6 +180,16 @@ export const appCenterEn = {
     }
   },
   catalogApps: {
+    agentClaudeCode: {
+      description:
+        "Start Claude Code in this workspace with access to shared context, files, and apps.",
+      name: "Claude Code"
+    },
+    agentCodex: {
+      description:
+        "Start Codex in this workspace with access to shared context, files, and apps.",
+      name: "Codex"
+    },
     issueManager: {
       description: "Manage workspace tasks and runs.",
       name: "Task Manager"
@@ -451,6 +461,14 @@ export const appCenterZhCN = {
     }
   },
   catalogApps: {
+    agentClaudeCode: {
+      description: "启动 Claude Code，处理当前工作区任务。",
+      name: "Claude Code"
+    },
+    agentCodex: {
+      description: "启动 Codex，处理当前工作区任务。",
+      name: "Codex"
+    },
     issueManager: {
       description: "管理工作区任务和运行记录。",
       name: "任务管理"

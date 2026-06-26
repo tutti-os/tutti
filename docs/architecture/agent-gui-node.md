@@ -226,8 +226,7 @@ loading from the session view store, not infer it from the send button state.
 composer submit with no activeConversationId
   -> startConversation
   -> normalize prompt content and optional displayPrompt
-  -> create optimistic conversation summary
-  -> set session view messages loading
+  -> set local first-create busy state
   -> mark conversation-list create pending
   -> activation.activate(mode="new")
   -> AgentActivityRuntime.activateSession
@@ -238,17 +237,24 @@ composer submit with no activeConversationId
   -> provider install/check + prepareRuntime
   -> RuntimeController.Start
   -> RuntimeController.Exec when initialContent exists
+  -> activation succeeds
+  -> create/attach conversation summary
+  -> record optimistic user message
+  -> clear home draft and enter conversation detail
   -> ActivityProjection receives runtime reports
   -> agent.activity.updated events
   -> AgentActivityController snapshot update
   -> projection + UI refresh
 ```
 
-The blue "connecting conversation" loading belongs to activation/session
-creation. It is different from the transcript processing row shown after a
-prompt is accepted into an existing or already-created session. For Claude Code,
-`desktopAgentActivityAdapter.createSession` may promote a pre-warmed hidden
-draft session before calling `sendWorkspaceAgentSessionInput`.
+For normal first-message creation, the UI stays on the home composer while
+activation is pending. The home composer uses its existing busy/send-button
+state; it does not show a separate "creating session" text and it does not enter
+conversation detail just to show "connecting conversation". After activation
+succeeds, the controller attaches the conversation and records the optimistic
+user message before loading runtime projection. For Claude Code,
+`desktopAgentActivityAdapter.createSession` may promote a pre-warmed hidden draft
+session before calling `sendWorkspaceAgentSessionInput`.
 
 ### Sending To An Existing Conversation
 
@@ -435,10 +441,12 @@ composer draft + activeConversationId
 User-visible rules:
 
 - Home composer submit with no active conversation starts activation. Detail
-  composer submit with an active conversation sends input.
-- The send button spinner is local submit/approval response state. The
-  "connecting conversation" button state is activation state. The transcript
-  processing row is runtime turn state.
+  composer submit with an active conversation sends input. First-message
+  activation keeps the user on the home composer until activation succeeds.
+- The send button spinner is local submit/approval response state. For
+  first-message activation, this same busy state is the only normal pending
+  indicator. The "connecting conversation" state belongs to existing-session
+  activation/recovery. The transcript processing row is runtime turn state.
 - Model, permission, plan mode, reasoning, speed, project, branch, prompt image,
   file mention, and skill/capability controls must read from composer settings
   and provider options. They should not be reconstructed from transcript rows.
@@ -476,7 +484,8 @@ User-visible rules:
 | ------------------------------ | -------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                | list load resolves or errors                                                   |
 | Selected detail skeleton       | session view store/controller    | active session messages load starts                     | `listSessionMessages` resolves or active session changes                       |
-| "Connecting conversation"      | new-session activation state     | `startConversation` calls `activate(mode="new")`        | activation succeeds, fails, or is abandoned as stale                           |
+| Home first-create busy         | controller local create state    | home `startConversation` begins                         | new-session activation succeeds, fails, or is abandoned as stale               |
+| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`            | activation succeeds, fails, or is abandoned as stale                           |
 | Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                      | runtime reports ready/completed/failed or newer message projection replaces it |
 | Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins               | command promise settles                                                        |
 | Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing | options/settings resolve or fallback state is applied                          |

@@ -114,6 +114,8 @@ interface BuiltInWorkspaceAppMetadata {
 interface BuiltInWorkspaceAppResource {
   readonly appCenter: {
     readonly catalogApps: {
+      readonly agentClaudeCode: BuiltInWorkspaceAppMetadata;
+      readonly agentCodex: BuiltInWorkspaceAppMetadata;
       readonly issueManager: BuiltInWorkspaceAppMetadata;
     };
   };
@@ -479,10 +481,23 @@ function findBuiltInWorkspaceAppMetadata(
   appId: string,
   locale: string
 ): BuiltInWorkspaceAppMetadata | null {
-  if (appId.trim() !== "issue-manager") {
+  const normalizedLocale = normalizeLocale(locale);
+  const language = normalizedLocale?.split("-")[0] ?? "en";
+  const id = appId.trim().toLowerCase();
+  const resource =
+    language === "zh"
+      ? appCenterI18nResources["zh-CN"]
+      : appCenterI18nResources.en;
+  const agentAppMetadata = builtInAgentWorkspaceAppMetadataFromResource(
+    resource,
+    id
+  );
+  if (agentAppMetadata) {
+    return agentAppMetadata;
+  }
+  if (id !== "issue-manager") {
     return null;
   }
-  const normalizedLocale = normalizeLocale(locale);
   if (normalizedLocale?.split("-")[0] === "zh") {
     return builtInWorkspaceAppMetadataFromResource(
       appCenterI18nResources["zh-CN"]
@@ -496,6 +511,20 @@ function builtInWorkspaceAppMetadataFromResource(
 ): BuiltInWorkspaceAppMetadata {
   return (resource as BuiltInWorkspaceAppResource).appCenter.catalogApps
     .issueManager;
+}
+
+function builtInAgentWorkspaceAppMetadataFromResource(
+  resource: unknown,
+  appId: string
+): BuiltInWorkspaceAppMetadata | null {
+  const { catalogApps } = (resource as BuiltInWorkspaceAppResource).appCenter;
+  if (appId === "agent-claude-code") {
+    return catalogApps.agentClaudeCode;
+  }
+  if (appId === "agent-codex") {
+    return catalogApps.agentCodex;
+  }
+  return null;
 }
 
 function normalizeLocale(value: string | null | undefined): string | null {

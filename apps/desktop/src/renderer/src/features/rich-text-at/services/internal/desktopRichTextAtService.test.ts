@@ -589,7 +589,8 @@ test("desktop rich text @ service assembles provider agent mention apps from men
         "Start a Codex agent session in the current workspace."
       ],
       commandPaths: ["codex start"],
-      description: "Start a Codex agent session in the current workspace.",
+      description:
+        "Start Codex in this workspace with access to shared context, files, and apps.",
       commandSummaries: ["Start a Codex agent session"],
       displayName: "Codex",
       iconUrl: tuttiAgentAssetUrls.codex,
@@ -605,7 +606,7 @@ test("desktop rich text @ service assembles provider agent mention apps from men
       ],
       commandPaths: ["claude start"],
       description:
-        "Start a Claude Code agent session in the current workspace.",
+        "Start Claude Code in this workspace with access to shared context, files, and apps.",
       commandSummaries: ["Start a Claude Code agent session"],
       displayName: "Claude Code",
       iconUrl: tuttiAgentAssetUrls.claudeCode,
@@ -620,15 +621,83 @@ test("desktop rich text @ service assembles provider agent mention apps from men
       entityId: "agent-codex",
       label: "Codex",
       presentation: {
-        description: "Start a Codex agent session in the current workspace.",
+        description:
+          "Start Codex in this workspace with access to shared context, files, and apps.",
         iconUrl: tuttiAgentAssetUrls.codex,
-        subtitle: "Start a Codex agent session in the current workspace."
+        subtitle:
+          "Start Codex in this workspace with access to shared context, files, and apps."
       },
       scope: {
         workspaceId: "workspace-1"
       }
     }
   });
+});
+
+test("desktop rich text @ service localizes agent mention pseudo apps", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceAppMentionCandidates(workspaceId: string) {
+        return {
+          workspaceId,
+          apps: [
+            createWorkspaceAppMentionCandidate({
+              appId: "agent-codex",
+              commandCount: 1,
+              description:
+                "Start a Codex agent session in the current workspace. Use --show to request AgentGUI activation.",
+              displayName: "Codex",
+              scopes: ["codex"]
+            }),
+            createWorkspaceAppMentionCandidate({
+              appId: "agent-claude-code",
+              commandCount: 1,
+              description:
+                "Start a Claude Code agent session in the current workspace. Use --show to request AgentGUI activation.",
+              displayName: "Claude Code",
+              scopes: ["claude"]
+            })
+          ]
+        };
+      }
+    } as unknown as TuttidClient,
+    getLocale: () => "zh-CN"
+  });
+
+  const [provider] = service.getProviders({
+    capabilities: ["workspace-app"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider);
+  const items = await provider.query({
+    context: {},
+    keyword: "",
+    maxResults: 5,
+    trigger: "@"
+  });
+  const localizedItems = items as Array<{
+    description: string;
+    displayName: string;
+  }>;
+
+  assert.deepEqual(
+    localizedItems.map((item) => ({
+      description: item.description,
+      displayName: item.displayName
+    })),
+    [
+      {
+        description: "启动 Codex，处理当前工作区任务。",
+        displayName: "Codex"
+      },
+      {
+        description: "启动 Claude Code，处理当前工作区任务。",
+        displayName: "Claude Code"
+      }
+    ]
+  );
 });
 
 test("desktop rich text @ service hides agent pseudo app mentions using cached provider readiness", async () => {

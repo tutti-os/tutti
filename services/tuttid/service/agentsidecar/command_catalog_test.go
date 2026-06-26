@@ -78,6 +78,13 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			Description: "List agent sessions.",
 		},
 		{
+			ID:          "workspace-apps.app.open",
+			Path:        []string{"app", "open"},
+			Summary:     "Open a workspace app",
+			Description: "Launch or activate an installed workspace app.",
+			InputSchema: map[string]any{"required": []any{"app-id"}},
+		},
+		{
 			ID:          "agent-context.agent.tutti-cli-skill-bundle",
 			Path:        []string{"agent", "tutti-cli-skill-bundle"},
 			Summary:     "Get Tutti CLI skill bundle",
@@ -112,6 +119,10 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 	}
 	if !strings.Contains(guide, "tutti agent sessions") {
 		t.Fatalf("guide missing agent sessions: %q", guide)
+	}
+	if !strings.Contains(guide, "tutti app open --app-id <app-id> --json") ||
+		!strings.Contains(guide, "Use only when the user explicitly asks to open or show an app window") {
+		t.Fatalf("guide missing guarded app open: %q", guide)
 	}
 	if strings.Contains(guide, "skill-bundle") {
 		t.Fatalf("guide included host integration command: %q", guide)
@@ -212,6 +223,10 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 	}
 	if !strings.Contains(guide, "tutti-dev issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed") {
 		t.Fatalf("guide = %q, want tutti-dev issue task run complete fallback command", guide)
+	}
+	if !strings.Contains(guide, "tutti-dev app open --app-id <app-id> --json") ||
+		!strings.Contains(guide, "Use only when the user explicitly asks to open or show an app window") {
+		t.Fatalf("guide = %q, want guarded app open fallback command", guide)
 	}
 }
 

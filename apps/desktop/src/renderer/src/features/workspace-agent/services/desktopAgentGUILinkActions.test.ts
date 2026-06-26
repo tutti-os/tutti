@@ -95,6 +95,7 @@ test("desktop agent gui link actions open urls through the workspace browser", a
   assert.equal(handled, true);
   assert.deepEqual(openedUrls, [
     {
+      reuseIfOpen: false,
       source: "agent_command",
       url: "https://example.com",
       workspaceId: "workspace-1"

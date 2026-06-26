@@ -319,10 +319,13 @@ function AgentUserImageGrid({
   const { loadingIds, sources: loadedImages } =
     useAgentMessageImageSources(images);
   const columnCount = Math.min(Math.max(images.length, 1), 4);
+  const thumbnailWidth = images.length === 1 ? "160px" : "80px";
   return (
     <div
       className="grid justify-self-end gap-2"
-      style={{ gridTemplateColumns: `repeat(${columnCount}, 80px)` }}
+      style={{
+        gridTemplateColumns: `repeat(${columnCount}, ${thumbnailWidth})`
+      }}
     >
       {images.map((image) => {
         const src = loadedImages.get(image.id) ?? imageDataUrl(image);
@@ -330,18 +333,18 @@ function AgentUserImageGrid({
         return (
           <div
             key={image.id}
-            className="size-20 min-w-0 overflow-hidden rounded-[6px]"
+            className="max-h-20 min-w-0 overflow-hidden rounded-[6px]"
           >
             {src ? (
               <ZoomableImage
                 src={src}
                 alt={image.name?.trim() || "image"}
-                className="size-full object-cover"
+                className="block max-h-20 w-full rounded-[6px] object-contain"
                 draggable={false}
               />
             ) : loading ? (
               <div
-                className="flex size-full items-center justify-center bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]"
+                className="flex h-20 w-full items-center justify-center bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]"
                 data-testid="agent-gui-message-image-loading"
               >
                 <LoaderCircle
@@ -351,7 +354,7 @@ function AgentUserImageGrid({
                 />
               </div>
             ) : (
-              <div className="size-full animate-pulse bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)]" />
+              <div className="h-20 w-full animate-pulse bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)]" />
             )}
           </div>
         );

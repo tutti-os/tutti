@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "tutti.app.cli.v1",
+  "scope": "guide",
+  "description": "Read the Tutti product onboarding guide.",
+  "commands": [
+    {
+      "path": ["read"],
+      "summary": "Read the Tutti guide",
+      "description": "Return the bundled Tutti product knowledge guide.",
+      "output": {
+        "defaultMode": "json",
+        "json": true
+      },
+      "handler": {
+        "kind": "http",
+        "method": "POST",
+        "path": "/tutti/cli/read",
+        "timeoutMs": 5000
+      }
+    }
+  ]
+}

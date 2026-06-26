@@ -41,6 +41,12 @@ Use this protocol for every Tutti CLI command:
 4. If a required input is missing, ask the user or run the relevant discovery command. Follow daemon recovery hints when an error includes one.
 5. Treat unknown-input or invalid-input errors as a signal to re-read command help or the guide, not to retry with guessed flags.
 
+App window opening:
+
+- `app open --app-id <app-id> --json` is allowed only when the user explicitly asks to open or show an app window, or confirms an app window should be opened.
+- Do not use `app open` as the default way to inspect, query, update, or execute app work. Prefer the app-specific CLI command for the requested operation.
+- Use `app open --app-id <app-id> --json` for any app window the user explicitly asks to open. Built-in app ids include `agent-codex`, `agent-claude-code`, `issue-manager`, and `tutti-onboarding`. Use `agent open --session-id <session-id> --json` when the user asks to open an existing agent session.
+
 Output rules:
 
 - `--json` means machine-readable output, not every domain field.

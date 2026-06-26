@@ -830,15 +830,6 @@ export const AgentGUINode = memo(function AgentGUINode({
       usageTokensLabel: t("agentHost.agentGui.usageTokensLabel"),
       usageLimitsLabel: t("agentHost.agentGui.usageLimitsLabel"),
       usageCompactAction: t("agentHost.agentGui.usageCompactAction"),
-      usageAlertWarnMessage: (input: { percent: number }) =>
-        t("agentHost.agentGui.usageAlertWarnMessage", {
-          percent: input.percent
-        }),
-      usageAlertCriticalMessage: (input: { percent: number }) =>
-        t("agentHost.agentGui.usageAlertCriticalMessage", {
-          percent: input.percent
-        }),
-      usageAlertDismiss: t("agentHost.agentGui.usageAlertDismiss"),
       planImplementationLead: t("agentHost.agentGui.planImplementationLead"),
       planImplementationConfirm: t(
         "agentHost.agentGui.planImplementationConfirm"

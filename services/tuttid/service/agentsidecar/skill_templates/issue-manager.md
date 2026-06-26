@@ -9,6 +9,8 @@ Owns issue **handoff** interpretation, **mode** selection, and **run** lifecycle
 
 Run metadata: `--agent-provider {{AGENT_PROVIDER}}`, `--agent-session-id {{AGENT_SESSION_ID}}`. Do not guess or substitute provider or session ids.
 
+If the user explicitly asks to open or show the Task Manager app window, use `app open --app-id issue-manager --json`. Do not use app opening as a substitute for issue inspection, breakdown, execution, or run reporting.
+
 ## Entry Protocol
 
 Run this on every invocation:

@@ -7,8 +7,11 @@ app.
   `$TUTTI_APP_PACKAGE_DIR`, `$TUTTI_APP_HOST`, `$TUTTI_APP_PORT`,
   `$TUTTI_APP_RUNTIME_DIR`, and `$TUTTI_APP_DATA_DIR`.
 - `server.go` is built into `bin/<platform>/tutti-onboarding-server` during
-  packaging. The binary serves packaged static assets and exposes `/healthz`
-  without requiring `$TUTTI_APP_NODE`.
+  packaging. The binary serves packaged static assets, exposes `/healthz`,
+  and handles `POST /tutti/cli/read` for the `guide read` CLI command without
+  requiring `$TUTTI_APP_NODE`.
+- `tutti.cli.json` exposes `guide read`, which returns the bundled
+  `tutti-guide.md` as JSON for agents and other apps.
 - The app is read-only and stores no durable data. If storage is introduced
   later, write only under `$TUTTI_APP_DATA_DIR`.
 - In-app copy is bundled from the authoring app's React i18n dictionaries:

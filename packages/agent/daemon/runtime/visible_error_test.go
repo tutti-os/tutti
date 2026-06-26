@@ -41,6 +41,15 @@ func TestVisibleFailureCodeClassifiesStreamDisconnected(t *testing.T) {
 	}
 }
 
+func TestVisibleFailureCodeDoesNotTreatPatchContextLoginTextAsAuth(t *testing.T) {
+	detail := `acp process exited with code 0: process exited: ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/wwcome/work/tutti-os/tutti/services/tuttid/service/agentstatus/service_test.go:
+func TestServiceLoginRunsProviderLoginCommand(t *testing.T) {
+	service := testService(func(name string) (string, error) {`
+	if got := visibleFailureCode(detail); got != "process_exited" {
+		t.Fatalf("visibleFailureCode() = %q, want process_exited", got)
+	}
+}
+
 func TestVisibleFailureCodeClassifiesMissingBinaryAsCliNotFound(t *testing.T) {
 	// A run that can't find the CLI binary surfaces as an exec error; this is the
 	// real "not installed / not on PATH" failure (the aspirational CODEX_CLI_MISSING
@@ -60,6 +69,12 @@ func TestVisibleFailureCodeClassifiesGenuineExitAsProcessExited(t *testing.T) {
 	// A non-zero exit that is NOT a missing binary stays process_exited.
 	if got := visibleFailureCode("codex process exited with code 1"); got != "process_exited" {
 		t.Fatalf("visibleFailureCode() = %q, want process_exited", got)
+	}
+}
+
+func TestVisibleFailureCodeClassifiesExplicitLoginFailureAsAuth(t *testing.T) {
+	if got := visibleFailureCode("Please login to continue."); got != "auth_required" {
+		t.Fatalf("visibleFailureCode() = %q, want auth_required", got)
 	}
 }
 

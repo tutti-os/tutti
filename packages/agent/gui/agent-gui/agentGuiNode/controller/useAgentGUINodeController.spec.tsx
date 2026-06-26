@@ -1099,7 +1099,7 @@ describe("useAgentGUINodeController", () => {
     expect(releaseEventStream).not.toHaveBeenCalled();
   });
 
-  it("marks the first created conversation as message-loading before activation resolves", async () => {
+  it("keeps the first created conversation on home before activation resolves", async () => {
     let resolveActivate:
       | ((result: AgentHostActivateAgentSessionResult) => void)
       | undefined;
@@ -1145,14 +1145,22 @@ describe("useAgentGUINodeController", () => {
           workspaceId: "room-1",
           agentSessionId: capturedAgentSessionId
         })?.isLoadingMessages
-      ).toBe(true);
+      ).not.toBe(true);
     });
+    expect(result.current.viewModel.activeConversationId).toBeNull();
+    expect(result.current.viewModel.isCreatingConversation).toBe(true);
 
     await act(async () => {
       resolveActivate?.({
         session: agentSession(capturedAgentSessionId),
         activation: { mode: "new", status: "attached" }
       });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        capturedAgentSessionId
+      );
     });
   });
 
@@ -1484,139 +1492,6 @@ describe("useAgentGUINodeController", () => {
           (conversation) => conversation.id
         )
       ).toEqual(["session-1", "session-2"]);
-    });
-  });
-
-  it("submits the literal /compact prompt through submitCompact", async () => {
-    const exec = vi.fn(async ({ agentSessionId }: { agentSessionId: string }) =>
-      agentSession(agentSessionId, {
-        status: "working",
-        updatedAtUnixMs: Date.now()
-      })
-    );
-    installAgentHostApi({
-      list: vi.fn(async () => snapshotWithSession("session-1")),
-      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
-      exec,
-      subscribeEvents: vi.fn(() => vi.fn())
-    });
-
-    const { result } = renderHook(() =>
-      useAgentGUINodeController({
-        workspaceId: "room-1",
-        currentUserId: "user-1",
-        workspacePath: "/workspace",
-        avoidGroupingEdits: false,
-        data: agentGuiData("session-1"),
-        onDataChange: vi.fn()
-      })
-    );
-
-    await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).toBe("session-1");
-    });
-
-    act(() => {
-      result.current.actions.submitCompact();
-    });
-
-    await waitFor(() => {
-      expect(exec).toHaveBeenCalledWith({
-        workspaceId: "room-1",
-        agentSessionId: "session-1",
-        content: [{ type: "text", text: "/compact" }]
-      });
-    });
-  });
-
-  it("fires usage threshold reminders once per tier and resets on falloff", async () => {
-    const usageRuntimeContext = (usedTokens: number) => ({
-      usage: {
-        contextWindow: { usedTokens, totalTokens: 100_000 }
-      }
-    });
-    let activityListener:
-      | ((event: AgentHostAgentActivityStreamEvent) => void)
-      | undefined;
-    const getState = vi.fn(async () =>
-      agentSessionState("session-1", {
-        runtimeContext: {
-          cwd: "/workspace",
-          ...usageRuntimeContext(10_000)
-        }
-      })
-    );
-    installAgentHostApi({
-      list: vi.fn(async () => snapshotWithSession("session-1")),
-      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
-      subscribeEvents: vi.fn((_payload, listener) => {
-        activityListener = listener;
-        return vi.fn();
-      }),
-      getState
-    });
-
-    const { result } = renderHook(() =>
-      useAgentGUINodeController({
-        workspaceId: "room-1",
-        currentUserId: "user-1",
-        workspacePath: "/workspace",
-        avoidGroupingEdits: false,
-        data: agentGuiData("session-1"),
-        onDataChange: vi.fn()
-      })
-    );
-
-    await waitFor(() => {
-      expect(activityListener).toBeDefined();
-      expect(result.current.viewModel.usage?.percentUsed).toBe(10);
-    });
-    expect(result.current.viewModel.usageAlert).toBeNull();
-
-    const patchUsage = (usedTokens: number, occurredAtUnixMs: number) => {
-      act(() => {
-        activityListener?.({
-          eventType: "state_patch",
-          data: {
-            agentSessionId: "session-1",
-            runtimeContext: usageRuntimeContext(usedTokens),
-            occurredAtUnixMs
-          }
-        });
-      });
-    };
-
-    patchUsage(85_000, 20);
-    await waitFor(() => {
-      expect(result.current.viewModel.usage?.percentUsed).toBe(85);
-      expect(result.current.viewModel.usageAlert).toBe("warn");
-    });
-
-    act(() => {
-      result.current.actions.dismissUsageAlert();
-    });
-    expect(result.current.viewModel.usageAlert).toBeNull();
-
-    patchUsage(86_000, 30);
-    await waitFor(() => {
-      expect(result.current.viewModel.usage?.percentUsed).toBe(86);
-    });
-    expect(result.current.viewModel.usageAlert).toBeNull();
-
-    patchUsage(96_000, 40);
-    await waitFor(() => {
-      expect(result.current.viewModel.usageAlert).toBe("critical");
-    });
-
-    patchUsage(40_000, 50);
-    await waitFor(() => {
-      expect(result.current.viewModel.usage?.percentUsed).toBe(40);
-    });
-    expect(result.current.viewModel.usageAlert).toBeNull();
-
-    patchUsage(85_000, 60);
-    await waitFor(() => {
-      expect(result.current.viewModel.usageAlert).toBe("warn");
     });
   });
 
@@ -3198,7 +3073,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("switches to the optimistic new session while activation is pending", async () => {
+  it("keeps home active while activation is pending and switches after activation succeeds", async () => {
     let resolveActivation:
       | ((value: AgentHostActivateAgentSessionResult) => void)
       | undefined;
@@ -3245,14 +3120,13 @@ describe("useAgentGUINodeController", () => {
     });
 
     const createdId = activate.mock.calls[0]![0].agentSessionId;
-    await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).toBe(createdId);
-    });
+    expect(result.current.viewModel.activeConversationId).toBeNull();
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
-    expect(result.current.viewModel.draftPrompt).toBe("");
+    expect(result.current.viewModel.draftPrompt).toBe("first prompt");
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
-    ).toEqual([expect.objectContaining({ body: "first prompt" })]);
+    ).toBeUndefined();
+    expect(exec).not.toHaveBeenCalled();
 
     act(() => {
       resolveActivation?.({
@@ -3265,7 +3139,77 @@ describe("useAgentGUINodeController", () => {
       expect(result.current.viewModel.activeConversationId).toBe(createdId);
     });
     expect(result.current.viewModel.draftPrompt).toBe("");
+    expect(
+      result.current.viewModel.conversationDetail?.turns[0]?.userMessages
+    ).toEqual([expect.objectContaining({ body: "first prompt" })]);
     expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("preserves home draft edits made while first conversation activation is pending", async () => {
+    let resolveActivation:
+      | ((value: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "new") {
+        return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivation = resolve;
+        });
+      }
+      return Promise.resolve({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      });
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("first prompt"));
+      result.current.actions.submitPrompt(promptBlocks("first prompt"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "new" })
+      );
+    });
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+
+    act(() => {
+      result.current.actions.updateDraftContent(
+        draftContent("keep this draft")
+      );
+      resolveActivation?.({
+        session: agentSession(createdId),
+        activation: { mode: "new", status: "attached" }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    });
+
+    act(() => {
+      result.current.actions.createConversation();
+    });
+
+    expect(result.current.viewModel.activeConversationId).toBeNull();
+    expect(result.current.viewModel.draftPrompt).toBe("keep this draft");
   });
 
   it("keeps first conversation creation busy after the controller remounts before activation resolves", async () => {
@@ -3327,6 +3271,7 @@ describe("useAgentGUINodeController", () => {
     await waitFor(() => {
       expect(second.result.current.viewModel.isCreatingConversation).toBe(true);
     });
+    expect(second.result.current.viewModel.activeConversationId).toBeNull();
   });
 
   it("keeps an active prompt submission busy after the controller remounts before exec resolves", async () => {
@@ -3399,11 +3344,11 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("passes the submitted prompt as the optimistic title without showing a pending history entry", async () => {
+  it("passes the submitted prompt as the activation title without showing a pending history entry", async () => {
     const activate = vi.fn(
       (_input: AgentHostActivateAgentSessionInput) =>
         new Promise<AgentHostActivateAgentSessionResult>(() => {
-          // Keep the activate request pending so the test can observe the optimistic state.
+          // Keep the activate request pending so the test can observe the first-create state.
         })
     );
     installAgentHostApi({
@@ -3439,16 +3384,12 @@ describe("useAgentGUINodeController", () => {
       })
     );
     expect(result.current.viewModel.conversations).toEqual([]);
-    expect(result.current.viewModel.activeConversation).toEqual(
-      expect.objectContaining({
-        provider: "hermes",
-        status: "working",
-        title: "hello from hero"
-      })
-    );
+    expect(result.current.viewModel.activeConversation).toBeNull();
+    expect(result.current.viewModel.activeConversationId).toBeNull();
+    expect(result.current.viewModel.isCreatingConversation).toBe(true);
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
-    ).toEqual([expect.objectContaining({ body: "hello from hero" })]);
+    ).toBeUndefined();
   });
 
   it("blocks OpenClaw conversation creation until the gateway is ready", async () => {
@@ -6529,7 +6470,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.activeConversationId).toBe("session-1");
   });
 
-  it("keeps a failed conversation visible when activation fails immediately", async () => {
+  it("keeps home visible and preserves draft when activation fails immediately", async () => {
     const activate = vi.fn(
       async (_input: AgentHostActivateAgentSessionInput) => {
         throw new Error("runtime not connected");
@@ -6554,6 +6495,7 @@ describe("useAgentGUINodeController", () => {
     );
 
     act(() => {
+      result.current.actions.updateDraftContent(draftContent("create one"));
       result.current.actions.submitPrompt(promptBlocks("create one"));
     });
 
@@ -6562,16 +6504,11 @@ describe("useAgentGUINodeController", () => {
     });
 
     const startedWith = activate.mock.calls.at(-1)?.[0];
-    expect(result.current.viewModel.activeConversationId).toBe(
-      startedWith?.agentSessionId
-    );
+    expect(startedWith?.agentSessionId).toBeTruthy();
+    expect(result.current.viewModel.activeConversationId).toBeNull();
     expect(result.current.viewModel.conversations).toEqual([]);
-    expect(result.current.viewModel.activeConversation).toEqual(
-      expect.objectContaining({
-        id: startedWith?.agentSessionId,
-        status: "failed"
-      })
-    );
+    expect(result.current.viewModel.activeConversation).toBeNull();
+    expect(result.current.viewModel.draftPrompt).toBe("create one");
     expect(result.current.viewModel.detailError).toBe("runtime not connected");
     expect(toast.error).not.toHaveBeenCalled();
   });
@@ -6613,15 +6550,15 @@ describe("useAgentGUINodeController", () => {
     // The failure is surfaced and the global loading flag is cleared today.
     expect(result.current.viewModel.detailError).toBe("runtime not connected");
     expect(result.current.viewModel.isLoadingMessages).toBe(false);
-    // The per-session messages-loading flag opened before submit must also be
-    // released on failure; otherwise the conversation view spins forever.
+    // First-create failure should not leave a per-session messages-loading flag
+    // behind; otherwise a later detail view for the id can spin forever.
     await waitFor(() => {
       expect(
         getAgentSessionView({
           workspaceId: "room-1",
           agentSessionId: failedId as string
         })?.isLoadingMessages
-      ).toBe(false);
+      ).not.toBe(true);
     });
   });
 

@@ -84,9 +84,15 @@ OpenAPI route shape, and app CLI registry remain separate.
 
 Builtin capabilities may declare `Capability.Visibility` as `integration` when
 the command is intended for app-runtime integrations rather than ordinary user
-or Agent discovery. Omitted visibility defaults to `public`. For example,
-`workspace-apps.app.open` is integration-only so the model does not discover it
-as a normal user-facing command.
+or Agent discovery. Omitted visibility defaults to `public`.
+
+`workspace-apps.app.open` is public so agents can open requested workspace app
+windows. Some built-in app ids, such as Agent GUI and issue-manager windows,
+map to workbench nodes rather than installed app packages. Agent-facing skills
+must still treat app opening as an explicit activation action: use it only when
+the user asks to open or show an app window, or confirms that an app window
+should be opened. For ordinary app work, agents should prefer the app-specific
+CLI capability over opening the app UI.
 
 ## Command Kinds
 

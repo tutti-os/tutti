@@ -332,6 +332,8 @@ func TestEmbeddedOnboardingArchiveMatchesCatalog(t *testing.T) {
 		t.Fatalf("open embedded archive: %v", err)
 	}
 	requireZipEntryForTest(t, archive, "tutti.app.json")
+	requireZipEntryForTest(t, archive, "tutti.cli.json")
+	requireZipEntryForTest(t, archive, "tutti-guide.md")
 	requireZipEntryForTest(t, archive, "bootstrap.sh")
 	requireZipEntryForTest(t, archive, "dist/index.html")
 	requireZipEntryForTest(t, archive, "bin/darwin-arm64/tutti-onboarding-server")

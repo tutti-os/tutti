@@ -44,6 +44,8 @@ const requiredFiles = [
   "src/i18n/locales/zh-CN/onboarding.json",
   "src/lib/utils.js",
   "tutti-package/tutti.app.json",
+  "tutti-package/tutti.cli.json",
+  "tutti-package/tutti-guide.md",
   "tutti-package/bootstrap.sh",
   "tutti-package/icon.webp",
   "tutti-package/server.go"
@@ -83,12 +85,14 @@ const manifest = JSON.parse(
 if (
   manifest.name !== "Getting Started" ||
   manifest.runtime?.healthcheckPath !== "/healthz" ||
-  manifest.runtime?.profile !== "standalone"
+  manifest.runtime?.profile !== "standalone" ||
+  manifest.cli?.manifest !== "tutti.cli.json"
 ) {
   throw new Error(
     "tutti.app.json must match the built-in onboarding manifest."
   );
 }
+await assertCliManifest();
 await assertManifestLocalizations(manifest);
 
 console.log("tutti-onboarding assets are present");
@@ -155,6 +159,26 @@ async function assertShadcnFoundation() {
     !buttonSource.includes("@radix-ui/react-slot")
   ) {
     throw new Error("shadcn Button foundation must be present.");
+  }
+}
+
+async function assertCliManifest() {
+  const cliManifest = JSON.parse(
+    await readFile(path.join(appRoot, "tutti-package/tutti.cli.json"), "utf8")
+  );
+  if (
+    cliManifest.schemaVersion !== "tutti.app.cli.v1" ||
+    cliManifest.scope !== "guide" ||
+    cliManifest.commands?.[0]?.path?.join(" ") !== "read"
+  ) {
+    throw new Error("tutti.cli.json must expose guide read.");
+  }
+  const guide = await readFile(
+    path.join(appRoot, "tutti-package/tutti-guide.md"),
+    "utf8"
+  );
+  if (!guide.includes("# Tutti 产品知识库")) {
+    throw new Error("tutti-guide.md must contain the Tutti guide.");
   }
 }
 

@@ -677,6 +677,9 @@ func TestAppCenterServiceInitializesBuiltinCatalogAndInstallState(t *testing.T) 
 	if onboarding.Package.Manifest.Runtime.Profile != workspaceAppStandaloneRuntimeProfile {
 		t.Fatalf("onboarding runtime profile = %q, want standalone", onboarding.Package.Manifest.Runtime.Profile)
 	}
+	if onboarding.Package.Manifest.CLI == nil || onboarding.Package.Manifest.CLI.Manifest != "tutti.cli.json" {
+		t.Fatalf("onboarding cli manifest = %#v, want tutti.cli.json", onboarding.Package.Manifest.CLI)
+	}
 	if _, err := os.Stat(filepath.Join(onboarding.Package.PackageDir, "bin", "darwin-arm64", "tutti-onboarding-server")); err != nil {
 		t.Fatalf("onboarding embedded server missing: %v", err)
 	}

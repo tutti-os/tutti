@@ -174,13 +174,6 @@ import {
   planDecisionOps,
   planImplementationPromptFromPlanTurn
 } from "../../../shared/agentConversation/planImplementation";
-import {
-  INITIAL_USAGE_ALERT_STATE,
-  nextUsageAlert,
-  type UsageAlertState,
-  type UsageAlertTier
-} from "../model/agentUsageAlerts";
-
 const EMPTY_AGENT_GUI_MESSAGES: readonly WorkspaceAgentActivityMessage[] = [];
 const EMPTY_AGENT_GUI_AVAILABLE_COMMANDS: AgentSessionCommand[] = [];
 const ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS = 150;
@@ -2222,6 +2215,52 @@ function removeQueuedPromptById(
 const NODE_DEFAULT_DRAFT_KEY = "__agent_gui_node_defaults__";
 const EMPTY_AGENT_COMPOSER_DRAFT = emptyAgentComposerDraft();
 
+function areAgentComposerDraftsEqual(
+  left: AgentComposerDraft,
+  right: AgentComposerDraft
+): boolean {
+  const leftFiles = left.files ?? [];
+  const rightFiles = right.files ?? [];
+  return (
+    left.prompt === right.prompt &&
+    left.images.length === right.images.length &&
+    left.images.every((image, index) => {
+      const other = right.images[index];
+      if (!other) {
+        return false;
+      }
+      return (
+        image.id === other.id &&
+        image.name === other.name &&
+        image.mimeType === other.mimeType &&
+        image.data === other.data &&
+        image.path === other.path &&
+        image.previewUrl === other.previewUrl &&
+        image.uploading === other.uploading &&
+        image.uploadError === other.uploadError
+      );
+    }) &&
+    leftFiles.length === rightFiles.length &&
+    leftFiles.every((file, index) => {
+      const other = rightFiles[index];
+      if (!other) {
+        return false;
+      }
+      return (
+        file.id === other.id &&
+        file.name === other.name &&
+        file.mimeType === other.mimeType &&
+        file.path === other.path &&
+        file.hostPath === other.hostPath &&
+        file.assetId === other.assetId &&
+        file.sizeBytes === other.sizeBytes &&
+        file.uploading === other.uploading &&
+        file.uploadError === other.uploadError
+      );
+    })
+  );
+}
+
 function nodeDefaultDraftKey(
   agentProvider: AgentGUINodeData["provider"]
 ): string {
@@ -2733,6 +2772,7 @@ export function useAgentGUINodeController({
   const [draftBySessionId, setDraftBySessionId] = useState<
     Record<string, AgentComposerDraft>
   >({});
+  const draftBySessionIdRef = useRef(draftBySessionId);
   const [draftSettingsBySessionId, setDraftSettingsBySessionId] = useState<
     Record<string, AgentSessionComposerSettings>
   >({});
@@ -2870,65 +2910,12 @@ export function useAgentGUINodeController({
       }),
     [activeSessionRuntimeContext]
   );
-  const usageAlertStateBySessionIdRef = useRef<Record<string, UsageAlertState>>(
-    {}
-  );
-  const [usageAlertBySessionId, setUsageAlertBySessionId] = useState<
-    Record<string, UsageAlertTier>
-  >({});
   // Maps a session to the plan turn id whose implement-plan offer was
   // dismissed, so a given plan is offered once while a fresh plan turn
   // (different turn id) re-arms the offer.
   const [dismissedPlanTurnIdBySessionId, setDismissedPlanTurnIdBySessionId] =
     useState<Record<string, string>>({});
   const planImplementationTurnIdRef = useRef<string | null>(null);
-  const usagePercentUsed = usage?.percentUsed ?? null;
-  useEffect(() => {
-    const agentSessionId = activeConversationId;
-    if (!agentSessionId) {
-      return;
-    }
-    const previousState =
-      usageAlertStateBySessionIdRef.current[agentSessionId] ??
-      INITIAL_USAGE_ALERT_STATE;
-    const { fire, state } = nextUsageAlert(usagePercentUsed, previousState);
-    usageAlertStateBySessionIdRef.current[agentSessionId] = state;
-    if (fire) {
-      setUsageAlertBySessionId((current) =>
-        current[agentSessionId] === fire
-          ? current
-          : { ...current, [agentSessionId]: fire }
-      );
-      return;
-    }
-    if (!state.warned && !state.criticaled) {
-      setUsageAlertBySessionId((current) => {
-        if (!(agentSessionId in current)) {
-          return current;
-        }
-        const next = { ...current };
-        delete next[agentSessionId];
-        return next;
-      });
-    }
-  }, [activeConversationId, usagePercentUsed]);
-  const usageAlert = activeConversationId
-    ? (usageAlertBySessionId[activeConversationId] ?? null)
-    : null;
-  const dismissUsageAlert = useCallback(() => {
-    const agentSessionId = activeConversationId;
-    if (!agentSessionId) {
-      return;
-    }
-    setUsageAlertBySessionId((current) => {
-      if (!(agentSessionId in current)) {
-        return current;
-      }
-      const next = { ...current };
-      delete next[agentSessionId];
-      return next;
-    });
-  }, [activeConversationId]);
   const dismissPlanImplementation = useCallback(() => {
     const agentSessionId = activeConversationIdRef.current;
     const planTurnId = planImplementationTurnIdRef.current;
@@ -3499,6 +3486,10 @@ export function useAgentGUINodeController({
   useEffect(() => {
     onShowMessageRef.current = onShowMessage;
   }, [onShowMessage]);
+
+  useEffect(() => {
+    draftBySessionIdRef.current = draftBySessionId;
+  }, [draftBySessionId]);
 
   useEffect(() => {
     draftSettingsBySessionIdRef.current = draftSettingsBySessionId;
@@ -5444,10 +5435,16 @@ export function useAgentGUINodeController({
         agentPromptContentDisplayText(normalizedInitialContent);
       const initialConversationTitle =
         normalizedInitialPrompt || AGENT_PROVIDER_LABEL[data.provider];
+      const submittedHomeDraftKey = nodeDefaultDraftContentKey(data.provider);
+      const submittedHomeDraft =
+        draftBySessionIdRef.current[submittedHomeDraftKey] ??
+        EMPTY_AGENT_COMPOSER_DRAFT;
       isCreatingConversationRef.current = true;
       setLocalIsCreatingConversation(true);
       setDetailError(null);
       let pendingCreateAgentSessionId: string | null = null;
+      let pendingOptimisticConversation: AgentGUIConversationSummary | null =
+        null;
       void (async () => {
         const provider = data.provider;
         const currentData =
@@ -5544,48 +5541,7 @@ export function useAgentGUINodeController({
           sortTimeUnixMs: createdAtUnixMs,
           updatedAtUnixMs: createdAtUnixMs
         };
-        setTransientConversation(optimisticConversation);
-        isComposerHomeRef.current = false;
-        setIsComposerHome(false);
-        activeConversationIdRef.current = agentSessionId;
-        setActiveConversationId(agentSessionId);
-        setIntent({ tag: "active", id: agentSessionId });
-        persistActiveConversation(agentSessionId);
-        setAgentSessionViewMessagesLoading(
-          sessionViewRef(agentSessionId),
-          true
-        );
-        reportAgentSubmitTraceDiagnostic({
-          event: "optimistic_state_applied",
-          runtime: agentActivityRuntime,
-          trace: submitTrace,
-          workspaceId,
-          fields: { mode: "new" }
-        });
-        recordLocalMessages(agentSessionId, [
-          createOptimisticPromptMessage({
-            workspaceId,
-            agentSessionId,
-            turnId: createPendingOptimisticTurnId(submitTrace.clientSubmitId),
-            clientSubmitId: submitTrace.clientSubmitId,
-            userId: currentUserId?.trim() || "user",
-            prompt: normalizedInitialPrompt,
-            content: [...normalizedInitialContent],
-            occurredAtUnixMs: createdAtUnixMs
-          })
-        ]);
-        reportAgentSubmitTraceDiagnostic({
-          event: "optimistic_user_message_recorded",
-          runtime: agentActivityRuntime,
-          trace: submitTrace,
-          workspaceId,
-          fields: { mode: "new" }
-        });
-        scheduleAgentSubmitTracePaint({
-          runtime: agentActivityRuntime,
-          trace: submitTrace,
-          workspaceId
-        });
+        pendingOptimisticConversation = optimisticConversation;
         if (conversationListQuery) {
           markAgentGUIConversationCreatePending({
             query: conversationListQuery,
@@ -5602,13 +5558,6 @@ export function useAgentGUINodeController({
           ...current,
           [agentSessionId]: effectiveInitialSettings
         }));
-        setDraftBySessionId((current) => ({
-          ...current,
-          [nodeDefaultDraftContentKey(dataRef.current.provider)]:
-            emptyAgentComposerDraft(),
-          [agentSessionId]: emptyAgentComposerDraft()
-        }));
-        setIsLoadingMessages(true);
         reportAgentSubmitTraceDiagnostic({
           event: "activation.requested",
           runtime: agentActivityRuntime,
@@ -5657,12 +5606,36 @@ export function useAgentGUINodeController({
               }
             });
           }
+          const activationFailed =
+            result.activation.status === "failed" ||
+            result.session.status === "failed";
           if (conversationListQuery) {
             clearAgentGUIConversationCreatePending({
               query: conversationListQuery,
               ownerKey: pendingCreateOwnerKey,
               conversationId: agentSessionId
             });
+          }
+          if (activationFailed) {
+            failedNewConversationIdsRef.current.add(agentSessionId);
+            if (startingConversationIdRef.current === agentSessionId) {
+              startingConversationIdRef.current = null;
+            }
+            if (
+              isMountedRef.current &&
+              activeConversationIdRef.current === null &&
+              isComposerHomeRef.current
+            ) {
+              setIsLoadingMessages(false);
+              setAgentSessionViewMessagesLoading(
+                sessionViewRef(agentSessionId),
+                false
+              );
+              setDetailError(
+                result.error?.message?.trim() || "Session activation failed."
+              );
+            }
+            return;
           }
           const projectedConversation = conversationSummaryFromAgentSession(
             result.session,
@@ -5671,46 +5644,40 @@ export function useAgentGUINodeController({
               userProjects: userProjectsRef.current
             }
           );
-          const optimisticSortTimeUnixMs =
-            transientConversationRef.current?.id === agentSessionId
-              ? transientConversationRef.current.sortTimeUnixMs
-              : undefined;
           const conversation: AgentGUIConversationSummary = {
             ...projectedConversation,
             sortTimeUnixMs: Math.max(
               projectedConversation.sortTimeUnixMs ?? 0,
-              optimisticSortTimeUnixMs ?? 0
+              pendingOptimisticConversation?.sortTimeUnixMs ?? 0
             )
           };
           failedNewConversationIdsRef.current.delete(conversation.id);
-          if (startingConversationIdRef.current === agentSessionId) {
-            startingConversationIdRef.current = null;
-          }
+          const isPendingCreatedConversation =
+            startingConversationIdRef.current === agentSessionId;
           if (!isMountedRef.current) {
             void activation.unactivate(conversation.id);
-            if (transientConversationRef.current?.id === agentSessionId) {
-              setTransientConversation(null);
+            if (isPendingCreatedConversation) {
+              startingConversationIdRef.current = null;
             }
             return;
           }
           const shouldAttachCreatedConversation =
             activeConversationIdRef.current === null &&
-            isComposerHomeRef.current;
+            isComposerHomeRef.current &&
+            isPendingCreatedConversation;
           if (
             !shouldAttachCreatedConversation &&
             unactivateIfStale(conversation.id)
           ) {
-            if (transientConversationRef.current?.id === agentSessionId) {
-              setTransientConversation(null);
+            if (isPendingCreatedConversation) {
+              startingConversationIdRef.current = null;
             }
             return;
           }
-          const activationFailed =
-            result.activation.status === "failed" ||
-            result.session.status === "failed";
-          if (!activationFailed) {
-            activatedConversationIdsRef.current.add(conversation.id);
+          if (isPendingCreatedConversation) {
+            startingConversationIdRef.current = null;
           }
+          activatedConversationIdsRef.current.add(conversation.id);
           setTransientConversation(conversation);
           if (conversationListQuery) {
             upsertLocalCreatedAgentGUIConversation({
@@ -5722,24 +5689,68 @@ export function useAgentGUINodeController({
               "local-create"
             );
           }
+          setAgentSessionViewMessagesLoading(
+            sessionViewRef(conversation.id),
+            true
+          );
+          if (submitTrace) {
+            reportAgentSubmitTraceDiagnostic({
+              event: "optimistic_state_applied",
+              runtime: agentActivityRuntime,
+              trace: submitTrace,
+              workspaceId,
+              fields: { mode: "new" }
+            });
+            recordLocalMessages(conversation.id, [
+              createOptimisticPromptMessage({
+                workspaceId,
+                agentSessionId: conversation.id,
+                turnId: createPendingOptimisticTurnId(
+                  submitTrace.clientSubmitId
+                ),
+                clientSubmitId: submitTrace.clientSubmitId,
+                userId: currentUserId?.trim() || "user",
+                prompt: normalizedInitialPrompt,
+                content: [...normalizedInitialContent],
+                occurredAtUnixMs:
+                  pendingOptimisticConversation?.sortTimeUnixMs ?? Date.now()
+              })
+            ]);
+            reportAgentSubmitTraceDiagnostic({
+              event: "optimistic_user_message_recorded",
+              runtime: agentActivityRuntime,
+              trace: submitTrace,
+              workspaceId,
+              fields: { mode: "new" }
+            });
+            scheduleAgentSubmitTracePaint({
+              runtime: agentActivityRuntime,
+              trace: submitTrace,
+              workspaceId
+            });
+          }
           isComposerHomeRef.current = false;
           setIsComposerHome(false);
           activeConversationIdRef.current = conversation.id;
           setActiveConversationId(conversation.id);
-          setDraftBySessionId((current) => ({
-            ...current,
-            [nodeDefaultDraftContentKey(dataRef.current.provider)]:
-              emptyAgentComposerDraft(),
-            [conversation.id]: emptyAgentComposerDraft()
-          }));
+          setIntent({ tag: "active", id: conversation.id });
+          setDraftBySessionId((current) => {
+            const currentHomeDraft =
+              current[submittedHomeDraftKey] ?? EMPTY_AGENT_COMPOSER_DRAFT;
+            const shouldClearHomeDraft = areAgentComposerDraftsEqual(
+              currentHomeDraft,
+              submittedHomeDraft
+            );
+            return {
+              ...current,
+              ...(shouldClearHomeDraft
+                ? { [submittedHomeDraftKey]: emptyAgentComposerDraft() }
+                : {}),
+              [conversation.id]: emptyAgentComposerDraft()
+            };
+          });
           persistActiveConversation(conversation.id);
-          if (activationFailed) {
-            failedNewConversationIdsRef.current.add(conversation.id);
-            setIsLoadingMessages(false);
-            void refreshMessagesFromSnapshot(conversation.id);
-            void syncConversationListProjection(conversation.id);
-            return;
-          }
+          setIsLoadingMessages(true);
           void refreshMessagesFromSnapshot(conversation.id);
           void loadSessionState(conversation.id);
           void syncConversationListProjection(conversation.id);
@@ -5758,7 +5769,7 @@ export function useAgentGUINodeController({
               conversationId: pendingCreateAgentSessionId ?? agentSessionId
             });
           }
-          const shouldShowFailedConversation =
+          const shouldShowErrorOnHome =
             startingConversationIdRef.current === agentSessionId ||
             (activeConversationIdRef.current === null &&
               isComposerHomeRef.current);
@@ -5779,7 +5790,7 @@ export function useAgentGUINodeController({
             });
           }
           if (
-            !shouldShowFailedConversation &&
+            !shouldShowErrorOnHome &&
             !isCurrentConversation(agentSessionId)
           ) {
             setAgentSessionViewMessagesLoading(
@@ -5803,37 +5814,13 @@ export function useAgentGUINodeController({
             runtime: agentActivityRuntime,
             workspaceId
           });
-          const failedAtUnixMs = Date.now();
-          const failedConversation: AgentGUIConversationSummary = {
-            id: agentSessionId,
-            provider: dataRef.current.provider,
-            title: initialConversationTitle,
-            titleFallback: null,
-            cwd: selectedProjectPathRef.current ?? "",
-            project: resolveAgentGUIConversationProject(
-              selectedProjectPathRef.current,
-              userProjectsRef.current,
-              { isNoProjectPath: isNoProjectPathRef.current }
-            ),
-            status: "failed",
-            sortTimeUnixMs: failedAtUnixMs,
-            updatedAtUnixMs: failedAtUnixMs
-          };
           failedNewConversationIdsRef.current.add(agentSessionId);
-          setTransientConversation(failedConversation);
           if (startingConversationIdRef.current === agentSessionId) {
             startingConversationIdRef.current = null;
           }
-          isComposerHomeRef.current = false;
-          setIsComposerHome(false);
-          activeConversationIdRef.current = agentSessionId;
-          setActiveConversationId(agentSessionId);
-          setDraftBySessionId((current) => ({
-            ...current,
-            [nodeDefaultDraftContentKey(dataRef.current.provider)]:
-              emptyAgentComposerDraft(),
-            [agentSessionId]: emptyAgentComposerDraft()
-          }));
+          if (transientConversationRef.current?.id === agentSessionId) {
+            setTransientConversation(null);
+          }
           setIsLoadingMessages(false);
           setAgentSessionViewMessagesLoading(
             sessionViewRef(agentSessionId),
@@ -6550,10 +6537,6 @@ export function useAgentGUINodeController({
     ]
   );
 
-  const submitCompact = useCallback(() => {
-    submitPrompt(textPromptContent("/compact"));
-  }, [submitPrompt]);
-
   useEffect(() => {
     if (previewMode) {
       return;
@@ -6844,6 +6827,10 @@ export function useAgentGUINodeController({
     const agentSessionId = activeConversationIdRef.current;
     const draftKey =
       agentSessionId ?? nodeDefaultDraftContentKey(dataRef.current.provider);
+    draftBySessionIdRef.current = {
+      ...draftBySessionIdRef.current,
+      [draftKey]: draftContent
+    };
     setDraftBySessionId((current) => ({
       ...current,
       [draftKey]: draftContent
@@ -8816,9 +8803,6 @@ export function useAgentGUINodeController({
   const stableRetryOpenclawGateway = useStableControllerEventCallback(
     ensureOpenclawGateway
   );
-  const stableSubmitCompact = useStableControllerEventCallback(submitCompact);
-  const stableDismissUsageAlert =
-    useStableControllerEventCallback(dismissUsageAlert);
   const stableLoadOlderConversationMessages = useStableControllerEventCallback(
     loadOlderConversationMessages
   );
@@ -8827,8 +8811,6 @@ export function useAgentGUINodeController({
       createConversation: stableCreateConversation,
       selectConversation: stableSelectConversation,
       submitPrompt: stableSubmitPrompt,
-      submitCompact: stableSubmitCompact,
-      dismissUsageAlert: stableDismissUsageAlert,
       loadOlderConversationMessages: stableLoadOlderConversationMessages,
       showPromptImagesUnsupported: stableShowPromptImagesUnsupported,
       submitApprovalOption: stableSubmitApprovalOption,
@@ -8861,7 +8843,6 @@ export function useAgentGUINodeController({
       stableConfirmDeleteProjectConversations,
       stableContinueInNewConversation,
       stableCreateConversation,
-      stableDismissUsageAlert,
       stableEditQueuedPrompt,
       stableInterruptCurrentTurn,
       stableLoadOlderConversationMessages,
@@ -8875,7 +8856,6 @@ export function useAgentGUINodeController({
       stableSendQueuedPromptNext,
       stableShowPromptImagesUnsupported,
       stableSubmitApprovalOption,
-      stableSubmitCompact,
       stableSubmitInteractivePrompt,
       stableSubmitPrompt,
       stableToggleConversationPinned,
@@ -8913,7 +8893,6 @@ export function useAgentGUINodeController({
         promptImagesSupported,
         compactSupported,
         usage,
-        usageAlert,
         listError,
         isDeletingConversation,
         isDeletingProjectConversations,
@@ -8968,8 +8947,6 @@ export function useAgentGUINodeController({
       promptImagesSupported,
       compactSupported,
       usage,
-      usageAlert,
-      dismissUsageAlert,
       isInterrupting,
       isCancelPending,
       isLoadingConversations,

@@ -36,6 +36,7 @@ export interface DesktopAgentGUILinkActionDependencies {
     workspaceId: string;
   }) => Promise<boolean> | boolean;
   openBrowserUrl(input: {
+    reuseIfOpen?: boolean;
     source?: "agent_command";
     url: string;
     workspaceId: string;
@@ -63,6 +64,7 @@ export async function runDesktopAgentGUILinkAction(
       return false;
     case "open-url":
       return dependencies.openBrowserUrl({
+        reuseIfOpen: false,
         source: "agent_command",
         url: action.url,
         workspaceId: dependencies.workspaceId

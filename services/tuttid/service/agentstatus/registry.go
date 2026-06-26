@@ -14,6 +14,7 @@ const (
 )
 
 const DisabledReasonProviderTemporarilyUnsupported = "provider_temporarily_unsupported"
+const codexServiceTierOverride = `service_tier="fast"`
 
 type ProviderSpec struct {
 	Provider                     string
@@ -111,10 +112,10 @@ func DefaultRegistry() Registry {
 			// "stdin is not a terminal").
 			AdapterBinaryNames: []string{"codex"},
 			AdapterCommand:     []string{"codex", "app-server"},
-			AuthStatusCommand:  []string{"login", "status"},
+			AuthStatusCommand:  []string{"login", "-c", codexServiceTierOverride, "status"},
 			AuthMarkerPaths:    []string{"~/.codex/auth.json"},
 			Install:            codexCLIInstallerSpec(),
-			LoginArgs:          []string{"login"},
+			LoginArgs:          []string{"login", "-c", codexServiceTierOverride},
 		},
 		agentprovider.Nexight: {
 			Provider:           agentprovider.Nexight,

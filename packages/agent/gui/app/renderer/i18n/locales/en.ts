@@ -526,11 +526,6 @@ export const en = {
       usageTokensLabel: "Tokens",
       usageLimitsLabel: "Limits",
       usageCompactAction: "Compact",
-      usageAlertWarnMessage:
-        "Context is {{percent}}% full. Consider compacting the conversation.",
-      usageAlertCriticalMessage:
-        "Context is {{percent}}% full. Compact now to keep the session going.",
-      usageAlertDismiss: "Dismiss",
       planCardTitle: "Plan",
       planCardCopy: "Copy plan",
       planCardExpand: "Expand plan",

@@ -157,6 +157,9 @@ func embeddedCatalog() []App {
 					HealthcheckPath: "/healthz",
 					Profile:         "standalone",
 				},
+				CLI: &workspacebiz.AppManifestCLI{
+					Manifest: "tutti.cli.json",
+				},
 				Window: &workspacebiz.AppManifestWindow{
 					MinWidth:  &minWidth,
 					MinHeight: &minHeight,

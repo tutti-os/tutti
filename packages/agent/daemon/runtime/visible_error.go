@@ -14,7 +14,12 @@ const (
 	visibleErrorSeverity = "error"
 )
 
-var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+var (
+	ansiEscapePattern  = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+	authFailurePattern = regexp.MustCompile(
+		`(?i)\b(api key|credentials?|log in|login|logged in|sign in|signin|token|unauthori[sz]ed|unauthenticated|not authenticated|authentication required|authentication failed|authenticate|auth required)\b|auth_required`,
+	)
+)
 
 func visibleFailureTimelineItem(
 	roomID string,
@@ -179,11 +184,7 @@ func limitVisibleErrorDetail(value string) string {
 func visibleFailureCode(detail string) string {
 	normalized := strings.ToLower(detail)
 	switch {
-	case strings.Contains(normalized, "auth") ||
-		strings.Contains(normalized, "api key") ||
-		strings.Contains(normalized, "credential") ||
-		strings.Contains(normalized, "login") ||
-		strings.Contains(normalized, "token"):
+	case authFailurePattern.MatchString(detail):
 		return "auth_required"
 	// A run that can't find its CLI binary surfaces as an exec/ENOENT error. This
 	// is the real "not installed / not on PATH" failure the env wizard can fix, so

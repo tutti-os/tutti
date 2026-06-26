@@ -545,6 +545,29 @@ delimited by ---`, and the composer skill picker may show partial or
   [codex.go](../../services/tuttid/service/agentsidecar/codex.go)
   [preparer_test.go](../../services/tuttid/service/agentsidecar/preparer_test.go)
 
+### Codex provider shows login required when global service tier is legacy
+
+- Symptom:
+  The workspace dock popup shows Codex as needing login even though
+  `~/.codex/auth.json` contains OAuth tokens.
+- Quick checks:
+  Run `codex login status`. If it prints
+  `Error loading configuration: ... unknown variant ... expected fast or flex`,
+  inspect the top-level `service_tier` in `~/.codex/config.toml`.
+- Root cause:
+  Newer Codex CLIs only accept `service_tier = "fast"` or `"flex"` in global
+  config. Older values such as `"default"` or `"priority"` make the status
+  command fail before it can report auth state, so tuttid classifies auth as
+  unknown and the renderer shows login/refresh.
+- Fix:
+  Provider status and login commands should pass a temporary Codex config
+  override such as `-c 'service_tier="fast"'` instead of mutating the user's
+  global config. Session-scoped Codex homes should continue sanitizing copied
+  config through `codexConfigWithSupportedServiceTier`.
+- Validation:
+  Add or update `agentstatus` tests for the Codex status/login command shape,
+  then run `cd services/tuttid && go test ./service/agentstatus`.
+
 ### Concurrent agent CLI installs corrupt shared npm global state
 
 - Symptom:

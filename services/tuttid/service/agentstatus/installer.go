@@ -715,33 +715,6 @@ func archiveSuffix(url string) string {
 	}
 }
 
-func (s Service) downloadFile(ctx context.Context, sourceURL string, destinationPath string) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
-	if err != nil {
-		return fmt.Errorf("create download request: %w", err)
-	}
-	response, err := s.httpClient().Do(request)
-	if err != nil {
-		return fmt.Errorf("download %s: %w", sourceURL, err)
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("download %s: unexpected status %d", sourceURL, response.StatusCode)
-	}
-	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o755); err != nil {
-		return fmt.Errorf("create download parent: %w", err)
-	}
-	target, err := os.OpenFile(destinationPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return fmt.Errorf("create download destination: %w", err)
-	}
-	_, copyErr := io.Copy(target, response.Body)
-	closeErr := target.Close()
-	return errors.Join(copyErr, closeErr)
-}
-
 func (s Service) httpClient() *http.Client {
 	if s.HTTPClient != nil {
 		return s.HTTPClient

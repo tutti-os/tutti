@@ -13,6 +13,9 @@ import (
 
 const (
 	appID              = "workspace-apps"
+	agentGUITypeID     = "agent-gui"
+	issueManagerAppID  = "issue-manager"
+	issueManagerTypeID = "issue-manager"
 	workspaceAppTypeID = "workspace-app-webview"
 	maxStateJSONBytes  = 16 * 1024
 )
@@ -54,7 +57,7 @@ func (p Provider) newOpenCommand() cliservice.Command {
 			Path:        []string{"app", "open"},
 			Summary:     "Open a workspace app",
 			Description: "Launch or activate an installed workspace app. Use --route to pass an origin-root route intent.",
-			Visibility:  cliservice.CapabilityVisibilityIntegration,
+			Visibility:  cliservice.CapabilityVisibilityPublic,
 			InputSchema: map[string]any{
 				"type": "object",
 				"required": []string{
@@ -121,6 +124,9 @@ func (p Provider) runOpen(ctx context.Context, request cliservice.InvokeRequest)
 	if err != nil {
 		return cliservice.CommandOutput{}, err
 	}
+	if ok, output, err := p.openSpecialApp(ctx, workspaceID, appID, intent, request.Context); ok || err != nil {
+		return output, err
+	}
 	app, err := p.apps.Launch(ctx, workspaceID, appID)
 	if err != nil {
 		return cliservice.CommandOutput{}, err
@@ -166,6 +172,70 @@ func (p Provider) runOpen(ctx context.Context, request cliservice.InvokeRequest)
 			"launchRequested": launchRequested,
 		},
 	}, nil
+}
+
+func (p Provider) openSpecialApp(
+	ctx context.Context,
+	workspaceID string,
+	appID string,
+	intent *workspaceAppIntent,
+	invokeContext cliservice.InvokeContext,
+) (bool, cliservice.CommandOutput, error) {
+	typeID, dockEntryID, payload, ok := specialAppLaunchRequest(appID)
+	if !ok {
+		return false, cliservice.CommandOutput{}, nil
+	}
+	if intent != nil {
+		return true, cliservice.CommandOutput{}, cliservice.InvalidInputKeyError("route")
+	}
+	launchRequested := false
+	if p.launchPublisher != nil {
+		if err := p.launchPublisher.PublishWorkbenchNodeLaunchRequested(ctx, workbenchbiz.NodeLaunchRequest{
+			WorkspaceID:  workspaceID,
+			TypeID:       typeID,
+			DockEntryID:  dockEntryID,
+			Source:       invokeContext.Source,
+			LaunchSource: firstNonEmptyString(invokeContext.Source, "cli"),
+			Payload:      payload,
+		}); err != nil {
+			return true, cliservice.CommandOutput{}, err
+		}
+		launchRequested = true
+	}
+	row := map[string]any{
+		"appId":           appID,
+		"status":          "launch_requested",
+		"launchRequested": launchRequested,
+	}
+	return true, cliservice.CommandOutput{
+		Kind: cliservice.OutputModeTable,
+		Columns: []cliservice.TableColumn{
+			{Key: "appId", Label: "App ID"},
+			{Key: "status", Label: "Status"},
+			{Key: "launchRequested", Label: "Launch Requested"},
+		},
+		Rows: []map[string]any{row},
+		Value: map[string]any{
+			"app": map[string]any{
+				"appId":  appID,
+				"status": "launch_requested",
+			},
+			"launchRequested": launchRequested,
+		},
+	}, nil
+}
+
+func specialAppLaunchRequest(appID string) (string, string, json.RawMessage, bool) {
+	switch strings.TrimSpace(appID) {
+	case "agent-codex":
+		return agentGUITypeID, agentGUITypeID, json.RawMessage(`{"provider":"codex"}`), true
+	case "agent-claude-code":
+		return agentGUITypeID, "agent-gui:claude-code", json.RawMessage(`{"provider":"claude-code"}`), true
+	case issueManagerAppID:
+		return issueManagerTypeID, issueManagerTypeID, nil, true
+	default:
+		return "", "", nil, false
+	}
 }
 
 type workspaceAppWorkbenchLaunchPayload struct {

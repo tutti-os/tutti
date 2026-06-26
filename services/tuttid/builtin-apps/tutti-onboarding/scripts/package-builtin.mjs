@@ -31,7 +31,12 @@ const lockDir = path.join(
 );
 const lockOwnerPath = path.join(lockDir, "owner.json");
 const staleLockMs = 10 * 60 * 1000;
-const requiredPackageFiles = ["tutti.app.json", "AGENTS.md", "bootstrap.sh"];
+const requiredPackageFiles = [
+  "tutti.app.json",
+  "tutti-guide.md",
+  "AGENTS.md",
+  "bootstrap.sh"
+];
 const cliSegmentPattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const defaultCliHandlerTimeoutMs = 30000;
 const minCliHandlerTimeoutMs = 1000;
@@ -237,6 +242,10 @@ async function writePackageFiles(manifest) {
     path.join(packageRoot, "bootstrap.sh")
   );
   await chmod(path.join(packageRoot, "bootstrap.sh"), 0o755);
+  await cp(
+    path.join(packageSourceDir, "tutti-guide.md"),
+    path.join(packageRoot, "tutti-guide.md")
+  );
   await copyManifestIcon(manifest);
   await copyManifestLocalizations(manifest);
   await copyCliManifest(manifest);
