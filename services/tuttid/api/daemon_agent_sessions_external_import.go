@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"strings"
+	"time"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
@@ -127,13 +128,17 @@ func (api DaemonAPI) registerExternalImportUserProjects(
 	}
 	result := make([]agentservice.ExternalImportProjectSelection, 0, len(projects))
 	failures := make([]agentservice.ExternalImportError, 0)
-	for _, project := range projects {
+	lastUsedAtUnixMS := time.Now().UTC().UnixMilli() + int64(len(projects))
+	for index, project := range projects {
 		path := strings.TrimSpace(project.Path)
 		if path == "" {
 			failures = append(failures, agentservice.ExternalImportError{Message: "project path is empty"})
 			continue
 		}
-		if _, err := api.UserProjectService.Use(ctx, userprojectservice.UseInput{Path: path}); err != nil {
+		if _, err := api.UserProjectService.Use(ctx, userprojectservice.UseInput{
+			Path:             path,
+			LastUsedAtUnixMS: lastUsedAtUnixMS - int64(index),
+		}); err != nil {
 			failures = append(failures, agentservice.ExternalImportError{
 				SourcePath: path,
 				Message:    err.Error(),

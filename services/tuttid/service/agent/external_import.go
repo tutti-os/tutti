@@ -145,7 +145,7 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		Errors:          append([]ExternalImportError(nil), data.result.Errors...),
 	}
 	importedProjectPaths := map[string]struct{}{}
-	validProjectPaths := map[string]struct{}{}
+	validProjectPaths := map[string]int64{}
 	for _, session := range data.sessions {
 		if ctx.Err() != nil {
 			return result, ctx.Err()
@@ -154,7 +154,9 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		if !selected {
 			continue
 		}
-		validProjectPaths[projectPath] = struct{}{}
+		if session.UpdatedAtUnixMS > validProjectPaths[projectPath] {
+			validProjectPaths[projectPath] = session.UpdatedAtUnixMS
+		}
 		importedMessages, imported, err := s.importExternalSession(ctx, workspaceID, session)
 		if err != nil {
 			result.Errors = append(result.Errors, ExternalImportError{
@@ -173,7 +175,7 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		}
 	}
 	result.ImportedProjects = len(importedProjectPaths)
-	result.ProjectPaths = sortedStringSet(validProjectPaths)
+	result.ProjectPaths = sortedProjectPathsByLatest(validProjectPaths)
 	return result, nil
 }
 
@@ -245,54 +247,6 @@ func providersFromExternalImportSelections(selections []ExternalImportProjectSel
 		}
 	}
 	return out
-}
-
-func matchingExternalImportProject(session externalImportedSession, selections []ExternalImportProjectSelection) (string, bool) {
-	for _, selection := range selections {
-		if !externalProviderSelected(session.Provider, selection.Providers) {
-			continue
-		}
-		if len(selection.SessionIDs) > 0 && !externalSessionSelected(session, selection.SessionIDs) {
-			continue
-		}
-		if externalProjectPathContains(selection.Path, session.Cwd) {
-			return selection.Path, true
-		}
-	}
-	return "", false
-}
-
-func externalSessionSelected(session externalImportedSession, sessionIDs []string) bool {
-	sessionID := externalImportedSessionID(session.Provider, session.ProviderSessionID)
-	for _, candidate := range sessionIDs {
-		if strings.TrimSpace(candidate) == sessionID {
-			return true
-		}
-	}
-	return false
-}
-
-func externalProviderSelected(provider string, providers []string) bool {
-	provider = agentproviderbiz.Normalize(provider)
-	for _, candidate := range normalizeExternalImportProviders(providers) {
-		if candidate == provider {
-			return true
-		}
-	}
-	return false
-}
-
-func externalProjectPathContains(parent string, child string) bool {
-	parent = filepath.Clean(parent)
-	child = filepath.Clean(child)
-	if parent == child {
-		return true
-	}
-	rel, err := filepath.Rel(parent, child)
-	if err != nil {
-		return false
-	}
-	return rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".."
 }
 
 func scanExternalAgentSessions(ctx context.Context, providers []string) externalScanData {
@@ -561,71 +515,6 @@ func (s *Service) existingExternalImportMessageIDs(ctx context.Context, workspac
 			return ids, true, nil
 		}
 	}
-}
-
-func projectFromExternalSession(session externalImportedSession) (ExternalImportProject, bool) {
-	cwd, ok := canonicalExistingDir(session.Cwd)
-	if !ok {
-		return ExternalImportProject{}, false
-	}
-	return ExternalImportProject{
-		Path:                cwd,
-		Label:               filepath.Base(cwd),
-		Providers:           []string{session.Provider},
-		SessionCount:        1,
-		MessageCount:        len(session.Messages),
-		LastUpdatedAtUnixMS: session.UpdatedAtUnixMS,
-	}, true
-}
-
-func externalImportSessionSummary(session externalImportedSession, projectPath string) ExternalImportSession {
-	return ExternalImportSession{
-		ID:                  externalImportedSessionID(session.Provider, session.ProviderSessionID),
-		ProjectPath:         projectPath,
-		Provider:            session.Provider,
-		SourcePath:          session.SourcePath,
-		Title:               session.Title,
-		MessageCount:        len(session.Messages),
-		LastUpdatedAtUnixMS: session.UpdatedAtUnixMS,
-	}
-}
-
-func upsertExternalImportProject(projects map[string]*ExternalImportProject, next ExternalImportProject, provider string) {
-	project, ok := projects[next.Path]
-	if !ok {
-		projects[next.Path] = &next
-		return
-	}
-	project.SessionCount += next.SessionCount
-	project.MessageCount += next.MessageCount
-	if next.LastUpdatedAtUnixMS > project.LastUpdatedAtUnixMS {
-		project.LastUpdatedAtUnixMS = next.LastUpdatedAtUnixMS
-	}
-	for _, existingProvider := range project.Providers {
-		if existingProvider == provider {
-			return
-		}
-	}
-	project.Providers = append(project.Providers, provider)
-}
-
-func canonicalExistingDir(path string) (string, bool) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", false
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", false
-	}
-	info, err := os.Stat(abs)
-	if err != nil || !info.IsDir() {
-		return "", false
-	}
-	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
-		abs = resolved
-	}
-	return filepath.Clean(abs), true
 }
 
 func externalImportedSessionID(provider string, providerSessionID string) string {

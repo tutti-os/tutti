@@ -24,7 +24,8 @@ type Service struct {
 }
 
 type UseInput struct {
-	Path string
+	Path             string
+	LastUsedAtUnixMS int64
 }
 
 type DeleteInput struct {
@@ -107,9 +108,10 @@ func (s Service) Use(ctx context.Context, input UseInput) (userprojectbiz.Projec
 	}
 
 	return s.Store.PutUserProject(ctx, userprojectbiz.Project{
-		ID:    projectID(projectPath),
-		Path:  projectPath,
-		Label: userprojectbiz.LabelFromPath(projectPath),
+		ID:               projectID(projectPath),
+		Path:             projectPath,
+		Label:            userprojectbiz.LabelFromPath(projectPath),
+		LastUsedAtUnixMS: input.LastUsedAtUnixMS,
 	})
 }
 

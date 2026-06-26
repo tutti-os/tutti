@@ -140,6 +140,166 @@ func TestServiceExternalImportValidProjectPaths(t *testing.T) {
 	}
 }
 
+func TestServiceExternalImportValidProjectPathsOrdersByLatestSession(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	olderProject := filepath.Join(root, "older-project")
+	newerProject := filepath.Join(root, "newer-project")
+	for _, dir := range []string{olderProject, newerProject} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("create dir error = %v", err)
+		}
+	}
+	if canonical, ok := canonicalExistingDir(olderProject); ok {
+		olderProject = canonical
+	}
+	if canonical, ok := canonicalExistingDir(newerProject); ok {
+		newerProject = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	olderTimestamp := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339Nano)
+	newerTimestamp := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "older.jsonl"),
+		map[string]any{
+			"timestamp": olderTimestamp,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "older", "cwd": olderProject},
+		},
+		map[string]any{"timestamp": olderTimestamp, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "older-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Older prompt"}},
+		}},
+	)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "newer.jsonl"),
+		map[string]any{
+			"timestamp": newerTimestamp,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "newer", "cwd": newerProject},
+		},
+		map[string]any{"timestamp": newerTimestamp, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "newer-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Newer prompt"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	paths, err := service.ExternalImportValidProjectPaths(ctx, ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: olderProject}, {Path: newerProject}},
+	})
+	if err != nil {
+		t.Fatalf("ExternalImportValidProjectPaths error = %v", err)
+	}
+	if len(paths) != 2 || paths[0] != newerProject || paths[1] != olderProject {
+		t.Fatalf("valid paths = %#v, want newer then older", paths)
+	}
+}
+
+func TestMatchingExternalImportProjectPrefersExactSelection(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "project")
+	child := filepath.Join(parent, "packages", "app")
+	if err := os.MkdirAll(child, 0o755); err != nil {
+		t.Fatalf("create child project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(parent); ok {
+		parent = canonical
+	}
+	if canonical, ok := canonicalExistingDir(child); ok {
+		child = canonical
+	}
+
+	got, ok := matchingExternalImportProject(
+		externalImportedSession{
+			Provider: "codex",
+			Cwd:      child,
+		},
+		[]ExternalImportProjectSelection{
+			{Path: parent, Providers: []string{"codex"}},
+			{Path: child, Providers: []string{"codex"}},
+		},
+	)
+	if !ok || got != child {
+		t.Fatalf("matchingExternalImportProject() = %q, %v; want exact child path %q", got, ok, child)
+	}
+}
+
+func TestServiceListsImportedSessionsByExternalActivityTime(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("create project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	older := time.Date(2026, 6, 20, 10, 0, 0, 0, time.UTC)
+	newer := time.Date(2026, 6, 21, 10, 0, 0, 0, time.UTC)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "a-newer.jsonl"),
+		map[string]any{
+			"timestamp": newer.Format(time.RFC3339Nano),
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "newer", "cwd": project},
+		},
+		map[string]any{"timestamp": newer.Format(time.RFC3339Nano), "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "newer-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Newer imported title"}},
+		}},
+	)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "z-older.jsonl"),
+		map[string]any{
+			"timestamp": older.Format(time.RFC3339Nano),
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "older", "cwd": project},
+		},
+		map[string]any{"timestamp": older.Format(time.RFC3339Nano), "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "older-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Older imported title"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: project}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 2 {
+		t.Fatalf("imported sessions = %d, want 2", result.ImportedSessions)
+	}
+	sessions, err := service.List(ctx, "ws-1")
+	if err != nil {
+		t.Fatalf("List error = %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("len(sessions) = %d, want 2", len(sessions))
+	}
+	if value(sessions[0].Title) != "Newer imported title" {
+		t.Fatalf("sessions = %#v, want newer title first", sessions)
+	}
+	if sessions[0].UpdatedAt == nil || sessions[0].UpdatedAt.UnixMilli() != newer.UnixMilli() {
+		t.Fatalf("first imported session updatedAt = %#v, want %d", sessions[0].UpdatedAt, newer.UnixMilli())
+	}
+	if sessions[0].CreatedAt.UnixMilli() != newer.UnixMilli() {
+		t.Fatalf("first imported session createdAt = %d, want %d", sessions[0].CreatedAt.UnixMilli(), newer.UnixMilli())
+	}
+}
+
 func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)

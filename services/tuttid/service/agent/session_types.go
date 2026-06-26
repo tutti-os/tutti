@@ -113,6 +113,9 @@ type PersistedSession struct {
 	Title             string
 	LastError         string
 	PinnedAtUnixMS    int64
+	LastEventUnixMS   int64
+	StartedAtUnixMS   int64
+	EndedAtUnixMS     int64
 	CreatedAtUnixMS   int64
 	UpdatedAtUnixMS   int64
 }

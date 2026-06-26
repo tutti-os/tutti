@@ -69,8 +69,10 @@ func (s *SQLiteStore) PutUserProject(ctx context.Context, project userprojectbiz
 	if project.CreatedAtUnixMS <= 0 {
 		project.CreatedAtUnixMS = now
 	}
-	project.UpdatedAtUnixMS = now
-	project.LastUsedAtUnixMS = now
+	if project.LastUsedAtUnixMS <= 0 {
+		project.LastUsedAtUnixMS = now
+	}
+	project.UpdatedAtUnixMS = project.LastUsedAtUnixMS
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO user_projects (
   id, path, label, created_at_unix_ms, updated_at_unix_ms, last_used_at_unix_ms

@@ -725,6 +725,9 @@ func persistedSessionFromActivity(session agentactivitybiz.Session) PersistedSes
 		Title:             strings.TrimSpace(session.Title),
 		LastError:         strings.TrimSpace(session.LastError),
 		PinnedAtUnixMS:    session.PinnedAtUnixMS,
+		LastEventUnixMS:   session.LastEventUnixMS,
+		StartedAtUnixMS:   session.StartedAtUnixMS,
+		EndedAtUnixMS:     session.EndedAtUnixMS,
 		CreatedAtUnixMS:   session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
 	}
