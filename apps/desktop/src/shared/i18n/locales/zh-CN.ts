@@ -132,11 +132,11 @@ export const zhCN = {
       openSessionUnavailableTitle: "会话不可用"
     },
     agentEnv: {
-      wizardTitle: "设置 {{provider}}",
       configTitle: "{{provider}} 环境",
       wizardDescription:
         "Tutti 将检测、安装并校验 {{provider}}，使其可以运行。",
-      configDescription: "{{provider}} 已就绪。可在此管理版本、登录与安装。",
+      configDescription:
+        "{{provider}} 已就绪。可在此重新检测，管理版本、登录与安装。",
       phaseDetect: "检测",
       phaseInstall: "安装 / 修复",
       phaseVerify: "复检",

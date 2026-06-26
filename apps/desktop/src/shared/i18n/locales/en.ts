@@ -135,12 +135,11 @@ export const en = {
       openSessionUnavailableTitle: "Session unavailable"
     },
     agentEnv: {
-      wizardTitle: "Set up {{provider}}",
       configTitle: "{{provider}} environment",
       wizardDescription:
         "Tutti will detect, install, and verify {{provider}} so it's ready to run.",
       configDescription:
-        "{{provider}} is ready. Manage its version, sign-in, and install here.",
+        "{{provider}} is ready. Re-check it, or manage its version, sign-in, and install here.",
       phaseDetect: "Detect",
       phaseInstall: "Install & repair",
       phaseVerify: "Verify",

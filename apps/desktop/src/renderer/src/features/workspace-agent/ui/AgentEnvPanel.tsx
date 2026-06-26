@@ -554,11 +554,10 @@ export function AgentEnvPanel({
       <DialogContent className="flex max-h-[min(640px,calc(100vh-32px))] flex-col gap-0 overflow-hidden bg-[var(--background-fronted)] p-0 sm:max-w-[560px]">
         <DialogHeader className="shrink-0 border-b border-[var(--border-1)] px-5 py-4">
           <DialogTitle>
-            {ready
-              ? t("workspace.agentEnv.configTitle", { provider: providerLabel })
-              : t("workspace.agentEnv.wizardTitle", {
-                  provider: providerLabel
-                })}
+            {/* One stable title regardless of state — the subtitle carries
+                ready vs needs-setup — so the "环境检测" entry always opens
+                "<provider> 环境". */}
+            {t("workspace.agentEnv.configTitle", { provider: providerLabel })}
           </DialogTitle>
           <DialogDescription>
             {ready
