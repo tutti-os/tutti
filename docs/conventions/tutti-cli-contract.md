@@ -116,6 +116,11 @@ Action commands should return the smallest useful confirmation payload. For
 agent session actions, this normally means session id, provider, status, and
 whether a launch/open request was published.
 
+Agent session compact/detail JSON may include additive runtime protocol fields
+such as `turnLifecycle` and `submitAvailability` when the daemon has them. Keep
+their field names aligned with the HTTP/OpenAPI session shape so CLI callers can
+reason about active turns without switching transports.
+
 ## Naming Rules
 
 Command path segments and input names use lowercase kebab-case.

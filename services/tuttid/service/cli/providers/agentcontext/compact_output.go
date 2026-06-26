@@ -23,6 +23,12 @@ func sessionSummaryValue(session agentservice.Session) map[string]any {
 	if session.Title != nil {
 		value["title"] = strings.TrimSpace(*session.Title)
 	}
+	if turnLifecycle := turnLifecycleCompactValue(session.TurnLifecycle); turnLifecycle != nil {
+		value["turnLifecycle"] = turnLifecycle
+	}
+	if submitAvailability := submitAvailabilityCompactValue(session.SubmitAvailability); submitAvailability != nil {
+		value["submitAvailability"] = submitAvailability
+	}
 	return value
 }
 
@@ -55,6 +61,40 @@ func sessionSummaryValues(sessions []agentservice.Session) []any {
 		values = append(values, sessionSummaryValue(session))
 	}
 	return values
+}
+
+func turnLifecycleCompactValue(value *agentservice.TurnLifecycle) map[string]any {
+	if value == nil {
+		return nil
+	}
+	result := map[string]any{
+		"activeTurnId": nil,
+		"phase":        strings.TrimSpace(value.Phase),
+		"settling":     value.Settling,
+	}
+	if value.ActiveTurnID != nil {
+		result["activeTurnId"] = strings.TrimSpace(*value.ActiveTurnID)
+	}
+	if value.Outcome != nil {
+		result["outcome"] = strings.TrimSpace(*value.Outcome)
+	}
+	if value.CompletedCommand != nil {
+		result["completedCommand"] = map[string]any{
+			"kind":   strings.TrimSpace(value.CompletedCommand.Kind),
+			"status": strings.TrimSpace(value.CompletedCommand.Status),
+		}
+	}
+	return result
+}
+
+func submitAvailabilityCompactValue(value *agentservice.SubmitAvailability) map[string]any {
+	if value == nil {
+		return nil
+	}
+	return map[string]any{
+		"state":  strings.TrimSpace(value.State),
+		"reason": strings.TrimSpace(value.Reason),
+	}
 }
 
 func messageCompactValue(message agentservice.SessionMessage) map[string]any {
