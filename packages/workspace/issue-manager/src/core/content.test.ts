@@ -267,7 +267,6 @@ test("issue-manager folds a project bundle into a single workspace-reference chi
       scope: {
         count: "7",
         groupId: "project-42",
-        icon: "https://example.com/icon.png",
         source: "app",
         workspaceId: "workspace-1"
       }
