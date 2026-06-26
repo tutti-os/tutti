@@ -224,6 +224,29 @@ test("workspace user project service remembers generated no-project cwd values",
   assert.equal(service.isNoProjectPath("/tmp/other"), false);
 });
 
+test("workspace user project service lets an explicit project override generated no-project paths", async () => {
+  const generatedLikePath =
+    "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444";
+  const service = createService({
+    tuttidClient: createTuttidClient({
+      async useUserProject(input) {
+        return createProject({
+          id: "odd-project",
+          label: "Odd project",
+          path: input.path
+        });
+      }
+    })
+  });
+
+  service.rememberNoProjectPath(generatedLikePath);
+  assert.equal(service.isNoProjectPath(generatedLikePath), true);
+
+  await service.registerProjectPath(generatedLikePath);
+
+  assert.equal(service.isNoProjectPath(generatedLikePath), false);
+});
+
 test("workspace user project service creates a documents directory before registering project", async () => {
   const calls: Array<{ method: string; path?: string; name?: string }> = [];
   const service = createService({

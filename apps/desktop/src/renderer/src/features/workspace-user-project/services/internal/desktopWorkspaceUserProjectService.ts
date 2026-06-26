@@ -36,6 +36,7 @@ export interface DesktopWorkspaceUserProjectServiceDependencies {
 
 interface DesktopWorkspaceUserProjectWorkspaceState {
   defaultSelection: WorkspaceUserProjectDefaultSelection | null;
+  explicitProjectPaths: Set<string>;
   noProjectPaths: Set<string>;
   removedProjectPaths: Set<string>;
 }
@@ -105,6 +106,13 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
 
   isNoProjectPath(path: string): boolean {
     const normalizedPath = path.trim();
+    if (
+      !normalizedPath ||
+      hasProjectPath(this.store.projects, normalizedPath) ||
+      this.workspaceState.explicitProjectPaths.has(normalizedPath)
+    ) {
+      return false;
+    }
     return (
       this.workspaceState.noProjectPaths.has(normalizedPath) ||
       isGeneratedNoProjectCwd({
@@ -203,6 +211,8 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
       path
     });
     this.loadSequence += 1;
+    this.workspaceState.explicitProjectPaths.add(project.path);
+    this.workspaceState.noProjectPaths.delete(project.path);
     this.workspaceState.removedProjectPaths.delete(project.path);
     this.store.projects = upsertWorkspaceUserProject(
       this.store.projects,
@@ -225,6 +235,7 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
       path: normalizedPath
     });
     const previousProjectCount = this.store.projects.length;
+    this.workspaceState.explicitProjectPaths.delete(normalizedPath);
     this.workspaceState.removedProjectPaths.add(normalizedPath);
     this.store.projects = this.store.projects.filter(
       (project) => project.path !== normalizedPath
@@ -318,6 +329,7 @@ function workspaceUserProjectState(
   if (!state) {
     state = {
       defaultSelection: null,
+      explicitProjectPaths: new Set(),
       noProjectPaths: new Set(),
       removedProjectPaths: new Set()
     };
