@@ -270,11 +270,23 @@ describe("formatAgentMentionMarkdown — workspace reference", () => {
 
   it("renders one chip link (no expansion)", () => {
     expect(formatAgentMentionMarkdown(referenceItem)).toBe(
-      "[@Design](mention://workspace-reference/app-1?source=app&workspaceId=ws-1)"
+      "[@Design](mention://workspace-reference/app-1?count=2&source=app&workspaceId=ws-1)"
     );
   });
 
-  it("round-trips the handle + icon + count through the href (build → parse)", () => {
+  it("omits display icon data from the prompt href", () => {
+    expect(
+      formatAgentMentionMarkdown({
+        ...referenceItem,
+        href: "mention://workspace-reference/app-1?icon=data%3Aimage%2Fpng%3Bbase64%2Cabc&source=app&workspaceId=ws-1",
+        iconUrl: "data:image/png;base64,abc"
+      })
+    ).toBe(
+      "[@Design](mention://workspace-reference/app-1?count=2&source=app&workspaceId=ws-1)"
+    );
+  });
+
+  it("parses legacy href icon data for chip display", () => {
     const href = createRichTextMentionHref({
       providerId: "workspace-reference",
       entityId: "topic-1",

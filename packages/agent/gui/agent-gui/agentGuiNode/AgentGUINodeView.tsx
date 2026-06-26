@@ -942,7 +942,6 @@ export function AgentGUINodeView({
                 ...(handle.groupId?.trim()
                   ? { groupId: handle.groupId.trim() }
                   : {}),
-                ...(bundleIconUrl ? { icon: bundleIconUrl } : {}),
                 ...(bundle.fileCount > 0
                   ? { count: String(bundle.fileCount) }
                   : {})

@@ -470,6 +470,19 @@ export function formatAgentMentionMarkdown(
       path: item.href
     });
   }
+  if (item.kind === "workspace-reference") {
+    return createRichTextMentionMarkdown({
+      providerId: "workspace-reference",
+      entityId: item.targetId,
+      label: item.name,
+      scope: {
+        workspaceId: item.workspaceId,
+        source: item.source,
+        ...(item.groupId?.trim() ? { groupId: item.groupId.trim() } : {}),
+        ...(item.fileCount > 0 ? { count: String(item.fileCount) } : {})
+      }
+    });
+  }
   const identity = parseRichTextMentionHref(item.href, item.name);
   return identity ? createRichTextMentionMarkdown(identity) : "";
 }
