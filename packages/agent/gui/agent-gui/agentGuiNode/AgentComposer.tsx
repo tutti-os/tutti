@@ -274,7 +274,7 @@ export interface AgentComposerProps {
     usageContextWindowLabel: string;
     usageTokensLabel: string;
     usageLimitsLabel: string;
-    compactContextLabel: string;
+    usageCompactAction: string;
     approvalLead: string;
     planLead: string;
     planModes: Array<{ id: string; label: string; description: string }>;
@@ -471,7 +471,7 @@ function AgentUsageChip({
     | "usagePopoverTitle"
     | "usageContextWindowLabel"
     | "usageLimitsLabel"
-    | "compactContextLabel"
+    | "usageCompactAction"
   >;
 }): React.JSX.Element {
   "use memo";
@@ -557,7 +557,7 @@ function AgentUsageChip({
               className="nodrag inline-flex items-center justify-center rounded-[6px] bg-[var(--transparency-block)] px-2 py-1 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:bg-background-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [-webkit-app-region:no-drag]"
               onClick={onCompact}
             >
-              {labels.compactContextLabel}
+              {labels.usageCompactAction}
             </button>
           ) : null}
         </div>
@@ -2785,7 +2785,7 @@ export function AgentComposer({
                     usagePopoverTitle: labels.usagePopoverTitle,
                     usageContextWindowLabel: labels.usageContextWindowLabel,
                     usageLimitsLabel: labels.usageLimitsLabel,
-                    compactContextLabel: labels.compactContextLabel
+                    usageCompactAction: labels.usageCompactAction
                   }}
                 />
               ) : null}

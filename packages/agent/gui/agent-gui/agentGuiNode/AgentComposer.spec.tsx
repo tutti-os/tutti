@@ -1823,6 +1823,10 @@ describe("AgentComposer", () => {
       />
     );
 
+    // Open the usage popover before asserting/clicking the compact button
+    const usageChip = screen.getByTestId("agent-gui-usage-chip");
+    fireEvent.click(usageChip);
+
     const compactButton = screen.queryByTestId("agent-gui-compact-button");
     expect(compactButton).toBeInTheDocument();
     fireEvent.click(compactButton!);
@@ -3441,7 +3445,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     usageContextWindowLabel: "上下文窗口",
     usageTokensLabel: "Token 用量",
     usageLimitsLabel: "限额",
-    compactContextLabel: "压缩上下文",
+    usageCompactAction: "压缩",
     approvalLead: "审批",
     planLead: "计划",
     planModes: [],

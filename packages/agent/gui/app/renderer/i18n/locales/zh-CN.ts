@@ -481,7 +481,6 @@ export const zhCN = {
       usageContextWindowLabel: "上下文窗口",
       usageTokensLabel: "Token 用量",
       usageLimitsLabel: "限额",
-      compactContext: "压缩上下文",
       usageCompactAction: "压缩",
       planCardTitle: "计划",
       planCardCopy: "复制计划",

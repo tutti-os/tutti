@@ -525,7 +525,6 @@ export const en = {
       usageContextWindowLabel: "Context window",
       usageTokensLabel: "Tokens",
       usageLimitsLabel: "Limits",
-      compactContext: "Compact context",
       usageCompactAction: "Compact",
       planCardTitle: "Plan",
       planCardCopy: "Copy plan",
