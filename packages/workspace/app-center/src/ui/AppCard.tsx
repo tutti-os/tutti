@@ -369,25 +369,27 @@ function AppDeveloperSourceRow({
     repository !== null || authors.some((author) => Boolean(author.url));
 
   const content = (
-    <div className="group/source mt-auto flex min-h-8 min-w-0 items-center gap-2 border-t border-[color:var(--line-2)] pt-2 text-[12px] leading-4 text-[var(--text-secondary)]">
-      <AvatarStack authors={authors} />
-      <span className="min-w-0 flex-1 truncate">{rowLabel}</span>
-      {official ? (
-        <span className="shrink-0 rounded-[5px] border border-[color:var(--line-2)] px-1.5 py-0 text-[10px] font-medium leading-4 text-[var(--text-secondary)]">
-          {copy.t("sources.official")}
-        </span>
-      ) : null}
-      {canOpenPopover ? (
-        <span className="flex size-5 shrink-0 items-center justify-center text-[var(--text-secondary)]">
-          <GitHubBrandIcon className="size-4 group-hover/source:hidden" />
-          <span
-            aria-hidden="true"
-            className="hidden text-[18px] leading-none group-hover/source:block"
-          >
-            ›
+    <div className="mt-auto min-w-0 pt-3">
+      <div className="group/source flex min-h-7 min-w-0 items-center gap-2 border-t border-[color:var(--line-2)] pt-2 text-[12px] leading-4 text-[var(--text-secondary)]">
+        <AvatarStack authors={authors} />
+        <span className="min-w-0 flex-1 truncate">{rowLabel}</span>
+        {official ? (
+          <span className="shrink-0 rounded-[5px] border border-[color:var(--line-2)] px-1.5 py-0 text-[10px] font-medium leading-4 text-[var(--text-secondary)]">
+            {copy.t("sources.official")}
           </span>
-        </span>
-      ) : null}
+        ) : null}
+        {canOpenPopover ? (
+          <span className="flex size-5 shrink-0 items-center justify-center text-[var(--text-secondary)]">
+            <GitHubBrandIcon className="size-4 group-hover/source:hidden" />
+            <span
+              aria-hidden="true"
+              className="hidden text-[18px] leading-none group-hover/source:block"
+            >
+              ›
+            </span>
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 

@@ -12,3 +12,8 @@ test("App Card primary action label stays inside the card header", () => {
   assert.match(source, /"min-w-0 max-w-full shrink truncate px-2"/);
   assert.match(source, /title=\{primaryActionTitle\}/);
 });
+
+test("App Card developer source row has breathing room below the app description", () => {
+  assert.match(source, /className="mt-auto min-w-0 pt-3"/);
+  assert.match(source, /className="group\/source flex min-h-7/);
+});
