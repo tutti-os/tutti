@@ -171,6 +171,9 @@ function createFileManagerServiceStub(
         listener();
       }
     },
+    async entryExists() {
+      return false;
+    },
     getSession() {
       throw new Error("getSession should not be called");
     },

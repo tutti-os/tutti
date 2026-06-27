@@ -594,7 +594,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     ).toHaveClass("rounded-full");
   });
 
-  it("resolves summary file links through the shared workspace link action", () => {
+  it("renders summary relative file links as plain text", () => {
     const onLinkAction = vi.fn();
     render(
       <TooltipProvider>
@@ -612,20 +612,11 @@ describe("WorkspaceAgentMessageCenterCard", () => {
       </TooltipProvider>
     );
 
-    const link = screen.getByRole("link", { name: "PROJECT_SUMMARY.md" });
-    expect(link.closest('[data-workspace-agent-markdown="true"]')).toHaveClass(
-      "[&_a]:text-[var(--tutti-purple)]"
-    );
-
-    fireEvent.click(link);
-
-    expect(onLinkAction).toHaveBeenCalledWith({
-      type: "open-workspace-file",
-      path: "/Users/local/.tutti/agent/sessions/2026-06-05-001/PROJECT_SUMMARY.md",
-      directoryPath: "/Users/local/.tutti/agent/sessions/2026-06-05-001",
-      workspaceRoot: "/Users/local/.tutti/agent/sessions/2026-06-05-001",
-      source: "agent-markdown"
-    });
+    expect(
+      screen.queryByRole("link", { name: "PROJECT_SUMMARY.md" })
+    ).toBeNull();
+    expect(screen.getByText("PROJECT_SUMMARY.md")).toBeInTheDocument();
+    expect(onLinkAction).not.toHaveBeenCalled();
   });
 
   it("allows copying the card title and summary text", () => {

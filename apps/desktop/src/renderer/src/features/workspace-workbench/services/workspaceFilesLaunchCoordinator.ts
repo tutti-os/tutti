@@ -3,6 +3,7 @@ export interface WorkspaceFilesLaunchRequest {
   mode?: WorkspaceFilesLaunchMode;
   path: string;
   source?: "agent_command" | "issue_manager";
+  validateExists?: boolean;
   workspaceId: string;
 }
 
@@ -57,6 +58,7 @@ export async function requestWorkspaceFilesLaunch(
     ...(request.mode ? { mode: request.mode } : {}),
     path: normalizedPath,
     ...(request.source ? { source: request.source } : {}),
+    ...(request.validateExists ? { validateExists: true } : {}),
     workspaceId: normalizedWorkspaceId
   });
 }

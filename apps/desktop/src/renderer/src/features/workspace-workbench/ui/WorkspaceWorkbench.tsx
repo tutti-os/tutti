@@ -30,6 +30,7 @@ import {
   WorkspaceAppCenterIntegration,
   workspaceAppCenterNodeID
 } from "@renderer/features/workspace-app-center";
+import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import { useWorkspaceCatalogService } from "@renderer/features/workspace-catalog";
 import {
   AgentEnvPanel,
@@ -213,15 +214,19 @@ function ReadyWorkspaceWorkbench({
       if (!workbenchHost) {
         throw new Error("Workspace host is unavailable.");
       }
-      const opened = await openWorkspaceFilesNode(workbenchHost, {
-        path: input.path,
-        workspaceId: state.workspace.id
-      });
+      const opened = await openWorkspaceFilesNode(
+        workbenchHost,
+        {
+          path: input.path,
+          workspaceId: state.workspace.id
+        },
+        runtime.workspaceFileManagerService
+      );
       if (!opened) {
         throw new Error("Workspace files could not be opened.");
       }
     },
-    [state.workspace.id, workbenchHost]
+    [runtime.workspaceFileManagerService, state.workspace.id, workbenchHost]
   );
   const onDockEntryAction = useCallback(
     (
@@ -344,7 +349,11 @@ function ReadyWorkspaceWorkbench({
       unregisterFilesLaunchRef.current = registerWorkspaceFilesLaunchHandler(
         state.workspace.id,
         async (request) => {
-          return openWorkspaceFilesNode(host, request);
+          return openWorkspaceFilesNode(
+            host,
+            request,
+            runtime.workspaceFileManagerService
+          );
         }
       );
       unregisterIssueManagerLaunchRef.current =
@@ -899,8 +908,19 @@ function shouldPublishWorkspaceAppLaunchIntentBeforeLaunch(input: {
 
 async function openWorkspaceFilesNode(
   host: WorkbenchHostHandle,
-  request: WorkspaceFilesLaunchRequest
+  request: WorkspaceFilesLaunchRequest,
+  workspaceFileManagerService: IWorkspaceFileManagerService
 ): Promise<boolean> {
+  if (
+    request.validateExists &&
+    !(await workspaceFileManagerService.entryExists({
+      path: request.path,
+      workspaceID: request.workspaceId
+    }))
+  ) {
+    return false;
+  }
+
   const nodeId = await host.launchNode({
     launchSource: request.source,
     reason: "host",

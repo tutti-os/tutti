@@ -25,6 +25,13 @@ test("WorkspaceWorkbench forwards open-directory mode to workspace files", () =>
   );
 });
 
+test("WorkspaceWorkbench validates requested file targets before opening workspace files", () => {
+  assert.match(
+    source,
+    /request\.validateExists[\s\S]*workspaceFileManagerService\.entryExists\(\{[\s\S]*path: request\.path[\s\S]*workspaceID: request\.workspaceId[\s\S]*return false;[\s\S]*host\.launchNode/s
+  );
+});
+
 test("WorkspaceWorkbench uses temporary dock retention to control app visibility", () => {
   assert.match(source, /temporaryWorkspaceAppDockRetentionActionPrefix/);
   assert.match(source, /resolveTemporaryDockRetentionContribution/);

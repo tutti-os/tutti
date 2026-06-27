@@ -48,7 +48,6 @@ import {
 } from "../agentActivityHost";
 import {
   isDirectAgentGeneratedMediaPath,
-  resolveWorkspaceFilePathCandidate,
   resolveWorkspaceLinkAction,
   type WorkspaceLinkAction,
   type WorkspaceLinkActionSource
@@ -71,6 +70,8 @@ const PLAIN_SESSION_MENTION_AGENT_LABELS = [
   "Nexight",
   "Codex"
 ] as const;
+const WINDOWS_DRIVE_HREF_PROTOCOLS =
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 export const AGENT_MARKDOWN_PLAIN_TITLE_CLASSNAME =
   "[font-size:inherit] [line-height:inherit] text-inherit [&_a]:text-inherit [&_a]:font-inherit [&_a]:no-underline [&_a:hover]:no-underline [&_a:focus-visible]:no-underline [&_strong]:font-inherit [&_strong]:text-inherit";
 
@@ -78,7 +79,11 @@ const MARKDOWN_SANITIZE_SCHEMA: RehypeSanitizeOptions = {
   ...defaultSchema,
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), "mention"]
+    href: [
+      ...(defaultSchema.protocols?.href ?? []),
+      "mention",
+      ...WINDOWS_DRIVE_HREF_PROTOCOLS
+    ]
   }
 };
 
@@ -199,13 +204,8 @@ export function AgentMessageMarkdown({
   const handleLinkClick = useCallback(
     (href: string): void => {
       if (workspaceLinkSource && onLinkAction && workspaceRoot) {
-        const resolvedHref =
-          resolveWorkspaceFileHrefFromMessage(href, stabilizedContent, {
-            workspaceRoot,
-            basePath
-          }) ?? href;
         const action = resolveWorkspaceLinkAction({
-          href: resolvedHref,
+          href,
           workspaceRoot,
           basePath,
           source: workspaceLinkSource
@@ -217,14 +217,7 @@ export function AgentMessageMarkdown({
       }
       onLinkClick?.(href);
     },
-    [
-      basePath,
-      onLinkAction,
-      onLinkClick,
-      stabilizedContent,
-      workspaceLinkSource,
-      workspaceRoot
-    ]
+    [basePath, onLinkAction, onLinkClick, workspaceLinkSource, workspaceRoot]
   );
   const handleAnchorClickCapture = useCallback(
     (event: MouseEvent<HTMLElement>): void => {
@@ -249,13 +242,7 @@ export function AgentMessageMarkdown({
         />
       ),
       code: (props: MarkdownDomProps<"code">) => (
-        <MarkdownCode
-          {...props}
-          onLinkClick={handleLinkClick}
-          workspaceFileLinksEnabled={Boolean(
-            workspaceRoot && workspaceLinkSource
-          )}
-        />
+        <MarkdownCode {...props} onLinkClick={handleLinkClick} />
       ),
       img: (props: MarkdownDomProps<"img">) => (
         <MarkdownMedia {...props} enableZoom={enableImageZoom} />
@@ -267,15 +254,7 @@ export function AgentMessageMarkdown({
       ol: MarkdownOrderedList,
       li: MarkdownListItem
     }),
-    [
-      enableImageZoom,
-      handleLinkClick,
-      inline,
-      previewMode,
-      workspaceAppIcons,
-      workspaceLinkSource,
-      workspaceRoot
-    ]
+    [enableImageZoom, handleLinkClick, inline, previewMode, workspaceAppIcons]
   );
 
   return (
@@ -660,6 +639,15 @@ function MarkdownLink({
       />
     );
   }
+  if (!isClickableMarkdownHref(targetHref)) {
+    return (
+      <MarkdownLinkContext.Provider value={true}>
+        <span className={props.className} title={props.title}>
+          {props.children}
+        </span>
+      </MarkdownLinkContext.Provider>
+    );
+  }
 
   return (
     <MarkdownLinkContext.Provider value={true}>
@@ -939,11 +927,9 @@ function MarkdownCode({
   children,
   className,
   onLinkClick,
-  workspaceFileLinksEnabled = false,
   ...props
 }: MarkdownDomProps<"code"> & {
   onLinkClick?: (href: string) => void;
-  workspaceFileLinksEnabled?: boolean;
 }): JSX.Element {
   "use memo";
   const isInsideLink = useContext(MarkdownLinkContext);
@@ -952,9 +938,7 @@ function MarkdownCode({
     !isInsideLink &&
     onLinkClick &&
     !className &&
-    (isLocalAbsolutePath(text) ||
-      isHttpUrl(text) ||
-      (workspaceFileLinksEnabled && isLikelyWorkspaceRelativeFilePath(text)));
+    (isExplicitWorkspaceFilePath(text) || isHttpUrl(text));
   if (isLinkablePath) {
     return (
       <PathLink href={text} onLinkClick={onLinkClick}>
@@ -1311,6 +1295,44 @@ function isLocalAbsolutePath(path: string): boolean {
   );
 }
 
+function isHomeRelativePath(path: string): boolean {
+  const candidate = path.trim();
+  return (
+    candidate.length > 0 &&
+    !/\s/.test(candidate) &&
+    (candidate === "~" ||
+      candidate.startsWith("~/") ||
+      candidate.startsWith("~\\"))
+  );
+}
+
+function isWindowsAbsolutePath(path: string): boolean {
+  const candidate = path.trim();
+  return /^[A-Za-z]:[\\/]/.test(candidate) && !/\s/.test(candidate);
+}
+
+function isExplicitWorkspaceFilePath(path: string): boolean {
+  const candidate = path.trim();
+  if (!candidate || candidate.includes("://")) {
+    return false;
+  }
+  return (
+    isLocalAbsolutePath(candidate) ||
+    isHomeRelativePath(candidate) ||
+    isWindowsAbsolutePath(candidate)
+  );
+}
+
+function isClickableMarkdownHref(href: string): boolean {
+  const target = href.trim();
+  return Boolean(
+    target &&
+    (isHttpUrl(target) ||
+      isRichTextMentionHref(target) ||
+      isExplicitWorkspaceFilePath(target))
+  );
+}
+
 function resolveRenderableMarkdownMediaSrc(src: string): string {
   const trimmed = src.trim();
   if (!trimmed) {
@@ -1432,85 +1454,6 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-function resolveWorkspaceFileHrefFromMessage(
-  rawPath: string,
-  messageContent: string,
-  context: {
-    workspaceRoot: string;
-    basePath: string | null;
-  }
-): string | null {
-  const path = trimTrailingPathPunctuation(rawPath.trim());
-  if (
-    !path ||
-    isHttpUrl(path) ||
-    isLocalAbsolutePath(path) ||
-    !isLikelyWorkspaceRelativeFilePath(path)
-  ) {
-    return null;
-  }
-
-  const directoryHrefs = extractWorkspaceDirectoryLinkHrefs(messageContent);
-  const candidates: string[] = [];
-  if (path.includes("/")) {
-    candidates.push(path);
-  } else {
-    for (const directoryHref of directoryHrefs) {
-      candidates.push(`${directoryHref}/${path}`);
-    }
-    candidates.push(path);
-  }
-
-  for (const candidate of candidates) {
-    if (
-      resolveWorkspaceFilePathCandidate({
-        path: candidate,
-        workspaceRoot: context.workspaceRoot,
-        basePath: context.basePath
-      })
-    ) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-function extractWorkspaceDirectoryLinkHrefs(content: string): string[] {
-  const directories: string[] = [];
-  let index = 0;
-  while (index < content.length) {
-    const linkEnd = markdownLinkEndIndex(content, index);
-    if (linkEnd <= index) {
-      index += 1;
-      continue;
-    }
-
-    const slice = content.slice(index, linkEnd);
-    const match = /^\[([^\]]*)\]\(([^)]+)\)$/.exec(slice);
-    if (match) {
-      const href = match[2]?.trim() ?? "";
-      if (href && !isRichTextMentionHref(href) && !href.includes("://")) {
-        const normalizedHref = href.replace(/\/+$/g, "");
-        if (
-          href.endsWith("/") ||
-          (!normalizedHref.includes(".") && !normalizedHref.includes(" "))
-        ) {
-          directories.push(normalizedHref);
-        }
-      }
-    }
-    index = linkEnd;
-  }
-  return [...new Set(directories)];
-}
-
-function isLikelyWorkspaceRelativeFilePath(path: string): boolean {
-  if (!path || /\s/.test(path) || path.includes("://")) {
-    return false;
-  }
-  return path.includes("/") || /\.[A-Za-z0-9][A-Za-z0-9._-]{0,15}$/.test(path);
-}
-
 function linkBareLocalAbsolutePaths(content: string): string {
   let out = "";
   for (let index = 0; index < content.length; ) {
@@ -1613,7 +1556,10 @@ function normalizePlainSessionMentionTitle(content: string): string {
 }
 
 function markdownUrlTransform(value: string): string {
-  return isRichTextMentionHref(value) ? value : defaultUrlTransform(value);
+  const target = value.trim();
+  return isRichTextMentionHref(target) || isExplicitWorkspaceFilePath(target)
+    ? target
+    : defaultUrlTransform(value);
 }
 
 type MentionKind =

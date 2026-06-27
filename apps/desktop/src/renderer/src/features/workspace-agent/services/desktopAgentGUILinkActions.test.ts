@@ -31,6 +31,7 @@ test("desktop agent gui link actions launch workspace files with resolved action
       homeDirectory: "/Users/local",
       path: "/Users/local/project/a.md",
       source: "agent_command",
+      validateExists: true,
       workspaceId: "workspace-1"
     }
   ]);
@@ -66,6 +67,7 @@ test("desktop agent gui project menu opens the project folder path in workspace 
       mode: "open-directory",
       path: "/Users/local/project",
       source: "agent_command",
+      validateExists: true,
       workspaceId: "workspace-1"
     }
   ]);
