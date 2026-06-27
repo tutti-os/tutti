@@ -51,6 +51,7 @@ export interface RegisterBrowserNodeElectronMainInput {
   readonly channels: BrowserNodeElectronMainChannels;
   readonly getOwnerWindow: (event: unknown) => BrowserWindow | null;
   readonly getPreferredColorScheme?: () => BrowserPreferredColorScheme;
+  readonly focusDevTools?: (contents: BrowserGuestWebContents) => void;
   readonly logger?: BrowserNodeElectronLogger;
   readonly loopbackPreviewRouting?: BrowserNodeLoopbackPreviewRoutingOptions;
   readonly openExternal: (url: string) => Promise<void> | void;
@@ -120,6 +121,7 @@ export function registerBrowserNodeElectronMain(
           ownerWindow.webContents.send(input.channels.event, browserEvent);
         }
       },
+      focusDevTools: input.focusDevTools,
       getPreferredColorScheme: input.getPreferredColorScheme,
       logger: input.logger,
       openExternal: input.openExternal,

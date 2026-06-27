@@ -1,4 +1,10 @@
-import { ipcMain, nativeTheme, shell, webContents } from "electron";
+import {
+  BrowserWindow,
+  ipcMain,
+  nativeTheme,
+  shell,
+  webContents
+} from "electron";
 import { fileURLToPath } from "node:url";
 import { registerBrowserNodeElectronMain } from "@tutti-os/browser-node/electron-main";
 import type { BrowserNodeElectronLogger } from "@tutti-os/browser-node/electron-main";
@@ -56,6 +62,9 @@ export function registerBrowserIpc(
       return resolveOwnerWindowFromEvent(event as Electron.IpcMainInvokeEvent);
     },
     getPreferredColorScheme: () => getPreferredColorScheme(preferences),
+    focusDevTools: (contents) => {
+      focusBrowserNodeDevToolsWindow(contents, logger);
+    },
     logger,
     openExternal: (url) => openBrowserNodeExternalUrl(url, logger),
     registerHandler(channel, handler) {
@@ -141,6 +150,32 @@ export function registerBrowserIpc(
       webContentsId: event.sender.id
     });
   });
+}
+
+function focusBrowserNodeDevToolsWindow(
+  contents: unknown,
+  logger: BrowserNodeElectronLogger
+): void {
+  const devToolsContents = (contents as Electron.WebContents)
+    .devToolsWebContents;
+  if (!devToolsContents || devToolsContents.isDestroyed()) {
+    return;
+  }
+
+  devToolsContents.focus();
+  const devToolsWindow = BrowserWindow.fromWebContents(devToolsContents);
+  if (!devToolsWindow || devToolsWindow.isDestroyed()) {
+    logger.debug?.("Browser Node devtools window unavailable for focus");
+    return;
+  }
+
+  if (devToolsWindow.isMinimized()) {
+    devToolsWindow.restore();
+  }
+  devToolsWindow.show();
+  devToolsWindow.focus();
+  devToolsWindow.moveTop();
+  devToolsWindow.setAlwaysOnTop(true, "floating");
 }
 
 function isBrowserDevToolsEnabled(): boolean {

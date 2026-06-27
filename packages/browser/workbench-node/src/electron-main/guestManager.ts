@@ -233,6 +233,7 @@ async function applyPreferredColorSchemeToGuest(
 
 export function createBrowserGuestManager({
   emit,
+  focusDevTools,
   getPreferredColorScheme,
   logger,
   openExternal,
@@ -685,6 +686,7 @@ export function createBrowserGuestManager({
       if (contents && !contents.isDestroyed()) {
         try {
           contents.openDevTools?.({ activate: true, mode: "detach" });
+          focusDevTools?.(contents);
         } catch (error) {
           logger?.warn?.("Browser Node open devtools failed", {
             error: error instanceof Error ? error.message : String(error),

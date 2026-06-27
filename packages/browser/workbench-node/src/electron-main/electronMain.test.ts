@@ -505,8 +505,12 @@ test("manages Browser Node guest lifecycle with mocked web contents", async () =
 
 test("opens Browser Node guest devtools for a registered node", async () => {
   const contents = new MockBrowserGuestWebContents(15);
+  const focusedContentsIds: number[] = [];
   const manager = createBrowserGuestManager({
     emit: () => undefined,
+    focusDevTools: (nextContents) => {
+      focusedContentsIds.push(nextContents.id ?? -1);
+    },
     openExternal: () => undefined,
     resolveWebContents: (id) => (id === contents.id ? contents : null)
   });
@@ -525,6 +529,7 @@ test("opens Browser Node guest devtools for a registered node", async () => {
   assert.deepEqual(contents.openDevToolsOptions, [
     { activate: true, mode: "detach" }
   ]);
+  assert.deepEqual(focusedContentsIds, [15]);
 });
 
 test("blocks cross-origin Browser Node guest navigation for policy-bound sessions", async () => {
@@ -775,6 +780,7 @@ test("registerBrowserNodeElectronMain routes guest open-url IPC through the owne
 
 test("registerBrowserNodeElectronMain routes open devtools IPC through the owner manager", async () => {
   const contents = new MockBrowserGuestWebContents(16);
+  const focusedContentsIds: number[] = [];
   const handlers = new Map<
     string,
     (event: unknown, payload: unknown) => unknown
@@ -803,6 +809,9 @@ test("registerBrowserNodeElectronMain routes open devtools IPC through the owner
       unregisterGuest: "browser:unregisterGuest"
     },
     getOwnerWindow: () => ownerWindow as never,
+    focusDevTools(nextContents) {
+      focusedContentsIds.push(nextContents.id ?? -1);
+    },
     openExternal: () => undefined,
     registerHandler(channel, handler) {
       handlers.set(channel, handler as never);
@@ -826,6 +835,7 @@ test("registerBrowserNodeElectronMain routes open devtools IPC through the owner
   );
 
   assert.equal(contents.openDevToolsCalls, 1);
+  assert.deepEqual(focusedContentsIds, [16]);
 });
 
 test("registerBrowserNodeElectronMain opens devtools from a native context menu action", async () => {

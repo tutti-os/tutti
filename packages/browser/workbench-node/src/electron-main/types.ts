@@ -42,6 +42,7 @@ export interface BrowserGuestManagerInput {
   emit: (event: BrowserNodeEvent) => void;
   getPreferredColorScheme?: () => BrowserPreferredColorScheme;
   logger?: BrowserNodeElectronLogger;
+  focusDevTools?: (contents: BrowserGuestWebContents) => void;
   openExternal: (url: string) => Promise<void> | void;
   prepareSession?: (
     input: BrowserNodePrepareSessionInput
