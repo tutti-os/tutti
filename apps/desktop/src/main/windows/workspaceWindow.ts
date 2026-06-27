@@ -164,6 +164,35 @@ export function createWorkspaceWindow(
     workspaceWindow.on("leave-full-screen", sendHostWindowLayout);
     workspaceWindow.on("resize", scheduleHostWindowLayout);
     workspaceWindow.webContents.on("did-finish-load", sendHostWindowLayout);
+
+    const sendHostWindowMinimizeState = (minimized: boolean) => {
+      if (
+        workspaceWindow.isDestroyed() ||
+        workspaceWindow.webContents.isDestroyed()
+      ) {
+        return;
+      }
+
+      workspaceWindow.webContents.send(
+        desktopIpcChannels.host.window.minimizeState,
+        { minimized }
+      );
+    };
+
+    workspaceWindow.on("minimize", () => sendHostWindowMinimizeState(true));
+    workspaceWindow.on("restore", () => sendHostWindowMinimizeState(false));
+
+    // The renderer's first handling of this IPC message pays a one-time
+    // cold-start cost (lazy JS compilation, style recalculation, etc.),
+    // which is slow enough to miss the start of the real minimize
+    // animation. Replay it once, harmlessly, shortly after load so that
+    // path is already warm by the time the user actually minimizes.
+    workspaceWindow.webContents.once("did-finish-load", () => {
+      setTimeout(() => {
+        sendHostWindowMinimizeState(true);
+        setTimeout(() => sendHostWindowMinimizeState(false), 32);
+      }, 1_000);
+    });
   }
 
   return workspaceWindow;

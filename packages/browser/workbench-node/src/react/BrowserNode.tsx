@@ -27,6 +27,34 @@ import { useBrowserNodeWebview } from "./useBrowserNodeWebview.ts";
 // Electron needs the serialized string attribute for dynamically created webviews.
 const browserNodeAllowPopupsAttribute = "true" as unknown as boolean;
 
+// Hiding the guest webview while the host window is minimizing avoids
+// compositing its (potentially heavy) content during the macOS genie
+// animation, which is what causes the animation to stutter.
+function useHostWindowMinimizing(): boolean {
+  const [isMinimizing, setIsMinimizing] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleMinimizeState = (event: Event): void => {
+      const detail = (event as CustomEvent<{ minimized: boolean }>).detail;
+      setIsMinimizing(detail?.minimized === true);
+    };
+
+    window.addEventListener("tutti-host-window-minimize", handleMinimizeState);
+    return () => {
+      window.removeEventListener(
+        "tutti-host-window-minimize",
+        handleMinimizeState
+      );
+    };
+  }, []);
+
+  return isMinimizing;
+}
+
 export interface BrowserNodeProps {
   defaultUrl: string;
   feature: BrowserNodeFeature;
@@ -65,6 +93,7 @@ export function BrowserNode({
     syncDefaultUrl
   });
   const runtime = state.runtime;
+  const isHostMinimizing = useHostWindowMinimizing();
   const lastNavigatedUrlRef = useRef<string | null>(
     state.runtime.url?.trim() || null
   );
@@ -160,7 +189,8 @@ export function BrowserNode({
             ref={setWebviewRef}
             className={cn(
               "absolute inset-0 h-full w-full border-0 bg-[var(--background-panel)]",
-              isShowingLoadError ? "hidden pointer-events-none" : "visible"
+              isShowingLoadError ? "hidden pointer-events-none" : "visible",
+              isHostMinimizing && "invisible"
             )}
             data-browser-node-webview="true"
             partition={webviewPartition}

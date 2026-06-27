@@ -184,6 +184,7 @@ export const desktopIpcChannels = {
       closeRequest: "host:window:closeRequest",
       closeRequestResolved: "host:window:closeRequestResolved",
       layout: "host:window:layout",
+      minimizeState: "host:window:minimizeState",
       quitShortcutToast: "host:window:quitShortcutToast"
     },
     workspace: {
@@ -199,6 +200,10 @@ export const desktopIpcChannels = {
 
 export interface DesktopHostWindowLayoutPayload {
   compactTitlebar: boolean;
+}
+
+export interface DesktopHostWindowMinimizeStatePayload {
+  minimized: boolean;
 }
 
 export interface DesktopHostWindowCapturePreviewInput {

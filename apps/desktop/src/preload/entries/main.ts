@@ -12,7 +12,8 @@ import { createWorkspaceAppExternalDesktopApi } from "../api/workspaceAppExterna
 import type { DesktopApi } from "../types";
 import {
   desktopIpcChannels,
-  type DesktopHostWindowLayoutPayload
+  type DesktopHostWindowLayoutPayload,
+  type DesktopHostWindowMinimizeStatePayload
 } from "../../shared/contracts/ipc";
 
 const desktopApi: DesktopApi = {
@@ -43,6 +44,20 @@ ipcRenderer.on(
     window.dispatchEvent(
       new CustomEvent<DesktopHostWindowLayoutPayload>(
         "tutti-host-window-layout",
+        {
+          detail: payload
+        }
+      )
+    );
+  }
+);
+
+ipcRenderer.on(
+  desktopIpcChannels.host.window.minimizeState,
+  (_event, payload: DesktopHostWindowMinimizeStatePayload) => {
+    window.dispatchEvent(
+      new CustomEvent<DesktopHostWindowMinimizeStatePayload>(
+        "tutti-host-window-minimize",
         {
           detail: payload
         }
