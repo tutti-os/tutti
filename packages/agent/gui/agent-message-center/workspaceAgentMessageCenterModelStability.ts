@@ -63,6 +63,7 @@ function messageCenterItemsEqual(
     left.provider === right.provider &&
     left.userId === right.userId &&
     left.title === right.title &&
+    left.imported === right.imported &&
     left.cwd === right.cwd &&
     left.status === right.status &&
     left.lastAgentMessageSummary === right.lastAgentMessageSummary &&

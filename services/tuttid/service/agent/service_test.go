@@ -225,6 +225,90 @@ func TestMatchingExternalImportProjectPrefersExactSelection(t *testing.T) {
 	}
 }
 
+func TestExternalSessionProjectPathUsesGitRoot(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "repo")
+	child := filepath.Join(project, "packages", "app")
+	if err := os.MkdirAll(filepath.Join(project, ".git"), 0o755); err != nil {
+		t.Fatalf("create git dir error = %v", err)
+	}
+	if err := os.MkdirAll(child, 0o755); err != nil {
+		t.Fatalf("create child dir error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	if canonical, ok := canonicalExistingDir(child); ok {
+		child = canonical
+	}
+
+	got, ok := externalSessionProjectPath(externalImportedSession{
+		Provider: "codex",
+		Cwd:      child,
+	})
+	if !ok || got != project {
+		t.Fatalf("externalSessionProjectPath() = %q, %v; want git root %q", got, ok, project)
+	}
+}
+
+func TestServiceImportsHomeCwdAsNoProjectWithoutRegisteringUserHome(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("create home error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(home); ok {
+		home = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "no-project.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "no-project", "cwd": home},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "no-project-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Scratch question"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: home}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 || result.ImportedMessages != 1 {
+		t.Fatalf("import result = %#v, want one imported no-project session", result)
+	}
+	if len(result.ProjectPaths) != 0 || result.ImportedProjects != 0 {
+		t.Fatalf("import result = %#v, want no registered project paths for home cwd", result)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "no-project"))
+	if err != nil {
+		t.Fatalf("Get imported no-project session error = %v", err)
+	}
+	if session.RuntimeContext["externalImportNoProject"] != true {
+		t.Fatalf("runtime context = %#v, want externalImportNoProject true", session.RuntimeContext)
+	}
+}
+
 func TestServiceListsImportedSessionsByExternalActivityTime(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
@@ -476,7 +560,7 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 		t.Fatalf("ImportExternalSessions rerun error = %v", err)
 	}
 	if rerun.ImportedSessions != 1 || rerun.ImportedMessages != 2 {
-		t.Fatalf("second import = %#v, want remaining project session and messages", rerun)
+		t.Fatalf("second import = %#v, want remaining project sessions and messages", rerun)
 	}
 	finalRerun, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
 		Projects: []ExternalImportProjectSelection{{Path: projectA}},

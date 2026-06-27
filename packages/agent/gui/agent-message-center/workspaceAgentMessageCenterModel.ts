@@ -42,6 +42,7 @@ export interface WorkspaceAgentMessageCenterItem {
   provider: string;
   userId: string | null;
   title: string;
+  imported?: boolean;
   identity: WorkspaceAgentMessageCenterIdentity | null;
   cwd: string;
   status: WorkspaceAgentActivityStatus;
@@ -142,6 +143,7 @@ export function buildWorkspaceAgentMessageCenterModel(
         provider: session.provider,
         userId: session.userId?.trim() || null,
         title,
+        ...(isImportedMessageCenterSession(session) ? { imported: true } : {}),
         identity: resolveMessageCenterIdentity(
           session.agentSessionId,
           options.identityBySessionId
@@ -193,6 +195,12 @@ function resolveMessageCenterIdentity(
     agentName,
     ...(agentAvatarUrl ? { agentAvatarUrl } : {})
   };
+}
+
+function isImportedMessageCenterSession(
+  session: AgentActivitySession
+): boolean {
+  return session.runtimeContext?.imported === true;
 }
 
 export function isWaitingMessageCenterItem(

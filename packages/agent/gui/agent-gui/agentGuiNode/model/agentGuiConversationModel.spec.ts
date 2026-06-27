@@ -170,6 +170,56 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
+  it("keeps imported home-cwd sessions unassigned when external import marks no project", () => {
+    const snapshot: WorkspaceAgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          workspaceId: "workspace-1",
+          agentSessionId: "imported-home-session",
+          provider: "codex",
+          providerSessionId: "imported-home-session",
+          cwd: "/Users/local",
+          title: "Imported scratch",
+          status: "completed",
+          runtimeContext: {
+            imported: true,
+            externalImportNoProject: true
+          },
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 30
+        }
+      ],
+      sessionMessagesById: {}
+    };
+
+    const summaries = buildAgentGUIConversationSummaries({
+      snapshot,
+      provider: "codex",
+      userProjects: [userProject("home", "/Users/local", "Home")]
+    });
+
+    expect(summaries).toEqual([
+      expect.objectContaining({
+        id: "imported-home-session",
+        project: null,
+        projectMode: "none"
+      })
+    ]);
+    expect(
+      applyAgentGUIConversationProjects(summaries, [
+        userProject("home", "/Users/local", "Home")
+      ])
+    ).toEqual([
+      expect.objectContaining({
+        id: "imported-home-session",
+        project: null,
+        projectMode: "none"
+      })
+    ]);
+  });
+
   it("builds conversations only from runtime Codex sessions", () => {
     const snapshot: AgentHostWorkspaceAgentSnapshot = {
       presences: [],

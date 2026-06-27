@@ -421,6 +421,27 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     expect(model.counts.waiting).toBe(0);
   });
 
+  it("marks imported sessions on message-center items", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [],
+        sessions: [
+          session({
+            agentSessionId: "imported-session",
+            runtimeContext: { imported: true },
+            status: "completed"
+          })
+        ]
+      })
+    );
+
+    expect(model.items[0]).toMatchObject({
+      agentSessionId: "imported-session",
+      imported: true,
+      status: "completed"
+    });
+  });
+
   it("records the latest completed turn outcome when the session has returned to idle", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({

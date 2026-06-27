@@ -71,6 +71,39 @@ test("desktop agent gui project menu opens the project folder path in workspace 
   ]);
 });
 
+test("desktop agent gui link actions reveal local asset previews in workspace files", async () => {
+  const launchedFiles: unknown[] = [];
+  const handled = await runDesktopAgentGUILinkAction(
+    {
+      name: "photo.png",
+      path: "/var/cache/tsh/local-assets/room-1/user-1/photo.png",
+      source: "agent-markdown",
+      type: "open-local-asset-preview"
+    },
+    {
+      homeDirectory: "/Users/local",
+      launchAgentGui: failLaunchAgentGui,
+      launchWorkspaceIssueManager: failLaunchWorkspaceIssueManager,
+      launchWorkspaceFiles(input) {
+        launchedFiles.push(input);
+        return true;
+      },
+      openBrowserUrl: failOpenBrowserUrl,
+      workspaceId: "workspace-1"
+    }
+  );
+
+  assert.equal(handled, true);
+  assert.deepEqual(launchedFiles, [
+    {
+      homeDirectory: "/Users/local",
+      path: "/var/cache/tsh/local-assets/room-1/user-1/photo.png",
+      source: "agent_command",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("desktop agent gui link actions open urls through the workspace browser", async () => {
   const openedUrls: unknown[] = [];
 

@@ -98,10 +98,12 @@ type externalImportedSession struct {
 	// (e.g. Claude `custom-title`/`summary` transcript lines or the Codex
 	// app-server `threads.title`). When present it wins over message-derived
 	// titles.
-	SummaryTitle    string
-	StartedAtUnixMS int64
-	UpdatedAtUnixMS int64
-	Messages        []externalImportedMessage
+	SummaryTitle     string
+	NoProject        bool
+	EventUserMessage externalImportedMessage
+	StartedAtUnixMS  int64
+	UpdatedAtUnixMS  int64
+	Messages         []externalImportedMessage
 }
 
 type externalImportedMessage struct {
@@ -154,7 +156,7 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		if !selected {
 			continue
 		}
-		if session.UpdatedAtUnixMS > validProjectPaths[projectPath] {
+		if !session.NoProject && session.UpdatedAtUnixMS > validProjectPaths[projectPath] {
 			validProjectPaths[projectPath] = session.UpdatedAtUnixMS
 		}
 		importedMessages, imported, err := s.importExternalSession(ctx, workspaceID, session)
@@ -171,7 +173,9 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		}
 		if importedMessages > 0 {
 			result.ImportedMessages += importedMessages
-			importedProjectPaths[projectPath] = struct{}{}
+			if !session.NoProject {
+				importedProjectPaths[projectPath] = struct{}{}
+			}
 		}
 	}
 	result.ImportedProjects = len(importedProjectPaths)
@@ -444,9 +448,10 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 		Provider:          session.Provider,
 		ProviderSessionID: session.ProviderSessionID,
 		RuntimeContext: map[string]any{
-			"visible":            true,
-			"imported":           true,
-			"externalSourcePath": session.SourcePath,
+			"visible":                 true,
+			"imported":                true,
+			"externalImportNoProject": session.NoProject,
+			"externalSourcePath":      session.SourcePath,
 		},
 		Cwd:              session.Cwd,
 		Title:            session.Title,

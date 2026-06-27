@@ -371,11 +371,15 @@ delimited by ---`, and the composer skill picker may show partial or
 - Symptom:
   A conversation started with the "No project" selection appears in the Agent
   GUI rail under a parent user-project group such as the user's home directory.
+  Imported Codex or Claude Code conversations with `cwd` equal to `$HOME` can
+  show the same symptom even though the user never selected a project.
 - Quick checks:
   Inspect the session `cwd` from the activity snapshot. Generated no-project
   sessions should resolve as no-project before `cwd` is matched against parent
-  user-project paths. Check both the in-memory `rememberNoProjectPath` path and
-  the restart fallback that recognizes `Documents/tutti/session-<uuid>`.
+  user-project paths. For imported sessions, inspect `runtimeContext` for the
+  daemon-owned `externalImportNoProject` marker. Check both the in-memory
+  `rememberNoProjectPath` path and the restart fallback that recognizes
+  `Documents/tutti/session-<uuid>`.
 - Root cause:
   Conversation project grouping is a view-model join of `cwd x userProjects`.
   If a generated no-project cwd is not recognized before prefix/parent project
@@ -383,20 +387,29 @@ delimited by ---`, and the composer skill picker may show partial or
   project such as `$HOME`. Keep generated-path recognition in the host
   `isNoProjectPath` callback because it has the user home-directory context;
   a package-level suffix check would misclassify real projects that contain a
-  `Documents/tutti/session-<uuid>` subdirectory.
+  `Documents/tutti/session-<uuid>` subdirectory. External import has a similar
+  trap because provider transcripts may record `$HOME` as the cwd when no
+  project was selected; that intent must be persisted as session metadata rather
+  than inferred later from user-project prefix matching.
 - Fix:
   Treat exact user-project path matches as explicit user intent, then call the
   host no-project resolver before parent project matching. The desktop resolver
   should recognize generated `$HOME/Documents/tutti/session-<uuid>` cwd values
-  while allowing explicit registered projects to override them. Keep the project
-  field derived in the Agent GUI view-model rather than writing it back into the
-  conversation store.
+  while allowing explicit registered projects to override them. External import
+  should mark home-cwd sessions as no-project in `runtimeContext`, skip them
+  when registering user-project paths, and let Agent GUI preserve that no-project
+  mode during later project re-resolution. Keep the project field derived in the
+  Agent GUI view-model rather than writing it back into the conversation store.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
+  `cd services/tuttid && go test ./service/agent ./api -run 'ExternalImport|ParseCodex|ParseClaude'`,
   `node --import ./test/register-asset-stub.mjs --test --experimental-strip-types ./src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.test.ts`
   from `apps/desktop`, then run `pnpm check:changed`.
 - References:
+  [external_import_parse.go](../../services/tuttid/service/agent/external_import_parse.go)
+  [external_import_projects.go](../../services/tuttid/service/agent/external_import_projects.go)
+  [agentGuiConversationModel.ts](../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts)
   [desktopWorkspaceUserProjectService.ts](../../apps/desktop/src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.ts)
   [agentGuiConversationProjectResolver.ts](../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationProjectResolver.ts)
   [agentGuiConversationListStore.ts](../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
@@ -994,21 +1007,58 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 
 - Symptom:
   Agent GUI shows a generated or changed file under a path such as
-  `/var/folders/.../T/codex-presentations/...`, but clicking the file does not
-  reveal it in FileManager.
+  `/var/folders/.../T/codex-presentations/...`, but clicking the file from
+  Agent GUI or Message Center does not reveal it in FileManager.
 - Quick checks:
   Confirm the desktop workspace files launch coordinator accepts the path, then
   confirm `tuttid` resolves the workspace file root for the requested absolute
-  path instead of forcing the user home root.
+  path instead of forcing the user home root. For Message Center clicks, confirm
+  `open-local-asset-preview` link actions route into the same workspace files
+  launch path as `open-file-manager`.
 - Root cause:
   Some agent tools write durable-looking outputs to system temporary
   directories. FileManager can reveal a precise local path, but both the
   renderer launch filter and daemon workspace root resolution must allow that
-  external absolute path.
+  external absolute path. Message Center shares Agent GUI link actions, so a
+  preview-only action that returns `false` can block the file panel even when
+  the lower-level FileManager support is correct.
 - Fix:
   Treat explicitly launched local absolute paths like direct hidden-file reveal:
   do not add them as projects or default locations, but allow FileManager to
-  load the parent directory and apply normal local-file operations.
+  load the parent directory and apply normal local-file operations. Route
+  `open-local-asset-preview` through `launchWorkspaceFiles` until a dedicated
+  preview surface exists.
+- Validation:
+  Run the desktop Agent GUI link action test, the workspace files launch
+  coordinator test, and `pnpm check:changed` for mixed desktop/Agent GUI
+  changes.
+- References:
+  [desktopAgentGUILinkActions.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentGUILinkActions.ts)
+
+### Imported sessions inflate recently completed message-center groups
+
+- Symptom:
+  After importing Codex or Claude Code history, Message Center's priority view
+  briefly shows many items under the recently-completed group even though those
+  sessions are historical imports, not newly finished local runs.
+- Quick checks:
+  Inspect the session `runtimeContext`. Imported sessions should carry
+  `imported: true`, and Message Center items derived from them should preserve
+  that marker before priority grouping.
+- Root cause:
+  Message Center uses the recently-completed group as a notification-style
+  surface. Imported history is persisted as completed agent activity, so if the
+  grouping model treats imported sessions the same as live runtime completions,
+  a bulk import can look like a burst of fresh completed work.
+- Fix:
+  Keep imported sessions visible in Message Center and in the completed filter,
+  but exclude `runtimeContext.imported` items from the recently-completed group.
+- Validation:
+  Run
+  `pnpm --filter @tutti-os/agent-gui test -- agent-message-center/workspaceAgentMessageCenterModel.spec.ts agent-message-center/workspaceAgentMessageCenterViewModel.spec.ts`.
+- References:
+  [workspaceAgentMessageCenterModel.ts](../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts)
+  [workspaceAgentMessageCenterViewModel.ts](../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterViewModel.ts)
 
 ### FileManager home-relative paths break only the list pane
 

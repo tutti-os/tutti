@@ -26,6 +26,9 @@ func (*Service) ExternalImportValidProjectPaths(ctx context.Context, input Exter
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		if session.NoProject {
+			continue
+		}
 		if projectPath, ok := matchingExternalImportProject(session, selections); ok {
 			if session.UpdatedAtUnixMS > valid[projectPath] {
 				valid[projectPath] = session.UpdatedAtUnixMS
@@ -36,18 +39,47 @@ func (*Service) ExternalImportValidProjectPaths(ctx context.Context, input Exter
 }
 
 func projectFromExternalSession(session externalImportedSession) (ExternalImportProject, bool) {
-	cwd, ok := canonicalExistingDir(session.Cwd)
+	projectPath, ok := externalSessionProjectPath(session)
 	if !ok {
 		return ExternalImportProject{}, false
 	}
 	return ExternalImportProject{
-		Path:                cwd,
-		Label:               filepath.Base(cwd),
+		Path:                projectPath,
+		Label:               filepath.Base(projectPath),
 		Providers:           []string{session.Provider},
 		SessionCount:        1,
 		MessageCount:        len(session.Messages),
 		LastUpdatedAtUnixMS: session.UpdatedAtUnixMS,
 	}, true
+}
+
+func externalSessionProjectPath(session externalImportedSession) (string, bool) {
+	cwd, ok := canonicalExistingDir(session.Cwd)
+	if !ok {
+		return "", false
+	}
+	if session.NoProject {
+		return cwd, true
+	}
+	if gitRoot, ok := nearestExternalImportGitRoot(cwd); ok {
+		return gitRoot, true
+	}
+	return cwd, true
+}
+
+func nearestExternalImportGitRoot(cwd string) (string, bool) {
+	current := filepath.Clean(cwd)
+	for current != "" {
+		if _, err := os.Stat(filepath.Join(current, ".git")); err == nil {
+			return current, true
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return "", false
 }
 
 func externalImportSessionSummary(session externalImportedSession, projectPath string) ExternalImportSession {

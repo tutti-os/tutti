@@ -65,6 +65,7 @@ export interface AgentGUIConversationSummary {
   status: AgentGUIConversationStatus;
   cwd: string;
   project?: AgentGUIConversationProjectSummary | null;
+  projectMode?: "none";
   pinnedAtUnixMs?: number | null;
   sortTimeUnixMs?: number;
   updatedAtUnixMs: number;
@@ -83,6 +84,7 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "status"
   | "cwd"
   | "project"
+  | "projectMode"
   | "pinnedAtUnixMs"
   | "sortTimeUnixMs"
   | "updatedAtUnixMs"
@@ -381,7 +383,10 @@ export function conversationSummaryFromAgentSession(
     titleFallback,
     status: conversationStatusFromActivity("idle"),
     cwd: session.cwd?.trim() ?? "",
-    project: projectResolver.resolve(session.cwd),
+    project: resolveConversationProject(session, projectResolver),
+    ...(isExternalImportNoProjectSession(session)
+      ? { projectMode: "none" }
+      : {}),
     pinnedAtUnixMs: session.pinnedAtUnixMs ?? null,
     sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs(
       workspaceAgentSession
@@ -403,7 +408,10 @@ export function applyAgentGUIConversationProjects(
     options
   );
   const next = conversations.map((conversation) => {
-    const project = projectResolver.resolve(conversation.cwd);
+    const project =
+      conversation.projectMode === "none"
+        ? null
+        : projectResolver.resolve(conversation.cwd);
     if (isSameAgentGUIConversationProject(conversation.project, project)) {
       return conversation;
     }
@@ -513,12 +521,33 @@ function conversationSummaryFromActivity(
     titleFallback,
     status,
     cwd: session?.cwd.trim() ?? "",
-    project: options.projectResolver.resolve(session?.cwd),
+    project: resolveConversationProject(session, options.projectResolver),
+    ...(isExternalImportNoProjectSession(session)
+      ? { projectMode: "none" }
+      : {}),
     pinnedAtUnixMs: session?.pinnedAtUnixMs ?? null,
     sortTimeUnixMs: activity.sortTimeUnixMs,
     updatedAtUnixMs: session?.updatedAtUnixMs || activity.sortTimeUnixMs || 0,
     syncState: session?.syncState
   };
+}
+
+function resolveConversationProject(
+  session: WorkspaceAgentActivitySession | AgentSession | undefined,
+  projectResolver: AgentGUIConversationProjectResolver
+): AgentGUIConversationProjectSummary | null {
+  if (isExternalImportNoProjectSession(session)) {
+    return null;
+  }
+  return projectResolver.resolve(session?.cwd);
+}
+
+function isExternalImportNoProjectSession(
+  session: WorkspaceAgentActivitySession | AgentSession | undefined
+): boolean {
+  const runtimeContext =
+    session && "runtimeContext" in session ? session.runtimeContext : undefined;
+  return runtimeContext?.externalImportNoProject === true;
 }
 
 function isSameAgentGUIConversationProject(
