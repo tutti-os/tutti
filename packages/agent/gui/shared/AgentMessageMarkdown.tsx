@@ -117,6 +117,7 @@ interface AgentMessageMarkdownProps {
   deferLongContentRender?: boolean;
   enableImageZoom?: boolean;
   previewMode?: boolean;
+  renderProfile?: AgentMessageMarkdownRenderProfile;
   streaming?: boolean;
 }
 
@@ -136,6 +137,8 @@ type MarkdownDomProps<Tag extends keyof JSX.IntrinsicElements> =
 
 const MarkdownLinkContext = createContext(false);
 
+type AgentMessageMarkdownRenderProfile = "default" | "inline-preview";
+
 type ReactMarkdownComponents = ComponentPropsWithoutRef<
   typeof ReactMarkdown
 >["components"];
@@ -154,6 +157,7 @@ export function AgentMessageMarkdown({
   deferLongContentRender = false,
   enableImageZoom = false,
   previewMode = false,
+  renderProfile = "default",
   streaming = false
 }: AgentMessageMarkdownProps): JSX.Element {
   "use memo";
@@ -180,6 +184,7 @@ export function AgentMessageMarkdown({
   const shouldCollapse =
     collapsible && isLikelyLongerThanLineLimit(stabilizedContent);
   const isCollapsed = shouldCollapse && !isExpanded;
+  const isInlinePreview = renderProfile === "inline-preview";
   const ContainerTag = inline ? "span" : "div";
   const contentSignature = useMemo(
     () => hashMarkdownProfilerContent(stabilizedContent),
@@ -231,6 +236,9 @@ export function AgentMessageMarkdown({
   );
   const handleAnchorClickCapture = useCallback(
     (event: MouseEvent<HTMLElement>): void => {
+      if (isInlinePreview) {
+        return;
+      }
       const href = resolveMarkdownAnchorHref(event.target);
       if (!href) {
         return;
@@ -239,7 +247,7 @@ export function AgentMessageMarkdown({
       event.stopPropagation();
       handleLinkClick(href);
     },
-    [handleLinkClick]
+    [handleLinkClick, isInlinePreview]
   );
   const markdownComponents = useMemo(
     () => ({
@@ -249,22 +257,58 @@ export function AgentMessageMarkdown({
           onLinkClick={handleLinkClick}
           workspaceAppIcons={workspaceAppIcons}
           previewMode={previewMode}
+          interactiveLinks={!isInlinePreview}
         />
       ),
       code: (props: MarkdownDomProps<"code">) => (
-        <MarkdownCode {...props} onLinkClick={handleLinkClick} />
+        <MarkdownCode
+          {...props}
+          onLinkClick={isInlinePreview ? undefined : handleLinkClick}
+        />
       ),
-      img: (props: MarkdownDomProps<"img">) => (
-        <MarkdownMedia {...props} enableZoom={enableImageZoom} />
-      ),
-      p: (props: MarkdownDomProps<"p">) => (
-        <MarkdownParagraph {...props} inline={inline} />
-      ),
-      ul: MarkdownUnorderedList,
-      ol: MarkdownOrderedList,
-      li: MarkdownListItem
+      img: (props: MarkdownDomProps<"img">) =>
+        isInlinePreview ? (
+          <MarkdownMediaText {...props} />
+        ) : (
+          <MarkdownMedia {...props} enableZoom={enableImageZoom} />
+        ),
+      p: isInlinePreview
+        ? MarkdownInlineBlock
+        : (props: MarkdownDomProps<"p">) => (
+            <MarkdownParagraph {...props} inline={inline} />
+          ),
+      ...(isInlinePreview
+        ? {
+            blockquote: MarkdownInlineBlock,
+            h1: MarkdownInlineBlock,
+            h2: MarkdownInlineBlock,
+            h3: MarkdownInlineBlock,
+            h4: MarkdownInlineBlock,
+            h5: MarkdownInlineBlock,
+            h6: MarkdownInlineBlock,
+            hr: MarkdownInlineBlock,
+            pre: MarkdownInlineBlock,
+            table: MarkdownInlineBlock,
+            tbody: MarkdownInlineBlock,
+            td: MarkdownInlineBlock,
+            th: MarkdownInlineBlock,
+            thead: MarkdownInlineBlock,
+            tr: MarkdownInlineBlock,
+            input: MarkdownInlineHiddenInput
+          }
+        : {}),
+      ul: isInlinePreview ? MarkdownInlineBlock : MarkdownUnorderedList,
+      ol: isInlinePreview ? MarkdownInlineBlock : MarkdownOrderedList,
+      li: isInlinePreview ? MarkdownInlineListItem : MarkdownListItem
     }),
-    [enableImageZoom, handleLinkClick, inline, previewMode, workspaceAppIcons]
+    [
+      enableImageZoom,
+      handleLinkClick,
+      inline,
+      isInlinePreview,
+      previewMode,
+      workspaceAppIcons
+    ]
   );
 
   return (
@@ -604,16 +648,27 @@ function MarkdownLink({
   onLinkClick,
   workspaceAppIcons,
   previewMode,
+  interactiveLinks = true,
   href,
   ...props
 }: MarkdownDomProps<"a"> & {
   onLinkClick?: (href: string) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   previewMode?: boolean;
+  interactiveLinks?: boolean;
 }): JSX.Element {
   "use memo";
   const { t } = useTranslation();
   const targetHref = href?.trim() ?? "";
+  if (!interactiveLinks) {
+    return (
+      <MarkdownLinkContext.Provider value={true}>
+        <span className={props.className} title={props.title}>
+          {props.children}
+        </span>
+      </MarkdownLinkContext.Provider>
+    );
+  }
   const mention = targetHref
     ? parseMentionLink(
         targetHref,
@@ -1209,6 +1264,19 @@ function MarkdownMedia({
   );
 }
 
+function MarkdownMediaText({
+  node: _node,
+  alt,
+  title
+}: MarkdownDomProps<"img">): JSX.Element | null {
+  "use memo";
+  const label = String(alt || title || "").trim();
+  if (!label) {
+    return null;
+  }
+  return <span>{label}</span>;
+}
+
 function UnsupportedMarkdownMediaPreview(): JSX.Element {
   const { t } = useTranslation();
   return (
@@ -1278,6 +1346,35 @@ function MarkdownListItem({
 }: MarkdownDomProps<"li">): JSX.Element {
   "use memo";
   return <li {...props} style={{ ...MARKDOWN_LIST_ITEM_STYLE, ...style }} />;
+}
+
+function MarkdownInlineBlock({
+  node: _node,
+  children
+}: {
+  node?: unknown;
+  children?: ReactNode;
+}): JSX.Element {
+  "use memo";
+  return <span>{children} </span>;
+}
+
+function MarkdownInlineListItem({
+  node: _node,
+  children
+}: {
+  node?: unknown;
+  children?: ReactNode;
+}): JSX.Element {
+  "use memo";
+  return <span>{children} </span>;
+}
+
+function MarkdownInlineHiddenInput({
+  node: _node
+}: MarkdownDomProps<"input">): null {
+  "use memo";
+  return null;
 }
 
 function MarkdownParagraph({

@@ -517,9 +517,13 @@ function MessageCenterStackSummary({
           />
         </span>
         <span className="min-w-0 rounded-md bg-transparency-block p-2.5 text-[13px] leading-[1.45] text-[var(--text-primary)]">
-          <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">
-            {messageCenterStackPreviewText(firstItem)}
-          </span>
+          <AgentMessageMarkdown
+            content={messageCenterStackPreviewText(firstItem)}
+            inline
+            previewMode
+            renderProfile="inline-preview"
+            className="line-clamp-2 !overflow-hidden text-[var(--text-primary)] [overflow-wrap:anywhere] [&_a]:text-inherit [&_code]:text-[var(--text-secondary)] [&_p]:m-0"
+          />
         </span>
       </span>
     </button>

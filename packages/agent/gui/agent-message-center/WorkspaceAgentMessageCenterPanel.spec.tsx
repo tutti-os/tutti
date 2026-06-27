@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from "@testing-library/react";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -1146,6 +1152,63 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     expect(screen.queryByText("Running task 3")).toBeNull();
     expect(screen.queryByText("Running task 4")).toBeNull();
     expect(screen.queryByText("Running task 5")).toBeNull();
+  });
+
+  it("renders markdown formatting in collapsed stack previews", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "working-session-1",
+            title: "Running task 1",
+            status: "working",
+            digest: {
+              primary: {
+                kind: "progress",
+                summary:
+                  "**跳过总结** 当前没有可**结果**：无法完成[分析任务](https://example.com)。![截图](/tmp/result.png)\n\nNext step\n\n---\n\nAfter break\n\n- [x] 列表项\n\n| 列 | 值 |\n| --- | --- |\n| A | B |\n\n```text\n代码块\n```",
+                occurredAtUnixMs: 1
+              }
+            }
+          }),
+          createMessageCenterItem({
+            agentSessionId: "working-session-2",
+            title: "Running task 2",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    const summary = screen.getByTestId(
+      "workspace-agent-message-stack-summary-working:agent-user:codex:unknown-user"
+    );
+
+    expect(summary).not.toHaveTextContent("**");
+    expect(within(summary).getByText("跳过总结").tagName).toBe("STRONG");
+    expect(within(summary).getByText("结果").tagName).toBe("STRONG");
+    expect(summary).toHaveTextContent("无法完成分析任务");
+    expect(summary).toHaveTextContent("截图 Next step");
+    expect(summary).toHaveTextContent("After break");
+    expect(summary).toHaveTextContent("截图");
+    expect(summary).toHaveTextContent("列表项");
+    expect(summary).toHaveTextContent("代码块");
+    expect(summary.querySelector("a")).toBeNull();
+    const markdown = summary.querySelector("[data-workspace-agent-markdown]");
+    expect(markdown?.querySelector("blockquote")).toBeNull();
+    expect(markdown?.querySelector("hr")).toBeNull();
+    expect(markdown?.querySelector("img")).toBeNull();
+    expect(markdown?.querySelector("input")).toBeNull();
+    expect(markdown?.querySelector("ol")).toBeNull();
+    expect(markdown?.querySelector("pre")).toBeNull();
+    expect(markdown?.querySelector("table")).toBeNull();
+    expect(markdown?.querySelector("ul")).toBeNull();
+    expect(markdown?.querySelector("video")).toBeNull();
+    expect(within(summary).queryByRole("link")).toBeNull();
   });
 
   it("aggregates stacked cards by agent provider and user inside a group", () => {
