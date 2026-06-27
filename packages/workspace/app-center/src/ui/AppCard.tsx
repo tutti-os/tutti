@@ -371,7 +371,10 @@ function AppDeveloperSourceRow({
   const content = (
     <div className="mt-auto min-w-0 pt-3">
       <div className="group/source flex min-h-7 min-w-0 items-center gap-2 border-t border-[color:var(--line-2)] pt-2 text-[12px] leading-4 text-[var(--text-secondary)]">
-        <AvatarStack authors={authors} />
+        <AvatarStack
+          authors={authors}
+          fallbackIcon={official ? app.icon : undefined}
+        />
         <span className="min-w-0 flex-1 truncate">{rowLabel}</span>
         {official ? (
           <span className="shrink-0 rounded-[5px] border border-[color:var(--line-2)] px-1.5 py-0 text-[10px] font-medium leading-4 text-[var(--text-secondary)]">
@@ -433,7 +436,7 @@ function AppDeveloperSourceRow({
           {copy.t("sources.title")}
         </div>
         <DropdownMenuGroup className="gap-[2px]">
-          {authors.map((author) => (
+          {authors.map((author, index) => (
             <DropdownMenuItem
               className="font-normal"
               disabled={!author.url}
@@ -443,7 +446,14 @@ function AppDeveloperSourceRow({
                 openExternalURL(author.url);
               }}
             >
-              <AuthorAvatar author={author} />
+              <AuthorAvatar
+                author={author}
+                fallbackIcon={
+                  index === 0 && isOfficialAuthor(author.name)
+                    ? app.icon
+                    : undefined
+                }
+              />
               <span className="min-w-0 flex-1 truncate">{author.name}</span>
             </DropdownMenuItem>
           ))}
@@ -468,9 +478,11 @@ function AppDeveloperSourceRow({
 }
 
 function AvatarStack({
-  authors
+  authors,
+  fallbackIcon
 }: {
   readonly authors: readonly WorkspaceAppAuthorViewModel[];
+  readonly fallbackIcon?: WorkspaceAppCardViewModel["icon"];
 }): ReactElement {
   const visibleAuthors = authors.slice(0, 2);
   if (visibleAuthors.length === 0) {
@@ -482,9 +494,10 @@ function AvatarStack({
   }
   return (
     <span className="flex shrink-0 -space-x-1">
-      {visibleAuthors.map((author) => (
+      {visibleAuthors.map((author, index) => (
         <AuthorAvatar
           author={author}
+          fallbackIcon={index === 0 ? fallbackIcon : undefined}
           key={`${author.name}:${author.url ?? ""}`}
         />
       ))}
@@ -493,9 +506,11 @@ function AvatarStack({
 }
 
 function AuthorAvatar({
-  author
+  author,
+  fallbackIcon
 }: {
   readonly author: WorkspaceAppAuthorViewModel;
+  readonly fallbackIcon?: WorkspaceAppCardViewModel["icon"];
 }): ReactElement {
   if (author.avatarUrl) {
     return (
@@ -504,6 +519,16 @@ function AuthorAvatar({
         className="size-5 shrink-0 rounded-full border border-[var(--background-fronted)] object-cover"
         draggable={false}
         src={author.avatarUrl}
+      />
+    );
+  }
+  if (fallbackIcon?.type === "asset") {
+    return (
+      <img
+        alt=""
+        className="size-5 shrink-0 rounded-[5px] border border-[var(--background-fronted)] object-contain"
+        draggable={false}
+        src={fallbackIcon.src}
       />
     );
   }
