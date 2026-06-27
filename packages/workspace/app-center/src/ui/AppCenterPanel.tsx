@@ -153,6 +153,7 @@ export interface AppCenterPanelProps {
     provider: string
   ) => Promise<AppCenterFactoryProviderConfiguration>;
   readonly onActiveAppTabChange?: (tab: AppCenterAppTab) => void;
+  readonly officialDeveloperIconUrl?: string | null;
   readonly providerErrorMessage?: string | null;
   readonly providerLoading?: boolean;
   readonly providerOptions?: readonly AppCenterFactoryProviderOption[];
@@ -170,6 +171,7 @@ export function AppCenterPanel({
   errorMessage,
   loadProviderConfiguration,
   onActiveAppTabChange,
+  officialDeveloperIconUrl = null,
   providerErrorMessage = null,
   providerLoading = false,
   providerOptions = [],
@@ -757,6 +759,7 @@ export function AppCenterPanel({
             apps={activeApps}
             copy={copy}
             emptyMessage={activeAppEmptyMessage}
+            officialDeveloperIconUrl={officialDeveloperIconUrl}
             showDeveloperSources={showDeveloperSources}
             title={activeAppTabTitle}
           />
@@ -1436,6 +1439,7 @@ function AppCardGrid({
   apps,
   copy,
   emptyMessage,
+  officialDeveloperIconUrl,
   showDeveloperSources,
   title
 }: {
@@ -1443,6 +1447,7 @@ function AppCardGrid({
   readonly apps: AppCenterViewModel["apps"];
   readonly copy: AppCenterI18nRuntime;
   readonly emptyMessage: string;
+  readonly officialDeveloperIconUrl?: string | null;
   readonly showDeveloperSources: boolean;
   readonly title: string;
 }): ReactElement {
@@ -1471,6 +1476,7 @@ function AppCardGrid({
             app={app}
             copy={copy}
             key={app.id}
+            officialDeveloperIconUrl={officialDeveloperIconUrl}
             showDeveloperSources={showDeveloperSources}
           />
         ))}

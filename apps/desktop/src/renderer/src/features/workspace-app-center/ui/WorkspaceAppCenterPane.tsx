@@ -66,6 +66,10 @@ const documentSummarizerAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/aisummary.png",
   import.meta.url
 ).href;
+const tuttiDeveloperIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/tutti.png",
+  import.meta.url
+).href;
 
 const comingSoonWorkspaceAppDefinitions = [
   {
@@ -322,6 +326,7 @@ export function WorkspaceAppCenterPane({
         defaultAgentProvider={agentProviderSnapshot.defaultProvider}
         loadProviderConfiguration={loadFactoryProviderConfiguration}
         onActiveAppTabChange={handleActiveAppTabChange}
+        officialDeveloperIconUrl={tuttiDeveloperIconUrl}
         providerErrorMessage={agentProviderSnapshot.error}
         providerLoading={agentProviderSnapshot.isLoading}
         providerOptions={factoryProviderOptions}

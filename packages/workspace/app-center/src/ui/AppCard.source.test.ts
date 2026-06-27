@@ -18,7 +18,10 @@ test("App Card developer source row has breathing room below the app description
   assert.match(source, /className="group\/source flex min-h-7/);
 });
 
-test("official app authors fall back to the package icon instead of a letter avatar", () => {
-  assert.match(source, /fallbackIcon=\{official \? app\.icon : undefined\}/);
+test("official app authors fall back to the configured developer icon instead of a letter avatar", () => {
+  assert.match(
+    source,
+    /fallbackIconUrl=\{official \? officialDeveloperIconUrl : null\}/
+  );
   assert.match(source, /className="size-5 shrink-0 rounded-\[5px\]/);
 });
