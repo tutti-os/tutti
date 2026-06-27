@@ -1542,6 +1542,12 @@ type AgentProviderAdapterStatus struct {
 	BinaryPath *string  `json:"binaryPath,omitempty"`
 	Command    []string `json:"command"`
 	Installed  bool     `json:"installed"`
+
+	// RequiredVersion The adapter package version this provider requires. With version, lets the UI show "current X, requires Y" for an adapter version mismatch and makes the drift visible in telemetry.
+	RequiredVersion *string `json:"requiredVersion,omitempty"`
+
+	// Version The installed ACP adapter package version, when resolvable. Lets the UI and telemetry show the actual adapter version (not just a path).
+	Version *string `json:"version,omitempty"`
 }
 
 // AgentProviderAuthInfo defines model for AgentProviderAuthInfo.

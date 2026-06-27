@@ -7,6 +7,8 @@ export interface AgentEnvDetectedParams extends AnalyticsReporterParams {
   cliInstalled: boolean;
   cliVersion: string;
   adapterInstalled: boolean;
+  adapterVersion: string;
+  adapterRequiredVersion: string;
   authenticated: boolean;
   networkRegistryReachable: boolean | null;
   networkApiStatus: string;

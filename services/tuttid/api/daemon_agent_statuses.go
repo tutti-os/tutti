@@ -291,9 +291,11 @@ func generatedAgentProviderCLIStatus(status agentstatusservice.CLIStatus) tuttig
 
 func generatedAgentProviderAdapterStatus(status agentstatusservice.AdapterStatus) tuttigenerated.AgentProviderAdapterStatus {
 	return tuttigenerated.AgentProviderAdapterStatus{
-		BinaryPath: stringPointerIfNotBlank(status.BinaryPath),
-		Command:    cloneGeneratedStrings(status.Command),
-		Installed:  status.Installed,
+		BinaryPath:      stringPointerIfNotBlank(status.BinaryPath),
+		Command:         cloneGeneratedStrings(status.Command),
+		Installed:       status.Installed,
+		Version:         stringPointerIfNotBlank(status.Version),
+		RequiredVersion: stringPointerIfNotBlank(status.RequiredVersion),
 	}
 }
 

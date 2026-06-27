@@ -2,12 +2,40 @@ import { describe, expect, it } from "vitest";
 import {
   deriveAgentSetupStages,
   projectRevealedStages,
+  reasonCodeIndicatesCliVersionUnsupported,
   resolveWizardAutoStartAction,
   shouldAdvanceReveal,
   stageRemediation,
   type AgentSetupStage,
   type DeriveAgentSetupStagesInput
 } from "./agentEnvWizardFlow";
+
+describe("reasonCodeIndicatesCliVersionUnsupported", () => {
+  it("does NOT flag the CLI for an adapter version mismatch", () => {
+    // acp_adapter_version_mismatch contains "version" but is an ADAPTER problem;
+    // it must not red the CLI step ("版本不受支持").
+    expect(
+      reasonCodeIndicatesCliVersionUnsupported("acp_adapter_version_mismatch")
+    ).toBe(false);
+  });
+
+  it("flags genuine CLI-version reasons", () => {
+    expect(
+      reasonCodeIndicatesCliVersionUnsupported("codex_version_too_old")
+    ).toBe(true);
+    expect(
+      reasonCodeIndicatesCliVersionUnsupported("cli_version_unsupported")
+    ).toBe(true);
+  });
+
+  it("ignores non-version and empty reasons", () => {
+    expect(
+      reasonCodeIndicatesCliVersionUnsupported("acp_adapter_not_found")
+    ).toBe(false);
+    expect(reasonCodeIndicatesCliVersionUnsupported("")).toBe(false);
+    expect(reasonCodeIndicatesCliVersionUnsupported(null)).toBe(false);
+  });
+});
 
 const labels = {
   detect: "Detect",

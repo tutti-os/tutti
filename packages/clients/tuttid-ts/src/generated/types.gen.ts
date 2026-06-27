@@ -951,6 +951,14 @@ export type AgentProviderAdapterStatus = {
   installed: boolean;
   binaryPath?: string | null;
   command: Array<string>;
+  /**
+   * The installed ACP adapter package version, when resolvable. Lets the UI and telemetry show the actual adapter version (not just a path).
+   */
+  version?: string | null;
+  /**
+   * The adapter package version this provider requires. With version, lets the UI show "current X, requires Y" for an adapter version mismatch and makes the drift visible in telemetry.
+   */
+  requiredVersion?: string | null;
 };
 
 export type AgentProviderAuthInfo = {

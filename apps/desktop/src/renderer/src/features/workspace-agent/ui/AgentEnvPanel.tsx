@@ -32,6 +32,7 @@ import {
   closeAgentEnvPanel,
   deriveAgentSetupStages,
   projectRevealedStages,
+  reasonCodeIndicatesCliVersionUnsupported,
   resolveWizardAutoStartAction,
   shouldAdvanceReveal,
   stageRemediation,
@@ -408,7 +409,10 @@ export function AgentEnvPanel({
     activeAction?.phase === "verify";
 
   const reasonCode = (status?.availability.reasonCode ?? "").toLowerCase();
-  const versionTooOld = reasonCode.includes("version");
+  // Adapter version mismatches (acp_adapter_version_mismatch) also contain
+  // "version"; classify CLI-version-unsupported without catching adapter reasons,
+  // so an adapter mismatch never falsely reds the CLI step.
+  const versionTooOld = reasonCodeIndicatesCliVersionUnsupported(reasonCode);
   // The CLI sits below the supported floor specifically (not an adapter version
   // mismatch). In that state we show "current X · requires ≥ Y" so the user
   // knows exactly what to upgrade to — the floor comes from the backend
@@ -425,6 +429,29 @@ export function AgentEnvPanel({
             .filter((part): part is string => Boolean(part))
             .join(" · ") || null
         : (status?.cli.version ?? null);
+
+  // Mirror the CLI detail for the adapter: on a version mismatch show
+  // "current X · requires Y" so the user knows exactly what's off; otherwise the
+  // installed version + path (falling back to the command when no path).
+  const adapterVersionMismatch = reasonCode.includes(
+    "adapter_version_mismatch"
+  );
+  const adapterDetail =
+    adapterVersionMismatch &&
+    status?.adapter.version &&
+    status?.adapter.requiredVersion
+      ? t("workspace.agentEnv.stageAdapterVersionRequirement", {
+          current: status.adapter.version,
+          required: status.adapter.requiredVersion
+        })
+      : status?.adapter.installed
+        ? [status?.adapter.version, status?.adapter.binaryPath]
+            .filter((part): part is string => Boolean(part))
+            .join(" · ") || null
+        : (status?.adapter.binaryPath ??
+          (status?.adapter.command?.length
+            ? status.adapter.command.join(" ")
+            : null));
 
   // Both connectivity checks are shown separately under the network step.
   const networkChecks: NetworkCheck[] = status?.network
@@ -471,7 +498,7 @@ export function AgentEnvPanel({
     cliInstalled: status?.cli.installed ?? false,
     versionTooOld,
     adapterInstalled: status?.adapter.installed ?? false,
-    adapterVersionMismatch: reasonCode.includes("adapter_version_mismatch"),
+    adapterVersionMismatch,
     authenticated: status?.auth.status === "authenticated",
     authRequired: status?.auth.status === "required",
     ready,
@@ -483,11 +510,7 @@ export function AgentEnvPanel({
     // detail lines only). Install shows version + CLI path; login shows the
     // account, falling back to "signed in" when the provider exposes no label.
     cliVersionDetail: installDetail,
-    adapterDetail:
-      status?.adapter.binaryPath ??
-      (status?.adapter.command?.length
-        ? status.adapter.command.join(" ")
-        : null),
+    adapterDetail,
     accountDetail:
       status?.auth.accountLabel ??
       (status?.auth.status === "authenticated"

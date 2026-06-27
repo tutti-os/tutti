@@ -5407,6 +5407,19 @@ components:
           type: array
           items:
             type: string
+        version:
+          type: string
+          nullable: true
+          description: >-
+            The installed ACP adapter package version, when resolvable. Lets the
+            UI and telemetry show the actual adapter version (not just a path).
+        requiredVersion:
+          type: string
+          nullable: true
+          description: >-
+            The adapter package version this provider requires. With version,
+            lets the UI show "current X, requires Y" for an adapter version
+            mismatch and makes the drift visible in telemetry.
     AgentProviderAuthInfo:
       type: object
       additionalProperties: false

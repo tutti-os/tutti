@@ -160,6 +160,12 @@ type AdapterStatus struct {
 	Installed  bool
 	BinaryPath string
 	Command    []string
+	// Version is the installed adapter package version (when resolvable);
+	// RequiredVersion is the version this provider requires. Exposed so the UI
+	// can show "current X, requires Y" on an adapter version mismatch and so
+	// telemetry can surface the drift — the same data the readiness gate uses.
+	Version         string
+	RequiredVersion string
 }
 
 type AuthInfo struct {
@@ -519,9 +525,11 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 			Version:    cliVersion,
 		},
 		Adapter: AdapterStatus{
-			Installed:  adapterReady,
-			BinaryPath: runtimeResolution.AdapterPath,
-			Command:    cloneStrings(runtimeResolution.AdapterCommand),
+			Installed:       adapterReady,
+			BinaryPath:      runtimeResolution.AdapterPath,
+			Command:         cloneStrings(runtimeResolution.AdapterCommand),
+			Version:         runtimeResolution.AdapterVersion,
+			RequiredVersion: spec.AdapterPackage.Version,
 		},
 		Auth:    auth,
 		Actions: actions,

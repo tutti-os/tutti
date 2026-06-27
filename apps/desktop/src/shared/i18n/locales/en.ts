@@ -202,6 +202,7 @@ export const en = {
       stageProblemInstallMissing: "{{provider}} CLI not installed",
       stageProblemInstallOutdated: "{{provider}} CLI version unsupported",
       stageInstallVersionRequirement: "{{current}} · requires ≥ {{required}}",
+      stageAdapterVersionRequirement: "{{current}} · requires {{required}}",
       stageProblemAdapterMissing: "Adapter not installed",
       stageProblemAdapterMismatch: "Adapter version unsupported",
       stageProblemLoginMissing: "Not signed in",

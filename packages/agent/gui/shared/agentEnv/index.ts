@@ -28,6 +28,7 @@ export type {
 export {
   deriveAgentSetupStages,
   projectRevealedStages,
+  reasonCodeIndicatesCliVersionUnsupported,
   resolveWizardAutoStartAction,
   shouldAdvanceReveal,
   stageRemediation

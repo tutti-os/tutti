@@ -198,6 +198,7 @@ export const zhCN = {
       stageProblemInstallMissing: "未安装 {{provider}} CLI",
       stageProblemInstallOutdated: "{{provider}} CLI 版本不受支持",
       stageInstallVersionRequirement: "当前 {{current}} · 需要 ≥ {{required}}",
+      stageAdapterVersionRequirement: "当前 {{current}} · 需要 {{required}}",
       stageProblemAdapterMissing: "未安装适配器",
       stageProblemAdapterMismatch: "适配器版本不受支持",
       stageProblemLoginMissing: "未登录",

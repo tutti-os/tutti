@@ -12,6 +12,19 @@ export type AgentSetupStageId =
   | "login"
   | "ready";
 
+// Whether an availability reason code means the CLI itself is on an unsupported
+// version — as opposed to an ADAPTER version mismatch. The adapter reason code
+// `acp_adapter_version_mismatch` also contains the substring "version", so a
+// plain `includes("version")` test wrongly paints the CLI step red ("版本不受支持")
+// when only the adapter is mismatched. Require "version" but exclude any adapter
+// reason so the CLI and adapter stages stay independent.
+export function reasonCodeIndicatesCliVersionUnsupported(
+  reasonCode: string | null | undefined
+): boolean {
+  const lower = (reasonCode ?? "").toLowerCase();
+  return lower.includes("version") && !lower.includes("adapter");
+}
+
 export interface AgentSetupStage {
   id: AgentSetupStageId;
   label: string;
