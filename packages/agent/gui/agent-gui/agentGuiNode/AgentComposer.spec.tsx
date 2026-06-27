@@ -91,12 +91,14 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
           disabled,
           onChange,
           onPasteImages,
+          onFileMentionSuggestionChange,
           onKeyDownForPalette,
           value,
           placeholder
         }: {
           disabled?: boolean;
           onChange: (value: string) => void;
+          onFileMentionSuggestionChange?: (state: any) => void;
           onPasteImages?: (images: unknown[]) => void;
           onKeyDownForPalette?: (event: KeyboardEvent) => boolean;
           value: string;
@@ -104,6 +106,29 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
         },
         ref
       ) => {
+        React.useEffect(() => {
+          if (!value.startsWith("@")) {
+            return;
+          }
+          onFileMentionSuggestionChange?.({
+            editor: {
+              view: {
+                state: {
+                  tr: {
+                    setMeta() {
+                      return this;
+                    }
+                  }
+                },
+                dispatch() {}
+              }
+            },
+            range: { from: 1, to: value.length + 1 },
+            query: value.slice(1),
+            text: value,
+            command: vi.fn()
+          });
+        }, [onFileMentionSuggestionChange, value]);
         React.useImperativeHandle(ref, () => ({
           focusAtStart() {},
           focusAtEnd() {},
@@ -121,10 +146,18 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
               .join(" ");
             onChange(`${value}${mentions} `);
           },
-          insertMentionItems() {},
+          insertMentionItems(
+            items: ReadonlyArray<{ href: string; name: string }>
+          ) {
+            const mentions = items
+              .map((item) => `[@${item.name}](${item.href})`)
+              .join(" ");
+            onChange(`${value}${mentions} `);
+          },
           replaceTextBeforeSelection(_length: number, text: string) {
-            onChange(`${value}${text}`);
-            return `${value}${text}`;
+            const nextValue = `${value.slice(0, Math.max(0, value.length - _length))}${text}`;
+            onChange(nextValue);
+            return nextValue;
           }
         }));
         return (
@@ -309,7 +342,30 @@ vi.mock("./AgentQueuedPromptPanel", () => ({
 }));
 
 vi.mock("./AgentFileMentionPalette", () => ({
-  AgentFileMentionPalette: () => null,
+  AgentFileMentionPalette: ({
+    onOpenReferences
+  }: {
+    onOpenReferences?: (item: any) => void;
+  }) =>
+    onOpenReferences ? (
+      <button
+        type="button"
+        data-testid="mock-open-references"
+        onClick={() =>
+          onOpenReferences({
+            kind: "workspace-issue",
+            href: "mention://workspace-issue/issue-1?workspaceId=workspace-1",
+            workspaceId: "workspace-1",
+            targetId: "issue-1",
+            topicId: "topic-1",
+            name: "制作一个1000字小说",
+            title: "制作一个1000字小说"
+          })
+        }
+      >
+        查看产物文件
+      </button>
+    ) : null,
   agentMentionItemKey: (item: {
     kind: string;
     targetId?: string;
@@ -2686,6 +2742,70 @@ describe("AgentComposer", () => {
         text: "看下这张图[@首页 (1).jpg](/var/cache/tsh/local-assets/workspace-1/user-1/home.jpg)"
       }
     ]);
+  });
+
+  it("removes the active @ trigger before inserting references opened from a mention row", async () => {
+    let draftContent = createDraft("@");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const onRequestWorkspaceReferences = vi.fn(async () => ({
+      files: [],
+      mentionItems: [
+        {
+          kind: "workspace-reference" as const,
+          href: "mention://workspace-reference/topic-1?groupId=issue-1&source=task&workspaceId=workspace-1",
+          workspaceId: "workspace-1",
+          targetId: "topic-1",
+          source: "task" as const,
+          groupId: "issue-1",
+          name: "制作一个1000字小说",
+          fileCount: 2
+        }
+      ]
+    }));
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+        onRequestWorkspaceReferences={onRequestWorkspaceReferences}
+      />
+    );
+
+    fireEvent.click(await screen.findByTestId("mock-open-references"));
+
+    await waitFor(() =>
+      expect(draftContent.prompt).toBe(
+        "[@制作一个1000字小说](mention://workspace-reference/topic-1?groupId=issue-1&source=task&workspaceId=workspace-1) "
+      )
+    );
+    expect(draftContent.prompt).not.toMatch(/^@/);
   });
 
   it("renders controlled text and image draft content", () => {

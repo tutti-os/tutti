@@ -143,10 +143,9 @@ export interface WorkspaceAgentActivityTimelineItem {
 
 export interface WorkspaceAgentActivityMessage extends Omit<
   AgentActivityMessage,
-  "id" | "turnId" | "status"
+  "id" | "status"
 > {
   id?: number;
-  turnId?: string | null;
   status?: string | null;
   semantics?: AgentActivityMessageSemantics;
 }

@@ -32,7 +32,6 @@ export function resolveIssueManagerStatusPresentation(
       .toLowerCase() || "not_started";
   switch (dataStatus) {
     case "running":
-    case "in_progress":
       return { badgeVariant: "accent", dataStatus, mentionTone: "blue" };
     case "pending_acceptance":
       return { badgeVariant: "pending", dataStatus, mentionTone: "purple" };

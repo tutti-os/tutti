@@ -752,11 +752,49 @@ func TestLocalFilesAdapterSearchSkipsHiddenNoiseDirectoriesForNormalQueries(t *t
 	}
 }
 
+func TestLocalFilesAdapterSearchKeepsShallowMatchesBeforeDeepCandidateCap(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	deepDir := filepath.Join(rootDir, "a-deep-project")
+	if err := os.MkdirAll(deepDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"filler-a.txt", "filler-b.txt", "filler-c.txt"} {
+		if err := os.WriteFile(
+			filepath.Join(deepDir, name),
+			[]byte("filler"),
+			0o644,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, "郑伟斌.csv"), []byte("a,b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := LocalFilesAdapter{MaxSearchCandidates: 2}
+	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+		Query:        "郑伟斌",
+		Limit:        5,
+		IncludeKinds: []workspacefiles.EntryKind{workspacefiles.EntryKindFile},
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(result.Entries) != 1 {
+		t.Fatalf("entries = %#v, want shallow csv result", result.Entries)
+	}
+	if result.Entries[0].Path != "/workspace/郑伟斌.csv" {
+		t.Fatalf("first result = %#v, want /workspace/郑伟斌.csv", result.Entries[0])
+	}
+}
+
 func TestLocalFilesAdapterSearchTypeFilterExcludesDirectoriesButKeepsMatchingFiles(t *testing.T) {
 	t.Parallel()
 
 	rootDir := t.TempDir()
-	// 一个文件名/路径含 "22" 的目录:无筛选时按名命中,但开启「document」筛选后不应作为结果。
+	// 一个目录名含 "22" 的文档文件:开启「document」筛选后仍只按文件名匹配关键词。
 	docInFolder := filepath.Join(rootDir, "reports22", "q3.csv")
 	if err := os.MkdirAll(filepath.Dir(docInFolder), 0o755); err != nil {
 		t.Fatal(err)
@@ -792,8 +830,8 @@ func TestLocalFilesAdapterSearchTypeFilterExcludesDirectoriesButKeepsMatchingFil
 			t.Fatalf("entry = %#v, directories must be excluded when a type filter is active", entry)
 		}
 	}
-	// 交集:关键词 "22" ∩ 类型 document,且包含被筛掉目录下的文档文件。
-	wantPaths := []string{"/workspace/data22.csv", "/workspace/reports22/q3.csv"}
+	// 交集:文件名关键词 "22" ∩ 类型 document。
+	wantPaths := []string{"/workspace/data22.csv"}
 	for _, want := range wantPaths {
 		if !gotPaths[want] {
 			t.Fatalf("entries = %#v, want to include %s", result.Entries, want)
@@ -901,7 +939,7 @@ func TestLocalFilesAdapterSearchReturnsPartialResultsWhenDeadlineExpires(t *test
 	}
 }
 
-func TestLocalFilesAdapterSearchIncludesHiddenNoiseDirectoriesWhenQueryExplicitlyTargetsThem(t *testing.T) {
+func TestLocalFilesAdapterSearchDoesNotMatchExplicitHiddenPathWhenFilenameDiffers(t *testing.T) {
 	t.Parallel()
 
 	rootDir := t.TempDir()
@@ -930,11 +968,8 @@ func TestLocalFilesAdapterSearchIncludesHiddenNoiseDirectoriesWhenQueryExplicitl
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
-	if len(result.Entries) != 1 {
-		t.Fatalf("entries = %#v, want 1 result", result.Entries)
-	}
-	if result.Entries[0].Path != "/workspace/.git/config" {
-		t.Fatalf("first result = %#v, want /workspace/.git/config", result.Entries[0])
+	if len(result.Entries) != 0 {
+		t.Fatalf("entries = %#v, want no path-only matches", result.Entries)
 	}
 }
 
@@ -1104,7 +1139,7 @@ func TestLocalFilesAdapterSearchDoesNotDescendHiddenDirsForPathExtensionQuery(t 
 
 	adapter := LocalFilesAdapter{MaxSearchCandidates: 1}
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
-		Query:        "Downloads/.dmg",
+		Query:        ".dmg",
 		Limit:        5,
 		IncludeKinds: []workspacefiles.EntryKind{workspacefiles.EntryKindFile},
 	})

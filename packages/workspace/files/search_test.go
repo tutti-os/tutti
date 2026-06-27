@@ -37,6 +37,23 @@ func TestScoreSearchCandidatesSupportsMultiTokenBasenameQuery(t *testing.T) {
 	}
 }
 
+func TestScoreSearchCandidatesDoesNotMatchParentPathOnly(t *testing.T) {
+	entries := ScoreSearchCandidates("/workspace", "New Project", []SearchCandidate{
+		{Kind: EntryKindDirectory, RelativePath: "Documents/New project/OpenCovibe/messages"},
+		{Kind: EntryKindDirectory, RelativePath: "Documents/New project"},
+	}, 10)
+
+	if len(entries) != 1 {
+		t.Fatalf("entries = %#v, want only basename match", entries)
+	}
+	if entries[0].Path != "/workspace/Documents/New project" {
+		t.Fatalf("entry = %#v, want New project directory only", entries[0])
+	}
+	if entries[0].MatchTarget != SearchMatchTargetBasename {
+		t.Fatalf("matchTarget = %q, want %q", entries[0].MatchTarget, SearchMatchTargetBasename)
+	}
+}
+
 func TestScoreSearchCandidatesTreatsDotQueryAsLiteralFilenameFragment(t *testing.T) {
 	entries := ScoreSearchCandidates("/workspace", ".dmg", []SearchCandidate{
 		{Kind: EntryKindFile, RelativePath: ".agents/skills/baoyu-slide-deck/scripts/merge-to-pdf.ts"},
@@ -121,29 +138,15 @@ func TestSearchQueryTargetsHiddenOrNoiseDoesNotTreatPathExtensionAsDirectoryInte
 	}
 }
 
-func TestScoreSearchCandidatesTreatsSlashQueryAsPathIntent(t *testing.T) {
+func TestScoreSearchCandidatesDoesNotMatchSlashQueryAgainstPath(t *testing.T) {
 	entries := ScoreSearchCandidates("/workspace", "tsh/", []SearchCandidate{
 		{Kind: EntryKindFile, RelativePath: ".agents/skills/lark-shared/SKILL.md"},
 		{Kind: EntryKindFile, RelativePath: "tools/tsh/runtime.md"},
 		{Kind: EntryKindFile, RelativePath: "notes/ts-helper/readme.md"},
 	}, 10)
 
-	if len(entries) == 0 {
-		t.Fatal("expected at least one path-aware match")
-	}
-	if entries[0].Path != "/workspace/tools/tsh/runtime.md" {
-		t.Fatalf("top entry = %q, want /workspace/tools/tsh/runtime.md", entries[0].Path)
-	}
-	if entries[0].MatchTarget != SearchMatchTargetPath {
-		t.Fatalf("top entry matchTarget = %q, want %q", entries[0].MatchTarget, SearchMatchTargetPath)
-	}
-	if len(entries[0].MatchIndices) == 0 {
-		t.Fatal("expected path match indices")
-	}
-	for _, entry := range entries {
-		if entry.Path == "/workspace/.agents/skills/lark-shared/SKILL.md" {
-			t.Fatalf("unexpected loose subsequence path match %q", entry.Path)
-		}
+	if len(entries) != 0 {
+		t.Fatalf("entries = %#v, want no path-only matches", entries)
 	}
 }
 
@@ -161,34 +164,25 @@ func TestScoreSearchCandidatesPenalizesHiddenAndNoisePaths(t *testing.T) {
 	}
 }
 
-func TestScoreSearchCandidatesAllowsExplicitHiddenTargetQuery(t *testing.T) {
+func TestScoreSearchCandidatesDoesNotMatchHiddenParentPath(t *testing.T) {
 	entries := ScoreSearchCandidates("/workspace", ".agents skill", []SearchCandidate{
 		{Kind: EntryKindFile, RelativePath: ".agents/skills/skill.md"},
 		{Kind: EntryKindFile, RelativePath: "docs/skill.md"},
 	}, 10)
 
-	if len(entries) == 0 {
-		t.Fatal("expected an explicit hidden-target match")
-	}
-	if entries[0].Path != "/workspace/.agents/skills/skill.md" {
-		t.Fatalf("top entry = %q, want /workspace/.agents/skills/skill.md", entries[0].Path)
-	}
-	if entries[0].MatchTarget != SearchMatchTargetPath {
-		t.Fatalf("top entry matchTarget = %q, want %q", entries[0].MatchTarget, SearchMatchTargetPath)
+	if len(entries) != 0 {
+		t.Fatalf("entries = %#v, want no parent-path matches", entries)
 	}
 }
 
-func TestScoreSearchCandidatesAllowsExplicitHiddenPathIntentQuery(t *testing.T) {
+func TestScoreSearchCandidatesDoesNotMatchHiddenPathIntentQuery(t *testing.T) {
 	entries := ScoreSearchCandidates("/workspace", ".git/conf", []SearchCandidate{
 		{Kind: EntryKindFile, RelativePath: ".git/config"},
 		{Kind: EntryKindFile, RelativePath: "configs/git.conf"},
 	}, 10)
 
-	if len(entries) == 0 {
-		t.Fatal("expected an explicit hidden path match")
-	}
-	if entries[0].Path != "/workspace/.git/config" {
-		t.Fatalf("top entry = %q, want /workspace/.git/config", entries[0].Path)
+	if len(entries) != 0 {
+		t.Fatalf("entries = %#v, want no path-intent matches", entries)
 	}
 }
 
@@ -221,18 +215,15 @@ func TestScoreSearchCandidatesPrefersDirectoryForTrailingSlashQuery(t *testing.T
 	}
 }
 
-func TestScoreSearchCandidatesRespectsPathSegmentOrder(t *testing.T) {
+func TestScoreSearchCandidatesDoesNotMatchPathSegmentOrder(t *testing.T) {
 	entries := ScoreSearchCandidates("/workspace", "docs/work", []SearchCandidate{
 		{Kind: EntryKindFile, RelativePath: "docs/workspace.md"},
 		{Kind: EntryKindFile, RelativePath: "workspace/docs.md"},
 		{Kind: EntryKindFile, RelativePath: "notes/workspace-docs.md"},
 	}, 10)
 
-	if len(entries) == 0 {
-		t.Fatal("expected a path-aware segment-order match")
-	}
-	if entries[0].Path != "/workspace/docs/workspace.md" {
-		t.Fatalf("top entry = %q, want /workspace/docs/workspace.md", entries[0].Path)
+	if len(entries) != 0 {
+		t.Fatalf("entries = %#v, want no path-segment matches", entries)
 	}
 }
 

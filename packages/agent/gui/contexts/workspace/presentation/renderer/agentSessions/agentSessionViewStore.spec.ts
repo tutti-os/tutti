@@ -238,6 +238,7 @@ function messageUpdateEvent(input: {
       agentSessionId: "agent-session-1",
       messageId: input.messageId,
       seq: input.occurredAtUnixMs,
+      turnId: `turn:${input.messageId}`,
       role: "assistant",
       kind: "message",
       status: "streaming",

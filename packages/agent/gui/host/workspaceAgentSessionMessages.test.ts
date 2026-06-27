@@ -97,6 +97,7 @@ function messageWithVersion(
     role: "assistant",
     startedAtUnixMs: version,
     status: "completed",
+    turnId: `turn-${version}`,
     version,
     ...overrides
   };

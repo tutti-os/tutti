@@ -39,6 +39,97 @@ describe("AgentRichTextReadonly", () => {
     expect(mention?.querySelector("img")).toHaveAttribute("src", iconUrl);
   });
 
+  it("does not override mention wrapper width in readonly messages", async () => {
+    const { container } = render(
+      <AgentRichTextReadonly
+        value={
+          "Run [@Long Workspace App Name](mention://workspace-app/weather?workspaceId=workspace-1)"
+        }
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-agent-mention-kind="workspace-app"]')
+      ).not.toBeNull()
+    );
+
+    const editor = container.querySelector(".ProseMirror");
+    expect(editor).not.toHaveClass(
+      "[&_[data-agent-file-mention=true]]:max-w-full"
+    );
+  });
+
+  it("marks readonly messages that only contain one mention", async () => {
+    const { container, rerender } = render(
+      <AgentRichTextReadonly
+        value={
+          "[@Long Workspace App Name](mention://workspace-app/weather?workspaceId=workspace-1)"
+        }
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-agent-mention-kind="workspace-app"]')
+      ).not.toBeNull()
+    );
+
+    expect(container.firstElementChild).toHaveAttribute(
+      "data-agent-mention-only",
+      "true"
+    );
+
+    rerender(
+      <AgentRichTextReadonly
+        value={
+          "Run [@Long Workspace App Name](mention://workspace-app/weather?workspaceId=workspace-1)"
+        }
+      />
+    );
+
+    expect(container.firstElementChild).not.toHaveAttribute(
+      "data-agent-mention-only"
+    );
+  });
+
+  it("hydrates app workspace-reference mention icons from workspace app icons", async () => {
+    const iconUrl = "data:image/png;base64,canvas";
+    const { container } = render(
+      <AgentRichTextReadonly
+        value={
+          "Use [@AI Canvas](mention://workspace-reference/ai-canvas?source=app&workspaceId=workspace-1)"
+        }
+        workspaceAppIcons={[
+          {
+            appId: "ai-canvas",
+            workspaceId: "workspace-1",
+            iconUrl
+          }
+        ]}
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        container.querySelector(
+          '[data-agent-mention-kind="workspace-reference"]'
+        )
+      ).not.toBeNull()
+    );
+
+    const mention = container.querySelector(
+      '[data-agent-mention-kind="workspace-reference"]'
+    );
+    expect(mention).toHaveTextContent("AI Canvas");
+    expect(mention).toHaveAttribute(
+      "data-agent-mention-href",
+      "mention://workspace-reference/ai-canvas?source=app&workspaceId=workspace-1"
+    );
+    expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
+    expect(mention?.querySelector("img")).toHaveAttribute("src", iconUrl);
+  });
+
   it("renders workspace app factory markdown as a mention token", async () => {
     const { container } = render(
       <AgentRichTextReadonly

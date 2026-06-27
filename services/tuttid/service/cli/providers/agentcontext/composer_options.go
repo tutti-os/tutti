@@ -24,7 +24,7 @@ func (p Provider) newComposerOptionsCommand() cliservice.Command {
 		ID:          appID + ".agent.composer-options",
 		Path:        []string{"agent", "composer-options"},
 		Summary:     "Get agent composer options",
-		Description: "Get provider-specific model and reasoning options without starting an agent session. Claude Code may spin up a short-lived hidden discovery session.",
+		Description: "Get provider-specific model and reasoning options without starting an agent session. Claude Code may spin up a hidden live discovery session.",
 		Kind:        framework.KindGet,
 		Workspace:   framework.WorkspaceOptional,
 		Inputs:      framework.FromStruct[composerOptionsInput](),

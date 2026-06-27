@@ -5,7 +5,6 @@ type Status string
 const (
 	StatusNotStarted        Status = "not_started"
 	StatusRunning           Status = "running"
-	StatusInProgress        Status = "in_progress"
 	StatusPendingAcceptance Status = "pending_acceptance"
 	StatusCompleted         Status = "completed"
 	StatusFailed            Status = "failed"
@@ -158,7 +157,6 @@ type StatusCounts struct {
 	All               int
 	NotStarted        int
 	Running           int
-	InProgress        int
 	PendingAcceptance int
 	Completed         int
 	Failed            int

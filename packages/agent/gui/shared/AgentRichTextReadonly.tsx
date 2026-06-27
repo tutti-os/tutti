@@ -28,22 +28,24 @@ export function AgentRichTextReadonly({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentRichTextReadonlyProps): JSX.Element {
   "use memo";
+  const contentDoc = plainTextToAgentRichTextDocWithWorkspaceAppIcons(
+    value,
+    availableSkills,
+    workspaceAppIcons
+  );
+  const isMentionOnly = isMentionOnlyRichTextDoc(contentDoc);
   const editor = useEditor({
     immediatelyRender: false,
     editable: false,
     extensions: createAgentRichTextReadonlyExtensions({
       skills: availableSkills
     }),
-    content: plainTextToAgentRichTextDocWithWorkspaceAppIcons(
-      value,
-      availableSkills,
-      workspaceAppIcons
-    ),
+    content: contentDoc,
     editorProps: {
       attributes: {
         class: cn(
           editorClassName,
-          "max-w-full overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] [&_p]:m-0 [&_p]:min-h-[1.45em] [&_a[data-agent-file-mention=true]]:cursor-pointer [&_[data-agent-file-mention=true]]:max-w-full [&_[data-agent-file-mention=true]]:overflow-hidden"
+          "max-w-full overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] [&_p]:m-0 [&_p]:min-h-[1.45em] [&_a[data-agent-file-mention=true]]:cursor-pointer [&_[data-agent-file-mention=true]]:overflow-hidden"
         )
       },
       handleDOMEvents: {
@@ -89,13 +91,39 @@ export function AgentRichTextReadonly({
   }, [availableSkills, editor, value, workspaceAppIcons]);
 
   if (!editor) {
-    return <div className={className} />;
+    return (
+      <div
+        className={className}
+        data-agent-mention-only={isMentionOnly ? "true" : undefined}
+      />
+    );
   }
 
   return (
-    <div className={className}>
+    <div
+      className={className}
+      data-agent-mention-only={isMentionOnly ? "true" : undefined}
+    >
       <EditorContent editor={editor} />
     </div>
+  );
+}
+
+function isMentionOnlyRichTextDoc(doc: JSONContent): boolean {
+  if (doc.type !== "doc") {
+    return false;
+  }
+  const blocks = doc.content ?? [];
+  if (blocks.length !== 1) {
+    return false;
+  }
+  const paragraph = blocks[0];
+  if (paragraph?.type !== "paragraph") {
+    return false;
+  }
+  const inlineContent = paragraph.content ?? [];
+  return (
+    inlineContent.length === 1 && inlineContent[0]?.type === "agentFileMention"
   );
 }
 
@@ -118,21 +146,24 @@ function hydrateWorkspaceAppMentionIcons(
   const nextContent = node.content?.map((child) =>
     hydrateWorkspaceAppMentionIcons(child, workspaceAppIcons)
   );
-  if (
-    node.type !== "agentFileMention" ||
-    node.attrs?.kind !== "workspace-app"
-  ) {
+  if (node.type !== "agentFileMention") {
+    return nextContent ? { ...node, content: nextContent } : node;
+  }
+  const attrs = node.attrs ?? {};
+  const kind = typeof attrs.kind === "string" ? attrs.kind : "";
+  const isWorkspaceAppMention = kind === "workspace-app";
+  const isAppWorkspaceReferenceMention =
+    kind === "workspace-reference" && attrs.source === "app";
+  if (!isWorkspaceAppMention && !isAppWorkspaceReferenceMention) {
     return nextContent ? { ...node, content: nextContent } : node;
   }
   const workspaceId =
-    typeof node.attrs.workspaceId === "string"
-      ? node.attrs.workspaceId.trim()
-      : "";
+    typeof attrs.workspaceId === "string" ? attrs.workspaceId.trim() : "";
   const appId =
-    typeof node.attrs.appId === "string"
-      ? node.attrs.appId.trim()
-      : typeof node.attrs.targetId === "string"
-        ? node.attrs.targetId.trim()
+    isWorkspaceAppMention && typeof attrs.appId === "string"
+      ? attrs.appId.trim()
+      : typeof attrs.targetId === "string"
+        ? attrs.targetId.trim()
         : "";
   const iconUrl = resolveWorkspaceAppIconUrl({
     appId,

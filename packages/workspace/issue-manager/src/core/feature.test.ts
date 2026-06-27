@@ -57,7 +57,7 @@ describe("normalizeIssueManagerNodeState", () => {
 });
 
 describe("createIssueManagerFeature", () => {
-  it("keeps invite collaborator visible by default for compatibility", () => {
+  it("keeps invite collaborator visible by default", () => {
     const feature = createIssueManagerFeature(createFeatureInput());
 
     assert.equal(feature.ui.showInviteCollaborator, true);

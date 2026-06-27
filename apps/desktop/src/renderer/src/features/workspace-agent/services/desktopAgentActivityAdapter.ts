@@ -21,15 +21,26 @@ import type { IAgentProviderStatusService } from "./agentProviderStatusService.i
 import { getActiveLocale } from "../../../i18n/runtime.ts";
 import { wrapLocalizedTuttidErrorIfSpecific } from "../../../lib/desktopErrors.ts";
 import { shouldRefreshProviderStatusAfterSessionError } from "./internal/desktopAgentProviderStatusSync.ts";
+import {
+  normalizedTuttidMessageOccurredAtUnixMs,
+  normalizedTuttidMessageTurnId
+} from "./desktopAgentActivityMessageNormalization.ts";
 
 export interface CreateDesktopAgentActivityAdapterInput {
   agentProviderStatusService?: Pick<IAgentProviderStatusService, "refresh">;
+  agentSessionCreateRequestTimeoutMs?: number;
+  composerOptionsRequestTimeoutMs?: number;
   tuttidClient: TuttidClient;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
 }
 
+const defaultAgentSessionCreateRequestTimeoutMs = 30_000;
+const defaultComposerOptionsRequestTimeoutMs = 15_000;
+
 export function createDesktopAgentActivityAdapter({
   agentProviderStatusService,
+  agentSessionCreateRequestTimeoutMs = defaultAgentSessionCreateRequestTimeoutMs,
+  composerOptionsRequestTimeoutMs = defaultComposerOptionsRequestTimeoutMs,
   tuttidClient,
   runtimeApi
 }: CreateDesktopAgentActivityAdapterInput): AgentActivityAdapter {
@@ -62,21 +73,31 @@ export function createDesktopAgentActivityAdapter({
     const agentSessionId =
       normalizeText(input.agentSessionId) ??
       createDesktopAgentActivitySessionId();
-    const promise = tuttidClient
-      .createWorkspaceAgentSession(input.workspaceId, {
-        agentSessionId,
-        cwd,
-        initialContent: [],
-        model: input.settings.model,
-        permissionModeId: input.settings.permissionModeId,
-        planMode: input.settings.planMode,
-        provider: "claude-code",
-        reasoningEffort: input.settings.reasoningEffort,
-        speed: input.settings.speed,
-        title: null,
-        visible: false
-      })
-      .then((session) => sessionWithClaudeDraftContext(session, draftKey));
+    const promise = withAbortableRequestTimeout(
+      (signal) =>
+        tuttidClient.createWorkspaceAgentSession(
+          input.workspaceId,
+          {
+            agentSessionId,
+            cwd,
+            initialContent: [],
+            model: input.settings.model,
+            permissionModeId: input.settings.permissionModeId,
+            planMode: input.settings.planMode,
+            provider: "claude-code",
+            reasoningEffort: input.settings.reasoningEffort,
+            speed: input.settings.speed,
+            title: null,
+            visible: false
+          },
+          { signal }
+        ),
+      {
+        signal: input.signal,
+        timeoutMessage: "Agent session create request timed out.",
+        timeoutMs: agentSessionCreateRequestTimeoutMs
+      }
+    ).then((session) => sessionWithClaudeDraftContext(session, draftKey));
     const entry: ClaudeDraftSessionEntry = {
       cwd,
       promise,
@@ -238,12 +259,21 @@ export function createDesktopAgentActivityAdapter({
     },
     async loadComposerOptions(input) {
       const cwd = input.cwd?.trim();
-      const result = await tuttidClient.getAgentProviderComposerOptions(
-        workspaceAgentProvider(input.provider),
+      const result = await withAbortableRequestTimeout(
+        (signal) =>
+          tuttidClient.getAgentProviderComposerOptions(
+            workspaceAgentProvider(input.provider),
+            {
+              ...(cwd ? { cwd } : {}),
+              workspaceId: input.workspaceId,
+              settings: input.settings ?? {}
+            },
+            { signal }
+          ),
         {
-          ...(cwd ? { cwd } : {}),
-          workspaceId: input.workspaceId,
-          settings: input.settings ?? {}
+          signal: input.signal,
+          timeoutMessage: "Agent composer options request timed out.",
+          timeoutMs: composerOptionsRequestTimeoutMs
         }
       );
       return agentActivityComposerOptionsFromTuttidResult(
@@ -298,6 +328,7 @@ export function createDesktopAgentActivityAdapter({
               reasoningEffort: input.reasoningEffort,
               speed: input.speed
             }),
+            signal: input.signal,
             workspaceId: input.workspaceId
           });
           const promotedDraft = await promoteClaudeDraft({
@@ -317,24 +348,33 @@ export function createDesktopAgentActivityAdapter({
           provider: input.provider,
           workspaceId: input.workspaceId
         });
-        const session = await tuttidClient.createWorkspaceAgentSession(
-          input.workspaceId,
-          {
-            agentSessionId,
-            cwd: input.cwd ?? null,
-            initialContent: toTuttidPromptContentBlocks(
-              input.initialContent ?? []
+        const session = await withAbortableRequestTimeout(
+          (signal) =>
+            tuttidClient.createWorkspaceAgentSession(
+              input.workspaceId,
+              {
+                agentSessionId,
+                cwd: input.cwd ?? null,
+                initialContent: toTuttidPromptContentBlocks(
+                  input.initialContent ?? []
+                ),
+                initialDisplayPrompt: input.initialDisplayPrompt ?? null,
+                ...(input.metadata ? { metadata: input.metadata } : {}),
+                model: input.model ?? null,
+                planMode: input.planMode ?? null,
+                permissionModeId: input.permissionModeId ?? null,
+                provider: workspaceAgentProvider(input.provider),
+                reasoningEffort: input.reasoningEffort ?? null,
+                speed: input.speed ?? null,
+                title: input.title ?? null,
+                visible: input.visible ?? null
+              },
+              { signal }
             ),
-            initialDisplayPrompt: input.initialDisplayPrompt ?? null,
-            ...(input.metadata ? { metadata: input.metadata } : {}),
-            model: input.model ?? null,
-            planMode: input.planMode ?? null,
-            permissionModeId: input.permissionModeId ?? null,
-            provider: workspaceAgentProvider(input.provider),
-            reasoningEffort: input.reasoningEffort ?? null,
-            speed: input.speed ?? null,
-            title: input.title ?? null,
-            visible: input.visible ?? null
+          {
+            signal: input.signal,
+            timeoutMessage: "Agent session create request timed out.",
+            timeoutMs: agentSessionCreateRequestTimeoutMs
           }
         );
         reportDesktopAgentSubmitTrace(runtimeApi, {
@@ -526,6 +566,7 @@ interface ClaudeDraftInput {
   agentSessionId?: string | null;
   cwd: string | null;
   settings: ClaudeDraftSettings;
+  signal?: AbortSignal;
   workspaceId: string;
 }
 
@@ -665,13 +706,13 @@ export function agentActivityMessageFromTuttidMessage(
     id: message.id,
     kind: message.kind,
     messageId: message.messageId,
-    occurredAtUnixMs: message.occurredAtUnixMs ?? undefined,
+    occurredAtUnixMs: normalizedTuttidMessageOccurredAtUnixMs(message),
     payload: recordValue(message.payload),
     role: message.role,
     ...(message.semantics != null ? { semantics: message.semantics } : {}),
     startedAtUnixMs: message.startedAtUnixMs ?? undefined,
     status: message.status ?? undefined,
-    turnId: message.turnId ?? undefined,
+    turnId: normalizedTuttidMessageTurnId(message),
     version: message.version
   };
 }
@@ -1075,6 +1116,74 @@ function firstTextValue(
     }
   }
   return null;
+}
+
+function withAbortableRequestTimeout<T>(
+  request: (signal: AbortSignal) => Promise<T>,
+  options: {
+    signal?: AbortSignal;
+    timeoutMessage: string;
+    timeoutMs: number;
+  }
+): Promise<T> {
+  const controller = new AbortController();
+  const racers: Array<Promise<T>> = [];
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let abortListener: (() => void) | null = null;
+
+  if (options.signal) {
+    if (options.signal.aborted) {
+      const error = abortSignalError(options.signal);
+      controller.abort(error);
+      return Promise.reject(error);
+    }
+    racers.push(
+      new Promise<never>((_, reject) => {
+        abortListener = () => {
+          const error = abortSignalError(options.signal);
+          controller.abort(error);
+          reject(error);
+        };
+        options.signal?.addEventListener("abort", abortListener, {
+          once: true
+        });
+      })
+    );
+  }
+
+  racers.push(request(controller.signal));
+
+  if (Number.isFinite(options.timeoutMs) && options.timeoutMs > 0) {
+    racers.push(
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const error = Object.assign(new Error(options.timeoutMessage), {
+            code: "ETIMEDOUT"
+          });
+          controller.abort(error);
+          reject(error);
+        }, options.timeoutMs);
+      })
+    );
+  }
+
+  return Promise.race(racers).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    if (abortListener) {
+      options.signal?.removeEventListener("abort", abortListener);
+    }
+  });
+}
+
+function abortSignalError(signal: AbortSignal | undefined): Error {
+  if (signal?.reason instanceof Error) {
+    return signal.reason;
+  }
+  const error = new Error("Agent composer options request was cancelled.");
+  error.name = "AbortError";
+  return error;
 }
 
 function normalizeText(value: unknown): string | null {

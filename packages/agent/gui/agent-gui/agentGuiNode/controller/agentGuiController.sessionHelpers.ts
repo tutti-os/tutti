@@ -50,7 +50,7 @@ export function messageFromMessageUpdate(
     agentSessionId: update.agentSessionId,
     messageId: update.messageId.trim() || `message:${id}`,
     version: id,
-    ...(update.turnId?.trim() ? { turnId: update.turnId.trim() } : {}),
+    turnId: update.turnId.trim(),
     role,
     kind,
     status: update.status,
@@ -63,9 +63,7 @@ export function messageFromMessageUpdate(
         ? { title: update.title.trim() }
         : {})
     },
-    ...(update.occurredAtUnixMs !== undefined
-      ? { occurredAtUnixMs: update.occurredAtUnixMs }
-      : {}),
+    occurredAtUnixMs: update.occurredAtUnixMs,
     ...(update.startedAtUnixMs !== undefined
       ? { startedAtUnixMs: update.startedAtUnixMs }
       : {})

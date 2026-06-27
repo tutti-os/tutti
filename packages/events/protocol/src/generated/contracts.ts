@@ -224,9 +224,9 @@ export type AgentActivityUpdatedPayloadV1 =
           payload: Record<string, unknown>;
           role: string;
           version: number;
-          turnId?: string;
+          turnId: string;
           status?: string;
-          occurredAtUnixMs?: number;
+          occurredAtUnixMs: number;
           startedAtUnixMs?: number;
           completedAtUnixMs?: number;
           createdAtUnixMs?: number;

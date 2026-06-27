@@ -25,7 +25,7 @@ type ServerInterface interface {
 	// Run a local agent provider action owned by tuttid
 	// (POST /v1/agent-providers/{provider}/actions/{actionID}/run)
 	RunAgentProviderAction(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider, actionID AgentProviderActionID)
-	// Get provider composer options with short-lived Claude Code discovery
+	// Get provider composer options with Claude Code live discovery
 	// (POST /v1/agent-providers/{provider}/composer-options)
 	GetAgentProviderComposerOptions(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
 	// Probe whether tuttid can start a local agent provider runtime command
@@ -19618,7 +19618,7 @@ type StrictServerInterface interface {
 	// Run a local agent provider action owned by tuttid
 	// (POST /v1/agent-providers/{provider}/actions/{actionID}/run)
 	RunAgentProviderAction(ctx context.Context, request RunAgentProviderActionRequestObject) (RunAgentProviderActionResponseObject, error)
-	// Get provider composer options with short-lived Claude Code discovery
+	// Get provider composer options with Claude Code live discovery
 	// (POST /v1/agent-providers/{provider}/composer-options)
 	GetAgentProviderComposerOptions(ctx context.Context, request GetAgentProviderComposerOptionsRequestObject) (GetAgentProviderComposerOptionsResponseObject, error)
 	// Probe whether tuttid can start a local agent provider runtime command

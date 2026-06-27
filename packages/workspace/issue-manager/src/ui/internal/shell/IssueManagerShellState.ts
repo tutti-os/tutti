@@ -86,9 +86,8 @@ export function buildIssueManagerStatusCounts(
   };
 
   for (const issue of issues) {
-    const status = issue.status === "in_progress" ? "running" : issue.status;
-    if (status in counts) {
-      counts[status as keyof typeof counts] += 1;
+    if (issue.status in counts) {
+      counts[issue.status as keyof typeof counts] += 1;
     }
   }
 
@@ -113,7 +112,7 @@ function mapIssueManagerStatusCounts(
     failed: counts.failed,
     not_started: counts.notStarted,
     pending_acceptance: counts.pendingAcceptance,
-    running: counts.running + counts.inProgress
+    running: counts.running
   };
 }
 

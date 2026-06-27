@@ -124,9 +124,11 @@ export function createAppReferenceListBackend(
     ): Promise<ReferenceListResult> {
       // 选中分组节点解码出 appId(分组形如 `app:${appId}` 或更深的 `app:${appId}|grp:…`),
       // 把搜索限定到该应用;无 scope 时回退跨全部应用。
-      const scopedAppId = withinGroupId
-        ? decodeAppGroupId(withinGroupId).appId
+      const decodedScope = withinGroupId
+        ? decodeAppGroupId(withinGroupId)
         : null;
+      const scopedAppId = decodedScope?.appId ?? null;
+      const scopedGroupId = decodedScope?.groupId ?? null;
       const apps = (await listReferenceSupportingApps(tuttidClient, scope))
         .filter((app) => app.references.searchSupported)
         .filter((app) => scopedAppId == null || app.appId === scopedAppId);
@@ -141,25 +143,54 @@ export function createAppReferenceListBackend(
       const perApp = await Promise.all(
         apps.map(async (app) => {
           try {
-            const response = await tuttidClient.searchWorkspaceAppReferences(
-              scope.workspaceId,
-              app.appId,
-              {
-                query,
-                ...(limit == null ? {} : { limit }),
-                ...(filters && filters.length > 0 ? { filters } : {}),
-                kinds: ["file"]
-              }
-            );
             const appLabel = app.displayName?.trim() || app.appId;
-            const mapped = response.items.map((item) =>
+            const appIconUrl = app.iconUrl ?? undefined;
+            const queryText = query.trim();
+            const shouldSearchGroups =
+              queryText.length > 0 &&
+              scopedGroupId == null &&
+              (!filters || filters.length === 0);
+            const [groupResponse, searchResponse] = await Promise.all([
+              shouldSearchGroups
+                ? tuttidClient.listWorkspaceAppReferences(
+                    scope.workspaceId,
+                    app.appId,
+                    {
+                      parentGroupId: null,
+                      filterText: queryText,
+                      cursor: null,
+                      limit: limit ?? APP_REFERENCE_PAGE_LIMIT,
+                      kinds: ["file"]
+                    }
+                  )
+                : Promise.resolve({ items: [], nextCursor: null }),
+              tuttidClient.searchWorkspaceAppReferences(
+                scope.workspaceId,
+                app.appId,
+                {
+                  query,
+                  ...(limit == null ? {} : { limit }),
+                  ...(filters && filters.length > 0 ? { filters } : {}),
+                  kinds: ["file"]
+                }
+              )
+            ]);
+            const groupItems = groupResponse.items
+              .filter((item) => item.type === "group")
+              .map((item) =>
+                appItemToProtocol(app.appId, item, appLabel, appIconUrl)
+              );
+            const fileItems = searchResponse.items.map((item) =>
               appItemToProtocol(app.appId, item, appLabel)
             );
+            const mapped = [...groupItems, ...fileItems];
             // daemon 仅在 app 运行时才代理到其 server,否则静默返回空。
             // 记录每个 app 的命中数,便于区分「没起/没匹配/接口异常」。
             console.debug("[app-reference-search] app result", {
               appId: app.appId,
               query,
+              groupCount: groupItems.length,
+              fileCount: fileItems.length,
               count: mapped.length
             });
             return mapped;

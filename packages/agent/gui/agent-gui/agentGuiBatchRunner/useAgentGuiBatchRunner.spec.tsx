@@ -530,6 +530,7 @@ describe("useAgentGuiBatchRunner", () => {
           agentSessionId: "provider-session",
           messageId: "provider-message",
           version: 1,
+          turnId: "turn-provider-message",
           role: "assistant",
           kind: "text",
           payload: { text: "hello" },

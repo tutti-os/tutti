@@ -148,7 +148,7 @@ test("desktop issue-manager backend maps list, update, run, and status payloads"
     pageSize: 25,
     pageToken: "page-1",
     searchQuery: "renderer",
-    statusFilter: "in_progress",
+    statusFilter: "running",
     topicId: "topic-1",
     workspaceId: "workspace-1"
   });
@@ -206,7 +206,7 @@ test("desktop issue-manager backend maps list, update, run, and status payloads"
           pageSize: 25,
           pageToken: "page-1",
           searchQuery: "renderer",
-          statusFilter: "in_progress",
+          statusFilter: "running",
           topicId: "topic-1"
         }
       ],

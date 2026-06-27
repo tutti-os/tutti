@@ -133,6 +133,7 @@ func TestDispatchReportActivitySplitsMessageUpdates(t *testing.T) {
 			AgentSessionId: "agent-session-1",
 			MessageId:      "message-1",
 			Seq:            7,
+			TurnId:         "turn-1",
 			Role:           "assistant",
 			Kind:           "text",
 		}},

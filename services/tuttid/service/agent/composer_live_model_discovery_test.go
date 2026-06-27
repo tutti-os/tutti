@@ -55,3 +55,75 @@ func TestMergeLiveModelsIntoComposerOptionsUpdatesRuntimeContext(t *testing.T) {
 		t.Fatalf("configOptions = %#v, want model + effort", merged.RuntimeContext["configOptions"])
 	}
 }
+
+func TestMergeLiveModelsIntoComposerOptionsDoesNotAppendUnsupportedSelectedModel(t *testing.T) {
+	merged := mergeLiveModelsIntoComposerOptions(ComposerOptions{
+		Provider: "claude-code",
+		EffectiveSettings: ComposerSettings{
+			Model: "claude-sonnet-4-20250514",
+		},
+		RuntimeContext: map[string]any{},
+	}, []ComposerConfigOptionValue{
+		{ID: "default", Label: "Default", Value: "default"},
+		{ID: "sonnet", Label: "Sonnet", Value: "sonnet"},
+		{ID: "opus", Label: "Opus", Value: "opus"},
+		{ID: "haiku", Label: "Haiku", Value: "haiku"},
+	})
+
+	if merged.ModelConfig.CurrentValue != "default" || merged.ModelConfig.DefaultValue != "default" {
+		t.Fatalf("modelConfig = %#v, want default current/default", merged.ModelConfig)
+	}
+	if merged.EffectiveSettings.Model != "default" {
+		t.Fatalf("effectiveSettings.model = %q, want default", merged.EffectiveSettings.Model)
+	}
+	for _, option := range merged.ModelConfig.Options {
+		if option.Value == "claude-sonnet-4-20250514" {
+			t.Fatalf("modelConfig options = %#v, want no unsupported selected model", merged.ModelConfig.Options)
+		}
+	}
+	configOptions, ok := merged.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatalf("configOptions = %#v, want model option", merged.RuntimeContext["configOptions"])
+	}
+	if configOptions[0]["currentValue"] != "default" {
+		t.Fatalf("model runtime option = %#v, want default currentValue", configOptions[0])
+	}
+	runtimeModelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	if !ok {
+		t.Fatalf("runtime model options = %#v", configOptions[0]["options"])
+	}
+	for _, option := range runtimeModelOptions {
+		if option["value"] == "claude-sonnet-4-20250514" {
+			t.Fatalf("runtime model options = %#v, want no unsupported selected model", runtimeModelOptions)
+		}
+	}
+	if merged.RuntimeContext["model"] != "default" {
+		t.Fatalf("runtime model = %#v, want default", merged.RuntimeContext["model"])
+	}
+}
+
+func TestMergeLiveModelsIntoComposerOptionsKeepsSelectedAlias(t *testing.T) {
+	merged := mergeLiveModelsIntoComposerOptions(ComposerOptions{
+		Provider: "claude-code",
+		EffectiveSettings: ComposerSettings{
+			Model: "sonnet",
+		},
+		RuntimeContext: map[string]any{},
+	}, []ComposerConfigOptionValue{
+		{ID: "default", Label: "Default", Value: "default"},
+		{ID: "sonnet", Label: "Sonnet", Value: "sonnet"},
+		{ID: "opus", Label: "Opus", Value: "opus"},
+		{ID: "haiku", Label: "Haiku", Value: "haiku"},
+	})
+
+	if merged.ModelConfig.CurrentValue != "sonnet" || merged.ModelConfig.DefaultValue != "sonnet" {
+		t.Fatalf("modelConfig = %#v, want selected alias current/default", merged.ModelConfig)
+	}
+	configOptions, ok := merged.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatalf("configOptions = %#v, want model option", merged.RuntimeContext["configOptions"])
+	}
+	if configOptions[0]["currentValue"] != "sonnet" {
+		t.Fatalf("model runtime option = %#v, want selected alias currentValue", configOptions[0])
+	}
+}

@@ -399,7 +399,7 @@ export function createRun(input: {
   outputDir?: string;
   requesterUserId?: string;
   runId: string;
-  status: "canceled" | "completed" | "failed" | "in_progress" | "running";
+  status: "canceled" | "completed" | "failed" | "running";
   startedAtUnix?: number;
   summary?: string;
   taskId?: string;

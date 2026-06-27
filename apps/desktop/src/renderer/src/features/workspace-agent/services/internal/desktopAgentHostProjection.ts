@@ -19,12 +19,12 @@ export interface AgentHostWorkspaceAgentMessage {
   id: number;
   kind: string;
   messageId: string;
-  occurredAtUnixMs?: number;
+  occurredAtUnixMs: number;
   payload: Record<string, unknown>;
   role: string;
   startedAtUnixMs?: number;
   status?: string;
-  turnId?: string;
+  turnId: string;
   version: number;
   workspaceId: string;
 }
@@ -56,12 +56,12 @@ export function agentMessageFromCore(
     id: message.id ?? message.version,
     kind: message.kind,
     messageId: message.messageId,
-    occurredAtUnixMs: message.occurredAtUnixMs ?? undefined,
+    occurredAtUnixMs: message.occurredAtUnixMs,
     payload: recordValue(message.payload) ?? {},
     role: message.role,
     startedAtUnixMs: message.startedAtUnixMs ?? undefined,
     status: message.status ?? undefined,
-    turnId: message.turnId ?? undefined,
+    turnId: message.turnId,
     version: message.version,
     workspaceId: message.workspaceId ?? ""
   };

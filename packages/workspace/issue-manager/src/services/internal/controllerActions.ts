@@ -136,7 +136,7 @@ export type { IssueManagerDeleteOptions };
 function resolveIssueManagerTaskStatusBucket(
   status: IssueManagerStatus
 ): string {
-  return status === "in_progress" ? "running" : status;
+  return status;
 }
 
 function resolveIssueManagerMovedTaskOrder(input: {

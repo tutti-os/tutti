@@ -214,6 +214,45 @@ describe("groupMessageCenterItems", () => {
       }
     ]);
   });
+
+  it("keeps imported completed items out of the recently completed group", () => {
+    const now = Date.now();
+    const groups = groupMessageCenterItems(
+      [
+        item({
+          agentSessionId: "recent-runtime",
+          lastAgentMessageAtUnixMs: now,
+          sortTimeUnixMs: now,
+          status: "completed"
+        }),
+        item({
+          agentSessionId: "recent-imported",
+          imported: true,
+          lastAgentMessageAtUnixMs: now,
+          sortTimeUnixMs: now,
+          status: "completed"
+        })
+      ],
+      "priority",
+      (key) => key
+    );
+
+    expect(
+      groups.map((group) => ({
+        id: group.id,
+        sessionIds: group.items.map((entry) => entry.agentSessionId)
+      }))
+    ).toEqual([
+      {
+        id: "recently-completed",
+        sessionIds: ["recent-runtime"]
+      },
+      {
+        id: "completed",
+        sessionIds: ["recent-imported"]
+      }
+    ]);
+  });
 });
 
 function item(

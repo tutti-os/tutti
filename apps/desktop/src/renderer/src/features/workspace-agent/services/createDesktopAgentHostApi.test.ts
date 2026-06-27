@@ -1584,6 +1584,7 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
             payload: { text: "from reconcile" },
             role: "assistant",
             status: "completed",
+            turnId: "turn-2",
             version: 2
           }
         ]
@@ -1637,6 +1638,7 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
           messageId: string;
           payload?: Record<string, unknown>;
           seq?: number;
+          version?: number;
           workspaceId?: string;
         };
         eventType: string;
@@ -1652,9 +1654,10 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
       payload: { text: "from reconcile" },
       role: "assistant",
       seq: 2,
+      version: 2,
       startedAtUnixMs: undefined,
       status: "completed",
-      turnId: undefined,
+      turnId: "turn-2",
       workspaceId
     },
     eventType: "message_update"
@@ -2093,6 +2096,7 @@ test("desktop agent host api prefers persisted tuttid session messages when avai
               occurredAtUnixMs: 1717200001000,
               payload: { text: "from tuttid" },
               role: "assistant",
+              turnId: "turn-8",
               version: 8
             }
           ]
@@ -2122,7 +2126,7 @@ test("desktop agent host api prefers persisted tuttid session messages when avai
         role: "assistant",
         startedAtUnixMs: undefined,
         status: undefined,
-        turnId: undefined,
+        turnId: "turn-8",
         version: 8,
         workspaceId: "workspace-1"
       }
@@ -2177,9 +2181,11 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
               id: 3,
               kind: "text",
               messageId: "message-1",
+              occurredAtUnixMs: 1717200003000,
               payload: { text: "ok" },
               role: "assistant",
               status: "completed",
+              turnId: "turn-3",
               version: 3
             }
           ]
@@ -3049,6 +3055,7 @@ function inlineActivityMessage(input: {
     },
     role: "assistant",
     status: "streaming",
+    turnId: "turn-1",
     version: input.version,
     workspaceId
   };

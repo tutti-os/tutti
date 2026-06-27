@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -171,18 +170,11 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Skills:            skills,
 		CapabilityCatalog: capabilityCatalog,
 	}
-	if provider == agentprovider.ClaudeCode && strings.TrimSpace(input.WorkspaceID) != "" {
-		now := time.Now().UTC()
-		liveModels, ok := s.getLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now)
-		if !ok {
-			discovered, err := s.discoverLiveComposerModels(ctx, input.WorkspaceID, input.Cwd, effectiveSettings)
-			if err == nil && len(discovered) > 0 {
-				liveModels = discovered
-				s.setLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now, discovered)
-			}
-		}
-		if len(liveModels) > 0 {
-			options = mergeLiveModelsIntoComposerOptions(options, liveModels)
+	if provider == agentprovider.ClaudeCode {
+		var err error
+		options, err = s.mergeLiveComposerModelsForComposerOptions(ctx, input, effectiveSettings, options)
+		if err != nil {
+			return ComposerOptions{}, err
 		}
 	}
 	return options, nil

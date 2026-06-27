@@ -237,6 +237,7 @@ func TestReportActivitySplitsStateAndMessagesFromOldActivity(t *testing.T) {
 		}, {
 			AgentSessionId: " message-session-b ",
 			MessageId:      " message-2 ",
+			TurnId:         " turn-2 ",
 			Role:           " user ",
 			Kind:           " text ",
 		}},

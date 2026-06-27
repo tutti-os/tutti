@@ -1218,13 +1218,15 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionMessages(t *testing.T) {
 					AgentSessionID: agentSessionID,
 					Messages: []agentservice.SessionMessage{
 						{
-							ID:             8,
-							AgentSessionID: agentSessionID,
-							MessageID:      "msg-1",
-							Role:           "assistant",
-							Kind:           "text",
-							Payload:        map[string]any{"content": "Done."},
-							Version:        8,
+							ID:              8,
+							AgentSessionID:  agentSessionID,
+							MessageID:       "msg-1",
+							TurnID:          "turn-1",
+							Role:            "assistant",
+							Kind:            "text",
+							Payload:         map[string]any{"content": "Done."},
+							StartedAtUnixMS: 1717200001000,
+							Version:         8,
 						},
 					},
 					LatestVersion: 8,
@@ -1264,6 +1266,57 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionMessages(t *testing.T) {
 	if response.Messages[0].MessageId != "msg-1" {
 		t.Fatalf("messageId = %q, want msg-1", response.Messages[0].MessageId)
 	}
+	if response.Messages[0].TurnId != "turn-1" {
+		t.Fatalf("turnId = %q, want turn-1", response.Messages[0].TurnId)
+	}
+	if response.Messages[0].OccurredAtUnixMs != 1717200001000 {
+		t.Fatalf("occurredAtUnixMs = %d, want startedAt fallback", response.Messages[0].OccurredAtUnixMs)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesRejectTurnlessAgentSessionMessages(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			listMessagesFn: func(_ context.Context, _ string, agentSessionID string, _ agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error) {
+				return agentservice.SessionMessagesPage{
+					AgentSessionID: agentSessionID,
+					Messages: []agentservice.SessionMessage{
+						{
+							ID:              8,
+							AgentSessionID:  agentSessionID,
+							MessageID:       "msg-turnless",
+							Role:            "assistant",
+							Kind:            "text",
+							Payload:         map[string]any{"content": "Done."},
+							StartedAtUnixMS: 1717200001000,
+							Version:         8,
+						},
+					},
+					LatestVersion: 8,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/agent-sessions/agent-session-1/messages",
+		nil,
+	)
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
+	}
+
+	assertGeneratedRouteError(
+		t,
+		recorder,
+		tuttigenerated.WorkspaceOperationFailed,
+		apierrors.ReasonWorkspaceOperationFailed,
+		`workspace agent session message "msg-turnless" is missing turnId`,
+	)
 }
 
 func TestDaemonAPIGeneratedRoutesListAgentGeneratedFiles(t *testing.T) {

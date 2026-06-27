@@ -23,6 +23,7 @@ export interface DesktopAgentGUILinkActionDependencies {
     mode?: "reveal" | "open-directory";
     path: string;
     source?: "agent_command";
+    validateExists?: boolean;
     workspaceId: string;
   }): Promise<boolean> | boolean;
   launchWorkspaceApp?: (input: {
@@ -58,10 +59,16 @@ export async function runDesktopAgentGUILinkAction(
         ...(action.mode ? { mode: action.mode } : {}),
         path: action.path,
         source: "agent_command",
+        validateExists: true,
         workspaceId: dependencies.workspaceId
       });
     case "open-local-asset-preview":
-      return false;
+      return dependencies.launchWorkspaceFiles({
+        homeDirectory: dependencies.homeDirectory,
+        path: action.path,
+        source: "agent_command",
+        workspaceId: dependencies.workspaceId
+      });
     case "open-url":
       return dependencies.openBrowserUrl({
         reuseIfOpen: false,

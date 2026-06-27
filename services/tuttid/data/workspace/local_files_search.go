@@ -82,67 +82,16 @@ func (a LocalFilesAdapter) Search(
 		includeKinds[kind] = true
 	}
 
-	candidates := make([]workspacefiles.SearchCandidate, 0, input.Limit)
 	maxCandidates := a.maxSearchCandidates()
 	ignoredDirectories := a.ignoredDirectories()
 	allowHiddenFiles := input.IncludeHidden || workspacefiles.SearchQueryTargetsHiddenFile(input.Query)
 	allowHiddenAndNoiseDirectories := input.IncludeHidden || workspacefiles.SearchQueryTargetsHiddenOrNoise(input.Query)
-	stats := searchWalkStats{}
-	walkErr := filepath.WalkDir(searchRootPath, func(physicalPath string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			stats.skippedUnreadableCount++
-			return nil
-		}
-		stats.scannedEntryCount++
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if !input.Deadline.IsZero() && time.Now().After(input.Deadline) {
-			stats.deadlineExceeded = true
-			return context.DeadlineExceeded
-		}
-		if physicalPath == searchRootPath {
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			stats.skippedSymlinkEntryCount++
-			return nil
-		}
-
-		kind := entryKind(entry.Type())
-		if kind != workspacefiles.EntryKindFile && kind != workspacefiles.EntryKindDirectory {
-			stats.skippedUnsupportedCount++
-			return nil
-		}
-		if entry.IsDir() {
-			if !allowHiddenAndNoiseDirectories && shouldIgnoreSearchEntryName(entry.Name(), ignoredDirectories) {
-				stats.ignoredDirectoryCount++
-				return filepath.SkipDir
-			}
-		}
-		if !allowHiddenFiles && shouldIgnoreHiddenSearchFile(entry) {
-			stats.skippedHiddenFileCount++
-			return nil
-		}
-		// 文件类型筛选:筛选生效时,搜索结果须是「关键词 ∩ 类型」的交集。目录不属于任何文件
-		// 类型,故不作为结果候选(但仍递归进入以发现匹配类型的文件,所以只跳过登记、不 SkipDir);
-		// 文件按其分类过滤。无筛选时不影响目录,保留按名/路径命中的文件夹。
-		// 全局统一口径,见 reference_filter_categories.go(TS 镜像同名)。
-		if len(input.Filters) > 0 {
-			if kind == workspacefiles.EntryKindDirectory {
-				return nil
-			}
-			if !matchesReferenceFilterCategories(entry.Name(), false, input.Filters) {
-				stats.skippedUnrequestedCount++
-				return nil
-			}
-		}
-		appendSearchCandidate(rootPath, physicalPath, kind, includeKinds, &candidates, &stats)
-		if len(candidates) >= maxCandidates {
-			stats.candidateCapReached = true
-			return fs.SkipAll
-		}
-		return nil
+	candidates, stats, walkErr := walkSearchCandidates(ctx, rootPath, searchRootPath, input, searchWalkOptions{
+		allowHiddenAndNoiseDirectories: allowHiddenAndNoiseDirectories,
+		allowHiddenFiles:               allowHiddenFiles,
+		ignoredDirectories:             ignoredDirectories,
+		includeKinds:                   includeKinds,
+		maxCandidates:                  maxCandidates,
 	})
 	if walkErr != nil &&
 		!errors.Is(walkErr, fs.SkipAll) &&
@@ -185,6 +134,88 @@ func (a LocalFilesAdapter) Search(
 		Root:        workspacefiles.NormalizeLogicalRoot(root.LogicalRoot),
 		Entries:     entries,
 	}, nil
+}
+
+type searchWalkOptions struct {
+	allowHiddenAndNoiseDirectories bool
+	allowHiddenFiles               bool
+	ignoredDirectories             map[string]struct{}
+	includeKinds                   map[workspacefiles.EntryKind]bool
+	maxCandidates                  int
+}
+
+func walkSearchCandidates(
+	ctx context.Context,
+	rootPath string,
+	searchRootPath string,
+	input workspacefiles.SearchInput,
+	options searchWalkOptions,
+) ([]workspacefiles.SearchCandidate, searchWalkStats, error) {
+	candidates := make([]workspacefiles.SearchCandidate, 0, input.Limit)
+	stats := searchWalkStats{scannedEntryCount: 1}
+	queue := []string{searchRootPath}
+
+	for len(queue) > 0 {
+		directoryPath := queue[0]
+		queue = queue[1:]
+
+		dirEntries, err := os.ReadDir(directoryPath)
+		if err != nil {
+			stats.skippedUnreadableCount++
+			continue
+		}
+
+		for _, entry := range dirEntries {
+			physicalPath := filepath.Join(directoryPath, entry.Name())
+			stats.scannedEntryCount++
+			if err := ctx.Err(); err != nil {
+				return candidates, stats, err
+			}
+			if !input.Deadline.IsZero() && time.Now().After(input.Deadline) {
+				stats.deadlineExceeded = true
+				return candidates, stats, context.DeadlineExceeded
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				stats.skippedSymlinkEntryCount++
+				continue
+			}
+
+			kind := entryKind(entry.Type())
+			if kind != workspacefiles.EntryKindFile && kind != workspacefiles.EntryKindDirectory {
+				stats.skippedUnsupportedCount++
+				continue
+			}
+			if entry.IsDir() {
+				if !options.allowHiddenAndNoiseDirectories && shouldIgnoreSearchEntryName(entry.Name(), options.ignoredDirectories) {
+					stats.ignoredDirectoryCount++
+					continue
+				}
+				queue = append(queue, physicalPath)
+			}
+			if !options.allowHiddenFiles && shouldIgnoreHiddenSearchFile(entry) {
+				stats.skippedHiddenFileCount++
+				continue
+			}
+			// 文件类型筛选:筛选生效时,搜索结果须是「关键词 ∩ 类型」的交集。目录不属于任何文件
+			// 类型,故不作为结果候选(但仍递归进入以发现匹配类型的文件);文件按其分类过滤。
+			if len(input.Filters) > 0 {
+				if kind == workspacefiles.EntryKindDirectory {
+					continue
+				}
+				if !matchesReferenceFilterCategories(entry.Name(), false, input.Filters) {
+					stats.skippedUnrequestedCount++
+					continue
+				}
+			}
+			appendSearchCandidate(rootPath, physicalPath, kind, options.includeKinds, &candidates, &stats)
+			if len(candidates) >= options.maxCandidates {
+				stats.candidateCapReached = true
+				return candidates, stats, fs.SkipAll
+			}
+		}
+	}
+
+	return candidates, stats, nil
 }
 
 func appendSearchCandidate(

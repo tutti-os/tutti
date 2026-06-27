@@ -1,7 +1,6 @@
 export type IssueManagerStatus =
   | "not_started"
   | "running"
-  | "in_progress"
   | "pending_acceptance"
   | "completed"
   | "failed"
@@ -25,7 +24,6 @@ export interface IssueManagerStatusCounts {
   all: number;
   notStarted: number;
   running: number;
-  inProgress: number;
   pendingAcceptance: number;
   completed: number;
   failed: number;

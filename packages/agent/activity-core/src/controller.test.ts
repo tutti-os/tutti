@@ -35,10 +35,12 @@ test("controller loads sessions and merges live message events", async () => {
     data: {
       messageId: "message-1",
       version: 1,
+      turnId: "turn-1",
       role: "assistant",
       kind: "ask_user_question",
       status: "waiting",
-      payload: { title: "Pick one" }
+      payload: { title: "Pick one" },
+      occurredAtUnixMs: 1000
     }
   });
 
@@ -46,6 +48,42 @@ test("controller loads sessions and merges live message events", async () => {
   assert.equal(
     controller.getSnapshot().sessionMessagesById["session-1"]?.[0]?.messageId,
     "message-1"
+  );
+});
+
+test("controller ignores unnormalized live message events", async () => {
+  let liveEvent:
+    | ((event: AgentActivitySessionEventEnvelope) => void)
+    | undefined;
+  const adapter = fakeAdapter({
+    subscribe(input) {
+      liveEvent = (event) => input.onEvent(event);
+      return Promise.resolve(() => {});
+    }
+  });
+  const controller = createAgentActivityController({
+    adapter,
+    workspaceId: "workspace-1"
+  });
+
+  await controller.load();
+  controller.retainSessionEvents({ agentSessionId: "session-1" });
+  liveEvent?.({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_update",
+    data: {
+      messageId: "message-without-turn",
+      version: 1,
+      role: "assistant",
+      kind: "text",
+      payload: { text: "old event" }
+    }
+  });
+
+  assert.equal(
+    controller.getSnapshot().sessionMessagesById["session-1"],
+    undefined
   );
 });
 
@@ -546,10 +584,12 @@ test("controller keeps newer live messages over stale listed messages", async ()
     data: {
       messageId: "message-1",
       version: 2,
+      turnId: "turn-1",
       role: "assistant",
       kind: "ask_user_question",
       status: "waiting",
-      payload: { title: "Fresh live message" }
+      payload: { title: "Fresh live message" },
+      occurredAtUnixMs: 2000
     }
   });
   await controller.listSessionMessages({ agentSessionId: "session-1" });
@@ -1312,10 +1352,12 @@ function createMessage(
     agentSessionId: "session-1",
     messageId: "message-1",
     version: 1,
+    turnId: "turn-1",
     role: "assistant",
     kind: "ask_user_question",
     status: "waiting",
     payload: { title: "Prompt" },
+    occurredAtUnixMs: 1000,
     ...overrides
   };
 }

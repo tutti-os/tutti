@@ -336,7 +336,7 @@ describe("AgentTranscriptView", () => {
     );
   });
 
-  it("resolves agent markdown relative links from the session cwd", () => {
+  it("renders agent markdown relative links as plain text", () => {
     const onLinkAction = vi.fn();
     render(
       <AgentTranscriptView
@@ -378,15 +378,11 @@ describe("AgentTranscriptView", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("link", { name: "stock-dashboard.html" }));
-
-    expect(onLinkAction).toHaveBeenCalledWith({
-      type: "open-workspace-file",
-      path: "/workspace/demo/reports/stock-dashboard.html",
-      directoryPath: "/workspace/demo/reports",
-      workspaceRoot: "/workspace/demo",
-      source: "agent-markdown"
-    });
+    expect(
+      screen.queryByRole("link", { name: "stock-dashboard.html" })
+    ).toBeNull();
+    expect(screen.getByText("stock-dashboard.html")).toBeTruthy();
+    expect(onLinkAction).not.toHaveBeenCalled();
   });
 
   it("opens local absolute paths inside the current workspace root", () => {

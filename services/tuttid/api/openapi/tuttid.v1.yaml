@@ -1657,7 +1657,7 @@ paths:
       operationId: getAgentProviderComposerOptions
       tags:
         - agent-session
-      summary: Get provider composer options with short-lived Claude Code discovery
+      summary: Get provider composer options with Claude Code live discovery
       requestBody:
         required: false
         content:
@@ -1666,7 +1666,7 @@ paths:
               $ref: "#/components/schemas/GetAgentProviderComposerOptionsRequest"
       responses:
         "200":
-          description: Agent provider composer options with short-lived Claude Code discovery when needed
+          description: Agent provider composer options with Claude Code live discovery when needed
           content:
             application/json:
               schema:
@@ -5731,8 +5731,10 @@ components:
         - id
         - agentSessionId
         - messageId
+        - turnId
         - role
         - kind
+        - occurredAtUnixMs
         - version
       properties:
         id:
@@ -5747,6 +5749,7 @@ components:
           minLength: 1
         turnId:
           type: string
+          minLength: 1
         role:
           type: string
           minLength: 1
@@ -5763,6 +5766,7 @@ components:
         occurredAtUnixMs:
           type: integer
           format: int64
+          minimum: 1
         startedAtUnixMs:
           type: integer
           format: int64

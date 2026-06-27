@@ -90,6 +90,86 @@ test("workspace file manager service defaults new sessions to the user home dire
   assert.equal(session.store.currentDirectoryPath, "/Users/local");
 });
 
+test("workspace file manager service checks whether an entry exists by listing its parent", async () => {
+  const dependencies = createDependenciesStub();
+  let capturedWorkspaceId: string | undefined;
+  let capturedRequest:
+    | Parameters<TuttidClient["listWorkspaceFileDirectory"]>[1]
+    | undefined;
+  dependencies.tuttidClient.listWorkspaceFileDirectory = async (
+    workspaceId,
+    input
+  ) => {
+    capturedWorkspaceId = workspaceId;
+    capturedRequest = input;
+    return {
+      directoryPath: input?.path || "/Users/local/project",
+      entries: [
+        {
+          createdTimeMs: null,
+          hasChildren: false,
+          kind: "file",
+          lastOpenedMs: null,
+          mtimeMs: null,
+          name: "README.md",
+          path: "/Users/local/project/README.md",
+          sizeBytes: 12
+        }
+      ],
+      root: "/Users/local/project",
+      workspaceId
+    };
+  };
+  const service = new WorkspaceFileManagerService(dependencies);
+
+  assert.equal(
+    await service.entryExists({
+      path: "/Users/local/project/README.md",
+      workspaceID: "workspace-1"
+    }),
+    true
+  );
+  assert.equal(capturedWorkspaceId, "workspace-1");
+  assert.deepEqual(capturedRequest, {
+    includeHidden: true,
+    path: "/Users/local/project"
+  });
+});
+
+test("workspace file manager service treats missing or unreadable entries as absent", async () => {
+  const dependencies = createDependenciesStub();
+  dependencies.tuttidClient.listWorkspaceFileDirectory = async (
+    workspaceId,
+    input
+  ) => ({
+    directoryPath: input?.path || "/Users/local/project",
+    entries: [],
+    root: "/Users/local/project",
+    workspaceId
+  });
+  const service = new WorkspaceFileManagerService(dependencies);
+
+  assert.equal(
+    await service.entryExists({
+      path: "/Users/local/project/MISSING.md",
+      workspaceID: "workspace-1"
+    }),
+    false
+  );
+
+  dependencies.tuttidClient.listWorkspaceFileDirectory = async () => {
+    throw new Error("missing parent");
+  };
+
+  assert.equal(
+    await service.entryExists({
+      path: "/Users/local/project/MISSING.md",
+      workspaceID: "workspace-1"
+    }),
+    false
+  );
+});
+
 test("workspace file manager service restores snapshot state without localStorage", () => {
   const restoreStorage = installForbiddenLocalStorage();
   try {

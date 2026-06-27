@@ -32,7 +32,7 @@ type issueUpdateInput struct {
 	IssueID string  `cli:"issue-id" validate:"required" description:"Issue to update."`
 	Title   *string `cli:"title" description:"Replace the issue title."`
 	Content *string `cli:"content" description:"Replace the issue content."`
-	Status  *string `cli:"status" description:"Issue status: not_started, running, in_progress, pending_acceptance, completed, failed, or canceled."`
+	Status  *string `cli:"status" description:"Issue status: not_started, running, pending_acceptance, completed, failed, or canceled."`
 }
 
 func (p Provider) newIssueListCommand() cliservice.Command {

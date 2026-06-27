@@ -135,31 +135,6 @@ test("buildIssueManagerStatusCounts includes all issues and status buckets", () 
   });
 });
 
-test("buildIssueManagerStatusCounts folds legacy in_progress into running", () => {
-  const issues = [
-    createIssueSummary({
-      issueId: "issue-1",
-      status: "running",
-      title: "Plan migration"
-    }),
-    createIssueSummary({
-      issueId: "issue-2",
-      status: "in_progress",
-      title: "Port renderer"
-    })
-  ];
-
-  assert.deepEqual(buildIssueManagerStatusCounts(issues), {
-    all: 2,
-    canceled: 0,
-    completed: 0,
-    failed: 0,
-    not_started: 0,
-    pending_acceptance: 0,
-    running: 2
-  });
-});
-
 test("resolveIssueManagerStatusCounts prefers backend totals over current filtered issues", () => {
   assert.deepEqual(
     resolveIssueManagerStatusCounts({
@@ -170,7 +145,6 @@ test("resolveIssueManagerStatusCounts prefers backend totals over current filter
         canceled: 0,
         completed: 0,
         failed: 0,
-        inProgress: 0,
         notStarted: 2,
         pendingAcceptance: 0,
         running: 0
@@ -185,35 +159,6 @@ test("resolveIssueManagerStatusCounts prefers backend totals over current filter
       not_started: 2,
       pending_acceptance: 0,
       running: 0
-    }
-  );
-});
-
-test("resolveIssueManagerStatusCounts maps backend in-progress totals", () => {
-  assert.deepEqual(
-    resolveIssueManagerStatusCounts({
-      error: null,
-      isLoading: false,
-      statusCounts: {
-        all: 3,
-        canceled: 0,
-        completed: 0,
-        failed: 0,
-        inProgress: 3,
-        notStarted: 0,
-        pendingAcceptance: 0,
-        running: 0
-      },
-      value: []
-    }),
-    {
-      all: 3,
-      canceled: 0,
-      completed: 0,
-      failed: 0,
-      not_started: 0,
-      pending_acceptance: 0,
-      running: 3
     }
   );
 });

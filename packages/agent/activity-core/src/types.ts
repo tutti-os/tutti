@@ -58,13 +58,13 @@ export interface AgentActivityMessage {
   messageId: string;
   id?: number;
   version: number;
-  turnId?: string | null;
+  turnId: string;
   role: string;
   kind: string;
   status?: string | null;
   semantics?: AgentActivityMessageSemantics;
   payload: Record<string, unknown>;
-  occurredAtUnixMs?: number;
+  occurredAtUnixMs: number;
   startedAtUnixMs?: number;
   completedAtUnixMs?: number;
 }

@@ -920,6 +920,7 @@ func TestReportActivityRetriesTransientRemoteTLSHandshakeTimeout(t *testing.T) {
 		MessageUpdates: []WorkspaceAgentMessageUpdate{{
 			AgentSessionID: "session-1",
 			MessageID:      "message-1",
+			TurnID:         "turn-1",
 			Role:           "assistant",
 			Kind:           "text",
 			Payload:        map[string]any{"text": "hello"},

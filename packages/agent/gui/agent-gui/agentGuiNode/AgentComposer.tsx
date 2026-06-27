@@ -1412,6 +1412,26 @@ export function AgentComposer({
     setIsPaletteOpen(false);
   }, [fileMentionSuggestion]);
 
+  const clearActiveFileMentionTrigger = useCallback((): void => {
+    if (!fileMentionSuggestion) {
+      return;
+    }
+    const triggerLength = Math.max(
+      fileMentionSuggestion.range.to - fileMentionSuggestion.range.from,
+      fileMentionSuggestion.text.length
+    );
+    const nextDraft =
+      triggerLength > 0
+        ? editorHandleRef.current?.replaceTextBeforeSelection(triggerLength, "")
+        : null;
+    if (nextDraft === null || nextDraft === undefined) {
+      return;
+    }
+    draftPromptRef.current = nextDraft;
+    setPaletteDraftPrompt(nextDraft);
+    onDraftContentChange({ ...draftContent, prompt: nextDraft });
+  }, [draftContent, fileMentionSuggestion, onDraftContentChange]);
+
   const closeOpenPalette = useCallback((): void => {
     if (showFileMentionPalette) {
       closeFileMentionPalette();
@@ -1898,6 +1918,7 @@ export function AgentComposer({
   // 选中的文件仍按常规插入,但不会把该任务/应用本身作为 mention 插入。
   const handleOpenReferencesForEntity = useCallback(
     (entity: AgentContextMentionItem): void => {
+      clearActiveFileMentionTrigger();
       closeFileMentionPalette();
       if (!onRequestWorkspaceReferences) {
         return;
@@ -1907,6 +1928,7 @@ export function AgentComposer({
       );
     },
     [
+      clearActiveFileMentionTrigger,
       closeFileMentionPalette,
       applyReferencePickResult,
       onRequestWorkspaceReferences

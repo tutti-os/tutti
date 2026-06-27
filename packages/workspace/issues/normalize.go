@@ -4,7 +4,7 @@ import "strings"
 
 func NormalizeStatus(raw string) (Status, bool) {
 	switch Status(strings.ToLower(strings.TrimSpace(raw))) {
-	case StatusNotStarted, StatusRunning, StatusInProgress, StatusPendingAcceptance, StatusCompleted, StatusFailed, StatusCanceled:
+	case StatusNotStarted, StatusRunning, StatusPendingAcceptance, StatusCompleted, StatusFailed, StatusCanceled:
 		return Status(strings.ToLower(strings.TrimSpace(raw))), true
 	default:
 		return "", false
@@ -51,7 +51,7 @@ func ProjectIssueStatus(counts StatusCounts) Status {
 	case counts.All > 0 && counts.Canceled == counts.All:
 		return StatusCanceled
 	default:
-		return StatusInProgress
+		return StatusRunning
 	}
 }
 

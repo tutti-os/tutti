@@ -200,6 +200,12 @@ export interface AgentActivityAdapter {
 The adapter decides how to connect. The controller decides when to connect,
 when to disconnect, and how to merge the resulting events.
 
+Hosts may accept older provider/runtime reports with missing transcript
+ownership or ordering fields, but those gaps must be filled before events enter
+`agent-activity-core` or `@tutti-os/agent-gui`. Session-level notices and
+statuses should use state patches or explicit notice semantics; they should not
+be published as ordinary assistant transcript messages without a turn scope.
+
 ## Stream Lifecycle
 
 SSE lifecycle belongs in `agent-activity-core` at the semantic level:
@@ -210,6 +216,9 @@ SSE lifecycle belongs in `agent-activity-core` at the semantic level:
 - merge live message events into the cached snapshot
 - keep persisted message pages and live events ordered by version
 - deduplicate messages by stable message identity and version
+- treat transcript `message_update` messages as normalized input: each message
+  must have `messageId`, positive `version`/`seq`, `turnId`, and
+  `occurredAtUnixMs` before core merges it
 
 SSE implementation belongs in the host adapter:
 

@@ -3780,7 +3780,7 @@ function resolveWorkbenchHostDockItemsWidth(
   return itemWidth + gapWidth + dockItemsHorizontalPaddingPx;
 }
 
-const dockHoverPanelOpenDelayMs = 450;
+const dockHoverPanelOpenDelayMs = 120;
 const dockHoverPanelCloseDelayMs = 160;
 const dockHoverPanelHitSlopPx = 12;
 const dockHoverPanelBridgeSlopPx = 6;

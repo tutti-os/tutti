@@ -321,6 +321,9 @@ export function isRecentlyCompletedMessageCenterItem(
   if (messageCenterStatusFilterValue(item) !== "completed") {
     return false;
   }
+  if (item.imported) {
+    return false;
+  }
   const completedAtUnixMs =
     item.sortTimeUnixMs || item.lastAgentMessageAtUnixMs || 0;
   if (completedAtUnixMs <= 0) {

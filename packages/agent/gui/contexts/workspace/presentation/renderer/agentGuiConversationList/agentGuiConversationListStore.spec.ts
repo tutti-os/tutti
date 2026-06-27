@@ -567,6 +567,7 @@ function message(
     agentSessionId,
     messageId: overrides.messageId ?? `message-${agentSessionId}`,
     version: overrides.version ?? 1,
+    turnId: overrides.turnId ?? `turn-${agentSessionId}`,
     role: overrides.role ?? "user",
     kind: overrides.kind ?? "message",
     payload: overrides.payload ?? { text: agentSessionId },

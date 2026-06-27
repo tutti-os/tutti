@@ -1049,12 +1049,12 @@ export interface AgentHostWorkspaceAgentMessage {
   agentSessionId: string;
   messageId: string;
   version: number;
-  turnId?: string;
+  turnId: string;
   role: string;
   kind: string;
   status?: string;
   payload: Record<string, unknown>;
-  occurredAtUnixMs?: number;
+  occurredAtUnixMs: number;
   startedAtUnixMs?: number;
   completedAtUnixMs?: number;
 }

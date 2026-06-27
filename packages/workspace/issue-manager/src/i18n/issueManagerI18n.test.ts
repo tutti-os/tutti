@@ -51,7 +51,6 @@ test("zh-CN task terminology and status labels use requested copy", () => {
   assert.equal(copy.t("messages.noTasks"), "还没有任务");
   assert.equal(copy.t("status.notStarted"), "待开始");
   assert.equal(copy.t("status.running"), "执行中");
-  assert.equal(copy.t("status.inProgress"), "执行中");
   assert.equal(copy.t("status.pendingAcceptance"), "待验收");
   assert.equal(copy.t("status.completed"), "已完成");
   assert.equal(copy.t("status.failed"), "失败");
@@ -106,7 +105,6 @@ test("en task terminology and status labels use requested copy", () => {
   assert.equal(copy.t("messages.noTasks"), "No tasks yet");
   assert.equal(copy.t("status.notStarted"), "Todo");
   assert.equal(copy.t("status.running"), "Running");
-  assert.equal(copy.t("status.inProgress"), "Running");
   assert.equal(copy.t("status.pendingAcceptance"), "In review");
   assert.equal(copy.t("status.completed"), "Done");
   assert.equal(copy.t("status.failed"), "Failed");

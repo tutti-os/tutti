@@ -3,10 +3,8 @@ import test from "node:test";
 import {
   createIssueManagerDate,
   formatIssueManagerDate,
-  formatIssueManagerTimestamp,
-  resolveIssueManagerStatusLabel
+  formatIssueManagerTimestamp
 } from "./model.ts";
-import type { IssueManagerI18nRuntime } from "../../i18n/index.ts";
 
 test("createIssueManagerDate normalizes unix seconds to milliseconds", () => {
   const date = createIssueManagerDate(1_748_374_400);
@@ -30,20 +28,3 @@ test("formatIssueManagerTimestamp uses the shared English short date-time format
 
   assert.equal(formatIssueManagerTimestamp(timestamp), "May 23, 12:14");
 });
-
-test("status label folds legacy in_progress into running copy", () => {
-  const copy = createCopy();
-
-  assert.equal(
-    resolveIssueManagerStatusLabel(copy, "in_progress"),
-    "status.running"
-  );
-});
-
-function createCopy(): IssueManagerI18nRuntime {
-  return {
-    t(key: string) {
-      return key;
-    }
-  } as IssueManagerI18nRuntime;
-}

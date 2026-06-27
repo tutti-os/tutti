@@ -173,8 +173,6 @@ func incrementIssueStatusCount(counts *workspaceissues.StatusCounts, status work
 		counts.NotStarted += value
 	case workspaceissues.StatusRunning:
 		counts.Running += value
-	case workspaceissues.StatusInProgress:
-		counts.InProgress += value
 	case workspaceissues.StatusPendingAcceptance:
 		counts.PendingAcceptance += value
 	case workspaceissues.StatusCompleted:

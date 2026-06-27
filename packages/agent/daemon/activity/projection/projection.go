@@ -211,6 +211,8 @@ func ProjectMessageUpdate(
 		message.CreatedAtUnixMS = existing.CreatedAtUnixMS
 		if message.TurnID == "" {
 			message.TurnID = existing.TurnID
+		} else if existingTurnID := strings.TrimSpace(existing.TurnID); existingTurnID != "" && message.TurnID != existingTurnID {
+			return MessageSnapshot{}, false
 		}
 		if message.Role == "" {
 			message.Role = existing.Role
@@ -236,6 +238,12 @@ func ProjectMessageUpdate(
 			message.CompletedAtUnixMS = existing.CompletedAtUnixMS
 		}
 	}
+	if message.TurnID == "" {
+		return MessageSnapshot{}, false
+	}
+	if message.OccurredAtUnixMS <= 0 {
+		message.OccurredAtUnixMS = firstNonZeroInt64(message.StartedAtUnixMS, message.CompletedAtUnixMS, nowUnixMS)
+	}
 	if strings.TrimSpace(update.ContentDelta) != "" {
 		if message.Payload == nil {
 			message.Payload = make(map[string]any)
@@ -246,6 +254,15 @@ func ProjectMessageUpdate(
 		message.Payload = map[string]any{}
 	}
 	return message, true
+}
+
+func firstNonZeroInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func MergeMessageStatus(existing string, incoming string) string {

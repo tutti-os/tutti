@@ -55,10 +55,12 @@ function message(
     agentSessionId: "session-1",
     messageId: "message-1",
     version: 1,
+    turnId: "turn-1",
     role: "assistant",
     kind: "message.assistant",
     status: "working",
     payload: {},
+    occurredAtUnixMs: 1,
     ...overrides
   };
 }

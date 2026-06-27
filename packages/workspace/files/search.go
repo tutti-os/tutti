@@ -72,12 +72,6 @@ type textMatchResult struct {
 	score   int
 }
 
-type pathSequenceChoice struct {
-	indices []int
-	ok      bool
-	score   int
-}
-
 func NormalizeSearchLimit(limit int) int {
 	if limit <= 0 {
 		return DefaultSearchLimit
@@ -260,11 +254,7 @@ func scoreSearchCandidate(query normalizedSearchQuery, candidate SearchCandidate
 
 	var match scoredSearchMatch
 	var ok bool
-	if query.hasPathIntent {
-		match, ok = scorePathAwareCandidate(query, context)
-	} else {
-		match, ok = scoreFilenameFirstCandidate(query.term, context)
-	}
+	match, ok = scoreFilenameCandidate(query.term, context)
 	if !ok {
 		return scoredSearchMatch{}, false
 	}
@@ -309,7 +299,7 @@ func trimSearchStem(value string) string {
 	return stem
 }
 
-func scoreFilenameFirstCandidate(term normalizedSearchTerm, candidate searchCandidateContext) (scoredSearchMatch, bool) {
+func scoreFilenameCandidate(term normalizedSearchTerm, candidate searchCandidateContext) (scoredSearchMatch, bool) {
 	if isDotLiteralSearchTerm(term) {
 		return scoreDotLiteralFilenameCandidate(term.tokens[0], candidate)
 	}
@@ -337,17 +327,6 @@ func scoreFilenameFirstCandidate(term normalizedSearchTerm, candidate searchCand
 			}
 			bestOk = true
 		}
-	}
-	if match, ok := scoreBestPathSegmentFallback(term, candidate); ok && (!bestOk || match.score > best.score) {
-		best, bestOk = match, true
-	}
-	if result, ok := scoreTextMatch(term, candidate.relativePath, 520000, 430000, 15000); ok && (!bestOk || result.score > best.score) {
-		best = scoredSearchMatch{
-			indices: result.indices,
-			score:   result.score,
-			target:  SearchMatchTargetPath,
-		}
-		bestOk = true
 	}
 
 	return best, bestOk
@@ -379,118 +358,6 @@ func scoreDotLiteralFilenameCandidate(literal string, candidate searchCandidateC
 		score:   score,
 		target:  SearchMatchTargetBasename,
 	}, true
-}
-
-func scoreBestPathSegmentFallback(term normalizedSearchTerm, candidate searchCandidateContext) (scoredSearchMatch, bool) {
-	best := scoredSearchMatch{}
-	bestOk := false
-	for index, segment := range candidate.segments {
-		result, ok := scorePathSegmentTerm(term, segment)
-		if !ok {
-			continue
-		}
-		score := 650000 + result.score - (index * 3000)
-		if !bestOk || score > best.score {
-			best = scoredSearchMatch{
-				indices: pathIndicesForSegment(candidate.segments, index, result.indices),
-				score:   score,
-				target:  SearchMatchTargetPath,
-			}
-			bestOk = true
-		}
-	}
-	return best, bestOk
-}
-
-func scorePathAwareCandidate(query normalizedSearchQuery, candidate searchCandidateContext) (scoredSearchMatch, bool) {
-	choice, ok := scorePathTermSequence(query.pathTerms, candidate.segments)
-	if !ok {
-		return scoredSearchMatch{}, false
-	}
-
-	score := 700000 + choice.score - len(candidate.relativePath) - (candidate.depth * 150)
-	if query.trailingSlash {
-		if candidate.kind == EntryKindDirectory {
-			score += 12000
-		} else {
-			score -= 6000
-		}
-	}
-	return scoredSearchMatch{
-		indices: choice.indices,
-		score:   score,
-		target:  SearchMatchTargetPath,
-	}, true
-}
-
-func scorePathTermSequence(terms []normalizedSearchTerm, segments []string) (pathSequenceChoice, bool) {
-	memo := map[[2]int]pathSequenceChoice{}
-	var visit func(termIndex int, segmentIndex int) pathSequenceChoice
-	visit = func(termIndex int, segmentIndex int) pathSequenceChoice {
-		if termIndex == len(terms) {
-			return pathSequenceChoice{ok: true, indices: []int{}}
-		}
-
-		key := [2]int{termIndex, segmentIndex}
-		if cached, ok := memo[key]; ok {
-			return cached
-		}
-
-		best := pathSequenceChoice{}
-		for index := segmentIndex; index < len(segments); index++ {
-			result, ok := scorePathSegmentTerm(terms[termIndex], segments[index])
-			if !ok {
-				continue
-			}
-
-			next := visit(termIndex+1, index+1)
-			if !next.ok {
-				continue
-			}
-
-			skippedSegments := index - segmentIndex
-			total := result.score + next.score - (skippedSegments * 4000)
-			if skippedSegments == 0 {
-				total += 2500
-			}
-			if termIndex == 0 {
-				total -= index * 2000
-			}
-
-			if !best.ok || total > best.score {
-				best = pathSequenceChoice{
-					indices: append(
-						pathIndicesForSegment(segments, index, result.indices),
-						next.indices...,
-					),
-					ok:    true,
-					score: total,
-				}
-			}
-		}
-
-		memo[key] = best
-		return best
-	}
-
-	result := visit(0, 0)
-	return result, result.ok
-}
-
-func scorePathSegmentTerm(term normalizedSearchTerm, segment string) (textMatchResult, bool) {
-	stem := trimSearchStem(segment)
-	best := textMatchResult{}
-	bestOk := false
-
-	if result, ok := scoreTextMatch(term, stem, 180000, 150000, 25000); ok {
-		best, bestOk = result, true
-	}
-	if stem != segment {
-		if result, ok := scoreTextMatch(term, segment, 170000, 140000, 18000); ok && (!bestOk || result.score > best.score) {
-			best, bestOk = result, true
-		}
-	}
-	return best, bestOk
 }
 
 func scoreTextMatch(term normalizedSearchTerm, target string, orderedBase int, subsequenceBase int, prefixBonus int) (textMatchResult, bool) {
@@ -687,19 +554,6 @@ func subsequenceMatch(target string, query string) (int, int, int, []int, bool) 
 		return 0, 0, 0, nil, false
 	}
 	return first, (last - first) + 1, gaps, indices, true
-}
-
-func pathIndicesForSegment(segments []string, segmentIndex int, segmentIndices []int) []int {
-	offset := 0
-	for index := 0; index < segmentIndex; index++ {
-		offset += len(segments[index]) + 1
-	}
-
-	result := make([]int, 0, len(segmentIndices))
-	for _, matchIndex := range segmentIndices {
-		result = append(result, offset+matchIndex)
-	}
-	return result
 }
 
 func compactSortedIndices(indices []int) []int {

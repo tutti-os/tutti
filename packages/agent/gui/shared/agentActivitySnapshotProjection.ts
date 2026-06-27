@@ -153,7 +153,7 @@ export function agentHostMessageFromCore(
     role: message.role,
     startedAtUnixMs: message.startedAtUnixMs,
     status: message.status ?? undefined,
-    turnId: message.turnId ?? undefined,
+    turnId: message.turnId,
     version: message.version,
     workspaceId: message.workspaceId ?? ""
   };

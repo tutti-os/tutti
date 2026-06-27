@@ -200,6 +200,8 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
   let authorizationHeader = "";
   let requestPath = "";
   let requestBody: unknown;
+  const capturedRequest: { signal: AbortSignal | null } = { signal: null };
+  const abortController = new AbortController();
 
   const client = createTuttidClient({
     auth: "desktop-session-token",
@@ -209,6 +211,7 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
       authorizationHeader = request.headers.get("authorization") ?? "";
       requestPath = new URL(request.url).pathname;
       requestBody = await request.json();
+      capturedRequest.signal = request.signal;
 
       return new Response(
         JSON.stringify({
@@ -230,15 +233,22 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
     }
   });
 
-  const session = await client.createWorkspaceAgentSession("ws-1", {
-    agentSessionId: "11111111-1111-4111-8111-111111111111",
-    initialContent: [{ type: "text", text: "hello" }],
-    planMode: true,
-    provider: "codex"
-  });
+  const session = await client.createWorkspaceAgentSession(
+    "ws-1",
+    {
+      agentSessionId: "11111111-1111-4111-8111-111111111111",
+      initialContent: [{ type: "text", text: "hello" }],
+      planMode: true,
+      provider: "codex"
+    },
+    { signal: abortController.signal }
+  );
 
   assert.equal(authorizationHeader, "Bearer desktop-session-token");
   assert.equal(requestPath, "/v1/workspaces/ws-1/agent-sessions");
+  assert.notEqual(capturedRequest.signal, null);
+  abortController.abort();
+  assert.equal(capturedRequest.signal?.aborted, true);
   assert.deepEqual(requestBody, {
     agentSessionId: "11111111-1111-4111-8111-111111111111",
     initialContent: [{ type: "text", text: "hello" }],
@@ -701,6 +711,8 @@ test("shared tuttid client loads agent provider composer options", async () => {
   let requestMethod = "";
   let requestPath = "";
   let requestBody: unknown;
+  const capturedRequest: { signal: AbortSignal | null } = { signal: null };
+  const abortController = new AbortController();
 
   const client = createTuttidClient({
     fetch: async (input, init) => {
@@ -709,6 +721,7 @@ test("shared tuttid client loads agent provider composer options", async () => {
       requestMethod = request.method;
       requestPath = new URL(request.url).pathname;
       requestBody = await request.json();
+      capturedRequest.signal = request.signal;
 
       return new Response(
         JSON.stringify({
@@ -762,15 +775,24 @@ test("shared tuttid client loads agent provider composer options", async () => {
     }
   });
 
-  const result = await client.getAgentProviderComposerOptions("codex", {
-    settings: {
-      model: "gpt-5",
-      reasoningEffort: "high"
+  const result = await client.getAgentProviderComposerOptions(
+    "codex",
+    {
+      settings: {
+        model: "gpt-5",
+        reasoningEffort: "high"
+      }
+    },
+    {
+      signal: abortController.signal
     }
-  });
+  );
 
   assert.equal(requestMethod, "POST");
   assert.equal(requestPath, "/v1/agent-providers/codex/composer-options");
+  assert.notEqual(capturedRequest.signal, null);
+  abortController.abort();
+  assert.equal(capturedRequest.signal?.aborted, true);
   assert.deepEqual(requestBody, {
     settings: {
       model: "gpt-5",

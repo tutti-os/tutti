@@ -2,7 +2,6 @@ import type { SetStateAction } from "react";
 import { proxy } from "valtio/vanilla";
 import type {
   IssueManagerIssueDetail,
-  IssueManagerListIssuesResult,
   IssueManagerIssueSummary,
   IssueManagerNodeState,
   IssueManagerOpenSource,
@@ -71,33 +70,6 @@ function createIssueManagerOpenedParams(source: IssueManagerOpenSource): {
       source === "restore" || source === "agent_command"
         ? "automatic"
         : "manual"
-  };
-}
-
-function mergeIssueManagerRunningListResults(
-  results: readonly [IssueManagerListIssuesResult, IssueManagerListIssuesResult]
-): IssueManagerListIssuesResult {
-  const [runningResult, legacyResult] = results;
-  const issueIds = new Set<string>();
-  const issues: IssueManagerIssueSummary[] = [];
-
-  for (const issue of [...runningResult.issues, ...legacyResult.issues]) {
-    if (issueIds.has(issue.issueId)) {
-      continue;
-    }
-    issueIds.add(issue.issueId);
-    issues.push(issue);
-  }
-
-  return {
-    issues,
-    nextPageToken: runningResult.nextPageToken ?? legacyResult.nextPageToken,
-    statusCounts: runningResult.statusCounts ?? legacyResult.statusCounts,
-    totalCount:
-      runningResult.totalCount !== undefined ||
-      legacyResult.totalCount !== undefined
-        ? issues.length
-        : undefined
   };
 }
 
@@ -408,15 +380,7 @@ export function createIssueManagerControllerRuntime(
           topicId: activeTopicId,
           workspaceId: input.workspaceId
         });
-      const result =
-        snapshot.nodeState.issueStatusFilter === "running"
-          ? mergeIssueManagerRunningListResults(
-              await Promise.all([
-                listIssues("running"),
-                listIssues("in_progress")
-              ])
-            )
-          : await listIssues(snapshot.nodeState.issueStatusFilter);
+      const result = await listIssues(snapshot.nodeState.issueStatusFilter);
       if (!retained || sequence !== issueListSequence) {
         return;
       }

@@ -675,22 +675,18 @@ func activityMessagesEventPayload(messages []agentactivitybiz.Message) []map[str
 	out := make([]map[string]any, 0, len(messages))
 	for _, message := range messages {
 		item := map[string]any{
-			"agentSessionId": strings.TrimSpace(message.AgentSessionID),
-			"id":             message.ID,
-			"kind":           strings.TrimSpace(message.Kind),
-			"messageId":      strings.TrimSpace(message.MessageID),
-			"payload":        clonePayload(message.Payload),
-			"role":           strings.TrimSpace(message.Role),
-			"version":        message.Version,
-		}
-		if turnID := strings.TrimSpace(message.TurnID); turnID != "" {
-			item["turnId"] = turnID
+			"agentSessionId":   strings.TrimSpace(message.AgentSessionID),
+			"id":               message.ID,
+			"kind":             strings.TrimSpace(message.Kind),
+			"messageId":        strings.TrimSpace(message.MessageID),
+			"occurredAtUnixMs": message.OccurredAtUnixMS,
+			"payload":          clonePayload(message.Payload),
+			"role":             strings.TrimSpace(message.Role),
+			"turnId":           strings.TrimSpace(message.TurnID),
+			"version":          message.Version,
 		}
 		if status := strings.TrimSpace(message.Status); status != "" {
 			item["status"] = status
-		}
-		if message.OccurredAtUnixMS > 0 {
-			item["occurredAtUnixMs"] = message.OccurredAtUnixMS
 		}
 		if message.StartedAtUnixMS > 0 {
 			item["startedAtUnixMs"] = message.StartedAtUnixMS

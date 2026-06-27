@@ -281,11 +281,12 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Create workspace request failed.").workspace;
     },
-    async createWorkspaceAgentSession(workspaceID, request) {
+    async createWorkspaceAgentSession(workspaceID, request, requestOptions) {
       const response = await createWorkspaceAgentSession({
         client,
         body: request,
-        path: { workspaceID }
+        path: { workspaceID },
+        ...requestOptions
       });
       return unwrapData(
         response,

@@ -144,10 +144,11 @@ export function createDesktopTuttidClient(
     async createWorkspace(request) {
       return (await resolveClient()).createWorkspace(request);
     },
-    async createWorkspaceAgentSession(workspaceID, request) {
+    async createWorkspaceAgentSession(workspaceID, request, requestOptions) {
       return (await resolveClient()).createWorkspaceAgentSession(
         workspaceID,
-        request
+        request,
+        requestOptions
       );
     },
     async updateWorkspaceAgentSessionVisibility(
@@ -308,10 +309,11 @@ export function createDesktopTuttidClient(
         agentSessionID
       );
     },
-    async getAgentProviderComposerOptions(provider, request) {
+    async getAgentProviderComposerOptions(provider, request, requestOptions) {
       return (await resolveClient()).getAgentProviderComposerOptions(
         provider,
-        request
+        request,
+        requestOptions
       );
     },
     async getAgentProviderStatuses(request) {

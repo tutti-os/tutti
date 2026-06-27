@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -195,11 +196,15 @@ func (api DaemonAPI) ListWorkspaceAgentSessionMessages(ctx context.Context, requ
 	if err != nil {
 		return writeListWorkspaceAgentSessionMessagesError(err), nil
 	}
+	messages, err := generatedAgentSessionMessages(page.Messages)
+	if err != nil {
+		return writeListWorkspaceAgentSessionMessagesError(err), nil
+	}
 	return tuttigenerated.ListWorkspaceAgentSessionMessages200JSONResponse{
 		AgentSessionId: page.AgentSessionID,
 		HasMore:        page.HasMore,
 		LatestVersion:  int64(page.LatestVersion),
-		Messages:       generatedAgentSessionMessages(page.Messages),
+		Messages:       messages,
 	}, nil
 }
 
@@ -566,9 +571,19 @@ func optionalStringPointer(value string) *string {
 	return &value
 }
 
-func generatedAgentSessionMessages(messages []agentservice.SessionMessage) []tuttigenerated.WorkspaceAgentSessionMessage {
+func generatedAgentSessionMessages(messages []agentservice.SessionMessage) ([]tuttigenerated.WorkspaceAgentSessionMessage, error) {
 	result := make([]tuttigenerated.WorkspaceAgentSessionMessage, 0, len(messages))
 	for _, message := range messages {
+		turnID := strings.TrimSpace(message.TurnID)
+		if turnID == "" {
+			messageID := strings.TrimSpace(message.MessageID)
+			if messageID == "" {
+				messageID = fmt.Sprintf("id:%d", message.ID)
+			}
+			return nil, apierrors.WorkspaceOperationFailed(
+				apierrors.WithDeveloperMessage(fmt.Sprintf("workspace agent session message %q is missing turnId", messageID)),
+			)
+		}
 		result = append(result, tuttigenerated.WorkspaceAgentSessionMessage{
 			AgentSessionId:    strings.TrimSpace(message.AgentSessionID),
 			CompletedAtUnixMs: int64Pointer(message.CompletedAtUnixMS),
@@ -576,17 +591,39 @@ func generatedAgentSessionMessages(messages []agentservice.SessionMessage) []tut
 			Id:                int64(message.ID),
 			Kind:              strings.TrimSpace(message.Kind),
 			MessageId:         strings.TrimSpace(message.MessageID),
-			OccurredAtUnixMs:  int64Pointer(message.OccurredAtUnixMS),
+			OccurredAtUnixMs:  normalizedGeneratedMessageOccurredAtUnixMS(message),
 			Payload:           clonePayloadPointer(message.Payload),
 			Role:              strings.TrimSpace(message.Role),
 			StartedAtUnixMs:   int64Pointer(message.StartedAtUnixMS),
 			Status:            stringPointer(strings.TrimSpace(message.Status)),
-			TurnId:            stringPointer(strings.TrimSpace(message.TurnID)),
+			TurnId:            turnID,
 			UpdatedAtUnixMs:   int64Pointer(message.UpdatedAtUnixMS),
 			Version:           int64(message.Version),
 		})
 	}
-	return result
+	return result, nil
+}
+
+func normalizedGeneratedMessageOccurredAtUnixMS(message agentservice.SessionMessage) int64 {
+	return firstPositiveInt64(
+		message.OccurredAtUnixMS,
+		message.StartedAtUnixMS,
+		message.CompletedAtUnixMS,
+		message.CreatedAtUnixMS,
+		message.UpdatedAtUnixMS,
+		int64(message.Version),
+		int64(message.ID),
+		1,
+	)
+}
+
+func firstPositiveInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func generatedAgentGeneratedFiles(files []agentservice.GeneratedFile) []tuttigenerated.WorkspaceAgentGeneratedFileEntry {

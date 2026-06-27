@@ -119,6 +119,83 @@ test("app backend labels child groups with app and project names", async () => {
   );
 });
 
+test("app backend search includes matching app project groups", async () => {
+  const calls: Array<{ endpoint: "list" | "search"; filterText?: string }> = [];
+  const tuttidClient = {
+    listWorkspaceApps: async () => ({
+      apps: [
+        {
+          appId: "ai-media-canvas",
+          displayName: "AI Canvas",
+          installed: true,
+          enabled: true,
+          references: { listSupported: true, searchSupported: true }
+        }
+      ]
+    }),
+    listWorkspaceAppReferences: async (
+      _workspaceId: string,
+      _appId: string,
+      input: { filterText?: string | null }
+    ) => {
+      calls.push({
+        endpoint: "list",
+        filterText: input.filterText ?? undefined
+      });
+      return {
+        items: [
+          {
+            type: "group",
+            id: "project-1",
+            displayName: "My First Project",
+            referenceCount: 0
+          }
+        ],
+        nextCursor: null
+      };
+    },
+    searchWorkspaceAppReferences: async () => {
+      calls.push({ endpoint: "search" });
+      return {
+        items: [
+          {
+            type: "reference",
+            reference: {
+              kind: "file",
+              displayName: "cover.png",
+              path: "project-assets/cover.png",
+              parentGroupLabel: "My First Project"
+            }
+          }
+        ],
+        nextCursor: null
+      };
+    }
+  } as unknown as TuttidClient;
+  const backend = createAppReferenceListBackend(tuttidClient);
+
+  const result = await backend.search?.(scope, {
+    query: "My First Project",
+    limit: 20
+  });
+
+  assert.equal(result?.items[0]?.type, "group");
+  assert.deepEqual(
+    result?.items.map((item) => item.type),
+    ["group", "reference"]
+  );
+  assert.equal(
+    result?.items[0] && "parentLabel" in result.items[0]
+      ? result.items[0].parentLabel
+      : undefined,
+    "AI Canvas / My First Project"
+  );
+  assert.deepEqual(calls, [
+    { endpoint: "list", filterText: "My First Project" },
+    { endpoint: "search" }
+  ]);
+});
+
 test("app reference app discovery caches repeated workspace app listing", async () => {
   let listCalls = 0;
   const tuttidClient = {

@@ -33,6 +33,33 @@ describe("AgentMessageMarkdown", () => {
     expect(chip).not.toHaveTextContent("3");
   });
 
+  it("renders app workspace-reference mentions with app icons", () => {
+    const iconUrl = "data:image/png;base64,canvas";
+    const { container } = render(
+      <AgentMessageMarkdown
+        content="使用 [@AI Canvas](mention://workspace-reference/ai-canvas?source=app&workspaceId=room-1)"
+        workspaceAppIcons={[
+          {
+            appId: "ai-canvas",
+            iconUrl,
+            workspaceId: "room-1"
+          }
+        ]}
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute(
+      "data-agent-mention-kind",
+      "workspace-reference"
+    );
+    expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
+    expect(
+      mention?.querySelector('[data-agent-mention-app-icon="true"] img')
+    ).toHaveAttribute("src", iconUrl);
+    expect(mention).toHaveTextContent("AI Canvas");
+  });
+
   it("renders markdown links, inline code, and lists", () => {
     const { container } = render(
       <AgentMessageMarkdown
@@ -42,10 +69,8 @@ describe("AgentMessageMarkdown", () => {
       />
     );
 
-    expect(screen.getByRole("link", { name: "README.md" })).toHaveAttribute(
-      "data-agent-link-href",
-      "README.md"
-    );
+    expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
+    expect(screen.getByText("README.md")).toBeInTheDocument();
     expect(screen.getByText("src/App.tsx")).toBeInTheDocument();
     expect(screen.getByText("重点").tagName).toBe("STRONG");
     expect(screen.getByText("第一项")).toBeInTheDocument();
@@ -192,18 +217,63 @@ describe("AgentMessageMarkdown", () => {
     expect(event).toBe(false);
   });
 
-  it("dispatches link clicks when an action handler is provided", () => {
+  it("renders relative markdown links as plain text", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content={
+          "已读取 [README.md](README.md)，目录 [content/posts](content/posts)。"
+        }
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot: "/Users/local/project",
+          basePath: "/Users/local/project/docs",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "content/posts" })).toBeNull();
+    expect(screen.getByText("README.md")).toBeInTheDocument();
+    expect(screen.getByText("content/posts")).toBeInTheDocument();
+    expect(onLinkAction).not.toHaveBeenCalled();
+  });
+
+  it("keeps standard markdown link hrefs clickable", () => {
     const onLinkClick = vi.fn();
     render(
       <AgentMessageMarkdown
-        content={"已读取 [README.md](README.md)"}
+        content={
+          "[Email](mailto:hello@example.com) [Phone](tel:+123456789) [Section](#details) [Chat](xmpp:hello@example.com)"
+        }
         onLinkClick={onLinkClick}
       />
     );
 
-    fireEvent.click(screen.getByRole("link", { name: "README.md" }));
+    for (const [label, href] of [
+      ["Email", "mailto:hello@example.com"],
+      ["Phone", "tel:+123456789"],
+      ["Section", "#details"],
+      ["Chat", "xmpp:hello@example.com"]
+    ] as const) {
+      fireEvent.click(screen.getByRole("link", { name: label }));
+      expect(onLinkClick).toHaveBeenLastCalledWith(href);
+    }
+  });
 
-    expect(onLinkClick).toHaveBeenCalledWith("README.md");
+  it("renders unsafe markdown links as plain text", () => {
+    const onLinkClick = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content={"不要打开 [bad](javascript:alert(1))"}
+        onLinkClick={onLinkClick}
+      />
+    );
+
+    expect(screen.queryByRole("link", { name: "bad" })).toBeNull();
+    expect(screen.getByText("bad")).toBeInTheDocument();
+    expect(onLinkClick).not.toHaveBeenCalled();
   });
 
   it("does not nest path links inside markdown links with inline code labels", () => {
@@ -237,7 +307,7 @@ describe("AgentMessageMarkdown", () => {
     const onLinkAction = vi.fn();
     render(
       <AgentMessageMarkdown
-        content={"已读取 [README.md](README.md)"}
+        content={"已读取 [README.md](/Users/local/project/docs/README.md)"}
         onLinkAction={onLinkAction}
         workspaceLinkContext={{
           workspaceRoot: "/Users/local/project",
@@ -254,6 +324,56 @@ describe("AgentMessageMarkdown", () => {
       path: "/Users/local/project/docs/README.md",
       directoryPath: "/Users/local/project/docs",
       workspaceRoot: "/Users/local/project",
+      source: "agent-markdown"
+    });
+  });
+
+  it("resolves home-relative markdown file links when workspace context is provided", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content={"已保存 [notes](~/docs/notes.md)"}
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot: "/Users/local/project",
+          basePath: "/Users/local/project",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "notes" }));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "~/docs/notes.md",
+      directoryPath: "~/docs",
+      workspaceRoot: "/Users/local/project",
+      source: "agent-markdown"
+    });
+  });
+
+  it("resolves Windows absolute markdown file links when workspace context is provided", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content={"已读取 [README.md](C:/Users/local/project/docs/README.md)"}
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot: "C:/Users/local/project",
+          basePath: "C:/Users/local/project/docs",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "README.md" }));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "C:/Users/local/project/docs/README.md",
+      directoryPath: "C:/Users/local/project/docs",
+      workspaceRoot: "C:/Users/local/project",
       source: "agent-markdown"
     });
   });
@@ -670,7 +790,7 @@ describe("AgentMessageMarkdown", () => {
     render(
       <AgentMessageMarkdown
         content={
-          "[![generated image](/workspace/output/imagegen/dance.png)](README.md)"
+          "[![generated image](/workspace/output/imagegen/dance.png)](https://example.com/generated-image)"
         }
         onLinkClick={onLinkClick}
         enableImageZoom
@@ -682,7 +802,9 @@ describe("AgentMessageMarkdown", () => {
 
     fireEvent.click(link);
 
-    expect(onLinkClick).toHaveBeenCalledWith("README.md");
+    expect(onLinkClick).toHaveBeenCalledWith(
+      "https://example.com/generated-image"
+    );
   });
 
   it("supports inline rendering for title-sized markdown content", () => {
@@ -908,6 +1030,60 @@ describe("AgentMessageMarkdown", () => {
     expect(onLinkClick).toHaveBeenCalledWith("/Users/example/demo/abc");
   });
 
+  it("turns inline code home-relative paths into clickable links", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content={"已保存到 `~/docs/a.md`。"}
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot: "/Users/example/demo",
+          basePath: "/Users/example/demo",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "~/docs/a.md" }));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "~/docs/a.md",
+      directoryPath: "~/docs",
+      workspaceRoot: "/Users/example/demo",
+      source: "agent-markdown"
+    });
+  });
+
+  it("turns inline code Windows absolute paths into clickable links", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content={"已保存到 `C:\\Users\\local\\project\\docs\\README.md`。"}
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot: "C:/Users/local/project",
+          basePath: "C:/Users/local/project",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("link", {
+        name: "C:\\Users\\local\\project\\docs\\README.md"
+      })
+    );
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "C:/Users/local/project/docs/README.md",
+      directoryPath: "C:/Users/local/project/docs",
+      workspaceRoot: "C:/Users/local/project",
+      source: "agent-markdown"
+    });
+  });
+
   it("turns inline code http urls into clickable links", () => {
     const onLinkClick = vi.fn();
     render(
@@ -1004,12 +1180,12 @@ describe("AgentMessageMarkdown", () => {
     expect(onLinkClick).not.toHaveBeenCalled();
   });
 
-  it("links relative file paths inside inline code when workspace context is provided", () => {
+  it("does not link relative file paths inside inline code when workspace context is provided", () => {
     const onLinkAction = vi.fn();
     render(
       <AgentMessageMarkdown
         content={
-          "已创建目录 [empty-files](empty-files/)，里面包含：\n- `xx.html`\n- `xx.md`"
+          "已创建目录 [empty-files](empty-files/)，里面包含：\n- `xx.html`\n- `xx.md`\n- `content/posts`\n- `lib/site.ts`\n- `README.md`"
         }
         onLinkAction={onLinkAction}
         workspaceLinkContext={{
@@ -1020,23 +1196,18 @@ describe("AgentMessageMarkdown", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("link", { name: "xx.html" }));
-    fireEvent.click(screen.getByRole("link", { name: "xx.md" }));
-
-    expect(onLinkAction).toHaveBeenNthCalledWith(1, {
-      type: "open-workspace-file",
-      path: "/Users/local/project/empty-files/xx.html",
-      directoryPath: "/Users/local/project/empty-files",
-      workspaceRoot: "/Users/local/project",
-      source: "agent-markdown"
-    });
-    expect(onLinkAction).toHaveBeenNthCalledWith(2, {
-      type: "open-workspace-file",
-      path: "/Users/local/project/empty-files/xx.md",
-      directoryPath: "/Users/local/project/empty-files",
-      workspaceRoot: "/Users/local/project",
-      source: "agent-markdown"
-    });
+    for (const label of [
+      "empty-files",
+      "xx.html",
+      "xx.md",
+      "content/posts",
+      "lib/site.ts",
+      "README.md"
+    ]) {
+      expect(screen.queryByRole("link", { name: label })).toBeNull();
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    expect(onLinkAction).not.toHaveBeenCalled();
   });
 
   it("does not treat ordinary inline code as a path", () => {
@@ -1132,10 +1303,8 @@ describe("AgentMessageMarkdown", () => {
         vi.advanceTimersByTime(80);
       });
 
-      expect(screen.getByRole("link", { name: "README.md" })).toHaveAttribute(
-        "data-agent-link-href",
-        "README.md"
-      );
+      expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
+      expect(screen.getByText("README.md")).toBeInTheDocument();
       expect(
         container.querySelector(
           '[data-workspace-agent-markdown-deferred="true"]'

@@ -20,11 +20,16 @@ export function createAgentProvidersClient(
   client: Client
 ): AgentProvidersClient {
   return {
-    async getAgentProviderComposerOptions(provider, request = {}) {
+    async getAgentProviderComposerOptions(
+      provider,
+      request = {},
+      requestOptions
+    ) {
       const response = await getAgentProviderComposerOptions({
         client,
         body: request,
-        path: { provider }
+        path: { provider },
+        ...requestOptions
       });
       return unwrapData(
         response,

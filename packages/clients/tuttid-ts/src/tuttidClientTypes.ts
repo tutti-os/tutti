@@ -198,7 +198,8 @@ export interface TuttidClient {
   createWorkspace(request: { name: string }): Promise<WorkspaceSummary>;
   createWorkspaceAgentSession(
     workspaceID: string,
-    request: CreateWorkspaceAgentSessionRequest
+    request: CreateWorkspaceAgentSessionRequest,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSession>;
   createWorkspaceTerminal(
     workspaceID: string,
@@ -251,7 +252,8 @@ export interface TuttidClient {
   ): Promise<WorkspaceAgentSession>;
   getAgentProviderComposerOptions(
     provider: WorkspaceAgentProvider,
-    request?: GetAgentProviderComposerOptionsRequest
+    request?: GetAgentProviderComposerOptionsRequest,
+    requestOptions?: TuttidRequestOptions
   ): Promise<AgentProviderComposerOptionsResponse>;
   getAgentProviderStatuses(request?: {
     providers?: WorkspaceAgentProvider[];

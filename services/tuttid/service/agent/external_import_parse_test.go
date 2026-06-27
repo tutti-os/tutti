@@ -156,6 +156,9 @@ func TestParseCodexJSONLExtractsPromptFromIDEContext(t *testing.T) {
 	if session.Title != "Refactor the parser" {
 		t.Fatalf("title = %q, want IDE request payload", session.Title)
 	}
+	if len(session.Messages) != 1 || session.Messages[0].Text != "Refactor the parser" {
+		t.Fatalf("messages = %#v, want IDE context replaced with request text", session.Messages)
+	}
 }
 
 func TestParseCodexJSONLSkipsAgentsAndEnvironmentPreamble(t *testing.T) {
@@ -193,6 +196,9 @@ func TestParseCodexJSONLSkipsAgentsAndEnvironmentPreamble(t *testing.T) {
 	}
 	if session.Title != "Real question here" {
 		t.Fatalf("title = %q, want first non-preamble user message", session.Title)
+	}
+	if len(session.Messages) != 1 || session.Messages[0].Text != "Real question here" {
+		t.Fatalf("messages = %#v, want only the real user message", session.Messages)
 	}
 }
 

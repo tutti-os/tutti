@@ -485,6 +485,67 @@ const PERMISSION_MODE_ALIASES = {`
   }
 ];
 
+const TOKEN_USAGE_COMPACT_EDITS = [
+  {
+    name: "do not publish zero usage when compact usage probe fails",
+    find: `                            case "compact_boundary": {
+                                // Refresh the displayed usage immediately so the client doesn't
+                                // keep showing the stale pre-compaction size (e.g. "944k/1m")
+                                // right after the user sees "Compacting completed", which is
+                                // confusing and wrong.
+                                //
+                                // Prefer the SDK's authoritative post-compaction \`used\` via
+                                // getContextUsage — it reflects the real retained context
+                                // (system prompt + tools + surviving messages), which the
+                                // per-message API usage numbers can't give us until the next
+                                // turn's result. If the control request fails, fall back to the
+                                // used:0 approximation: directionally correct (context just
+                                // dropped dramatically) and replaced within seconds by the next
+                                // result message.
+                                //
+                                // \`size\` keeps coming from session.contextWindowSize (learned
+                                // from modelUsage / the model heuristic) — getContextUsage's
+                                // window field under-reports extended 1M windows.
+                                //
+                                // The "Compacting completed." text is emitted from the \`status\`
+                                // handler (keyed on \`compact_result\`), not here, so the failure
+                                // path gets a message too.
+                                const usedTokens = await fetchContextUsedTokens(session.query, this.logger);
+                                lastAssistantUsage = null;
+                                lastAssistantTotalUsage = usedTokens ?? 0;
+                                await this.client.sessionUpdate({
+                                    sessionId: message.session_id,
+                                    update: {
+                                        sessionUpdate: "usage_update",
+                                        used: lastAssistantTotalUsage,
+                                        size: session.contextWindowSize,
+                                    },
+                                });
+                                break;
+                            }`,
+    replace: `                            case "compact_boundary": {
+                                // Refresh the displayed usage only when the SDK returns the
+                                // authoritative post-compaction value. Publishing 0 on probe
+                                // failure makes the client briefly show an impossible empty
+                                // context window before the next usage event restores reality.
+                                const usedTokens = await fetchContextUsedTokens(session.query, this.logger);
+                                lastAssistantUsage = null;
+                                if (typeof usedTokens === "number" && Number.isFinite(usedTokens)) {
+                                    lastAssistantTotalUsage = usedTokens;
+                                    await this.client.sessionUpdate({
+                                        sessionId: message.session_id,
+                                        update: {
+                                            sessionUpdate: "usage_update",
+                                            used: lastAssistantTotalUsage,
+                                            size: session.contextWindowSize,
+                                        },
+                                    });
+                                }
+                                break;
+                            }`
+  }
+];
+
 function applyEdits(source, edits) {
   let nextSource = source;
   for (const edit of edits) {
@@ -557,6 +618,13 @@ function hasGoalPromptUpdates(source) {
     source.includes(
       "const goalPromptUpdate = tuttiClaudeGoalPromptUpdate(firstText)"
     )
+  );
+}
+
+function hasCompactUsageProbeFailureFix(source) {
+  return (
+    source.includes("authoritative post-compaction value") &&
+    !source.includes("lastAssistantTotalUsage = usedTokens ?? 0")
   );
 }
 
@@ -640,6 +708,22 @@ if (hasGoalPromptUpdates(source)) {
   } catch (error) {
     console.error(
       `claude-agent-acp goal-prompt patch failed: ${error.message} Bridge layout changed; update services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs.`
+    );
+    process.exit(1);
+  }
+}
+
+if (hasCompactUsageProbeFailureFix(source)) {
+  console.log(
+    `Already avoids zero usage on Claude compact usage probe failures: ${distPath}`
+  );
+} else {
+  try {
+    source = applyEdits(source, TOKEN_USAGE_COMPACT_EDITS);
+    changed = true;
+  } catch (error) {
+    console.error(
+      `claude-agent-acp compact-usage patch failed: ${error.message} Bridge layout changed; update services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs.`
     );
     process.exit(1);
   }

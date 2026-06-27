@@ -85,6 +85,7 @@ export interface IWorkspaceAgentActivityService {
     cwd?: string | null;
     force?: boolean;
     provider?: string;
+    signal?: AbortSignal;
     settings?: AgentHostAgentSessionComposerSettings | null;
     workspaceId: string;
   }): Promise<unknown>;

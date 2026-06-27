@@ -269,6 +269,7 @@ func TestSQLiteStoreReportAndListAgentActivityMessages(t *testing.T) {
 		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID:        "message-1",
+			TurnID:           "turn-1",
 			Role:             "assistant",
 			Kind:             "text",
 			Status:           "running",
@@ -342,6 +343,7 @@ func TestSQLiteStoreReportAndListAgentActivityMessages(t *testing.T) {
 		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID:        "message-2",
+			TurnID:           "turn-2",
 			Role:             "assistant",
 			Kind:             "text",
 			Status:           "completed",
@@ -422,6 +424,7 @@ func TestSQLiteStoreListsWorkspaceGeneratedFiles(t *testing.T) {
 		Messages: []agentactivitybiz.MessageUpdate{
 			{
 				MessageID: "message-1",
+				TurnID:    "turn-1",
 				Role:      "assistant",
 				Kind:      "tool_call",
 				Status:    "completed",
@@ -436,6 +439,7 @@ func TestSQLiteStoreListsWorkspaceGeneratedFiles(t *testing.T) {
 			},
 			{
 				MessageID: "message-1b",
+				TurnID:    "turn-1",
 				Role:      "assistant",
 				Kind:      "tool_call",
 				Status:    "completed",
@@ -469,6 +473,7 @@ func TestSQLiteStoreListsWorkspaceGeneratedFiles(t *testing.T) {
 		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID: "message-2",
+			TurnID:    "turn-2",
 			Role:      "assistant",
 			Kind:      "tool_call",
 			Status:    "completed",
@@ -554,6 +559,7 @@ func TestSQLiteStoreReportsProviderSessionMessagesToCanonicalAgentSession(t *tes
 		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID:        "approval-1",
+			TurnID:           "turn-approval-1",
 			Role:             "assistant",
 			Kind:             "tool_call",
 			Status:           "waiting",
@@ -633,6 +639,7 @@ func TestSQLiteStoreReportsProviderSessionMessagesToSameOriginSession(t *testing
 		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID:        "runtime-message-1",
+			TurnID:           "turn-runtime-1",
 			Role:             "assistant",
 			Kind:             "text",
 			Status:           "completed",
@@ -703,6 +710,7 @@ func TestSQLiteStoreDoesNotResolveProviderSessionMessagesAcrossProviders(t *test
 		Provider:       "claude",
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID:        "claude-message-1",
+			TurnID:           "turn-claude-1",
 			Role:             "assistant",
 			Kind:             "text",
 			Status:           "completed",
@@ -750,6 +758,7 @@ func TestSQLiteStorePersistsLargeAgentActivityMessagePayload(t *testing.T) {
 		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID:        "message-large",
+			TurnID:           "turn-large",
 			Role:             "assistant",
 			Kind:             "text",
 			Status:           "completed",
@@ -926,6 +935,7 @@ func TestSQLiteStoreDeleteAgentActivitySessionSoftDeletesMessages(t *testing.T) 
 		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID: "message-1",
+			TurnID:    "turn-1",
 			Role:      "assistant",
 			Kind:      "text",
 			Status:    "completed",
@@ -985,6 +995,7 @@ func TestSQLiteStoreClearAgentActivitySessionsHardDeletesTombstones(t *testing.T
 			Provider:       "codex",
 			Messages: []agentactivitybiz.MessageUpdate{{
 				MessageID: "message-" + sessionID,
+				TurnID:    "turn-" + sessionID,
 				Role:      "assistant",
 				Kind:      "text",
 				Status:    "completed",
@@ -1034,6 +1045,7 @@ func TestSQLiteStoreClearAgentActivitySessionsHardDeletesTombstones(t *testing.T
 		Provider:       "codex",
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID: "message-reimported",
+			TurnID:    "turn-reimported",
 			Role:      "assistant",
 			Kind:      "text",
 			Status:    "completed",
@@ -1204,6 +1216,7 @@ func TestSQLiteStoreDeleteAgentActivitySessionIgnoresLateReports(t *testing.T) {
 		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID: "message-late",
+			TurnID:    "turn-late",
 			Role:      "assistant",
 			Kind:      "text",
 			Status:    "completed",

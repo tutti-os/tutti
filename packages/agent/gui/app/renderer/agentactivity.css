@@ -3346,6 +3346,10 @@ aside.workspace-agents-status-panel
   box-shadow: none;
 }
 
+.workspace-agents-status-panel__detail-user-message[data-agent-mention-only="true"].agent-gui-conversation__user-message-bubble {
+  max-width: min(100%, calc(var(--agent-mention-max-width, 16rem) + 24px));
+}
+
 .workspace-agents-status-panel__detail-user-message .tsh-agent-object-token {
   font-size: inherit;
   overflow: visible;
@@ -3359,15 +3363,19 @@ aside.workspace-agents-status-panel
 .workspace-agents-status-panel__detail-user-message > div,
 .workspace-agents-status-panel__detail-user-message > [contenteditable="false"],
 .workspace-agents-status-panel__detail-user-message .ProseMirror {
+  display: inline-block;
   width: fit-content;
   min-width: 0;
   max-width: 100%;
+  vertical-align: top;
   font-size: inherit;
   line-height: inherit;
 }
 
 .workspace-agents-status-panel__detail-user-message.agent-gui-conversation__user-message-bubble
   p {
+  width: fit-content;
+  max-width: 100%;
   margin: 0;
 }
 

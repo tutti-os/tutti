@@ -3,6 +3,7 @@ package agentsessionstore
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -27,7 +28,11 @@ func ReportActivityAsSessionUpdates(
 		}
 		reply.RequestBodyBytes += stateReply.RequestBodyBytes
 	}
-	for _, messagesInput := range SessionMessageInputsFromActivity(input) {
+	messageInputs, err := SessionMessageInputsFromActivity(input)
+	if err != nil {
+		return reply, err
+	}
+	for _, messagesInput := range messageInputs {
 		messagesReply, err := reporter.ReportSessionMessages(ctx, messagesInput)
 		if err != nil {
 			return reply, err
@@ -66,10 +71,10 @@ func SessionStateInputsFromActivity(input ReportActivityInput) []ReportSessionSt
 	return out
 }
 
-func SessionMessageInputsFromActivity(input ReportActivityInput) []ReportSessionMessagesInput {
+func SessionMessageInputsFromActivity(input ReportActivityInput) ([]ReportSessionMessagesInput, error) {
 	updates := mergeActivityMessageUpdates(nil, input.MessageUpdates)
 	if len(updates) == 0 {
-		return nil
+		return nil, nil
 	}
 	source := input.Source
 	source.SessionOrigin = canonicalSessionOriginValue(source.SessionOrigin)
@@ -88,6 +93,9 @@ func SessionMessageInputsFromActivity(input ReportActivityInput) []ReportSession
 		if strings.TrimSpace(converted.MessageID) == "" {
 			continue
 		}
+		if strings.TrimSpace(converted.TurnID) == "" {
+			return nil, fmt.Errorf("agent activity message_update %q is missing turnId", converted.MessageID)
+		}
 		index, ok := indexBySession[agentSessionID]
 		if !ok {
 			index = len(out)
@@ -102,7 +110,7 @@ func SessionMessageInputsFromActivity(input ReportActivityInput) []ReportSession
 		}
 		out[index].Updates = append(out[index].Updates, converted)
 	}
-	return out
+	return out, nil
 }
 
 func mergeActivityMessageUpdates(derived []WorkspaceAgentMessageUpdate, explicit []WorkspaceAgentMessageUpdate) []WorkspaceAgentMessageUpdate {
@@ -164,7 +172,7 @@ func SessionMessageUpdateFromActivityUpdate(update WorkspaceAgentMessageUpdate) 
 		Status:            strings.TrimSpace(update.Status),
 		Semantics:         cloneMessageSemantics(update.Semantics),
 		Payload:           payload,
-		OccurredAtUnixMS:  update.OccurredAtUnixMS,
+		OccurredAtUnixMS:  firstNonZeroInt64(update.OccurredAtUnixMS, update.StartedAtUnixMS, update.CompletedAtUnixMS),
 		StartedAtUnixMS:   update.StartedAtUnixMS,
 		CompletedAtUnixMS: update.CompletedAtUnixMS,
 	}

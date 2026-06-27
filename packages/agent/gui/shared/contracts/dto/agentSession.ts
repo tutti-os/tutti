@@ -329,8 +329,8 @@ export interface AgentHostAgentActivityMessageUpdate {
   workspaceId?: string;
   agentSessionId: string;
   messageId: string;
-  seq?: number;
-  turnId?: string;
+  seq: number;
+  turnId: string;
   role: string;
   kind: string;
   status?: string;
@@ -339,7 +339,7 @@ export interface AgentHostAgentActivityMessageUpdate {
   rootCallId?: string;
   title?: string;
   payload?: Record<string, unknown>;
-  occurredAtUnixMs?: number;
+  occurredAtUnixMs: number;
   startedAtUnixMs?: number;
   completedAtUnixMs?: number;
 }

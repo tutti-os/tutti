@@ -39,6 +39,7 @@ function callItem(
     id,
     messageId: rest.messageId ?? rest.eventId ?? `call-${id}`,
     version: rest.version ?? id,
+    turnId: rest.turnId ?? `turn-${id}`,
     role: rest.role ?? "assistant",
     kind: rest.kind ?? "tool_call",
     status: "running",
@@ -50,7 +51,7 @@ function callItem(
       callId: rest.callId,
       name: rest.name ?? "exec_command"
     },
-    occurredAtUnixMs: rest.occurredAtUnixMs ?? rest.createdAtUnixMs,
+    occurredAtUnixMs: rest.occurredAtUnixMs ?? rest.createdAtUnixMs ?? id,
     startedAtUnixMs: rest.startedAtUnixMs ?? rest.createdAtUnixMs,
     completedAtUnixMs: rest.completedAtUnixMs ?? rest.occurredAtUnixMs,
     ...rest
@@ -67,6 +68,7 @@ function messageItem(
     id,
     messageId: rest.messageId ?? rest.eventId ?? `message-${id}`,
     version: rest.version ?? id,
+    turnId: rest.turnId ?? `turn-${id}`,
     role: "user",
     kind: rest.kind ?? rest.itemType ?? "message",
     payload: {
@@ -74,7 +76,7 @@ function messageItem(
       content: payload.content ?? rest.content,
       text: payload.text ?? rest.content
     },
-    occurredAtUnixMs: rest.occurredAtUnixMs ?? rest.createdAtUnixMs,
+    occurredAtUnixMs: rest.occurredAtUnixMs ?? rest.createdAtUnixMs ?? id,
     startedAtUnixMs: rest.startedAtUnixMs ?? rest.createdAtUnixMs,
     completedAtUnixMs: rest.completedAtUnixMs ?? rest.occurredAtUnixMs,
     ...rest
@@ -261,6 +263,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             payload: { title: "Use staging?" },
             role: "assistant",
             status: "waiting",
+            turnId: "turn-7",
             version: 7,
             workspaceId: "workspace-1"
           }
@@ -1477,6 +1480,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ],
@@ -1492,6 +1497,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-2",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]
@@ -1554,6 +1561,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]
@@ -1611,6 +1620,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]
@@ -1670,6 +1681,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-web",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ],
@@ -1687,6 +1700,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-api",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]
@@ -1766,6 +1781,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           },
           {
@@ -1778,6 +1795,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-2",
+            occurredAtUnixMs: 2,
             version: 2
           }
         ]
@@ -1835,6 +1854,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]
@@ -1877,6 +1898,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]

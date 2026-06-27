@@ -170,6 +170,56 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
+  it("keeps imported home-cwd sessions unassigned when external import marks no project", () => {
+    const snapshot: WorkspaceAgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          workspaceId: "workspace-1",
+          agentSessionId: "imported-home-session",
+          provider: "codex",
+          providerSessionId: "imported-home-session",
+          cwd: "/Users/local",
+          title: "Imported scratch",
+          status: "completed",
+          runtimeContext: {
+            imported: true,
+            externalImportNoProject: true
+          },
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 30
+        }
+      ],
+      sessionMessagesById: {}
+    };
+
+    const summaries = buildAgentGUIConversationSummaries({
+      snapshot,
+      provider: "codex",
+      userProjects: [userProject("home", "/Users/local", "Home")]
+    });
+
+    expect(summaries).toEqual([
+      expect.objectContaining({
+        id: "imported-home-session",
+        project: null,
+        projectMode: "none"
+      })
+    ]);
+    expect(
+      applyAgentGUIConversationProjects(summaries, [
+        userProject("home", "/Users/local", "Home")
+      ])
+    ).toEqual([
+      expect.objectContaining({
+        id: "imported-home-session",
+        project: null,
+        projectMode: "none"
+      })
+    ]);
+  });
+
   it("builds conversations only from runtime Codex sessions", () => {
     const snapshot: AgentHostWorkspaceAgentSnapshot = {
       presences: [],
@@ -273,6 +323,7 @@ describe("agentGuiConversationModel", () => {
             id: 1,
             agentSessionId: "older-start",
             eventId: "late-message",
+            role: "assistant",
             occurredAtUnixMs: 8_000
           })
         ]
@@ -1775,7 +1826,7 @@ function workspaceAgentMessage(
     messageId:
       overrides.messageId ?? overrides.eventId ?? `message-${overrides.id}`,
     version: overrides.version ?? overrides.id,
-    ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
+    turnId: overrides.turnId ?? `turn-${overrides.id}`,
     role: overrides.role ?? "user",
     kind: overrides.kind ?? "message",
     ...(overrides.status ? { status: overrides.status } : {}),
@@ -1784,7 +1835,7 @@ function workspaceAgentMessage(
       content: payload.content ?? overrides.content,
       text: payload.text ?? overrides.content
     },
-    occurredAtUnixMs: overrides.occurredAtUnixMs,
+    occurredAtUnixMs: overrides.occurredAtUnixMs ?? overrides.id,
     startedAtUnixMs: overrides.startedAtUnixMs,
     completedAtUnixMs: overrides.completedAtUnixMs
   };

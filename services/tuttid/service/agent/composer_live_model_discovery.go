@@ -12,21 +12,11 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-const (
-	defaultLiveModelDiscoveryTimeout = 8 * time.Second
-	liveModelDiscoveryPollInterval   = 100 * time.Millisecond
-)
+const liveModelDiscoveryPollInterval = 100 * time.Millisecond
 
 var liveComposerModelDiscoveryGroup singleflight.Group
 
 var errLiveModelDiscoverySessionFailed = errors.New("live model discovery session failed")
-
-func (s *Service) liveModelDiscoveryTimeout() time.Duration {
-	if s.LiveModelDiscoveryTimeout != 0 {
-		return s.LiveModelDiscoveryTimeout
-	}
-	return defaultLiveModelDiscoveryTimeout
-}
 
 func (s *Service) discoverLiveComposerModels(
 	ctx context.Context,
@@ -40,7 +30,7 @@ func (s *Service) discoverLiveComposerModels(
 	}
 	provider := agentprovider.ClaudeCode
 	cacheKey := composerLiveModelCacheKey(provider, workspaceID, cwd)
-	result, err, _ := liveComposerModelDiscoveryGroup.Do(cacheKey, func() (any, error) {
+	resultCh := liveComposerModelDiscoveryGroup.DoChan(cacheKey, func() (any, error) {
 		now := time.Now().UTC()
 		if cached, ok := s.getLiveComposerModelOptions(provider, workspaceID, cwd, now); ok && len(cached) > 0 {
 			return cached, nil
@@ -52,11 +42,16 @@ func (s *Service) discoverLiveComposerModels(
 		s.setLiveComposerModelOptions(provider, workspaceID, cwd, now, discovered)
 		return discovered, nil
 	})
-	if err != nil {
-		return nil, err
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-resultCh:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		models, _ := result.Val.([]ComposerConfigOptionValue)
+		return cloneComposerConfigOptionValues(models), nil
 	}
-	models, _ := result.([]ComposerConfigOptionValue)
-	return cloneComposerConfigOptionValues(models), nil
 }
 
 func (s *Service) discoverLiveComposerModelsUncached(
@@ -83,7 +78,6 @@ func (s *Service) discoverLiveComposerModelsUncached(
 		Provider:         provider,
 		Cwd:              &resolvedCwd,
 		PermissionModeID: stringPointer(strings.TrimSpace(settings.PermissionModeID)),
-		Model:            stringPointer(strings.TrimSpace(settings.Model)),
 		PlanMode:         boolPointer(settings.PlanMode),
 		BrowserUse:       settings.BrowserUse,
 		ComputerUse:      settings.ComputerUse,
@@ -128,9 +122,6 @@ func (s *Service) pollComposerModelOptions(
 	workspaceID string,
 	session RuntimeSession,
 ) ([]ComposerConfigOptionValue, error) {
-	timeout := s.liveModelDiscoveryTimeout()
-	pollCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	ticker := time.NewTicker(liveModelDiscoveryPollInterval)
 	defer ticker.Stop()
 	current := session
@@ -142,8 +133,8 @@ func (s *Service) pollComposerModelOptions(
 			return nil, err
 		}
 		select {
-		case <-pollCtx.Done():
-			return nil, pollCtx.Err()
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		case <-ticker.C:
 			refreshed, ok := s.controller().Session(workspaceID, current.ID)
 			if ok {
@@ -250,12 +241,43 @@ func stringFromAny(input any) string {
 	return ""
 }
 
+func (s *Service) mergeLiveComposerModelsForComposerOptions(
+	ctx context.Context,
+	input ComposerOptionsInput,
+	effectiveSettings ComposerSettings,
+	options ComposerOptions,
+) (ComposerOptions, error) {
+	provider := agentprovider.ClaudeCode
+	var liveModels []ComposerConfigOptionValue
+	if strings.TrimSpace(input.WorkspaceID) != "" {
+		now := time.Now().UTC()
+		cached, ok := s.getLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now)
+		if ok {
+			liveModels = cached
+		} else {
+			discovered, err := s.discoverLiveComposerModels(ctx, input.WorkspaceID, input.Cwd, effectiveSettings)
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return ComposerOptions{}, err
+			}
+			if err == nil && len(discovered) > 0 {
+				liveModels = discovered
+				s.setLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now, discovered)
+			}
+		}
+	}
+	if len(liveModels) > 0 {
+		return mergeLiveModelsIntoComposerOptions(options, liveModels), nil
+	}
+	return clearUnverifiedLiveComposerModel(options), nil
+}
+
 func mergeLiveModelsIntoComposerOptions(options ComposerOptions, liveModels []ComposerConfigOptionValue) ComposerOptions {
-	normalized := normalizeLiveComposerModelOptions(liveModels, options.EffectiveSettings.Model)
+	normalized := normalizeLiveComposerModelOptions(liveModels)
 	if len(normalized) == 0 {
 		return options
 	}
-	selected := strings.TrimSpace(options.EffectiveSettings.Model)
+	selected := liveComposerSelectedModel(options.EffectiveSettings.Model, normalized)
+	options.EffectiveSettings.Model = selected
 	options.ModelConfig = ComposerConfigOption{
 		Configurable: true,
 		CurrentValue: selected,
@@ -266,10 +288,30 @@ func mergeLiveModelsIntoComposerOptions(options ComposerOptions, liveModels []Co
 	return options
 }
 
-func normalizeLiveComposerModelOptions(
-	options []ComposerConfigOptionValue,
-	selectedModel string,
-) []ComposerConfigOptionValue {
+func clearUnverifiedLiveComposerModel(options ComposerOptions) ComposerOptions {
+	options.EffectiveSettings.Model = ""
+	options.ModelConfig = ComposerConfigOption{}
+	if options.RuntimeContext == nil {
+		return options
+	}
+	options.RuntimeContext["model"] = nil
+	delete(options.RuntimeContext, "modelCatalogSource")
+	configOptions := runtimeConfigOptionsAsMapSlice(options.RuntimeContext["configOptions"])
+	if len(configOptions) == 0 {
+		return options
+	}
+	filtered := make([]map[string]any, 0, len(configOptions))
+	for _, option := range configOptions {
+		if strings.TrimSpace(stringFromAny(option["id"])) == "model" {
+			continue
+		}
+		filtered = append(filtered, option)
+	}
+	options.RuntimeContext["configOptions"] = filtered
+	return options
+}
+
+func normalizeLiveComposerModelOptions(options []ComposerConfigOptionValue) []ComposerConfigOptionValue {
 	if len(options) == 0 {
 		return nil
 	}
@@ -299,17 +341,29 @@ func normalizeLiveComposerModelOptions(
 			Description: strings.TrimSpace(option.Description),
 		})
 	}
+	return normalized
+}
+
+func liveComposerSelectedModel(selectedModel string, liveModels []ComposerConfigOptionValue) string {
 	selectedModel = strings.TrimSpace(selectedModel)
 	if selectedModel != "" {
-		if _, ok := seen[selectedModel]; !ok {
-			normalized = append(normalized, ComposerConfigOptionValue{
-				ID:    selectedModel,
-				Label: selectedModel,
-				Value: selectedModel,
-			})
+		for _, option := range liveModels {
+			if strings.TrimSpace(option.Value) == selectedModel {
+				return selectedModel
+			}
 		}
 	}
-	return normalized
+	for _, option := range liveModels {
+		if strings.TrimSpace(option.Value) == "default" {
+			return "default"
+		}
+	}
+	for _, option := range liveModels {
+		if value := strings.TrimSpace(option.Value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func mergeLiveModelsIntoRuntimeContext(
@@ -334,6 +388,7 @@ func mergeLiveModelsIntoRuntimeContext(
 		configOptions = append(configOptions, option)
 	}
 	runtimeContext["configOptions"] = configOptions
+	runtimeContext["model"] = nullableString(selectedModel)
 	runtimeContext["modelCatalogSource"] = "acp-live-discovery"
 	return runtimeContext
 }

@@ -656,6 +656,9 @@ function applyActivityUpdatedMessages(
       message,
       workspaceId: input.workspaceId
     });
+    if (!activityMessage) {
+      continue;
+    }
     messagesBySessionId.set(targetSessionId, [
       ...(messagesBySessionId.get(targetSessionId) ?? []),
       activityMessage
@@ -1080,7 +1083,19 @@ function messageFromEvent(
   const messageId = stringValue(source.messageId);
   const role = stringValue(source.role);
   const kind = stringValue(source.kind);
-  if (!agentSessionId || !messageId || !role || !kind) {
+  const turnId = stringValue(source.turnId);
+  const version = messageVersionValue(source);
+  const occurredAtUnixMs = numberValue(source.occurredAtUnixMs);
+  if (
+    !agentSessionId ||
+    !messageId ||
+    !role ||
+    !kind ||
+    !turnId ||
+    version <= 0 ||
+    occurredAtUnixMs === undefined ||
+    occurredAtUnixMs <= 0
+  ) {
     return null;
   }
   return {
@@ -1088,8 +1103,8 @@ function messageFromEvent(
     agentSessionId,
     messageId,
     id: numberValue(source.id),
-    version: numberValue(source.version) ?? 0,
-    turnId: nullableStringValue(source.turnId),
+    version,
+    turnId,
     role,
     kind,
     status: nullableStringValue(source.status),
@@ -1097,7 +1112,7 @@ function messageFromEvent(
       ? (cloneJSONValue(source.semantics) as AgentActivityMessage["semantics"])
       : undefined,
     payload: recordValue(source.payload) ?? {},
-    occurredAtUnixMs: numberValue(source.occurredAtUnixMs),
+    occurredAtUnixMs,
     startedAtUnixMs: numberValue(source.startedAtUnixMs),
     completedAtUnixMs: numberValue(source.completedAtUnixMs)
   };
@@ -1200,16 +1215,33 @@ function agentActivityMessageFromInlineMessage(input: {
   agentSessionId: string;
   message: Record<string, unknown>;
   workspaceId: string;
-}): AgentActivityMessage {
+}): AgentActivityMessage | null {
+  const messageId = stringValue(input.message.messageId);
+  const role = stringValue(input.message.role);
+  const kind = stringValue(input.message.kind);
+  const turnId = stringValue(input.message.turnId);
+  const version = messageVersionValue(input.message);
+  const occurredAtUnixMs = numberValue(input.message.occurredAtUnixMs);
+  if (
+    !messageId ||
+    !role ||
+    !kind ||
+    !turnId ||
+    version <= 0 ||
+    occurredAtUnixMs === undefined ||
+    occurredAtUnixMs <= 0
+  ) {
+    return null;
+  }
   return {
     workspaceId: stringValue(input.message.workspaceId) || input.workspaceId,
     agentSessionId: input.agentSessionId,
-    messageId: stringValue(input.message.messageId),
+    messageId,
     id: numberValue(input.message.id),
-    version: numberValue(input.message.version) ?? 0,
-    turnId: nullableStringValue(input.message.turnId),
-    role: stringValue(input.message.role),
-    kind: stringValue(input.message.kind),
+    version,
+    turnId,
+    role,
+    kind,
     status: nullableStringValue(input.message.status),
     semantics: recordValue(input.message.semantics)
       ? (cloneJSONValue(
@@ -1217,7 +1249,7 @@ function agentActivityMessageFromInlineMessage(input: {
         ) as AgentActivityMessage["semantics"])
       : undefined,
     payload: recordValue(input.message.payload) ?? {},
-    occurredAtUnixMs: numberValue(input.message.occurredAtUnixMs),
+    occurredAtUnixMs,
     startedAtUnixMs: numberValue(input.message.startedAtUnixMs),
     completedAtUnixMs: numberValue(input.message.completedAtUnixMs)
   };
@@ -1430,6 +1462,10 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
+}
+
+function messageVersionValue(source: Record<string, unknown>): number {
+  return numberValue(source.version) ?? numberValue(source.seq) ?? 0;
 }
 
 function booleanValue(value: unknown): boolean | undefined {

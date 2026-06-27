@@ -2185,6 +2185,14 @@ describe("AgentFileMentionPalette", () => {
       css.match(
         /\.workspace-agents-status-panel__detail-user-message\s+>\s+div,[\s\S]*?\.workspace-agents-status-panel__detail-user-message\s+\.ProseMirror\s*{[^}]*}/s
       )?.[0] ?? "";
+    const userParagraphRule =
+      css.match(
+        /\.workspace-agents-status-panel__detail-user-message\.agent-gui-conversation__user-message-bubble\s+p\s*{[^}]*}/s
+      )?.[0] ?? "";
+    const mentionOnlyUserEditorRule =
+      css.match(
+        /\.workspace-agents-status-panel__detail-user-message\[data-agent-mention-only="true"\]\.agent-gui-conversation__user-message-bubble\s*{[^}]*}/s
+      )?.[0] ?? "";
 
     expect(userBubbleRule).toMatch(/display:\s*inline-block/);
     expect(userBubbleRule).toMatch(/justify-self:\s*end/);
@@ -2207,8 +2215,15 @@ describe("AgentFileMentionPalette", () => {
     expect(userAppMessageTokenRule).toMatch(/vertical-align:\s*middle/);
     expect(userAppMessageTextRule).toMatch(/overflow:\s*visible/);
     expect(userEditorRule).toMatch(/width:\s*fit-content/);
+    expect(userEditorRule).toMatch(/display:\s*inline-block/);
+    expect(userEditorRule).toMatch(/vertical-align:\s*top/);
     expect(userEditorRule).toMatch(/max-width:\s*100%/);
     expect(userEditorRule).toMatch(/font-size:\s*inherit/);
     expect(userEditorRule).toMatch(/line-height:\s*inherit/);
+    expect(userParagraphRule).toMatch(/width:\s*fit-content/);
+    expect(userParagraphRule).toMatch(/max-width:\s*100%/);
+    expect(mentionOnlyUserEditorRule).toMatch(
+      /max-width:\s*min\(100%,\s*calc\(var\(--agent-mention-max-width,\s*16rem\)\s*\+\s*24px\)\)/
+    );
   });
 });

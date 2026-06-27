@@ -304,9 +304,9 @@ type agentActivityMessageData struct {
 	Payload        map[string]any `json:"payload"`
 	Role           string         `json:"role"`
 	Version        *uint64        `json:"version"`
-	TurnID         string         `json:"turnId,omitempty"`
+	TurnID         string         `json:"turnId"`
 	Status         string         `json:"status,omitempty"`
-	OccurredAtMS   *int64         `json:"occurredAtUnixMs,omitempty"`
+	OccurredAtMS   *int64         `json:"occurredAtUnixMs"`
 	StartedAtMS    *int64         `json:"startedAtUnixMs,omitempty"`
 	CompletedAtMS  *int64         `json:"completedAtUnixMs,omitempty"`
 	CreatedAtMS    *int64         `json:"createdAtUnixMs,omitempty"`
@@ -642,6 +642,12 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 			}
 			if message.Version == nil || *message.Version == 0 {
 				return fmt.Errorf("data.messages[%d].version is required", index)
+			}
+			if strings.TrimSpace(message.TurnID) == "" {
+				return fmt.Errorf("data.messages[%d].turnId is required", index)
+			}
+			if message.OccurredAtMS == nil || *message.OccurredAtMS <= 0 {
+				return fmt.Errorf("data.messages[%d].occurredAtUnixMs is required", index)
 			}
 		}
 	case "state_patch":

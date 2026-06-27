@@ -1429,7 +1429,7 @@ export const importWorkspaceExternalAgentSessions = <
   });
 
 /**
- * Get provider composer options with short-lived Claude Code discovery
+ * Get provider composer options with Claude Code live discovery
  */
 export const getAgentProviderComposerOptions = <
   ThrowOnError extends boolean = false

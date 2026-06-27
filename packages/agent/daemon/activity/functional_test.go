@@ -80,6 +80,7 @@ func TestWorkspaceAgentMessageFunctionalFlow(t *testing.T) {
 			{
 				AgentSessionID:   "codex-1",
 				MessageID:        "msg-user-1",
+				TurnID:           "turn-1",
 				Role:             "user",
 				Kind:             "text",
 				Payload:          map[string]any{"content": "Inspect README."},
@@ -88,6 +89,7 @@ func TestWorkspaceAgentMessageFunctionalFlow(t *testing.T) {
 			{
 				AgentSessionID:   "codex-1",
 				MessageID:        "msg-assistant-1",
+				TurnID:           "turn-1",
 				Role:             "assistant",
 				Kind:             "text",
 				Payload:          map[string]any{"content": "Done."},

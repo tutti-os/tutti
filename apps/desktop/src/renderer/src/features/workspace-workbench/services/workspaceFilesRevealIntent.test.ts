@@ -117,6 +117,39 @@ test("workspace files launch coordinator preserves open directory mode", async (
   ]);
 });
 
+test("workspace files launch coordinator preserves existence validation intent", async () => {
+  const requests: Array<{
+    path: string;
+    validateExists?: boolean;
+    workspaceId: string;
+  }> = [];
+  const dispose = registerWorkspaceFilesLaunchHandler(
+    "workspace-exists",
+    (request) => {
+      requests.push(request);
+      return true;
+    }
+  );
+
+  assert.equal(
+    await requestWorkspaceFilesLaunch({
+      homeDirectory: "/Users/example",
+      path: "~/demo/README.md",
+      validateExists: true,
+      workspaceId: "workspace-exists"
+    }),
+    true
+  );
+  dispose();
+  assert.deepEqual(requests, [
+    {
+      path: "/Users/example/demo/README.md",
+      validateExists: true,
+      workspaceId: "workspace-exists"
+    }
+  ]);
+});
+
 test("workspace files launch coordinator expands home-relative paths before dispatch", async () => {
   const requests: Array<{
     mode?: "reveal" | "open-directory";

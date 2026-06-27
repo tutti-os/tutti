@@ -100,6 +100,9 @@ export interface WorkspaceWorkbenchShellRuntime {
     fit: WorkbenchSurfaceWallpaperFit;
     url: string;
   };
+  workspaceFileManagerService: ReturnType<
+    typeof useWorkspaceFileManagerService
+  >;
   workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
   workbenchHostService: ReturnType<typeof useWorkspaceWorkbenchHostService>;
 }
@@ -441,6 +444,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       fit: shellRuntimeSnapshot.wallpaperSelection.wallpaper.fit,
       url: shellRuntimeSnapshot.wallpaperSelection.wallpaper.url
     },
+    workspaceFileManagerService,
     workbenchWindowSnapping: desktopPreferencesState.workbenchWindowSnapping,
     workbenchHostService
   };

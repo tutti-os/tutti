@@ -348,20 +348,24 @@ test("needs-attention selectors use summary and timestamp fallbacks", () => {
       }),
       message({
         messageId: "title",
+        occurredAtUnixMs: undefined as unknown as number,
         payload: { title: "Title wins", content: "Content loses" },
         startedAtUnixMs: 40
       }),
       message({
         messageId: "content",
+        occurredAtUnixMs: undefined as unknown as number,
         payload: { content: "Content loses", text: "Text wins" },
         completedAtUnixMs: 30
       }),
       message({
         messageId: "text",
+        occurredAtUnixMs: undefined as unknown as number,
         payload: { text: "Text wins" }
       }),
       message({
         messageId: "kind",
+        occurredAtUnixMs: undefined as unknown as number,
         payload: {}
       })
     ])
@@ -485,10 +489,12 @@ function message(
     agentSessionId: "session-1",
     messageId: "message-1",
     version: 1,
+    turnId: "turn-1",
     role: "assistant",
     kind: "message.assistant",
     status: "waiting",
     payload: {},
+    occurredAtUnixMs: 1,
     ...overrides
   };
 }
