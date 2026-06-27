@@ -587,29 +587,29 @@ func TestServiceCreateIssueRunCreatesTaskRunWhenIssueHasNoTasks(t *testing.T) {
 	}
 }
 
-func TestProjectIssueStatusUsesInProgressForPartialWork(t *testing.T) {
+func TestProjectIssueStatusUsesRunningForPartialWork(t *testing.T) {
 	tests := []struct {
 		name   string
 		counts StatusCounts
 		want   Status
 	}{
 		{
-			name: "pending acceptance and not started is in progress",
+			name: "pending acceptance and not started is running",
 			counts: StatusCounts{
 				All:               2,
 				NotStarted:        1,
 				PendingAcceptance: 1,
 			},
-			want: StatusInProgress,
+			want: StatusRunning,
 		},
 		{
-			name: "completed and not started is in progress",
+			name: "completed and not started is running",
 			counts: StatusCounts{
 				All:        2,
 				NotStarted: 1,
 				Completed:  1,
 			},
-			want: StatusInProgress,
+			want: StatusRunning,
 		},
 		{
 			name: "running outranks failed",
@@ -1307,8 +1307,6 @@ func incrementStatus(counts *StatusCounts, status Status) {
 	switch status {
 	case StatusRunning:
 		counts.Running++
-	case StatusInProgress:
-		counts.InProgress++
 	case StatusPendingAcceptance:
 		counts.PendingAcceptance++
 	case StatusCompleted:

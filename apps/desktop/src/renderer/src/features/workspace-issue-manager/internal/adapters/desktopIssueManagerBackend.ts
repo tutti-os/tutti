@@ -306,7 +306,6 @@ function toClientStatus(
 ):
   | "not_started"
   | "running"
-  | "in_progress"
   | "pending_acceptance"
   | "completed"
   | "failed"
@@ -315,7 +314,6 @@ function toClientStatus(
   switch (value) {
     case "not_started":
     case "running":
-    case "in_progress":
     case "pending_acceptance":
     case "completed":
     case "failed":
@@ -332,7 +330,6 @@ function toClientStatusFilter(
   | "all"
   | "not_started"
   | "running"
-  | "in_progress"
   | "pending_acceptance"
   | "completed"
   | "failed"

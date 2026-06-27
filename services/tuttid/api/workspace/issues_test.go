@@ -46,12 +46,12 @@ func TestGeneratedIssueManagerContextRefFromDomainScopesTaskID(t *testing.T) {
 	}
 }
 
-func TestGeneratedIssueManagerStatusCountsFromDomainIncludesInProgress(t *testing.T) {
+func TestGeneratedIssueManagerStatusCountsFromDomainOmitsLegacyInProgress(t *testing.T) {
 	t.Parallel()
 
 	encoded, err := json.Marshal(GeneratedIssueManagerStatusCountsFromDomain(workspaceissues.StatusCounts{
-		All:        3,
-		InProgress: 3,
+		All:     3,
+		Running: 3,
 	}))
 	if err != nil {
 		t.Fatalf("Marshal() error = %v", err)
@@ -61,8 +61,11 @@ func TestGeneratedIssueManagerStatusCountsFromDomainIncludesInProgress(t *testin
 	if err := json.Unmarshal(encoded, &payload); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	if payload["inProgress"] != float64(3) {
-		t.Fatalf("inProgress = %v, want 3", payload["inProgress"])
+	if _, ok := payload["inProgress"]; ok {
+		t.Fatalf("inProgress = %v, want omitted", payload["inProgress"])
+	}
+	if payload["running"] != float64(3) {
+		t.Fatalf("running = %v, want 3", payload["running"])
 	}
 }
 

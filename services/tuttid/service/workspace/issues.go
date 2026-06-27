@@ -527,8 +527,6 @@ func incrementIssueManagerStatusCount(counts *workspaceissues.StatusCounts, stat
 		counts.Failed++
 	case workspaceissues.StatusCanceled:
 		counts.Canceled++
-	case workspaceissues.StatusInProgress:
-		counts.InProgress++
 	default:
 		counts.NotStarted++
 	}

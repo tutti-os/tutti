@@ -36,7 +36,7 @@ type taskUpdateInput struct {
 	TaskID    string  `cli:"task-id" validate:"required" description:"Task to update."`
 	Title     *string `cli:"title" description:"Replace the task title."`
 	Content   *string `cli:"content" description:"Replace the task instructions or notes."`
-	Status    *string `cli:"status" description:"Task status: not_started, running, in_progress, pending_acceptance, completed, failed, or canceled."`
+	Status    *string `cli:"status" description:"Task status: not_started, running, pending_acceptance, completed, failed, or canceled."`
 	Priority  *string `cli:"priority" description:"Task priority: high, medium, or low."`
 	DueAtUnix *int64  `cli:"due-at-unix" description:"Set due time as a Unix timestamp in seconds."`
 }
