@@ -245,6 +245,7 @@ export type DesktopPreferences = {
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
+  showAppDeveloperSources: boolean;
   themeSource: DesktopThemeSource;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
@@ -501,6 +502,8 @@ export type WorkspaceApp = {
   displayName: string;
   version: string;
   description: string;
+  authors: Array<WorkspaceAppAuthor>;
+  repository?: WorkspaceAppRepository;
   createdAtUnixMs: number;
   installProgress?: WorkspaceAppInstallProgress;
   iconUrl: string | null;
@@ -530,6 +533,17 @@ export type WorkspaceApp = {
   windowMinHeight: number | null;
   cli: WorkspaceAppCliState;
   references: WorkspaceAppReferencesState;
+};
+
+export type WorkspaceAppAuthor = {
+  name: string;
+  avatarUrl: string | null;
+  url: string | null;
+};
+
+export type WorkspaceAppRepository = {
+  type: "github";
+  url: string;
 };
 
 export type WorkspaceAppMinimizeBehavior = "hibernate" | "keep-mounted";

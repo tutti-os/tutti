@@ -32,6 +32,7 @@ const schemaMigrationDesktopPreferencesFileDefaultOpenersV1 = "desktop_preferenc
 const schemaMigrationDesktopPreferencesAppCatalogChannelV1 = "desktop_preferences_app_catalog_channel_v1"
 const schemaMigrationDesktopPreferencesMinimizeAnimationV1 = "desktop_preferences_minimize_animation_v1"
 const schemaMigrationDesktopPreferencesWindowSnappingV1 = "desktop_preferences_window_snapping_v1"
+const schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1 = "desktop_preferences_show_app_developer_sources_v1"
 const schemaMigrationUserProjectsV1 = "user_projects_v1"
 const schemaMigrationWorkspaceAppsV1 = "workspace_apps_v1"
 const schemaMigrationWorkspaceAppsV2 = "workspace_apps_v2"
@@ -145,6 +146,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyDesktopPreferencesWindowSnappingV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyDesktopPreferencesShowAppDeveloperSourcesV1(ctx); err != nil {
 		return err
 	}
 

@@ -17,6 +17,7 @@ export const preferencesDesktopPreferencesSchema = {
     "locale",
     "minimizeAnimation",
     "sleepPreventionMode",
+    "showAppDeveloperSources",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -181,6 +182,9 @@ export const preferencesDesktopPreferencesSchema = {
       type: "string",
       enum: ["never", "whileAgentRunning", "always"]
     },
+    showAppDeveloperSources: {
+      type: "boolean"
+    },
     themeSource: {
       type: "string",
       enum: ["system", "dark", "light"]
@@ -330,6 +334,8 @@ export const workspaceWorkspaceAppSchema = {
     "displayName",
     "version",
     "description",
+    "authors",
+    "repository",
     "iconUrl",
     "installed",
     "enabled",
@@ -365,6 +371,41 @@ export const workspaceWorkspaceAppSchema = {
     },
     description: {
       type: "string"
+    },
+    authors: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "avatarUrl", "url"],
+        properties: {
+          name: {
+            type: "string",
+            minLength: 1
+          },
+          avatarUrl: {
+            type: ["string", "null"]
+          },
+          url: {
+            type: ["string", "null"]
+          }
+        }
+      }
+    },
+    repository: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      required: ["type", "url"],
+      properties: {
+        type: {
+          type: "string",
+          enum: ["github"]
+        },
+        url: {
+          type: "string",
+          minLength: 1
+        }
+      }
     },
     iconUrl: {
       type: ["string", "null"]
@@ -917,6 +958,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "locale",
         "minimizeAnimation",
         "sleepPreventionMode",
+        "showAppDeveloperSources",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1087,6 +1129,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         sleepPreventionMode: {
           type: "string",
           enum: ["never", "whileAgentRunning", "always"]
+        },
+        showAppDeveloperSources: {
+          type: "boolean"
         },
         themeSource: {
           type: "string",
@@ -1161,6 +1206,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "locale",
         "minimizeAnimation",
         "sleepPreventionMode",
+        "showAppDeveloperSources",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1332,6 +1378,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
           type: "string",
           enum: ["never", "whileAgentRunning", "always"]
         },
+        showAppDeveloperSources: {
+          type: "boolean"
+        },
         themeSource: {
           type: "string",
           enum: ["system", "dark", "light"]
@@ -1396,6 +1445,8 @@ export const workspaceAppUpdatedPayloadSchema = {
         "displayName",
         "version",
         "description",
+        "authors",
+        "repository",
         "iconUrl",
         "installed",
         "enabled",
@@ -1431,6 +1482,41 @@ export const workspaceAppUpdatedPayloadSchema = {
         },
         description: {
           type: "string"
+        },
+        authors: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["name", "avatarUrl", "url"],
+            properties: {
+              name: {
+                type: "string",
+                minLength: 1
+              },
+              avatarUrl: {
+                type: ["string", "null"]
+              },
+              url: {
+                type: ["string", "null"]
+              }
+            }
+          }
+        },
+        repository: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          required: ["type", "url"],
+          properties: {
+            type: {
+              type: "string",
+              enum: ["github"]
+            },
+            url: {
+              type: "string",
+              minLength: 1
+            }
+          }
         },
         iconUrl: {
           type: ["string", "null"]

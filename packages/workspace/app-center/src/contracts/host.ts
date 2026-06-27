@@ -46,7 +46,19 @@ export interface WorkspaceAppCenterReferencesState {
   listSupported: boolean;
 }
 
+export interface WorkspaceAppCenterAuthor {
+  avatarUrl?: string | null;
+  name: string;
+  url?: string | null;
+}
+
+export interface WorkspaceAppCenterRepository {
+  type: "github";
+  url: string;
+}
+
 export interface WorkspaceAppCenterApp {
+  authors?: readonly WorkspaceAppCenterAuthor[];
   availableIconUrl?: string | null;
   availableVersion?: string | null;
   description?: string | null;
@@ -67,6 +79,7 @@ export interface WorkspaceAppCenterApp {
   minimizeBehavior: WorkspaceAppMinimizeBehavior;
   name: string;
   references: WorkspaceAppCenterReferencesState;
+  repository?: WorkspaceAppCenterRepository | null;
   runtimeStatus: WorkspaceAppCenterRuntimeStatus;
   source: WorkspaceAppCenterSource;
   stateRevision: number;

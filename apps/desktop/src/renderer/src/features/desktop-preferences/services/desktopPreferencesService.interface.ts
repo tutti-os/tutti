@@ -44,6 +44,7 @@ export interface IDesktopPreferencesService {
   setSleepPreventionMode(
     mode: DesktopSleepPreventionMode
   ): Promise<DesktopSleepPreventionMode>;
+  setShowAppDeveloperSources(show: boolean): Promise<boolean>;
   setThemeSource(source: DesktopThemeSource): Promise<DesktopThemeState>;
   setUpdateChannel(
     channel: DesktopUpdateChannel

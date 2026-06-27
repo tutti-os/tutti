@@ -56,6 +56,8 @@ export type DesktopAppCatalogChannel =
 export const defaultDesktopAppCatalogChannel: DesktopAppCatalogChannel =
   "production";
 
+export const defaultDesktopShowAppDeveloperSources = false;
+
 export function readInitialDockPlacementFromLocation(
   locationSearch?: string
 ): DesktopDockPlacement {

@@ -31,6 +31,7 @@ type PutInput struct {
 	Locale                                      string
 	MinimizeAnimation                           string
 	SleepPreventionMode                         string
+	ShowAppDeveloperSources                     bool
 	ThemeSource                                 string
 	UpdateChannel                               string
 	UpdatePolicy                                string
@@ -73,6 +74,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		Locale:                                      strings.TrimSpace(input.Locale),
 		MinimizeAnimation:                           normalizeMinimizeAnimation(input.MinimizeAnimation),
 		SleepPreventionMode:                         strings.TrimSpace(input.SleepPreventionMode),
+		ShowAppDeveloperSources:                     input.ShowAppDeveloperSources,
 		ThemeSource:                                 strings.TrimSpace(input.ThemeSource),
 		UpdateChannel:                               strings.TrimSpace(input.UpdateChannel),
 		UpdatePolicy:                                strings.TrimSpace(input.UpdatePolicy),

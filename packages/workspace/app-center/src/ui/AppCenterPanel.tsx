@@ -156,6 +156,7 @@ export interface AppCenterPanelProps {
   readonly providerErrorMessage?: string | null;
   readonly providerLoading?: boolean;
   readonly providerOptions?: readonly AppCenterFactoryProviderOption[];
+  readonly showDeveloperSources?: boolean;
   readonly viewModel: AppCenterViewModel;
 }
 
@@ -172,6 +173,7 @@ export function AppCenterPanel({
   providerErrorMessage = null,
   providerLoading = false,
   providerOptions = [],
+  showDeveloperSources = false,
   viewModel
 }: AppCenterPanelProps): ReactElement {
   const promptTextareaId = useId();
@@ -755,6 +757,7 @@ export function AppCenterPanel({
             apps={activeApps}
             copy={copy}
             emptyMessage={activeAppEmptyMessage}
+            showDeveloperSources={showDeveloperSources}
             title={activeAppTabTitle}
           />
         </section>
@@ -1433,12 +1436,14 @@ function AppCardGrid({
   apps,
   copy,
   emptyMessage,
+  showDeveloperSources,
   title
 }: {
   readonly actions: AppCenterHostActions;
   readonly apps: AppCenterViewModel["apps"];
   readonly copy: AppCenterI18nRuntime;
   readonly emptyMessage: string;
+  readonly showDeveloperSources: boolean;
   readonly title: string;
 }): ReactElement {
   if (apps.length === 0) {
@@ -1461,7 +1466,13 @@ function AppCardGrid({
         role="list"
       >
         {apps.map((app) => (
-          <AppCard actions={actions} app={app} copy={copy} key={app.id} />
+          <AppCard
+            actions={actions}
+            app={app}
+            copy={copy}
+            key={app.id}
+            showDeveloperSources={showDeveloperSources}
+          />
         ))}
       </div>
       <div aria-hidden="true" className="h-6 shrink-0" />

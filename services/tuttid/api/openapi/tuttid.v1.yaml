@@ -3684,6 +3684,7 @@ components:
         - locale
         - minimizeAnimation
         - sleepPreventionMode
+        - showAppDeveloperSources
         - themeSource
         - updateChannel
         - updatePolicy
@@ -3710,6 +3711,8 @@ components:
           $ref: "#/components/schemas/DesktopMinimizeAnimation"
         sleepPreventionMode:
           $ref: "#/components/schemas/DesktopSleepPreventionMode"
+        showAppDeveloperSources:
+          type: boolean
         themeSource:
           $ref: "#/components/schemas/DesktopThemeSource"
         updateChannel:
@@ -4288,6 +4291,7 @@ components:
         - displayName
         - version
         - description
+        - authors
         - createdAtUnixMs
         - iconUrl
         - availableVersion
@@ -4324,6 +4328,13 @@ components:
           minLength: 1
         description:
           type: string
+        authors:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAppAuthor"
+        repository:
+          $ref: "#/components/schemas/WorkspaceAppRepository"
+          nullable: true
         createdAtUnixMs:
           type: integer
           format: int64
@@ -4406,6 +4417,37 @@ components:
           $ref: "#/components/schemas/WorkspaceAppCliState"
         references:
           $ref: "#/components/schemas/WorkspaceAppReferencesState"
+    WorkspaceAppAuthor:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - avatarUrl
+        - url
+      properties:
+        name:
+          type: string
+          minLength: 1
+        avatarUrl:
+          type: string
+          nullable: true
+        url:
+          type: string
+          nullable: true
+    WorkspaceAppRepository:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - url
+      properties:
+        type:
+          type: string
+          enum:
+            - github
+        url:
+          type: string
+          minLength: 1
     WorkspaceAppMinimizeBehavior:
       type: string
       enum:

@@ -177,6 +177,15 @@ export function createAppCenterViewModel({
           : {}),
         ...(runtime?.installProgress
           ? { installProgress: runtime.installProgress }
+          : {}),
+        authors: resolveWorkspaceAppAuthors(app.manifest),
+        ...(app.manifest.source
+          ? {
+              repository: {
+                type: app.manifest.source.type,
+                url: app.manifest.source.url
+              }
+            }
           : {})
       };
     })
@@ -192,6 +201,22 @@ export function createAppCenterViewModel({
     installedCount: appCards.filter((app) => app.installed).length,
     runningCount: appCards.filter((app) => app.status === "running").length
   };
+}
+
+function resolveWorkspaceAppAuthors(manifest: WorkspaceAppRecord["manifest"]) {
+  const authors =
+    manifest.authors && manifest.authors.length > 0
+      ? manifest.authors
+      : manifest.author
+        ? [manifest.author]
+        : [];
+  return authors
+    .map((author) => ({
+      avatarUrl: normalizeOptionalString(author.avatarUrl),
+      name: normalizeOptionalString(author.name) ?? "",
+      url: normalizeOptionalString(author.url)
+    }))
+    .filter((author) => author.name);
 }
 
 interface WorkspaceAppRuntimeStateMaps {

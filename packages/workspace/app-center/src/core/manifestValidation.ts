@@ -21,6 +21,8 @@ export type WorkspaceAppManifestValidationIssueCode =
   | "manifest.references"
   | "manifest.window"
   | "manifest.author"
+  | "manifest.authors"
+  | "manifest.source"
   | "manifest.tags"
   | "manifest.localizationInfo";
 
@@ -104,6 +106,8 @@ export function validateWorkspaceAppManifest(
   const references = validateReferences(value.references, issues);
   const window = validateWindow(value.window, issues);
   const author = validateAuthor(value.author, issues);
+  const authors = validateAuthors(value.authors, issues);
+  const source = validateSource(value.source, issues);
   const tags = validateTags(value.tags, issues);
   const localizationInfo = validateLocalizationInfo(
     value.localizationInfo,
@@ -137,6 +141,8 @@ export function validateWorkspaceAppManifest(
       ...(references ? { references } : {}),
       ...(window ? { window } : {}),
       ...(author ? { author } : {}),
+      ...(authors ? { authors } : {}),
+      ...(source ? { source } : {}),
       ...(tags ? { tags } : {}),
       ...(localizationInfo ? { localizationInfo } : {})
     },
@@ -389,11 +395,17 @@ function validateAuthor(
   }
 
   const name = readOptionalString(value.name);
+  const avatarUrl = readOptionalString(value.avatarUrl);
   const url = readOptionalString(value.url);
-  if (!name || (value.url !== undefined && !url)) {
+  if (
+    !name ||
+    (value.avatarUrl !== undefined && !avatarUrl) ||
+    (value.url !== undefined && !url)
+  ) {
     issues.push({
       code: "manifest.author",
-      message: "author must include name and an optional non-empty url.",
+      message:
+        "author must include name and optional non-empty avatarUrl and url.",
       path: "$.author"
     });
     return undefined;
@@ -401,7 +413,105 @@ function validateAuthor(
 
   return {
     name,
+    ...(avatarUrl ? { avatarUrl } : {}),
     ...(url ? { url } : {})
+  };
+}
+
+function validateAuthors(
+  value: unknown,
+  issues: WorkspaceAppManifestValidationIssue[]
+): WorkspaceAppManifest["authors"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    issues.push({
+      code: "manifest.authors",
+      message: "authors must be an array when provided.",
+      path: "$.authors"
+    });
+    return undefined;
+  }
+
+  const authors = value
+    .map((entry, index) => {
+      if (!isRecord(entry)) {
+        issues.push({
+          code: "manifest.authors",
+          message: "authors entries must be objects.",
+          path: `$.authors[${index}]`
+        });
+        return null;
+      }
+      const name = readOptionalString(entry.name);
+      const avatarUrl = readOptionalString(entry.avatarUrl);
+      const url = readOptionalString(entry.url);
+      if (
+        !name ||
+        (entry.avatarUrl !== undefined && !avatarUrl) ||
+        (entry.url !== undefined && !url)
+      ) {
+        issues.push({
+          code: "manifest.authors",
+          message:
+            "authors entries must include name and optional non-empty avatarUrl and url.",
+          path: `$.authors[${index}]`
+        });
+        return null;
+      }
+      return {
+        name,
+        ...(avatarUrl ? { avatarUrl } : {}),
+        ...(url ? { url } : {})
+      };
+    })
+    .filter(
+      (author): author is NonNullable<WorkspaceAppManifest["author"]> =>
+        author !== null
+    );
+
+  if (
+    value.length === 0 ||
+    authors.length !== value.length ||
+    issues.some((issue) => issue.code === "manifest.authors")
+  ) {
+    return undefined;
+  }
+  return authors;
+}
+
+function validateSource(
+  value: unknown,
+  issues: WorkspaceAppManifestValidationIssue[]
+): WorkspaceAppManifest["source"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(value)) {
+    issues.push({
+      code: "manifest.source",
+      message: "source must be an object when provided.",
+      path: "$.source"
+    });
+    return undefined;
+  }
+
+  const url = readOptionalString(value.url);
+  if (value.type !== "github" || !url) {
+    issues.push({
+      code: "manifest.source",
+      message: "source must include type=github and a non-empty url.",
+      path: "$.source"
+    });
+    return undefined;
+  }
+
+  return {
+    type: "github",
+    url
   };
 }
 

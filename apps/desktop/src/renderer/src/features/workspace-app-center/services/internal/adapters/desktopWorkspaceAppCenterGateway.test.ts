@@ -1243,6 +1243,7 @@ test("Workspace App Center service starts non-running apps before launching them
 function createWorkspaceApp(overrides: Partial<WorkspaceApp>): WorkspaceApp {
   return {
     appId: "ready",
+    authors: [],
     availableIconUrl: null,
     availableVersion: null,
     cli: {

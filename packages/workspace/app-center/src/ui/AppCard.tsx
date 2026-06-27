@@ -11,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   FolderIcon,
+  GitHubBrandIcon,
   MoreHorizontalIcon,
   NavApplicationsFilledIcon,
   RefreshIcon,
@@ -20,6 +21,7 @@ import {
 } from "@tutti-os/ui-system";
 import type {
   WorkspaceAppActionContext,
+  WorkspaceAppAuthorViewModel,
   WorkspaceAppCardViewModel
 } from "../contracts/viewModel.ts";
 import type { WorkspaceAppInstallProgress } from "../contracts/runtime.ts";
@@ -123,13 +125,15 @@ export interface AppCardProps {
   readonly app: WorkspaceAppCardViewModel;
   readonly className?: string;
   readonly copy: AppCenterI18nRuntime;
+  readonly showDeveloperSources?: boolean;
 }
 
 export const AppCard = memo(function AppCard({
   actions,
   app,
   className,
-  copy
+  copy,
+  showDeveloperSources = false
 }: AppCardProps): ReactElement {
   const statusLabel = copy.t(app.statusLabelKey);
   const installBusy =
@@ -322,6 +326,10 @@ export const AppCard = memo(function AppCard({
             </p>
           </div>
         ) : null}
+
+        {showDeveloperSources ? (
+          <AppDeveloperSourceRow app={app} copy={copy} />
+        ) : null}
       </div>
     </article>
   );
@@ -335,6 +343,190 @@ function createWorkspaceAppActionContext(
     runtimeId: app.runtimeId ?? null,
     launchUrl: app.launchUrl ?? null
   };
+}
+
+function AppDeveloperSourceRow({
+  app,
+  copy
+}: {
+  readonly app: WorkspaceAppCardViewModel;
+  readonly copy: AppCenterI18nRuntime;
+}): ReactElement | null {
+  const authors = app.authors ?? [];
+  const repository = app.repository ?? null;
+  if (authors.length === 0 && repository === null) {
+    return null;
+  }
+
+  const primaryAuthor = authors[0] ?? null;
+  const rowLabel =
+    authors.length > 1
+      ? copy.t("sources.developerCount", { count: String(authors.length) })
+      : primaryAuthor?.name ||
+        (repository ? copy.t("sources.githubRepository") : "");
+  const official = isOfficialAuthor(primaryAuthor?.name);
+  const canOpenPopover =
+    repository !== null || authors.some((author) => Boolean(author.url));
+
+  const content = (
+    <div className="group/source mt-auto flex min-h-8 min-w-0 items-center gap-2 border-t border-[color:var(--line-2)] pt-2 text-[12px] leading-4 text-[var(--text-secondary)]">
+      <AvatarStack authors={authors} />
+      <span className="min-w-0 flex-1 truncate">{rowLabel}</span>
+      {official ? (
+        <span className="shrink-0 rounded-[5px] border border-[color:var(--line-2)] px-1.5 py-0 text-[10px] font-medium leading-4 text-[var(--text-secondary)]">
+          {copy.t("sources.official")}
+        </span>
+      ) : null}
+      {canOpenPopover ? (
+        <span className="flex size-5 shrink-0 items-center justify-center text-[var(--text-secondary)]">
+          <GitHubBrandIcon className="size-4 group-hover/source:hidden" />
+          <span
+            aria-hidden="true"
+            className="hidden text-[18px] leading-none group-hover/source:block"
+          >
+            ›
+          </span>
+        </span>
+      ) : null}
+    </div>
+  );
+
+  if (!canOpenPopover) {
+    return content;
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="block w-full min-w-0 border-0 bg-transparent p-0 text-left"
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          {content}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-[280px] max-w-[min(280px,calc(100vw-32px))]"
+        collisionPadding={12}
+        side="bottom"
+        style={{ zIndex: "var(--z-panel-popover)" }}
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+        }}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        <div className="px-2 py-1.5 text-[12px] font-semibold leading-4 text-[var(--text-primary)]">
+          {copy.t("sources.title")}
+        </div>
+        <DropdownMenuGroup className="gap-[2px]">
+          {authors.map((author) => (
+            <DropdownMenuItem
+              className="font-normal"
+              disabled={!author.url}
+              key={`${author.name}:${author.url ?? ""}`}
+              onSelect={(event) => {
+                event.stopPropagation();
+                openExternalURL(author.url);
+              }}
+            >
+              <AuthorAvatar author={author} />
+              <span className="min-w-0 flex-1 truncate">{author.name}</span>
+            </DropdownMenuItem>
+          ))}
+          {repository ? (
+            <DropdownMenuItem
+              className="font-normal"
+              onSelect={(event) => {
+                event.stopPropagation();
+                openExternalURL(repository.url);
+              }}
+            >
+              <GitHubBrandIcon className="size-4" />
+              <span className="min-w-0 flex-1 truncate">
+                {displayRepositoryURL(repository.url)}
+              </span>
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function AvatarStack({
+  authors
+}: {
+  readonly authors: readonly WorkspaceAppAuthorViewModel[];
+}): ReactElement {
+  const visibleAuthors = authors.slice(0, 2);
+  if (visibleAuthors.length === 0) {
+    return (
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--transparency-block)]">
+        <GitHubBrandIcon className="size-3.5" />
+      </span>
+    );
+  }
+  return (
+    <span className="flex shrink-0 -space-x-1">
+      {visibleAuthors.map((author) => (
+        <AuthorAvatar
+          author={author}
+          key={`${author.name}:${author.url ?? ""}`}
+        />
+      ))}
+    </span>
+  );
+}
+
+function AuthorAvatar({
+  author
+}: {
+  readonly author: WorkspaceAppAuthorViewModel;
+}): ReactElement {
+  if (author.avatarUrl) {
+    return (
+      <img
+        alt=""
+        className="size-5 shrink-0 rounded-full border border-[var(--background-fronted)] object-cover"
+        draggable={false}
+        src={author.avatarUrl}
+      />
+    );
+  }
+  return (
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-[var(--background-fronted)] bg-[var(--transparency-block)] text-[10px] font-semibold uppercase text-[var(--text-secondary)]">
+      {author.name.slice(0, 1)}
+    </span>
+  );
+}
+
+function isOfficialAuthor(name: string | null | undefined): boolean {
+  const normalized = name?.trim().toLowerCase() ?? "";
+  return normalized === "tutti" || normalized === "tutti official";
+}
+
+function displayRepositoryURL(url: string): string {
+  return url.replace(/^https?:\/\//u, "");
+}
+
+function openExternalURL(url: string | null | undefined): void {
+  const target = url?.trim();
+  if (!target) {
+    return;
+  }
+  window.open(target, "_blank", "noopener,noreferrer");
 }
 
 function AppCardMoreActions({

@@ -22,6 +22,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		Locale:                                      tuttigenerated.DesktopLocale(value.Locale),
 		MinimizeAnimation:                           tuttigenerated.DesktopMinimizeAnimation(value.MinimizeAnimation),
 		SleepPreventionMode:                         tuttigenerated.DesktopSleepPreventionMode(value.SleepPreventionMode),
+		ShowAppDeveloperSources:                     value.ShowAppDeveloperSources,
 		ThemeSource:                                 tuttigenerated.DesktopThemeSource(value.ThemeSource),
 		UpdateChannel:                               tuttigenerated.DesktopUpdateChannel(value.UpdateChannel),
 		UpdatePolicy:                                tuttigenerated.DesktopUpdatePolicy(value.UpdatePolicy),

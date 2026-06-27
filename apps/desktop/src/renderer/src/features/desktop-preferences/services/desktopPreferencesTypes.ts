@@ -25,6 +25,7 @@ export interface DesktopPreferencesStoreState {
   changingLocale: DesktopLocale | null;
   changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
+  changingShowAppDeveloperSources: boolean | null;
   changingThemeSource: DesktopThemeSource | null;
   changingUpdateChannel: DesktopUpdateChannel | null;
   changingUpdatePolicy: DesktopUpdatePolicy | null;
@@ -40,6 +41,7 @@ export interface DesktopPreferencesStoreState {
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
+  showAppDeveloperSources: boolean;
   theme: DesktopThemeState;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
@@ -55,6 +57,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingLocale: DesktopLocale | null;
   readonly changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   readonly changingSleepPreventionMode: DesktopSleepPreventionMode | null;
+  readonly changingShowAppDeveloperSources: boolean | null;
   readonly changingThemeSource: DesktopThemeSource | null;
   readonly changingUpdateChannel: DesktopUpdateChannel | null;
   readonly changingUpdatePolicy: DesktopUpdatePolicy | null;
@@ -70,6 +73,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly locale: DesktopLocale;
   readonly minimizeAnimation: DesktopMinimizeAnimation;
   readonly sleepPreventionMode: DesktopSleepPreventionMode;
+  readonly showAppDeveloperSources: boolean;
   readonly theme: DesktopThemeState;
   readonly updateChannel: DesktopUpdateChannel;
   readonly updatePolicy: DesktopUpdatePolicy;

@@ -29,6 +29,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
             locale: "en",
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
             themeSource: "system",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -65,6 +66,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         locale: "zh-CN",
         minimizeAnimation: "genie",
         sleepPreventionMode: "never",
+        showAppDeveloperSources: false,
         themeSource: "dark",
         updateChannel: "rc",
         updatePolicy: "prompt"
@@ -103,6 +105,7 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
             locale: "en",
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
             themeSource: "system",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -151,6 +154,7 @@ test("createDesktopHostPreferencesState migrates the old stable default update c
             locale: "zh-CN",
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
             themeSource: "dark",
             updateChannel: "stable",
             updatePolicy: "prompt"
@@ -218,6 +222,7 @@ test("createDesktopHostPreferencesState preserves stable after the update channe
             locale: "zh-CN",
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
             themeSource: "dark",
             updateChannel: "stable",
             updatePolicy: "prompt"
@@ -256,6 +261,7 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
             locale: "en",
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
             themeSource: "system",
             updateChannel: "stable",
             updatePolicy: "prompt"

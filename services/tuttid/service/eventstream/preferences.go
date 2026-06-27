@@ -39,12 +39,13 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionPayloadFromBiz(
 				preferences.FileDefaultOpenersByExtension,
 			),
-			Locale:              preferences.Locale,
-			MinimizeAnimation:   preferences.MinimizeAnimation,
-			SleepPreventionMode: preferences.SleepPreventionMode,
-			ThemeSource:         preferences.ThemeSource,
-			UpdateChannel:       preferences.UpdateChannel,
-			UpdatePolicy:        preferences.UpdatePolicy,
+			Locale:                  preferences.Locale,
+			MinimizeAnimation:       preferences.MinimizeAnimation,
+			SleepPreventionMode:     preferences.SleepPreventionMode,
+			ShowAppDeveloperSources: preferences.ShowAppDeveloperSources,
+			ThemeSource:             preferences.ThemeSource,
+			UpdateChannel:           preferences.UpdateChannel,
+			UpdatePolicy:            preferences.UpdatePolicy,
 			WorkbenchWindowSnapping: &desktopWorkbenchWindowSnappingPayload{
 				Enabled:        preferences.WindowSnappingEnabled,
 				ShortcutPreset: preferences.WindowSnappingShortcutPreset,
@@ -80,6 +81,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			Locale:                                      decoded.Locale,
 			MinimizeAnimation:                           decoded.MinimizeAnimation,
 			SleepPreventionMode:                         decoded.SleepPreventionMode,
+			ShowAppDeveloperSources:                     decoded.ShowAppDeveloperSources,
 			ThemeSource:                                 decoded.ThemeSource,
 			UpdateChannel:                               decoded.UpdateChannel,
 			UpdatePolicy:                                decoded.UpdatePolicy,
@@ -104,6 +106,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	Locale                                      string
 	MinimizeAnimation                           string
 	SleepPreventionMode                         string
+	ShowAppDeveloperSources                     bool
 	ThemeSource                                 string
 	UpdateChannel                               string
 	UpdatePolicy                                string
@@ -138,13 +141,14 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromPayload(
 			decoded.Preferences.FileDefaultOpenersByExtension,
 		),
-		Locale:              decoded.Preferences.Locale,
-		MinimizeAnimation:   decoded.Preferences.MinimizeAnimation,
-		SleepPreventionMode: decoded.Preferences.SleepPreventionMode,
-		ThemeSource:         decoded.Preferences.ThemeSource,
-		UpdateChannel:       decoded.Preferences.UpdateChannel,
-		UpdatePolicy:        decoded.Preferences.UpdatePolicy,
-		WindowSnapping:      windowSnapping,
+		Locale:                  decoded.Preferences.Locale,
+		MinimizeAnimation:       decoded.Preferences.MinimizeAnimation,
+		SleepPreventionMode:     decoded.Preferences.SleepPreventionMode,
+		ShowAppDeveloperSources: decoded.Preferences.ShowAppDeveloperSources,
+		ThemeSource:             decoded.Preferences.ThemeSource,
+		UpdateChannel:           decoded.Preferences.UpdateChannel,
+		UpdatePolicy:            decoded.Preferences.UpdatePolicy,
+		WindowSnapping:          windowSnapping,
 	}, nil
 }
 

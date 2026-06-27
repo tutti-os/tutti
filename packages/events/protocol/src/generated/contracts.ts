@@ -98,6 +98,7 @@ export interface PreferencesDesktopPreferencesV1 {
   locale: "en" | "zh-CN";
   minimizeAnimation: "scale" | "genie" | "off";
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";
+  showAppDeveloperSources: boolean;
   themeSource: "system" | "dark" | "light";
   updateChannel: "stable" | "rc";
   updatePolicy: "off" | "prompt" | "auto";
@@ -139,6 +140,12 @@ export interface WorkspaceWorkspaceAppV1 {
   displayName: string;
   version: string;
   description: string;
+  authors: readonly {
+    name: string;
+    avatarUrl: string | null;
+    url: string | null;
+  }[];
+  repository: Record<string, unknown> | null;
   iconUrl: string | null;
   installed: boolean;
   enabled: boolean;

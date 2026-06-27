@@ -15,6 +15,7 @@
     "locale",
     "minimizeAnimation",
     "sleepPreventionMode",
+    "showAppDeveloperSources",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -89,6 +90,9 @@
     "sleepPreventionMode": {
       "type": "string",
       "enum": ["never", "whileAgentRunning", "always"]
+    },
+    "showAppDeveloperSources": {
+      "type": "boolean"
     },
     "themeSource": {
       "type": "string",

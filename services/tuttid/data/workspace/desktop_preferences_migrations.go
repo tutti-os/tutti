@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS desktop_preferences (
   app_catalog_channel TEXT NOT NULL DEFAULT 'production',
   update_channel TEXT NOT NULL DEFAULT 'stable',
   update_policy TEXT NOT NULL DEFAULT 'prompt',
+  show_app_developer_sources INTEGER NOT NULL DEFAULT 0,
   workbench_window_snapping_enabled INTEGER NOT NULL DEFAULT 0,
   workbench_window_snapping_shortcut_preset TEXT NOT NULL DEFAULT 'commandArrows',
   updated_at_unix_ms INTEGER NOT NULL
@@ -42,6 +43,38 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 `, schemaMigrationDesktopPreferencesV1, now)
 	if err != nil {
 		return fmt.Errorf("migrate workspace database for desktop preferences: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesShowAppDeveloperSourcesV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	hasShowAppDeveloperSources, err := s.hasColumn(ctx, "desktop_preferences", "show_app_developer_sources")
+	if err != nil {
+		return err
+	}
+	if !hasShowAppDeveloperSources {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN show_app_developer_sources INTEGER NOT NULL DEFAULT 0;`); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop app developer sources: %w", err)
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1, now)
+	if err != nil {
+		return fmt.Errorf("record desktop app developer sources migration: %w", err)
 	}
 
 	return nil

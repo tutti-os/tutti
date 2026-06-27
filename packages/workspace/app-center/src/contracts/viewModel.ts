@@ -27,6 +27,17 @@ export interface WorkspaceAppActionContext {
   readonly launchUrl?: string | null;
 }
 
+export interface WorkspaceAppAuthorViewModel {
+  readonly avatarUrl?: string | null;
+  readonly name: string;
+  readonly url?: string | null;
+}
+
+export interface WorkspaceAppRepositoryViewModel {
+  readonly type: "github";
+  readonly url: string;
+}
+
 export interface WorkspaceAppCardViewModel {
   readonly id: string;
   readonly installationId?: string | null;
@@ -69,6 +80,8 @@ export interface WorkspaceAppCardViewModel {
   readonly factoryAgentSessionId?: string | null;
   readonly factoryJobId?: string | null;
   readonly factoryProvider?: string | null;
+  readonly authors?: readonly WorkspaceAppAuthorViewModel[];
+  readonly repository?: WorkspaceAppRepositoryViewModel | null;
 }
 
 export interface AppCenterViewModel {

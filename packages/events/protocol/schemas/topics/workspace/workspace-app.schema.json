@@ -9,6 +9,8 @@
     "displayName",
     "version",
     "description",
+    "authors",
+    "repository",
     "iconUrl",
     "installed",
     "enabled",
@@ -44,6 +46,41 @@
     },
     "description": {
       "type": "string"
+    },
+    "authors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "avatarUrl", "url"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "avatarUrl": {
+            "type": ["string", "null"]
+          },
+          "url": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "repository": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["type", "url"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["github"]
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "iconUrl": {
       "type": ["string", "null"]
