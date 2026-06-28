@@ -89,6 +89,15 @@ describe("stripMarkdownForCopy", () => {
     );
   });
 
+  it("strips unmatched bold markers (stray ** without closing pair)", () => {
+    expect(stripMarkdownForCopy("Hello **World")).toBe("Hello World");
+    expect(stripMarkdownForCopy("**unmatched text")).toBe("unmatched text");
+  });
+
+  it("strips unmatched underscore bold markers (stray __ without closing pair)", () => {
+    expect(stripMarkdownForCopy("Hello __World")).toBe("Hello World");
+  });
+
   it("handles multiple formatting in a single paragraph", () => {
     const input = "Use **bold** and *italic* and `code` together.";
     expect(stripMarkdownForCopy(input)).toBe(

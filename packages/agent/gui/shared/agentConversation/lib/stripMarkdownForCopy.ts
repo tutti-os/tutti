@@ -25,6 +25,10 @@ export function stripMarkdownForCopy(markdown: string): string {
   // Bold alt: __text__  →  text
   result = result.replace(/_{2}(.+?)_{2}/g, "$1");
 
+  // Remove unmatched bold markers (stray ** or __ without closing pair)
+  result = result.replace(/(?<!\*)\*{2}(?!\*)/g, "");
+  result = result.replace(/(?<!_)_{2}(?!_)/g, "");
+
   // Strikethrough: ~~text~~  →  text
   result = result.replace(/~~(.+?)~~/g, "$1");
 
