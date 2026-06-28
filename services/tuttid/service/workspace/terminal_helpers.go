@@ -77,15 +77,19 @@ func resolveTerminalShellInvocation(shell string) []string {
 }
 
 func terminalProcessEnv(cwd string) []string {
-	// Inject the macOS system proxy so commands run in the workspace terminal —
-	// notably agent `login` flows — reach the upstream API through the same proxy
-	// as spawned agents, instead of connecting directly and hitting `403 Request
-	// not allowed` from a restricted region.
-	return runtimecmd.InjectSystemProxyEnv(append(os.Environ(),
+	env := append(os.Environ(),
 		"PWD="+cwd,
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
-	))
+	)
+	// Ensure a UTF-8 locale so CJK and other multi-byte characters render
+	// correctly.  Daemon processes launched outside a login shell (e.g. via
+	// Finder/Spotlight) may not inherit the user's locale settings.
+	lang := os.Getenv("LANG")
+	if lang == "" || lang == "C" || lang == "POSIX" {
+		env = append(env, "LANG=en_US.UTF-8")
+	}
+	return runtimecmd.InjectSystemProxyEnv(env)
 }
 
 func normalizeTerminalDimension(value *int, fallback int) int {
