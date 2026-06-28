@@ -1142,6 +1142,7 @@ function MarkdownMedia({
         src={resolvedSrc}
         alt={alt}
         title={title}
+        downloadName={resolveMarkdownImageDownloadName(src, alt)}
         className={className}
         wrapElement="span"
       />
@@ -1187,6 +1188,7 @@ function MarkdownMedia({
         src={state.src}
         alt={alt}
         title={title}
+        downloadName={resolveMarkdownImageDownloadName(workspacePath, alt)}
         className={cn(
           "mt-2 block max-h-[360px] max-w-full rounded-[8px] bg-[var(--transparency-block)] object-contain",
           className
@@ -1216,6 +1218,19 @@ function UnsupportedMarkdownMediaPreview(): JSX.Element {
       {t("agentHost.workspaceFileManager.previewUnsupported")}
     </span>
   );
+}
+
+function resolveMarkdownImageDownloadName(
+  src: unknown,
+  alt: unknown
+): string | undefined {
+  if (typeof src === "string") {
+    const pathName = basenameWorkspacePath(src.trim());
+    if (pathName) {
+      return pathName;
+    }
+  }
+  return typeof alt === "string" ? alt.trim() || undefined : undefined;
 }
 
 const MARKDOWN_ORDERED_LIST_STYLE: CSSProperties = {

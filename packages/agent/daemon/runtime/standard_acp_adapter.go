@@ -2521,12 +2521,8 @@ func claudeACPInitializeParams(host HostMetadata) map[string]any {
 }
 
 func fallbackStandardSessionTitle(config standardACPConfig, currentTitle string, prompt string) string {
-	normalizedTitle := strings.ToLower(strings.TrimSpace(currentTitle))
-	placeholderTitles := append([]string{"", config.defaultTitle}, config.defaultTitleAliases...)
-	for _, placeholderTitle := range placeholderTitles {
-		if normalizedTitle == strings.ToLower(strings.TrimSpace(placeholderTitle)) {
-			return promptTitleSnippet(prompt)
-		}
+	if isStandardACPPlaceholderTitle(config, currentTitle) {
+		return promptTitleSnippet(prompt)
 	}
 	return ""
 }
@@ -2565,7 +2561,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		return normalizer.AppendThinkingChunk(session, turnID, content)
 	case "session_info_update":
 		if event, ok := acpSessionTitleEvent(session, params.Update); ok {
-			if shouldIgnoreStandardACPTitle(config, event.Payload.Title) {
+			if shouldIgnoreStandardACPTitle(config, session.Title, event.Payload.Title) {
 				return nil
 			}
 			return []activityshared.Event{event}
@@ -2965,11 +2961,25 @@ func isTerminalACPToolStatus(status string) bool {
 	}
 }
 
-func shouldIgnoreStandardACPTitle(config standardACPConfig, title string) bool {
+func shouldIgnoreStandardACPTitle(config standardACPConfig, currentTitle string, title string) bool {
 	if strings.TrimSpace(config.provider) != ProviderClaudeCode {
 		return false
 	}
-	return isClaudeACPInterruptMarker(title) || isClaudeCodeMentionHandoffTitle(title)
+	if isClaudeACPInterruptMarker(title) || isClaudeCodeMentionHandoffTitle(title) {
+		return true
+	}
+	return !isStandardACPPlaceholderTitle(config, currentTitle)
+}
+
+func isStandardACPPlaceholderTitle(config standardACPConfig, title string) bool {
+	normalizedTitle := strings.ToLower(strings.TrimSpace(title))
+	placeholderTitles := append([]string{"", config.defaultTitle}, config.defaultTitleAliases...)
+	for _, placeholderTitle := range placeholderTitles {
+		if normalizedTitle == strings.ToLower(strings.TrimSpace(placeholderTitle)) {
+			return true
+		}
+	}
+	return false
 }
 
 func isClaudeCodeMentionHandoffTitle(title string) bool {

@@ -45,7 +45,7 @@ async function buildDevCli() {
   const goBin = process.env.GO_BIN?.trim() || resolveCommand("go");
   const result = spawnSync(
     goBin,
-    ["build", "-o", builtCliPath, "./cmd/tutti"],
+    ["build", "-buildvcs=false", "-o", builtCliPath, "./cmd/tutti"],
     {
       cwd: cliDir,
       env: {

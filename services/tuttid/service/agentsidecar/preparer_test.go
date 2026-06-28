@@ -214,7 +214,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if !strings.Contains(string(issueSkill), "mention://workspace-issue") ||
 		!strings.Contains(string(issueSkill), "mode=breakdown") ||
-		!strings.Contains(string(issueSkill), "Use the injected `tutti-cli` skill as the command reference") ||
+		!strings.Contains(string(issueSkill), "read the materialized sibling `tutti-cli/SKILL.md`") ||
 		!strings.Contains(string(issueSkill), "## Inspection Mode") ||
 		!strings.Contains(string(issueSkill), "Create the run yourself before doing the work") ||
 		!strings.Contains(string(issueSkill), "inspect issue tasks before creating a run") ||

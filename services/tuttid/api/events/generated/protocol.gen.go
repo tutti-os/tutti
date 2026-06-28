@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:383768b406efdf44"
+	BusinessEventCatalogRevision = "sha256:ffedbdd1e9e80770"
 )
 
 type Topic string
@@ -137,10 +137,19 @@ type WorkspaceWorkspaceAppFactoryJob struct {
 }
 
 type WorkspaceWorkspaceApp struct {
-	AppId           string   `json:"appId"`
-	DisplayName     string   `json:"displayName"`
-	Version         string   `json:"version"`
-	Description     string   `json:"description"`
+	AppId       string `json:"appId"`
+	DisplayName string `json:"displayName"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	Authors     []struct {
+		Name      string  `json:"name"`
+		Url       *string `json:"url,omitempty"`
+		AvatarUrl *string `json:"avatarUrl,omitempty"`
+	} `json:"authors,omitempty"`
+	Repository *struct {
+		Type string `json:"type"`
+		Url  string `json:"url"`
+	} `json:"repository,omitempty"`
 	IconUrl         *string  `json:"iconUrl"`
 	Installed       bool     `json:"installed"`
 	Enabled         bool     `json:"enabled"`
