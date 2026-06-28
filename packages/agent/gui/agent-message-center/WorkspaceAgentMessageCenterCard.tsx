@@ -25,6 +25,7 @@ import {
 } from "@tutti-os/ui-system";
 import { useTranslation } from "../i18n/index";
 import { normalizeAgentTitleText } from "../shared/utils/agentTitleText";
+import { stripMarkdownFormatting } from "../shared/utils/markdownPlainText";
 import { AgentInteractivePromptSurface } from "../shared/agentConversation/components/AgentInteractivePromptSurface";
 import { AgentMessageMarkdown } from "../shared/AgentMessageMarkdown";
 import { AgentVerticalScrollArea } from "../shared/AgentVerticalScrollArea";
@@ -529,10 +530,10 @@ function MessageCenterStackSummary({
 function messageCenterStackPreviewText(
   item: WorkspaceAgentMessageCenterItem
 ): string {
-  return (
+  return stripMarkdownFormatting(
     item.digest.primary.summary.trim() ||
-    item.lastAgentMessageSummary.trim() ||
-    normalizeAgentTitleText(item.title)
+      item.lastAgentMessageSummary.trim() ||
+      normalizeAgentTitleText(item.title)
   );
 }
 
@@ -734,7 +735,7 @@ function MessageCenterSummary({
         />
       ) : summary ? (
         <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-          {summary}
+          {stripMarkdownFormatting(summary)}
         </div>
       ) : (
         emptyLabel

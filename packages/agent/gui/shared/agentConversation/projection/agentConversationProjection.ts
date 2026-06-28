@@ -23,6 +23,7 @@ import {
   projectAgentTurnSummaryRowForTurn,
   projectAgentTurnSummaryRows
 } from "./agentTurnSummaryProjection";
+import { stripMarkdownFormatting } from "../../utils/markdownPlainText";
 
 export interface AgentConversationProjectionOptions {
   avoidGroupingEdits?: boolean;
@@ -438,7 +439,7 @@ function projectMessageCopyText(
         row.speaker === "user"
           ? copyTextForUserMessage(message)
           : assistantCopyTargetKeys.has(messageCopyTargetKey(row, message))
-            ? message.body
+            ? stripMarkdownFormatting(message.body)
             : null;
       if ((message.copyText ?? null) === copyText) {
         return message;
