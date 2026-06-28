@@ -64,16 +64,17 @@ func TestServiceListReturnsLatestActiveActionAfterNetworkProbe(t *testing.T) {
 	service := testService(func(_ string) (string, error) {
 		return "", errors.New("not found")
 	}, map[string]bool{})
-	setActiveAction("codex", ActiveAction{
+	activeCtx := withActiveActionToken(context.Background(), nextActiveActionToken())
+	claimActiveAction(activeCtx, "codex", ActiveAction{
 		ID:     ActionInstall,
 		Status: "running",
 		Step:   "cli",
 	})
-	t.Cleanup(func() { clearActiveAction("codex") })
+	t.Cleanup(func() { clearActiveAction(activeCtx, "codex") })
 	var appended atomic.Bool
 	service.HTTPClient = &http.Client{Transport: networkRoundTripFunc(func(*http.Request) (*http.Response, error) {
 		if appended.CompareAndSwap(false, true) {
-			appendActiveActionStdout("codex", "installer output\n")
+			appendActiveActionStdout(activeCtx, "codex", "installer output\n")
 		}
 		return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}, nil
 	})}

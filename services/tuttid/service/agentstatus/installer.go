@@ -201,7 +201,7 @@ func (s Service) installMissingProviderRuntime(
 			"adapterVersion", current.AdapterVersion,
 			"installDir", current.InstallDir,
 		)
-		setActiveAction(spec.Provider, ActiveAction{
+		setActiveAction(ctx, spec.Provider, ActiveAction{
 			ID:     ActionInstall,
 			Status: "running",
 			Step:   installTarget,
@@ -360,7 +360,7 @@ func (s Service) executeInstaller(
 		result, err := s.installCommand(installCtx, InstallCommandInput{
 			Command:  spec.ShellCommand,
 			Env:      s.commandResolver().Env(nil),
-			OnStdout: activeActionStdoutAppender(provider),
+			OnStdout: activeActionStdoutAppender(ctx, provider),
 		})
 		if err == nil && result.ExitCode == 0 {
 			result = s.applyInstallerPostStep(installCtx, spec, result)
@@ -446,7 +446,7 @@ func (s Service) runOfficialScriptInstaller(ctx context.Context, provider string
 	return s.installCommand(ctx, InstallCommandInput{
 		Command:  joinShellCommand([]string{spec.ScriptShell, scriptPath}),
 		Env:      s.commandResolver().Env(nil),
-		OnStdout: activeActionStdoutAppender(provider),
+		OnStdout: activeActionStdoutAppender(ctx, provider),
 	})
 }
 
@@ -551,7 +551,7 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 	registries := s.agentNPMRegistries()
 	var result InstallCommandResult
 	for i, registry := range registries {
-		setActiveAction(provider, ActiveAction{
+		setActiveAction(ctx, provider, ActiveAction{
 			ID:       ActionInstall,
 			Status:   "running",
 			Step:     "adapter",
@@ -562,7 +562,7 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 		result, err = s.installCommand(attemptCtx, InstallCommandInput{
 			Command:  command,
 			Env:      env,
-			OnStdout: activeActionStdoutAppender(provider),
+			OnStdout: activeActionStdoutAppender(ctx, provider),
 		})
 		cancel()
 		if err == nil && result.ExitCode == 0 {

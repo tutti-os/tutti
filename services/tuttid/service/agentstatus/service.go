@@ -385,9 +385,17 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	if result, ok := unsupportedProviderRunActionResult(spec, result); ok {
 		return result, nil
 	}
-	defer clearActiveAction(spec.Provider)
+	// Tag this run's context with a unique token and claim ownership of the
+	// provider's active action, so a concurrent install of the same provider
+	// can't cross-contaminate stdout or have our deferred clear delete its entry.
+	installCtx := withActiveActionToken(baseContext(ctx), nextActiveActionToken())
+	claimActiveAction(installCtx, spec.Provider, ActiveAction{
+		ID:     ActionInstall,
+		Status: "running",
+	})
+	defer clearActiveAction(installCtx, spec.Provider)
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
-	summary, updatedRuntime, err := s.installMissingProviderRuntime(baseContext(ctx), spec, runtimeResolution)
+	summary, updatedRuntime, err := s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
 	result.Command = strings.Join(summary.Commands, " && ")
 	result.Stdout = trimActionOutput(strings.Join(summary.Stdout, "\n"))
 	result.Stderr = trimActionOutput(strings.Join(summary.Stderr, "\n"))

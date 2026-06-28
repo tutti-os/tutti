@@ -58,7 +58,7 @@ func (s Service) runCodexCLILatestInstaller(
 	var result InstallCommandResult
 	for i, registry := range registries {
 		registryDisplay := displayNPMRegistry(registry)
-		setActiveAction("codex", ActiveAction{
+		setActiveAction(ctx, "codex", ActiveAction{
 			ID:         ActionInstall,
 			Status:     "running",
 			Step:       "install",
@@ -70,12 +70,12 @@ func (s Service) runCodexCLILatestInstaller(
 			Command: command,
 			Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
 			OnStdout: func(output string) {
-				appendActiveActionStdout("codex", output)
+				appendActiveActionStdout(ctx, "codex", output)
 			},
 		})
 		cancel()
 		if err == nil && result.ExitCode == 0 {
-			setActiveAction("codex", ActiveAction{
+			setActiveAction(ctx, "codex", ActiveAction{
 				ID:         ActionInstall,
 				Status:     "running",
 				Step:       "verify",
