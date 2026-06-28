@@ -25,6 +25,7 @@ import {
 } from "@tutti-os/ui-system";
 import { useTranslation } from "../i18n/index";
 import { normalizeAgentTitleText } from "../shared/utils/agentTitleText";
+import { stripMarkdownEmphasis } from "../shared/agentConversation/lib/stripMarkdownEmphasis";
 import { AgentInteractivePromptSurface } from "../shared/agentConversation/components/AgentInteractivePromptSurface";
 import { AgentMessageMarkdown } from "../shared/AgentMessageMarkdown";
 import { AgentVerticalScrollArea } from "../shared/AgentVerticalScrollArea";
@@ -91,7 +92,9 @@ export const WorkspaceAgentMessageCenterCard = memo(
     "use memo";
     const { t } = useTranslation();
     const prompt = item.pendingPrompt;
-    const displayTitle = normalizeAgentTitleText(item.title);
+    const displayTitle = stripMarkdownEmphasis(
+      normalizeAgentTitleText(item.title)
+    );
     const summary = messageCenterVisibleSummary(item);
     const displayStatus = statusClass(item);
     const statusTone = messageCenterStatusTone(item);
@@ -529,10 +532,10 @@ function MessageCenterStackSummary({
 function messageCenterStackPreviewText(
   item: WorkspaceAgentMessageCenterItem
 ): string {
-  return (
+  return stripMarkdownEmphasis(
     item.digest.primary.summary.trim() ||
-    item.lastAgentMessageSummary.trim() ||
-    normalizeAgentTitleText(item.title)
+      item.lastAgentMessageSummary.trim() ||
+      normalizeAgentTitleText(item.title)
   );
 }
 
@@ -734,7 +737,7 @@ function MessageCenterSummary({
         />
       ) : summary ? (
         <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-          {summary}
+          {stripMarkdownEmphasis(summary)}
         </div>
       ) : (
         emptyLabel
