@@ -5369,6 +5369,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   );
   margin-top: auto;
   padding-top: 0;
+  padding-bottom: 8px;
   background: transparent;
   border-top: 0;
 }
