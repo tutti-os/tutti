@@ -813,6 +813,7 @@ export function AgentComposer({
   const draftPromptRef = useRef(draftPrompt);
   const draftImagesRef = useRef<AgentComposerDraftImage[]>(draftImages);
   const draftFilesRef = useRef<AgentComposerDraftFile[]>(draftFiles);
+  const submittedRef = useRef(false);
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
   const mentionControllerRef = useRef<AgentMentionSearchController | null>(
     null
@@ -1078,6 +1079,9 @@ export function AgentComposer({
 
   useEffect(() => {
     draftImagesRef.current = draftImages;
+    if (draftImages.length > 0) {
+      submittedRef.current = false;
+    }
   }, [draftImages]);
 
   useEffect(() => {
@@ -1359,6 +1363,7 @@ export function AgentComposer({
     draftPromptRef.current = "";
     draftImagesRef.current = [];
     draftFilesRef.current = [];
+    submittedRef.current = true;
     setPaletteDraftPrompt("");
     onDraftContentChange(emptyAgentComposerDraft());
     onSubmit(submitContent);
@@ -1802,6 +1807,9 @@ export function AgentComposer({
           ]
         })
           .then((result) => {
+            if (submittedRef.current) {
+              return;
+            }
             const uploadedImage = result.content.find(
               (block) => block.type === "image"
             );
@@ -1829,6 +1837,9 @@ export function AgentComposer({
             });
           })
           .catch((error: unknown) => {
+            if (submittedRef.current) {
+              return;
+            }
             const message =
               error instanceof Error ? error.message : String(error);
             const failedDraftImages = draftImagesRef.current.map((image) =>
