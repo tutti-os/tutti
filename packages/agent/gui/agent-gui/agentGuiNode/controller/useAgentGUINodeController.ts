@@ -6193,6 +6193,22 @@ export function useAgentGUINodeController({
             if (isPendingCreatedConversation) {
               startingConversationIdRef.current = null;
             }
+            // The user navigated away from the optimistic create before it
+            // resolved. Drop the optimistic messages recorded for it: the
+            // optimistic user prompt keeps a pending turn id that retarget
+            // never rewrote (the session wasn't watched), so if it lingered it
+            // would reappear as a duplicate when the session is later reopened
+            // from the conversation list and reloaded from durable history.
+            resetAgentSessionViewDetailMessages(
+              sessionViewRef(conversation.id)
+            );
+            setAgentSessionViewOverlayMessages(
+              sessionViewRef(conversation.id),
+              []
+            );
+            if (transientConversationRef.current?.id === conversation.id) {
+              setTransientConversation(null);
+            }
             return;
           }
           if (isPendingCreatedConversation) {
@@ -6268,8 +6284,13 @@ export function useAgentGUINodeController({
               conversationId: pendingCreateAgentSessionId ?? agentSessionId
             });
           }
+          // Surface the failure only on the failed create's own surface —
+          // either the user is still on it, or they're back at the home
+          // composer where the create started. If they navigated to another
+          // conversation, the error must not leak onto that conversation; the
+          // create is cleaned up silently below.
           const shouldShowErrorOnHome =
-            startingConversationIdRef.current === agentSessionId ||
+            isCurrentConversation(agentSessionId) ||
             (activeConversationIdRef.current === null &&
               isComposerHomeRef.current);
           const submitTrace = submitTraceBySessionIdRef.current[agentSessionId];
@@ -6292,6 +6313,7 @@ export function useAgentGUINodeController({
             !shouldShowErrorOnHome &&
             !isCurrentConversation(agentSessionId)
           ) {
+            failedNewConversationIdsRef.current.add(agentSessionId);
             resetAgentSessionViewDetailMessages(sessionViewRef(agentSessionId));
             setAgentSessionViewOverlayMessages(
               sessionViewRef(agentSessionId),
@@ -6343,10 +6365,6 @@ export function useAgentGUINodeController({
             setActiveConversationId(null);
             setIntent({ tag: "home" });
             persistActiveConversation(null);
-            setAgentSessionViewOverlayMessages(
-              sessionViewRef(agentSessionId),
-              []
-            );
           }
           setIsLoadingMessages(false);
           setAgentSessionViewMessagesLoading(

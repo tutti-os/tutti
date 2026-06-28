@@ -1255,6 +1255,163 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.sessionChrome.recovery).toBeNull();
   });
 
+  it("drops the optimistic entry and keeps the user put when they navigate away before a first-message create resolves", async () => {
+    let resolveActivate:
+      | ((result: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    let createdId = "";
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "new") {
+        createdId = input.agentSessionId;
+        return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivate = resolve;
+        });
+      }
+      return Promise.resolve<AgentHostActivateAgentSessionResult>({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" }
+      });
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversations.some((c) => c.id === "session-1")
+      ).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("abandoned turn"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    });
+    // The optimistic user message is recorded before the user navigates away.
+    expect(
+      getAgentSessionView({ workspaceId: "room-1", agentSessionId: createdId })
+        ?.detailMessages.length
+    ).toBeGreaterThan(0);
+
+    act(() => {
+      result.current.actions.selectConversation("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    // The create resolves while the user is on session-1.
+    act(() => {
+      resolveActivate?.({
+        session: agentSession(createdId),
+        activation: { mode: "new", status: "attached" }
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+    });
+
+    // The abandoned create's optimistic messages are dropped — its pending-turn
+    // user prompt was never retargeted (the session wasn't watched), so it
+    // would reappear as a duplicate when the session is reopened — and the
+    // user stays where they navigated.
+    expect(
+      getAgentSessionView({ workspaceId: "room-1", agentSessionId: createdId })
+        ?.detailMessages ?? []
+    ).toEqual([]);
+    expect(result.current.viewModel.activeConversationId).toBe("session-1");
+  });
+
+  it("does not leak a first-message create error onto the conversation the user switched to during pending", async () => {
+    let rejectActivate: ((error: unknown) => void) | undefined;
+    let createdId = "";
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "new") {
+        createdId = input.agentSessionId;
+        return new Promise<AgentHostActivateAgentSessionResult>(
+          (_resolve, reject) => {
+            rejectActivate = reject;
+          }
+        );
+      }
+      return Promise.resolve<AgentHostActivateAgentSessionResult>({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" }
+      });
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversations.some((c) => c.id === "session-1")
+      ).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("abandoned turn"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    });
+    expect(
+      getAgentSessionView({ workspaceId: "room-1", agentSessionId: createdId })
+        ?.detailMessages.length
+    ).toBeGreaterThan(0);
+
+    act(() => {
+      result.current.actions.selectConversation("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      rejectActivate?.(new Error("runtime not connected"));
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+    });
+
+    // The failure belongs to the abandoned create, not session-1: it is not
+    // surfaced on the conversation the user is now looking at, and the user
+    // stays where they navigated.
+    expect(result.current.viewModel.detailError).toBeNull();
+    expect(result.current.viewModel.activeConversationId).toBe("session-1");
+  });
+
   it("keeps background session timeline events in the activity snapshot", async () => {
     const retainEventStream = vi.fn(
       async ({ agentSessionId }: { agentSessionId: string }) => ({
