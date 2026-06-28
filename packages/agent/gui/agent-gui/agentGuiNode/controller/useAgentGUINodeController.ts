@@ -774,6 +774,24 @@ function isAgentSessionNotReadyError(error: unknown): boolean {
   );
 }
 
+// True when a cancel request fails because the runtime backend is unreachable
+// (e.g., the app is being restarted/killed by an agent command). The cancel is
+// inherently best-effort — the session will be cleaned up on the next startup —
+// so these transient network errors must not surface as a hard error banner.
+function isCancelSessionTransientError(error: unknown): boolean {
+  const message = getAgentGUIRawErrorMessage(error)?.toLowerCase() ?? "";
+  if (!message) {
+    return false;
+  }
+  return (
+    message === "cancel workspace agent session failed." ||
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("econnrefused") ||
+    message.includes("load failed")
+  );
+}
+
 function isSettingsRequireNewSessionErrorCode(
   code: AppErrorCode | null | undefined
 ): boolean {
@@ -7265,7 +7283,9 @@ export function useAgentGUINodeController({
             delete next[agentSessionId];
             return next;
           });
-          setDetailError(getAgentGUIErrorMessage(error));
+          if (!isCancelSessionTransientError(error)) {
+            setDetailError(getAgentGUIErrorMessage(error));
+          }
         })
         .finally(() => {
           setInterruptingSessionIds((current) => {
@@ -7927,7 +7947,9 @@ export function useAgentGUINodeController({
             runtime: agentActivityRuntime,
             workspaceId
           });
-          setDetailError(getAgentGUIErrorMessage(error));
+          if (!isCancelSessionTransientError(error)) {
+            setDetailError(getAgentGUIErrorMessage(error));
+          }
         }
       })
       .finally(() => {
