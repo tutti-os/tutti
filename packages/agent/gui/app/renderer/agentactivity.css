@@ -1863,6 +1863,38 @@ aside.workspace-agents-status-panel
   background: transparent;
 }
 
+.workspace-agents-status-panel__detail-tool-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.workspace-agents-status-panel__detail-tool-detail-label {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.workspace-agents-status-panel__detail-tool-detail-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: var(--text-primary);
+  font-family: var(--tsh-font-mono);
+  font-size: 11px;
+}
+
+.workspace-agents-status-panel__detail-tool-detail-meta {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
 .workspace-agents-status-panel__detail-tool-code--flat,
 .workspace-agents-status-panel__detail-tool-diff--flat,
 .workspace-agents-status-panel__detail-tool-monaco--flat {

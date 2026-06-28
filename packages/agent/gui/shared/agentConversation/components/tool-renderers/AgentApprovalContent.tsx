@@ -8,6 +8,7 @@ import {
   ToolMarkdownBlock,
   type AgentToolRendererProps
 } from "./agentToolContentShared";
+import { getPromptToolDetails } from "../../promptToolDetails";
 
 export function AgentApprovalContent({
   call,
@@ -15,7 +16,8 @@ export function AgentApprovalContent({
 }: AgentToolRendererProps): JSX.Element | null {
   "use memo";
   const previewCall = approvalPreviewCall(call);
-  if (!previewCall && !call.summary.trim()) {
+  const toolDetails = getPromptToolDetails(call.input ?? null);
+  if (!previewCall && !call.summary.trim() && toolDetails.length === 0) {
     return null;
   }
   if (previewCall) {
@@ -23,7 +25,29 @@ export function AgentApprovalContent({
   }
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
-      <ToolMarkdownBlock content={call.summary} />
+      {toolDetails.length > 0
+        ? toolDetails.map((detail) => (
+            <div
+              key={`${detail.kind}:${detail.value}`}
+              className="workspace-agents-status-panel__detail-tool-detail-row"
+            >
+              <span className="workspace-agents-status-panel__detail-tool-detail-label">
+                {detailLabel(detail.kind)}
+              </span>
+              <span className="workspace-agents-status-panel__detail-tool-detail-value">
+                {detail.value}
+              </span>
+              {detail.meta ? (
+                <span className="workspace-agents-status-panel__detail-tool-detail-meta">
+                  {detail.meta}
+                </span>
+              ) : null}
+            </div>
+          ))
+        : null}
+      {call.summary.trim() ? (
+        <ToolMarkdownBlock content={call.summary} onLinkClick={onLinkClick} />
+      ) : null}
     </div>
   );
 }
@@ -78,4 +102,17 @@ function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
 
 function normalizeToolKind(value: string | null): string {
   return (value ?? "").trim().toLowerCase();
+}
+
+function detailLabel(kind: "command" | "mcp" | "path" | "query"): string {
+  switch (kind) {
+    case "command":
+      return "Command";
+    case "mcp":
+      return "MCP";
+    case "path":
+      return "Path";
+    case "query":
+      return "Query";
+  }
 }

@@ -19,6 +19,7 @@ import {
 } from "./render-data/agentToolRenderData";
 import { CollapsibleReveal } from "../CollapsibleReveal";
 import { fileRange } from "./AgentReadContent";
+import { getPromptToolDetails } from "../../promptToolDetails";
 
 export interface AgentToolRendererProps {
   call: AgentToolCallVM;
@@ -189,7 +190,10 @@ export function AgentDefaultToolContent({
 
 export function hasAgentToolContent(call: AgentToolCallVM): boolean {
   if (call.rendererKind === "approval") {
-    return Boolean(call.input?.toolCall || call.summary.trim());
+    if (call.input?.toolCall || call.summary.trim()) {
+      return true;
+    }
+    return getPromptToolDetails(call.input ?? null).length > 0;
   }
 
   switch (call.rendererKind) {
