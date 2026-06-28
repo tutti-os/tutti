@@ -195,8 +195,8 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
 		t.Fatalf("CreateSession reasoning = %v, want high", sessions.createInput.ReasoningEffort)
 	}
-	if len(sessions.createInput.ExtraSkills) != 1 {
-		t.Fatalf("CreateSession extra skills = %#v, want app factory skill", sessions.createInput.ExtraSkills)
+	if len(sessions.createInput.ExtraSkills) != 2 {
+		t.Fatalf("CreateSession extra skills = %#v, want app factory and agent workspace app skills", sessions.createInput.ExtraSkills)
 	}
 	appFactorySkill := sessions.createInput.ExtraSkills[0]
 	if appFactorySkill.Name != "app-factory" {
@@ -205,8 +205,55 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	if !strings.Contains(appFactorySkill.Files["SKILL.md"], "mention://workspace-app-factory/create") {
 		t.Fatalf("app factory skill missing mention contract: %q", appFactorySkill.Files["SKILL.md"])
 	}
+	if !strings.Contains(appFactorySkill.Files["SKILL.md"], "simple-node-static-app") {
+		t.Fatalf("app factory skill should point complete package examples at the Node demo:\n%s", appFactorySkill.Files["SKILL.md"])
+	}
+	if strings.Contains(appFactorySkill.Files["SKILL.md"], "simple-python-static-app") {
+		t.Fatalf("app factory skill should not point new package examples at the Python demo:\n%s", appFactorySkill.Files["SKILL.md"])
+	}
 	if _, ok := appFactorySkill.Files["references/manifest-contract.md"]; !ok {
 		t.Fatalf("app factory skill missing manifest reference: %#v", appFactorySkill.Files)
+	}
+	runtimeEnvReference := appFactorySkill.Files["references/runtime-env.md"]
+	if !strings.Contains(runtimeEnvReference, "@tutti-os/agent-acp-kit` detection") {
+		t.Fatalf("runtime env reference should route agent provider choices through app-owned agent-acp-kit detection:\n%s", runtimeEnvReference)
+	}
+	tuttiCLIReference := appFactorySkill.Files["references/tutti-cli-commands.md"]
+	if !strings.Contains(tuttiCLIReference, "@tutti-os/agent-acp-kit") {
+		t.Fatalf("tutti CLI reference should point agent execution to agent-acp-kit:\n%s", tuttiCLIReference)
+	}
+	if strings.Contains(tuttiCLIReference, "node:child_process") {
+		t.Fatalf("tutti CLI reference should not lead with child_process examples:\n%s", tuttiCLIReference)
+	}
+	agentWorkspaceAppSkill := sessions.createInput.ExtraSkills[1]
+	if agentWorkspaceAppSkill.Name != "tutti-agent-workspace-app" {
+		t.Fatalf("CreateSession second extra skill name = %q, want tutti-agent-workspace-app", agentWorkspaceAppSkill.Name)
+	}
+	if !strings.Contains(agentWorkspaceAppSkill.Files["SKILL.md"], "@tutti-os/agent-acp-kit") {
+		t.Fatalf("agent workspace app skill missing agent-acp-kit guidance: %q", agentWorkspaceAppSkill.Files["SKILL.md"])
+	}
+	agentACPReference, ok := agentWorkspaceAppSkill.Files["references/agent-acp-kit.md"]
+	if !ok {
+		t.Fatalf("agent workspace app skill missing agent-acp-kit reference: %#v", agentWorkspaceAppSkill.Files)
+	}
+	for _, want := range []string{
+		"Do not hand-roll provider detection",
+		"Claude Code and Codex",
+		"localAgentRuntime.detect",
+	} {
+		if !strings.Contains(agentACPReference, want) {
+			t.Fatalf("agent-acp-kit reference missing %q:\n%s", want, agentACPReference)
+		}
+	}
+	if strings.Contains(agentACPReference, `command: "pnpm"`) {
+		t.Fatalf("agent-acp-kit reference should not use bare pnpm in packaged MCP examples:\n%s", agentACPReference)
+	}
+	packageBuilderReference := agentWorkspaceAppSkill.Files["references/package-builder.md"]
+	if strings.Contains(packageBuilderReference, `TUTTI_APP_PORT:-`) {
+		t.Fatalf("package builder bootstrap example should not provide a fallback app port:\n%s", packageBuilderReference)
+	}
+	if strings.Contains(packageBuilderReference, `TUTTI_APP_NODE:-node`) {
+		t.Fatalf("package builder bootstrap example should not fall back to bare node:\n%s", packageBuilderReference)
 	}
 	if !strings.HasPrefix(job.DraftDir, filepath.Join(stateDir, "apps", "factory", "jobs")) {
 		t.Fatalf("draft dir = %q, want under factory job state", job.DraftDir)
@@ -310,8 +357,22 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	if !mentionContext.Workspace.FilesReadonlyByDefault {
 		t.Fatalf("context workspace files should be readonly by default")
 	}
-	if len(mentionContext.Constraints) == 0 || !strings.Contains(strings.Join(mentionContext.Constraints, "\n"), "Do not assume hidden Tutti daemon internals") {
+	constraints := strings.Join(mentionContext.Constraints, "\n")
+	if len(mentionContext.Constraints) == 0 || !strings.Contains(constraints, "Do not assume hidden Tutti daemon internals") {
 		t.Fatalf("context constraints = %#v", mentionContext.Constraints)
+	}
+	for _, want := range []string{
+		"Default new apps to a Node server",
+		"@tutti-os/agent-acp-kit",
+		"TUTTI_CLI agent/codex/session polling",
+		"Claude Code and Codex provider options",
+	} {
+		if !strings.Contains(constraints, want) {
+			t.Fatalf("context constraints missing %q: %#v", want, mentionContext.Constraints)
+		}
+	}
+	if strings.Contains(constraints, "AI-generated user-facing content") {
+		t.Fatalf("context constraints should not force non-agent AI integrations onto agent-acp-kit: %#v", mentionContext.Constraints)
 	}
 
 	secondJob, err := service.Create(ctx, "ws-1", CreateAppFactoryJobInput{

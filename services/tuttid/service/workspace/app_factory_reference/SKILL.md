@@ -14,6 +14,8 @@ When the user selected a directory in App Center and Tutti reports that it canno
 
 For a full agent-enabled Tutti app repository with `apps/web`, `apps/server`, `packages/shared`, `@tutti-os/agent-acp-kit`, local Codex/Claude runtimes, MCP tool gateways, and an app-owned package builder, use `$tutti-agent-workspace-app` first. Return to this skill for the final package contract and validation.
 
+If the user request needs local agent or local LLM execution, Codex, Claude, or app-owned MCP/tooling, treat `$tutti-agent-workspace-app` and its `references/agent-acp-kit.md` as mandatory architecture guidance. Agent-enabled apps must use a Node server and `@tutti-os/agent-acp-kit`; do not implement app-owned local agent execution by shelling out to `$TUTTI_CLI agent ...`, `$TUTTI_CLI codex ...`, or session polling.
+
 ## Version Check And Update Reminder
 
 Before generating, repairing, or validating an app package, perform a best-effort freshness check unless the user asks to skip network access or the environment is offline.
@@ -67,7 +69,7 @@ Before writing files, read these bundled references:
 - `references/tutti-cli-commands.md` when the generated app runtime should call, combine, or expose local Tutti CLI capabilities.
 - `references/validation-checklist.md` for completion checks.
 
-Read `references/demos/simple-python-static-app/` only when you need a concrete complete package shape. Do not copy its demo app id, display name, description, or tags unless the user explicitly asks for the demo itself.
+Read `references/demos/simple-node-static-app/` only when you need a concrete complete package shape. Do not copy its demo app id, display name, description, or tags unless the user explicitly asks for the demo itself.
 
 ## Output Contract
 
@@ -106,7 +108,7 @@ If the user asks to connect the app to the Tutti ecosystem, expose at least one 
 
 ## Runtime Rules
 
-Build a small local HTTP app. Prefer Python standard library or Node built-ins unless the user request clearly needs another stack.
+Build a small local HTTP app. Default newly generated apps to a Node server. Use Python only when adapting an existing Python project or when the user explicitly requests Python. Agent-enabled apps must use a Node server because `@tutti-os/agent-acp-kit` is Node-only.
 
 The runtime must:
 
@@ -133,11 +135,14 @@ The runtime must:
 For a full agent-enabled app repository, prefer `$tutti-agent-workspace-app` first. When this skill still needs to package or repair an app that already uses `@tutti-os/agent-acp-kit`, keep the app in control of agent policy:
 
 - Keep the generic `@tutti-os/agent-acp-kit` runtime path product-neutral. Tutti-specific behavior should stay behind the explicit `@tutti-os/agent-acp-kit/tutti` subpath and app-owned policy.
+- Use a Node server for the app host process. Do not start with a Python server and plan to migrate later.
 - To give the app's local Codex or Claude run access to Tutti's dynamic CLI skills, prefer the `@tutti-os/agent-acp-kit/tutti` helper instead of hand-writing `$TUTTI_CLI agent tutti-cli-skill-bundle` execution and response parsing in each app.
 - Use `loadTuttiAgentSkillContext(...)` from the app host process. Pass the selected provider, run id, workspace cwd, and optional Tutti CLI command configuration such as `commandEnvNames`.
 - Pass `tuttiContext.skillManifest` into `runtime.run({ ..., skillManifest })`, merging it with app-owned skills when needed.
 - Treat `tuttiContext.recommendedSystemPrompt?.content` as advisory raw prompt content. The app may merge it into its own `systemPrompt`, edit it, place it elsewhere, or ignore it. Do not inject it silently, and do not reintroduce duplicated CLI parsing unless the installed kit lacks the helper.
 - Keep run-scoped app tools and MCP credentials app-owned. Do not pass broad Tutti daemon credentials or app secrets directly to the agent process.
+
+Agent app main flows should expose provider choices for at least Claude Code and Codex. Detect available providers through `@tutti-os/agent-acp-kit`, show only available choices as selectable, and choose a usable default when at least one provider is available.
 
 Do not assume a Tutti API token, browser extension, daemon internals, or broad desktop APIs. The only browser-side host surface a generated app may optionally consume is the app context described in `references/runtime-env.md`.
 
@@ -147,7 +152,7 @@ Avoid startup-time package installation. If dependencies or build artifacts are 
 
 Generated apps must not rely on system `python`, `python3`, `node`, or `npm` commands. Use the explicit managed runtime environment variables instead.
 
-Keep generated apps small and inspectable. Do not add frameworks, background workers, databases, or network services unless they are required by the user request.
+Keep generated apps small and inspectable. Do not add frameworks, background workers, databases, or network services unless they are required by the user request. Use Node built-ins for small apps; for larger Node servers with many routes, middleware, schemas, streaming, or WebSocket needs, Fastify is a good default and Express is acceptable when it already matches the project. For React/Tailwind UI apps, use shadcn/ui components and Tailwind CSS utilities instead of hand-rolled component markup and ad hoc CSS. Do not migrate a small vanilla app solely to use shadcn/ui unless the user explicitly asks for that frontend stack.
 
 ## Local Debug Workflow
 

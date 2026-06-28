@@ -1,8 +1,8 @@
 {
   "schemaVersion": "tutti.app.manifest.v1",
-  "appId": "app_demo-simple-python-static",
+  "appId": "app_demo-simple-node-static",
   "version": "0.1.0",
-  "name": "Simple Python Static Demo",
+  "name": "Simple Node Static Demo",
   "description": "Demonstrates a minimal custom Tutti workspace app.",
   "icon": {
     "type": "asset",

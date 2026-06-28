@@ -281,6 +281,13 @@ func (s *AppFactoryService) Create(ctx context.Context, workspaceID string, inpu
 		_ = s.putAndPublish(ctx, job)
 		return job, nil
 	}
+	agentWorkspaceAppSkill, err := agentWorkspaceAppReferenceSkillBundle()
+	if err != nil {
+		job.Status = workspacebiz.AppFactoryJobStatusFailed
+		job.FailureReason = err.Error()
+		_ = s.putAndPublish(ctx, job)
+		return job, nil
+	}
 	session, err := s.AgentSessionService.Create(ctx, workspaceID, agentservice.CreateSessionInput{
 		AgentSessionID: agentSessionID,
 		Provider:       job.Provider,
@@ -294,7 +301,7 @@ func (s *AppFactoryService) Create(ctx context.Context, workspaceID string, inpu
 		ReasoningEffort: optionalStringPointer(
 			strings.TrimSpace(job.ReasoningEffort),
 		),
-		ExtraSkills: []agentservice.SessionSkillBundle{appFactorySkill},
+		ExtraSkills: []agentservice.SessionSkillBundle{appFactorySkill, agentWorkspaceAppSkill},
 	})
 	if err != nil {
 		job.Status = workspacebiz.AppFactoryJobStatusFailed

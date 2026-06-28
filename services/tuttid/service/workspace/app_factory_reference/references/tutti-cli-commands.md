@@ -4,29 +4,22 @@ This reference is for code inside a generated workspace app at runtime. It is no
 
 Workspace apps may call local Tutti capabilities through the bundled Tutti CLI.
 
-Always use the command path from `TUTTI_CLI`:
+Do not use `$TUTTI_CLI agent ...`, `$TUTTI_CLI codex ...`, or agent session polling to implement app-owned local agent execution. Apps that need local agent or local LLM execution, Codex, Claude, or app-owned MCP/tooling must load and follow `$tutti-agent-workspace-app`, read its `references/agent-acp-kit.md`, and use `@tutti-os/agent-acp-kit` from a Node server:
 
-```python
-import json
-import os
-import subprocess
+```ts
+import {
+  createDefaultLocalAgentProviderPlugins,
+  createLocalAgentRuntime
+} from "@tutti-os/agent-acp-kit";
 
-def run_tutti(args, timeout=15):
-    command = os.environ.get("TUTTI_CLI", "").strip()
-    if not command:
-        raise RuntimeError("TUTTI_CLI is not configured")
-    result = subprocess.run(
-        [command, "--json", *args],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout).strip())
-    return json.loads(result.stdout or "{}")
+const localAgentRuntime = createLocalAgentRuntime({
+  providers: createDefaultLocalAgentProviderPlugins()
+});
+
+const detectedProviders = await localAgentRuntime.detect();
 ```
 
-`TUTTI_CLI` is the stable app-runtime contract across development and packaged production.
+For non-agent app-to-app capability calls, always use the command path from `TUTTI_CLI`. `TUTTI_CLI` is the stable app-runtime contract across development and packaged production.
 
 ## Discovery
 

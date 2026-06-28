@@ -18,7 +18,7 @@ Application use-case
         -> run-scoped MCP/tool gateway
 ```
 
-Use provider IDs from the kit or an explicit allowlist such as `codex` and `claude`. Detect providers before showing them as available.
+Use provider IDs from the kit or an explicit allowlist such as `codex` and `claude`. Detect providers before showing them as available. The app's primary agent flow must support both Claude Code and Codex as provider choices when available, hide or disable unavailable providers, and choose a usable default from the detected providers.
 
 ## Provider Detection
 
@@ -135,26 +135,13 @@ import type { LocalAgentMcpServerConfig } from "@tutti-os/agent-acp-kit";
 export function createAppToolsMcpServerConfig(input: {
   gatewayBaseUrl: string;
   gatewayToken: string;
-  packagedMcpPath?: string;
+  packagedMcpPath: string;
 }): LocalAgentMcpServerConfig {
-  if (input.packagedMcpPath) {
-    return {
-      name: "app-tools",
-      type: "stdio",
-      command: process.execPath,
-      args: [input.packagedMcpPath],
-      env: {
-        APP_TOOL_GATEWAY_URL: input.gatewayBaseUrl,
-        APP_TOOL_TOKEN: input.gatewayToken
-      }
-    };
-  }
-
   return {
     name: "app-tools",
     type: "stdio",
-    command: "pnpm",
-    args: ["exec", "tsx", "src/agent/local-agent-host/tools-mcp.ts"],
+    command: process.execPath,
+    args: [input.packagedMcpPath],
     env: {
       APP_TOOL_GATEWAY_URL: input.gatewayBaseUrl,
       APP_TOOL_TOKEN: input.gatewayToken
@@ -163,7 +150,7 @@ export function createAppToolsMcpServerConfig(input: {
 }
 ```
 
-Package builders should bundle the MCP entrypoint and expose its path through an app-specific env var such as `AIMC_TOOLS_MCP_PATH`.
+Package builders should bundle the MCP entrypoint and expose its path through an app-specific env var such as `AIMC_TOOLS_MCP_PATH`. Development runners may use a project-owned dev command such as `pnpm exec tsx ...` outside the packaged runtime, but package runtime MCP configs must not depend on bare `pnpm`, `node`, or source-tree TypeScript paths.
 
 ## Verification
 
