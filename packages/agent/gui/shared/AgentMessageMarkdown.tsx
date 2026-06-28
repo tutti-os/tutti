@@ -18,6 +18,7 @@ import {
 } from "react";
 import { useTranslation } from "../i18n/index";
 import { ZoomableImage } from "../app/renderer/components/ZoomableImage";
+import { ConversationImageContextMenu } from "./agentConversation/components/ConversationImageContextMenu";
 import { cn } from "../app/renderer/lib/utils";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeSanitize, {
@@ -1126,13 +1127,15 @@ function MarkdownMedia({
 
     if (!shouldEnableZoom) {
       return (
-        <img
-          {...props}
-          src={resolvedSrc}
-          alt={alt}
-          title={title}
-          className={className}
-        />
+        <ConversationImageContextMenu src={resolvedSrc}>
+          <img
+            {...props}
+            src={resolvedSrc}
+            alt={alt}
+            title={title}
+            className={className}
+          />
+        </ConversationImageContextMenu>
       );
     }
 
@@ -1169,16 +1172,18 @@ function MarkdownMedia({
 
     if (!shouldEnableZoom) {
       return (
-        <img
-          {...props}
-          src={state.src}
-          alt={alt}
-          title={title}
-          className={cn(
-            "mt-2 block max-h-[360px] max-w-full rounded-[8px] bg-[var(--transparency-block)] object-contain",
-            className
-          )}
-        />
+        <ConversationImageContextMenu src={state.src}>
+          <img
+            {...props}
+            src={state.src}
+            alt={alt}
+            title={title}
+            className={cn(
+              "mt-2 block max-h-[360px] max-w-full rounded-[8px] bg-[var(--transparency-block)] object-contain",
+              className
+            )}
+          />
+        </ConversationImageContextMenu>
       );
     }
 
