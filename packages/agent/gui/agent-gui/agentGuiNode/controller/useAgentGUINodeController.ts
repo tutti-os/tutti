@@ -6655,6 +6655,25 @@ export function useAgentGUINodeController({
         trace: submitTrace,
         workspaceId
       });
+      // Clear the composer draft immediately (optimistic) so that images and
+      // text do not linger in the composer while the send request is in flight.
+      if (!queuedPromptId) {
+        setDraftBySessionId((current) => {
+          const currentDraft = current[agentSessionId];
+          if (
+            !shouldClearSubmittedDraft({
+              currentDraft,
+              submittedContent: normalizedContent
+            })
+          ) {
+            return current;
+          }
+          return {
+            ...current,
+            [agentSessionId]: emptyAgentComposerDraft()
+          };
+        });
+      }
       void Promise.resolve()
         .then(() => {
           if (!isCurrentConversation(agentSessionId)) {
@@ -6721,23 +6740,6 @@ export function useAgentGUINodeController({
             patchConversation(agentSessionId, {
               status: submittedStatus,
               updatedAtUnixMs: Date.now()
-            });
-          }
-          if (!queuedPromptId) {
-            setDraftBySessionId((current) => {
-              const currentDraft = current[agentSessionId];
-              if (
-                !shouldClearSubmittedDraft({
-                  currentDraft,
-                  submittedContent: normalizedContent
-                })
-              ) {
-                return current;
-              }
-              return {
-                ...current,
-                [agentSessionId]: emptyAgentComposerDraft()
-              };
             });
           }
           if (queuedPromptId) {
