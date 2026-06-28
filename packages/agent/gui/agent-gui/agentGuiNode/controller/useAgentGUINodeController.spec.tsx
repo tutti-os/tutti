@@ -1144,7 +1144,7 @@ describe("useAgentGUINodeController", () => {
     expect(releaseEventStream).not.toHaveBeenCalled();
   });
 
-  it("keeps the first created conversation on home before activation resolves", async () => {
+  it("enters the first created conversation immediately before activation resolves", async () => {
     let resolveActivate:
       | ((result: AgentHostActivateAgentSessionResult) => void)
       | undefined;
@@ -1185,15 +1185,22 @@ describe("useAgentGUINodeController", () => {
 
     await waitFor(() => {
       expect(capturedAgentSessionId).not.toBe("");
-      expect(
-        getAgentSessionView({
-          workspaceId: "room-1",
-          agentSessionId: capturedAgentSessionId
-        })?.isLoadingMessages
-      ).not.toBe(true);
+      expect(result.current.viewModel.activeConversationId).toBe(
+        capturedAgentSessionId
+      );
     });
-    expect(result.current.viewModel.activeConversationId).toBeNull();
+    // The optimistic user message is shown immediately, before activation
+    // resolves, and no per-session loading flag is left on.
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: capturedAgentSessionId
+      })?.isLoadingMessages
+    ).not.toBe(true);
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
+    expect(
+      result.current.viewModel.conversationDetail?.turns[0]?.userMessages
+    ).toEqual([expect.objectContaining({ body: "start the first turn" })]);
 
     await act(async () => {
       resolveActivate?.({
@@ -1207,6 +1214,45 @@ describe("useAgentGUINodeController", () => {
         capturedAgentSessionId
       );
     });
+  });
+
+  it("suppresses the connecting banner during a first-message create while activation is pending", async () => {
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>(() => {
+          // Keep activation pending so the live state stays "activating".
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("first turn"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+    });
+    // The live state is "activating" (session creation in flight), but the
+    // initial first-message create must NOT surface the "reconnecting" banner —
+    // the user just submitted and is already seeing their optimistic message.
+    expect(result.current.viewModel.activeLiveState).toBe("activating");
+    expect(result.current.viewModel.sessionChrome.recovery).toBeNull();
   });
 
   it("keeps background session timeline events in the activity snapshot", async () => {
@@ -3453,7 +3499,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("keeps home active while activation is pending and switches after activation succeeds", async () => {
+  it("enters the conversation immediately while activation is pending and stays after it succeeds", async () => {
     let resolveActivation:
       | ((value: AgentHostActivateAgentSessionResult) => void)
       | undefined;
@@ -3500,9 +3546,11 @@ describe("useAgentGUINodeController", () => {
     });
 
     const createdId = activate.mock.calls[0]![0].agentSessionId;
-    expect(result.current.viewModel.activeConversationId).toBeNull();
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
-    expect(result.current.viewModel.draftPrompt).toBe("first prompt");
+    // The active surface is now the new session, whose draft was cleared; the
+    // optimistic user message is already present in the first turn.
+    expect(result.current.viewModel.draftPrompt).toBe("");
     expect(
       getAgentSessionView({
         workspaceId: "room-1",
@@ -3517,7 +3565,7 @@ describe("useAgentGUINodeController", () => {
     ]);
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
-    ).toBeUndefined();
+    ).toEqual([expect.objectContaining({ body: "first prompt" })]);
     expect(exec).not.toHaveBeenCalled();
 
     act(() => {
@@ -3537,15 +3585,15 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it("preserves home draft edits made while first conversation activation is pending", async () => {
-    let resolveActivation:
-      | ((value: AgentHostActivateAgentSessionResult) => void)
-      | undefined;
+  it("restores the original home draft when first conversation activation fails after pending", async () => {
+    let rejectActivation: ((error: unknown) => void) | undefined;
     const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
       if (input.mode === "new") {
-        return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
-          resolveActivation = resolve;
-        });
+        return new Promise<AgentHostActivateAgentSessionResult>(
+          (_resolve, reject) => {
+            rejectActivation = reject;
+          }
+        );
       }
       return Promise.resolve({
         session: agentSession(input.agentSessionId),
@@ -3581,27 +3629,27 @@ describe("useAgentGUINodeController", () => {
       );
     });
     const createdId = activate.mock.calls[0]![0].agentSessionId;
-
+    // During pending the user is already on the new session surface.
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    // Typing while pending edits the in-flight session draft, not the home
+    // draft, which retains the original submitted prompt for restore-on-failure.
     act(() => {
       result.current.actions.updateDraftContent(
-        draftContent("keep this draft")
+        draftContent("a different next turn")
       );
-      resolveActivation?.({
-        session: agentSession(createdId),
-        activation: { mode: "new", status: "attached" }
-      });
+    });
+
+    act(() => {
+      rejectActivation?.(new Error("runtime not connected"));
     });
 
     await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
     });
-
-    act(() => {
-      result.current.actions.createConversation();
-    });
-
+    // Reverted to the home composer with the ORIGINAL submitted draft preserved.
     expect(result.current.viewModel.activeConversationId).toBeNull();
-    expect(result.current.viewModel.draftPrompt).toBe("keep this draft");
+    expect(result.current.viewModel.draftPrompt).toBe("first prompt");
+    expect(result.current.viewModel.detailError).toBe("runtime not connected");
   });
 
   it("keeps first conversation creation busy after the controller remounts before activation resolves", async () => {
@@ -3736,7 +3784,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("passes the submitted prompt as the activation title without showing a pending history entry", async () => {
+  it("passes the submitted prompt as the activation title and shows an optimistic history entry immediately", async () => {
     const activate = vi.fn(
       (_input: AgentHostActivateAgentSessionInput) =>
         new Promise<AgentHostActivateAgentSessionResult>(() => {
@@ -3775,13 +3823,19 @@ describe("useAgentGUINodeController", () => {
         title: "hello from hero"
       })
     );
+    // No durable history entry yet (activation is still pending)...
     expect(result.current.viewModel.conversations).toEqual([]);
-    expect(result.current.viewModel.activeConversation).toBeNull();
-    expect(result.current.viewModel.activeConversationId).toBeNull();
+    // ...but the user is already on the conversation surface with their
+    // optimistic message shown immediately.
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    expect(result.current.viewModel.activeConversation).toEqual(
+      expect.objectContaining({ id: createdId, title: "hello from hero" })
+    );
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
-    ).toBeUndefined();
+    ).toEqual([expect.objectContaining({ body: "hello from hero" })]);
   });
 
   it("blocks OpenClaw conversation creation until the gateway is ready", async () => {
