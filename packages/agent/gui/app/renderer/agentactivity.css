@@ -6191,6 +6191,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   cursor: pointer;
 }
 
+.agent-gui-node__composer-queued-prompt-panel[data-expanded="false"]
+  .agent-gui-node__composer-queued-prompt-list {
+  max-height: 32px;
+  overflow: hidden;
+}
+
 .agent-gui-node__composer-queued-prompt-panel[data-expanded="true"]
   .agent-gui-node__composer-queued-prompt-list {
   max-height: var(--agent-gui-queued-prompt-expanded-height, 280px);
