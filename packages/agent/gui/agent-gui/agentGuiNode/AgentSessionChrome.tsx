@@ -202,8 +202,10 @@ export function AgentSessionChrome({
       ? labels.activatingSession
       : (visibleRecovery?.message ?? "");
   const recoveryHasInlineAction =
-    visibleRecovery?.kind === "failed" &&
-    (visibleRecovery.followupAction === "continue-in-new-conversation" ||
+    (visibleRecovery?.kind === "failed" &&
+      (visibleRecovery.followupAction === "continue-in-new-conversation" ||
+        visibleRecovery.canRetry !== false)) ||
+    (visibleRecovery?.kind === "connection-lost" &&
       visibleRecovery.canRetry !== false);
   const activatingMessage = splitTrailingEllipsis(recoveryMessage);
   const measureExpandableCards = useCallback((): void => {
@@ -398,9 +400,9 @@ export function AgentSessionChrome({
       {visibleRecovery ? (
         <section
           ref={recoveryCardRef}
-          role={visibleRecovery.kind === "failed" ? "alert" : undefined}
+          role={visibleRecovery.kind === "failed" || visibleRecovery.kind === "connection-lost" ? "alert" : undefined}
           aria-live={
-            visibleRecovery.kind === "failed" ? "assertive" : undefined
+            visibleRecovery.kind === "failed" || visibleRecovery.kind === "connection-lost" ? "assertive" : undefined
           }
           data-expandable={expandableCards.has("recovery") ? "true" : "false"}
           data-expanded={
@@ -416,9 +418,11 @@ export function AgentSessionChrome({
               ? styles.chromeCardDanger
               : visibleRecovery.kind === "warning"
                 ? styles.chromeCardDanger
-                : visibleRecovery.kind === "activating"
-                  ? styles.chromeCardConnecting
-                  : styles.chromeCardMuted
+                : visibleRecovery.kind === "connection-lost"
+                  ? styles.chromeCardWarning
+                  : visibleRecovery.kind === "activating"
+                    ? styles.chromeCardConnecting
+                    : styles.chromeCardMuted
           )}
           onClick={() => toggleExpandedCard("recovery")}
           onKeyDown={handleExpandableCardKeyDown("recovery")}
@@ -451,6 +455,17 @@ export function AgentSessionChrome({
                     </span>
                     {activatingMessage.ellipsis ? <LoadingEllipsis /> : null}
                   </>
+                ) : visibleRecovery.kind === "connection-lost" ? (
+                  <>
+                    <span className={styles.chromeNoticeTitle}>
+                      {recoveryMessage}
+                    </span>
+                    {visibleRecovery.description ? (
+                      <span className={styles.chromeNoticeDescription}>
+                        {visibleRecovery.description}
+                      </span>
+                    ) : null}
+                  </>
                 ) : (
                   recoveryMessage
                 )}
@@ -482,7 +497,8 @@ export function AgentSessionChrome({
                 >
                   {labels.continueInNewConversation}
                 </Button>
-              ) : visibleRecovery.kind === "failed" &&
+              ) : (visibleRecovery.kind === "failed" ||
+                  visibleRecovery.kind === "connection-lost") &&
                 visibleRecovery.canRetry !== false ? (
                 <Button
                   type="button"

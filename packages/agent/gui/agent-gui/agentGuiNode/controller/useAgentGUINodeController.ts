@@ -754,6 +754,13 @@ function isSessionNotFoundErrorCode(
   return code === AGENT_SESSION_NOT_FOUND_ERROR;
 }
 
+const CONNECTION_ERROR_PATTERN =
+  /\b(connection|websocket|socket|network|econnrefused|econnreset|disconnected|timeout|timed out|hang up|hangs up|epipe|host unreachable|net::err)\b/i;
+
+function isConnectionRelatedError(message: string): boolean {
+  return CONNECTION_ERROR_PATTERN.test(message);
+}
+
 const WORKSPACE_AGENT_SESSION_NOT_READY_REASON =
   "workspace_agent_session_not_found";
 
@@ -9113,6 +9120,10 @@ export function useAgentGUINodeController({
     const recoveryIsNonRetryable =
       isNonRetryableResumeErrorCode(activationErrorCode) ||
       activeConversationResumeUnavailable;
+    const isConnectionError =
+      !isAuthError &&
+      normalizedError !== "" &&
+      isConnectionRelatedError(normalizedError);
     return {
       auth: hasProviderSessionNotFoundError
         ? null
@@ -9129,7 +9140,14 @@ export function useAgentGUINodeController({
               // i18n-check-ignore: Legacy recovery fallback copy; localized presentation should move to view labels.
               message: "Reconnecting to the live agent session…"
             }
-          : !isAuthError && recoveryMessage
+          : isConnectionError
+            ? {
+                kind: "connection-lost",
+                message: translate("agentHost.runtimeConnectionLostTitle"),
+                description: translate("agentHost.runtimeConnectionLostSummary"),
+                canRetry: true
+              }
+            : !isAuthError && recoveryMessage
             ? {
                 kind: "failed",
                 message: recoveryMessage,
