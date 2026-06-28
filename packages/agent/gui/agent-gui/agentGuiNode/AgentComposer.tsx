@@ -1356,12 +1356,12 @@ export function AgentComposer({
       provider,
       skills: availableSkills
     });
-    onSubmit(submitContent);
     draftPromptRef.current = "";
     draftImagesRef.current = [];
     draftFilesRef.current = [];
     setPaletteDraftPrompt("");
     onDraftContentChange(emptyAgentComposerDraft());
+    onSubmit(submitContent);
   });
 
   const submit = useCallback(
