@@ -82,7 +82,7 @@ function MentionPill({
   return (
     <span
       className={cn(
-        "group relative top-[3px] inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] cursor-default items-center overflow-hidden rounded-[4px] border border-transparent bg-transparent py-0.5 align-baseline text-[13px] font-medium leading-5 no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]",
+        "group relative inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] cursor-default items-center overflow-hidden rounded-[4px] border border-transparent bg-transparent py-0.5 align-baseline text-[13px] font-medium leading-5 no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]",
         isFile ? "gap-1.5 px-1.5" : "gap-1 px-1",
         className
       )}
