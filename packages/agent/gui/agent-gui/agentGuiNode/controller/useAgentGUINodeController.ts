@@ -7781,7 +7781,10 @@ export function useAgentGUINodeController({
     skip: dismissPlanImplementation
   };
 
-  useEffect(() => {
+  // Drain queued prompts synchronously before paint to prevent a brief
+  // "idle + queued" flash when the conversation transitions from working to
+  // settled while prompts are still queued (issue #428).
+  useLayoutEffect(() => {
     if (previewMode) {
       return;
     }
