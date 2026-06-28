@@ -9,8 +9,8 @@ export type AgentComposerSettingsMenuLabels = {
   modelContextWindowSuffix: string;
   modelTooltipVersionLabel: string;
   defaultModel: string;
+  loadingOptions: string;
   inheritedUnavailable: string;
-  loadingSettings: string;
   reasoningLabel: string;
   reasoningDegreeLabel: string;
   reasoningOptionDefault: string;
@@ -414,7 +414,7 @@ function resolveSelectedModelLabel(
   composerSettings: AgentGUIComposerSettingsVM,
   labels: Pick<
     AgentComposerSettingsMenuLabels,
-    "defaultModel" | "inheritedUnavailable" | "loadingSettings"
+    "defaultModel" | "inheritedUnavailable" | "loadingOptions"
   >
 ): string {
   const selectedValue = selectedComposerModelValue(composerSettings);
@@ -424,11 +424,16 @@ function resolveSelectedModelLabel(
   if (selected) {
     return shortModelDisplayLabel(selected.label);
   }
+  // While composer options load, show a clear loading placeholder rather than
+  // falling through to the "Default" label (which reads like a real choice).
+  if (
+    composerSettings.isSettingsLoading ||
+    composerSettings.isModelOptionsLoading === true
+  ) {
+    return labels.loadingOptions;
+  }
   if (composerSettings.modelUnavailable) {
     return labels.inheritedUnavailable;
-  }
-  if (composerSettings.isSettingsLoading) {
-    return labels.loadingSettings;
   }
   const firstAvailableModel = composerSettings.availableModels[0]?.label;
   if (firstAvailableModel) {

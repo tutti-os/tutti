@@ -751,6 +751,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         "agentHost.agentGui.modelTooltipVersionLabel"
       ),
       defaultModel: t("agentHost.agentGui.defaultModel"),
+      loadingOptions: t("agentHost.agentGui.loadingOptions"),
       inheritedUnavailable: t("agentHost.agentGui.inheritedUnavailable"),
       reasoningLabel: t("agentHost.agentGui.reasoningLabel"),
       reasoningDegreeLabel: t("agentHost.agentGui.reasoningDegreeLabel"),

@@ -12,8 +12,8 @@ const labels: AgentComposerSettingsMenuLabels = {
   modelContextWindowSuffix: "context window",
   modelTooltipVersionLabel: "Version",
   defaultModel: "Default model",
+  loadingOptions: "Loading…",
   inheritedUnavailable: "Unavailable",
-  loadingSettings: "Loading",
   reasoningLabel: "Reasoning",
   reasoningDegreeLabel: "Reasoning degree",
   reasoningOptionDefault: "Default",
@@ -270,6 +270,36 @@ describe("buildComposerModelMenuModel", () => {
     expect(menu.model.show).toBe(true);
     expect(menu.reasoning.show).toBe(false);
     expect(menu.speed.show).toBe(false);
+  });
+
+  it("shows the loading copy on the trigger while options load", () => {
+    // No model resolved yet — the placeholder must read as loading, not the
+    // "Default" fallback (which looks like a real choice).
+    const loadingVm = (overrides: Partial<AgentGUIComposerSettingsVM>) =>
+      vm({
+        availableModels: [],
+        draftSettings: {
+          model: null,
+          reasoningEffort: null,
+          speed: null,
+          planMode: false,
+          permissionModeId: null
+        },
+        selectedModelValue: null,
+        ...overrides
+      });
+    expect(
+      buildComposerModelMenuModel(
+        loadingVm({ isSettingsLoading: true }),
+        labels
+      ).trigger.modelLabel
+    ).toBe("Loading…");
+    expect(
+      buildComposerModelMenuModel(
+        loadingVm({ isModelOptionsLoading: true }),
+        labels
+      ).trigger.modelLabel
+    ).toBe("Loading…");
   });
 
   it("disables the menu while settings load or nothing is configurable", () => {

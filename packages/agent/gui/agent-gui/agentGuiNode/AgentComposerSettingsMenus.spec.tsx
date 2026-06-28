@@ -118,11 +118,9 @@ describe("AgentProjectDropdown", () => {
     const trigger = screen.getByRole("combobox", { name: "Project" });
     expect(trigger).toHaveTextContent("No project");
     expect(trigger.querySelector(".lucide-folder")).toBeNull();
-    expect(mockAgentHostApi.userProjects.isNoProjectPath).toHaveBeenCalledWith(
-      {
-        path: noProjectPath
-      }
-    );
+    expect(mockAgentHostApi.userProjects.isNoProjectPath).toHaveBeenCalledWith({
+      path: noProjectPath
+    });
   });
 
   it("opens the project folder menu through ui-system Select layering", async () => {
@@ -1166,7 +1164,10 @@ function openComposerSubmenu(trigger: HTMLElement): void {
   fireEvent.click(trigger);
 }
 
-function renderPermissionModeDropdown(permissionMode: string) {
+function renderPermissionModeDropdown(
+  permissionMode: string,
+  overrides: Partial<AgentGUIComposerSettingsVM> = {}
+) {
   return render(
     <TooltipProvider>
       <AgentPermissionModeDropdown
@@ -1204,7 +1205,8 @@ function renderPermissionModeDropdown(permissionMode: string) {
               label: "Full access",
               description: "Can make changes and run commands directly."
             }
-          ]
+          ],
+          ...overrides
         }}
         labels={labels}
         onSettingsChange={vi.fn()}
@@ -1220,6 +1222,29 @@ describe("AgentPermissionModeDropdown", () => {
     expect(
       screen.getByRole("combobox", { name: "Run permissions" })
     ).toHaveAttribute("data-permission-tone", "success");
+  });
+
+  it("wires a loading hint tooltip while composer options load", () => {
+    renderPermissionModeDropdown("full-access", {
+      isSettingsLoading: true,
+      availablePermissionModes: []
+    });
+    const combobox = screen.getByRole("combobox", { name: "Run permissions" });
+    const wrapper = combobox.closest("span[tabindex]");
+    expect(wrapper).not.toBeNull();
+    expect(wrapper).toHaveAttribute("data-state");
+    // The trigger must show the loading copy, never the raw permission-mode id.
+    expect(combobox).toHaveTextContent("Loading…");
+    expect(combobox).not.toHaveTextContent("full-access");
+  });
+
+  it("omits the loading hint once permission options are available", () => {
+    renderPermissionModeDropdown("read-only");
+    expect(
+      screen
+        .getByRole("combobox", { name: "Run permissions" })
+        .closest("span[tabindex]")
+    ).toBeNull();
   });
 
   it("colors the ask for approval trigger when the selected value is display text", () => {
@@ -1503,11 +1528,13 @@ describe("AgentModelReasoningDropdown", () => {
     return {
       onSettingsChange,
       ...render(
-        <AgentModelReasoningDropdown
-          composerSettings={composerSettings}
-          labels={labels}
-          onSettingsChange={onSettingsChange}
-        />
+        <TooltipProvider>
+          <AgentModelReasoningDropdown
+            composerSettings={composerSettings}
+            labels={labels}
+            onSettingsChange={onSettingsChange}
+          />
+        </TooltipProvider>
       )
     };
   }
@@ -1665,6 +1692,22 @@ describe("AgentModelReasoningDropdown", () => {
     expect(modelReasoningTrigger()).toHaveClass("animate-pulse");
   });
 
+  it("wires a loading hint tooltip while the model list loads", () => {
+    renderModelReasoning({ isModelOptionsLoading: true });
+    // The trigger is wrapped in a focusable span so the loading tooltip can
+    // surface even when the (disabled) trigger swallows pointer events.
+    const wrapper = modelReasoningTrigger().closest("span[tabindex]");
+    expect(wrapper).not.toBeNull();
+    // Radix marks its tooltip trigger with data-state, confirming the span is
+    // the loading-hint tooltip's trigger rather than a bare wrapper.
+    expect(wrapper).toHaveAttribute("data-state");
+  });
+
+  it("omits the loading hint once models are available", () => {
+    renderModelReasoning({ isModelOptionsLoading: false });
+    expect(modelReasoningTrigger().closest("span[tabindex]")).toBeNull();
+  });
+
   it("shows model details in right-side row tooltips", async () => {
     render(
       <TooltipProvider>
@@ -1774,8 +1817,8 @@ const labels = {
   modelContextWindowSuffix: "context window",
   modelTooltipVersionLabel: "Version",
   defaultModel: "Default model",
+  loadingOptions: "Loading…",
   inheritedUnavailable: "Unavailable",
-  loadingSettings: "Loading conversation",
   reasoningLabel: "Reasoning",
   reasoningDegreeLabel: "Reasoning degree",
   reasoningOptionDefault: "Default",

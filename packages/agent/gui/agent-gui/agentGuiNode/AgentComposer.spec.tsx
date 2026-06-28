@@ -3519,6 +3519,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     modelContextWindowSuffix: "上下文窗口",
     modelTooltipVersionLabel: "版本",
     defaultModel: "默认模型",
+    loadingOptions: "正在加载",
     inheritedUnavailable: "不可用",
     loadingConversation: "加载会话中",
     reasoningLabel: "推理",

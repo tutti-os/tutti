@@ -8821,6 +8821,13 @@ export function useAgentGUINodeController({
       activeSessionRuntimeContext,
       "models"
     );
+    // Before the daemon's composer options arrive, the options-derived
+    // `composerSupport` is all-false, which would hide every settings control
+    // and leave an empty row. Fall back to the provider-static capabilities
+    // while loading so the controls still render (disabled, with a loading
+    // hint); once options load, the accurate options-derived flags take over.
+    const optionsLoading = isSettingsLoading || isModelOptionsLoading;
+    const providerSupport = composerSupportForProvider(data.provider);
     const selectedModelValue = draftModel;
     const selectedReasoningEffortValue =
       draftReasoningEffort as AgentSessionReasoningEffort | null;
@@ -8842,12 +8849,17 @@ export function useAgentGUINodeController({
           draftSettings.permissionModeId
         )
       },
-      supportsModel: composerSupport.model,
-      supportsReasoningEffort: composerSupport.reasoning,
+      supportsModel:
+        composerSupport.model || (optionsLoading && providerSupport.model),
+      supportsReasoningEffort:
+        composerSupport.reasoning ||
+        (optionsLoading && providerSupport.reasoning),
       supportsSpeed: composerSupport.speed,
       supportsBrowser: composerSupport.browser,
       supportsComputerUse: composerSupport.computer,
-      supportsPermissionMode,
+      supportsPermissionMode:
+        supportsPermissionMode ||
+        (optionsLoading && providerSupport.permission),
       supportsPlanMode: composerSupport.plan,
       planExclusiveWithPermissionMode: data.provider === "claude-code",
       isSettingsLoading,

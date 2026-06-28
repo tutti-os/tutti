@@ -362,6 +362,7 @@ export const en = {
       modelLabel: "Model",
       modelSelectionLabel: "Model selection",
       defaultModel: "Default model",
+      loadingOptions: "Loading…",
       inheritedUnavailable: "Inherited / unavailable",
       reasoningLabel: "Reasoning",
       reasoningDegreeLabel: "Reasoning level",

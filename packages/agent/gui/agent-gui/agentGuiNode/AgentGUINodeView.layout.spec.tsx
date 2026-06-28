@@ -1740,6 +1740,7 @@ function createLabels(): AgentGUIViewLabels {
     modelContextWindowSuffix: "context window",
     modelTooltipVersionLabel: "Version",
     defaultModel: "defaultModel",
+    loadingOptions: "loadingOptions",
     inheritedUnavailable: "inheritedUnavailable",
     reasoningLabel: "reasoning",
     reasoningDegreeLabel: "reasoningDegreeLabel",

@@ -333,6 +333,7 @@ export const zhCN = {
       modelLabel: "模型",
       modelSelectionLabel: "模型选择",
       defaultModel: "默认模型",
+      loadingOptions: "正在加载",
       inheritedUnavailable: "继承 / 不可用",
       reasoningLabel: "推理强度",
       reasoningDegreeLabel: "推理程度",
