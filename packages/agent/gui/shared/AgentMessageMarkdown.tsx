@@ -1847,6 +1847,7 @@ function PathLink({
     <a
       className="cursor-pointer"
       data-agent-link-href={href}
+      title={href}
       role="link"
       tabIndex={0}
       onClick={(event) => {
