@@ -89,6 +89,40 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.queryByText("Allow once")).toBeNull();
   });
 
+  it("renders non-edit approval toolCall details (e.g. bash command)", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            callType: "approval",
+            toolName: "Approval",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                toolCall: {
+                  kind: "bash",
+                  title: "Bash",
+                  toolName: "Bash",
+                  status: "pending",
+                  rawInput: {
+                    command: "npm install",
+                    description: "Install dependencies"
+                  }
+                }
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    // The approval should render the command details instead of nothing
+    expect(screen.getByText("npm install")).toBeTruthy();
+  });
+
   it("renders ask-user options and selected answer from the typed ask-user vm", async () => {
     setAgentGuiI18nTestLocale("en");
 

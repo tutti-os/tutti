@@ -2,6 +2,7 @@ import type { JSX } from "react";
 import type { AgentToolCallVM } from "../../contracts/agentToolCallVM";
 import { AgentEditContent } from "./AgentEditContent";
 import {
+  AgentDefaultToolContent,
   arrayValue,
   objectValue,
   stringValue,
@@ -19,7 +20,12 @@ export function AgentApprovalContent({
     return null;
   }
   if (previewCall) {
-    return <AgentEditContent call={previewCall} onLinkClick={onLinkClick} />;
+    if (previewCall.rendererKind === "edit") {
+      return <AgentEditContent call={previewCall} onLinkClick={onLinkClick} />;
+    }
+    return (
+      <AgentDefaultToolContent call={previewCall} onLinkClick={onLinkClick} />
+    );
   }
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
@@ -33,27 +39,27 @@ function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
   if (!toolCall) {
     return null;
   }
+  const input = objectValue(toolCall.rawInput);
+  const content = arrayValue(toolCall.content);
+  const locations = arrayValue(toolCall.locations);
   const normalizedKind = normalizeToolKind(
     stringValue(toolCall.kind) ??
       stringValue(toolCall.title) ??
       stringValue(toolCall.toolName)
   );
-  if (normalizedKind !== "edit" && normalizedKind !== "move") {
-    return null;
-  }
-  const input = objectValue(toolCall.rawInput);
-  const content = arrayValue(toolCall.content);
-  const locations = arrayValue(toolCall.locations);
+  const isEditLike = normalizedKind === "edit" || normalizedKind === "move";
   return {
     kind: "tool-call",
     id: `${call.id}:approval-preview`,
     turnId: call.turnId,
     name: stringValue(toolCall.title) ?? call.name,
-    toolName: "Edit",
+    toolName: isEditLike
+      ? "Edit"
+      : (stringValue(toolCall.toolName) ?? call.name),
     callType: "tool",
     status: stringValue(toolCall.status) ?? call.status,
     statusKind: call.statusKind,
-    summary: "",
+    summary: call.summary,
     compactSummary: null,
     payload: {
       input,
@@ -67,7 +73,7 @@ function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
     metadata: null,
     content,
     locations,
-    rendererKind: "edit",
+    rendererKind: isEditLike ? "edit" : "default",
     approval: null,
     planMode: null,
     askUserQuestion: null,
