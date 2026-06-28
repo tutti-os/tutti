@@ -24,6 +24,7 @@ const conversationMetaMock = vi.hoisted(() => ({
 const composerMock = vi.hoisted(() => ({
   calls: [] as Array<{
     composerFocusRequestSequence?: number | null;
+    compactSupported?: boolean | null;
     isSendingTurn?: boolean;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
@@ -49,12 +50,14 @@ vi.mock("./AgentSessionChrome", () => ({
 vi.mock("./AgentComposer", () => ({
   AgentComposer: (props: {
     composerFocusRequestSequence?: number | null;
+    compactSupported?: boolean | null;
     isSendingTurn?: boolean;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
   }) => {
     composerMock.calls.push({
       composerFocusRequestSequence: props.composerFocusRequestSequence,
+      compactSupported: props.compactSupported,
       isSendingTurn: props.isSendingTurn,
       showStopButton: props.showStopButton,
       usage: props.usage
@@ -1413,6 +1416,9 @@ describe("AgentGUINodeView detail header actions", () => {
     renderAgentGUINodeView({ viewModel: headerActionViewModel() });
 
     expect(composerMock.calls.at(-1)?.usage).toMatchObject(usageWithWindow);
+    // The bottom-dock composer (active conversation) must receive
+    // compactSupported so its usage popover can render the compact button.
+    expect(composerMock.calls.at(-1)?.compactSupported).toBe(true);
     expect(screen.queryByTestId("agent-gui-compact-button")).toBeNull();
     expect(statusDotMock.calls).not.toContainEqual(
       expect.objectContaining({

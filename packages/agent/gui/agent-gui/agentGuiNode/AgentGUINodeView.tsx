@@ -2029,8 +2029,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const stableRequestWorkspaceReferences = useOptionalStableEventCallback(
     onRequestWorkspaceReferences
   );
-  const stableSelectProjectDirectory =
-    useOptionalStableEventCallback(selectProjectDirectory);
+  const stableSelectProjectDirectory = useOptionalStableEventCallback(
+    selectProjectDirectory
+  );
   const stableRequestGitBranches =
     useOptionalStableEventCallback(onRequestGitBranches);
   const authLogin = useOptionalStableEventCallback(onAgentProviderLogin);
@@ -2057,6 +2058,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       draftContent: viewModel.draftContent,
       availableCommands: viewModel.availableCommands,
       hasCompactableContext: viewModel.hasSentUserMessage,
+      compactSupported: viewModel.compactSupported,
       availableSkills: viewModel.availableSkills,
       disabled: composerDisabled,
       disabledReason: composerDisabledReason,
@@ -2137,6 +2139,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       updateSelectedProjectPath,
       viewModel.availableCommands,
       viewModel.availableSkills,
+      viewModel.compactSupported,
       viewModel.composerSettings,
       viewModel.currentUserId,
       viewModel.data.provider,
@@ -2158,10 +2161,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const emptyHeroComposerProps = useMemo<AgentComposerProps>(
     () => ({
       ...bottomDockComposerProps,
-      compactSupported: viewModel.compactSupported,
       layoutMode: "hero"
     }),
-    [bottomDockComposerProps, viewModel.compactSupported]
+    [bottomDockComposerProps]
   );
   const bottomDockStoreState = useMemo<AgentGUIBottomDockStoreSnapshot>(
     () => ({
