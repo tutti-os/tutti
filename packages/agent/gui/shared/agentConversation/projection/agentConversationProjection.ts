@@ -17,6 +17,7 @@ import {
   buildAgentTurnSequenceItems,
   computeAgentToolGroups
 } from "./agentToolGroupingProjection";
+import { stripMarkdownForCopy } from "../lib/stripMarkdownForCopy";
 import { projectTurnRows } from "./agentTurnRowProjection";
 import { projectAgentProcessingRow } from "./agentProcessingProjection";
 import {
@@ -438,7 +439,7 @@ function projectMessageCopyText(
         row.speaker === "user"
           ? copyTextForUserMessage(message)
           : assistantCopyTargetKeys.has(messageCopyTargetKey(row, message))
-            ? message.body
+            ? stripMarkdownForCopy(message.body)
             : null;
       if ((message.copyText ?? null) === copyText) {
         return message;

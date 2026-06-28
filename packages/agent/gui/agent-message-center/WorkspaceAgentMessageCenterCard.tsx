@@ -27,6 +27,7 @@ import { useTranslation } from "../i18n/index";
 import { normalizeAgentTitleText } from "../shared/utils/agentTitleText";
 import { AgentInteractivePromptSurface } from "../shared/agentConversation/components/AgentInteractivePromptSurface";
 import { AgentMessageMarkdown } from "../shared/AgentMessageMarkdown";
+import { stripMarkdownForCopy } from "../shared/agentConversation/lib/stripMarkdownForCopy";
 import { AgentVerticalScrollArea } from "../shared/AgentVerticalScrollArea";
 import { managedAgentRoundedIconUrl } from "../shared/managedAgentIcons";
 import { workspaceAgentActivityStatusLabel } from "../shared/workspaceAgentActivityStatusLabel";
@@ -529,10 +530,10 @@ function MessageCenterStackSummary({
 function messageCenterStackPreviewText(
   item: WorkspaceAgentMessageCenterItem
 ): string {
-  return (
+  return stripMarkdownForCopy(
     item.digest.primary.summary.trim() ||
-    item.lastAgentMessageSummary.trim() ||
-    normalizeAgentTitleText(item.title)
+      item.lastAgentMessageSummary.trim() ||
+      normalizeAgentTitleText(item.title)
   );
 }
 
@@ -734,7 +735,7 @@ function MessageCenterSummary({
         />
       ) : summary ? (
         <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-          {summary}
+          {stripMarkdownForCopy(summary)}
         </div>
       ) : (
         emptyLabel
