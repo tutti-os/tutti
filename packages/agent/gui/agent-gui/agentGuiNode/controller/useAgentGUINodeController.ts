@@ -5527,6 +5527,13 @@ export function useAgentGUINodeController({
         const nextPending = { ...pendingTurnIdBySessionIdRef.current };
         delete nextPending[agentSessionId];
         pendingTurnIdBySessionIdRef.current = nextPending;
+        // Reset the local submitting flag as soon as the server confirms the
+        // turn has settled, rather than waiting for the .finally() of the
+        // original sendInput promise.  This prevents a brief "queued" flash
+        // when the user sends the next message right after completion (#428).
+        if (nextStatus !== null && !conversationBusyStatus(nextStatus)) {
+          setLocalIsSubmitting(false);
+        }
       }
       if (
         !nextStatus &&
