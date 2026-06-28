@@ -308,6 +308,25 @@ test("keeps drag rects below the top safe area while allowing side overflow", ()
   );
 });
 
+test("prevents drag rects from extending below the bottom safe area into the dock", () => {
+  const constraints = {
+    minWidth: 220,
+    minHeight: 160,
+    surfacePadding: 0,
+    safeArea: { top: 52, right: 0, bottom: 88, left: 0 }
+  };
+  const size = { width: 900, height: 640 };
+
+  assert.deepEqual(
+    clampWorkbenchDragRect(
+      { x: 100, y: 500, width: 640, height: 420 },
+      size,
+      constraints
+    ),
+    { x: 100, y: 132, width: 640, height: 420 }
+  );
+});
+
 test("creates staggered initial rects", () => {
   const first = createWorkbenchInitialRect(0, { width: 1200, height: 800 });
   const second = createWorkbenchInitialRect(1, { width: 1200, height: 800 });

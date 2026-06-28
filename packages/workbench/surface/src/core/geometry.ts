@@ -154,9 +154,18 @@ export function clampWorkbenchDragRect(
     WORKBENCH_MIN_VISIBLE_PX
   );
 
+  const minY = layoutFrame.y + normalized.surfacePadding;
+  const maxY = Math.max(
+    minY,
+    layoutFrame.y +
+      layoutFrame.height -
+      normalized.surfacePadding -
+      visibleRect.height
+  );
+
   return {
     ...visibleRect,
-    y: Math.max(layoutFrame.y + normalized.surfacePadding, visibleRect.y)
+    y: clamp(visibleRect.y, minY, maxY)
   };
 }
 
