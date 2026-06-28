@@ -1381,6 +1381,60 @@ describe("AgentMessageMarkdown", () => {
   });
 });
 
+  it("wraps non-zoomed markdown images with a copy-image context menu", () => {
+    // When enableImageZoom is false (default), markdown images should still
+    // have a ConversationImageContextMenu wrapper for right-click copy.
+    render(
+      <AgentMessageMarkdown
+        content={"![alt text](https://example.com/image.png)"}
+      />
+    );
+
+    // The context menu trigger wraps the image
+    const trigger = document.querySelector(
+      '[data-slot="context-menu-trigger"]'
+    );
+    expect(trigger).not.toBeNull();
+    // The image should be inside the trigger
+    const img = screen.getByRole("img", { name: "alt text" });
+    expect(trigger?.contains(img)).toBe(true);
+  });
+
+  it("copies image from non-zoomed markdown image context menu", async () => {
+    const fetchImage = vi.fn().mockResolvedValue({
+      blob: () =>
+        Promise.resolve(new Blob(["image"], { type: "image/png" }))
+    });
+    const write = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("fetch", fetchImage);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write }
+    });
+    class TestClipboardItem {
+      constructor(items: unknown) {
+        // stored for verification
+      }
+    }
+    vi.stubGlobal("ClipboardItem", TestClipboardItem);
+
+    render(
+      <AgentMessageMarkdown
+        content={"![test image](https://example.com/pic.png)"}
+      />
+    );
+
+    const img = screen.getByRole("img", { name: "test image" });
+    fireEvent.contextMenu(img);
+
+    const copyItem = await screen.findByText("Copy image");
+    fireEvent.pointerDown(copyItem, { button: 0 });
+
+    await waitFor(() => {
+      expect(fetchImage).toHaveBeenCalledWith("https://example.com/pic.png");
+    });
+  });
+
 describe("splitStreamingMarkdownBlocks", () => {
   it("splits stable markdown blocks without splitting fenced code", () => {
     expect(
