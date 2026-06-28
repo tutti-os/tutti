@@ -17,6 +17,7 @@ export const en = {
     download: "Download",
     copyImage: "Copy image",
     downloadImage: "Download image",
+    imageDownloaded: "Image downloaded.",
     expandImage: "Zoom image",
     error: "Error",
     generateByAi: "Generate by AI",

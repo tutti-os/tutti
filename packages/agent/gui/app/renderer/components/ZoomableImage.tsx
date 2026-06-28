@@ -12,6 +12,7 @@ import {
 } from "react";
 import { CopyIcon, DownloadIcon } from "lucide-react";
 import Zoom from "react-medium-image-zoom";
+import { toast } from "@tutti-os/ui-system";
 import { useTranslation } from "../../../i18n/index";
 import { cn } from "../lib/utils";
 import { ConversationImageContextMenu } from "../../../shared/agentConversation/components/ConversationImageContextMenu";
@@ -90,7 +91,8 @@ export function ZoomableImage({
     }
     closeContextMenu();
     downloadImage(actionSource, resolvedDownloadName);
-  }, [actionSource, closeContextMenu, resolvedDownloadName]);
+    toast.success(t("common.imageDownloaded"));
+  }, [actionSource, closeContextMenu, resolvedDownloadName, t]);
 
   const actionButtons = hasImageActions ? (
     <ImageActionButtons
