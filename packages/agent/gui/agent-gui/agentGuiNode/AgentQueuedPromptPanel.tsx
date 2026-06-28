@@ -88,6 +88,7 @@ export function AgentQueuedPromptPanel({
 }: AgentQueuedPromptPanelProps): React.JSX.Element {
   "use memo";
   const [isExpanded, setIsExpanded] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const singlePromptTextRef = useRef<HTMLDivElement | null>(null);
   const queuedPromptListRef = useRef<HTMLDivElement | null>(null);
   const pointerHandledEditPromptIdRef = useRef<string | null>(null);
@@ -179,18 +180,34 @@ export function AgentQueuedPromptPanel({
   }, [canExpand, isExpanded]);
 
   useLayoutEffect(() => {
-    const element = queuedPromptListRef.current;
-    if (!element) {
+    const listElement = queuedPromptListRef.current;
+    const panelElement = panelRef.current;
+    if (!listElement) {
       return;
     }
 
     const measure = (): void => {
+      const contentHeight = listElement.scrollHeight;
       const viewportCap =
         typeof window === "undefined"
           ? 280
           : Math.round(window.innerHeight * 0.38);
+
+      // Constrain to available space between the composer and the top
+      // of the conversation detail area so the expanded panel does not
+      // overflow the detail-panel's overflow:hidden boundary.
+      let spaceCap = 280;
+      if (panelElement && typeof window !== "undefined") {
+        const rect = panelElement.getBoundingClientRect();
+        if (rect.bottom > 0) {
+          const reserveTop = 48;
+          const panelOverhead = 46;
+          spaceCap = Math.max(32, rect.bottom - reserveTop - panelOverhead);
+        }
+      }
+
       setExpandedListMaxHeightPx(
-        Math.max(32, Math.min(280, viewportCap, element.scrollHeight))
+        Math.max(32, Math.min(280, viewportCap, spaceCap, contentHeight))
       );
     };
 
@@ -199,7 +216,7 @@ export function AgentQueuedPromptPanel({
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(measure);
-    resizeObserver?.observe(element);
+    resizeObserver?.observe(listElement);
     window.addEventListener("resize", measure);
     return () => {
       resizeObserver?.disconnect();
@@ -209,6 +226,7 @@ export function AgentQueuedPromptPanel({
 
   return (
     <div
+      ref={panelRef}
       className={styles.composerQueuedPromptPanel}
       data-expanded={isExpanded ? "true" : "false"}
       data-expandable={canExpand ? "true" : "false"}

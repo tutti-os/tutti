@@ -259,4 +259,49 @@ describe("AgentQueuedPromptPanel", () => {
     expect(onEditQueuedPrompt).toHaveBeenCalledWith("queued-2");
     expect(onEditQueuedPrompt).toHaveBeenCalledTimes(1);
   });
+
+  it("constrains expanded list height to available space above the composer", () => {
+    const scrollHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockReturnValue(500);
+    const getBoundingClientRectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        bottom: 150,
+        top: 0,
+        left: 0,
+        right: 800,
+        width: 800,
+        height: 150,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      } as DOMRect);
+
+    const { container } = render(
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          textQueuedPrompt("q1", "First prompt"),
+          textQueuedPrompt("q2", "Second prompt", 2),
+          textQueuedPrompt("q3", "Third prompt", 3)
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    const panel = container.querySelector("[data-expanded]") as HTMLElement;
+    const expandedHeight = panel.style.getPropertyValue(
+      "--agent-gui-queued-prompt-expanded-height"
+    );
+    // rect.bottom=150, reserveTop=48, panelOverhead=46 → spaceCap=56
+    expect(parseInt(expandedHeight)).toBeLessThanOrEqual(56);
+    expect(parseInt(expandedHeight)).toBeGreaterThanOrEqual(32);
+
+    scrollHeightSpy.mockRestore();
+    getBoundingClientRectSpy.mockRestore();
+  });
 });
