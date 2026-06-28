@@ -6,8 +6,11 @@ import {
   objectValue,
   stringValue,
   ToolMarkdownBlock,
+  ToolSection,
   type AgentToolRendererProps
 } from "./agentToolContentShared";
+import { getPromptToolDetails } from "../../promptToolDetails";
+import { translate } from "../../../../i18n/index";
 
 export function AgentApprovalContent({
   call,
@@ -15,15 +18,39 @@ export function AgentApprovalContent({
 }: AgentToolRendererProps): JSX.Element | null {
   "use memo";
   const previewCall = approvalPreviewCall(call);
-  if (!previewCall && !call.summary.trim()) {
-    return null;
-  }
   if (previewCall) {
     return <AgentEditContent call={previewCall} onLinkClick={onLinkClick} />;
   }
+  const toolDetails = getPromptToolDetails(call.input ?? null);
+  const summary = call.summary.trim();
+  if (toolDetails.length === 0 && !summary) {
+    return null;
+  }
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
-      <ToolMarkdownBlock content={call.summary} />
+      {toolDetails.length > 0 ? (
+        <ToolSection title="Details">
+          {toolDetails.map((detail) => (
+            <div
+              key={`${detail.kind}:${detail.value}`}
+              className="workspace-agents-status-panel__detail-approval-detail-row"
+            >
+              <span className="workspace-agents-status-panel__detail-approval-detail-label">
+                {promptToolDetailLabel(detail.kind)}
+              </span>
+              <span className="workspace-agents-status-panel__detail-approval-detail-value">
+                {detail.value}
+              </span>
+              {detail.meta ? (
+                <span className="workspace-agents-status-panel__detail-approval-detail-meta">
+                  {detail.meta}
+                </span>
+              ) : null}
+            </div>
+          ))}
+        </ToolSection>
+      ) : null}
+      {summary ? <ToolMarkdownBlock content={summary} onLinkClick={onLinkClick} /> : null}
     </div>
   );
 }
@@ -78,4 +105,17 @@ function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
 
 function normalizeToolKind(value: string | null): string {
   return (value ?? "").trim().toLowerCase();
+}
+
+function promptToolDetailLabel(kind: "command" | "mcp" | "path" | "query"): string {
+  switch (kind) {
+    case "command":
+      return translate("agentHost.agentTool.details.command");
+    case "mcp":
+      return translate("agentHost.agentTool.details.mcp");
+    case "path":
+      return translate("agentHost.agentTool.details.path");
+    case "query":
+      return translate("agentHost.agentTool.details.query");
+  }
 }
