@@ -19,6 +19,7 @@ import type {
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
+import { agentGuiDockIconUrls } from "../../dockIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
@@ -1087,6 +1088,40 @@ describe("AgentGUINode", () => {
     );
 
     expect(windowTitle).toHaveTextContent("Codex");
+  });
+
+  it("shows the provider dock icon before the Agent GUI window title", () => {
+    const codex = renderAgentGUINode({
+      title: "Agent",
+      state: {
+        provider: "codex",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      }
+    });
+
+    const codexIcon = codex.container.querySelector<HTMLImageElement>(
+      '[data-agent-gui-window-provider-icon="true"]'
+    );
+    expect(codexIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
+    codex.unmount();
+
+    const claude = renderAgentGUINode({
+      title: "Agent",
+      state: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      }
+    });
+
+    const claudeIcon = claude.container.querySelector<HTMLImageElement>(
+      '[data-agent-gui-window-provider-icon="true"]'
+    );
+    expect(claudeIcon).toHaveAttribute(
+      "src",
+      agentGuiDockIconUrls["claude-code"]
+    );
   });
 
   it("uses the active conversation as the window title when the rail is collapsed", () => {

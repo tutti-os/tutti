@@ -75,6 +75,7 @@ import type {
   AgentComposerGitBranchLoader,
   AgentComposerSlashStatusLimit
 } from "./AgentComposer";
+import { agentGuiDockIconUrls } from "../../dockIcons";
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -1139,6 +1140,9 @@ export const AgentGUINode = memo(function AgentGUINode({
     (isConversationRailCollapsed ? activeConversationWindowTitle : null) ||
     windowAgentTitle ||
     title;
+  const windowTitleIconUrl =
+    agentGuiDockIconUrls[activeProvider as keyof typeof agentGuiDockIconUrls] ??
+    null;
   useEffect(() => {
     if (previewMode) {
       return;
@@ -1259,6 +1263,18 @@ export const AgentGUINode = memo(function AgentGUINode({
       nodeId={nodeId}
       kind="agentGui"
       title={windowTitle}
+      titleIcon={
+        windowTitleIconUrl ? (
+          <img
+            src={windowTitleIconUrl}
+            alt=""
+            draggable={false}
+            aria-hidden="true"
+            className="size-4 rounded-[4px]"
+            data-agent-gui-window-provider-icon="true"
+          />
+        ) : null
+      }
       position={position}
       width={width}
       height={height}

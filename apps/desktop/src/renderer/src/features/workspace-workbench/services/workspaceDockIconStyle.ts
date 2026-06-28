@@ -1,7 +1,6 @@
 import { createElement, type ReactNode } from "react";
 import type { DesktopDockIconStyle } from "@shared/preferences";
 import type { DesktopThemeAppearance } from "@shared/theme";
-import { tuttiAgentAssetUrls } from "../../../../../shared/tuttiAssetProtocol.ts";
 import type { AgentGuiWorkbenchProvider } from "@tutti-os/agent-gui/workbench/types";
 
 const defaultFilesIconUrl = new URL(
@@ -24,8 +23,14 @@ const defaultBrowserIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/browser.png",
   import.meta.url
 ).href;
-const defaultClaudeCodeIconUrl = tuttiAgentAssetUrls.claudeCode;
-const defaultCodexIconUrl = tuttiAgentAssetUrls.codex;
+const defaultClaudeCodeIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/claudecode.png",
+  import.meta.url
+).href;
+const defaultCodexIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/codex.png",
+  import.meta.url
+).href;
 const defaultGeminiIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/gemini.png",
   import.meta.url

@@ -251,6 +251,7 @@ export function createAgentGuiWorkbenchContribution(
                 null)
               : null,
             defaultActions,
+            iconUrl: agentGuiDockIconUrls[provider],
             isConversationRailAutoCollapsed,
             isConversationRailCollapsed,
             title: providerTitle,
