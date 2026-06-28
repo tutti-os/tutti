@@ -82,6 +82,7 @@ export interface BrowserGuestWebContents {
   getTitle(): string;
   getURL(): string;
   getUserAgent?(): string;
+  insertCSS?(css: string): Promise<string>;
   goBack(): void;
   goForward(): void;
   isDestroyed(): boolean;
