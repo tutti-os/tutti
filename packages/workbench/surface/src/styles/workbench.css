@@ -195,10 +195,10 @@
 .workbench-window__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   height: var(--workbench-header-height);
-  padding: 0 8px 0 12px;
+  padding: 0 12px 0 16px;
   border-bottom: 1px solid var(--border-1);
   background: var(--background-panel);
   cursor: grab;
@@ -219,6 +219,84 @@
 
 .workbench-window__header--custom:active {
   cursor: default;
+}
+
+.workbench-window__title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-window__traffic-light-actions,
+.workbench-window-traffic-lights {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.workbench-window__traffic-light-actions {
+  cursor: default;
+}
+
+.workbench-window-traffic-lights {
+  pointer-events: auto;
+}
+
+.workbench-window-traffic-light {
+  position: relative;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.78;
+  transition: opacity 160ms ease;
+}
+
+.workbench-window-traffic-light::before {
+  position: absolute;
+  inset: 4px;
+  border-radius: inherit;
+  background-color: color-mix(in srgb, var(--text-tertiary) 72%, transparent);
+  content: "";
+  transition: background-color 160ms ease;
+}
+
+.workbench-window-traffic-light:hover,
+.workbench-window-traffic-light:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+.workbench-window-traffic-light[data-workbench-traffic-light="close"]:hover::before,
+.workbench-window-traffic-light[data-workbench-traffic-light="close"]:focus-visible::before {
+  background-color: #ff5f57;
+}
+
+.workbench-window-traffic-light[data-workbench-traffic-light="minimize"]:hover::before,
+.workbench-window-traffic-light[data-workbench-traffic-light="minimize"]:focus-visible::before {
+  background-color: #ffbd2e;
+}
+
+.workbench-window-traffic-light[data-workbench-traffic-light="maximize"]:hover::before,
+.workbench-window-traffic-light[data-workbench-traffic-light="maximize"]:focus-visible::before {
+  background-color: #28c840;
+}
+
+.workbench-window-traffic-light:disabled {
+  cursor: default;
+  opacity: 0.38;
 }
 
 [data-workbench-drag-handle="true"] {
@@ -283,8 +361,10 @@
 }
 
 .workbench-window__resize-handle[data-handle="north-east"] {
-  top: -12px;
-  right: -12px;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
   cursor: nesw-resize;
 }
 

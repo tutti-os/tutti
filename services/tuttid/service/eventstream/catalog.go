@@ -24,21 +24,8 @@ const (
 	TopicWorkspaceWorkbenchNodeLaunchRequested = "workspace.workbench.node.launch.requested"
 )
 
-type Direction string
-
-const (
-	DirectionClientToServer Direction = "client->server"
-	DirectionServerToClient Direction = "server->client"
-)
-
-type ValidationCode string
-
-const (
-	ValidationCodeInvalidDirection ValidationCode = "invalid_direction"
-	ValidationCodeInvalidPayload   ValidationCode = "invalid_payload"
-	ValidationCodeInvalidTopic     ValidationCode = "invalid_topic"
-)
-
+// Direction, ValidationCode and ValidationError now live in stream-go and are
+// re-exported as aliases from service.go; PayloadValidator stays catalog-local.
 type PayloadValidator func([]byte) error
 
 type TopicDefinition struct {
@@ -76,6 +63,7 @@ func (d TopicDefinition) validatePayload(direction Direction, payload []byte) er
 type Catalog interface {
 	Topic(topic string) (TopicDefinition, bool)
 	Topics() []TopicDefinition
+	TopicVersion(topic string) (int, bool)
 	ValidatePublish(topic string, direction Direction, payload []byte) error
 	ValidateSubscription(topic string) error
 }
@@ -183,6 +171,14 @@ func (c StaticCatalog) Topic(topic string) (TopicDefinition, bool) {
 	return definition, ok
 }
 
+func (c StaticCatalog) TopicVersion(topic string) (int, bool) {
+	definition, ok := c.Topic(topic)
+	if !ok {
+		return 0, false
+	}
+	return definition.Version, true
+}
+
 func (c StaticCatalog) Topics() []TopicDefinition {
 	topics := make([]TopicDefinition, 0, len(c.topics))
 	for _, definition := range c.topics {
@@ -240,20 +236,6 @@ func (c StaticCatalog) ValidateSubscription(topic string) error {
 		}
 	}
 	return nil
-}
-
-type ValidationError struct {
-	Code      ValidationCode
-	Message   string
-	Topic     string
-	Direction Direction
-}
-
-func (e *ValidationError) Error() string {
-	if e == nil {
-		return ""
-	}
-	return e.Message
 }
 
 type analyticsDebugReportedPayload struct {

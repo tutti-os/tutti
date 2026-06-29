@@ -12,6 +12,7 @@ import {
   cn,
   menuItemClassName
 } from "@tutti-os/ui-system";
+import type { WorkbenchDisplayMode } from "@tutti-os/workbench-surface";
 import { useEffect, useRef, useState } from "react";
 import type { HTMLAttributes, JSX, ReactNode } from "react";
 import type { BrowserNodeFeature } from "../core/feature.ts";
@@ -274,6 +275,7 @@ export interface BrowserNodeWorkbenchHeaderProps {
   className?: string;
   defaultActions?: ReactNode;
   defaultUrl: string;
+  displayMode?: WorkbenchDisplayMode;
   dragHandleProps?: HTMLAttributes<HTMLElement>;
   feature: BrowserNodeFeature;
   nodeId: string;
@@ -285,6 +287,7 @@ export function BrowserNodeWorkbenchHeader({
   className,
   defaultActions,
   defaultUrl,
+  displayMode,
   dragHandleProps,
   feature,
   nodeId,
@@ -305,6 +308,7 @@ export function BrowserNodeWorkbenchHeader({
       canGoForward={runtime.canGoForward}
       className={className}
       defaultActions={defaultActions}
+      displayMode={displayMode}
       draftUrl={state.draftUrl}
       dragHandleProps={dragHandleProps}
       feature={feature}
@@ -342,6 +346,7 @@ export function BrowserNodeHeader({
   canGoForward,
   className,
   defaultActions,
+  displayMode,
   draftUrl,
   dragHandleProps,
   feature,
@@ -361,6 +366,7 @@ export function BrowserNodeHeader({
   canGoForward: boolean;
   className?: string;
   defaultActions?: ReactNode;
+  displayMode?: WorkbenchDisplayMode;
   draftUrl: string;
   dragHandleProps?: HTMLAttributes<HTMLElement>;
   feature: BrowserNodeFeature;
@@ -391,6 +397,7 @@ export function BrowserNodeHeader({
         className
       )}
       data-browser-node-header="true"
+      data-browser-node-header-display-mode={displayMode}
       onDoubleClick={(event) => {
         if (
           event.target instanceof Element &&
@@ -402,6 +409,23 @@ export function BrowserNodeHeader({
         dragHandleProps?.onDoubleClick?.(event);
       }}
     >
+      {defaultActions ? (
+        <span
+          className="nodrag flex shrink-0 items-center"
+          onClickCapture={(event) => {
+            if (
+              !onCloseRequest ||
+              !(event.target instanceof Element) ||
+              !event.target.closest('[data-workbench-action="close"]')
+            ) {
+              return;
+            }
+            onCloseRequest();
+          }}
+        >
+          {defaultActions}
+        </span>
+      ) : null}
       <div className="inline-flex items-center gap-1">
         <BrowserNodeHeaderButton
           disabled={!canGoBack}
@@ -433,7 +457,7 @@ export function BrowserNodeHeader({
       </div>
       <div
         {...dragHandleProps}
-        className="h-full w-8 shrink-0 cursor-grab active:cursor-grabbing"
+        className="h-full w-1.5 shrink-0 cursor-grab active:cursor-grabbing"
         data-browser-node-drag-gutter="true"
         data-node-drag-handle="true"
         aria-hidden="true"
@@ -467,32 +491,13 @@ export function BrowserNodeHeader({
           <LaunchIcon className="size-[15px]" />
         </BrowserNodeHeaderButton>
       ) : null}
-      {defaultActions ? (
-        <div className="nodrag flex shrink-0 items-center gap-1.5">
-          {isCold ? (
-            <Badge
-              className="h-[26px] min-w-7 rounded-md text-[10px] font-semibold lowercase tracking-[0.08em]"
-              aria-label={feature.i18n.t("coldStatus")}
-            >
-              {feature.i18n.t("coldStatus")}
-            </Badge>
-          ) : null}
-          <span
-            className="contents"
-            onClickCapture={(event) => {
-              if (
-                !onCloseRequest ||
-                !(event.target instanceof Element) ||
-                !event.target.closest('[data-workbench-action="close"]')
-              ) {
-                return;
-              }
-              onCloseRequest();
-            }}
-          >
-            {defaultActions}
-          </span>
-        </div>
+      {isCold ? (
+        <Badge
+          className="nodrag h-[26px] min-w-7 shrink-0 rounded-md text-[10px] font-semibold lowercase tracking-[0.08em]"
+          aria-label={feature.i18n.t("coldStatus")}
+        >
+          {feature.i18n.t("coldStatus")}
+        </Badge>
       ) : null}
     </div>
   );

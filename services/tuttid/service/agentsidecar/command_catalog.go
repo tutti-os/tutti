@@ -111,6 +111,12 @@ func runtimeCommandFromCapability(cliName string, capability cliservice.Capabili
 		}
 		description += "Omit --model unless the user explicitly requested a model; tuttid uses the target provider default."
 	}
+	if agentCommandAcceptsImageInput(id, capability.InputSchema) {
+		if description != "" {
+			description += " "
+		}
+		description += "Pass --image <path> multiple times to include local PNG, JPEG, or WebP image context."
+	}
 	summary := firstNonEmptyText(capability.Summary, id)
 	if id == "issue-manager.issue.list" {
 		summary = "List issues in a topic"
@@ -284,6 +290,20 @@ func asSchemaString(value any) string {
 	return ""
 }
 
+func agentCommandAcceptsImageInput(id string, schema map[string]any) bool {
+	switch strings.TrimSpace(id) {
+	case "agent-context.agent.start", "agent-context.codex.start", "agent-context.claude.start", "agent-context.agent.send":
+	default:
+		return false
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = properties["image"]
+	return ok
+}
+
 func commandExampleSuffix(id string) string {
 	switch id {
 	case "issue-manager.issue.topic.update":
@@ -366,6 +386,8 @@ func commandRank(id string) int {
 		return 110
 	case "agent-context.agent.session-summary":
 		return 120
+	case "agent-context.agent.turn-resources":
+		return 125
 	case "agent-context.agent.active-peers":
 		return 130
 	case "workspace-apps.app.open":
@@ -392,6 +414,7 @@ func fallbackCommandGuide(cliName string) string {
 		fmt.Sprintf("- Complete an issue task run: `%s issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed --summary <summary> --outputs '[{\"path\":\"<artifact-path>\"}]' --json` - Execution mode only; do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- List agent sessions: `%s agent sessions`", cliName),
 		fmt.Sprintf("- Get agent session summary: `%s agent session-summary --session-id <session-id> --json`", cliName),
+		fmt.Sprintf("- Get resources from one agent turn: `%s agent turn-resources --session-id <session-id> --turn-id <turn-id> --json`", cliName),
 		fmt.Sprintf("- Show active peer agents: `%s agent active-peers --json`", cliName),
 		fmt.Sprintf("- Open an app window: `%s app open --app-id <app-id> --json` - Use only when the user explicitly asks to open or show an app window, or confirms an app window should be opened; prefer app-specific CLI commands for ordinary app work.", cliName),
 	}, "\n")

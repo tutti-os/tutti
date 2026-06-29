@@ -2,7 +2,11 @@ package agentcontext
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
@@ -19,30 +23,32 @@ var sessionActionColumns = []cliservice.TableColumn{
 }
 
 type startInput struct {
-	Provider        string `cli:"provider" validate:"required"`
-	Cwd             string `cli:"cwd"`
-	DisplayPrompt   string `cli:"display-prompt"`
-	Model           string `cli:"model"`
-	PermissionMode  string `cli:"permission-mode"`
-	Prompt          string `cli:"prompt" validate:"required"`
-	ReasoningEffort string `cli:"reasoning-effort"`
-	Show            bool   `cli:"show"`
-	Speed           string `cli:"speed"`
-	Title           string `cli:"title"`
-	Visible         bool   `cli:"visible"`
+	Provider        string   `cli:"provider" validate:"required"`
+	Cwd             string   `cli:"cwd"`
+	DisplayPrompt   string   `cli:"display-prompt"`
+	Images          []string `cli:"image" description:"Image file to attach to the initial prompt. May be passed multiple times."`
+	Model           string   `cli:"model"`
+	PermissionMode  string   `cli:"permission-mode"`
+	Prompt          string   `cli:"prompt" validate:"required"`
+	ReasoningEffort string   `cli:"reasoning-effort"`
+	Show            bool     `cli:"show"`
+	Speed           string   `cli:"speed"`
+	Title           string   `cli:"title"`
+	Visible         bool     `cli:"visible"`
 }
 
 type providerStartInput struct {
-	Cwd             string `cli:"cwd"`
-	DisplayPrompt   string `cli:"display-prompt"`
-	Model           string `cli:"model"`
-	PermissionMode  string `cli:"permission-mode"`
-	Prompt          string `cli:"prompt" validate:"required"`
-	ReasoningEffort string `cli:"reasoning-effort"`
-	Show            bool   `cli:"show"`
-	Speed           string `cli:"speed"`
-	Title           string `cli:"title"`
-	Visible         bool   `cli:"visible"`
+	Cwd             string   `cli:"cwd"`
+	DisplayPrompt   string   `cli:"display-prompt"`
+	Images          []string `cli:"image" description:"Image file to attach to the initial prompt. May be passed multiple times."`
+	Model           string   `cli:"model"`
+	PermissionMode  string   `cli:"permission-mode"`
+	Prompt          string   `cli:"prompt" validate:"required"`
+	ReasoningEffort string   `cli:"reasoning-effort"`
+	Show            bool     `cli:"show"`
+	Speed           string   `cli:"speed"`
+	Title           string   `cli:"title"`
+	Visible         bool     `cli:"visible"`
 }
 
 type sessionIDInput struct {
@@ -50,8 +56,9 @@ type sessionIDInput struct {
 }
 
 type sendInput struct {
-	SessionID string `cli:"session-id" validate:"required"`
-	Prompt    string `cli:"prompt" validate:"required"`
+	SessionID string   `cli:"session-id" validate:"required"`
+	Images    []string `cli:"image" description:"Image file to attach to this prompt. May be passed multiple times."`
+	Prompt    string   `cli:"prompt" validate:"required"`
 }
 
 type sessionActionResult struct {
@@ -74,6 +81,7 @@ func (p Provider) newStartCommand() cliservice.Command {
 			return p.runStart(ctx, invoke, input.Provider, startFields{
 				Cwd:             input.Cwd,
 				DisplayPrompt:   input.DisplayPrompt,
+				Images:          input.Images,
 				Model:           input.Model,
 				PermissionMode:  input.PermissionMode,
 				Prompt:          input.Prompt,
@@ -123,6 +131,7 @@ func (p Provider) newProviderStartCommand(spec providerStartCommandSpec) cliserv
 type startFields struct {
 	Cwd             string
 	DisplayPrompt   string
+	Images          []string
 	Model           string
 	PermissionMode  string
 	Prompt          string
@@ -142,12 +151,20 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	if err != nil {
 		return nil, err
 	}
+	initialContent, err := promptContentFromCLIInput(input.Prompt, input.Images)
+	if err != nil {
+		return nil, err
+	}
+	model := input.Model
+	if strings.TrimSpace(model) == "" {
+		model = p.composerDefaultsForProvider(ctx, provider).Model
+	}
 	session, err := p.sessions.Create(ctx, invoke.WorkspaceID, agentservice.CreateSessionInput{
 		Provider:             provider,
 		Cwd:                  optionalStringPointer(cwd),
-		InitialContent:       agentservice.TextPromptContent(input.Prompt),
+		InitialContent:       initialContent,
 		InitialDisplayPrompt: input.DisplayPrompt,
-		Model:                optionalStringPointer(input.Model),
+		Model:                optionalStringPointer(model),
 		PermissionModeID:     optionalStringPointer(input.PermissionMode),
 		ReasoningEffort:      optionalStringPointer(input.ReasoningEffort),
 		Speed:                optionalStringPointer(input.Speed),
@@ -272,14 +289,70 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
+	content, err := promptContentFromCLIInput(input.Prompt, input.Images)
+	if err != nil {
+		return nil, err
+	}
 	result, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
-		Content: agentservice.TextPromptContent(input.Prompt),
+		Content: content,
 	})
 	if err != nil {
 		return nil, err
 	}
 	session := result.Session
 	return sessionActionResult{Session: session}, nil
+}
+
+func promptContentFromCLIInput(prompt string, imagePaths []string) ([]agentservice.PromptContentBlock, error) {
+	content := agentservice.TextPromptContent(prompt)
+	for _, imagePath := range normalizeCLIImagePaths(imagePaths) {
+		block, err := promptImageContentBlockFromFile(imagePath)
+		if err != nil {
+			return nil, err
+		}
+		content = append(content, block)
+	}
+	return content, nil
+}
+
+func normalizeCLIImagePaths(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func promptImageContentBlockFromFile(path string) (agentservice.PromptContentBlock, error) {
+	mimeType := promptImageMimeTypeFromPath(path)
+	if mimeType == "" {
+		return agentservice.PromptContentBlock{}, fmt.Errorf("%w: invalid input %q, expected a PNG, JPEG, or WebP image", cliservice.ErrInvalidInput, "image")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return agentservice.PromptContentBlock{}, fmt.Errorf("%w: read image %q: %v", cliservice.ErrInvalidInput, path, err)
+	}
+	return agentservice.PromptContentBlock{
+		Type:     "image",
+		MimeType: mimeType,
+		Data:     base64.StdEncoding.EncodeToString(data),
+		Name:     filepath.Base(path),
+	}, nil
+}
+
+func promptImageMimeTypeFromPath(path string) string {
+	switch strings.ToLower(strings.TrimSpace(filepath.Ext(path))) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	default:
+		return ""
+	}
 }
 
 func (p Provider) newCancelCommand() cliservice.Command {

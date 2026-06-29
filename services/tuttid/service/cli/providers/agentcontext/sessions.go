@@ -26,9 +26,22 @@ type sessionSummaryInput struct {
 	Order         string `cli:"order" description:"Message order: asc or desc."`
 }
 
+type turnResourcesInput struct {
+	SessionID string `cli:"session-id" validate:"required" description:"Agent session id to inspect."`
+	TurnID    string `cli:"turn-id" validate:"required" description:"Turn id whose resources should be returned."`
+	Limit     int    `cli:"limit" validate:"min=0" description:"Maximum number of messages from the turn to inspect."`
+}
+
 type sessionSummaryResult struct {
-	Page    agentservice.SessionMessagesPage
-	Session agentservice.Session
+	ImageLocalPath imageLocalPathResolver
+	Page           agentservice.SessionMessagesPage
+	Session        agentservice.Session
+}
+
+type turnResourcesResult struct {
+	ImageLocalPath imageLocalPathResolver
+	Page           agentservice.SessionMessagesPage
+	TurnID         string
 }
 
 func (p Provider) newSessionsCommand(path []string, id string) cliservice.Command {
@@ -89,6 +102,26 @@ func (p Provider) newSessionSummaryCommand() cliservice.Command {
 	})
 }
 
+func (p Provider) newTurnResourcesCommand() cliservice.Command {
+	return framework.Register(framework.CommandSpec[turnResourcesInput]{
+		ID:          appID + ".agent.turn-resources",
+		Path:        []string{"agent", "turn-resources"},
+		Summary:     "Get agent turn resources",
+		Description: "Get image resources from a specific agent session turn. JSON output keeps images grouped by source user message.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[turnResourcesInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewSummary: turnResourcesJSONValue},
+		},
+		Run: p.runTurnResources,
+	})
+}
+
 func (p Provider) runSessionSummary(ctx context.Context, invoke framework.InvokeContext, input sessionSummaryInput) (any, error) {
 	if err := p.requireSessions(); err != nil {
 		return nil, err
@@ -110,7 +143,41 @@ func (p Provider) runSessionSummary(ctx context.Context, invoke framework.Invoke
 	if err != nil {
 		return nil, err
 	}
-	return sessionSummaryResult{Page: page, Session: session}, nil
+	return sessionSummaryResult{
+		ImageLocalPath: p.imageLocalPathResolver(ctx, invoke.WorkspaceID),
+		Page:           page,
+		Session:        session,
+	}, nil
+}
+
+func (p Provider) runTurnResources(ctx context.Context, invoke framework.InvokeContext, input turnResourcesInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
+	}
+	turnID := strings.TrimSpace(input.TurnID)
+	if turnID == "" {
+		return nil, fmt.Errorf("%w: turn-id is required", cliservice.ErrInvalidInput)
+	}
+	page, err := p.sessions.ListMessages(ctx, invoke.WorkspaceID, input.SessionID, agentservice.ListMessagesInput{
+		TurnID: turnID,
+		Limit:  input.Limit,
+		Order:  agentactivitybiz.MessageOrderAsc,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return turnResourcesResult{
+		ImageLocalPath: p.imageLocalPathResolver(ctx, invoke.WorkspaceID),
+		Page:           page,
+		TurnID:         turnID,
+	}, nil
+}
+
+func (p Provider) imageLocalPathResolver(ctx context.Context, workspaceID string) imageLocalPathResolver {
+	return func(agentSessionID string, attachmentID string, mimeType string) (string, bool) {
+		path, err := p.sessions.LocalAttachmentPath(ctx, workspaceID, agentSessionID, attachmentID, mimeType)
+		return path, err == nil && strings.TrimSpace(path) != ""
+	}
 }
 
 func sessionSummaryJSONValue(result any) map[string]any {
@@ -118,10 +185,37 @@ func sessionSummaryJSONValue(result any) map[string]any {
 	return map[string]any{
 		"agentSessionId": summary.Page.AgentSessionID,
 		"session":        sessionInspectValue(summary.Session),
-		"messages":       messageCompactValues(summary.Page.Messages),
+		"messages":       messageCompactValues(summary.Page.Messages, summary.ImageLocalPath),
 		"latestVersion":  summary.Page.LatestVersion,
 		"hasMore":        summary.Page.HasMore,
 	}
+}
+
+func turnResourcesJSONValue(result any) map[string]any {
+	resources := result.(turnResourcesResult)
+	return map[string]any{
+		"agentSessionId": resources.Page.AgentSessionID,
+		"turnId":         resources.TurnID,
+		"messages":       turnResourceMessageValues(resources.Page.Messages, resources.ImageLocalPath),
+		"latestVersion":  resources.Page.LatestVersion,
+		"hasMore":        resources.Page.HasMore,
+	}
+}
+
+func turnResourceMessageValues(messages []agentservice.SessionMessage, imageLocalPath imageLocalPathResolver) []any {
+	values := make([]any, 0, len(messages))
+	for _, message := range messages {
+		if strings.TrimSpace(message.Role) != "user" {
+			continue
+		}
+		value := messageCompactValue(message, imageLocalPath)
+		images, ok := value["images"].([]any)
+		if !ok || len(images) == 0 {
+			continue
+		}
+		values = append(values, value)
+	}
+	return values
 }
 
 func normalizeSessionSummaryOrder(value string) (agentactivitybiz.MessageOrder, error) {

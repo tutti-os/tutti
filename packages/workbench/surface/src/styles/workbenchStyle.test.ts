@@ -12,15 +12,25 @@ test("floating window bodies do not reserve a right-side content margin", () => 
   );
 });
 
+test("traffic lights keep visual layout while expanding the pointer hit area", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    css,
+    /\.workbench-window-traffic-light\s*{[^}]*width:\s*20px;[^}]*height:\s*20px;[^}]*margin:\s*-4px;[^}]*cursor:\s*pointer;[^}]*transition:\s*opacity 160ms ease;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-window-traffic-light::before\s*{[^}]*inset:\s*4px;[^}]*content:\s*"";[^}]*transition:\s*background-color 160ms ease;/s
+  );
+});
+
 test("floating window corner resize handles do not intrude further than the edge handles", () => {
   const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
 
-  // Edge handles (north/south/east/west) reach 4px into the window before
-  // being clipped by `.workbench-window`'s overflow:hidden. Corner handles
-  // used to be sized/offset so they reached 16px inward instead, which let
-  // them sit on top of interactive chrome anchored to a window's corners
-  // (for example the agent-gui conversation rail's bottom-left config
-  // button) and swallow clicks meant for that content.
+  // Resize handles render outside `.workbench-window`, which keeps most of
+  // the corner hot zone outside the clipped window while still leaving a small
+  // diagonal resize target over the visible border.
   assert.match(
     css,
     /\.workbench-window__resize-handle\[data-handle="north-east"\],\s*\.workbench-window__resize-handle\[data-handle="north-west"\],\s*\.workbench-window__resize-handle\[data-handle="south-east"\],\s*\.workbench-window__resize-handle\[data-handle="south-west"\]\s*{[^}]*width:\s*16px;[^}]*height:\s*16px;/s

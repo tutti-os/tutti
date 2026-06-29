@@ -344,6 +344,110 @@ func TestRunDynamicCommandAggregatesRepeatedFlags(t *testing.T) {
 	}
 }
 
+func TestRunDynamicAgentSendAggregatesRepeatedImageFlags(t *testing.T) {
+	var invokedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.send","path":["agent","send"],"summary":"Send input","inputSchema":{"type":"object","required":["session-id","prompt"],"properties":{"session-id":{"type":"string"},"prompt":{"type":"string"},"image":{"type":"array","items":{"type":"string"}}}},"output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.send/invoke":
+			if err := json.NewDecoder(r.Body).Decode(&invokedBody); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "--prompt", "look", "--image", "/tmp/a.png", "--image", "/tmp/b.jpg"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	input := invokedBody["input"].(map[string]any)
+	if input["session-id"] != "SESSION-1" || input["prompt"] != "look" {
+		t.Fatalf("input = %#v", input)
+	}
+	images, ok := input["image"].([]any)
+	if !ok || len(images) != 2 || images[0] != "/tmp/a.png" || images[1] != "/tmp/b.jpg" {
+		t.Fatalf("image input = %#v", input["image"])
+	}
+}
+
+func TestRunDynamicAgentSendSplitsPositionalPromptBeforeImageFlags(t *testing.T) {
+	var invokedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.send","path":["agent","send"],"summary":"Send input","inputSchema":{"type":"object","required":["session-id","prompt"],"properties":{"session-id":{"type":"string"},"prompt":{"type":"string"},"image":{"type":"array","items":{"type":"string"}}}},"output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.send/invoke":
+			if err := json.NewDecoder(r.Body).Decode(&invokedBody); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "look", "here", "--image", "/tmp/a.png"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	input := invokedBody["input"].(map[string]any)
+	if input["session-id"] != "SESSION-1" || input["prompt"] != "look here" {
+		t.Fatalf("input = %#v", input)
+	}
+	images, ok := input["image"].([]any)
+	if !ok || len(images) != 1 || images[0] != "/tmp/a.png" {
+		t.Fatalf("image input = %#v", input["image"])
+	}
+}
+
+func TestRunDynamicAgentSendKeepsFlagLikeTokensInPositionalPrompt(t *testing.T) {
+	var invokedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.send","path":["agent","send"],"summary":"Send input","inputSchema":{"type":"object","required":["session-id","prompt"],"properties":{"session-id":{"type":"string"},"prompt":{"type":"string"},"image":{"type":"array","items":{"type":"string"}}}},"output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.send/invoke":
+			if err := json.NewDecoder(r.Body).Decode(&invokedBody); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "please", "run", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	input := invokedBody["input"].(map[string]any)
+	if input["session-id"] != "SESSION-1" || input["prompt"] != "please run --help" {
+		t.Fatalf("input = %#v", input)
+	}
+}
+
 func TestRunDynamicCommandHelpRendersInputSchema(t *testing.T) {
 	invoked := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

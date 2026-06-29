@@ -1145,6 +1145,41 @@ func TestServiceSendInputRejectsUnsupportedImageBeforePersistingAttachment(t *te
 	}
 }
 
+func TestServiceLocalAttachmentPathRequiresWorkspaceSession(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		Visible:     true,
+	}
+	service := NewService(runtime)
+	tempDir := t.TempDir()
+	service.PromptAttachmentStore = PromptAttachmentStore{RootDir: tempDir}
+	path, err := service.PromptAttachmentStore.attachmentPath("ws-1", "session-1", "attachment-1", "image/png")
+	if err != nil {
+		t.Fatalf("attachmentPath() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("png"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := service.LocalAttachmentPath(context.Background(), "ws-1", "session-1", "attachment-1", "image/png")
+	if err != nil {
+		t.Fatalf("LocalAttachmentPath() error = %v", err)
+	}
+	if got != path {
+		t.Fatalf("LocalAttachmentPath() = %q, want %q", got, path)
+	}
+	if _, err := service.LocalAttachmentPath(context.Background(), "ws-2", "session-1", "attachment-1", "image/png"); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("LocalAttachmentPath() cross-workspace error = %v, want ErrSessionNotFound", err)
+	}
+}
+
 func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) {
 	execErr := errors.New("exec failed")
 	runtime := newFakeRuntime()
@@ -2735,8 +2770,10 @@ func TestHasStaleResumeOpenToolCall(t *testing.T) {
 func TestServiceListsSessionMessages(t *testing.T) {
 	service := NewService(newFakeRuntime())
 	lastLimit := 0
+	lastTurnID := ""
 	service.MessageReader = fakeMessageReader{
-		lastLimit: &lastLimit,
+		lastLimit:  &lastLimit,
+		lastTurnID: &lastTurnID,
 		page: SessionMessagesPage{
 			AgentSessionID: "session-1",
 			Messages: []SessionMessage{
@@ -2756,7 +2793,7 @@ func TestServiceListsSessionMessages(t *testing.T) {
 		context.Background(),
 		"ws-1",
 		"session-1",
-		ListMessagesInput{AfterVersion: 1, Limit: 20},
+		ListMessagesInput{TurnID: "turn-1", AfterVersion: 1, Limit: 20},
 	)
 	if err != nil {
 		t.Fatalf("ListMessages returned error: %v", err)
@@ -2766,6 +2803,9 @@ func TestServiceListsSessionMessages(t *testing.T) {
 	}
 	if len(page.Messages) != 1 {
 		t.Fatalf("len(page.Messages) = %d, want 1", len(page.Messages))
+	}
+	if lastTurnID != "turn-1" {
+		t.Fatalf("turn id = %q, want turn-1", lastTurnID)
 	}
 	page.Messages[0].Payload["content"] = "mutated"
 	nextPage, err := service.ListMessages(
@@ -3643,8 +3683,9 @@ func writeAgentServiceJSONL(t *testing.T, path string, items ...map[string]any) 
 }
 
 type fakeMessageReader struct {
-	lastLimit *int
-	page      SessionMessagesPage
+	lastLimit  *int
+	lastTurnID *string
+	page       SessionMessagesPage
 }
 
 type fakeProviderAvailabilityChecker struct {
@@ -3673,6 +3714,9 @@ func (f fakeMessageReader) ListSessionMessages(
 ) (SessionMessagesPage, bool) {
 	if f.lastLimit != nil {
 		*f.lastLimit = input.Limit
+	}
+	if f.lastTurnID != nil {
+		*f.lastTurnID = input.TurnID
 	}
 	if input.AgentSessionID != "session-1" {
 		return SessionMessagesPage{}, false

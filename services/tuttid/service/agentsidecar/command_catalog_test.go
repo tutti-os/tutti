@@ -228,7 +228,12 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 			Path:        []string{"codex", "start"},
 			Summary:     "Start a Codex agent session",
 			Description: "Start a Codex agent session in the current workspace.",
-			InputSchema: map[string]any{"required": []string{"model", "prompt"}},
+			InputSchema: map[string]any{
+				"required": []string{"model", "prompt"},
+				"properties": map[string]any{
+					"image": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+			},
 			Source: cliservice.CapabilitySource{
 				Kind:    cliservice.CapabilitySourceApp,
 				AppID:   "agent-codex",
@@ -240,7 +245,12 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 			Path:        []string{"claude", "start"},
 			Summary:     "Start a Claude Code agent session",
 			Description: "Start a Claude Code agent session in the current workspace.",
-			InputSchema: map[string]any{"required": []string{"model", "prompt"}},
+			InputSchema: map[string]any{
+				"required": []string{"model", "prompt"},
+				"properties": map[string]any{
+					"image": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+			},
 			Source: cliservice.CapabilitySource{
 				Kind:    cliservice.CapabilitySourceApp,
 				AppID:   "agent-claude-code",
@@ -260,6 +270,9 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 	}
 	if !strings.Contains(guide, "Omit --model unless the user explicitly requested a model") {
 		t.Fatalf("guide missing default model guidance: %q", guide)
+	}
+	if !strings.Contains(guide, "Pass --image <path> multiple times") {
+		t.Fatalf("guide missing image guidance: %q", guide)
 	}
 	if !strings.Contains(guide, "App id: agent-codex.") ||
 		!strings.Contains(guide, "App id: agent-claude-code.") {
@@ -292,6 +305,9 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 	}
 	if !strings.Contains(guide, "tutti-dev issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed") {
 		t.Fatalf("guide = %q, want tutti-dev issue task run complete fallback command", guide)
+	}
+	if !strings.Contains(guide, "tutti-dev agent turn-resources --session-id <session-id> --turn-id <turn-id> --json") {
+		t.Fatalf("guide = %q, want tutti-dev turn resources fallback command", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev app open --app-id <app-id> --json") ||
 		!strings.Contains(guide, "Use only when the user explicitly asks to open or show an app window") {

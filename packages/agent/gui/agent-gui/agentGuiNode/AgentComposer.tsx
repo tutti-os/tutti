@@ -146,6 +146,10 @@ import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 export { formatSlashStatusTokenCount };
 
 const USAGE_POPOVER_HOVER_DELAY_MS = 120;
+const DOCK_COMPOSER_INPUT_MIN_HEIGHT = 56;
+const DOCK_COMPOSER_INPUT_MAX_HEIGHT = 120;
+const DOCK_COMPOSER_INPUT_BORDER_HEIGHT = 2;
+const DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT = 26;
 
 /**
  * 引用 picker 的确认结果:松散文件按 file mention 插入;mentionItems(如文件夹 bundle)
@@ -345,6 +349,10 @@ export interface AgentComposerProps {
     capability: AgentComposerCapabilitySettingsTarget
   ) => void;
   onSubmit: (
+    content: AgentPromptContentBlock[],
+    displayPrompt?: string
+  ) => void;
+  onSubmitGuidance?: (
     content: AgentPromptContentBlock[],
     displayPrompt?: string
   ) => void;
@@ -752,6 +760,7 @@ export function AgentComposer({
   onSettingsChange,
   capabilityMenuState,
   onSubmit,
+  onSubmitGuidance,
   onSendQueuedPromptNext,
   onRemoveQueuedPrompt,
   onEditQueuedPrompt,
@@ -821,6 +830,17 @@ export function AgentComposer({
   const lastComposerFocusRequestRef = useRef<number | null>(null);
   const autoMentionHighlightedKeyRef = useRef<string | null>(null);
   const [isPromptTipOverflowing, setIsPromptTipOverflowing] = useState(false);
+  const [dockComposerInputHeight, setDockComposerInputHeight] = useState(
+    DOCK_COMPOSER_INPUT_MIN_HEIGHT
+  );
+  const [dockComposerInputMaxHeight, setDockComposerInputMaxHeight] = useState(
+    DOCK_COMPOSER_INPUT_MAX_HEIGHT
+  );
+  const [dockComposerAttachmentHeight, setDockComposerAttachmentHeight] =
+    useState(0);
+  const [dockComposerTextHeight, setDockComposerTextHeight] = useState(
+    DOCK_COMPOSER_INPUT_MIN_HEIGHT
+  );
   const slashQuery = getPromptStartSlashCommandQuery(paletteDraftPrompt);
   const promptBeforeSelection =
     editorHandleRef.current?.getPromptTextBeforeSelection() ?? "";
@@ -1291,77 +1311,90 @@ export function AgentComposer({
     [draftContent, onDraftContentChange, promptBeforeSelection, skillQueryMatch]
   );
 
-  const submitCurrentPrompt = useStableEventCallback((): void => {
-    const canSubmitWhileSending = canQueueWhileBusy && isSendingTurn;
-    const currentDraftImages = draftImagesRef.current;
-    const currentDraftFiles = draftFilesRef.current;
-    const hasUploadingImages = currentDraftImages.some(
-      (image) => image.uploading
-    );
-    const hasFailedImages = currentDraftImages.some(
-      (image) => image.uploadError
-    );
-    const hasUploadingFiles = currentDraftFiles.some((file) => file.uploading);
-    const hasFailedFiles = currentDraftFiles.some((file) => file.uploadError);
-    if (
-      isSelectedProjectMissing ||
-      submitDisabled ||
-      hasUploadingImages ||
-      hasFailedImages ||
-      hasUploadingFiles ||
-      hasFailedFiles ||
-      (disabled && !canQueueWhileBusy) ||
-      (isSendingTurn && !canSubmitWhileSending)
-    ) {
-      return;
+  const submitCurrentPrompt = useStableEventCallback(
+    (options?: { guidance?: boolean }): void => {
+      const canSubmitWhileSending = canQueueWhileBusy && isSendingTurn;
+      const currentDraftImages = draftImagesRef.current;
+      const currentDraftFiles = draftFilesRef.current;
+      const hasUploadingImages = currentDraftImages.some(
+        (image) => image.uploading
+      );
+      const hasFailedImages = currentDraftImages.some(
+        (image) => image.uploadError
+      );
+      const hasUploadingFiles = currentDraftFiles.some(
+        (file) => file.uploading
+      );
+      const hasFailedFiles = currentDraftFiles.some((file) => file.uploadError);
+      if (
+        isSelectedProjectMissing ||
+        submitDisabled ||
+        hasUploadingImages ||
+        hasFailedImages ||
+        hasUploadingFiles ||
+        hasFailedFiles ||
+        (disabled && !canQueueWhileBusy) ||
+        (isSendingTurn && !canSubmitWhileSending)
+      ) {
+        return;
+      }
+      const nextPrompt = draftPromptRef.current;
+      const nextDraftContent = {
+        ...draftContent,
+        prompt: nextPrompt,
+        images: currentDraftImages,
+        files: currentDraftFiles
+      };
+      if (!agentComposerDraftHasContent(nextDraftContent)) {
+        return;
+      }
+      if (currentDraftImages.length > 0 && !promptImagesSupported) {
+        onPromptImagesUnsupported?.();
+        return;
+      }
+      if (options?.guidance !== true) {
+        const browserUseEffect = resolveTuttiBrowserUseSubmitEffect({
+          browserSupported: Boolean(composerSettings.supportsBrowser),
+          commands: resolvedSlashCommands,
+          draft: nextPrompt
+        });
+        if (browserUseEffect) {
+          executeSlashCommandEffect(browserUseEffect);
+          return;
+        }
+        const slashCommandEffect = resolveSlashCommandSubmitEffect({
+          provider,
+          commands: resolvedSlashCommands,
+          draft: nextPrompt
+        });
+        if (slashCommandEffect) {
+          executeSlashCommandEffect(slashCommandEffect);
+          return;
+        }
+      }
+      setIsPaletteOpen(false);
+      // 引用(workspace-reference)mention 不再展开成文件路径:发给 agent 的内容与
+      // 对话流回显一致,单条 mention 链接,由 skill+CLL 按需解析。无需 displayPrompt 旁路。
+      const submitContent = agentComposerDraftToPromptContent({
+        draft: nextDraftContent,
+        provider,
+        skills: availableSkills
+      });
+      if (options?.guidance === true) {
+        if (!onSubmitGuidance) {
+          return;
+        }
+        onSubmitGuidance(submitContent);
+      } else {
+        onSubmit(submitContent);
+      }
+      draftPromptRef.current = "";
+      draftImagesRef.current = [];
+      draftFilesRef.current = [];
+      setPaletteDraftPrompt("");
+      onDraftContentChange(emptyAgentComposerDraft());
     }
-    const nextPrompt = draftPromptRef.current;
-    const nextDraftContent = {
-      ...draftContent,
-      prompt: nextPrompt,
-      images: currentDraftImages,
-      files: currentDraftFiles
-    };
-    if (!agentComposerDraftHasContent(nextDraftContent)) {
-      return;
-    }
-    if (currentDraftImages.length > 0 && !promptImagesSupported) {
-      onPromptImagesUnsupported?.();
-      return;
-    }
-    const browserUseEffect = resolveTuttiBrowserUseSubmitEffect({
-      browserSupported: Boolean(composerSettings.supportsBrowser),
-      commands: resolvedSlashCommands,
-      draft: nextPrompt
-    });
-    if (browserUseEffect) {
-      executeSlashCommandEffect(browserUseEffect);
-      return;
-    }
-    const slashCommandEffect = resolveSlashCommandSubmitEffect({
-      provider,
-      commands: resolvedSlashCommands,
-      draft: nextPrompt
-    });
-    if (slashCommandEffect) {
-      executeSlashCommandEffect(slashCommandEffect);
-      return;
-    }
-    setIsPaletteOpen(false);
-    // 引用(workspace-reference)mention 不再展开成文件路径:发给 agent 的内容与
-    // 对话流回显一致,单条 mention 链接,由 skill+CLL 按需解析。无需 displayPrompt 旁路。
-    const submitContent = agentComposerDraftToPromptContent({
-      draft: nextDraftContent,
-      provider,
-      skills: availableSkills
-    });
-    onSubmit(submitContent);
-    draftPromptRef.current = "";
-    draftImagesRef.current = [];
-    draftFilesRef.current = [];
-    setPaletteDraftPrompt("");
-    onDraftContentChange(emptyAgentComposerDraft());
-  });
+  );
 
   const submit = useCallback(
     (event: FormEvent<HTMLFormElement>): void => {
@@ -1857,13 +1890,6 @@ export function AgentComposer({
     ]
   );
 
-  const handlePastedImages = useCallback(
-    (images: AgentRichTextPastedImage[]): void => {
-      addDraftImages(images);
-    },
-    [addDraftImages]
-  );
-
   const removeDraftImage = useCallback(
     (id: string): void => {
       const nextDraftImages = draftImagesRef.current.filter(
@@ -2070,11 +2096,13 @@ export function AgentComposer({
   );
   const mentionPaletteHeightPx =
     mentionPaletteFrame?.height ?? MENTION_PALETTE_MIN_HEIGHT_PX;
-  const composerClassName =
-    layoutMode === "hero" ? styles.composerHero : styles.composer;
+  const isHeroLayout = layoutMode === "hero";
+  const composerClassName = isHeroLayout
+    ? styles.composerHero
+    : styles.composer;
   const inputShellClassName = cn(
     styles.composerInputShell,
-    layoutMode === "hero" && styles.composerInputShellHero
+    isHeroLayout && styles.composerInputShellHero
   );
   const inputDisabled =
     isSelectedProjectMissing || (disabled && !canQueueWhileBusy);
@@ -2088,6 +2116,13 @@ export function AgentComposer({
       });
     });
   }, [inputDisabled]);
+  const handlePastedImages = useCallback(
+    (images: AgentRichTextPastedImage[]): void => {
+      addDraftImages(images);
+      scheduleComposerFocus();
+    },
+    [addDraftImages, scheduleComposerFocus]
+  );
   useEffect(() => {
     const composer = composerRef.current;
     const dropTarget = composer?.closest("#agent-gui-detail") ?? composer;
@@ -2189,11 +2224,11 @@ export function AgentComposer({
     lastComposerFocusRequestRef.current = composerFocusRequestSequence;
     scheduleComposerFocus();
   }, [composerFocusRequestSequence, scheduleComposerFocus]);
-  const showEdgeGlow = layoutMode === "hero" && !inputDisabled;
-  const showPromptTips = layoutMode === "hero" && promptTips.length > 0;
+  const showEdgeGlow = isHeroLayout && !inputDisabled;
+  const showPromptTips = isHeroLayout && promptTips.length > 0;
   const activePromptTip = showPromptTips ? (promptTips[0] ?? null) : null;
-  const showHeroProjectSelector = layoutMode === "hero";
-  const showProjectRow = layoutMode === "hero";
+  const showHeroProjectSelector = isHeroLayout;
+  const showProjectRow = isHeroLayout;
   const showProjectMissingProbe =
     !showProjectRow &&
     Boolean(composerSettings.projectLocked) &&
@@ -2257,12 +2292,152 @@ export function AgentComposer({
     isPromptTipOverflowing,
     previewMode
   ]);
+  useLayoutEffect(() => {
+    if (isHeroLayout) {
+      setDockComposerInputHeight(DOCK_COMPOSER_INPUT_MIN_HEIGHT);
+      setDockComposerInputMaxHeight(DOCK_COMPOSER_INPUT_MAX_HEIGHT);
+      setDockComposerAttachmentHeight(0);
+      setDockComposerTextHeight(DOCK_COMPOSER_INPUT_MIN_HEIGHT);
+      return;
+    }
+
+    const inputArea = promptInputAreaRef.current;
+    const editor = inputArea?.querySelector(
+      ".agent-gui-node__composer-textarea"
+    );
+    if (!inputArea || !(editor instanceof HTMLElement)) {
+      setDockComposerInputHeight(DOCK_COMPOSER_INPUT_MIN_HEIGHT);
+      return;
+    }
+
+    const measure = (): void => {
+      const attachmentArea = inputArea.querySelector(
+        '[data-testid="agent-gui-composer-image-drafts"]'
+      );
+      const attachmentHeight =
+        attachmentArea instanceof HTMLElement ? attachmentArea.scrollHeight : 0;
+      const textHeight = Math.min(
+        DOCK_COMPOSER_INPUT_MAX_HEIGHT,
+        Math.max(
+          DOCK_COMPOSER_INPUT_MIN_HEIGHT,
+          editor.scrollHeight + DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT
+        )
+      );
+      const maxHeight =
+        DOCK_COMPOSER_INPUT_MAX_HEIGHT + Math.max(0, attachmentHeight);
+      const previousHeight = inputArea.style.height;
+      const previousInputHeight = inputArea.style.getPropertyValue(
+        "--agent-gui-composer-input-height"
+      );
+      const previousInputMaxHeight = inputArea.style.getPropertyValue(
+        "--agent-gui-composer-input-max-height"
+      );
+      const previousAttachmentHeight = inputArea.style.getPropertyValue(
+        "--agent-gui-composer-attachment-height"
+      );
+      inputArea.style.height = "auto";
+      inputArea.style.setProperty(
+        "--agent-gui-composer-input-height",
+        `${DOCK_COMPOSER_INPUT_MIN_HEIGHT}px`
+      );
+      inputArea.style.setProperty(
+        "--agent-gui-composer-input-max-height",
+        `${maxHeight}px`
+      );
+      inputArea.style.setProperty(
+        "--agent-gui-composer-attachment-height",
+        `${attachmentHeight}px`
+      );
+      const contentHeight = inputArea.scrollHeight;
+      inputArea.style.height = previousHeight;
+      if (previousInputHeight) {
+        inputArea.style.setProperty(
+          "--agent-gui-composer-input-height",
+          previousInputHeight
+        );
+      } else {
+        inputArea.style.removeProperty("--agent-gui-composer-input-height");
+      }
+      if (previousInputMaxHeight) {
+        inputArea.style.setProperty(
+          "--agent-gui-composer-input-max-height",
+          previousInputMaxHeight
+        );
+      } else {
+        inputArea.style.removeProperty("--agent-gui-composer-input-max-height");
+      }
+      if (previousAttachmentHeight) {
+        inputArea.style.setProperty(
+          "--agent-gui-composer-attachment-height",
+          previousAttachmentHeight
+        );
+      } else {
+        inputArea.style.removeProperty(
+          "--agent-gui-composer-attachment-height"
+        );
+      }
+      const measuredHeight = Math.max(
+        contentHeight + DOCK_COMPOSER_INPUT_BORDER_HEIGHT,
+        attachmentHeight + textHeight
+      );
+      const nextHeight = Math.min(
+        maxHeight,
+        Math.max(DOCK_COMPOSER_INPUT_MIN_HEIGHT, measuredHeight)
+      );
+      setDockComposerInputHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight
+      );
+      setDockComposerInputMaxHeight((currentHeight) =>
+        currentHeight === maxHeight ? currentHeight : maxHeight
+      );
+      setDockComposerAttachmentHeight((currentHeight) =>
+        currentHeight === attachmentHeight ? currentHeight : attachmentHeight
+      );
+      setDockComposerTextHeight((currentHeight) =>
+        currentHeight === textHeight ? currentHeight : textHeight
+      );
+    };
+
+    measure();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measure);
+    resizeObserver?.observe(inputArea);
+    resizeObserver?.observe(editor);
+    for (const child of Array.from(inputArea.querySelectorAll("*"))) {
+      resizeObserver?.observe(child);
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [draftFiles.length, draftImages.length, isHeroLayout, paletteDraftPrompt]);
   const inputShellStyle = useMemo<CSSProperties | undefined>(
     () =>
       showFileMentionPalette || showFloatingCommandMenu
         ? { zIndex: composerPaletteZIndex }
         : undefined,
     [showFileMentionPalette, showFloatingCommandMenu]
+  );
+  const promptInputAreaStyle = useMemo<CSSProperties | undefined>(
+    () =>
+      isHeroLayout
+        ? undefined
+        : ({
+            "--agent-gui-composer-attachment-height": `${dockComposerAttachmentHeight}px`,
+            "--agent-gui-composer-input-height": `${dockComposerInputHeight}px`,
+            "--agent-gui-composer-input-max-height": `${dockComposerInputMaxHeight}px`,
+            "--agent-gui-composer-text-height": `${dockComposerTextHeight}px`
+          } as CSSProperties),
+    [
+      dockComposerAttachmentHeight,
+      dockComposerInputHeight,
+      dockComposerInputMaxHeight,
+      dockComposerTextHeight,
+      isHeroLayout
+    ]
   );
   const hasDraftContent = agentComposerDraftHasContent(draftContent);
   const hasUploadingDraftImages = draftImages.some((image) => image.uploading);
@@ -2326,6 +2501,61 @@ export function AgentComposer({
     [onSubmitInteractivePrompt]
   );
 
+  const composerActionButton = shouldShowStopButton ? (
+    <button
+      type="button"
+      className="relative inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-[var(--text-primary)] transition-[color,opacity] duration-150 hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background-panel)] active:bg-transparent disabled:cursor-not-allowed disabled:opacity-45"
+      disabled={isInterrupting}
+      aria-label={isInterrupting ? labels.stopping : labels.stop}
+      title={isInterrupting ? labels.stopping : labels.stop}
+      onClick={onInterruptCurrentTurn}
+    >
+      <Spinner
+        className="size-7 text-[var(--text-primary)]"
+        size={28}
+        strokeWidth={2}
+        trackColor="var(--transparency-hover)"
+        testId="agent-gui-composer-stop-spinner"
+      />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-[2px] bg-current"
+        data-testid="agent-gui-composer-stop-symbol"
+      />
+    </button>
+  ) : (
+    <button
+      type="submit"
+      className={styles.composerSendButton}
+      data-state={sendButtonState}
+      disabled={
+        isSelectedProjectMissing ||
+        submitDisabled ||
+        !hasDraftContent ||
+        hasUploadingDraftImages ||
+        hasFailedDraftImages ||
+        hasUploadingDraftFiles ||
+        hasFailedDraftFiles ||
+        sendButtonBusy
+      }
+      aria-label={labels.send}
+      title={labels.send}
+      aria-busy={sendButtonBusy}
+    >
+      {sendButtonBusy ? (
+        <Spinner
+          className="text-[var(--text-primary)]"
+          size={16}
+          strokeWidth={2.5}
+          trackColor="var(--transparency-hover)"
+          testId="agent-gui-composer-send-spinner"
+        />
+      ) : (
+        <SendFilledIcon />
+      )}
+    </button>
+  );
+
   const promptTipNode = activePromptTip ? (
     <span
       key={activePromptTip.id}
@@ -2357,7 +2587,12 @@ export function AgentComposer({
   ) : null;
 
   return (
-    <form ref={composerRef} className={composerClassName} onSubmit={submit}>
+    <form
+      ref={composerRef}
+      className={composerClassName}
+      data-layout={layoutMode}
+      onSubmit={submit}
+    >
       {visibleActivePrompt ? (
         <div
           className={styles.composerFloatingPrompt}
@@ -2461,7 +2696,14 @@ export function AgentComposer({
             <PopoverAnchor asChild>
               <div
                 ref={promptInputAreaRef}
-                className="w-full min-w-0 self-start"
+                className={cn(
+                  "w-full min-w-0 self-start",
+                  !isHeroLayout && "agent-gui-node__composer-prompt-input-area"
+                )}
+                data-has-draft-images={
+                  draftImages.length > 0 ? "true" : undefined
+                }
+                style={promptInputAreaStyle}
               >
                 {draftImages.length > 0 ? (
                   <div
@@ -2527,27 +2769,39 @@ export function AgentComposer({
                     ))}
                   </div>
                 ) : null}
-                <AgentRichTextEditor
-                  ref={editorHandleRef}
-                  value={paletteDraftPrompt}
-                  placeholder={effectivePlaceholder}
-                  disabled={inputDisabled}
-                  className={styles.composerTextarea}
-                  onChange={handleDraftChange}
-                  onSubmit={submitCurrentPrompt}
-                  availableSkills={availableSkills}
-                  availableCapabilities={availableCapabilities}
-                  removeMentionLabel={labels.removeMention}
-                  onKeyDownForPalette={handlePaletteKeyDown}
-                  onFileMentionSuggestionChange={
-                    handleFileMentionSuggestionChange
-                  }
-                  onFileMentionSuggestionKeyDown={handleFileMentionKeyDown}
-                  onLinkClick={handleLinkClick}
-                  promptImagesSupported={promptImagesSupported}
-                  onPromptImagesUnsupported={onPromptImagesUnsupported}
-                  onPasteImages={handlePastedImages}
-                />
+                <div
+                  className={cn(
+                    "w-full min-w-0 self-start",
+                    !isHeroLayout &&
+                      "agent-gui-node__composer-prompt-input-line"
+                  )}
+                >
+                  <AgentRichTextEditor
+                    ref={editorHandleRef}
+                    value={paletteDraftPrompt}
+                    placeholder={effectivePlaceholder}
+                    disabled={inputDisabled}
+                    className={styles.composerTextarea}
+                    onChange={handleDraftChange}
+                    onSubmit={submitCurrentPrompt}
+                    onSubmitGuidance={() =>
+                      submitCurrentPrompt({ guidance: true })
+                    }
+                    availableSkills={availableSkills}
+                    availableCapabilities={availableCapabilities}
+                    removeMentionLabel={labels.removeMention}
+                    onKeyDownForPalette={handlePaletteKeyDown}
+                    onFileMentionSuggestionChange={
+                      handleFileMentionSuggestionChange
+                    }
+                    onFileMentionSuggestionKeyDown={handleFileMentionKeyDown}
+                    onLinkClick={handleLinkClick}
+                    promptImagesSupported={promptImagesSupported}
+                    onPromptImagesUnsupported={onPromptImagesUnsupported}
+                    onPasteImages={handlePastedImages}
+                  />
+                  {!isHeroLayout ? composerActionButton : null}
+                </div>
               </div>
             </PopoverAnchor>
             {showFileMentionPalette && mentionPaletteFrame
@@ -2830,60 +3084,7 @@ export function AgentComposer({
                   onSettingsChange={onSettingsChange}
                 />
               ) : null}
-              {shouldShowStopButton ? (
-                <button
-                  type="button"
-                  className="relative inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-[var(--text-primary)] transition-[color,opacity] duration-150 hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background-panel)] active:bg-transparent disabled:cursor-not-allowed disabled:opacity-45"
-                  disabled={isInterrupting}
-                  aria-label={isInterrupting ? labels.stopping : labels.stop}
-                  title={isInterrupting ? labels.stopping : labels.stop}
-                  onClick={onInterruptCurrentTurn}
-                >
-                  <Spinner
-                    className="size-7 text-[var(--text-primary)]"
-                    size={28}
-                    strokeWidth={2}
-                    trackColor="var(--transparency-hover)"
-                    testId="agent-gui-composer-stop-spinner"
-                  />
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-[2px] bg-current"
-                    data-testid="agent-gui-composer-stop-symbol"
-                  />
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  className={styles.composerSendButton}
-                  data-state={sendButtonState}
-                  disabled={
-                    isSelectedProjectMissing ||
-                    submitDisabled ||
-                    !hasDraftContent ||
-                    hasUploadingDraftImages ||
-                    hasFailedDraftImages ||
-                    hasUploadingDraftFiles ||
-                    hasFailedDraftFiles ||
-                    sendButtonBusy
-                  }
-                  aria-label={labels.send}
-                  title={labels.send}
-                  aria-busy={sendButtonBusy}
-                >
-                  {sendButtonBusy ? (
-                    <Spinner
-                      className="text-[var(--text-primary)]"
-                      size={16}
-                      strokeWidth={2.5}
-                      trackColor="var(--transparency-hover)"
-                      testId="agent-gui-composer-send-spinner"
-                    />
-                  ) : (
-                    <SendFilledIcon />
-                  )}
-                </button>
-              )}
+              {isHeroLayout ? composerActionButton : null}
             </div>
           </div>
         </div>

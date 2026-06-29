@@ -2,10 +2,13 @@ package agentcontext
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
+
+type imageLocalPathResolver func(agentSessionID string, attachmentID string, mimeType string) (string, bool)
 
 func sessionSummaryValue(session agentservice.Session) map[string]any {
 	value := map[string]any{
@@ -102,11 +105,14 @@ func submitAvailabilityCompactValue(value *agentservice.SubmitAvailability) map[
 	return result
 }
 
-func messageCompactValue(message agentservice.SessionMessage) map[string]any {
+func messageCompactValue(message agentservice.SessionMessage, imageLocalPath imageLocalPathResolver) map[string]any {
 	value := map[string]any{
 		"role":   strings.TrimSpace(message.Role),
 		"kind":   strings.TrimSpace(message.Kind),
 		"status": strings.TrimSpace(message.Status),
+	}
+	if messageID := strings.TrimSpace(message.MessageID); messageID != "" {
+		value["messageId"] = messageID
 	}
 	if turnID := strings.TrimSpace(message.TurnID); turnID != "" {
 		value["turnId"] = turnID
@@ -120,13 +126,16 @@ func messageCompactValue(message agentservice.SessionMessage) map[string]any {
 	if text := messageCompactText(message.Payload, message.Kind); text != "" {
 		value["text"] = text
 	}
+	if images := messageCompactImages(message, imageLocalPath); len(images) > 0 {
+		value["images"] = images
+	}
 	return value
 }
 
-func messageCompactValues(messages []agentservice.SessionMessage) []any {
+func messageCompactValues(messages []agentservice.SessionMessage, imageLocalPath imageLocalPathResolver) []any {
 	values := make([]any, 0, len(messages))
 	for _, message := range messages {
-		values = append(values, messageCompactValue(message))
+		values = append(values, messageCompactValue(message, imageLocalPath))
 	}
 	return values
 }
@@ -173,4 +182,62 @@ func compactTextFromContentBlocks(blocks []any) string {
 		}
 	}
 	return strings.Join(parts, "\n")
+}
+
+func messageCompactImages(message agentservice.SessionMessage, imageLocalPath imageLocalPathResolver) []any {
+	blocks, ok := message.Payload["content"].([]any)
+	if !ok || len(blocks) == 0 {
+		return nil
+	}
+	images := make([]any, 0)
+	for _, block := range blocks {
+		item, ok := block.(map[string]any)
+		if !ok || strings.TrimSpace(fmt.Sprint(item["type"])) != "image" {
+			continue
+		}
+		attachmentID := strings.TrimSpace(fmt.Sprint(item["attachmentId"]))
+		mimeType := strings.TrimSpace(fmt.Sprint(item["mimeType"]))
+		image := map[string]any{}
+		if attachmentID != "" && attachmentID != "<nil>" {
+			image["attachmentId"] = attachmentID
+		}
+		if mimeType != "" && mimeType != "<nil>" {
+			image["mimeType"] = mimeType
+		}
+		if name := strings.TrimSpace(fmt.Sprint(item["name"])); name != "" && name != "<nil>" {
+			image["name"] = name
+		}
+		if localPath := compactImageLocalPath(message.AgentSessionID, attachmentID, mimeType, item, imageLocalPath); localPath != "" {
+			image["localPath"] = localPath
+			if _, ok := image["name"]; !ok {
+				image["name"] = filepath.Base(localPath)
+			}
+		}
+		if len(image) > 0 {
+			images = append(images, image)
+		}
+	}
+	return images
+}
+
+func compactImageLocalPath(
+	agentSessionID string,
+	attachmentID string,
+	mimeType string,
+	block map[string]any,
+	imageLocalPath imageLocalPathResolver,
+) string {
+	if imageLocalPath != nil && attachmentID != "" && attachmentID != "<nil>" {
+		if path, ok := imageLocalPath(agentSessionID, attachmentID, mimeType); ok {
+			if trimmed := strings.TrimSpace(path); trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+	for _, key := range []string{"localPath", "path"} {
+		if path := strings.TrimSpace(fmt.Sprint(block[key])); path != "" && path != "<nil>" {
+			return path
+		}
+	}
+	return ""
 }

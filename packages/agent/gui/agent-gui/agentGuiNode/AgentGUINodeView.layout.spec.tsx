@@ -1151,7 +1151,7 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
-  it("does not reserve bottom dock height inside the timeline scroll area", () => {
+  it("initializes the bottom dock safe area on the timeline scroll area", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -1164,8 +1164,8 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(
       screen
         .getByTestId("agent-gui-timeline")
-        .style.getPropertyValue("--agent-gui-bottom-dock-height")
-    ).toBe("");
+        .style.getPropertyValue("--agent-gui-bottom-dock-safe-area")
+    ).toBe("0px");
   });
 
   it("uses shared vertical scrollbars for the conversation list and timeline", () => {
@@ -1576,6 +1576,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     createConversation: vi.fn(),
     selectConversation: vi.fn(),
     submitPrompt: vi.fn(),
+    submitGuidancePrompt: vi.fn(),
     loadOlderConversationMessages: vi.fn(),
     showPromptImagesUnsupported: vi.fn(),
     submitApprovalOption: vi.fn(),

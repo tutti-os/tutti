@@ -28,8 +28,8 @@ After reading the mention query, recover the smallest useful app context through
 
 1. If the user explicitly asks to open or show the mentioned app window, or confirms the app window should be opened, use `{{CLI_COMMAND}} app open --app-id <appId> --json` for the mentioned app. Built-in app ids include `agent-codex`, `agent-claude-code`, `issue-manager`, and `tutti-onboarding`.
 2. Do not call `app open` or app-specific open commands such as `{{CLI_COMMAND}} <scope> open` by default. For ordinary app work, prefer the app-specific CLI command that inspects, queries, updates, starts, or executes the requested operation. After generated media succeeds, render it inline with Markdown instead of opening the app, unless the user asked to open or show the app window.
-3. If `appId` is `agent-codex` and the user asks to start Codex work, use `{{CLI_COMMAND}} codex start --prompt <task> --show --json`. Add `--model <model>` only when the user explicitly requested a model or command output gives an exact model to reuse.
-4. If `appId` is `agent-claude-code` and the user asks to start Claude Code work, use `{{CLI_COMMAND}} claude start --prompt <task> --show --json`. Add `--model <model>` only when the user explicitly requested a model or command output gives an exact model to reuse.
+3. If `appId` is `agent-codex` and the user asks to start Codex work, use `{{CLI_COMMAND}} codex start --prompt <task> --show --json`. When image context may be useful, use `{{CLI_COMMAND}} agent session-summary --session-id <caller-session-id> --json` to discover candidate turn ids when needed, then use `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json` for the chosen turn ids and decide which returned images to pass as one `--image <localPath>` argument each. Usually inspect the active turn and, when the task refers to a recent screenshot or attachment, the previous one or two user turns. Do not scan files or reconstruct attachment paths yourself. Add `--model <model>` only when the user explicitly requested a model or command output gives an exact model to reuse.
+4. If `appId` is `agent-claude-code` and the user asks to start Claude Code work, use `{{CLI_COMMAND}} claude start --prompt <task> --show --json`. When image context may be useful, use `{{CLI_COMMAND}} agent session-summary --session-id <caller-session-id> --json` to discover candidate turn ids when needed, then use `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json` for the chosen turn ids and decide which returned images to pass as one `--image <localPath>` argument each. Usually inspect the active turn and, when the task refers to a recent screenshot or attachment, the previous one or two user turns. Do not scan files or reconstruct attachment paths yourself. Add `--model <model>` only when the user explicitly requested a model or command output gives an exact model to reuse.
 5. If `appId` is `issue-manager` and the user asks issue/task work, read and follow the injected `issue-manager` skill for issue/task context and workflows before using generic workspace app command matching.
 6. For any workspace app mention, if the injected command guide exposes app-specific CLI capabilities for the requested operation, use those persisted app commands instead of provider-native or OS-native substitutes. The external app owns the exact command syntax, validation rules, and domain-specific restrictions through its capability metadata, command guide, and command handler errors.
 7. When `--cwd` is not specified, tuttid inherits the caller agent session working directory.
@@ -40,6 +40,20 @@ After reading the mention query, recover the smallest useful app context through
 12. Prefer `--json` when the command output is used as context for reasoning.
 
 If the mentioned app has no visible CLI commands after checking the injected `tutti-cli` command guide and any refreshed capability reference that preserves `App id:` metadata, explain that the app is not currently exposing usable CLI capabilities instead of guessing an app-specific command.
+
+## Helpers
+
+### turn-resources
+
+Use this helper only when the user asks to start or delegate work to `agent-codex` or `agent-claude-code` and the launched agent may need resources from a specific caller session turn.
+
+Input: the current caller agent session id from runtime context and one selected `turnId`. Use `{{CLI_COMMAND}} agent session-summary --session-id <caller-session-id> --json` only to discover candidate turn ids such as `session.turnLifecycle.activeTurnId` or recent user message `turnId` values.
+
+Command: `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json`.
+
+Output: the matching turn's resource-bearing user messages, preserving message fields such as `messageId`, `turnId`, `text`, and each message's `images[]` array with `attachmentId`, `mimeType`, `name`, and `localPath` when present. Images remain grouped under their source message.
+
+For current `codex start` and `claude start` commands, the calling agent decides which turn ids to query and which returned images to pass. Add one `--image <localPath>` argument for each selected image object whose `localPath` is a non-empty string. If no selected image objects have usable `localPath` values, continue without image arguments. Do not scan the workspace, inspect attachment directories, or hand-build paths from `attachmentId`; `agent turn-resources` is the source of truth for turn resource metadata.
 
 ## Invocation Rules
 

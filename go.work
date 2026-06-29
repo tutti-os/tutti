@@ -4,6 +4,8 @@ toolchain go1.24.5
 
 use ./services/tuttid
 
+use ./packages/events/stream-go
+
 use ./apps/cli
 
 use ./packages/workbench/service

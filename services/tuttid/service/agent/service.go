@@ -342,6 +342,23 @@ func (s *Service) ReadAttachment(ctx context.Context, workspaceID string, agentS
 	return store.ReadAttachment(workspaceID, agentSessionID, attachmentID)
 }
 
+func (s *Service) LocalAttachmentPath(ctx context.Context, workspaceID string, agentSessionID string, attachmentID string, mimeType string) (string, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	attachmentID = strings.TrimSpace(attachmentID)
+	if workspaceID == "" || agentSessionID == "" || attachmentID == "" {
+		return "", ErrInvalidArgument
+	}
+	if _, err := s.Get(ctx, workspaceID, agentSessionID); err != nil {
+		return "", err
+	}
+	store := s.PromptAttachmentStore
+	if strings.TrimSpace(store.RootDir) == "" {
+		return "", ErrSessionNotFound
+	}
+	return store.LocalPath(workspaceID, agentSessionID, attachmentID, mimeType)
+}
+
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, reconcileStaleTurn bool) (Session, error) {
 	session, ok := s.controller().Session(workspaceID, agentSessionID)
 	if ok {

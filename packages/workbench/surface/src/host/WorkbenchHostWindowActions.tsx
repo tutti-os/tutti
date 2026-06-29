@@ -1,5 +1,5 @@
-import { Button, CloseIcon, MinimizeIcon } from "@tutti-os/ui-system";
 import type { WorkbenchWindowActionContext } from "../react/types.ts";
+import { WorkbenchWindowTrafficLights } from "../react/WorkbenchWindowTrafficLights.tsx";
 import type {
   WorkbenchHostHandle,
   WorkbenchHostNodeData,
@@ -27,39 +27,29 @@ export function WorkbenchHostWindowActions({
   const closable = definition.window?.closable !== false;
 
   return (
-    <>
-      {minimizable ? (
-        <Button
-          aria-label={i18n.t("actions.minimize")}
-          className="order-1 rounded-md"
-          data-workbench-action="minimize"
-          size="icon-sm"
-          type="button"
-          variant="chrome"
-          onClick={() => {
-            context.genie.minimizeNodeToAnchor(context.node.id, () =>
-              context.controller.commands.minimizeNode(context.node.id)
-            );
-          }}
-        >
-          <MinimizeIcon className="size-3.5" />
-        </Button>
-      ) : null}
-      {closable ? (
-        <Button
-          aria-label={i18n.t("actions.close")}
-          className="order-3 rounded-md"
-          data-workbench-action="close"
-          size="icon-sm"
-          type="button"
-          variant="chrome"
-          onClick={() => {
-            host.requestNodeClose(context.node.id);
-          }}
-        >
-          <CloseIcon className="size-3.5" />
-        </Button>
-      ) : null}
-    </>
+    <WorkbenchWindowTrafficLights
+      close={
+        closable
+          ? {
+              label: i18n.t("actions.close"),
+              onClick: () => {
+                host.requestNodeClose(context.node.id);
+              }
+            }
+          : null
+      }
+      minimize={
+        minimizable
+          ? {
+              label: i18n.t("actions.minimize"),
+              onClick: () => {
+                context.genie.minimizeNodeToAnchor(context.node.id, () =>
+                  context.controller.commands.minimizeNode(context.node.id)
+                );
+              }
+            }
+          : null
+      }
+    />
   );
 }

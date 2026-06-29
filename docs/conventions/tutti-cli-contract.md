@@ -134,6 +134,24 @@ Use `issue task create-batch` for multiple new child tasks. Its `tasks-json`
 input is a JSON array of task objects, and the daemon appends tasks in array
 order with contiguous issue-local `sortIndex` values.
 
+`agent session-summary --json` returns compact message records for agent-session
+mentions. When a compact message contains image prompt content, include an
+`images` array with `attachmentId`, `mimeType`, `name`, and a daemon-local
+`localPath` when the attachment file is available on disk. Keep `payload`
+omitted from this compact shape; expose only fields useful for agent context
+recovery.
+
+`agent turn-resources --json` is the narrow helper for looking up resources from
+one explicit session turn. It requires `--session-id` and `--turn-id`, filters at
+the message query layer, and returns resource-bearing user messages with images
+grouped under their source message. Do not flatten images across turns in this
+command; the calling agent decides which turns to inspect and which returned
+`localPath` values to pass to provider launchers as `--image`.
+
+Provider launcher commands such as `codex start` and `claude start` should keep
+`--model` optional. When omitted, tuttid resolves the model from composer
+defaults or the provider configured/default model before starting the session.
+
 ## Naming Rules
 
 Command path segments and input names use lowercase kebab-case.
@@ -178,9 +196,23 @@ Supported property types:
 - `string`
 - `boolean`
 - `integer`
+- `array` with string items for repeatable string flags
 
 The framework may support Go `int64` internally, but the capability schema
 should still expose it as `integer`.
+
+Repeatable string inputs are represented as `[]string` fields in builtin input
+structs and emitted as `type: "array"` with `items.type: "string"`. The bundled
+CLI aggregates repeated flags before invoking the daemon, so commands can expose
+inputs such as `--image <path>` multiple times without provider-specific parsing
+in the terminal client.
+
+Agent launcher and send commands accept image file inputs through the builtin
+agent CLI provider. The CLI provider reads supported local image files, encodes
+them as image `PromptContentBlock` values, and appends them after the text block
+created from `--prompt`. Keep this compatibility conversion in the CLI provider
+layer; downstream agent session services should receive structured prompt
+content, not raw CLI image flags.
 
 Input structs should use tags for CLI field names, validation, and recovery
 hints. Required inputs must include a recovery hint when a user can reasonably

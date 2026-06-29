@@ -1837,7 +1837,15 @@ describe("AgentFileMentionPalette", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-title\s*{[^}]*font-size:\s*28px[^}]*font-weight:\s*600/s
+      /\.agent-gui-node__empty-hero-title\s*{[^}]*font-size:\s*28px[^}]*font-weight:\s*500/s
+    );
+  });
+
+  it("keeps the new-session hero icon aligned with the new-task empty icon size", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__empty-hero-icon-effect\s*{[^}]*width:\s*48px[^}]*height:\s*48px/s
     );
   });
 

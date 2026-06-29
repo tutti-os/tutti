@@ -29,13 +29,15 @@ import type {
 } from "./model/agentGuiNodeTypes";
 import type { AgentHostAgentSessionCommand } from "../../shared/contracts/dto";
 
-const { mockProjectMissingState } = vi.hoisted(() => ({
+const { mockEditorFocusAtEnd, mockProjectMissingState } = vi.hoisted(() => ({
+  mockEditorFocusAtEnd: vi.fn(),
   mockProjectMissingState: {
     current: false
   }
 }));
 
 afterEach(() => {
+  mockEditorFocusAtEnd.mockClear();
   mockProjectMissingState.current = false;
   resetAgentActivityRuntimeForTests();
   vi.useRealTimers();
@@ -96,14 +98,20 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
           onPasteImages,
           onFileMentionSuggestionChange,
           onKeyDownForPalette,
+          onSubmit,
+          onSubmitGuidance,
+          className,
           value,
           placeholder
         }: {
+          className?: string;
           disabled?: boolean;
           onChange: (value: string) => void;
           onFileMentionSuggestionChange?: (state: any) => void;
           onPasteImages?: (images: unknown[]) => void;
           onKeyDownForPalette?: (event: KeyboardEvent) => boolean;
+          onSubmit?: () => void;
+          onSubmitGuidance?: () => void;
           value: string;
           placeholder: string;
         },
@@ -134,7 +142,7 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
         }, [onFileMentionSuggestionChange, value]);
         React.useImperativeHandle(ref, () => ({
           focusAtStart() {},
-          focusAtEnd() {},
+          focusAtEnd: mockEditorFocusAtEnd,
           getPromptTextBeforeSelection() {
             return value;
           },
@@ -166,6 +174,7 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
         return (
           <>
             <textarea
+              className={className}
               value={value}
               placeholder={placeholder}
               disabled={disabled}
@@ -173,6 +182,27 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
               onKeyDown={(event) => {
                 if (onKeyDownForPalette?.(event.nativeEvent)) {
                   event.preventDefault();
+                  return;
+                }
+                if (
+                  event.key === "Enter" &&
+                  (event.metaKey || event.ctrlKey) &&
+                  !event.shiftKey &&
+                  !event.altKey
+                ) {
+                  event.preventDefault();
+                  onSubmitGuidance?.();
+                  return;
+                }
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.metaKey &&
+                  !event.ctrlKey &&
+                  !event.altKey
+                ) {
+                  event.preventDefault();
+                  onSubmit?.();
                 }
               }}
             />
@@ -1232,6 +1262,59 @@ describe("AgentComposer", () => {
     expect(editor).toHaveValue("");
   });
 
+  it("sends Cmd+Enter through the guidance submit path", () => {
+    const onSubmit = vi.fn();
+    const onSubmitGuidance = vi.fn();
+    const onDraftContentChange = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("steer the running turn")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={true}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={true}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSubmitGuidance={onSubmitGuidance}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(screen.getByPlaceholderText("placeholder"), {
+      key: "Enter",
+      metaKey: true
+    });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSubmitGuidance).toHaveBeenCalledWith(
+      textPromptContent("steer the running turn")
+    );
+    expect(onDraftContentChange).toHaveBeenLastCalledWith({
+      prompt: "",
+      images: [],
+      files: []
+    });
+  });
+
   it("toggles a persistent status panel for the local status slash command", () => {
     const { container, rerender } = render(
       <AgentComposer
@@ -1656,7 +1739,7 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps the model and send controls pinned to the right side of the footer", () => {
+  it("keeps the dock send control inside the input and settings below it", () => {
     const { container } = render(
       <AgentComposer
         workspaceId="workspace-1"
@@ -1689,16 +1772,169 @@ describe("AgentComposer", () => {
       />
     );
 
+    const composer = container.querySelector(".agent-gui-node__composer");
+    expect(composer).toHaveAttribute("data-layout", "dock");
     const footer = container.querySelector(".agent-gui-node__composer-footer");
     expect(footer).not.toBeNull();
     expect(footer?.lastElementChild?.className).toContain(
       "agent-gui-node__composer-footer-right"
     );
+    const promptInputArea = container.querySelector(
+      ".agent-gui-node__composer-prompt-input-area"
+    );
+    expect(promptInputArea).not.toBeNull();
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    expect(promptInputArea?.contains(sendButton)).toBe(true);
+    expect(footer?.contains(sendButton)).toBe(false);
+    expect(promptInputArea?.contains(footer)).toBe(false);
+    expect(footer?.compareDocumentPosition(promptInputArea!)).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING
+    );
+    expect(screen.getByPlaceholderText("placeholder")).toHaveClass(
+      "agent-gui-node__composer-textarea"
+    );
+  });
+
+  it("expands the dock prompt input immediately for pasted image drafts", async () => {
+    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight"
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        if (!(this instanceof HTMLElement)) {
+          return 24;
+        }
+        if (
+          this.classList.contains("agent-gui-node__composer-prompt-input-area")
+        ) {
+          return 180;
+        }
+        return this.matches('[data-testid="agent-gui-composer-image-drafts"]')
+          ? 56
+          : 24;
+      }
+    });
+
+    try {
+      render(
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          draftContent={createDraft("", [
+            {
+              id: "image-1",
+              name: "screen.png",
+              mimeType: "image/png",
+              previewUrl: "data:image/png;base64,aW1hZ2U="
+            }
+          ])}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={vi.fn()}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("agent-gui-composer-image-drafts").parentElement
+        ).toHaveStyle({
+          "--agent-gui-composer-attachment-height": "56px",
+          "--agent-gui-composer-input-height": "176px",
+          "--agent-gui-composer-input-max-height": "176px"
+        })
+      );
+    } finally {
+      if (scrollHeightDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollHeight",
+          scrollHeightDescriptor
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
+      }
+    }
   });
 
   it("keeps footer action spacing and chevron slots consistent", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-input-shell\s*{[^}]*padding:\s*0[^}]*border:\s*0[^}]*background:\s*transparent/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s*{[^}]*display:\s*grid[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)[^}]*height:\s*var\(--agent-gui-composer-input-height,\s*56px\)[^}]*min-height:\s*56px[^}]*max-height:\s*var\(--agent-gui-composer-input-max-height,\s*120px\)[^}]*align-items:\s*center[^}]*overflow:\s*hidden[^}]*padding:\s*0 12px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s*{[^}]*transition:[^}]*height\s+160ms\s+ease[^}]*border-color\s+140ms\s+ease[^}]*box-shadow\s+140ms\s+ease/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-line\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto[^}]*align-items:\s*center[^}]*box-sizing:\s*border-box[^}]*height:\s*calc\(var\(--agent-gui-composer-text-height,\s*56px\)\s*-\s*2px\)[^}]*min-height:\s*54px[^}]*max-height:\s*118px[^}]*padding:\s*12px 0/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-send-button\s*{[^}]*align-self:\s*end/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\]\s*{[^}]*grid-template-rows:[^}]*minmax\(0,\s*var\(--agent-gui-composer-attachment-height,\s*0px\)\)[^}]*minmax\(40px,\s*1fr\)[^}]*align-items:\s*stretch/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\[data-testid="agent-gui-composer-image-drafts"\]\s*{[^}]*min-height:\s*0[^}]*margin-bottom:\s*0[^}]*overflow:\s*hidden/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\[data-testid="agent-gui-composer-image-draft"\]\s*{[^}]*max-height:\s*56px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\.agent-gui-node__composer-prompt-input-line\s*{[^}]*min-height:\s*40px[^}]*height:\s*calc\(var\(--agent-gui-composer-text-height,\s*56px\)\s*-\s*2px\)[^}]*max-height:\s*118px[^}]*padding:\s*4px 0 11px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s*{[^}]*display:\s*block[^}]*height:\s*auto[^}]*min-height:\s*24px[^}]*max-height:\s*calc\(var\(--agent-gui-composer-text-height,\s*56px\)\s*-\s*26px\)[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*auto[^}]*overflow-wrap:\s*anywhere[^}]*scrollbar-width:\s*none[^}]*white-space:\s*pre-wrap/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\.agent-gui-node__composer-textarea\s*{[^}]*max-height:\s*calc\([^}]*var\(--agent-gui-composer-text-height,\s*56px\)[^}]*26px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:hover[\s\S]*?\.agent-gui-node__composer-textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within[\s\S]*?\.agent-gui-node__composer-textarea\s*{[^}]*scrollbar-width:\s*thin/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\s*\][\s\S]*?\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*display:\s*none[^}]*width:\s*4px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:hover[\s\S]*?::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within[\s\S]*?::-webkit-scrollbar\s*{[^}]*display:\s*block/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s+p\s*{[^}]*display:\s*block[^}]*width:\s*auto[^}]*min-width:\s*0[^}]*overflow:\s*visible[^}]*overflow-wrap:\s*anywhere[^}]*white-space:\s*pre-wrap/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-rich-text-placeholder-node:first-child\s*{[^}]*position:\s*relative[^}]*display:\s*block[^}]*min-height:\s*24px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-rich-text-placeholder-node:first-child::before\s*{[^}]*position:\s*absolute[^}]*top:\s*0[^}]*left:\s*0[^}]*float:\s*none[^}]*height:\s*24px[^}]*line-height:\s*24px/s
+    );
     expect(css).toMatch(
       /\.agent-gui-node__composer-footer-right\s*{[^}]*gap:\s*2px/s
     );
@@ -3203,6 +3439,7 @@ describe("AgentComposer", () => {
     const { rerender } = render(renderComposer());
 
     fireEvent.click(screen.getByTestId("mock-paste-image"));
+    await waitFor(() => expect(mockEditorFocusAtEnd).toHaveBeenCalled());
     rerender(renderComposer());
 
     const image = screen.getByRole("img", {
@@ -3226,7 +3463,31 @@ describe("AgentComposer", () => {
     });
   });
 
-  it("removes pasted image drafts without opening the zoom preview", () => {
+  it("removes pasted image drafts without opening the zoom preview", async () => {
+    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight"
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        if (!(this instanceof HTMLElement)) {
+          return 24;
+        }
+        if (
+          this.classList.contains("agent-gui-node__composer-prompt-input-area")
+        ) {
+          return this.querySelector(
+            '[data-testid="agent-gui-composer-image-drafts"]'
+          )
+            ? 180
+            : 54;
+        }
+        return this.matches('[data-testid="agent-gui-composer-image-drafts"]')
+          ? 56
+          : 24;
+      }
+    });
     let draftContent = createDraft("");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
       draftContent = nextDraft;
@@ -3262,19 +3523,49 @@ describe("AgentComposer", () => {
         onSubmitInteractivePrompt={vi.fn()}
       />
     );
-    const { rerender } = render(renderComposer());
+    try {
+      const { rerender } = render(renderComposer());
 
-    fireEvent.click(screen.getByTestId("mock-paste-image"));
-    rerender(renderComposer());
+      fireEvent.click(screen.getByTestId("mock-paste-image"));
+      rerender(renderComposer());
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("agent-gui-composer-image-drafts").parentElement
+        ).toHaveStyle({
+          "--agent-gui-composer-attachment-height": "56px",
+          "--agent-gui-composer-input-height": "176px",
+          "--agent-gui-composer-input-max-height": "176px"
+        })
+      );
 
-    const drafts = screen.getByTestId("agent-gui-composer-image-drafts");
-    fireEvent.click(within(drafts).getByRole("button", { name: "移除引用" }));
-    rerender(renderComposer());
+      const drafts = screen.getByTestId("agent-gui-composer-image-drafts");
+      fireEvent.click(within(drafts).getByRole("button", { name: "移除引用" }));
+      rerender(renderComposer());
 
-    expect(
-      screen.queryByTestId("agent-gui-composer-image-drafts")
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("agent-gui-composer-image-drafts")
+      ).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          screen
+            .getByPlaceholderText("placeholder")
+            .closest(".agent-gui-node__composer-prompt-input-area")
+        ).toHaveStyle({
+          "--agent-gui-composer-input-height": "56px"
+        })
+      );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    } finally {
+      if (scrollHeightDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollHeight",
+          scrollHeightDescriptor
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
+      }
+    }
   });
 
   it("clears pasted image drafts immediately after submitting", () => {

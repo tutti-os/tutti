@@ -6221,7 +6221,7 @@ describe("AgentGUINode", () => {
     }
   });
 
-  it("does not reserve the bottom composer height inside the timeline scroll area", () => {
+  it("reserves bottom dock overflow inside the timeline scroll area", () => {
     const originalGetBoundingClientRect =
       HTMLElement.prototype.getBoundingClientRect;
 
@@ -6240,13 +6240,31 @@ describe("AgentGUINode", () => {
             toJSON: () => undefined
           };
         }
+        if (
+          this.classList.contains(
+            "agent-gui-node__composer-queued-prompt-panel"
+          )
+        ) {
+          return {
+            x: 24,
+            y: 360,
+            width: 672,
+            height: 96,
+            top: 360,
+            right: 696,
+            bottom: 456,
+            left: 24,
+            toJSON: () => undefined
+          };
+        }
         return originalGetBoundingClientRect.call(this);
       };
 
     try {
       mockViewModel = createViewModel({
         activeConversationId: "session-1",
-        conversationDetail: detailViewModel()
+        conversationDetail: detailViewModel(),
+        queuedPrompts: [textQueuedPrompt("queued-1", "follow-up while busy")]
       });
 
       renderAgentGUINode();
@@ -6254,8 +6272,8 @@ describe("AgentGUINode", () => {
       expect(
         screen
           .getByTestId("agent-gui-timeline")
-          .style.getPropertyValue("--agent-gui-bottom-dock-height")
-      ).toBe("");
+          .style.getPropertyValue("--agent-gui-bottom-dock-safe-area")
+      ).toBe("96px");
     } finally {
       HTMLElement.prototype.getBoundingClientRect =
         originalGetBoundingClientRect;
@@ -6285,7 +6303,10 @@ describe("AgentGUINode", () => {
       /\.workspace-agents-status-panel__content--detail\s*{[^}]*padding-inline:\s*28px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__timeline\s*{[^}]*padding:\s*32px\s+var\(--agent-gui-detail-padding-x\)\s+24px/s
+      /\.agent-gui-node__timeline\s*{[^}]*padding:\s*32px\s+var\(--agent-gui-detail-padding-x\)\s+calc\(24px\s*\+\s*var\(--agent-gui-bottom-dock-safe-area,\s*0px\)\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__timeline-with-composer\s*{[^}]*padding-bottom:\s*calc\(120px\s*\+\s*var\(--agent-gui-bottom-dock-safe-area,\s*0px\)\)/s
     );
     expect(css).toMatch(
       /\.workspace-agents-status-panel__conversation-timeline\.agent-gui-node__timeline\s*{[^}]*padding-right:\s*28px[^}]*padding-left:\s*28px/s

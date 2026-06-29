@@ -8,7 +8,15 @@ import type {
   WorkbenchDisplayMode,
   WorkbenchHostNodeHeaderWindowActions
 } from "@tutti-os/workbench-surface";
-import { Button, PanelIcon, cn } from "@tutti-os/ui-system";
+import {
+  Button,
+  PanelIcon,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  cn
+} from "@tutti-os/ui-system";
 import { CreateChatIcon } from "@tutti-os/ui-system/icons";
 
 const headerChromeIconButtonClassName =
@@ -245,13 +253,12 @@ function createTrafficLightButton(input: {
   testId: string;
   tone: "close" | "minimize" | "maximize";
 }): ReactNode {
-  return createElement("button", {
+  const button = createElement("button", {
     "aria-label": input.label,
     "aria-pressed": input.pressed,
     className: "agent-gui-workbench-header__traffic-light",
     "data-agent-gui-workbench-traffic-light": input.tone,
     "data-testid": input.testId,
-    title: input.label,
     type: "button",
     onClick: (event) => {
       event.stopPropagation();
@@ -259,5 +266,16 @@ function createTrafficLightButton(input: {
     },
     onDoubleClick: (event) => event.stopPropagation(),
     onPointerDown: (event) => event.stopPropagation()
+  });
+
+  return createElement(TooltipProvider, {
+    children: createElement(
+      Tooltip,
+      null,
+      createElement(TooltipTrigger, { asChild: true }, button),
+      createElement(TooltipContent, { side: "bottom" }, input.label)
+    ),
+    delayDuration: 250,
+    skipDelayDuration: 0
   });
 }
