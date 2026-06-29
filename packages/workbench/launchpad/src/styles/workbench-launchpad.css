@@ -175,8 +175,8 @@
 
 .workspace-launchpad-search__input:focus,
 .workspace-launchpad-search__input:focus-visible {
-  border-color: var(--border-1);
-  box-shadow: none;
+  border-color: color-mix(in srgb, var(--text-primary) 18%, var(--border-1));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
 .workspace-launchpad-search__clear {

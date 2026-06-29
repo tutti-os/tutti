@@ -71,6 +71,7 @@ export interface AgentGUIConversationSummary {
   updatedAtUnixMs: number;
   hasUnreadCompletion?: boolean;
   unreadCompletionKey?: string | null;
+  isImported?: boolean;
   syncState?: WorkspaceAgentActivitySyncState;
 }
 
@@ -528,6 +529,7 @@ function conversationSummaryFromActivity(
     pinnedAtUnixMs: session?.pinnedAtUnixMs ?? null,
     sortTimeUnixMs: activity.sortTimeUnixMs,
     updatedAtUnixMs: session?.updatedAtUnixMs || activity.sortTimeUnixMs || 0,
+    ...(isImportedWorkspaceAgentSession(session) ? { isImported: true } : {}),
     syncState: session?.syncState
   };
 }
@@ -548,6 +550,12 @@ function isExternalImportNoProjectSession(
   const runtimeContext =
     session && "runtimeContext" in session ? session.runtimeContext : undefined;
   return runtimeContext?.externalImportNoProject === true;
+}
+
+function isImportedWorkspaceAgentSession(
+  session: WorkspaceAgentActivitySession | undefined
+): boolean {
+  return session?.runtimeContext?.imported === true;
 }
 
 function isSameAgentGUIConversationProject(

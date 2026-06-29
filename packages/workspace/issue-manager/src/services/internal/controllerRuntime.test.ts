@@ -239,6 +239,71 @@ test("controllerRuntime loads running issues with a single running filter", asyn
   runtime.release();
 });
 
+test("controllerRuntime clears stale issues immediately when topic changes", async () => {
+  const topicTwoIssues = createDeferred<{
+    issues: IssueManagerIssueSummary[];
+  }>();
+  const issueTopicCalls: string[] = [];
+  const runtime = createIssueManagerControllerRuntime({
+    feature: createFeature({
+      async listIssues(input) {
+        issueTopicCalls.push(input.topicId ?? "");
+        if (input.topicId === "topic-2") {
+          return topicTwoIssues.promise;
+        }
+        return {
+          issues: [
+            createIssueSummary({
+              issueId: "issue-topic-1",
+              title: "Topic 1 issue",
+              topicId: "topic-1"
+            })
+          ]
+        };
+      }
+    }),
+    state: {
+      activeTopicId: "topic-1"
+    },
+    workspaceId: "workspace-1"
+  });
+
+  runtime.retain();
+  await flushAsyncWork();
+
+  assert.deepEqual(issueTopicCalls, ["topic-1"]);
+  assert.deepEqual(
+    runtime.getSnapshot().issues.value.map((issue) => issue.issueId),
+    ["issue-topic-1"]
+  );
+
+  runtime.updateNodeState({
+    activeTopicId: "topic-2"
+  });
+
+  assert.deepEqual(issueTopicCalls, ["topic-1", "topic-2"]);
+  assert.equal(runtime.getSnapshot().issues.isLoading, true);
+  assert.deepEqual(runtime.getSnapshot().issues.value, []);
+
+  topicTwoIssues.resolve({
+    issues: [
+      createIssueSummary({
+        issueId: "issue-topic-2",
+        title: "Topic 2 issue",
+        topicId: "topic-2"
+      })
+    ]
+  });
+  await flushAsyncWork();
+
+  assert.deepEqual(
+    runtime.getSnapshot().issues.value.map((issue) => issue.issueId),
+    ["issue-topic-2"]
+  );
+
+  runtime.release();
+});
+
 test("controllerRuntime reports task search analytics only for explicit search usage", async () => {
   const searches: string[] = [];
   const analyticsEvents: IssueManagerAnalyticsEvent[] = [];
@@ -494,6 +559,17 @@ async function flushAsyncWork(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
 }
 
 function createFeature(

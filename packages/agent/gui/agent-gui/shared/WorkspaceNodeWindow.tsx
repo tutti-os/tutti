@@ -36,6 +36,10 @@ interface WorkspaceNodeWindowRenderFrame {
   };
 }
 
+type WorkspaceNodeWindowStyle = CSSProperties & {
+  "--node-header-padding-x"?: string;
+};
+
 export interface WorkspaceNodeWindowProps {
   nodeId: string;
   kind: WorkspaceNodeKind;
@@ -147,9 +151,10 @@ export function WorkspaceNodeWindow({
   const resolvedStyle = sizeStyle ?? style;
   const renderedChildren =
     typeof children === "function" ? children(renderedFrame) : children;
-  const rootStyle: CSSProperties =
+  const rootStyle: WorkspaceNodeWindowStyle =
     appearance === "embedded"
       ? {
+          "--node-header-padding-x": "16px",
           ...resolvedStyle,
           width: "100%",
           height: "100%",
@@ -161,6 +166,7 @@ export function WorkspaceNodeWindow({
           WebkitBackdropFilter: "none"
         }
       : {
+          "--node-header-padding-x": "16px",
           ...resolvedStyle,
           background: "transparent",
           border: "1px solid var(--node-window-border)",
@@ -225,7 +231,7 @@ export function WorkspaceNodeWindow({
           }}
         >
           <div
-            className="workspace-node-window__title flex min-w-0 flex-1 items-center gap-1 text-[13px] leading-[18px] font-semibold text-foreground"
+            className="workspace-node-window__title flex min-w-0 max-w-[280px] flex-1 items-center gap-2 text-[13px] leading-[18px] font-semibold text-foreground"
             // i18n-check-ignore: Test selector marker, not a tooltip.
             data-workspace-node-window-title="true"
             title={title}
@@ -238,7 +244,7 @@ export function WorkspaceNodeWindow({
                 {titleIcon}
               </span>
             ) : null}
-            <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+            <span className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
               {title}
             </span>
             {titleAccessory ? (

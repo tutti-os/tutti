@@ -67,7 +67,7 @@ A breakdown handoff is a **persist** request. Treat `mode=breakdown` or an expli
 
 1. Recover context (Entry step 2).
 2. Draft child tasks from issue context, existing tasks, references, and recent runs.
-3. **Persist by default.** Write them back with `issue task create` or `issue task update` in the same turn.
+3. **Persist by default.** Write multiple new tasks back with `issue task create-batch`, one new task with `issue task create`, or existing tasks with `issue task update` in the same turn.
 4. Report what was created or updated (ids/titles), not whether the user wants you to continue.
 
 **Persist without asking when:**

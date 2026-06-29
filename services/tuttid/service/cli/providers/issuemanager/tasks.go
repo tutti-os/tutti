@@ -2,6 +2,8 @@ package issuemanager
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -29,6 +31,19 @@ type taskCreateInput struct {
 	Content   string `cli:"content" description:"Task instructions or notes."`
 	Priority  string `cli:"priority" description:"Task priority: high, medium, or low."`
 	DueAtUnix int64  `cli:"due-at-unix" description:"Due time as a Unix timestamp in seconds."`
+}
+
+type taskCreateBatchInput struct {
+	IssueID   string `cli:"issue-id" validate:"required" description:"Issue that owns the tasks."`
+	TasksJSON string `cli:"tasks-json" validate:"required" description:"JSON array of task objects with title, optional taskId, content, priority, and dueAtUnix."`
+}
+
+type taskCreateBatchItemInput struct {
+	TaskID    string `json:"taskId"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Priority  string `json:"priority"`
+	DueAtUnix int64  `json:"dueAtUnix"`
 }
 
 type taskUpdateInput struct {
@@ -104,6 +119,30 @@ func (p Provider) newTaskCreateCommand() cliservice.Command {
 			},
 		},
 		Run: p.runTaskCreate,
+	})
+}
+
+func (p Provider) newTaskCreateBatchCommand() cliservice.Command {
+	return framework.Register(framework.CommandSpec[taskCreateBatchInput]{
+		ID:          appID + ".issue.task.create-batch",
+		Path:        []string{"issue", "task", "create-batch"},
+		Summary:     "Create ordered issue tasks",
+		Description: "Create multiple child tasks under an issue in the JSON array order. Use this to persist task breakdown output without creating runs.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[taskCreateBatchInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			JSONViews: map[framework.OutputView]func(any) map[string]any{
+				framework.ViewSummary: func(result any) map[string]any {
+					return map[string]any{"tasks": taskSummaryValues(result.([]workspaceissues.Task))}
+				},
+			},
+		},
+		Run: p.runTaskCreateBatch,
 	})
 }
 
@@ -222,6 +261,32 @@ func (p Provider) runTaskCreate(ctx context.Context, invoke framework.InvokeCont
 		Content:     input.Content,
 		Priority:    input.Priority,
 		DueAtUnixMS: input.DueAtUnix * 1000,
+	})
+}
+
+func (p Provider) runTaskCreateBatch(ctx context.Context, invoke framework.InvokeContext, input taskCreateBatchInput) (any, error) {
+	if err := p.requireIssueManager(); err != nil {
+		return nil, err
+	}
+	var parsed []taskCreateBatchItemInput
+	if err := json.Unmarshal([]byte(input.TasksJSON), &parsed); err != nil {
+		return nil, fmt.Errorf("%w: invalid tasks-json", cliservice.ErrInvalidInput)
+	}
+	if len(parsed) == 0 {
+		return nil, fmt.Errorf("%w: tasks-json must include at least one task", cliservice.ErrInvalidInput)
+	}
+	tasks := make([]workspaceservice.CreateIssueManagerTaskItemInput, 0, len(parsed))
+	for _, item := range parsed {
+		tasks = append(tasks, workspaceservice.CreateIssueManagerTaskItemInput{
+			TaskID:      item.TaskID,
+			Title:       item.Title,
+			Content:     item.Content,
+			Priority:    item.Priority,
+			DueAtUnixMS: item.DueAtUnix * 1000,
+		})
+	}
+	return p.issues.CreateTasks(ctx, invoke.WorkspaceID, input.IssueID, workspaceservice.CreateIssueManagerTasksInput{
+		Tasks: tasks,
 	})
 }
 

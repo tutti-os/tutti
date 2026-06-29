@@ -178,6 +178,27 @@ export function useIssueManagerShellView({
   const isSidebarCollapsed =
     controller.nodeState.taskListCollapsed === true || isSidebarAutoCollapsed;
 
+  useEffect(() => {
+    const workbenchWindow =
+      layoutRef.current?.closest<HTMLElement>(".workbench-window") ?? null;
+    if (!workbenchWindow) {
+      return undefined;
+    }
+
+    workbenchWindow.style.setProperty(
+      "--issue-manager-sidebar-width",
+      `${sidebarWidth}px`
+    );
+    workbenchWindow.dataset.issueManagerSidebarCollapsed = isSidebarCollapsed
+      ? "true"
+      : "false";
+
+    return () => {
+      workbenchWindow.style.removeProperty("--issue-manager-sidebar-width");
+      delete workbenchWindow.dataset.issueManagerSidebarCollapsed;
+    };
+  }, [isSidebarCollapsed, sidebarWidth]);
+
   return {
     content,
     floatingNotice,

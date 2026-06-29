@@ -91,7 +91,7 @@ Workspace app scopes are discovered from command guide or capability metadata th
 
 Issue execution sequencing belongs to the `issue-manager` skill. Do not use this command reference alone to decide whether an issue-level execution should call `issue run create` or iterate child tasks with `issue task run create`.
 
-For workspace issue breakdowns, use issue/task inspection commands plus `issue task create` or `issue task update` to persist child tasks. `issue run create`, `issue task run create`, and their matching `complete` commands are execution-mode commands only; do not use them for breakdown-only work.
+For workspace issue breakdowns, use issue/task inspection commands plus `issue task create-batch` for multiple new child tasks, `issue task create` for one new child task, or `issue task update` for existing child tasks. `issue run create`, `issue task run create`, and their matching `complete` commands are execution-mode commands only; do not use them for breakdown-only work.
 
 ## Workspace Issue Run Reporting
 

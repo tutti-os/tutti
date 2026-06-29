@@ -126,6 +126,13 @@ export function createDesktopTuttidClient(
         request
       );
     },
+    async createWorkspaceIssueTasks(workspaceID, issueID, request) {
+      return (await resolveClient()).createWorkspaceIssueTasks(
+        workspaceID,
+        issueID,
+        request
+      );
+    },
     async createWorkspaceIssueRun(workspaceID, issueID, request) {
       return (await resolveClient()).createWorkspaceIssueRun(
         workspaceID,

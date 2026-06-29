@@ -18,9 +18,8 @@ type Store interface {
 	RecalculateIssueProjection(context.Context, string, string) (Issue, error)
 
 	ListTasks(context.Context, TaskListFilter) (TaskList, error)
-	CreateTask(context.Context, Task) (Task, error)
+	AppendTasks(context.Context, []Task) ([]Task, error)
 	GetTask(context.Context, string, string, string) (Task, error)
-	GetNextTaskSortIndex(context.Context, string, string) (int, error)
 	UpdateTask(context.Context, Task) (Task, error)
 	DeleteTask(context.Context, string, string, string, string) (bool, error)
 

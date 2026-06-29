@@ -203,6 +203,7 @@ describe("agentGuiConversationModel", () => {
     expect(summaries).toEqual([
       expect.objectContaining({
         id: "imported-home-session",
+        isImported: true,
         project: null,
         projectMode: "none"
       })

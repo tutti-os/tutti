@@ -216,6 +216,25 @@ test("desktop decision toast mirrors the message-center prompt card chrome", () 
   );
 });
 
+test("desktop outcome toast puts only its middle notification content in a fronted card", () => {
+  assert.match(
+    workspaceChromeSource,
+    /workspace-agent-decision-toast__content relative z-\[1\] grid w-full min-w-0 cursor-pointer gap-2\.5 text-left/
+  );
+  assert.match(
+    workspaceChromeSource,
+    /<p className="workspace-agent-decision-toast__outcome-card min-w-0 text-\[13px\] leading-5 text-\[var\(--text-secondary\)\]">[\s\S]*\{body\}[\s\S]*<\/p>/
+  );
+  assert.match(
+    desktopToastStyleSource,
+    /\.workspace-agent-decision-toast__outcome-card\s*{[^}]*border:\s*1px solid var\(--line-1\);[^}]*border-radius:\s*8px;[^}]*background:\s*var\(--background-fronted\);[^}]*padding:\s*10px;/s
+  );
+  assert.doesNotMatch(
+    workspaceChromeSource,
+    /workspace-agent-decision-toast__outcome-title|workspace-agent-decision-toast__outcome-body|workspace-agent-decision-toast__outcome-muted/
+  );
+});
+
 test("desktop generic toasts do not use edge glow", () => {
   assert.doesNotMatch(toastSource, /agent-gui-edge-glow/);
 });

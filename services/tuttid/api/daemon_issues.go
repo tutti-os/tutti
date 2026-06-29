@@ -276,6 +276,35 @@ func (api DaemonAPI) CreateWorkspaceIssueTask(ctx context.Context, request tutti
 	), nil
 }
 
+func (api DaemonAPI) CreateWorkspaceIssueTasks(ctx context.Context, request tuttigenerated.CreateWorkspaceIssueTasksRequestObject) (tuttigenerated.CreateWorkspaceIssueTasksResponseObject, error) {
+	if api.IssueService == nil {
+		return tuttigenerated.CreateWorkspaceIssueTasks503JSONResponse{ServiceUnavailableErrorJSONResponse: issueManagerServiceUnavailableError()}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.CreateWorkspaceIssueTasks400JSONResponse{InvalidRequestErrorJSONResponse: issueManagerEmptyBodyError()}, nil
+	}
+
+	tasksInput := make([]workspaceservice.CreateIssueManagerTaskItemInput, 0, len(request.Body.Tasks))
+	for _, task := range request.Body.Tasks {
+		tasksInput = append(tasksInput, workspaceservice.CreateIssueManagerTaskItemInput{
+			TaskID:      optionalString(task.TaskId),
+			Title:       task.Title,
+			Content:     optionalString(task.Content),
+			Priority:    optionalIssueManagerPriority(task.Priority),
+			DueAtUnixMS: optionalUnixMillis(task.DueAtUnix),
+		})
+	}
+	tasks, err := api.IssueService.CreateTasks(ctx, string(request.WorkspaceID), string(request.IssueID), workspaceservice.CreateIssueManagerTasksInput{
+		Tasks: tasksInput,
+	})
+	if err != nil {
+		return writeCreateWorkspaceIssueTasksError(err), nil
+	}
+	return tuttigenerated.CreateWorkspaceIssueTasks201JSONResponse(
+		workspaceapi.GeneratedIssueManagerTasksResponseFromDomain(tasks),
+	), nil
+}
+
 func (api DaemonAPI) DeleteWorkspaceIssueTask(ctx context.Context, request tuttigenerated.DeleteWorkspaceIssueTaskRequestObject) (tuttigenerated.DeleteWorkspaceIssueTaskResponseObject, error) {
 	if api.IssueService == nil {
 		return tuttigenerated.DeleteWorkspaceIssueTask503JSONResponse{ServiceUnavailableErrorJSONResponse: issueManagerServiceUnavailableError()}, nil

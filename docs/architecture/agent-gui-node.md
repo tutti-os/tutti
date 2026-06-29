@@ -203,6 +203,11 @@ The session list is not owned by AgentGuiNode. AgentGuiNode may keep query,
 selection, pending create/delete/submit overlays, and read-state UI metadata.
 The session rows themselves come from the runtime snapshot and are refreshed
 through `load`, event reconciliation, or explicit session fetches.
+Conversation-list read-state metadata is notification-style UI state. Historical
+imports that carry `runtimeContext.imported === true` should remain visible in
+the rail, but they must not seed unread completion lamps as though they just
+finished locally. Preserve the imported marker through conversation summaries
+and summary-stabilization equality before deriving unread completion state.
 If the conversation-list query cannot be constructed because workspace,
 current-user, or provider identity is missing, clear the active conversation
 selection and persisted active hint. Do not treat that state as a runtime

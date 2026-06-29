@@ -1142,28 +1142,35 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 - References:
   [desktopAgentGUILinkActions.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentGUILinkActions.ts)
 
-### Imported sessions inflate recently completed message-center groups
+### Imported sessions trigger fresh-completion indicators
 
 - Symptom:
-  After importing Codex or Claude Code history, Message Center's priority view
-  briefly shows many items under the recently-completed group even though those
-  sessions are historical imports, not newly finished local runs.
+  After importing Codex or Claude Code history, Agent GUI conversation rows show
+  unread-completion lamps, or Message Center's priority view briefly shows many
+  items under the recently-completed group, even though those sessions are
+  historical imports rather than newly finished local runs.
 - Quick checks:
   Inspect the session `runtimeContext`. Imported sessions should carry
-  `imported: true`, and Message Center items derived from them should preserve
-  that marker before priority grouping.
+  `imported: true`. Conversation summaries and Message Center items derived from
+  them should preserve that marker before unread-completion or priority grouping
+  is derived.
 - Root cause:
-  Message Center uses the recently-completed group as a notification-style
-  surface. Imported history is persisted as completed agent activity, so if the
-  grouping model treats imported sessions the same as live runtime completions,
-  a bulk import can look like a burst of fresh completed work.
+  Agent GUI unread-completion lamps and Message Center's recently-completed
+  group are notification-style surfaces. Imported history is persisted as
+  completed agent activity, so if projection models treat imported sessions the
+  same as live runtime completions, a bulk import can look like a burst of fresh
+  completed work.
 - Fix:
-  Keep imported sessions visible in Message Center and in the completed filter,
-  but exclude `runtimeContext.imported` items from the recently-completed group.
+  Keep imported sessions visible in Agent GUI, Message Center, and completed
+  filters, but exclude `runtimeContext.imported` items from unread-completion
+  lamps and recently-completed groups.
 - Validation:
-  Run
-  `pnpm --filter @tutti-os/agent-gui test -- agent-message-center/workspaceAgentMessageCenterModel.spec.ts agent-message-center/workspaceAgentMessageCenterViewModel.spec.ts`.
+  For Agent GUI rail read-state changes, run
+  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.spec.ts`.
+  For Message Center grouping changes, run
+  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom agent-message-center/workspaceAgentMessageCenterModel.spec.ts agent-message-center/workspaceAgentMessageCenterViewModel.spec.ts`.
 - References:
+  [agentGuiConversationListStore.ts](../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
   [workspaceAgentMessageCenterModel.ts](../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts)
   [workspaceAgentMessageCenterViewModel.ts](../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterViewModel.ts)
 

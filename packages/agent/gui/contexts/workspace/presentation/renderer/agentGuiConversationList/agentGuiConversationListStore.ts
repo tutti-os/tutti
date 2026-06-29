@@ -518,6 +518,9 @@ function mergeLoadedConversation(
   const merged: AgentGUIConversationSummary = {
     ...incoming,
     ...mergeLoadedConversationTitleFields(current, incoming, preferCurrent),
+    ...(incoming.isImported === true || current?.isImported === true
+      ? { isImported: true }
+      : {}),
     hasUnreadCompletion:
       incoming.hasUnreadCompletion ||
       (preferCurrent ? current?.hasUnreadCompletion : false),
@@ -612,6 +615,7 @@ function areConversationsEqual(
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
     (left.pinnedAtUnixMs ?? 0) === (right.pinnedAtUnixMs ?? 0) &&
+    left.isImported === right.isImported &&
     left.hasUnreadCompletion === right.hasUnreadCompletion &&
     left.unreadCompletionKey === right.unreadCompletionKey &&
     areConversationTitleFallbacksEqual(
@@ -716,6 +720,9 @@ function describeConversationListChange(
         right.id,
         "pinnedAtUnixMs"
       );
+    }
+    if (left.isImported !== right.isImported) {
+      addChangedConversationField(fields, changedIds, right.id, "isImported");
     }
     if (left.hasUnreadCompletion !== right.hasUnreadCompletion) {
       addChangedConversationField(
@@ -1111,6 +1118,7 @@ function decorateConversationForRefresh(input: {
   });
   const hasUnreadCompletion = Boolean(
     completionKey &&
+    input.conversation.isImported !== true &&
     !isCompletedRead(input.readState, completionKey) &&
     !hasActiveConversationOwner(input.queryKey, input.conversation.id)
   );
@@ -1682,6 +1690,7 @@ export function markAgentGUIConversationCompletionObserved(input: {
           input.allowReadyStatus === true;
         const hasUnreadCompletion =
           canShowCompletion &&
+          conversation.isImported !== true &&
           shouldMarkUnread &&
           !isCompletedRead(
             readStateByQueryKey.get(queryState.queryKey) ??
