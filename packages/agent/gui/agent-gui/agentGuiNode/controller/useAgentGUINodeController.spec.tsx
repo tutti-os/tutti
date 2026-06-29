@@ -8469,8 +8469,7 @@ describe("useAgentGUINodeController", () => {
         workspaceId: "room-1",
         agentSessionId: "session-1",
         settings: {
-          model: "gpt-5.4",
-          permissionModeId: "full-access"
+          model: "gpt-5.4"
         }
       });
     });
@@ -8600,7 +8599,7 @@ describe("useAgentGUINodeController", () => {
     ).toEqual([]);
   });
 
-  it("updates the active session while syncing next-conversation defaults on an active session", async () => {
+  it("updates the active session without syncing next-conversation defaults", async () => {
     let resolveUpdateSettings:
       | ((value: {
           settings: {
@@ -8644,6 +8643,7 @@ describe("useAgentGUINodeController", () => {
         }))
     );
     const onDataChange = vi.fn();
+    const onRememberComposerDefaults = vi.fn();
     installAgentHostApi({
       list: vi.fn(async () => snapshotWithSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
@@ -8696,7 +8696,8 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData("session-1"),
-        onDataChange
+        onDataChange,
+        onRememberComposerDefaults
       })
     );
 
@@ -8717,6 +8718,7 @@ describe("useAgentGUINodeController", () => {
     expect(
       result.current.viewModel.composerSettings.selectedReasoningEffortValue
     ).toBe("medium");
+    onDataChange.mockClear();
 
     act(() => {
       result.current.actions.updateComposerSettings({
@@ -8779,42 +8781,8 @@ describe("useAgentGUINodeController", () => {
         permissionModeId: "auto"
       });
     });
-    expect(
-      result.current.viewModel.composerSettings.draftSettings
-    ).toMatchObject({
-      model: "gpt-5.1",
-      reasoningEffort: "high",
-      // The server echo (daemon clamp) resyncs the draft back to false.
-      planMode: false,
-      permissionModeId: "auto"
-    });
-    expect(onDataChange).toHaveBeenCalled();
-    const lastUpdater = onDataChange.mock.calls.at(-1)?.[0] as
-      | ((current: AgentGUINodeData) => AgentGUINodeData)
-      | undefined;
-    expect(lastUpdater).toBeTypeOf("function");
-    expect(
-      lastUpdater?.(
-        agentGuiData("session-1", "codex", {
-          composerOverrides: {
-            model: "gpt-5",
-            reasoningEffort: "medium",
-            speed: null,
-            planMode: false,
-            permissionModeId: "preset"
-          }
-        })
-      )
-    ).toMatchObject({
-      composerOverrides: {
-        model: "gpt-5.1",
-        reasoningEffort: "high",
-        // Node defaults persist the requested value unclamped — the daemon
-        // clamps it whenever the stored value is used.
-        planMode: true,
-        permissionModeId: "auto"
-      }
-    });
+    expect(onDataChange).not.toHaveBeenCalled();
+    expect(onRememberComposerDefaults).not.toHaveBeenCalled();
   });
 
   it("queues later active session settings updates while an earlier request is still in flight", async () => {
@@ -8996,7 +8964,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("keeps node defaults from the latest user settings when an active session settings update fails", async () => {
+  it("does not update node defaults when an active session settings update fails", async () => {
     const updateSettings = vi.fn(async () => {
       throw new Error("Claude Code custom models require a new session");
     });
@@ -9077,27 +9045,7 @@ describe("useAgentGUINodeController", () => {
         permissionModeId: "default"
       });
     });
-    expect(onDataChange).toHaveBeenCalled();
-    const lastUpdater = onDataChange.mock.calls.at(-1)?.[0] as
-      | ((current: AgentGUINodeData) => AgentGUINodeData)
-      | undefined;
-    expect(lastUpdater).toBeTypeOf("function");
-    expect(
-      lastUpdater?.(
-        agentGuiData("session-1", "claude-code", {
-          composerOverrides: {
-            model: "sonnet",
-            reasoningEffort: "medium"
-          }
-        })
-      )
-    ).toMatchObject({
-      composerOverrides: {
-        model: "MiniMax-M2.7",
-        reasoningEffort: "medium",
-        permissionModeId: "default"
-      }
-    });
+    expect(onDataChange).not.toHaveBeenCalled();
   });
 
   it("shows a warning tip when an active session settings update requires a new session", async () => {
@@ -9736,6 +9684,7 @@ describe("useAgentGUINodeController", () => {
 
   it("updates node defaults before any conversation exists", async () => {
     const onDataChange = vi.fn();
+    const onRememberComposerDefaults = vi.fn();
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
@@ -9749,7 +9698,8 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null),
-        onDataChange
+        onDataChange,
+        onRememberComposerDefaults
       })
     );
 
@@ -9773,6 +9723,14 @@ describe("useAgentGUINodeController", () => {
       permissionModeId: "full-access"
     });
     expect(onDataChange).toHaveBeenCalled();
+    expect(onRememberComposerDefaults).toHaveBeenCalledWith({
+      provider: "codex",
+      defaults: {
+        model: "gpt-5",
+        permissionModeId: "full-access",
+        reasoningEffort: "high"
+      }
+    });
   });
 
   it("notifies the host when pre-launch composer settings change", async () => {

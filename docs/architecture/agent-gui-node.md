@@ -492,6 +492,14 @@ User-visible rules:
 - Model, permission, plan mode, reasoning, speed, project, branch, prompt image,
   file mention, and skill/capability controls must read from composer settings
   and provider options. They should not be reconstructed from transcript rows.
+- User composer defaults are owned by desktop preferences. AgentGUI may request
+  a defaults write only from the home/new composer path, through an explicit host
+  callback.
+- Active session settings are session state. Opening, restoring, or editing an
+  active session must not promote that session's model, permission mode, or
+  reasoning setting into user defaults.
+- Workbench node `composerOverrides` are UI-local home/new composer draft state,
+  not an authoritative source for desktop preferences.
 - Draft clearing happens only after the submitted content still matches the
   current draft. Do not clear a draft that the user edited while a send was in
   flight.
