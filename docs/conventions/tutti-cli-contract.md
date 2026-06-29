@@ -186,7 +186,7 @@ Example:
 
 ```go
 type IssueListInput struct {
-    TopicID   string `cli:"topic-id" validate:"required" hint:"Use issue topic list to discover workspace topics."`
+    TopicID   string `cli:"topic-id" validate:"required" hint:"Use issue topic list --json to discover workspace topics."`
     Status    string `cli:"status"`
     Search    string `cli:"search"`
     PageSize  int    `cli:"page-size" validate:"min=1,max=100"`

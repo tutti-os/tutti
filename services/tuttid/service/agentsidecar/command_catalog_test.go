@@ -26,7 +26,7 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			ID:          "issue-manager.issue.list",
 			Path:        []string{"issue", "list"},
 			Summary:     "List issues",
-			Description: "List issue records in a specific workspace topic.",
+			Description: "List issue records in one workspace topic. Requires --topic-id; use `issue topic list --json` first when the topic is unknown. JSON output omits issue content bodies.",
 			InputSchema: map[string]any{"required": []any{"topic-id"}},
 		},
 		{
@@ -129,6 +129,12 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 	}
 	if !strings.Contains(guide, "tutti issue list --topic-id <topic-id>") {
 		t.Fatalf("guide missing topic-scoped issue list: %q", guide)
+	}
+	if !strings.Contains(guide, "use `tutti issue topic list --json` first when the topic is unknown") {
+		t.Fatalf("guide missing topic discovery guidance: %q", guide)
+	}
+	if strings.Contains(guide, "use `issue topic list --json` first when the topic is unknown") {
+		t.Fatalf("guide contains unqualified topic discovery guidance: %q", guide)
 	}
 	if !strings.Contains(guide, "tutti issue update --issue-id <issue-id> --status completed --json") {
 		t.Fatalf("guide missing issue update: %q", guide)

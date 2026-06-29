@@ -107,9 +107,21 @@ func runtimeCommandFromCapability(cliName string, capability cliservice.Capabili
 		}
 		description += "Omit --model unless the user explicitly requested a model; tuttid uses the target provider default."
 	}
+	summary := firstNonEmptyText(capability.Summary, id)
+	if id == "issue-manager.issue.list" {
+		summary = "List issues in a topic"
+		topicDiscoveryHint := fmt.Sprintf("Requires --topic-id; use `%s issue topic list --json` first when the topic is unknown.", normalizeCLICommandName(cliName))
+		description = strings.ReplaceAll(description, "`issue topic list --json`", fmt.Sprintf("`%s issue topic list --json`", normalizeCLICommandName(cliName)))
+		if !strings.Contains(description, topicDiscoveryHint) {
+			if description != "" {
+				description += " "
+			}
+			description += topicDiscoveryHint
+		}
+	}
 	return runtimeCommand{
 		ID:          id,
-		Summary:     firstNonEmptyText(capability.Summary, id),
+		Summary:     summary,
 		Description: description,
 		Example:     normalizeCLICommandName(cliName) + " " + path + requiredInputHintForCommand(id, capability.InputSchema) + commandExampleSuffix(id),
 		Rank:        commandRank(id),
@@ -270,7 +282,7 @@ func fallbackCommandGuide(cliName string) string {
 	cliName = normalizeCLICommandName(cliName)
 	return strings.Join([]string{
 		fmt.Sprintf("- List issue topics: `%s issue topic list`", cliName),
-		fmt.Sprintf("- List issues: `%s issue list --topic-id <topic-id>`", cliName),
+		fmt.Sprintf("- List issues in a topic: `%s issue list --topic-id <topic-id>` - Requires a topic id; use `%s issue topic list --json` first when the topic is unknown.", cliName, cliName),
 		fmt.Sprintf("- Get issue detail: `%s issue get --issue-id <issue-id> --json`", cliName),
 		fmt.Sprintf("- Update issue status: `%s issue update --issue-id <issue-id> --status completed --json`", cliName),
 		fmt.Sprintf("- List issue tasks: `%s issue task list --issue-id <issue-id>`", cliName),
