@@ -37,6 +37,12 @@
     color-scheme: light;
   }
 
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) {
+      color-scheme: dark;
+    }
+  }
+
   body {
     margin: 0;
     min-width: 320px;

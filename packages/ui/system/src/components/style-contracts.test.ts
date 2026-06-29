@@ -204,6 +204,11 @@ test("Chinese language contexts use the CJK font stack and medium weights", () =
     themeSource,
     /:root\[data-theme="dark"\]\s*\{[\s\S]*?--tutti-purple:\s*rgb\(136 152 255\)/
   );
+  assert.match(themeSource, /@media\s*\(prefers-color-scheme:\s*dark\)/);
+  assert.match(
+    themeSource,
+    /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*?:root:not\(\[data-theme="light"\]\)\s*\{[\s\S]*?--tutti-purple:\s*rgb\(136 152 255\)/
+  );
   assert.match(
     themeSource,
     /--tutti-purple-border:\s*color-mix\(\s*in srgb,\s*var\(--tutti-purple\) 20%,\s*transparent\s*\)/
@@ -227,6 +232,10 @@ test("Chinese language contexts use the CJK font stack and medium weights", () =
   assert.match(themeSource, /--on-danger:\s*rgb\(220 38 38 \/ 8%\)/);
   assert.match(themeSource, /--on-danger:\s*rgb\(248 113 113 \/ 10%\)/);
   assert.match(baseSource, /:lang\(zh\)/);
+  assert.match(
+    baseSource,
+    /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*?html:not\(\[data-theme="light"\]\)\s*\{[\s\S]*?color-scheme:\s*dark/
+  );
   assert.match(baseSource, /--font-sans-system:\s*var\(--font-sans-cjk\)/);
   assert.match(baseSource, /--font-sans:\s*var\(--font-sans-cjk\)/);
   assert.match(baseSource, /--font-ui:\s*var\(--font-sans-cjk\)/);

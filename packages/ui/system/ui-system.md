@@ -244,6 +244,10 @@ host-owned caller logic.
 ## Token Rules
 
 - CSS variables are the source of truth for theme values
+- Shared theme styles must support both host-managed
+  `html[data-theme="light" | "dark"]` and workspace-app CSS
+  `prefers-color-scheme`; explicit `data-theme` values should override system
+  preference when both are present.
 - Tailwind utilities should consume the same token layer rather than defining a parallel color system
 - prefer semantic token names such as `background`, `foreground`, `primary`, `muted`, and `destructive` over raw palette leakage in public APIs
 - keep tutti-specific token extensions additive and minimal

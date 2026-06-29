@@ -377,6 +377,183 @@
     color-mix(in srgb, var(--workbench-accent) 30%, transparent);
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: oklch(0.192 0.008 255);
+    --background-panel: rgb(42 42 43);
+    --background-fronted: rgb(51 51 51 / 1);
+    --background-soft: oklch(0.224 0.01 255);
+    --foreground: oklch(0.955 0.004 84);
+    --text-primary: rgb(255 255 255);
+    --text-primary-hover: rgb(255 255 255 / 90%);
+    --text-tertiary: rgb(255 255 255 / 50%);
+    --text-placeholder: rgb(255 255 255 / 30%);
+    --text-inverted: rgb(60 60 60);
+    --white-stationary: rgb(255 255 255);
+    --black-stationary: rgb(0 0 0);
+    --toast-neutral-bg: var(--white-stationary);
+    --toast-neutral-fg: var(--black-stationary);
+    --toast-neutral-border: rgb(0 0 0 / 10%);
+    --toast-shadow-color: rgb(0 0 0 / 24%);
+
+    --card: oklch(0.252 0.01 255 / 88%);
+    --card-foreground: var(--foreground);
+    --popover: oklch(0.264 0.01 255 / 95%);
+    --popover-foreground: var(--foreground);
+
+    --primary: oklch(0.714 0.086 248);
+    --primary-foreground: oklch(0.208 0.012 255);
+    --secondary: oklch(0.292 0.009 255);
+    --secondary-foreground: var(--foreground);
+    --muted: oklch(0.282 0.008 255);
+    --muted-foreground: oklch(0.734 0.012 255);
+    --text-secondary: rgb(255 255 255 / 70%);
+    --text-disabled: rgb(255 255 255 / 30%);
+    --rich-text-mention-app: rgb(191, 90, 242);
+    --rich-text-mention-issue: var(--tutti-purple);
+    --rich-text-mention-session: rgb(74, 222, 128);
+    --folder: rgb(80, 175, 238);
+    --rich-text-folder: rgb(80, 175, 238);
+    --rich-text-mention-file: rgb(80, 175, 238);
+    --accent-codex: rgb(79 143 255);
+    --accent: var(--accent-codex);
+    --accent-codex-border: color-mix(
+      in srgb,
+      var(--accent-codex) 20%,
+      transparent
+    );
+    --status-running: rgb(79 143 255);
+    --tutti-purple: rgb(136 152 255);
+    --tutti-purple-bg: color-mix(
+      in srgb,
+      var(--background-fronted) 88%,
+      var(--tutti-purple) 12%
+    );
+    --tutti-purple-border: color-mix(
+      in srgb,
+      var(--tutti-purple) 20%,
+      transparent
+    );
+    --accent-claude: rgb(251 111 62);
+    --accent-foreground: var(--foreground);
+    --destructive: oklch(0.672 0.172 25);
+    --destructive-foreground: oklch(0.19 0.01 25);
+    --state-danger: rgb(244 91 91);
+    --state-danger-hover: color-mix(
+      in srgb,
+      var(--state-danger) 90%,
+      transparent
+    );
+    --state-success: rgb(74 222 128);
+    --state-warning: rgb(251 146 60);
+    --on-danger: rgb(248 113 113 / 10%);
+    --on-danger-hover: color-mix(
+      in srgb,
+      var(--on-danger) 82%,
+      var(--state-danger)
+    );
+    --border: oklch(0.352 0.012 255);
+    --border-1: rgb(255 255 255 / 12%);
+    --border-2: rgb(255 255 255 / 8%);
+    --line-1: var(--border-1);
+    --line-2: var(--border-2);
+    --line-focus-window: rgb(255 255 255 / 20%);
+    --border-focus: rgb(79 143 255 / 24%);
+    --input: oklch(0.318 0.011 255);
+    --ring: oklch(0.728 0.078 248);
+    --accent-bg: color-mix(
+      in srgb,
+      var(--background-fronted) 88%,
+      var(--accent-codex) 12%
+    );
+
+    --panel: oklch(0.236 0.009 255 / 92%);
+    --panel-foreground: var(--foreground);
+    --success: oklch(0.702 0.124 158);
+    --success-foreground: oklch(0.172 0.01 158);
+    --warning: oklch(0.82 0.108 86);
+    --warning-foreground: oklch(0.204 0.02 84);
+    --backdrop: rgb(0 0 0 / 60%);
+
+    --shadow-soft: 0 14px 32px rgb(0 0 0 / 24%);
+    --shadow-panel: 0 24px 52px rgb(0 0 0 / 34%);
+    --shadow-side-panel: -20px 0px 64px rgb(0 0 0 / 32%);
+    --shadow-elevated: rgb(0 0 0 / 50%);
+    --transparency-block: rgb(255 255 255 / 10%);
+    --transparency-hover: rgb(255 255 255 / 14%);
+    --transparency-active: rgb(255 255 255 / 16%);
+
+    --workbench-canvas-bg: oklch(0.172 0.008 255);
+    --workbench-surface-background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--workbench-accent) 10%, transparent),
+        transparent 34%
+      ),
+      radial-gradient(
+        circle at 18% 12%,
+        color-mix(in srgb, var(--workbench-accent) 12%, transparent),
+        transparent 28%
+      ),
+      var(--workbench-canvas-bg);
+    --workbench-foreground: var(--foreground);
+    --workbench-muted-foreground: var(--muted-foreground);
+    --workbench-chrome-foreground: color-mix(
+      in srgb,
+      var(--foreground) 82%,
+      transparent
+    );
+    --workbench-chrome-muted: color-mix(
+      in srgb,
+      var(--foreground) 64%,
+      transparent
+    );
+    --workbench-chrome-hover-bg: var(--transparency-block);
+    --workbench-panel: oklch(0.236 0.009 255 / 90%);
+    --workbench-window-bg: color-mix(
+      in srgb,
+      var(--workbench-panel) 92%,
+      transparent
+    );
+    --workbench-node-surface: color-mix(
+      in srgb,
+      var(--workbench-window-bg) 96%,
+      var(--workbench-panel)
+    );
+    --workbench-window-header-bg: color-mix(
+      in srgb,
+      var(--workbench-panel) 86%,
+      transparent
+    );
+    --workbench-field-bg: color-mix(
+      in srgb,
+      var(--workbench-window-bg) 92%,
+      black
+    );
+    --workbench-window-backdrop-filter: blur(40px) saturate(1.08);
+    --workbench-border: rgb(255 255 255 / 12%);
+    --workbench-accent: var(--primary);
+    --workbench-focused-border: rgb(255 255 255 / 32%);
+    --workbench-scrim: color-mix(in srgb, var(--card) 78%, transparent);
+    --workbench-window-elevation: 0 14px 32px rgb(0 0 0 / 42%);
+    --workbench-control-hover-bg: color-mix(
+      in srgb,
+      var(--workbench-foreground) 11%,
+      transparent
+    );
+    --workbench-dock-shadow:
+      0 18px 44px rgb(0 0 0 / 42%), 0 1px 0 rgb(255 255 255 / 10%);
+    --workbench-snap-guide: color-mix(in srgb, var(--primary) 18%, transparent);
+    --workbench-snap-guide-border: color-mix(
+      in srgb,
+      var(--workbench-accent) 72%,
+      transparent
+    );
+    --workbench-snap-guide-shadow: 0 0 0 1px
+      color-mix(in srgb, var(--workbench-accent) 30%, transparent);
+  }
+}
+
 [data-workbench-wallpaper-appearance="dark"] {
   --transparency-block: rgb(255 255 255 / 12%);
   --transparency-hover: rgb(255 255 255 / 16%);
