@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createElement, isValidElement, type ReactElement } from "react";
@@ -557,6 +559,7 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(toggleButton).toHaveClass("agent-gui-workbench-header__icon-button");
+    expect(toggleButton).toHaveClass("agent-gui-workbench-header__rail-toggle");
     expect(toggleButton).toHaveAttribute("data-size", "icon-sm");
     expect(toggleButton.querySelector("svg")).toHaveClass(
       "agent-gui-workbench-header__icon"
@@ -568,8 +571,12 @@ describe("agent GUI workbench contribution copy", () => {
     expect(newConversationButton.querySelector("svg")).toHaveClass(
       "agent-gui-workbench-header__icon"
     );
+    const collapsedSessionTitle = screen
+      .getByText("Current session title")
+      .closest(".agent-gui-workbench-header__session-title");
+    expect(collapsedSessionTitle).not.toBeNull();
     expect(screen.getByText("Current session title")).toHaveClass(
-      "agent-gui-workbench-header__session-title"
+      "agent-gui-workbench-header__title-text"
     );
     expect(screen.queryByTestId("agent-gui-window-detail-title")).toBeNull();
 
@@ -649,6 +656,9 @@ describe("agent GUI workbench contribution copy", () => {
     });
     expect(primary).toHaveClass("agent-gui-workbench-header__primary");
     expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("agent-gui-toggle-conversation-rail")
+    ).toHaveClass("agent-gui-workbench-header__rail-toggle");
     const headerIcon = screen.getByTestId("agent-gui-window-title-icon");
     expect(headerIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
     expect(headerIcon).toHaveAttribute(
@@ -666,5 +676,72 @@ describe("agent GUI workbench contribution copy", () => {
         name: agentGuiWorkbenchDefaultCopy.newConversation
       })
     ).not.toBeInTheDocument();
+  });
+
+  it("caps workbench header conversation titles at 280px", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /--agent-gui-workbench-header-title-max-width:\s*280px;/
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__session-title\s*{[^}]*max-width:\s*min\(100%,\s*var\(--agent-gui-workbench-header-title-max-width\)\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__detail-title\s*{[^}]*max-width:\s*min\(100%,\s*var\(--agent-gui-workbench-header-title-max-width\)\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__title-text\s*{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
+    );
+  });
+
+  it("keeps the traffic light group aligned with the agent identity", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(/--agent-gui-workbench-header-padding-x:\s*16px;/);
+    expect(css).toMatch(
+      /--agent-gui-workbench-header-agent-icon-size:\s*20px;/
+    );
+    expect(css).toMatch(/--agent-gui-workbench-header-primary-gap:\s*12px;/);
+    expect(css).toMatch(
+      /--agent-gui-workbench-header-traffic-light-size:\s*12px;/
+    );
+    expect(css).toMatch(
+      /--agent-gui-workbench-header-traffic-light-gap:\s*8px;/
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__primary\s*{[^}]*padding:\s*0\s+var\(--agent-gui-workbench-header-padding-x\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__primary\s*{[^}]*gap:\s*var\(--agent-gui-workbench-header-primary-gap\);/s
+    );
+    const headerPrimaryCss = css.match(
+      /\.agent-gui-workbench-header__primary\s*{(?<body>[^}]*)}/s
+    )?.groups?.body;
+    expect(headerPrimaryCss).toBeDefined();
+    expect(headerPrimaryCss).not.toMatch(/border-right:/);
+    expect(css).toMatch(
+      /\.agent-gui-node__rail-panel\s*{[^}]*border-right:\s*0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-lights\s*{[^}]*margin-right:\s*0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-light\s*{[^}]*width:\s*var\(--agent-gui-workbench-header-traffic-light-size\);[^}]*height:\s*var\(--agent-gui-workbench-header-traffic-light-size\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__agent-brand\s*{[^}]*gap:\s*8px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__agent-icon\s*{[^}]*width:\s*var\(--agent-gui-workbench-header-agent-icon-size\);[^}]*height:\s*var\(--agent-gui-workbench-header-agent-icon-size\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__rail-toggle\s*{[^}]*margin-left:\s*auto;/s
+    );
+    const agentIconCss = css.match(
+      /\.agent-gui-workbench-header__agent-icon\s*{(?<body>[^}]*)}/s
+    )?.groups?.body;
+    expect(agentIconCss).toBeDefined();
+    expect(agentIconCss).not.toMatch(/box-shadow:/);
   });
 });

@@ -14,6 +14,9 @@ import { CreateChatIcon } from "@tutti-os/ui-system/icons";
 const headerChromeIconButtonClassName =
   "agent-gui-workbench-header__icon-button";
 
+const conversationRailToggleButtonClassName =
+  "agent-gui-workbench-header__icon-button agent-gui-workbench-header__rail-toggle";
+
 const headerChromeIconClassName = "agent-gui-workbench-header__icon";
 
 export interface AgentGuiWorkbenchHeaderCopy {
@@ -130,29 +133,35 @@ export function AgentGuiWorkbenchHeader({
           tone: "maximize"
         })
       ),
-      iconUrl
-        ? createElement("img", {
-            alt: "",
-            "aria-hidden": true,
-            className: "agent-gui-workbench-header__agent-icon",
-            "data-agent-gui-workbench-header-icon": "true",
-            "data-testid": "agent-gui-window-title-icon",
-            draggable: false,
-            src: iconUrl
-          })
-        : null,
       createElement(
-        "span",
+        "div",
         {
-          className: "agent-gui-workbench-header__agent-name"
+          className: "agent-gui-workbench-header__agent-brand"
         },
-        appTitle
+        iconUrl
+          ? createElement("img", {
+              alt: "",
+              "aria-hidden": true,
+              className: "agent-gui-workbench-header__agent-icon",
+              "data-agent-gui-workbench-header-icon": "true",
+              "data-testid": "agent-gui-window-title-icon",
+              draggable: false,
+              src: iconUrl
+            })
+          : null,
+        createElement(
+          "span",
+          {
+            className: "agent-gui-workbench-header__agent-name"
+          },
+          appTitle
+        )
       ),
       createElement(
         Button as never,
         {
           "aria-label": toggleLabel,
-          className: headerChromeIconButtonClassName,
+          className: conversationRailToggleButtonClassName,
           "data-agent-gui-conversation-rail-auto-collapsed":
             isConversationRailAutoCollapsed ? "true" : undefined,
           "data-agent-gui-conversation-rail-collapsed":
@@ -200,7 +209,13 @@ export function AgentGuiWorkbenchHeader({
             {
               className: "agent-gui-workbench-header__session-title"
             },
-            sessionTitle
+            createElement(
+              "span",
+              {
+                className: "agent-gui-workbench-header__title-text"
+              },
+              sessionTitle
+            )
           )
         : null
     ),
@@ -211,7 +226,13 @@ export function AgentGuiWorkbenchHeader({
             className: "agent-gui-workbench-header__detail-title",
             "data-testid": "agent-gui-window-detail-title"
           },
-          sessionTitle
+          createElement(
+            "span",
+            {
+              className: "agent-gui-workbench-header__title-text"
+            },
+            sessionTitle
+          )
         )
       : null
   );

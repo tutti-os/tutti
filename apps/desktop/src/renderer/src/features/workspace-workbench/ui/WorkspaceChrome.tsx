@@ -90,6 +90,11 @@ const MESSAGE_CENTER_VISIBLE_HISTORY_MS = 7 * 24 * 60 * 60 * 1000;
 const WORKSPACE_AGENT_DECISION_TOAST_DURATION = Infinity;
 // Completion is informational, so the card auto-dismisses after a short window.
 const WORKSPACE_AGENT_OUTCOME_TOAST_DURATION = 6000;
+const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX = 16;
+const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX = 64;
+const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_RESERVED_WIDTH_PX =
+  WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX +
+  WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX;
 const workspaceAgentDecisionToastClassName = "workspace-agent-decision-toast";
 const AGENT_STATUS_PET_SOURCES = {
   failed: new URL(
@@ -165,8 +170,8 @@ export function WorkspaceChrome({
   const headerStyle = isDarwin
     ? ({
         "--workspace-chrome-left-padding": chromeState.useCompactTitlebar
-          ? "12px"
-          : "calc(12px + var(--cove-workspace-mac-traffic-light-gutter, 68px))"
+          ? `${WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX}px`
+          : `calc(${WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX}px + var(--cove-workspace-mac-traffic-light-gutter, ${WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX}px))`
       } as React.CSSProperties)
     : undefined;
   const [externalImportWizardProviders, setExternalImportWizardProviders] =
@@ -198,7 +203,10 @@ export function WorkspaceChrome({
           {isDarwin && !chromeState.useCompactTitlebar ? (
             <div
               aria-hidden="true"
-              className="h-full w-[88px] shrink-0 [-webkit-app-region:no-drag]"
+              className="h-full shrink-0 [-webkit-app-region:no-drag]"
+              style={{
+                width: `${WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_RESERVED_WIDTH_PX}px`
+              }}
             />
           ) : null}
         </div>
@@ -971,7 +979,7 @@ function WorkspaceAgentOutcomeToast({
             <span>{statusLabel}</span>
           </span>
         </div>
-        <p className="min-w-0 text-[13px] leading-5 text-[var(--text-secondary)]">
+        <p className="workspace-agent-decision-toast__outcome-card min-w-0 text-[13px] leading-5 text-[var(--text-secondary)]">
           {body}
         </p>
         <div className="flex min-w-0 items-center gap-2 text-[13px] leading-5 text-[var(--text-secondary)]">

@@ -166,6 +166,17 @@ Use these rules:
   `--text-primary`
 - keep routine chrome icons at `14px`; reserve larger icons for content
   regions, empty states, or app identity
+- keep macOS workspace traffic lights at the native `12px` diameter, `16px`
+  leading inset, and vertically centered in the `52px` workspace header; custom
+  Agent GUI workbench traffic lights should use the same `12px` size and `16px`
+  leading inset, with `12px` between the traffic-light group and agent identity;
+  update Electron `trafficLightPosition`, renderer header clearance, and custom
+  workbench header spacing together
+- keep Agent GUI workbench identity icons at `20px` square without shadows
+- pin the Agent GUI conversation rail toggle to the trailing edge of the rail
+  header area, without drawing a right border on the rail
+- keep Agent GUI rail toolbar controls flush with the rail header; do not add
+  extra top padding above the search field and new-session button
 - use `--text-secondary` for inactive icon actions and `--text-primary` for
   hover/focus states
 - place routine header actions with `4px` gaps and prevent pointer or double

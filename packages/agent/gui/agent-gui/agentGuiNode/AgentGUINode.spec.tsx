@@ -1087,8 +1087,16 @@ describe("AgentGUINode", () => {
     const windowTitle = container.querySelector(
       '[data-workspace-node-window-title="true"]'
     );
+    const windowRoot = container.querySelector<HTMLElement>(
+      '[data-workspace-node-window-root="true"]'
+    );
 
     expect(windowTitle).toHaveTextContent("Codex");
+    expect(windowTitle).toHaveClass("max-w-[280px]");
+    expect(windowTitle).toHaveClass("gap-2");
+    expect(windowRoot?.style.getPropertyValue("--node-header-padding-x")).toBe(
+      "16px"
+    );
   });
 
   it("shows the provider dock icon before the Agent GUI window title", () => {
@@ -6261,6 +6269,18 @@ describe("AgentGUINode", () => {
     );
 
     expect(css).toMatch(/--agent-gui-detail-padding-x:\s*28px/);
+    expect(css).toMatch(
+      /--agent-gui-background-1:\s*var\(--background-1,\s*rgb\(245 245 245\)\)/s
+    );
+    expect(css).toMatch(
+      /:root\[data-theme="dark"\]\s+\.agent-gui-node__shell\s*{[^}]*--agent-gui-background-1:\s*var\(--background-1,\s*rgb\(24 24 24\)\)/s
+    );
+    expect(css).toMatch(
+      /\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__detail\s*{[^}]*padding-top:\s*var\(--agent-gui-workbench-header-height\)/s
+    );
+    expect(css).toMatch(
+      /\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__timeline-with-composer\s*{[^}]*padding-top:\s*20px/s
+    );
     expect(css).toMatch(
       /\.workspace-agents-status-panel__content--detail\s*{[^}]*padding-inline:\s*28px/s
     );
