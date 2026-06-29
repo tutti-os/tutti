@@ -1573,6 +1573,17 @@ export function WorkbenchHostDock({
                           return;
                         case "minimize-node":
                           closePopup();
+                          void (async () => {
+                            try {
+                              await onDockEntryClick?.({
+                                entryId: entry.id,
+                                host,
+                                nodeId: clickResolution.nodeId
+                              });
+                            } catch {
+                              // Keep dock click failures contained.
+                            }
+                          })();
                           context.genie.minimizeNodeToAnchor(
                             clickResolution.nodeId,
                             () => {
