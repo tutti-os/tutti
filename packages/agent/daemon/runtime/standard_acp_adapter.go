@@ -1490,27 +1490,26 @@ func (a *standardACPAdapter) ApplySessionSettings(
 
 	if patch.ReasoningEffort != nil {
 		reasoning := strings.TrimSpace(*patch.ReasoningEffort)
-		if reasoning != "" {
+		if reasoning != "" && a.sessionConfigOptionAdvertisesValue(session.AgentSessionID, "effort", reasoning) {
 			if !a.sessionConfigOptionMatches(session.AgentSessionID, "effort", reasoning) {
 				if err := a.setSessionConfigOption(ctx, acpSession.client, session, "effort", reasoning); err != nil {
-					return fmt.Errorf("agent session ACP effort configuration failed: %w", err)
+					a.logStartupConfigOptionRejected(session, "effort", reasoning, err)
+				} else {
+					a.updateSessionConfigOption(session.AgentSessionID, "effort", reasoning)
 				}
-				a.updateSessionConfigOption(session.AgentSessionID, "effort", reasoning)
 			}
 		}
 	}
 
 	if patch.Speed != nil {
 		speed := strings.TrimSpace(*patch.Speed)
-		if speed != "" {
-			if !a.sessionConfigOptionAdvertisesValue(session.AgentSessionID, "fast", speed) {
-				return nil
-			}
+		if speed != "" && a.sessionConfigOptionAdvertisesValue(session.AgentSessionID, "fast", speed) {
 			if !a.sessionConfigOptionMatches(session.AgentSessionID, "fast", speed) {
 				if err := a.setSessionConfigOption(ctx, acpSession.client, session, "fast", speed); err != nil {
-					return fmt.Errorf("agent session ACP fast configuration failed: %w", err)
+					a.logStartupConfigOptionRejected(session, "fast", speed, err)
+				} else {
+					a.updateSessionConfigOption(session.AgentSessionID, "fast", speed)
 				}
-				a.updateSessionConfigOption(session.AgentSessionID, "fast", speed)
 			}
 		}
 	}

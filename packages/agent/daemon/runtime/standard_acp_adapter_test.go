@@ -2358,6 +2358,35 @@ func TestClaudeCodeAdapterApplySessionSettingsUpdatesLiveACPConfig(t *testing.T)
 		t.Fatalf("Start: %v", err)
 	}
 
+	// Simulate agent advertising effort option (must be advertised before sending).
+	adapter.applyACPUpdate(session.AgentSessionID, json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "config_option_update",
+			"key": "model",
+			"value": "default",
+			"configOptions": [
+				{
+					"id": "model",
+					"currentValue": "default",
+					"options": [
+						{"value": "default", "name": "Default"},
+						{"value": "sonnet", "name": "Sonnet"},
+						{"value": "haiku", "name": "Haiku"}
+					]
+				},
+				{
+					"id": "effort",
+					"currentValue": "medium",
+					"options": [
+						{"value": "low", "name": "Low"},
+						{"value": "medium", "name": "Medium"},
+						{"value": "high", "name": "High"}
+					]
+				}
+			]
+		}
+	}`))
+
 	session.Settings = &SessionSettings{
 		Model:            "sonnet",
 		ReasoningEffort:  "low",
@@ -2421,7 +2450,26 @@ func TestClaudeCodeAdapterApplySessionSettingsSendsChangedLiveACPConfig(t *testi
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	adapter.updateSessionConfigOption(session.AgentSessionID, "effort", "high")
+
+	// Simulate agent advertising effort option (must be advertised before sending).
+	adapter.applyACPUpdate(session.AgentSessionID, json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "config_option_update",
+			"key": "effort",
+			"value": "high",
+			"configOptions": [
+				{
+					"id": "effort",
+					"currentValue": "high",
+					"options": [
+						{"value": "low", "name": "Low"},
+						{"value": "medium", "name": "Medium"},
+						{"value": "high", "name": "High"}
+					]
+				}
+			]
+		}
+	}`))
 
 	session.Settings = &SessionSettings{ReasoningEffort: "low"}
 	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
@@ -3253,6 +3301,59 @@ func TestSelectGeminiACPAuthMethodFallsBackToAPIKey(t *testing.T) {
 	}
 	if got := selectGeminiACPAuthMethod(raw); got != "gemini-api-key" {
 		t.Fatalf("method id = %q, want gemini-api-key", got)
+	}
+}
+
+func TestClaudeCodeAdapterApplySessionSettingsSkipsUnadvertisedEffort(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-haiku-no-effort")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.Settings = &SessionSettings{
+		Model: "haiku",
+	}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Simulate agent advertising that Haiku does not support effort.
+	// configOptions only includes model, not effort.
+	adapter.applyACPUpdate(session.AgentSessionID, json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "config_option_update",
+			"key": "model",
+			"value": "haiku",
+			"configOptions": [
+				{
+					"id": "model",
+					"currentValue": "haiku",
+					"options": [
+						{"value": "default", "name": "Default (recommended)"},
+						{"value": "sonnet", "name": "Sonnet"},
+						{"value": "haiku", "name": "Haiku"}
+					]
+				}
+			]
+		}
+	}`))
+
+	// Attempt to set effort on Haiku, which doesn't advertise it.
+	// This should NOT error out; it should skip the effort update.
+	err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		ReasoningEffort: stringPtr("high"),
+	})
+	if err != nil {
+		t.Fatalf("ApplySessionSettings: expected no error for unadvertised effort, got: %v", err)
+	}
+
+	// Verify that no effort config option was sent (only model should be candidates).
+	calls := transport.conn.setConfigOptionCalls()
+	for _, call := range calls {
+		if configID, _ := call["configId"].(string); configID == "effort" {
+			t.Fatalf("effort should not have been sent for Haiku; calls = %#v", calls)
+		}
 	}
 }
 
