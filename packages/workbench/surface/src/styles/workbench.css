@@ -733,7 +733,7 @@
   background: transparent;
   box-shadow: none;
   overflow: visible;
-  pointer-events: auto;
+  pointer-events: none;
   transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1);
   -webkit-app-region: no-drag;
 }
@@ -772,7 +772,7 @@
   background: transparent;
   box-shadow: none;
   line-height: 0;
-  pointer-events: auto;
+  pointer-events: none;
   transition: width 600ms cubic-bezier(0.16, 1, 0.3, 1);
   -webkit-app-region: no-drag;
 }
@@ -827,6 +827,7 @@
   overflow: visible;
   padding: 0 var(--desktop-dock-items-padding)
     var(--desktop-dock-items-padding-block-end);
+  pointer-events: none;
   scroll-behavior: smooth;
   scrollbar-width: none;
 }
@@ -1114,6 +1115,7 @@
   justify-content: center;
   overflow: visible;
   line-height: 0;
+  pointer-events: auto;
 }
 
 .desktop-dock[data-dock-placement="left"] .desktop-dock__slot {

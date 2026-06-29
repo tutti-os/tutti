@@ -1447,9 +1447,14 @@ describe("AgentGUINodeView provider setup notice", () => {
     expect(notice).toHaveTextContent("installRequiredPlaceholder");
     expect(notice).toHaveAttribute("role", "status");
     expect(notice).toHaveAttribute("data-slot", "toast");
-    expect(
-      screen.getByTestId("agent-gui-provider-setup-notice-action")
-    ).toHaveTextContent("installRequiredAction");
+    expect(notice).not.toHaveClass("nodrag");
+    expect(notice).not.toHaveClass("tsh-desktop-no-drag");
+    expect(notice).not.toHaveClass("[-webkit-app-region:no-drag]");
+    const action = screen.getByTestId("agent-gui-provider-setup-notice-action");
+    expect(action).toHaveTextContent("installRequiredAction");
+    expect(action).toHaveClass("nodrag");
+    expect(action).toHaveClass("tsh-desktop-no-drag");
+    expect(action).toHaveClass("[-webkit-app-region:no-drag]");
   });
 
   it("floats the setup notice above the detail content without affecting layout", () => {
@@ -1459,7 +1464,7 @@ describe("AgentGUINodeView provider setup notice", () => {
     )?.[0];
 
     expect(setupNoticeRule).toContain("position: absolute;");
-    expect(setupNoticeRule).toContain("top: 8px;");
+    expect(setupNoticeRule).toContain("top: 56px;");
     // Horizontally centered above the detail content.
     expect(setupNoticeRule).toContain("left: 50%;");
     expect(setupNoticeRule).toContain("transform: translateX(-50%);");
@@ -1472,10 +1477,15 @@ describe("AgentGUINodeView provider setup notice", () => {
     );
     expect(setupNoticeRule).toContain("margin: 0;");
     expect(setupNoticeRule).not.toContain("background:");
+    expect(setupNoticeRule).toContain("pointer-events: auto;");
     expect(css).toContain(
       ".agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice"
     );
-    expect(css).toContain("top: calc(64px + 4px);");
+    expect(css).toContain("top: calc(64px + 16px);");
+    const setupNoticeActionRule = css.match(
+      /\.agent-gui-node__provider-setup-notice-action\s*{[^}]*}/s
+    )?.[0];
+    expect(setupNoticeActionRule).toContain("-webkit-app-region: no-drag;");
   });
 
   it("hides the setup notice when the provider is ready", () => {

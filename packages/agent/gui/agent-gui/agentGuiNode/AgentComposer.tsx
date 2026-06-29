@@ -149,6 +149,7 @@ const USAGE_POPOVER_HOVER_DELAY_MS = 120;
 const DOCK_COMPOSER_INPUT_MIN_HEIGHT = 56;
 const DOCK_COMPOSER_INPUT_MAX_HEIGHT = 120;
 const DOCK_COMPOSER_INPUT_BORDER_HEIGHT = 2;
+const DOCK_COMPOSER_INPUT_PADDING_BLOCK_HEIGHT = 24;
 const DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT = 26;
 
 /**
@@ -2323,8 +2324,12 @@ export function AgentComposer({
           editor.scrollHeight + DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT
         )
       );
+      const attachmentChromeHeight =
+        attachmentHeight > 0 ? DOCK_COMPOSER_INPUT_PADDING_BLOCK_HEIGHT : 0;
       const maxHeight =
-        DOCK_COMPOSER_INPUT_MAX_HEIGHT + Math.max(0, attachmentHeight);
+        DOCK_COMPOSER_INPUT_MAX_HEIGHT +
+        Math.max(0, attachmentHeight) +
+        attachmentChromeHeight;
       const previousHeight = inputArea.style.height;
       const previousInputHeight = inputArea.style.getPropertyValue(
         "--agent-gui-composer-input-height"
@@ -2378,7 +2383,7 @@ export function AgentComposer({
       }
       const measuredHeight = Math.max(
         contentHeight + DOCK_COMPOSER_INPUT_BORDER_HEIGHT,
-        attachmentHeight + textHeight
+        attachmentHeight + textHeight + attachmentChromeHeight
       );
       const nextHeight = Math.min(
         maxHeight,

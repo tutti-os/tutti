@@ -23,6 +23,7 @@ import { agentGuiDockIconUrls } from "../../dockIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
+import { getAgentEnvPanelStore } from "../../shared/agentEnv/agentEnvPanelStore";
 import {
   resolveAgentGUIHeroIconUrl,
   shouldEmphasizeEmptyHeroProvider
@@ -707,6 +708,10 @@ describe("AgentGUINode", () => {
 
   beforeEach(() => {
     mockViewModel = createViewModel();
+    const agentEnvPanelStore = getAgentEnvPanelStore();
+    agentEnvPanelStore.open = false;
+    agentEnvPanelStore.provider = null;
+    agentEnvPanelStore.focus = null;
     mockCreateConversation.mockClear();
     mockSelectConversation.mockClear();
     mockSubmitPrompt.mockClear();
@@ -2674,6 +2679,43 @@ describe("AgentGUINode", () => {
     expect(
       screen.getByTestId("agent-gui-provider-setup-notice")
     ).toHaveTextContent("agentHost.agentGui.installRequiredPlaceholder");
+  });
+
+  it("opens the provider setup panel from the setup notice action", () => {
+    mockViewModel = createViewModel({
+      data: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      activeConversationId: "session-1",
+      draftPrompt: "hello",
+      canQueueWhileBusy: true
+    });
+
+    renderAgentGUINode({
+      state: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      managedAgentsState: createManagedAgentsState({
+        readyAgentIds: ["codex"]
+      })
+    });
+
+    fireEvent.pointerDown(
+      screen.getByTestId("agent-gui-provider-setup-notice-action")
+    );
+    fireEvent.click(
+      screen.getByTestId("agent-gui-provider-setup-notice-action")
+    );
+
+    expect(getAgentEnvPanelStore()).toMatchObject({
+      open: true,
+      provider: "claude-code",
+      focus: "detect"
+    });
   });
 
   it("renders composer setting controls with permission mode UI", async () => {
@@ -6311,8 +6353,8 @@ describe("AgentGUINode", () => {
     expect(css).toMatch(
       /\.workspace-agents-status-panel__conversation-timeline\.agent-gui-node__timeline\s*{[^}]*padding-right:\s*28px[^}]*padding-left:\s*28px/s
     );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__timeline-with-composer\s*{[^}]*(?:-webkit-)?mask-image/s
+    expect(css).toMatch(
+      /\.agent-gui-node__timeline-with-composer\s*{[^}]*-webkit-mask-image:\s*linear-gradient[^}]*mask-image:\s*linear-gradient/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
@@ -6321,7 +6363,16 @@ describe("AgentGUINode", () => {
       /\.agent-gui-node__bottom-dock\s*{[^}]*margin-right:\s*auto[^}]*margin-left:\s*auto/s
     );
     expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*{[^}]*pointer-events:\s*none/s
+    );
+    expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-node__composer\s*{[^}]*padding-right:\s*12px[^}]*padding-left:\s*12px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-node__composer\s*{[^}]*pointer-events:\s*none/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome,[\s\S]*?\.agent-gui-node__composer-input-shell\s*{[^}]*pointer-events:\s*auto/s
     );
   });
 

@@ -5681,11 +5681,24 @@ button.agent-gui-node__conversation-section-toggle:hover
   padding-top: 0;
   background: transparent;
   border-top: 0;
+  pointer-events: none;
 }
 
 .agent-gui-node__bottom-dock > .agent-gui-node__composer {
   padding-right: 12px;
   padding-left: 12px;
+  pointer-events: none;
+}
+
+.agent-gui-node__bottom-dock > .agent-gui-chrome__session-chrome,
+.agent-gui-node__bottom-dock-prompt,
+.agent-gui-node__bottom-dock
+  > .agent-gui-node__composer
+  .agent-gui-node__composer-floating-prompt,
+.agent-gui-node__bottom-dock
+  > .agent-gui-node__composer
+  .agent-gui-node__composer-input-shell {
+  pointer-events: auto;
 }
 
 .agent-gui-node__bottom-dock-prompt {
@@ -5825,7 +5838,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__provider-setup-notice {
   position: absolute;
-  top: 8px;
+  top: 56px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -5841,7 +5854,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice {
-  top: calc(64px + 4px);
+  top: calc(64px + 16px);
 }
 
 .agent-gui-node__provider-setup-notice-action {
@@ -5854,6 +5867,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 
 .agent-gui-node__layout [data-slot="status-dot"],
@@ -6174,6 +6188,7 @@ button.agent-gui-node__conversation-section-toggle:hover
     minmax(0, var(--agent-gui-composer-attachment-height, 0px))
     minmax(40px, 1fr);
   align-items: stretch;
+  padding: 12px;
 }
 
 .agent-gui-node__composer[data-layout="dock"]

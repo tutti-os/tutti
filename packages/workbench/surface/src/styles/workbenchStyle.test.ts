@@ -92,6 +92,25 @@ test("dock retained entry removal animates width and icon exit", () => {
   assert.match(css, /@keyframes desktop-dock-separator-collapse-left/);
 });
 
+test("dock transparent hover padding lets clicks reach windows behind it", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    css,
+    /\.desktop-dock-plate\s*{[^}]*pointer-events:\s*none;[^}]*transition:\s*width 220ms/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock\s*{[^}]*pointer-events:\s*none;[^}]*transition:\s*width 600ms/s
+  );
+  assert.match(css, /\.desktop-dock__items\s*{[^}]*pointer-events:\s*none;/s);
+  assert.match(css, /\.desktop-dock__slot\s*{[^}]*pointer-events:\s*auto;/s);
+  assert.match(
+    css,
+    /\.desktop-dock__hover-panel\s*{[^}]*pointer-events:\s*auto;/s
+  );
+});
+
 test("dock badge chrome uses inverted outlines and 11px count text", () => {
   const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
 

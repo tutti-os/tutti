@@ -1809,7 +1809,7 @@ describe("AgentComposer", () => {
         if (
           this.classList.contains("agent-gui-node__composer-prompt-input-area")
         ) {
-          return 180;
+          return 204;
         }
         return this.matches('[data-testid="agent-gui-composer-image-drafts"]')
           ? 56
@@ -1864,8 +1864,8 @@ describe("AgentComposer", () => {
           screen.getByTestId("agent-gui-composer-image-drafts").parentElement
         ).toHaveStyle({
           "--agent-gui-composer-attachment-height": "56px",
-          "--agent-gui-composer-input-height": "176px",
-          "--agent-gui-composer-input-max-height": "176px"
+          "--agent-gui-composer-input-height": "200px",
+          "--agent-gui-composer-input-max-height": "200px"
         })
       );
     } finally {
@@ -1900,7 +1900,7 @@ describe("AgentComposer", () => {
       /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-send-button\s*{[^}]*align-self:\s*end/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\]\s*{[^}]*grid-template-rows:[^}]*minmax\(0,\s*var\(--agent-gui-composer-attachment-height,\s*0px\)\)[^}]*minmax\(40px,\s*1fr\)[^}]*align-items:\s*stretch/s
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\]\s*{[^}]*grid-template-rows:[^}]*minmax\(0,\s*var\(--agent-gui-composer-attachment-height,\s*0px\)\)[^}]*minmax\(40px,\s*1fr\)[^}]*align-items:\s*stretch[^}]*padding:\s*12px/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\[data-testid="agent-gui-composer-image-drafts"\]\s*{[^}]*min-height:\s*0[^}]*margin-bottom:\s*0[^}]*overflow:\s*hidden/s
@@ -3480,7 +3480,7 @@ describe("AgentComposer", () => {
           return this.querySelector(
             '[data-testid="agent-gui-composer-image-drafts"]'
           )
-            ? 180
+            ? 204
             : 54;
         }
         return this.matches('[data-testid="agent-gui-composer-image-drafts"]')
@@ -3533,8 +3533,8 @@ describe("AgentComposer", () => {
           screen.getByTestId("agent-gui-composer-image-drafts").parentElement
         ).toHaveStyle({
           "--agent-gui-composer-attachment-height": "56px",
-          "--agent-gui-composer-input-height": "176px",
-          "--agent-gui-composer-input-max-height": "176px"
+          "--agent-gui-composer-input-height": "200px",
+          "--agent-gui-composer-input-max-height": "200px"
         })
       );
 
