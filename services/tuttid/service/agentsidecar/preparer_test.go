@@ -237,7 +237,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if !strings.Contains(string(workspaceAppSkill), "mention://workspace-app") ||
 		!strings.Contains(string(workspaceAppSkill), "appId") ||
-		!strings.Contains(string(workspaceAppSkill), "use the injected `tutti-cli` command reference") ||
+		!strings.Contains(string(workspaceAppSkill), "consult the injected `tutti-cli` skill") ||
 		!strings.Contains(string(workspaceAppSkill), "Do not derive filesystem paths from the plugin directory, plugin name, or skill slug") ||
 		!strings.Contains(string(workspaceAppSkill), "inherits the caller agent session working directory") {
 		t.Fatalf("workspace-app skill content = %q", string(workspaceAppSkill))

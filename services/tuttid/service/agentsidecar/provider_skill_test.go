@@ -23,13 +23,13 @@ func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentLaunchers(t *testing.T) 
 		"tutti-dev <scope> read --json",
 		"Prefer command scopes that match the mentioned app",
 		"Do not assume they are equal",
-		"App id: <appId>",
-		"use the injected `tutti-cli` command reference",
+		"tutti-dev app commands --app-id <appId> --json",
+		"compact app index",
+		"consult the injected `tutti-cli` skill",
 		"call the exact visible skill name with no arguments",
 		"`tutti-cli:tutti-cli`",
 		"Do not derive filesystem paths from the plugin directory, plugin name, or skill slug",
-		"snapshot rendered for the current agent runtime or skill bundle",
-		"preserves `App id:` metadata",
+		"queries the live catalog",
 		"Do not use CLI help alone",
 	} {
 		if !strings.Contains(skill, want) {

@@ -7,9 +7,9 @@ description: Use for `mention://workspace-app/<appId>?workspaceId=...` links to 
 
 Use this skill when the current user turn contains one or more `mention://workspace-app/<appId>?workspaceId=...` links.
 
-Before choosing an app command, use the injected `tutti-cli` command reference for CLI syntax and currently visible commands. Prefer the `## Commands` section already present in the session policy or the loaded/visible `tutti-cli` skill. If you need to load `tutti-cli` through a provider-native Skill tool, call the exact visible skill name with no arguments, such as `tutti-cli:tutti-cli` when that namespaced name is visible. Do not derive filesystem paths from the plugin directory, plugin name, or skill slug; materialized skill paths must come from the provider/runtime skill listing.
+To discover the mentioned app's CLI commands, run `{{CLI_COMMAND}} app commands --app-id <appId> --json`. The always-on session policy lists only a compact app index (app name + id), not each app's commands, so look them up on demand with this command. For general Tutti CLI syntax you may also consult the injected `tutti-cli` skill; if you load it through a provider-native Skill tool, call the exact visible skill name with no arguments, such as `tutti-cli:tutti-cli` when that namespaced name is visible. Do not derive filesystem paths from the plugin directory, plugin name, or skill slug; materialized skill paths must come from the provider/runtime skill listing.
 
-The injected `tutti-cli` command guide is a snapshot rendered for the current agent runtime or skill bundle. Workspace app commands can appear or disappear after app install, reload, start, stop, daemon restart, or session refresh. If the mentioned app should be active but no matching command is listed, refresh the command guide or skill bundle capability reference that preserves `App id:` metadata before deciding the app has no usable CLI command. Do not use CLI help alone to map a workspace app id to a CLI scope; use help only after the scope is known.
+`{{CLI_COMMAND}} app commands` queries the live catalog, so it always reflects current state — workspace app commands can appear or disappear after app install, reload, start, stop, daemon restart, or session refresh. If the mentioned app should be active but the lookup returns no commands, the app currently exposes no usable CLI commands. Do not use CLI help alone to map a workspace app id to a CLI scope; use help only after the scope is known.
 
 ## Mention Contract
 
@@ -17,7 +17,7 @@ Treat a `mention://workspace-app/<appId>?workspaceId=...` link as the machine-re
 
 - URL path: target workspace app id.
 - `workspaceId`: workspace context for command discovery and invocation.
-- The app id and CLI scope are separate. Do not assume they are equal. In the injected `tutti-cli` command guide, match command entries by `App id: <appId>`, then use the exact listed command path; the first path segment is the CLI scope.
+- The app id and CLI scope are separate. Do not assume they are equal. Run `{{CLI_COMMAND}} app commands --app-id <appId> --json` and use the exact listed command path from the result; the first path segment is the CLI scope.
 
 Do not infer app behavior from the mention label alone.
 
@@ -32,12 +32,12 @@ After reading the mention query, recover the smallest useful app context through
 5. If `appId` is `issue-manager` and the user asks issue/task work, read and follow the injected `issue-manager` skill for issue/task context and workflows before using generic workspace app command matching.
 6. When `--cwd` is not specified, tuttid inherits the caller agent session working directory.
 7. For agent launcher mentions, ask for a missing task prompt before invoking. Do not ask for a missing model; when `--model` is omitted, tuttid uses the target provider's configured/default model. If the user provided a model and the command rejects it, use the error's available model list to ask for or select a valid value.
-8. For other app ids, use the injected `tutti-cli` command guide, find command entries whose metadata says `App id: <appId>` in its `## Commands` section, then use the listed command path and scope from those entries. If no entry is listed, refresh the command guide or skill bundle capability reference that preserves `App id:` metadata before deciding the app command is unavailable.
+8. For other app ids, run `{{CLI_COMMAND}} app commands --app-id <appId> --json`, then use the listed command path and scope from the result. If it returns no commands, the app exposes no usable CLI commands.
 9. If several apps have similar names, match by `appId` from the mention, not only by the visible label.
 10. Use the listed `{{CLI_COMMAND}} <scope> <command>` examples to inspect or invoke the app.
 11. Prefer `--json` when the command output is used as context for reasoning.
 
-If the mentioned app has no visible CLI commands after checking the injected `tutti-cli` command guide and any refreshed capability reference that preserves `App id:` metadata, explain that the app is not currently exposing usable CLI capabilities instead of guessing an app-specific command.
+If `{{CLI_COMMAND}} app commands --app-id <appId> --json` returns no commands, explain that the app is not currently exposing usable CLI capabilities instead of guessing an app-specific command.
 
 ## Invocation Rules
 

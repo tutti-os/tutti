@@ -353,6 +353,12 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("create cli registry: %w", err)
 	}
 	cliRegistry.AppCommands = appCLIRegistry
+	// Register the on-demand `app commands` lookup against the fully merged catalog
+	// (builtin + AppCommands) so app-registered commands can be discovered lazily
+	// instead of being inlined into every agent turn's system prompt.
+	if err := cliRegistry.Register(workbenchappscli.NewCommandsCommand(workspaceService, cliRegistry)); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("register app commands lookup: %w", err)
+	}
 	agentSidecarPreparer.CommandCatalog = cliRegistry
 
 	terminalService := &workspaceservice.TerminalService{}

@@ -146,19 +146,100 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 		!strings.Contains(guide, "Use only when the user explicitly asks to open or show an app window") {
 		t.Fatalf("guide missing guarded app open: %q", guide)
 	}
-	if !strings.Contains(guide, "tutti aimc open") ||
-		!strings.Contains(guide, "Open AI Canvas. Use only when the user explicitly asks to open or show an app window") {
-		t.Fatalf("guide missing guarded app-specific open: %q", guide)
+	// Generic app commands are no longer inlined as command lines; they appear in
+	// the compact app index and are fetched on demand via `app commands`.
+	if strings.Contains(guide, "tutti aimc open") {
+		t.Fatalf("guide should not inline app command lines: %q", guide)
 	}
-	if !strings.Contains(guide, "tutti onboarding read") ||
-		!strings.Contains(guide, "Provided by workspace app 新手指引. App id: tutti-onboarding.") {
-		t.Fatalf("guide missing app command metadata: %q", guide)
+	if strings.Contains(guide, "tutti onboarding read") {
+		t.Fatalf("guide should not inline app command lines: %q", guide)
+	}
+	if !strings.Contains(guide, "tutti app commands --app-id <app id> --json") {
+		t.Fatalf("guide missing app index lookup instruction: %q", guide)
+	}
+	if !strings.Contains(guide, "AI Canvas") || !strings.Contains(guide, "(app id: ai-media-canvas)") {
+		t.Fatalf("guide missing AI Canvas app index entry: %q", guide)
+	}
+	if !strings.Contains(guide, "新手指引") || !strings.Contains(guide, "(app id: tutti-onboarding)") {
+		t.Fatalf("guide missing onboarding app index entry: %q", guide)
 	}
 	if strings.Contains(guide, "skill-bundle") {
 		t.Fatalf("guide included host integration command: %q", guide)
 	}
 	if strings.Contains(guide, "diagnostics") {
 		t.Fatalf("guide included irrelevant command: %q", guide)
+	}
+}
+
+func TestCommandGuideRendersCompactAppIndex(t *testing.T) {
+	guide := commandGuideFromCapabilities("tutti", []cliservice.Capability{
+		{
+			ID:      "issue-manager.issue.list",
+			Path:    []string{"issue", "list"},
+			Summary: "List issues",
+		},
+		{
+			ID:   "ai-media-canvas.aimc.open",
+			Path: []string{"aimc", "open"},
+			Source: cliservice.CapabilitySource{
+				Kind:           cliservice.CapabilitySourceApp,
+				AppID:          "ai-media-canvas",
+				AppName:        "AI Canvas",
+				AppDescription: "Generative media\ncanvas   for agents.",
+			},
+		},
+		{
+			ID:   "ai-media-canvas.aimc.export",
+			Path: []string{"aimc", "export"},
+			Source: cliservice.CapabilitySource{
+				Kind:    cliservice.CapabilitySourceApp,
+				AppID:   "ai-media-canvas",
+				AppName: "AI Canvas",
+			},
+		},
+		{
+			ID:   "ai-doc.doc.read",
+			Path: []string{"doc", "read"},
+			Source: cliservice.CapabilitySource{
+				Kind:    cliservice.CapabilitySourceApp,
+				AppID:   "ai-doc",
+				AppName: "AI Doc",
+			},
+		},
+		{
+			// Agent launchers stay inline lines and must NOT appear in the index.
+			ID:   "agent-context.codex.start",
+			Path: []string{"codex", "start"},
+			Source: cliservice.CapabilitySource{
+				Kind:    cliservice.CapabilitySourceApp,
+				AppID:   "agent-codex",
+				AppName: "Codex",
+			},
+		},
+	})
+
+	// One deduped entry per app id, sorted (ai-doc before ai-media-canvas).
+	docIdx := strings.Index(guide, "(app id: ai-doc)")
+	canvasIdx := strings.Index(guide, "(app id: ai-media-canvas)")
+	if docIdx < 0 || canvasIdx < 0 {
+		t.Fatalf("guide missing app index entries: %q", guide)
+	}
+	if docIdx > canvasIdx {
+		t.Fatalf("app index not sorted by id: %q", guide)
+	}
+	if strings.Count(guide, "(app id: ai-media-canvas)") != 1 {
+		t.Fatalf("app index not deduped: %q", guide)
+	}
+	// One-line description collapses internal whitespace/newlines.
+	if !strings.Contains(guide, "Generative media canvas for agents.") {
+		t.Fatalf("app description not collapsed to one line: %q", guide)
+	}
+	// Launcher excluded from index but still rendered as a command line.
+	if strings.Contains(guide, "(app id: agent-codex)") {
+		t.Fatalf("agent launcher should not appear in app index: %q", guide)
+	}
+	if !strings.Contains(guide, "tutti codex start") {
+		t.Fatalf("agent launcher should still render as a command line: %q", guide)
 	}
 }
 

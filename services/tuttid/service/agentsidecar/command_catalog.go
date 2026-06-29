@@ -27,18 +27,97 @@ func commandGuideFromCatalog(ctx context.Context, catalog CommandCatalog, worksp
 func commandGuideFromCapabilities(cliName string, capabilities []cliservice.Capability) string {
 	cliName = normalizeCLICommandName(cliName)
 	commands := relevantRuntimeCommands(cliName, capabilities)
+	apps := appIndexFromCapabilities(capabilities)
+
+	sections := make([]string, 0, 2)
 	if len(commands) == 0 {
-		return fallbackCommandGuide(cliName)
-	}
-	lines := make([]string, 0, len(commands))
-	for _, command := range commands {
-		line := fmt.Sprintf("- %s: `%s`", command.Summary, command.Example)
-		if strings.TrimSpace(command.Description) != "" {
-			line += " - " + strings.TrimSpace(command.Description)
+		sections = append(sections, fallbackCommandGuide(cliName))
+	} else {
+		lines := make([]string, 0, len(commands))
+		for _, command := range commands {
+			line := fmt.Sprintf("- %s: `%s`", command.Summary, command.Example)
+			if strings.TrimSpace(command.Description) != "" {
+				line += " - " + strings.TrimSpace(command.Description)
+			}
+			lines = append(lines, line)
 		}
+		sections = append(sections, strings.Join(lines, "\n"))
+	}
+	if len(apps) > 0 {
+		sections = append(sections, appIndexSection(cliName, apps))
+	}
+	return strings.Join(sections, "\n\n")
+}
+
+type appIndexEntry struct {
+	ID          string
+	Name        string
+	Description string
+}
+
+// appIndexFromCapabilities builds a compact, deduped index of workspace apps that
+// expose CLI commands (one entry per app id). Per-app command details are not
+// inlined; they are fetched on demand via the `app commands` lookup.
+func appIndexFromCapabilities(capabilities []cliservice.Capability) []appIndexEntry {
+	seen := map[string]struct{}{}
+	entries := make([]appIndexEntry, 0)
+	for _, capability := range capabilities {
+		if capability.Source.Kind != cliservice.CapabilitySourceApp {
+			continue
+		}
+		// Skip app-source capabilities that remain explicit inline lines
+		// (the codex/claude agent launchers).
+		if isBuiltinRuntimeCommandID(capability.ID) {
+			continue
+		}
+		id := strings.TrimSpace(capability.Source.AppID)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		entries = append(entries, appIndexEntry{
+			ID:          id,
+			Name:        firstNonEmptyText(capability.Source.AppName, id),
+			Description: oneLineDescription(firstNonEmptyText(capability.Source.AppDescription, capability.Source.CLIDescription)),
+		})
+	}
+	sort.SliceStable(entries, func(left, right int) bool {
+		return entries[left].ID < entries[right].ID
+	})
+	return entries
+}
+
+func appIndexSection(cliName string, apps []appIndexEntry) string {
+	cliName = normalizeCLICommandName(cliName)
+	lines := make([]string, 0, len(apps)+1)
+	lines = append(lines, fmt.Sprintf(
+		"Workspace apps with CLI commands (run `%s app commands --app-id <app id> --json` to list one app's commands, `--all` for every app, or use the workspace-app skill):",
+		cliName,
+	))
+	for _, app := range apps {
+		line := "- " + app.Name
+		if app.Description != "" {
+			line += " — " + app.Description
+		}
+		line += " (app id: " + app.ID + ")"
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// oneLineDescription collapses whitespace/newlines and truncates so a single app
+// description cannot bloat the always-on prompt.
+func oneLineDescription(text string) string {
+	collapsed := strings.Join(strings.Fields(text), " ")
+	const maxRunes = 140
+	runes := []rune(collapsed)
+	if len(runes) > maxRunes {
+		return strings.TrimSpace(string(runes[:maxRunes])) + "…"
+	}
+	return collapsed
 }
 
 type runtimeCommand struct {
@@ -66,16 +145,27 @@ func relevantRuntimeCommands(cliName string, capabilities []cliservice.Capabilit
 	return commands
 }
 
+// isBuiltinRuntimeCommandID reports whether a capability should be rendered as an
+// explicit command line in the always-on command guide. Built-in workflow commands
+// (issue/agent/browser, app open, and the app-commands lookup itself) stay inline.
+// The codex/claude agent launchers are app-source but carry the agent-context.
+// prefix, so they remain inline too. Generic workspace-app commands are excluded
+// here and surfaced via the compact app index + the on-demand `app commands` lookup.
+func isBuiltinRuntimeCommandID(id string) bool {
+	id = strings.TrimSpace(id)
+	return id == "workspace-apps.app.open" ||
+		id == "workspace-apps.app.commands" ||
+		strings.HasPrefix(id, "issue-manager.") ||
+		strings.HasPrefix(id, "agent-context.") ||
+		strings.HasPrefix(id, "browser.")
+}
+
 func runtimeCommandFromCapability(cliName string, capability cliservice.Capability) (runtimeCommand, bool) {
 	id := strings.TrimSpace(capability.ID)
 	if id == "agent-context.agent.skill-bundle" || id == "agent-context.agent.tutti-cli-skill-bundle" {
 		return runtimeCommand{}, false
 	}
-	if capability.Source.Kind != cliservice.CapabilitySourceApp &&
-		id != "workspace-apps.app.open" &&
-		!strings.HasPrefix(id, "issue-manager.") &&
-		!strings.HasPrefix(id, "agent-context.") &&
-		!strings.HasPrefix(id, "browser.") {
+	if !isBuiltinRuntimeCommandID(id) {
 		return runtimeCommand{}, false
 	}
 	path := commandPath(capability.Path)
@@ -195,6 +285,8 @@ func commandExampleSuffix(id string) string {
 		return " --script '() => document.title'"
 	case "workspace-apps.app.open":
 		return " --json"
+	case "workspace-apps.app.commands":
+		return " --app-id <app-id> --json"
 	default:
 		return ""
 	}
@@ -259,6 +351,8 @@ func commandRank(id string) int {
 		return 130
 	case "workspace-apps.app.open":
 		return 135
+	case "workspace-apps.app.commands":
+		return 136
 	default:
 		return 140
 	}
