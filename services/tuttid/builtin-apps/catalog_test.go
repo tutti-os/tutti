@@ -519,6 +519,12 @@ func assertCatalogManifestMatchesSource(t *testing.T, catalog workspacebiz.AppMa
 	if !reflect.DeepEqual(catalog.Author, source.Author) {
 		t.Fatalf("author = %#v, want %#v", catalog.Author, source.Author)
 	}
+	if !reflect.DeepEqual(catalog.Authors, source.Authors) {
+		t.Fatalf("authors = %#v, want %#v", catalog.Authors, source.Authors)
+	}
+	if !reflect.DeepEqual(catalog.Source, source.Source) {
+		t.Fatalf("source = %#v, want %#v", catalog.Source, source.Source)
+	}
 	if !reflect.DeepEqual(catalog.Tags, source.Tags) {
 		t.Fatalf("tags = %#v, want %#v", catalog.Tags, source.Tags)
 	}
@@ -569,6 +575,17 @@ func remoteCatalogManifestForTest(appID string) workspacebiz.AppManifest {
 		Runtime: workspacebiz.AppManifestRuntime{
 			Bootstrap:       "bootstrap.sh",
 			HealthcheckPath: "/",
+		},
+		Authors: []workspacebiz.AppManifestAuthor{
+			{
+				Name:      "Tutti Developer",
+				URL:       "https://github.com/tutti-os",
+				AvatarURL: "https://github.com/tutti-os.png",
+			},
+		},
+		Source: &workspacebiz.AppManifestSource{
+			Type: "github",
+			URL:  "https://github.com/tutti-os/remote-app",
 		},
 	}
 }
