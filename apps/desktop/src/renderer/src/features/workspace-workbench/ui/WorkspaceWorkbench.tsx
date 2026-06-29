@@ -18,6 +18,11 @@ import {
   WorkbenchHost
 } from "@tutti-os/workbench-surface";
 import {
+  AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
+  agentGuiWorkbenchTypeId,
+  type AgentGuiWorkbenchNewConversationDetail
+} from "@tutti-os/agent-gui/workbench";
+import {
   Button,
   CardDescription,
   CardTitle,
@@ -60,8 +65,10 @@ import {
   type WorkspaceBrowserLaunchRequest
 } from "../services/workspaceBrowserLaunchCoordinator.ts";
 import {
+  isWorkspaceAgentNewConversationShortcut,
   isWorkspaceMissionControlActivateShortcut,
-  isWorkspaceMissionControlLayoutShortcut
+  isWorkspaceMissionControlLayoutShortcut,
+  isWorkspaceSettingsShortcut
 } from "../services/workspaceMissionControlShortcut.ts";
 import {
   registerWorkspaceFilesLaunchHandler,
@@ -97,6 +104,7 @@ import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
 import { WorkspaceLaunchpadOverlay } from "./WorkspaceLaunchpadOverlay.tsx";
 import { useWorkspaceWorkbenchShellRuntime } from "./useWorkspaceWorkbenchShellRuntime";
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
+import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
 import type { DesktopWorkspaceAppExternalHostApi } from "@preload/types";
 import type { DesktopWorkspaceAppExternalRendererEvent } from "@shared/contracts/ipc";
@@ -178,6 +186,7 @@ function ReadyWorkspaceWorkbench({
 }) {
   const { service: appCenterService } = useWorkspaceAppCenterService();
   const agentProviderStatusService = useService(IAgentProviderStatusService);
+  const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const runtime = useWorkspaceWorkbenchShellRuntime({
     enableWindowCloseGuard,
     state
@@ -616,6 +625,44 @@ function ReadyWorkspaceWorkbench({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [runtime.missionControl, runtime.shortcutsEnabled]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (isWorkspaceSettingsShortcut(event)) {
+        event.preventDefault();
+        workspaceSettingsService.openPanel({ id: state.workspace.id });
+        return;
+      }
+
+      if (!isWorkspaceAgentNewConversationShortcut(event)) {
+        return;
+      }
+
+      const focusedNode = workbenchHost
+        ? selectFocusedVisibleNode(workbenchHost)
+        : null;
+      if (focusedNode?.data.typeId !== agentGuiWorkbenchTypeId) {
+        return;
+      }
+
+      event.preventDefault();
+      window.dispatchEvent(
+        new CustomEvent<AgentGuiWorkbenchNewConversationDetail>(
+          AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
+          {
+            detail: {
+              instanceId: focusedNode.data.instanceId
+            }
+          }
+        )
+      );
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [state.workspace.id, workbenchHost, workspaceSettingsService]);
 
   return (
     <main
@@ -1065,6 +1112,19 @@ function resolveCurrentWorkspaceBrowserNodeId(
     snapshot.nodes.find((node) => node.data.typeId === workspaceBrowserNodeID)
       ?.id ?? null
   );
+}
+
+function selectFocusedVisibleNode(host: WorkbenchHostHandle) {
+  const snapshot = host.getSnapshot();
+  const nodesById = new Map(snapshot.nodes.map((node) => [node.id, node]));
+  for (const nodeId of [...snapshot.nodeStack].reverse()) {
+    const node = nodesById.get(nodeId);
+    if (node && !node.isMinimized) {
+      return node;
+    }
+  }
+
+  return snapshot.nodes.find((node) => !node.isMinimized) ?? null;
 }
 
 function WorkspaceCloseGuardDialog({

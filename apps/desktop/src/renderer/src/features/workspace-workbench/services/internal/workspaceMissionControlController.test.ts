@@ -7,8 +7,10 @@ import type {
 } from "@tutti-os/workbench-surface";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
 import {
+  isWorkspaceAgentNewConversationShortcut,
   isWorkspaceMissionControlActivateShortcut,
-  isWorkspaceMissionControlLayoutShortcut
+  isWorkspaceMissionControlLayoutShortcut,
+  isWorkspaceSettingsShortcut
 } from "../workspaceMissionControlShortcut.ts";
 import { createWorkspaceMissionControlController } from "./workspaceMissionControlController.ts";
 
@@ -273,6 +275,108 @@ test("workspace mission control layout shortcut rejects unrelated combinations",
       altKey: false,
       ctrlKey: true,
       key: "1",
+      metaKey: false
+    }),
+    false
+  );
+});
+
+test("workspace settings shortcut accepts cmd or ctrl with comma", () => {
+  assert.equal(
+    isWorkspaceSettingsShortcut({
+      altKey: false,
+      ctrlKey: false,
+      key: ",",
+      metaKey: true
+    }),
+    true
+  );
+  assert.equal(
+    isWorkspaceSettingsShortcut({
+      altKey: false,
+      ctrlKey: true,
+      key: ",",
+      metaKey: false
+    }),
+    true
+  );
+});
+
+test("workspace settings shortcut rejects unrelated combinations", () => {
+  assert.equal(
+    isWorkspaceSettingsShortcut({
+      altKey: true,
+      ctrlKey: false,
+      key: ",",
+      metaKey: true
+    }),
+    false
+  );
+  assert.equal(
+    isWorkspaceSettingsShortcut({
+      altKey: false,
+      ctrlKey: false,
+      key: ",",
+      metaKey: false
+    }),
+    false
+  );
+  assert.equal(
+    isWorkspaceSettingsShortcut({
+      altKey: false,
+      ctrlKey: true,
+      key: "n",
+      metaKey: false
+    }),
+    false
+  );
+});
+
+test("workspace agent new conversation shortcut accepts cmd or ctrl with n", () => {
+  assert.equal(
+    isWorkspaceAgentNewConversationShortcut({
+      altKey: false,
+      ctrlKey: false,
+      key: "n",
+      metaKey: true
+    }),
+    true
+  );
+  assert.equal(
+    isWorkspaceAgentNewConversationShortcut({
+      altKey: false,
+      ctrlKey: true,
+      key: "N",
+      metaKey: false
+    }),
+    true
+  );
+});
+
+test("workspace agent new conversation shortcut rejects unrelated combinations", () => {
+  assert.equal(
+    isWorkspaceAgentNewConversationShortcut({
+      altKey: true,
+      ctrlKey: false,
+      key: "n",
+      metaKey: true
+    }),
+    false
+  );
+  assert.equal(
+    isWorkspaceAgentNewConversationShortcut({
+      altKey: false,
+      ctrlKey: false,
+      key: "n",
+      metaKey: false
+    }),
+    false
+  );
+  assert.equal(
+    isWorkspaceAgentNewConversationShortcut({
+      altKey: false,
+      ctrlKey: true,
+      key: ",",
       metaKey: false
     }),
     false
