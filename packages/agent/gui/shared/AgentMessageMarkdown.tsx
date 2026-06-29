@@ -1126,10 +1126,19 @@ function MarkdownMedia({
     }
 
     if (!shouldEnableZoom) {
+      if (typeof resolvedSrc !== "string") {
+        return (
+          <img
+            {...props}
+            src={resolvedSrc}
+            alt={alt}
+            title={title}
+            className={className}
+          />
+        );
+      }
       return (
-        <ConversationImageContextMenu
-          src={typeof resolvedSrc === "string" ? resolvedSrc : undefined}
-        >
+        <ConversationImageContextMenu src={resolvedSrc}>
           <img
             {...props}
             src={resolvedSrc}
