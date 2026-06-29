@@ -10,7 +10,7 @@ import (
 )
 
 type issueListInput struct {
-	TopicID   string `cli:"topic-id" validate:"required" description:"Required topic id. Use issue topic list to discover workspace topics." hint:"Use issue topic list to discover workspace topics."`
+	TopicID   string `cli:"topic-id" validate:"required" description:"Required topic id. Use issue topic list --json to discover workspace topics before listing issues." hint:"Use issue topic list --json to discover workspace topics."`
 	Status    string `cli:"status"`
 	Search    string `cli:"search"`
 	PageSize  int    `cli:"page-size" validate:"min=1,max=100"`
@@ -39,8 +39,8 @@ func (p Provider) newIssueListCommand() cliservice.Command {
 	return framework.Register(framework.CommandSpec[issueListInput]{
 		ID:          appID + ".issue.list",
 		Path:        []string{"issue", "list"},
-		Summary:     "List issues",
-		Description: "List issue records in a specific workspace topic. JSON output omits issue content bodies.",
+		Summary:     "List issues in a topic",
+		Description: "List issue records in one workspace topic. Requires --topic-id; use `issue topic list --json` first when the topic is unknown. JSON output omits issue content bodies.",
 		Kind:        framework.KindList,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,

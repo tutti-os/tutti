@@ -417,6 +417,29 @@ export function createIssueManagerControllerRuntime(
     }
   };
 
+  const clearIssueCollectionsForTopicChange = () => {
+    issueListSequence += 1;
+    issueDetailSequence += 1;
+    taskDetailSequence += 1;
+    setSnapshot((current) => ({
+      ...current,
+      issueDetail: createAsyncCollectionState<IssueManagerIssueDetail | null>(
+        null
+      ),
+      issues: {
+        error: null,
+        hasResolved: current.issues.hasResolved,
+        isLoading: true,
+        value: []
+      },
+      taskDetail: createAsyncCollectionState<IssueManagerTaskDetail | null>(
+        null
+      )
+    }));
+    syncIssueDraftFromCurrentDetail();
+    syncTaskDraftFromCurrentDetail();
+  };
+
   const clearIssueDetail = () => {
     setSnapshot((current) => ({
       ...current,
@@ -558,6 +581,7 @@ export function createIssueManagerControllerRuntime(
     }
 
     if (previous.activeTopicId !== next.activeTopicId && next.activeTopicId) {
+      clearIssueCollectionsForTopicChange();
       applyNodeState({
         selectedIssueId: null,
         selectedTaskId: null

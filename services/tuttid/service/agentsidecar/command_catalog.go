@@ -107,9 +107,21 @@ func runtimeCommandFromCapability(cliName string, capability cliservice.Capabili
 		}
 		description += "Omit --model unless the user explicitly requested a model; tuttid uses the target provider default."
 	}
+	summary := firstNonEmptyText(capability.Summary, id)
+	if id == "issue-manager.issue.list" {
+		summary = "List issues in a topic"
+		topicDiscoveryHint := fmt.Sprintf("Requires --topic-id; use `%s issue topic list --json` first when the topic is unknown.", normalizeCLICommandName(cliName))
+		description = strings.ReplaceAll(description, "`issue topic list --json`", fmt.Sprintf("`%s issue topic list --json`", normalizeCLICommandName(cliName)))
+		if !strings.Contains(description, topicDiscoveryHint) {
+			if description != "" {
+				description += " "
+			}
+			description += topicDiscoveryHint
+		}
+	}
 	return runtimeCommand{
 		ID:          id,
-		Summary:     firstNonEmptyText(capability.Summary, id),
+		Summary:     summary,
 		Description: description,
 		Example:     normalizeCLICommandName(cliName) + " " + path + requiredInputHintForCommand(id, capability.InputSchema) + commandExampleSuffix(id),
 		Rank:        commandRank(id),
@@ -239,6 +251,8 @@ func commandRank(id string) int {
 		return 50
 	case "issue-manager.issue.task.create":
 		return 55
+	case "issue-manager.issue.task.create-batch":
+		return 56
 	case "issue-manager.issue.task.update":
 		return 60
 	case "issue-manager.issue.task.delete":
@@ -268,10 +282,11 @@ func fallbackCommandGuide(cliName string) string {
 	cliName = normalizeCLICommandName(cliName)
 	return strings.Join([]string{
 		fmt.Sprintf("- List issue topics: `%s issue topic list`", cliName),
-		fmt.Sprintf("- List issues: `%s issue list --topic-id <topic-id>`", cliName),
+		fmt.Sprintf("- List issues in a topic: `%s issue list --topic-id <topic-id>` - Requires a topic id; use `%s issue topic list --json` first when the topic is unknown.", cliName, cliName),
 		fmt.Sprintf("- Get issue detail: `%s issue get --issue-id <issue-id> --json`", cliName),
 		fmt.Sprintf("- Update issue status: `%s issue update --issue-id <issue-id> --status completed --json`", cliName),
 		fmt.Sprintf("- List issue tasks: `%s issue task list --issue-id <issue-id>`", cliName),
+		fmt.Sprintf("- Create ordered issue tasks for breakdown: `%s issue task create-batch --issue-id <issue-id> --tasks-json '[{\"title\":\"<title>\",\"content\":\"<content>\"}]' --json` - Prefer this for multiple child tasks; it persists tasks in array order without creating runs.", cliName),
 		fmt.Sprintf("- Create issue task for breakdown: `%s issue task create --issue-id <issue-id> --title <title> --content <content> --json` - Use this to persist child tasks without creating a run.", cliName),
 		fmt.Sprintf("- Update issue task status: `%s issue task update --issue-id <issue-id> --task-id <task-id> --status completed --json`", cliName),
 		fmt.Sprintf("- Create an issue run: `%s issue run create --issue-id <issue-id> --agent-provider <provider> --agent-session-id <session-id> --json` - Execution mode only; do not use for breakdown-only work.", cliName),

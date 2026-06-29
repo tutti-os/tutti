@@ -559,6 +559,42 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/{issueID}/tasks/batch-create:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/IssueManagerIssueID"
+    post:
+      operationId: createWorkspaceIssueTasks
+      tags:
+        - issue
+      summary: Create ordered tasks for an issue-manager issue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIssueManagerTasksRequest"
+      responses:
+        "201":
+          description: Workspace issue tasks created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueManagerTasksResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -1494,6 +1530,16 @@ components:
       properties:
         task:
           $ref: "#/components/schemas/IssueManagerTask"
+    IssueManagerTasksResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - tasks
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/IssueManagerTask"
     IssueManagerTaskListResponse:
       type: object
       additionalProperties: false
@@ -1651,6 +1697,17 @@ components:
           type: integer
           format: int64
           minimum: 0
+    CreateIssueManagerTasksRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - tasks
+      properties:
+        tasks:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CreateIssueManagerTaskRequest"
     UpdateIssueManagerTaskRequest:
       type: object
       additionalProperties: false

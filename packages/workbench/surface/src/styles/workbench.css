@@ -278,31 +278,31 @@
 .workbench-window__resize-handle[data-handle="north-west"],
 .workbench-window__resize-handle[data-handle="south-east"],
 .workbench-window__resize-handle[data-handle="south-west"] {
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
 }
 
 .workbench-window__resize-handle[data-handle="north-east"] {
-  top: -8px;
-  right: -8px;
+  top: -12px;
+  right: -12px;
   cursor: nesw-resize;
 }
 
 .workbench-window__resize-handle[data-handle="north-west"] {
-  top: -8px;
-  left: -8px;
+  top: -12px;
+  left: -12px;
   cursor: nwse-resize;
 }
 
 .workbench-window__resize-handle[data-handle="south-east"] {
-  right: -8px;
-  bottom: -8px;
+  right: -12px;
+  bottom: -12px;
   cursor: nwse-resize;
 }
 
 .workbench-window__resize-handle[data-handle="south-west"] {
-  bottom: -8px;
-  left: -8px;
+  bottom: -12px;
+  left: -12px;
   cursor: nesw-resize;
 }
 

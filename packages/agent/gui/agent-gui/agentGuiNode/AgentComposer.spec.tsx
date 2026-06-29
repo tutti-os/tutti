@@ -1710,6 +1710,9 @@ describe("AgentComposer", () => {
     expect(css).toMatch(
       /\.agent-gui-node__composer-menu-trigger\s*{[^}]*padding:\s*0 8px/s
     );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-reference-trigger\s*{[^}]*min-width:\s*36px;[^}]*min-height:\s*36px;[^}]*padding:\s*0;/s
+    );
   });
 
   it("opens context usage details after hovering the usage chip", async () => {
@@ -2115,6 +2118,10 @@ describe("AgentComposer", () => {
     });
     expect(footerLeft?.firstElementChild).toBe(referenceDropdown);
     expect(referenceDropdown).toHaveAttribute("data-slot", "select-trigger");
+    expect(referenceDropdown).toHaveClass(
+      "agent-gui-node__composer-reference-trigger"
+    );
+    expect(referenceDropdown.className).not.toContain("px-1");
     const addIcon = referenceDropdown.querySelector(
       '[data-agent-reference-add-icon="true"]'
     );

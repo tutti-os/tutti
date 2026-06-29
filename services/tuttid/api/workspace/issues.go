@@ -137,6 +137,12 @@ func GeneratedIssueManagerTaskResponseFromDomain(item workspaceissues.Task) tutt
 	}
 }
 
+func GeneratedIssueManagerTasksResponseFromDomain(items []workspaceissues.Task) tuttigenerated.IssueManagerTasksResponse {
+	return tuttigenerated.IssueManagerTasksResponse{
+		Tasks: GeneratedIssueManagerTasksFromDomain(items),
+	}
+}
+
 func GeneratedIssueManagerTaskDetailResponseFromDomain(detail workspaceissues.TaskDetail) tuttigenerated.IssueManagerTaskDetailResponse {
 	return tuttigenerated.IssueManagerTaskDetailResponse{
 		Task:          GeneratedIssueManagerTaskFromDomain(detail.Task),

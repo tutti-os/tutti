@@ -10,6 +10,7 @@ import {
   createWorkspaceIssue,
   createWorkspaceIssueRun,
   createWorkspaceIssueTask,
+  createWorkspaceIssueTasks,
   createWorkspaceIssueTaskRun,
   createWorkspaceIssueTopic,
   createWorkspace,
@@ -218,6 +219,17 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Create workspace issue task request failed.")
         .task;
+    },
+    async createWorkspaceIssueTasks(workspaceID, issueID, request) {
+      const response = await createWorkspaceIssueTasks({
+        client,
+        body: request,
+        path: { issueID, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Create workspace issue tasks request failed."
+      ).tasks;
     },
     async createWorkspaceIssueTaskRun(workspaceID, issueID, taskID, request) {
       const response = await createWorkspaceIssueTaskRun({

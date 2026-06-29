@@ -2111,6 +2111,11 @@ type CreateIssueManagerTaskRequest struct {
 	Title     string                `json:"title"`
 }
 
+// CreateIssueManagerTasksRequest defines model for CreateIssueManagerTasksRequest.
+type CreateIssueManagerTasksRequest struct {
+	Tasks []CreateIssueManagerTaskRequest `json:"tasks"`
+}
+
 // CreateIssueManagerTopicRequest defines model for CreateIssueManagerTopicRequest.
 type CreateIssueManagerTopicRequest struct {
 	Summary *string `json:"summary,omitempty"`
@@ -2691,6 +2696,11 @@ type IssueManagerTaskListResponse struct {
 // IssueManagerTaskResponse defines model for IssueManagerTaskResponse.
 type IssueManagerTaskResponse struct {
 	Task IssueManagerTask `json:"task"`
+}
+
+// IssueManagerTasksResponse defines model for IssueManagerTasksResponse.
+type IssueManagerTasksResponse struct {
+	Tasks []IssueManagerTask `json:"tasks"`
 }
 
 // IssueManagerTopic defines model for IssueManagerTopic.
@@ -3913,6 +3923,9 @@ type CompleteWorkspaceIssueRunJSONRequestBody = CompleteIssueManagerRunRequest
 
 // CreateWorkspaceIssueTaskJSONRequestBody defines body for CreateWorkspaceIssueTask for application/json ContentType.
 type CreateWorkspaceIssueTaskJSONRequestBody = CreateIssueManagerTaskRequest
+
+// CreateWorkspaceIssueTasksJSONRequestBody defines body for CreateWorkspaceIssueTasks for application/json ContentType.
+type CreateWorkspaceIssueTasksJSONRequestBody = CreateIssueManagerTasksRequest
 
 // UpdateWorkspaceIssueTaskJSONRequestBody defines body for UpdateWorkspaceIssueTask for application/json ContentType.
 type UpdateWorkspaceIssueTaskJSONRequestBody = UpdateIssueManagerTaskRequest

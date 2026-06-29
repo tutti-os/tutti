@@ -12,6 +12,25 @@ test("floating window bodies do not reserve a right-side content margin", () => 
   );
 });
 
+test("floating window corner resize handles do not intrude further than the edge handles", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  // Edge handles (north/south/east/west) reach 4px into the window before
+  // being clipped by `.workbench-window`'s overflow:hidden. Corner handles
+  // used to be sized/offset so they reached 16px inward instead, which let
+  // them sit on top of interactive chrome anchored to a window's corners
+  // (for example the agent-gui conversation rail's bottom-left config
+  // button) and swallow clicks meant for that content.
+  assert.match(
+    css,
+    /\.workbench-window__resize-handle\[data-handle="north-east"\],\s*\.workbench-window__resize-handle\[data-handle="north-west"\],\s*\.workbench-window__resize-handle\[data-handle="south-east"\],\s*\.workbench-window__resize-handle\[data-handle="south-west"\]\s*{[^}]*width:\s*16px;[^}]*height:\s*16px;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-window__resize-handle\[data-handle="south-west"\]\s*{[^}]*bottom:\s*-12px;[^}]*left:\s*-12px;/s
+  );
+});
+
 test("mission control hidden presentation windows are invisible and inert", () => {
   const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
 

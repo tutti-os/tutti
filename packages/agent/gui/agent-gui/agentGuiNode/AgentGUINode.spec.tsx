@@ -1455,6 +1455,30 @@ describe("AgentGUINode", () => {
     });
   });
 
+  it("clears stale active conversation chrome state before creating a new conversation", () => {
+    const state: AgentGUINodeData = {
+      provider: "codex",
+      lastActiveAgentSessionId: "session-1",
+      lastActiveConversationTitle: "Existing session",
+      conversationRailWidthPx: null
+    };
+    const onUpdateNode =
+      vi.fn<
+        (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+      >();
+    renderAgentGUINode({ onUpdateNode, state });
+
+    fireEvent.click(getChromeNewConversationButton());
+
+    expect(mockCreateConversation).toHaveBeenCalledTimes(1);
+    expect(onUpdateNode).toHaveBeenCalledTimes(1);
+    expect(onUpdateNode.mock.calls[0]?.[0](state)).toEqual({
+      ...state,
+      lastActiveAgentSessionId: null,
+      lastActiveConversationTitle: null
+    });
+  });
+
   it("renders a single new-conversation button in the chrome", () => {
     renderAgentGUINode();
 

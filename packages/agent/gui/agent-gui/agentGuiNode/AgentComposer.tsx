@@ -2685,7 +2685,7 @@ export function AgentComposer({
                   className={cn(
                     styles.composerMenuTrigger,
                     styles.composerReferenceTrigger,
-                    "w-auto justify-center px-1 text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
+                    "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
                   )}
                 >
                   <AddIcon
@@ -2723,7 +2723,7 @@ export function AgentComposer({
                     className={cn(
                       styles.composerMenuTrigger,
                       styles.composerReferenceTrigger,
-                      "w-auto justify-center px-1 text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
+                      "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
                     )}
                   >
                     <AddIcon

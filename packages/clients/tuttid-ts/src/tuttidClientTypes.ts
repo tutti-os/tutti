@@ -20,6 +20,7 @@ import type {
   CreateIssueManagerIssueRequest,
   CreateIssueManagerRunRequest,
   CreateIssueManagerTaskRequest,
+  CreateIssueManagerTasksRequest,
   CreateIssueManagerTopicRequest,
   CreateWorkspaceAgentSessionRequest,
   CreateWorkspaceAppFactoryJobRequest,
@@ -169,6 +170,11 @@ export interface TuttidClient {
     issueID: string,
     request: CreateIssueManagerTaskRequest
   ): Promise<IssueManagerTask>;
+  createWorkspaceIssueTasks(
+    workspaceID: string,
+    issueID: string,
+    request: CreateIssueManagerTasksRequest
+  ): Promise<IssueManagerTask[]>;
   createWorkspaceIssueTaskRun(
     workspaceID: string,
     issueID: string,

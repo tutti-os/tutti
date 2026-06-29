@@ -124,6 +124,12 @@ such as `turnLifecycle` and `submitAvailability` when the daemon has them. Keep
 their field names aligned with the HTTP/OpenAPI session shape so CLI callers can
 reason about active turns without switching transports.
 
+Issue-manager breakdown commands should preserve authored task order in the
+daemon instead of relying on callers to serialize several single-task creates.
+Use `issue task create-batch` for multiple new child tasks. Its `tasks-json`
+input is a JSON array of task objects, and the daemon appends tasks in array
+order with contiguous issue-local `sortIndex` values.
+
 ## Naming Rules
 
 Command path segments and input names use lowercase kebab-case.
@@ -180,7 +186,7 @@ Example:
 
 ```go
 type IssueListInput struct {
-    TopicID   string `cli:"topic-id" validate:"required" hint:"Use issue topic list to discover workspace topics."`
+    TopicID   string `cli:"topic-id" validate:"required" hint:"Use issue topic list --json to discover workspace topics."`
     Status    string `cli:"status"`
     Search    string `cli:"search"`
     PageSize  int    `cli:"page-size" validate:"min=1,max=100"`

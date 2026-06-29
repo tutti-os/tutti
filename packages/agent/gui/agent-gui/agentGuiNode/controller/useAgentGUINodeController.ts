@@ -5857,24 +5857,37 @@ export function useAgentGUINodeController({
       const currentDetailMessages =
         getAgentSessionView(sessionViewRef(agentSessionId))?.detailMessages ??
         [];
+      const currentDurableDetailMessages = currentDetailMessages.filter(
+        (message) => !isWorkspaceAgentActivityOptimisticMessage(message)
+      );
+      const detailWindowScopeMessages =
+        currentMessages.length > 0
+          ? mergeWorkspaceAgentMessages(
+              currentDurableDetailMessages,
+              currentMessages
+            )
+          : currentDurableDetailMessages;
       const durableSnapshotMessages =
         agentActivitySnapshot.sessionMessagesById[agentSessionId] ?? [];
       const detailWindowMessages = filterMessagesForDetailWindowOverlay({
-        detailMessages: currentDetailMessages,
+        detailMessages: detailWindowScopeMessages,
         durableMessages: durableSnapshotMessages,
         localMessages: nextMessages
       });
+      const durableDetailWindowMessages = detailWindowMessages.filter(
+        (message) => !isWorkspaceAgentActivityOptimisticMessage(message)
+      );
       const nextDetailMessages =
-        detailWindowMessages.length > 0
+        durableDetailWindowMessages.length > 0
           ? mergeWorkspaceAgentMessages(
-              currentDetailMessages,
-              detailWindowMessages
+              currentDurableDetailMessages,
+              durableDetailWindowMessages
             )
-          : currentDetailMessages;
-      if (detailWindowMessages.length > 0) {
+          : currentDurableDetailMessages;
+      if (durableDetailWindowMessages.length > 0) {
         mergeAgentSessionViewDetailMessages(
           sessionViewRef(agentSessionId),
-          detailWindowMessages
+          durableDetailWindowMessages
         );
       }
       const durableMessages =
@@ -6529,9 +6542,6 @@ export function useAgentGUINodeController({
           content: [...normalizedInitialContent],
           occurredAtUnixMs: createdAtUnixMs
         });
-        mergeAgentSessionViewDetailMessages(sessionViewRef(agentSessionId), [
-          optimisticPromptMessage
-        ]);
         mergeAgentSessionViewOverlayMessages(sessionViewRef(agentSessionId), [
           optimisticPromptMessage
         ]);

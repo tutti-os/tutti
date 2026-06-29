@@ -30,12 +30,78 @@ test("terminal IME guard allows regular input outside composition", () => {
 test("terminal IME guard suppresses the key that commits composition", () => {
   let now = 1_000;
   const guard = createTerminalImeInputGuard({ now: () => now });
+  const event = keyEvent({
+    key: "Enter",
+    preventDefault: () => undefined,
+    stopPropagation: () => undefined
+  });
 
   guard.handleCompositionStart();
   guard.handleCompositionEnd();
 
-  assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: "Enter" })), false);
+  assert.equal(guard.shouldProcessKeyEvent(event), false);
+  now += 100;
   assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: "a" })), true);
+});
+
+test("terminal IME guard prevents native input for post-composition commit keys", () => {
+  let preventDefaultCalls = 0;
+  let stopPropagationCalls = 0;
+  const guard = createTerminalImeInputGuard({});
+
+  guard.handleCompositionStart();
+  guard.handleCompositionEnd();
+
+  assert.equal(
+    guard.shouldProcessKeyEvent(
+      keyEvent({
+        key: " ",
+        preventDefault: () => {
+          preventDefaultCalls += 1;
+        },
+        stopPropagation: () => {
+          stopPropagationCalls += 1;
+        }
+      })
+    ),
+    false
+  );
+  assert.equal(preventDefaultCalls, 1);
+  assert.equal(stopPropagationCalls, 1);
+});
+
+test("terminal IME guard keeps the post-composition window open for repeated native events", () => {
+  let now = 1_000;
+  const guard = createTerminalImeInputGuard({ now: () => now });
+
+  guard.handleCompositionStart();
+  guard.handleCompositionEnd();
+
+  assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: " " })), false);
+  now += 10;
+  assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: " " })), false);
+  now += 100;
+  assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: " " })), true);
+});
+
+test("terminal IME guard does not prevent native input during active composition", () => {
+  let preventDefaultCalls = 0;
+  const guard = createTerminalImeInputGuard({});
+
+  guard.handleCompositionStart();
+
+  assert.equal(
+    guard.shouldProcessKeyEvent(
+      keyEvent({
+        key: "z",
+        preventDefault: () => {
+          preventDefaultCalls += 1;
+        }
+      })
+    ),
+    false
+  );
+  assert.equal(preventDefaultCalls, 0);
 });
 
 test("terminal IME guard does not suppress delayed input after composition", () => {

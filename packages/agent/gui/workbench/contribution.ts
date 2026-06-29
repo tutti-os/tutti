@@ -10,6 +10,7 @@ import {
   type WorkbenchHostNodeBodyContext
 } from "@tutti-os/workbench-surface";
 import {
+  clampAgentGUIConversationRailWidthPx,
   resolveAgentGUIExpandedWindowFrame,
   shouldAutoCollapseAgentGUIConversationRail
 } from "../agent-gui/agentGuiNode/model/agentGuiRailLayout.ts";
@@ -66,10 +67,14 @@ export interface AgentGuiWorkbenchNewConversationDetail {
 
 export interface AgentGuiWorkbenchContributionCopy {
   collapseConversationRail: string;
+  close: string;
   expandConversationRail: string;
   fallbackAgentLabel: string;
+  maximize: string;
+  minimize: string;
   newConversation: string;
   nodeTitle: string;
+  restore: string;
 }
 
 export type AgentGuiWorkbenchContributionCopyOverrides =
@@ -77,10 +82,14 @@ export type AgentGuiWorkbenchContributionCopyOverrides =
 
 export const agentGuiWorkbenchDefaultCopy: AgentGuiWorkbenchContributionCopy = {
   collapseConversationRail: "Collapse conversation rail",
+  close: "Close",
   expandConversationRail: "Expand conversation rail",
   fallbackAgentLabel: "Agent",
+  maximize: "Maximize",
+  minimize: "Minimize",
   newConversation: "New conversation",
-  nodeTitle: "Agent"
+  nodeTitle: "Agent",
+  restore: "Restore"
 };
 
 export interface AgentGuiWorkbenchRenderBodyHelpers {
@@ -179,8 +188,8 @@ export function createAgentGuiWorkbenchContribution(
             }
           ),
         renderHeader: ({
-          defaultActions,
           dragHandleProps,
+          displayMode,
           externalNodeState,
           instanceId,
           isFocused,
@@ -206,6 +215,14 @@ export function createAgentGuiWorkbenchContribution(
           const isConversationRailCollapsed =
             nodeState.conversationRailCollapsed === true ||
             isConversationRailAutoCollapsed;
+          const conversationRailWidthPx = clampAgentGUIConversationRailWidthPx(
+            nodeState.conversationRailWidthPx,
+            node.frame.width
+          );
+          const conversationTitle =
+            input.resolveDockPopupTitle?.(workbenchState) ??
+            nodeState.lastActiveConversationTitle ??
+            null;
           const persistConversationRailCollapsed = (collapsed: boolean) => {
             nodeStateSource.writeNodeState({
               instanceId,
@@ -245,16 +262,18 @@ export function createAgentGuiWorkbenchContribution(
 
           return createElement(AgentGuiWorkbenchHeader, {
             copy,
-            conversationTitle: isConversationRailCollapsed
-              ? (input.resolveDockPopupTitle?.(workbenchState) ??
-                nodeState.lastActiveConversationTitle ??
-                null)
-              : null,
-            defaultActions,
+            conversationTitle,
+            conversationRailWidthPx,
+            displayMode,
             iconUrl: agentGuiDockIconUrls[provider],
             isConversationRailAutoCollapsed,
             isConversationRailCollapsed,
             title: providerTitle,
+            windowActions: {
+              close: windowActions.close,
+              minimize: windowActions.minimize,
+              toggleDisplayMode: windowActions.toggleDisplayMode
+            },
             ...dragHandleProps,
             onCreateConversation: announceNewConversation,
             onPointerDown: (event) => {
