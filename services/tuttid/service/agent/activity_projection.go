@@ -462,6 +462,10 @@ func (p *ActivityProjection) ListSessionMessages(
 			"event", "workspace.agent_session.messages.list_failed",
 			"workspace_id", input.WorkspaceID,
 			"agent_session_id", input.AgentSessionID,
+			"after_version", input.AfterVersion,
+			"before_version", input.BeforeVersion,
+			"order", input.Order,
+			"limit", input.Limit,
 			"error", err,
 		)
 		return SessionMessagesPage{}, false

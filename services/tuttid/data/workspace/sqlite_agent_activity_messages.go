@@ -170,14 +170,24 @@ func scanAgentMessage(scanner rowScanner) (agentactivitybiz.Message, error) {
 		&message.UpdatedAtUnixMS,
 	)
 	if err != nil {
-		return agentactivitybiz.Message{}, err
+		return agentactivitybiz.Message{}, fmt.Errorf("scan workspace agent message row: %w", err)
 	}
 	if strings.TrimSpace(payloadJSON) == "" {
 		message.Payload = map[string]any{}
 		return message, nil
 	}
 	if err := json.Unmarshal([]byte(payloadJSON), &message.Payload); err != nil {
-		return agentactivitybiz.Message{}, fmt.Errorf("decode workspace agent message payload: %w", err)
+		return agentactivitybiz.Message{}, fmt.Errorf(
+			"decode workspace agent message payload id=%d message_id=%q version=%d turn_id=%q role=%q kind=%q status=%q: %w",
+			message.ID,
+			message.MessageID,
+			message.Version,
+			message.TurnID,
+			message.Role,
+			message.Kind,
+			message.Status,
+			err,
+		)
 	}
 	return message, nil
 }

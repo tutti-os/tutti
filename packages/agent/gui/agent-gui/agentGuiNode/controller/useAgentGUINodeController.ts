@@ -518,6 +518,42 @@ function reportAgentGUISubmitWithoutActiveConversation(input: {
   }
 }
 
+function reportAgentGUISubmitRecoveredActiveConversation(input: {
+  blockCount: number;
+  conversationCount: number;
+  conversationListQueryReady: boolean;
+  promptLength: number;
+  provider: string | null;
+  recoveredAgentSessionId: string;
+  runtime: AgentActivityRuntime;
+  workspaceId: string;
+}): void {
+  const reportDiagnostic = input.runtime.reportDiagnostic;
+  if (!reportDiagnostic) {
+    return;
+  }
+  try {
+    void Promise.resolve(
+      reportDiagnostic.call(input.runtime, {
+        details: {
+          blockCount: input.blockCount,
+          conversationCount: input.conversationCount,
+          conversationListQueryReady: input.conversationListQueryReady,
+          promptLength: input.promptLength,
+          provider: input.provider,
+          recoveredAgentSessionId: input.recoveredAgentSessionId
+        },
+        event: "agent.gui.submit.recovered_active_conversation",
+        level: "info",
+        source: "agent-gui",
+        workspaceId: input.workspaceId
+      })
+    ).catch(() => {});
+  } catch {
+    // Diagnostic logging must never affect active conversation routing.
+  }
+}
+
 function reportAgentGUICancelDiagnostic(input: {
   agentSessionId: string;
   busySource?: string | null;
@@ -3697,6 +3733,9 @@ export function useAgentGUINodeController({
   });
   const selectedConversationMessageLoadSeqRef = useRef(0);
   const selectedConversationOlderMessageLoadSeqRef = useRef(0);
+  const failedOlderMessageCursorBySessionIdRef = useRef<Map<string, number>>(
+    new Map()
+  );
   const lastConversationProjectionDiagnosticKeyRef = useRef<string | null>(
     null
   );
@@ -5219,6 +5258,9 @@ export function useAgentGUINodeController({
           durableMessages: detailMessages,
           localMessages: windowOverlayMessages
         });
+        failedOlderMessageCursorBySessionIdRef.current.delete(
+          normalizedAgentSessionId
+        );
         setAgentSessionViewDetailMessages(
           sessionViewRef(normalizedAgentSessionId),
           detailMessages,
@@ -5312,6 +5354,25 @@ export function useAgentGUINodeController({
         });
         return;
       }
+      const beforeVersion = currentView.oldestLoadedVersion;
+      if (
+        failedOlderMessageCursorBySessionIdRef.current.get(
+          normalizedAgentSessionId
+        ) === beforeVersion
+      ) {
+        reportAgentGUIMessagePageDiagnostic({
+          agentSessionId: normalizedAgentSessionId,
+          details: {
+            beforeVersion,
+            reason: "previous_cursor_error"
+          },
+          event: "agent.gui.messages.older.suppressed_after_error",
+          level: "warn",
+          runtime: agentActivityRuntime,
+          workspaceId
+        });
+        return;
+      }
       const requestId = ++selectedConversationOlderMessageLoadSeqRef.current;
       setAgentSessionViewOlderMessagesLoading(
         sessionViewRef(normalizedAgentSessionId),
@@ -5321,7 +5382,7 @@ export function useAgentGUINodeController({
         reportAgentGUIMessagePageDiagnostic({
           agentSessionId: normalizedAgentSessionId,
           details: {
-            beforeVersion: currentView.oldestLoadedVersion,
+            beforeVersion,
             limit: AGENT_GUI_DETAIL_MESSAGES_PAGE_SIZE,
             order: "desc",
             requestId
@@ -5333,7 +5394,7 @@ export function useAgentGUINodeController({
         const page = await agentActivityRuntime.listSessionMessages({
           workspaceId,
           agentSessionId: normalizedAgentSessionId,
-          beforeVersion: currentView.oldestLoadedVersion,
+          beforeVersion,
           cache: false,
           limit: AGENT_GUI_DETAIL_MESSAGES_PAGE_SIZE,
           order: "desc"
@@ -5352,7 +5413,7 @@ export function useAgentGUINodeController({
         reportAgentGUIMessagePageDiagnostic({
           agentSessionId: normalizedAgentSessionId,
           details: {
-            beforeVersion: currentView.oldestLoadedVersion,
+            beforeVersion,
             hasMore: page.hasMore,
             latestVersion: page.latestVersion,
             requestId
@@ -5362,6 +5423,9 @@ export function useAgentGUINodeController({
           runtime: agentActivityRuntime,
           workspaceId
         });
+        failedOlderMessageCursorBySessionIdRef.current.delete(
+          normalizedAgentSessionId
+        );
         const nextDetailMessages = mergeWorkspaceAgentMessages(
           currentView.detailMessages,
           page.messages
@@ -5402,8 +5466,16 @@ export function useAgentGUINodeController({
           );
           return;
         }
+        failedOlderMessageCursorBySessionIdRef.current.set(
+          normalizedAgentSessionId,
+          beforeVersion
+        );
         reportAgentGUIRuntimeError({
           agentSessionId: normalizedAgentSessionId,
+          context: {
+            beforeVersion,
+            requestId
+          },
           error,
           phase: "load_session_messages",
           provider: dataRef.current.provider,
@@ -5604,6 +5676,20 @@ export function useAgentGUINodeController({
       ),
     [loadSessionState]
   );
+  const scheduleActivityStreamStateReloadRef = useRef(
+    scheduleActivityStreamStateReload
+  );
+  const clearSelectedConversationNotFoundRetryRef = useRef(
+    clearSelectedConversationNotFoundRetry
+  );
+  useEffect(() => {
+    scheduleActivityStreamStateReloadRef.current =
+      scheduleActivityStreamStateReload;
+  }, [scheduleActivityStreamStateReload]);
+  useEffect(() => {
+    clearSelectedConversationNotFoundRetryRef.current =
+      clearSelectedConversationNotFoundRetry;
+  }, [clearSelectedConversationNotFoundRetry]);
 
   const applyTimelineProjectionUpdate = useCallback(
     (
@@ -6196,8 +6282,8 @@ export function useAgentGUINodeController({
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
-      scheduleActivityStreamStateReload.cancel();
-      clearSelectedConversationNotFoundRetry();
+      scheduleActivityStreamStateReloadRef.current.cancel();
+      clearSelectedConversationNotFoundRetryRef.current();
       const current = activeConversationIdRef.current;
       const pendingNewConversationId = startingConversationIdRef.current;
       isMountedRef.current = false;
@@ -6211,10 +6297,7 @@ export function useAgentGUINodeController({
         void unactivateRef.current(pendingNewConversationId);
       }
     };
-  }, [
-    scheduleActivityStreamStateReload,
-    clearSelectedConversationNotFoundRetry
-  ]);
+  }, []);
 
   const startConversation = useCallback(
     (initialContentInput?: unknown, displayPrompt?: string) => {
@@ -7380,41 +7463,12 @@ export function useAgentGUINodeController({
     [agentActivityDisplayStatuses, isRespondingApproval, isSubmitting]
   );
 
-  const submitPrompt = useCallback(
-    (content: AgentPromptContentBlock[], displayPrompt?: string) => {
-      const agentSessionId = activeConversationIdRef.current;
-      const normalizedContent = normalizeAgentPromptContentBlocks(content);
-      if (normalizedContent.length === 0) {
-        return;
-      }
-      const displayPromptText =
-        displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
-      if (
-        resolvedPromptImagesSupported === false &&
-        agentPromptContentHasImage(normalizedContent)
-      ) {
-        setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));
-        return;
-      }
-      if (!agentSessionId) {
-        if (!isComposerHomeRef.current) {
-          reportAgentGUISubmitWithoutActiveConversation({
-            blockCount: normalizedContent.length,
-            conversationCount: conversationsRef.current.length,
-            conversationListQueryReady: conversationListQuery !== null,
-            dataLastActiveAgentSessionId:
-              dataRef.current.lastActiveAgentSessionId ?? null,
-            isComposerHome: isComposerHomeRef.current,
-            promptLength:
-              agentPromptContentDisplayText(normalizedContent).length,
-            provider: dataRef.current.provider ?? null,
-            runtime: agentActivityRuntime,
-            workspaceId
-          });
-        }
-        startConversation(normalizedContent, displayPromptText);
-        return;
-      }
+  const submitExistingPrompt = useCallback(
+    (
+      agentSessionId: string,
+      normalizedContent: AgentPromptContentBlock[],
+      displayPromptText?: string
+    ) => {
       if (isSessionMarkedNonResumable(agentSessionId)) {
         setDetailError(
           getAgentGUIErrorMessage(buildResumeSessionNotLocalActivationError())
@@ -7453,14 +7507,86 @@ export function useAgentGUINodeController({
     },
     [
       activation,
-      agentActivityRuntime,
-      conversationListQuery,
       executePrompt,
       isSessionMarkedNonResumable,
-      resolvedPromptImagesSupported,
       queuePromptLocally,
-      shouldQueuePromptLocally,
+      shouldQueuePromptLocally
+    ]
+  );
+
+  const submitPrompt = useCallback(
+    (content: AgentPromptContentBlock[], displayPrompt?: string) => {
+      const agentSessionId = activeConversationIdRef.current;
+      const normalizedContent = normalizeAgentPromptContentBlocks(content);
+      if (normalizedContent.length === 0) {
+        return;
+      }
+      const displayPromptText =
+        displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
+      if (
+        resolvedPromptImagesSupported === false &&
+        agentPromptContentHasImage(normalizedContent)
+      ) {
+        setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));
+        return;
+      }
+      if (!agentSessionId) {
+        if (!isComposerHomeRef.current) {
+          const promptLength =
+            agentPromptContentDisplayText(normalizedContent).length;
+          reportAgentGUISubmitWithoutActiveConversation({
+            blockCount: normalizedContent.length,
+            conversationCount: conversationsRef.current.length,
+            conversationListQueryReady: conversationListQuery !== null,
+            dataLastActiveAgentSessionId:
+              dataRef.current.lastActiveAgentSessionId ?? null,
+            isComposerHome: isComposerHomeRef.current,
+            promptLength,
+            provider: dataRef.current.provider ?? null,
+            runtime: agentActivityRuntime,
+            workspaceId
+          });
+          const recoveredAgentSessionId =
+            dataRef.current.lastActiveAgentSessionId?.trim() ?? "";
+          if (recoveredAgentSessionId) {
+            reportAgentGUISubmitRecoveredActiveConversation({
+              blockCount: normalizedContent.length,
+              conversationCount: conversationsRef.current.length,
+              conversationListQueryReady: conversationListQuery !== null,
+              promptLength,
+              provider: dataRef.current.provider ?? null,
+              recoveredAgentSessionId,
+              runtime: agentActivityRuntime,
+              workspaceId
+            });
+            activeConversationIdRef.current = recoveredAgentSessionId;
+            setActiveConversationId(recoveredAgentSessionId);
+            setIntent({ tag: "active", id: recoveredAgentSessionId });
+            persistActiveConversation(recoveredAgentSessionId);
+            submitExistingPrompt(
+              recoveredAgentSessionId,
+              normalizedContent,
+              displayPromptText
+            );
+            return;
+          }
+        }
+        startConversation(normalizedContent, displayPromptText);
+        return;
+      }
+      submitExistingPrompt(
+        agentSessionId,
+        normalizedContent,
+        displayPromptText
+      );
+    },
+    [
+      agentActivityRuntime,
+      conversationListQuery,
+      resolvedPromptImagesSupported,
+      persistActiveConversation,
       startConversation,
+      submitExistingPrompt,
       workspaceId
     ]
   );

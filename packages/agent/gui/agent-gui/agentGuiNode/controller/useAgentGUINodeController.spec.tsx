@@ -2555,6 +2555,104 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("suppresses repeated older message loads for the same failed cursor", async () => {
+    const timelineRequests: Array<{
+      beforeVersion?: number;
+      agentSessionId: string;
+      order?: string;
+    }> = [];
+    const listSessionTimeline = vi.fn(
+      async ({
+        beforeVersion,
+        agentSessionId,
+        order
+      }: {
+        beforeVersion?: number;
+        agentSessionId: string;
+        order?: string;
+      }) => {
+        timelineRequests.push({ agentSessionId, beforeVersion, order });
+        if (agentSessionId !== "session-2") {
+          return { timelineItems: [], hasMore: false };
+        }
+        if (order === "desc" && beforeVersion === undefined) {
+          return {
+            timelineItems: [
+              timelineMessage({
+                agentSessionId: "session-2",
+                id: 1,
+                eventId: "user-1",
+                role: "user",
+                content: "latest ask",
+                turnId: "turn-1"
+              })
+            ],
+            hasMore: true
+          };
+        }
+        throw new Error("older page failed");
+      }
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline,
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.hasOlderMessages).toBe(true);
+    });
+    await act(async () => {
+      await result.current.actions.loadOlderConversationMessages();
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.isLoadingOlderMessages).toBe(false);
+    });
+    const failedOlderRequestCount = timelineRequests.filter(
+      (request) =>
+        request.agentSessionId === "session-2" &&
+        request.order === "desc" &&
+        request.beforeVersion === 1
+    ).length;
+
+    await act(async () => {
+      await result.current.actions.loadOlderConversationMessages();
+    });
+
+    expect(
+      timelineRequests.filter(
+        (request) =>
+          request.agentSessionId === "session-2" &&
+          request.order === "desc" &&
+          request.beforeVersion === 1
+      )
+    ).toHaveLength(failedOlderRequestCount);
+  });
+
   it("clears older message loading when a stale older request resolves", async () => {
     let resolveOlder:
       | ((value: { timelineItems: unknown[]; hasMore: boolean }) => void)
@@ -4211,6 +4309,74 @@ describe("useAgentGUINodeController", () => {
       expect(exec).toHaveBeenCalledWith({
         workspaceId: "room-1",
         agentSessionId: "session-openclaw",
+        ...promptContent("keep going")
+      });
+    });
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  it("keeps the existing submit target after controller lifecycle dependencies update", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId, {
+          provider: "claude-code",
+          status: "ready",
+          title: "Claude Code"
+        }),
+        activation: { mode: input.mode, status: "attached" as const },
+        events: []
+      })
+    );
+    const exec = vi.fn(async () => ({ turnId: "turn-1" }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          {
+            ...workspaceAgentSession("session-claude"),
+            provider: "claude-code",
+            title: "Claude Code",
+            effectiveStatus: "ready",
+            turnPhase: "idle"
+          }
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      exec
+    });
+
+    const { result, rerender } = renderHook(
+      (props: { currentUserId: string }) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: props.currentUserId,
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData("session-claude", "claude-code"),
+          onDataChange: vi.fn()
+        }),
+      { initialProps: { currentUserId: "user-1" } }
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "session-claude"
+      );
+    });
+
+    rerender({ currentUserId: "user-2" });
+    await Promise.resolve();
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("keep going"));
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-claude",
         ...promptContent("keep going")
       });
     });

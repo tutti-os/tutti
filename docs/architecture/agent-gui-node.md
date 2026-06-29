@@ -225,6 +225,12 @@ activeConversationId changes
 Detail loading is separate from list loading. A conversation can appear in the
 rail before its messages are loaded. The detail panel should show message
 loading from the session view store, not infer it from the send button state.
+Older-history prefetch is opportunistic UI behavior. If a page load for a
+specific `(agentSessionId, beforeVersion)` cursor fails, AgentGuiNode should
+record that failed cursor and suppress automatic retries until the detail page
+is reloaded or a different oldest durable version is reached. Do not let scroll
+position and `isLoadingOlderMessages=false` form an immediate retry loop against
+the same failing backend page.
 
 ### First Prompt In A New Conversation
 
@@ -288,6 +294,13 @@ The local working patch is a latency bridge only. If the runtime returns a
 ready-looking session while the turn is still being processed, the desktop
 service can preserve optimistic `working` until a later authoritative event
 settles the session.
+
+The submit target is not just a render detail. A detail-page composer must not
+fall back to `startConversation` because a UI-local active conversation ref is
+temporarily empty. If the view is not on the home composer, resolve the existing
+session from the durable active-session hint and route through the existing
+send path, or block/recover explicitly with diagnostics. Only an intentional
+home-composer submit should create a new agent session.
 
 ### Resume Or Re-Attach Existing Session
 
@@ -468,6 +481,10 @@ User-visible rules:
 - Home composer submit with no active conversation starts activation. Detail
   composer submit with an active conversation sends input. First-message
   activation keeps the user on the home composer until activation succeeds.
+- Treat active-session refs as controller caches, not the source of truth for
+  whether a submit is new or existing. React effect cleanup, projection reloads,
+  and conversation-list refreshes may temporarily disturb UI-local refs; they
+  must not retarget the user's prompt to a newly created session.
 - The send button spinner is local submit/approval response state. For
   first-message activation, this same busy state is the only normal pending
   indicator. The "connecting conversation" state belongs to existing-session

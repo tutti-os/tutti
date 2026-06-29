@@ -13,6 +13,7 @@ const workspaceId = "workspace-1";
 
 test("desktop agent activity adapter maps tuttid sessions and messages", async () => {
   const calls: Array<{ method: string; args: unknown[] }> = [];
+  const diagnostics: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async listWorkspaceAgentSessions(requestWorkspaceId: string) {
@@ -66,7 +67,7 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
         };
       }
     }),
-    runtimeApi: createRuntimeApi()
+    runtimeApi: createRuntimeApi(diagnostics)
   });
 
   const sessions = await adapter.listSessions({ workspaceId });
@@ -137,6 +138,36 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
       }
     ]
   });
+  assert.equal(diagnostics.length, 2);
+  assert.deepEqual(diagnostics[0], {
+    details: {
+      afterVersion: 3,
+      agentSessionId: "agent-session-1",
+      beforeVersion: null,
+      event: "requested",
+      limit: 10,
+      order: null
+    },
+    event: "agent.activity.messages.list",
+    level: "info",
+    workspaceId
+  });
+  const resolvedDiagnostic = diagnostics[1] as {
+    details?: Record<string, unknown>;
+    event?: string;
+    level?: string;
+    workspaceId?: string;
+  };
+  assert.equal(resolvedDiagnostic.event, "agent.activity.messages.list");
+  assert.equal(resolvedDiagnostic.level, "info");
+  assert.equal(resolvedDiagnostic.workspaceId, workspaceId);
+  assert.equal(resolvedDiagnostic.details?.agentSessionId, "agent-session-1");
+  assert.equal(resolvedDiagnostic.details?.event, "resolved");
+  assert.equal(resolvedDiagnostic.details?.firstVersion, 5);
+  assert.equal(resolvedDiagnostic.details?.lastVersion, 5);
+  assert.equal(resolvedDiagnostic.details?.latestVersion, 5);
+  assert.equal(resolvedDiagnostic.details?.messageCount, 1);
+  assert.equal(typeof resolvedDiagnostic.details?.durationMs, "number");
 });
 
 test("desktop agent activity adapter returns cancel result metadata", async () => {
