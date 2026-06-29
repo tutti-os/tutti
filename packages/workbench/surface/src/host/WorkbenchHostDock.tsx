@@ -423,7 +423,7 @@ export function WorkbenchHostDock({
     [minimizedDockSlots, resolvedEntries]
   );
   const presentDockItems = useDockPresenceItems(dockItems, (nodeId) =>
-    context.genie.shouldAnimateMinimizedDockEnter(nodeId)
+    context.genie?.shouldAnimateMinimizedDockEnter(nodeId) ?? false
   );
   const presentDockItemKeys = useMemo(
     () => presentDockItems.map((item) => item.key).join("\n"),
@@ -454,14 +454,14 @@ export function WorkbenchHostDock({
   });
   const registerDockAnchorRef = useRef(
     (anchorKey: string, element: HTMLElement | null) => {
-      context.genie.registerDockAnchor(anchorKey, element);
+      context.genie?.registerDockAnchor(anchorKey, element);
     }
   );
   clearSlotMagnificationRef.current = (anchorKey) => {
     clearSlotMagnification(anchorKey);
   };
   registerDockAnchorRef.current = (anchorKey, element) => {
-    context.genie.registerDockAnchor(anchorKey, element);
+    context.genie?.registerDockAnchor(anchorKey, element);
   };
   const registerWallpaperToneElement = useCallback(
     (key: string) => (element: HTMLElement | null) => {
@@ -1079,7 +1079,7 @@ export function WorkbenchHostDock({
   const hasMinimizedPreviewCapture = minimizedDockSlots.some((slot) =>
     minimizedDockSlotNodes(slot).some((node) =>
       (() => {
-        if (context.genie.isPendingMinimizedDockNode(node.id)) {
+        if (context.genie?.isPendingMinimizedDockNode(node.id)) {
           return false;
         }
         const minimizedDock = nodeDefinitions.get(node.data.typeId)?.window
@@ -1563,7 +1563,7 @@ export function WorkbenchHostDock({
                               // Keep dock click failures contained.
                             }
                           })();
-                          context.genie.launchNodeFromAnchor(
+                          context.genie?.launchNodeFromAnchor(
                             anchorKey,
                             clickResolution.nodeId,
                             () => {
@@ -1573,7 +1573,7 @@ export function WorkbenchHostDock({
                           return;
                         case "minimize-node":
                           closePopup();
-                          context.genie.minimizeNodeToAnchor(
+                          context.genie?.minimizeNodeToAnchor(
                             clickResolution.nodeId,
                             () => {
                               host.minimizeNode(clickResolution.nodeId);
@@ -1628,7 +1628,7 @@ export function WorkbenchHostDock({
                           return;
                         case "launch":
                           closePopup();
-                          context.genie.launchNodeFromAnchor(
+                          context.genie?.launchNodeFromAnchor(
                             anchorKey,
                             entry.id,
                             () =>
@@ -1957,7 +1957,7 @@ export function WorkbenchHostDock({
 
               const node = slot.node;
               const isPendingMinimizedNode =
-                context.genie.isPendingMinimizedDockNode(node.id);
+                context.genie?.isPendingMinimizedDockNode(node.id);
               const labelTooltipTarget = dockLabelTooltipTarget(
                 `minimized-node:${node.id}`,
                 node.title
@@ -2016,7 +2016,7 @@ export function WorkbenchHostDock({
                     runDockMinimizedLaunchAfterCollapse(
                       restoreIntent,
                       (intent) => {
-                        context.genie.launchNodeFromAnchor(
+                        context.genie?.launchNodeFromAnchor(
                           intent.anchorKey,
                           intent.nodeId,
                           () => {
@@ -2305,7 +2305,7 @@ export function WorkbenchHostDock({
           }}
           onCreateNew={() => {
             closePopup();
-            context.genie.launchNodeFromAnchor(
+            context.genie?.launchNodeFromAnchor(
               anchorKeyFromPopupEntry(popupEntry),
               popupEntry.entry.id,
               () =>
@@ -2362,7 +2362,7 @@ export function WorkbenchHostDock({
                 // Keep dock click failures contained.
               }
             })();
-            context.genie.launchNodeFromAnchor(
+            context.genie?.launchNodeFromAnchor(
               anchorKeyFromPopupEntry(popupEntry),
               nodeId,
               () => {
@@ -2487,7 +2487,7 @@ export function WorkbenchHostDock({
             }
             closePopup();
             runDockMinimizedStackLaunch(restoreIntent, (intent) => {
-              context.genie.launchNodeFromAnchor(
+              context.genie?.launchNodeFromAnchor(
                 intent.anchorKey,
                 intent.nodeId,
                 () => {
