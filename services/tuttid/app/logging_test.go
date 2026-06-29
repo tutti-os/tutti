@@ -48,6 +48,7 @@ func TestSetupLoggerFromEnvWritesToFileByDefault(t *testing.T) {
 	t.Setenv("TUTTI_ENV", "development")
 	t.Setenv("TUTTID_LOG_OUTPUT", "file")
 	t.Setenv("TUTTID_LOG_PATH", "")
+	t.Setenv("TUTTI_LOG_DIR", "")
 	t.Setenv("TUTTI_LOG_DIR", tuttitypes.TuttidLogsDir())
 
 	setup, err := SetupLoggerFromEnv()
@@ -84,6 +85,7 @@ func TestSetupLoggerFromEnvIncludesSessionIDWhenPresent(t *testing.T) {
 	t.Setenv("TUTTI_ENV", "development")
 	t.Setenv("TUTTID_LOG_OUTPUT", "file")
 	t.Setenv("TUTTID_LOG_PATH", "")
+	t.Setenv("TUTTI_LOG_DIR", "")
 	t.Setenv("TUTTI_LOG_DIR", tuttitypes.TuttidLogsDir())
 	t.Setenv("TUTTI_SESSION_ID", "desktop-session-123")
 
