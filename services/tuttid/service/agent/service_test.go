@@ -309,6 +309,71 @@ func TestServiceImportsHomeCwdAsNoProjectWithoutRegisteringUserHome(t *testing.T
 	}
 }
 
+func TestServiceImportsCodexScratchCwdAsNoProjectWithoutRegisteringIt(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	scratchCwd := filepath.Join(home, "Documents", "Codex", "2026-06-26", "ge")
+	if err := os.MkdirAll(scratchCwd, 0o755); err != nil {
+		t.Fatalf("create codex scratch cwd error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(home); ok {
+		home = canonical
+	}
+	if canonical, ok := canonicalExistingDir(scratchCwd); ok {
+		scratchCwd = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-scratch.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "codex-scratch", "cwd": scratchCwd},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "codex-scratch-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Scratch question"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: scratchCwd}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 || result.ImportedMessages != 1 {
+		t.Fatalf("import result = %#v, want one imported no-project session", result)
+	}
+	if len(result.ProjectPaths) != 0 || result.ImportedProjects != 0 {
+		t.Fatalf("import result = %#v, want no registered project paths for Codex scratch cwd", result)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "codex-scratch"))
+	if err != nil {
+		t.Fatalf("Get imported Codex scratch session error = %v", err)
+	}
+	if session.Cwd != scratchCwd {
+		t.Fatalf("session cwd = %q, want imported scratch cwd %q", session.Cwd, scratchCwd)
+	}
+	if session.RuntimeContext["externalImportNoProject"] != true {
+		t.Fatalf("runtime context = %#v, want externalImportNoProject true", session.RuntimeContext)
+	}
+}
+
 func TestServiceListsImportedSessionsByExternalActivityTime(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
