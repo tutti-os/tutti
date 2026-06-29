@@ -33,6 +33,10 @@ test("developer source popup opens on hover instead of requiring a click", () =>
   );
   assert.match(source, /onPointerEnter=\{openPopover\}/);
   assert.match(source, /onPointerLeave=\{scheduleClosePopover\}/);
+  assert.match(source, /onOpenAutoFocus=\{\(event\) => \{/);
+  assert.match(source, /onCloseAutoFocus=\{\(event\) => \{/);
+  assert.doesNotMatch(source, /onFocus=\{openPopover\}/);
+  assert.doesNotMatch(source, /onBlur=\{scheduleClosePopover\}/);
 });
 
 test("bundled apps without source metadata still show the official source row", () => {

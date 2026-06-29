@@ -444,8 +444,6 @@ function AppDeveloperSourceRow({
         <button
           className="block w-full min-w-0 border-0 bg-transparent p-0 text-left"
           type="button"
-          onFocus={openPopover}
-          onBlur={scheduleClosePopover}
           onClick={(event) => {
             event.stopPropagation();
           }}
@@ -466,8 +464,14 @@ function AppDeveloperSourceRow({
         style={{ zIndex: "var(--z-panel-popover)" }}
         onPointerEnter={openPopover}
         onPointerLeave={scheduleClosePopover}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+        }}
         onClick={(event) => {
           event.stopPropagation();
+        }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
         }}
         onPointerDown={(event) => {
           event.stopPropagation();
