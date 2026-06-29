@@ -81,6 +81,79 @@ describe("loadWorkspaceAgentSessionMessagePages", () => {
 
     expect(result.map((message) => message.version)).toEqual([1, 2]);
   });
+
+  it("lets a durable message replace a higher-version optimistic prompt with the same message id", () => {
+    const durableUserPrompt = userPromptMessage(1, {
+      messageId: "client-submit:user:submit-1",
+      payload: {
+        clientSubmitId: "submit-1",
+        text: "build and run tests"
+      }
+    });
+    const optimisticUserPrompt = optimisticUserPromptMessage({
+      clientSubmitId: "submit-1",
+      messageId: "client-submit:user:submit-1",
+      prompt: "build and run tests",
+      version: 1782719873985
+    });
+
+    const result = mergeWorkspaceAgentMessages(
+      [optimisticUserPrompt],
+      [durableUserPrompt]
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.version).toBe(1);
+    expect(result[0]?.payload.__agentGuiOptimisticPrompt).toBeUndefined();
+  });
+
+  it("drops a higher-version optimistic prompt when durable has the same client submit id", () => {
+    const durableUserPrompt = userPromptMessage(1, {
+      messageId: "daemon-message-1",
+      payload: {
+        clientSubmitId: "submit-1",
+        text: "build and run tests"
+      }
+    });
+    const optimisticUserPrompt = optimisticUserPromptMessage({
+      clientSubmitId: "submit-1",
+      messageId: "client-submit:user:submit-1",
+      prompt: "build and run tests",
+      version: 1782719873985
+    });
+
+    const result = mergeWorkspaceAgentMessages(
+      [optimisticUserPrompt],
+      [durableUserPrompt]
+    );
+
+    expect(result.map((message) => message.messageId)).toEqual([
+      "daemon-message-1"
+    ]);
+  });
+
+  it("keeps an unmatched optimistic prompt as a local overlay", () => {
+    const durableAssistantMessage = messageWithVersion(50, {
+      messageId: "assistant-1"
+    });
+    const optimisticUserPrompt = optimisticUserPromptMessage({
+      clientSubmitId: "submit-2",
+      messageId: "client-submit:user:submit-2",
+      prompt: "start local server",
+      version: 1782719980076
+    });
+
+    const result = mergeWorkspaceAgentMessages(
+      [durableAssistantMessage],
+      [optimisticUserPrompt]
+    );
+
+    expect(result.map((message) => message.messageId)).toEqual([
+      "assistant-1",
+      "client-submit:user:submit-2"
+    ]);
+    expect(result[1]?.payload.__agentGuiOptimisticPrompt).toBe(true);
+  });
 });
 
 function messageWithVersion(
@@ -101,4 +174,36 @@ function messageWithVersion(
     version,
     ...overrides
   };
+}
+
+function userPromptMessage(
+  version: number,
+  overrides: Partial<WorkspaceAgentActivityMessage> = {}
+): WorkspaceAgentActivityMessage {
+  return messageWithVersion(version, {
+    role: "user",
+    turnId: `turn-user-${version}`,
+    ...overrides
+  });
+}
+
+function optimisticUserPromptMessage(input: {
+  clientSubmitId: string;
+  messageId: string;
+  prompt: string;
+  version: number;
+}): WorkspaceAgentActivityMessage {
+  return userPromptMessage(input.version, {
+    id: input.version,
+    messageId: input.messageId,
+    occurredAtUnixMs: input.version,
+    payload: {
+      __agentGuiOptimisticPrompt: true,
+      clientSubmitId: input.clientSubmitId,
+      text: input.prompt
+    },
+    startedAtUnixMs: input.version,
+    status: "pending",
+    turnId: `pending:${input.clientSubmitId}`
+  });
 }

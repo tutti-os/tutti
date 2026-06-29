@@ -172,6 +172,10 @@ Local overlays are allowed only to bridge UI latency:
 - optimistic pin or working status while a command is in flight
 
 Every overlay must have a reconciliation path back to the runtime snapshot.
+Optimistic prompt messages must stay overlay-owned even when they are used to
+scope the selected detail window. Do not promote them into durable/detail
+message bases: their local timestamp-derived versions can outrank lower
+authoritative daemon versions and suppress the durable user prompt during merge.
 
 ## User-Facing Data Flows
 
@@ -934,6 +938,11 @@ Quick checks:
   do not use their local timestamp-derived versions as durable message-window
   bounds; live runtime messages can have lower authoritative sequence versions
   and must still enter the transcript before a refresh.
+- If user prompts appear below assistant replies until the conversation is
+  reopened, inspect whether optimistic prompt messages were merged into
+  `detailMessages` or another durable/base set. Reconciliation should split
+  durable messages from optimistic overlays, then drop overlays that match a
+  durable `messageId`, `clientSubmitId`, or prompt signature.
 - When a live message or lifecycle patch reveals the real turn ID for a
   first-prompt create, retarget the optimistic prompt from its pending
   client-submit turn ID only after the event is known to belong to the current
