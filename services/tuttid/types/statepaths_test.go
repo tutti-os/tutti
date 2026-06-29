@@ -43,6 +43,7 @@ func TestTuttidDerivedPathsUseDevelopmentRoot(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("TUTTI_STATE_DIR", "")
 	t.Setenv("TUTTI_ENV", "development")
+	t.Setenv("TUTTI_LOG_DIR", "")
 	t.Setenv("TUTTID_DB_PATH", "")
 	t.Setenv("TUTTID_LOG_PATH", "")
 	t.Setenv("TUTTID_RUN_DIR", "")

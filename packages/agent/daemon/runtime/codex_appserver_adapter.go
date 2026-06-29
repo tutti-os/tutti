@@ -92,6 +92,7 @@ const codexAppServerAuthRequiredMessage = "Codex requires authentication. " +
 // defaultCodexAppServerCancelGraceWindow is how long Cancel waits for codex to
 // honor turn/interrupt gracefully before force-closing the app-server process.
 const defaultCodexAppServerCancelGraceWindow = 3 * time.Second
+const defaultCodexAppServerGoalContinuationGraceWindow = 100 * time.Millisecond
 
 type CodexAppServerAdapter struct {
 	transport   ProcessTransport
@@ -1353,7 +1354,17 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 					a.interruptActiveTurnAsync(appSession, session, appTurn, providerTurnID, "queued cancel")
 				}
 			}
-			finalTurn, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, initialTurn)
+			finalTurn, finishErr := a.awaitGoalOperationCompletion(
+				ctx,
+				appSession,
+				session,
+				turnID,
+				appTurn,
+				initialTurn,
+				normalizer,
+				emitEvents,
+				emitCommands,
+			)
 			a.endActiveTurn(session.AgentSessionID, appTurn)
 			if finishErr != nil {
 				if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) || a.turnForceCanceled(appTurn) {
@@ -1404,6 +1415,122 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 	default:
 		return false, nil
 	}
+}
+
+func (a *CodexAppServerAdapter) awaitGoalOperationCompletion(
+	ctx context.Context,
+	appSession *codexAppServerSession,
+	session Session,
+	turnID string,
+	appTurn *codexAppServerActiveTurn,
+	initialTurn map[string]any,
+	normalizer *acpTurnNormalizer,
+	emitEvents func([]activityshared.Event),
+	emitCommands CommandSnapshotSink,
+) (map[string]any, error) {
+	nextInitialTurn := initialTurn
+	for {
+		finalTurn, err := a.awaitTurnCompletion(ctx, appSession, appTurn, nextInitialTurn)
+		if err != nil {
+			return nil, err
+		}
+		if !a.shouldContinueActiveGoalAfterTurn(session.AgentSessionID, finalTurn) {
+			return finalTurn, nil
+		}
+		normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
+		emitEvents(normalizer.FinishCompleted(session, turnID))
+		nextTurn, continued, err := a.waitForAutomaticGoalContinuation(ctx, session.AgentSessionID, appTurn)
+		if err != nil {
+			return nil, err
+		}
+		if continued {
+			nextInitialTurn = nextTurn
+			continue
+		}
+		continued, err = a.requestActiveGoalContinuation(ctx, appSession, session, turnID, normalizer, emitEvents, emitCommands)
+		if err != nil {
+			return nil, err
+		}
+		if !continued {
+			return finalTurn, nil
+		}
+		nextInitialTurn = nil
+	}
+}
+
+func (a *CodexAppServerAdapter) waitForAutomaticGoalContinuation(
+	ctx context.Context,
+	agentSessionID string,
+	appTurn *codexAppServerActiveTurn,
+) (map[string]any, bool, error) {
+	timer := time.NewTimer(defaultCodexAppServerGoalContinuationGraceWindow)
+	defer timer.Stop()
+	select {
+	case finalTurn := <-appTurn.done:
+		return finalTurn, true, nil
+	case <-ctx.Done():
+		return nil, false, ctx.Err()
+	case <-timer.C:
+		if a.sessionActiveTurnID(agentSessionID) != "" {
+			return nil, true, nil
+		}
+		return nil, false, nil
+	}
+}
+
+func (a *CodexAppServerAdapter) shouldContinueActiveGoalAfterTurn(agentSessionID string, turn map[string]any) bool {
+	if strings.TrimSpace(asString(turn["status"])) != "completed" {
+		return false
+	}
+	return strings.TrimSpace(asString(a.sessionGoal(agentSessionID)["status"])) == "active"
+}
+
+func (a *CodexAppServerAdapter) sessionGoal(agentSessionID string) map[string]any {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return nil
+	}
+	return clonePayload(appSession.goal)
+}
+
+func (a *CodexAppServerAdapter) requestActiveGoalContinuation(
+	ctx context.Context,
+	appSession *codexAppServerSession,
+	session Session,
+	turnID string,
+	normalizer *acpTurnNormalizer,
+	emitEvents func([]activityshared.Event),
+	emitCommands CommandSnapshotSink,
+) (bool, error) {
+	goal := a.sessionGoal(session.AgentSessionID)
+	if strings.TrimSpace(asString(goal["status"])) != "active" {
+		return false, nil
+	}
+	params := map[string]any{
+		"threadId": appSession.threadID,
+		"status":   "active",
+	}
+	if objective := strings.TrimSpace(asStringRaw(goal["objective"])); objective != "" {
+		params["objective"] = objective
+	}
+	result, err := appSession.client.Call(
+		ctx,
+		appServerMethodThreadGoalSet,
+		params,
+		a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands),
+	)
+	if err != nil {
+		return true, err
+	}
+	if nextGoal := appServerGoalFromResult(result); len(nextGoal) > 0 {
+		a.applyGoalUpdate(session.AgentSessionID, nextGoal)
+	}
+	return true, nil
 }
 
 func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, reason string) ([]activityshared.Event, error) {
