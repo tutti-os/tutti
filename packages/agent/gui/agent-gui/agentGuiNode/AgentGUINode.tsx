@@ -67,6 +67,11 @@ import {
   resolveAgentGUIConversationRailMaxWidthPx,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./model/agentGuiRailLayout";
+import {
+  isAgentGUIOpenTerminalShortcut,
+  resolveAgentGUITerminalShortcutCwd,
+  supportsAgentGUIOpenTerminalShortcut
+} from "./model/agentGuiTerminalShortcut";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type {
@@ -176,6 +181,13 @@ export interface AgentGUINodeProps {
     references: readonly WorkspaceFileReference[];
   }) => void | Promise<void>;
   onOpenConversationWindow?: (agentSessionId: string) => void;
+  onOpenTerminalAtCwd?: (input: {
+    agentSessionId: string | null;
+    cwd: string;
+    provider: AgentGUINodeData["provider"];
+    workspaceId: string;
+  }) => void | Promise<void>;
+  terminalFallbackCwd?: string | null;
   onClose: () => void;
   onResize: (frame: NodeFrame) => void;
   onUpdateNode: (
@@ -483,6 +495,8 @@ function areAgentGUINodePropsEqual(
     previous.onResize === next.onResize &&
     previous.onUpdateNode === next.onUpdateNode &&
     previous.onOpenConversationWindow === next.onOpenConversationWindow &&
+    previous.onOpenTerminalAtCwd === next.onOpenTerminalAtCwd &&
+    previous.terminalFallbackCwd === next.terminalFallbackCwd &&
     previous.isMaximized === next.isMaximized &&
     previous.isMuted === next.isMuted &&
     previous.onMinimize === next.onMinimize &&
@@ -533,6 +547,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   onAgentProviderLogin,
   onWorkspaceFileReferencesAdded,
   onOpenConversationWindow,
+  onOpenTerminalAtCwd,
+  terminalFallbackCwd = null,
   onClose,
   onResize,
   onUpdateNode,
@@ -701,6 +717,52 @@ export const AgentGUINode = memo(function AgentGUINode({
     onDataChange: handleDataChange,
     onShowMessage
   });
+
+  useEffect(() => {
+    if (
+      previewMode ||
+      !isActive ||
+      !onOpenTerminalAtCwd ||
+      !supportsAgentGUIOpenTerminalShortcut(state.provider)
+    ) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!isAgentGUIOpenTerminalShortcut(event)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      void Promise.resolve(
+        onOpenTerminalAtCwd({
+          agentSessionId: viewModel.activeConversationId,
+          cwd: resolveAgentGUITerminalShortcutCwd({
+            activeConversationCwd: viewModel.activeConversation?.cwd,
+            selectedProjectPath: viewModel.composerSettings.selectedProjectPath,
+            fallbackCwd: terminalFallbackCwd
+          }),
+          provider: state.provider,
+          workspaceId
+        })
+      ).catch(() => {});
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [
+    isActive,
+    onOpenTerminalAtCwd,
+    previewMode,
+    state.provider,
+    terminalFallbackCwd,
+    viewModel.activeConversation?.cwd,
+    viewModel.activeConversationId,
+    viewModel.composerSettings.selectedProjectPath,
+    workspaceId
+  ]);
 
   const fallbackAgentTitle = t("sidebar.fallbackAgentLabel");
   const activeProvider =

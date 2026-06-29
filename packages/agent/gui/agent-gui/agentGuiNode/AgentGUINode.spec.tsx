@@ -2064,6 +2064,91 @@ describe("AgentGUINode", () => {
     expect(mockSelectConversation).not.toHaveBeenCalled();
   });
 
+  it("opens a terminal at the active conversation cwd from Cmd+J", () => {
+    const onOpenTerminalAtCwd =
+      vi.fn<
+        NonNullable<
+          React.ComponentProps<typeof AgentGUINode>["onOpenTerminalAtCwd"]
+        >
+      >();
+    mockViewModel = createViewModel({
+      activeConversation: {
+        id: "session-1",
+        provider: "codex",
+        title: "Session 1",
+        status: "ready",
+        cwd: "/workspace/session",
+        updatedAtUnixMs: 1
+      },
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode({
+      onOpenTerminalAtCwd,
+      terminalFallbackCwd: "/Users/local"
+    });
+
+    fireEvent.keyDown(window, { key: "j", metaKey: true });
+
+    expect(onOpenTerminalAtCwd).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
+      cwd: "/workspace/session",
+      provider: "codex",
+      workspaceId: "room-1"
+    });
+  });
+
+  it("opens a terminal at the selected project from Cmd+J without an active conversation", () => {
+    const onOpenTerminalAtCwd =
+      vi.fn<
+        NonNullable<
+          React.ComponentProps<typeof AgentGUINode>["onOpenTerminalAtCwd"]
+        >
+      >();
+    const baseViewModel = createViewModel();
+    mockViewModel = createViewModel({
+      composerSettings: {
+        ...baseViewModel.composerSettings,
+        selectedProjectPath: "/workspace/project"
+      }
+    });
+    renderAgentGUINode({
+      onOpenTerminalAtCwd,
+      terminalFallbackCwd: "/Users/local"
+    });
+
+    fireEvent.keyDown(window, { key: "j", metaKey: true });
+
+    expect(onOpenTerminalAtCwd).toHaveBeenLastCalledWith({
+      agentSessionId: null,
+      cwd: "/workspace/project",
+      provider: "codex",
+      workspaceId: "room-1"
+    });
+  });
+
+  it("opens a terminal at the fallback cwd from Cmd+J without an active conversation or selected project", () => {
+    const onOpenTerminalAtCwd =
+      vi.fn<
+        NonNullable<
+          React.ComponentProps<typeof AgentGUINode>["onOpenTerminalAtCwd"]
+        >
+      >();
+    mockViewModel = createViewModel();
+    renderAgentGUINode({
+      onOpenTerminalAtCwd,
+      terminalFallbackCwd: "/Users/local"
+    });
+
+    fireEvent.keyDown(window, { key: "j", metaKey: true });
+
+    expect(onOpenTerminalAtCwd).toHaveBeenCalledWith({
+      agentSessionId: null,
+      cwd: "/Users/local",
+      provider: "codex",
+      workspaceId: "room-1"
+    });
+  });
+
   it("renders inline delete confirmation and dispatches confirm without a dialog", () => {
     mockViewModel = createViewModel({
       conversations: [
@@ -7073,6 +7158,8 @@ function renderAgentGUINode({
   onAgentProviderLogin,
   onWorkspaceFileReferencesAdded,
   onOpenConversationWindow,
+  onOpenTerminalAtCwd,
+  terminalFallbackCwd,
   state = {
     provider: "codex",
     lastActiveAgentSessionId: null,
@@ -7111,6 +7198,12 @@ function renderAgentGUINode({
   onOpenConversationWindow?: React.ComponentProps<
     typeof AgentGUINode
   >["onOpenConversationWindow"];
+  onOpenTerminalAtCwd?: React.ComponentProps<
+    typeof AgentGUINode
+  >["onOpenTerminalAtCwd"];
+  terminalFallbackCwd?: React.ComponentProps<
+    typeof AgentGUINode
+  >["terminalFallbackCwd"];
   state?: AgentGUINodeData;
   onUpdateNode?: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
@@ -7162,6 +7255,8 @@ function renderAgentGUINode({
       onAgentProviderLogin={onAgentProviderLogin}
       onWorkspaceFileReferencesAdded={onWorkspaceFileReferencesAdded}
       onOpenConversationWindow={onOpenConversationWindow}
+      onOpenTerminalAtCwd={onOpenTerminalAtCwd}
+      terminalFallbackCwd={terminalFallbackCwd}
       onClose={vi.fn()}
       onResize={onResize}
       onUpdateNode={onUpdateNode}

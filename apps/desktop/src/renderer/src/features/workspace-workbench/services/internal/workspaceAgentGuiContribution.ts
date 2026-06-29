@@ -45,6 +45,7 @@ import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaun
 import { requestGroupChatLaunch } from "../groupChatLaunchCoordinator.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
 import { isWorkspaceAgentGuiDefaultDockProvider } from "./workspaceAgentProviderCatalog.ts";
+import { defaultWorkspaceTerminalWorkbenchTypeId } from "./workspaceTerminalWorkbenchConstants.ts";
 
 export function createWorkspaceAgentGuiContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
@@ -132,7 +133,17 @@ export function createWorkspaceAgentGuiContribution(input: {
       onOpenAgentConversationWindow: async (request) => {
         await requestWorkspaceAgentGuiLaunch(request);
       },
+      onOpenTerminalAtCwd: ({ cwd }) => {
+        void context.host
+          .launchNode({
+            payload: { cwd },
+            reason: "shortcut",
+            typeId: defaultWorkspaceTerminalWorkbenchTypeId
+          })
+          .catch(() => {});
+      },
       onStateChange: (...args) => helpers.onStateChange(...args),
+      terminalFallbackCwd: input.platformApi.homeDirectory,
       previewMode: options?.previewMode,
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,

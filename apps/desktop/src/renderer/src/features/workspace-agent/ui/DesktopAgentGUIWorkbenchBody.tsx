@@ -96,7 +96,9 @@ interface DesktopAgentGUIWorkbenchBodyProps {
     provider: DesktopAgentGUINodeState["provider"];
     workspaceId: string;
   }) => Promise<void> | void;
+  onOpenTerminalAtCwd?: AgentGUIProps["onOpenTerminalAtCwd"];
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
+  terminalFallbackCwd?: string | null;
   previewMode?: boolean;
   contextMentionProviders: NonNullable<
     AgentGUIProps["contextMentionProviders"]
@@ -156,7 +158,9 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
     previous.onOpenAgentConversationWindow ===
       next.onOpenAgentConversationWindow &&
+    previous.onOpenTerminalAtCwd === next.onOpenTerminalAtCwd &&
     previous.previewMode === next.previewMode &&
+    previous.terminalFallbackCwd === next.terminalFallbackCwd &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.runtimeApi === next.runtimeApi &&
     previous.trackAgentProviderChatReady === next.trackAgentProviderChatReady &&
@@ -227,7 +231,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   onLinkAction,
   onCapabilitySettingsRequest,
   onOpenAgentConversationWindow,
+  onOpenTerminalAtCwd,
   onStateChange,
+  terminalFallbackCwd = null,
   previewMode = false,
   contextMentionProviders,
   runtimeApi,
@@ -976,6 +982,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
             ? undefined
             : handleOpenConversationWindow
         }
+        onOpenTerminalAtCwd={previewMode ? undefined : onOpenTerminalAtCwd}
+        terminalFallbackCwd={terminalFallbackCwd}
         onWorkspaceFileReferencesAdded={
           previewMode ? undefined : trackWorkspaceFileReferences
         }

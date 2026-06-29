@@ -652,6 +652,13 @@ activity data source:
 - account or user-project lookup
 - local file picking, local file reading, and batch export helpers
 
+AgentGUI may expose narrow host capability callbacks for workspace-level
+affordances that are triggered from the node UI but executed by the desktop host.
+For example, the Codex/Claude Code `Cmd+J` terminal shortcut resolves its cwd in
+the AgentGUI node from active conversation cwd, selected project, then host
+fallback cwd, but the actual terminal node launch stays in the desktop workbench
+adapter.
+
 ### Conversation Projection
 
 Projection code converts runtime/session state into renderable view models.
