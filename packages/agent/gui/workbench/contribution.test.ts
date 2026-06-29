@@ -105,6 +105,56 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
+  it("uses browser-loadable packaged icons in the workbench header", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      dockIconUrls: {
+        codex: "tutti-asset://agent/codex.png"
+      },
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+
+    render(
+      contribution.nodes?.[0]?.renderHeader?.({
+        activation: null,
+        defaultActions: null,
+        displayMode: "floating",
+        dragHandleProps: {},
+        externalNodeState: null,
+        externalWorkspaceState: null,
+        instanceId: "agent-gui:codex:panel:test-1",
+        instanceKey: null,
+        isFocused: true,
+        node: {
+          data: {
+            runtimeNodeState: null
+          },
+          displayMode: "floating",
+          frame: { height: 560, width: 1040, x: 0, y: 0 },
+          id: "agent-gui-node-1",
+          title: "Codex"
+        },
+        surfaceSize: { height: 800, width: 1200 },
+        windowActions: {
+          applyQuickLayout: () => {},
+          close: () => {},
+          focus: () => {},
+          minimize: () => {},
+          resize: () => {},
+          toggleDisplayMode: () => {}
+        }
+      } as never) ?? null
+    );
+
+    const headerIcon = screen.getByText("Codex")
+      .previousElementSibling as HTMLImageElement | null;
+    expect(headerIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
+    expect(headerIcon).not.toHaveAttribute(
+      "src",
+      "tutti-asset://agent/codex.png"
+    );
+  });
+
   it("opens at the default width and 70 percent height when the workbench area can fit the default frame", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
       frame: { height: 560, width: 1040, x: 140, y: 48 },
@@ -486,6 +536,13 @@ describe("agent GUI workbench contribution copy", () => {
       "agent-gui-toggle-conversation-rail"
     );
     expect(screen.getByText("Codex")).toBeInTheDocument();
+    const headerIcon = screen.getByText("Codex")
+      .previousElementSibling as HTMLImageElement | null;
+    expect(headerIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
+    expect(headerIcon).toHaveAttribute(
+      "data-agent-gui-workbench-header-icon",
+      "true"
+    );
     expect(screen.getByText("Codex").nextElementSibling).toBe(toggleButton);
     expect(toggleButton.nextElementSibling).toBe(newConversationButton);
     expect(toggleButton).toHaveClass("text-[var(--text-secondary)]");

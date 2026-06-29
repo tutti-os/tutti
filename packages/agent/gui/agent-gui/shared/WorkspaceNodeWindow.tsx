@@ -56,6 +56,7 @@ export interface WorkspaceNodeWindowProps {
   appearance?: "window" | "embedded";
   children: ReactNode | ((frame: WorkspaceNodeWindowRenderFrame) => ReactNode);
   customHeader?: ReactNode;
+  titleIcon?: ReactNode;
   titleAccessory?: ReactNode;
   headerAccessory?: ReactNode;
   controlStartAccessory?: ReactNode;
@@ -92,6 +93,7 @@ export function WorkspaceNodeWindow({
   appearance = "window",
   children,
   customHeader,
+  titleIcon,
   titleAccessory,
   headerAccessory,
   controlStartAccessory,
@@ -228,6 +230,14 @@ export function WorkspaceNodeWindow({
             data-workspace-node-window-title="true"
             title={title}
           >
+            {titleIcon ? (
+              <span
+                className="workspace-node-window__title-icon inline-flex flex-none items-center"
+                data-workspace-node-window-title-icon="true"
+              >
+                {titleIcon}
+              </span>
+            ) : null}
             <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
               {title}
             </span>

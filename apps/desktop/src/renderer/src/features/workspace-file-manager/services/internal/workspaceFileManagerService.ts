@@ -206,6 +206,16 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     });
   }
 
+  async openCanvasFilePreview(
+    workspaceID: string,
+    target: Parameters<WorkspaceFileManagerCanvasPreviewLauncher>[0]
+  ): Promise<boolean> {
+    return (
+      (await this.canvasFilePreviewLaunchers.get(workspaceID)?.(target)) ===
+      true
+    );
+  }
+
   setCanvasFilePreviewLauncher(
     workspaceID: string,
     launcher: WorkspaceFileManagerCanvasPreviewLauncher | null
@@ -278,10 +288,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     workspaceID: string,
     target: Parameters<WorkspaceFileManagerCanvasPreviewLauncher>[0]
   ): Promise<boolean> {
-    return (
-      (await this.canvasFilePreviewLaunchers.get(workspaceID)?.(target)) ===
-      true
-    );
+    return this.openCanvasFilePreview(workspaceID, target);
   }
 
   private notifyHandledMutationError(

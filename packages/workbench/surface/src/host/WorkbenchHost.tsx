@@ -179,6 +179,8 @@ export function WorkbenchHost({
       }
       resolveDockPreviewCacheKey={surfaceRenderers.resolveDockPreviewCacheKey}
       resolveFullscreenHeaderMode={surfaceRenderers.resolveFullscreenHeaderMode}
+      resolveWindowSurfaceLayer={surfaceRenderers.resolveWindowSurfaceLayer}
+      resolveWindowZIndex={surfaceRenderers.resolveWindowZIndex}
       resolveDockAnchorKey={surfaceRenderers.resolveDockAnchorKey}
       shortcutsEnabled={shortcutsEnabled}
       shouldCaptureNodePreviewImage={

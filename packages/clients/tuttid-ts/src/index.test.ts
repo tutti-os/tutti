@@ -844,6 +844,87 @@ test("shared tuttid client loads agent provider composer options", async () => {
   } satisfies AgentProviderComposerOptionsResponse);
 });
 
+test("shared tuttid client loads app factory provider composer options", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+  let requestBody: unknown;
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+      requestBody = await request.json();
+
+      return new Response(
+        JSON.stringify({
+          effectiveSettings: {
+            model: "sonnet",
+            permissionModeId: "default",
+            planMode: false,
+            reasoningEffort: "high"
+          },
+          modelConfig: {
+            configurable: true,
+            currentValue: "sonnet",
+            defaultValue: "sonnet",
+            options: [{ id: "sonnet", label: "Sonnet", value: "sonnet" }]
+          },
+          permissionConfig: {
+            configurable: true,
+            defaultValue: "default",
+            modes: [
+              {
+                id: "default",
+                label: "Ask for approval",
+                semantic: "ask-before-write"
+              }
+            ]
+          },
+          provider: "claude-code",
+          reasoningConfig: {
+            configurable: true,
+            currentValue: "high",
+            defaultValue: "high",
+            options: [{ id: "high", label: "High", value: "high" }]
+          },
+          runtimeContext: {},
+          skills: [],
+          capabilityCatalog: []
+        } satisfies AgentProviderComposerOptionsResponse),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  const result = await client.getWorkspaceAppFactoryProviderComposerOptions(
+    "workspace-1",
+    "claude-code",
+    {
+      settings: {
+        reasoningEffort: "high"
+      }
+    }
+  );
+
+  assert.equal(requestMethod, "POST");
+  assert.equal(
+    requestPath,
+    "/v1/workspaces/workspace-1/app-factory/providers/claude-code/composer-options"
+  );
+  assert.deepEqual(requestBody, {
+    settings: {
+      reasoningEffort: "high"
+    }
+  });
+  assert.equal(result.provider, "claude-code");
+  assert.equal(result.effectiveSettings.model, "sonnet");
+});
+
 test("shared tuttid client probes agent providers", async () => {
   let requestMethod = "";
   let requestPath = "";

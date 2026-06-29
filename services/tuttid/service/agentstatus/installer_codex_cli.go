@@ -47,13 +47,18 @@ func (s Service) runCodexCLILatestInstaller(
 	if err != nil {
 		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
 	}
-	command := joinShellCommand([]string{npmPath, "install", "-g", "--prefix", filepath.Dir(installBinDir), "@openai/codex", "--include=optional"})
+	installPrefix := filepath.Dir(installBinDir)
+	command := joinShellCommand([]string{npmPath, "install", "-g", "--prefix", installPrefix, "@openai/codex", "--include=optional"})
 	baseEnv := s.commandResolver().Env(nil)
+	// Pin a dedicated, tutti-owned npm cache instead of the user's global ~/.npm,
+	// which on some machines holds root-owned files that make every user-mode npm
+	// install fail with EACCES before any registry is hit.
+	baseEnv = withAgentNPMCache(baseEnv, filepath.Join(installPrefix, agentNPMCacheDirName))
 	registries := s.agentNPMRegistries()
 	var result InstallCommandResult
 	for i, registry := range registries {
 		registryDisplay := displayNPMRegistry(registry)
-		setActiveAction("codex", ActiveAction{
+		setActiveAction(ctx, "codex", ActiveAction{
 			ID:         ActionInstall,
 			Status:     "running",
 			Step:       "install",
@@ -65,12 +70,12 @@ func (s Service) runCodexCLILatestInstaller(
 			Command: command,
 			Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
 			OnStdout: func(output string) {
-				appendActiveActionStdout("codex", output)
+				appendActiveActionStdout(ctx, "codex", output)
 			},
 		})
 		cancel()
 		if err == nil && result.ExitCode == 0 {
-			setActiveAction("codex", ActiveAction{
+			setActiveAction(ctx, "codex", ActiveAction{
 				ID:         ActionInstall,
 				Status:     "running",
 				Step:       "verify",

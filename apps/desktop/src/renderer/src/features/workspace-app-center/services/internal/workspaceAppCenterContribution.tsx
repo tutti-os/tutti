@@ -133,6 +133,7 @@ export function createWorkspaceAppCenterDockEntries(input: {
         createWorkspaceAppDockEntry({
           app: projection.app,
           captureWebviewPreview: input.captureWebviewPreview,
+          clickBehavior: projection.clickBehavior,
           index,
           launchEnabled: projection.launchEnabled,
           state: projection.state
@@ -173,6 +174,7 @@ function createWorkspaceAppDockEntry(input: {
   captureWebviewPreview?: (
     nodeId: string
   ) => Promise<string | null> | string | null;
+  clickBehavior?: WorkbenchHostDockEntry["clickBehavior"];
   index: number;
   launchEnabled: boolean;
   state?: WorkbenchHostDockEntry["state"];
@@ -186,6 +188,7 @@ function createWorkspaceAppDockEntry(input: {
             input.captureWebviewPreview?.(node.id) ?? null
         }
       : {}),
+    ...(input.clickBehavior ? { clickBehavior: input.clickBehavior } : {}),
     icon: createWorkspaceAppDockIcon(input.app),
     id: dockEntryId,
     instanceMode: "single",

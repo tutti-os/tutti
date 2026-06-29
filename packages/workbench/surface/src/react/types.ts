@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import type { WorkbenchController } from "../store/types.ts";
 import type {
   WorkbenchFrame,
@@ -74,6 +74,25 @@ export interface WorkbenchResolveWindowChromeModeContext<TData = unknown> {
 export type WorkbenchResolveWindowChromeMode<TData = unknown> = (
   context: WorkbenchResolveWindowChromeModeContext<TData>
 ) => WorkbenchWindowChromeMode;
+
+export type WorkbenchWindowSurfaceLayer = "default" | "dialog-popover";
+
+export interface WorkbenchResolveWindowSurfaceLayerContext<TData = unknown> {
+  node: WorkbenchNode<TData>;
+}
+
+export type WorkbenchResolveWindowSurfaceLayer<TData = unknown> = (
+  context: WorkbenchResolveWindowSurfaceLayerContext<TData>
+) => WorkbenchWindowSurfaceLayer;
+
+export interface WorkbenchResolveWindowZIndexContext<TData = unknown> {
+  baseZIndex: number;
+  node: WorkbenchNode<TData>;
+}
+
+export type WorkbenchResolveWindowZIndex<TData = unknown> = (
+  context: WorkbenchResolveWindowZIndexContext<TData>
+) => NonNullable<CSSProperties["zIndex"]>;
 
 export type WorkbenchResolveFullscreenHeaderMode<TData = unknown> = (
   context: WorkbenchResolveWindowChromeModeContext<TData>

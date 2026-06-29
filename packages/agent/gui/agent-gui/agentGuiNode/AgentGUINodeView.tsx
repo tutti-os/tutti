@@ -13,7 +13,19 @@ import {
 } from "react";
 import { useSnapshot } from "valtio";
 import { proxy } from "valtio/vanilla";
-import { ChevronRight, ExternalLink, Info, Wrench } from "lucide-react";
+import {
+  ChevronRight,
+  ExternalLink,
+  Info,
+  Settings,
+  Wrench
+} from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from "../../app/renderer/components/ui/popover";
+import { AgentUsageMeter } from "./AgentUsageMeter";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
 import type {
   ReferenceLocateTarget,
@@ -40,6 +52,7 @@ import {
 } from "@tutti-os/ui-system";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
+import type { WorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
 import { BareIconButton, ScrollArea } from "@tutti-os/ui-system/components";
 import { Button } from "../../app/renderer/components/ui/button";
 import {
@@ -216,6 +229,7 @@ export interface AgentGUIViewLabels {
   modelContextWindowSuffix: string;
   modelTooltipVersionLabel: string;
   defaultModel: string;
+  loadingOptions: string;
   inheritedUnavailable: string;
   reasoningLabel: string;
   reasoningDegreeLabel: string;
@@ -260,6 +274,7 @@ export interface AgentGUIViewLabels {
   emptyProvider?: string;
   conversations: string;
   newConversation: string;
+  agentConfig: string;
   agentEnvSetup: string;
   noConversations: string;
   emptyProjectConversations: string;
@@ -416,10 +431,12 @@ interface AgentGUINodeViewProps {
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
   previewMode?: boolean;
-  showProjectSelector?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   actions: {
-    createConversation: (options?: { projectPath?: string | null }) => void;
+    createConversation: (options?: {
+      projectPath?: string | null;
+      source?: string;
+    }) => void;
     selectConversation: (agentSessionId: string) => void;
     submitPrompt: (
       content: AgentPromptContentBlock[],
@@ -468,8 +485,10 @@ interface AgentGUINodeViewProps {
   onConversationRailWidthChanged: (widthPx: number) => void;
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
+  workspaceFileManagerCopy?: WorkspaceFileManagerI18nRuntime | null;
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
+  selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
@@ -788,7 +807,6 @@ export function AgentGUINodeView({
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
   previewMode = false,
-  showProjectSelector = true,
   onAgentProviderLogin,
   actions,
   conversationRailCollapsed,
@@ -801,8 +819,10 @@ export function AgentGUINodeView({
   onConversationRailWidthChanged,
   labels,
   workspaceUserProjectI18n,
+  workspaceFileManagerCopy = null,
   workspaceFileReferenceAdapter = null,
   onOpenConversationWindow,
+  selectProjectDirectory,
   workspaceFileReferenceCopy = null,
   onRequestGitBranches = null,
   contextMentionProviders,
@@ -1007,18 +1027,20 @@ export function AgentGUINodeView({
       ? composerFocusRequestSequence
       : (composerFocusRequestSequence ?? 0) + localComposerFocusRequestSequence;
   const requestCreateConversation = useCallback(
-    (options?: { projectPath?: string | null }) => {
+    (options?: { projectPath?: string | null; source?: string }) => {
       if (previewMode) {
         return;
       }
-      if (options) {
+      const source = options?.source;
+      if (options && "projectPath" in options) {
         createConversationAction(options);
       } else if (viewModel.composerSettings.selectedProjectPath) {
         createConversationAction({
-          projectPath: viewModel.composerSettings.selectedProjectPath
+          projectPath: viewModel.composerSettings.selectedProjectPath,
+          source: source ?? "selected_project"
         });
       } else {
-        createConversationAction();
+        createConversationAction({ source: source ?? "rail_toolbar" });
       }
       setLocalComposerFocusRequestSequence((current) => current + 1);
     },
@@ -1040,7 +1062,7 @@ export function AgentGUINodeView({
     handledNewConversationRequestSequenceRef.current =
       newConversationRequestSequence;
     if (!createConversationDisabled) {
-      requestCreateConversation();
+      requestCreateConversation({ source: "external_request" });
     }
   }, [
     createConversationDisabled,
@@ -1211,11 +1233,11 @@ export function AgentGUINodeView({
         labels,
         workspaceUserProjectI18n,
         uiLanguage,
-        showProjectSelector,
         previewMode,
         createConversationDisabled,
         openclawGateway,
         isCollapsed: conversationRailCollapsed,
+        slashStatusLimits,
         onCreateConversation: requestCreateConversation,
         onOpenAgentEnvSetup: openAgentEnvSetup,
         onRetryOpenclawGateway: retryOpenclawGateway,
@@ -1227,7 +1249,8 @@ export function AgentGUINodeView({
         onCancelDeleteConversation: cancelDeleteConversation,
         onConfirmDeleteConversation: confirmDeleteConversation,
         onOpenProjectFiles: openProjectFiles,
-        onOpenConversationWindow: openConversationWindow
+        onOpenConversationWindow: openConversationWindow,
+        selectProjectDirectory
       }),
       [
         cancelDeleteConversation,
@@ -1246,7 +1269,8 @@ export function AgentGUINodeView({
         requestDeleteConversation,
         retryOpenclawGateway,
         selectConversation,
-        showProjectSelector,
+        selectProjectDirectory,
+        slashStatusLimits,
         toggleConversationPinned,
         uiLanguage,
         viewModel.activeConversationId,
@@ -1338,12 +1362,12 @@ export function AgentGUINodeView({
             isAgentProviderReady={isAgentProviderReady}
             slashStatusLimits={slashStatusLimits}
             slashStatusLimitsLoading={slashStatusLimitsLoading}
-            showProjectSelector={showProjectSelector}
             onLinkAction={onLinkAction}
             capabilityMenuState={capabilityMenuState}
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
             onAgentProviderLogin={onAgentProviderLogin}
             onRequestWorkspaceReferences={requestWorkspaceReferences}
+            selectProjectDirectory={selectProjectDirectory}
             onRequestGitBranches={onRequestGitBranches}
             contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={effectiveWorkspaceAppIcons}
@@ -1360,6 +1384,7 @@ export function AgentGUINodeView({
           }
           initialTarget={workspaceReferencePickerTarget}
           isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
+          fileManagerCopy={workspaceFileManagerCopy ?? undefined}
           open={workspaceReferencePickerOpen}
           workspaceId={viewModel.workspaceId}
           onClose={closeWorkspaceReferencePicker}
@@ -1399,7 +1424,6 @@ interface AgentGUIDetailPaneProps {
   isAgentProviderReady: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
-  showProjectSelector: boolean;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
   onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
@@ -1409,6 +1433,7 @@ interface AgentGUIDetailPaneProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
+  selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -1493,12 +1518,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   isAgentProviderReady,
   slashStatusLimits,
   slashStatusLimitsLoading,
-  showProjectSelector,
   onLinkAction,
   capabilityMenuState,
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
+  selectProjectDirectory,
   onRequestGitBranches,
   contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
@@ -1811,6 +1836,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       modelContextWindowSuffix: labels.modelContextWindowSuffix,
       modelTooltipVersionLabel: labels.modelTooltipVersionLabel,
       defaultModel: labels.defaultModel,
+      loadingOptions: labels.loadingOptions,
       inheritedUnavailable: labels.inheritedUnavailable,
       loadingConversation: labels.loadingConversation,
       reasoningLabel: labels.reasoningLabel,
@@ -1890,6 +1916,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       usageContextWindowLabel: labels.usageContextWindowLabel,
       usageTokensLabel: labels.usageTokensLabel,
       usageLimitsLabel: labels.usageLimitsLabel,
+      usageCompactAction: labels.usageCompactAction,
       fileMentionPalette: labels.fileMentionPalette,
       fileMentionLoading: labels.fileMentionLoading,
       fileMentionEmpty: labels.fileMentionEmpty,
@@ -1988,6 +2015,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.usageChipLabel,
       labels.usageContextWindowLabel,
       labels.usageLimitsLabel,
+      labels.usageCompactAction,
       labels.usagePopoverTitle,
       labels.usageTokensLabel,
       labels.stop,
@@ -2027,6 +2055,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const stableRequestWorkspaceReferences = useOptionalStableEventCallback(
     onRequestWorkspaceReferences
   );
+  const stableSelectProjectDirectory = useOptionalStableEventCallback(
+    selectProjectDirectory
+  );
   const stableRequestGitBranches =
     useOptionalStableEventCallback(onRequestGitBranches);
   const authLogin = useOptionalStableEventCallback(onAgentProviderLogin);
@@ -2053,6 +2084,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       draftContent: viewModel.draftContent,
       availableCommands: viewModel.availableCommands,
       hasCompactableContext: viewModel.hasSentUserMessage,
+      compactSupported: viewModel.compactSupported,
       availableSkills: viewModel.availableSkills,
       disabled: composerDisabled,
       disabledReason: composerDisabledReason,
@@ -2075,7 +2107,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       composerFocusRequestSequence,
       isActive,
       promptImagesSupported: viewModel.promptImagesSupported,
-      showProjectSelector,
       isInterrupting: viewModel.isInterrupting,
       isSendingTurn: isComposerSending,
       isSubmittingPrompt: viewModel.isRespondingApproval,
@@ -2095,6 +2126,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onCapabilitySettingsRequest,
       onLinkAction: stableLinkAction,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
+      selectProjectDirectory: stableSelectProjectDirectory,
       onRequestGitBranches: stableRequestGitBranches,
       contextMentionProviders
     }),
@@ -2119,7 +2151,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       removeQueuedPrompt,
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
-      showProjectSelector,
       showStopButton,
       slashStatus,
       submitDisabled,
@@ -2127,12 +2158,14 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       submitPrompt,
       stableLinkAction,
       stableRequestGitBranches,
+      stableSelectProjectDirectory,
       stableRequestWorkspaceReferences,
       updateComposerSettings,
       updateDraftContent,
       updateSelectedProjectPath,
       viewModel.availableCommands,
       viewModel.availableSkills,
+      viewModel.compactSupported,
       viewModel.composerSettings,
       viewModel.currentUserId,
       viewModel.data.provider,
@@ -2154,10 +2187,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const emptyHeroComposerProps = useMemo<AgentComposerProps>(
     () => ({
       ...bottomDockComposerProps,
-      compactSupported: viewModel.compactSupported,
       layoutMode: "hero"
     }),
-    [bottomDockComposerProps, viewModel.compactSupported]
+    [bottomDockComposerProps]
   );
   const bottomDockStoreState = useMemo<AgentGUIBottomDockStoreSnapshot>(
     () => ({
@@ -2858,18 +2890,22 @@ interface AgentGUIConversationRailPaneProps {
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
-  showProjectSelector: boolean;
   previewMode: boolean;
   createConversationDisabled: boolean;
   openclawGateway: OpenclawGatewayViewModel | null;
   isCollapsed: boolean;
-  onCreateConversation: (options?: { projectPath?: string | null }) => void;
+  slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
+  onCreateConversation: (options?: {
+    projectPath?: string | null;
+    source?: string;
+  }) => void;
   onOpenAgentEnvSetup: () => void;
   onRetryOpenclawGateway: () => void;
   onSelectConversation: (agentSessionId: string) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
   onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
+  selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRemoveProject: (path: string) => void;
   onConfirmDeleteProjectConversations: (path?: string) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
@@ -2939,7 +2975,6 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.labels === next.labels &&
     current.workspaceUserProjectI18n === next.workspaceUserProjectI18n &&
     current.uiLanguage === next.uiLanguage &&
-    current.showProjectSelector === next.showProjectSelector &&
     current.previewMode === next.previewMode &&
     current.createConversationDisabled === next.createConversationDisabled &&
     current.openclawGateway === next.openclawGateway &&
@@ -2951,6 +2986,7 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.onToggleConversationPinned === next.onToggleConversationPinned &&
     current.onOpenProjectFiles === next.onOpenProjectFiles &&
     current.onOpenConversationWindow === next.onOpenConversationWindow &&
+    current.selectProjectDirectory === next.selectProjectDirectory &&
     current.onRemoveProject === next.onRemoveProject &&
     current.onConfirmDeleteProjectConversations ===
       next.onConfirmDeleteProjectConversations &&
@@ -3146,11 +3182,11 @@ const AgentGUIConversationRailPane = memo(
     labels,
     workspaceUserProjectI18n,
     uiLanguage,
-    showProjectSelector,
     previewMode,
     createConversationDisabled,
     openclawGateway,
     isCollapsed,
+    slashStatusLimits,
     onCreateConversation,
     onOpenAgentEnvSetup,
     onRetryOpenclawGateway,
@@ -3158,6 +3194,7 @@ const AgentGUIConversationRailPane = memo(
     onToggleConversationPinned,
     onOpenProjectFiles,
     onOpenConversationWindow,
+    selectProjectDirectory,
     onRemoveProject,
     onConfirmDeleteProjectConversations,
     onRequestDeleteConversation,
@@ -3353,7 +3390,6 @@ const AgentGUIConversationRailPane = memo(
                 section.kind === "project" ? section.label : "";
               const isProjectSection = section.kind === "project";
               const showProjectRailHeader =
-                showProjectSelector &&
                 !conversationQuery.trim() &&
                 section.kind !== "pinned" &&
                 (sectionIndex === 0 ||
@@ -3369,6 +3405,7 @@ const AgentGUIConversationRailPane = memo(
                   {showProjectRailHeader ? (
                     <AgentGUIProjectRailHeader
                       labels={labels}
+                      selectProjectDirectory={selectProjectDirectory}
                       workspaceUserProjectI18n={workspaceUserProjectI18n}
                     />
                   ) : null}
@@ -3406,17 +3443,62 @@ const AgentGUIConversationRailPane = memo(
           )}
         </ScrollArea>
         <div className="shrink-0 border-t border-[var(--border-1)] px-2 py-1.5">
-          <Button
-            type="button"
-            variant="ghost"
-            className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            title={labels.agentEnvSetup}
-            disabled={previewMode}
-            onClick={() => onOpenAgentEnvSetup()}
-          >
-            <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
-            <span>{labels.agentEnvSetup}</span>
-          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                title={labels.agentConfig}
+                disabled={previewMode}
+              >
+                <Settings aria-hidden="true" size={16} strokeWidth={1.8} />
+                <span>{labels.agentConfig}</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="start"
+              className="w-[300px] max-w-[calc(100vw-32px)] gap-3 text-xs"
+              data-testid="agent-gui-config-menu"
+            >
+              <div className="flex min-w-0 flex-col gap-3">
+                {slashStatusLimits.length > 0 ? (
+                  <>
+                    <div className="flex min-w-0 flex-col gap-2">
+                      <span className="text-[13px] font-semibold leading-4">
+                        {labels.slashStatusLimits}
+                      </span>
+                      {slashStatusLimits.map((limit) => (
+                        <AgentUsageMeter
+                          key={limit.id}
+                          label={limit.label}
+                          value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
+                          percent={
+                            typeof limit.percentRemaining === "number" &&
+                            Number.isFinite(limit.percentRemaining)
+                              ? limit.percentRemaining
+                              : null
+                          }
+                        />
+                      ))}
+                    </div>
+                    <span className="h-px bg-[var(--border-1)]" />
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  data-testid="agent-gui-config-env-setup"
+                  className="nodrag -mx-1 flex w-[calc(100%+0.5rem)] items-center gap-2 rounded-[6px] px-2 py-1 text-[13px] text-[var(--text-secondary)] transition-colors hover:bg-background-hover hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [-webkit-app-region:no-drag]"
+                  disabled={previewMode}
+                  onClick={() => onOpenAgentEnvSetup()}
+                >
+                  <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
+                  <span>{labels.agentEnvSetup}</span>
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
         <ConfirmationDialog
           cancelLabel={labels.cancel}
@@ -3489,7 +3571,10 @@ interface AgentGUIConversationRailSectionProps {
   labels: AgentGUIViewLabels;
   uiLanguage: UiLanguage;
   registerItemElement: (itemId: string, element: HTMLDivElement | null) => void;
-  onCreateConversation: (options?: { projectPath?: string | null }) => void;
+  onCreateConversation: (options?: {
+    projectPath?: string | null;
+    source?: string;
+  }) => void;
   onToggleProjectSectionCollapsed: (sectionId: string) => void;
   setPendingProjectAction: (action: AgentGUIProjectActionDialog | null) => void;
   onSelectConversation: (agentSessionId: string) => void;
@@ -3563,10 +3648,13 @@ const AgentGUIConversationRailSection = memo(
       : labels.newConversation;
     const handleCreateConversation = useCallback(() => {
       if (projectPath) {
-        onCreateConversation({ projectPath });
+        onCreateConversation({ projectPath, source: "project_section" });
         return;
       }
-      onCreateConversation({ projectPath: null });
+      onCreateConversation({
+        projectPath: null,
+        source: "unscoped_section"
+      });
     }, [onCreateConversation, projectPath]);
 
     return (
@@ -3976,12 +4064,14 @@ const AgentGUIConversationRailItem = memo(
 
 function AgentGUIProjectRailHeader({
   labels,
+  selectProjectDirectory,
   workspaceUserProjectI18n
 }: {
   labels: Pick<
     AgentGUIViewLabels,
     "projectRailCreateProject" | "projectRailLinkExistingProject"
   >;
+  selectProjectDirectory?: () => Promise<{ path: string } | null>;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
 }): React.JSX.Element {
   "use memo";
@@ -3991,10 +4081,15 @@ function AgentGUIProjectRailHeader({
       agentHostApi.userProjects
         ? {
             ...agentHostApi.userProjects,
-            selectDirectory: agentHostApi.workspace.selectDirectory
+            selectDirectory:
+              selectProjectDirectory ?? agentHostApi.workspace.selectDirectory
           }
         : null,
-    [agentHostApi.userProjects, agentHostApi.workspace.selectDirectory]
+    [
+      agentHostApi.userProjects,
+      agentHostApi.workspace.selectDirectory,
+      selectProjectDirectory
+    ]
   );
 
   return (

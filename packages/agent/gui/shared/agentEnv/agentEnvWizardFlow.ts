@@ -12,11 +12,30 @@ export type AgentSetupStageId =
   | "login"
   | "ready";
 
+export type StageDetailToken =
+  | { kind: "text"; text: string }
+  | { kind: "version-floor"; current: string; required: string }
+  | { kind: "version-mismatch"; current: string; required: string };
+
+// Whether an availability reason code means the CLI itself is on an unsupported
+// version — as opposed to an ADAPTER version mismatch. The adapter reason code
+// `acp_adapter_version_mismatch` also contains the substring "version", so a
+// plain `includes("version")` test wrongly paints the CLI step red ("版本不受支持")
+// when only the adapter is mismatched. Require "version" but exclude any adapter
+// reason so the CLI and adapter stages stay independent.
+export function reasonCodeIndicatesCliVersionUnsupported(
+  reasonCode: string | null | undefined
+): boolean {
+  const lower = (reasonCode ?? "").toLowerCase();
+  return lower.includes("version") && !lower.includes("adapter");
+}
+
 export interface AgentSetupStage {
   id: AgentSetupStageId;
   label: string;
   status: CodexSetupStepStatus;
-  detail: string | null;
+  detail: StageDetailToken | null;
+  authMethod?: string | null;
 }
 
 export interface AgentSetupStageLabels {
@@ -52,10 +71,11 @@ export interface DeriveAgentSetupStagesInput {
    * null is treated as "don't block".
    */
   networkReachable: boolean | null;
-  cliVersionDetail: string | null;
-  adapterDetail: string | null;
-  accountDetail: string | null;
-  networkDetail: string | null;
+  cliVersionDetail: StageDetailToken | null;
+  adapterDetail: StageDetailToken | null;
+  accountDetail: StageDetailToken | null;
+  authMethod: string | null;
+  networkDetail: StageDetailToken | null;
   labels: AgentSetupStageLabels;
 }
 
@@ -153,7 +173,8 @@ export function deriveAgentSetupStages(
       id: "login",
       label: input.labels.login,
       status: loginStatus,
-      detail: input.accountDetail
+      detail: input.accountDetail,
+      authMethod: input.authMethod
     },
     {
       id: "ready",

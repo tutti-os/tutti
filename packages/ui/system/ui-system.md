@@ -244,6 +244,10 @@ host-owned caller logic.
 ## Token Rules
 
 - CSS variables are the source of truth for theme values
+- Shared theme styles must support both host-managed
+  `html[data-theme="light" | "dark"]` and workspace-app CSS
+  `prefers-color-scheme`; explicit `data-theme` values should override system
+  preference when both are present.
 - Tailwind utilities should consume the same token layer rather than defining a parallel color system
 - prefer semantic token names such as `background`, `foreground`, `primary`, `muted`, and `destructive` over raw palette leakage in public APIs
 - keep tutti-specific token extensions additive and minimal
@@ -307,6 +311,8 @@ The current shared global `z-index` tokens are:
   Dialog backdrops that should dim or block panel surfaces beneath them.
 - `--z-dialog`
   Dialog content rendered above dialog backdrops.
+- `--z-dialog-popover`
+  Floating controls or host-owned preview windows that must stay above dialog content and backdrop while remaining below tooltips.
 - `--z-tooltip`
   Short hover/focus guidance that should stay above panels, drawers, and their popovers so clipped text can be inspected across overlay boundaries.
 

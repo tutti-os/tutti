@@ -20,6 +20,7 @@ import type {
   WorkbenchFullscreenHeaderMode,
   WorkbenchRenderWindowActions,
   WorkbenchRenderWindowHeader,
+  WorkbenchResolveWindowZIndex,
   WorkbenchSurfacePresentation,
   WorkbenchWindowChromeMode
 } from "./types.ts";
@@ -36,6 +37,7 @@ export interface WorkbenchWindowFrameProps<TData = unknown> {
   presentation?: WorkbenchSurfacePresentation | null;
   renderActions?: WorkbenchRenderWindowActions<TData>;
   renderHeader?: WorkbenchRenderWindowHeader<TData>;
+  resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
   fullscreenHeaderMode?: WorkbenchFullscreenHeaderMode;
   windowChromeMode?: WorkbenchWindowChromeMode;
   windowChromeI18n?: WorkbenchWindowChromeI18nRuntime;
@@ -94,13 +96,19 @@ export function WorkbenchWindowFrame<TData>({
   presentation = null,
   renderActions,
   renderHeader,
+  resolveWindowZIndex,
   windowChromeMode = "system",
   windowChromeI18n
 }: WorkbenchWindowFrameProps<TData>) {
   const controller = useWorkbenchController<TData>();
-  const zIndex = useWorkbenchSelector((state) =>
+  const baseZIndex = useWorkbenchSelector((state) =>
     selectWorkbenchNodeZIndex(state, node.id)
   );
+  const zIndex =
+    resolveWindowZIndex?.({
+      baseZIndex,
+      node
+    }) ?? baseZIndex;
   const isFocused = useWorkbenchSelector(
     (state) => selectFocusedWorkbenchNode(state)?.id === node.id
   );

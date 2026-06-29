@@ -242,6 +242,12 @@ export interface AgentActivityUpdatedApplyResult {
   statePatch: AgentActivityStatePatch | null;
 }
 
+export interface AgentActivityProviderTargetRef {
+  kind: string;
+  provider: string;
+  [key: string]: unknown;
+}
+
 export interface AgentActivityCreateSessionInput {
   workspaceId: string;
   agentSessionId?: string | null;
@@ -254,6 +260,11 @@ export interface AgentActivityCreateSessionInput {
   planMode?: boolean | null;
   permissionModeId?: string | null;
   provider: string;
+  /**
+   * Opaque host-owned launch target reference. It is not authority; adapters
+   * must re-authenticate and resolve it before using any concrete invocation.
+   */
+  providerTargetRef?: AgentActivityProviderTargetRef | null;
   reasoningEffort?: string | null;
   speed?: string | null;
   title?: string | null;

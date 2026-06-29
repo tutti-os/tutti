@@ -98,7 +98,10 @@ export interface WorkspaceUserProjectSelectProps {
   onProjectMissingChange?: (isMissing: boolean) => void;
   onProjectPathChange: (
     path: string | null,
-    metadata?: { action: WorkspaceUserProjectSelectChangeAction }
+    metadata?: {
+      action: WorkspaceUserProjectSelectChangeAction;
+      project?: WorkspaceUserProject;
+    }
   ) => void;
   projectLocked?: boolean;
   renderAddProjectIcon?: () => ReactNode;
@@ -227,6 +230,11 @@ export function WorkspaceUserProjectSelect({
     () => resolveWorkspaceUserProjectSelectLabels(i18n, labels),
     [i18n, labels]
   );
+  const createProjectNameDescription =
+    resolvedLabels.createProjectNameLabel.trim();
+  const createProjectNameInputLabel =
+    createProjectNameDescription ||
+    resolvedLabels.createProjectNamePlaceholder.trim();
   const [apiProjects, setApiProjects] = useState<WorkspaceUserProject[]>([]);
   const [isApiLoading, setIsApiLoading] = useState(false);
   const [isApiUnavailable, setIsApiUnavailable] = useState(!effectiveApi);
@@ -265,7 +273,6 @@ export function WorkspaceUserProjectSelect({
     ? resolveWorkspaceUserProjectDisplayLabel(selectedProject)
     : "";
   const isSelectedNoProjectPath =
-    projectLocked &&
     Boolean(selectedPath) &&
     Boolean(effectiveApi?.isNoProjectPath?.({ path: selectedPath }));
   const shouldShowMissingProjectNotice = isSelectedPathMissing;
@@ -436,7 +443,7 @@ export function WorkspaceUserProjectSelect({
           upsertWorkspaceUserProject(current, project)
         );
         setHasPinnedNoProjectSelection(false);
-        onProjectPathChange(project.path, { action });
+        onProjectPathChange(project.path, { action, project });
         refreshPreparedSelection();
       } catch {
         setApiUnavailableUnlessService(setIsApiUnavailable, service);
@@ -462,7 +469,7 @@ export function WorkspaceUserProjectSelect({
       const project = await effectiveApi.create({ name });
       setApiProjects((current) => upsertWorkspaceUserProject(current, project));
       setHasPinnedNoProjectSelection(false);
-      onProjectPathChange(project.path, { action: "create_new" });
+      onProjectPathChange(project.path, { action: "create_new", project });
       setDraftProjectName("");
       setIsProjectDialogOpen(false);
       refreshPreparedSelection();
@@ -668,14 +675,14 @@ export function WorkspaceUserProjectSelect({
             <form className="grid gap-4" onSubmit={submitProjectDialog}>
               <DialogHeader>
                 <DialogTitle>{resolvedLabels.createProjectTitle}</DialogTitle>
-                <DialogDescription>
-                  {resolvedLabels.createProjectNameLabel}
-                </DialogDescription>
+                {createProjectNameDescription ? (
+                  <DialogDescription>
+                    {createProjectNameDescription}
+                  </DialogDescription>
+                ) : null}
               </DialogHeader>
               <label className="grid gap-1.5">
-                <span className="sr-only">
-                  {resolvedLabels.createProjectNameLabel}
-                </span>
+                <span className="sr-only">{createProjectNameInputLabel}</span>
                 <Input
                   autoFocus
                   className="h-10"
@@ -834,9 +841,11 @@ function createWorkspaceUserProjectApiAdapter(
     checkPath: hasWorkspaceUserProjectMethod(service, "checkProjectPath")
       ? ({ path }) => service.checkProjectPath!(path)
       : apiCheckPath,
-    create: hasWorkspaceUserProjectMethod(service, "createProject")
-      ? ({ name }) => service.createProject!(name)
-      : apiCreate,
+    create:
+      apiCreate ??
+      (hasWorkspaceUserProjectMethod(service, "createProject")
+        ? ({ name }) => service.createProject!(name)
+        : undefined),
     getDefaultSelection: hasWorkspaceUserProjectMethod(
       service,
       "getDefaultSelection"
@@ -857,9 +866,11 @@ function createWorkspaceUserProjectApiAdapter(
     )
       ? ({ path }) => service.rememberDefaultSelection!({ path })
       : apiRememberDefaultSelection,
-    selectDirectory: hasWorkspaceUserProjectMethod(service, "selectDirectory")
-      ? () => service.selectDirectory!()
-      : apiSelectDirectory,
+    selectDirectory:
+      apiSelectDirectory ??
+      (hasWorkspaceUserProjectMethod(service, "selectDirectory")
+        ? () => service.selectDirectory!()
+        : undefined),
     use: hasWorkspaceUserProjectMethod(service, "registerProjectPath")
       ? ({ path }) => service.registerProjectPath!(path)
       : apiUse

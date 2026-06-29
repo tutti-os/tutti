@@ -105,6 +105,77 @@ func TestControllerStartFailureCreatesFailedSessionAndVisibleErrorReport(t *test
 	}
 }
 
+func TestControllerStartPassesProviderTargetRefToAdapterSession(t *testing.T) {
+	t.Parallel()
+
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, nil)
+	ref := map[string]any{
+		"kind":          "sharedAgent",
+		"provider":      ProviderCodex,
+		"sharedAgentId": "agent-1",
+	}
+
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:            "room-1",
+		AgentSessionID:    "agent-session-1",
+		Provider:          ProviderCodex,
+		CWD:               "/workspace",
+		ProviderTargetRef: ref,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if adapter.started.ProviderTargetRef["kind"] != "sharedAgent" ||
+		adapter.started.ProviderTargetRef["sharedAgentId"] != "agent-1" {
+		t.Fatalf("adapter provider target ref = %#v, want shared agent ref", adapter.started.ProviderTargetRef)
+	}
+	if started.Session.ProviderTargetRef["kind"] != "sharedAgent" {
+		t.Fatalf("started provider target ref = %#v, want shared agent ref", started.Session.ProviderTargetRef)
+	}
+}
+
+func TestControllerStartDoesNotReuseSessionWithDifferentProviderTargetRef(t *testing.T) {
+	t.Parallel()
+
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, nil)
+
+	first, err := controller.Start(context.Background(), StartInput{
+		RoomID:   "room-1",
+		Provider: ProviderCodex,
+		CWD:      "/workspace",
+		ProviderTargetRef: map[string]any{
+			"kind":          "sharedAgent",
+			"provider":      ProviderCodex,
+			"sharedAgentId": "agent-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("first Start: %v", err)
+	}
+	second, err := controller.Start(context.Background(), StartInput{
+		RoomID:   "room-1",
+		Provider: ProviderCodex,
+		CWD:      "/workspace",
+		ProviderTargetRef: map[string]any{
+			"kind":          "sharedAgent",
+			"provider":      ProviderCodex,
+			"sharedAgentId": "agent-2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("second Start: %v", err)
+	}
+
+	if second.Session.AgentSessionID == first.Session.AgentSessionID {
+		t.Fatalf("second start reused session %q for a different provider target", second.Session.AgentSessionID)
+	}
+	if adapter.started.ProviderTargetRef["sharedAgentId"] != "agent-2" {
+		t.Fatalf("adapter provider target ref = %#v, want second target", adapter.started.ProviderTargetRef)
+	}
+}
+
 func TestControllerExecResumesExistingSessionWhenAdapterLiveSessionMissing(t *testing.T) {
 	t.Parallel()
 
@@ -1276,6 +1347,36 @@ func (streamingMessageOnlyAdapter) Exec(_ context.Context, session Session, _ []
 }
 
 func (streamingMessageOnlyAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+type recordingStartAdapter struct {
+	provider string
+	started  Session
+}
+
+func (a *recordingStartAdapter) Provider() string { return a.provider }
+
+func (a *recordingStartAdapter) Start(_ context.Context, session Session) ([]activityshared.Event, error) {
+	a.started = session
+	return []activityshared.Event{
+		newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil),
+	}, nil
+}
+
+func (*recordingStartAdapter) Resume(context.Context, Session) error {
+	return nil
+}
+
+func (*recordingStartAdapter) Close(context.Context, Session) error {
+	return nil
+}
+
+func (*recordingStartAdapter) Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (*recordingStartAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
 	return nil, nil
 }
 

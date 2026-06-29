@@ -91,6 +91,10 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if strings.Contains(string(codexAgents), `Skill(skill="issue-manager", args="<full mention URI>")`) {
 		t.Fatalf("codex AGENTS.md content = %q, want provider-neutral mention routing", string(codexAgents))
 	}
+	if strings.Contains(string(codexAgents), "CODEX_HOME/skills/<skill>/SKILL.md") ||
+		strings.Contains(string(codexAgents), "`workspace-app/SKILL.md`") {
+		t.Fatalf("codex AGENTS.md content = %q, want no guessed materialized skill paths", string(codexAgents))
+	}
 	if !strings.Contains(string(codexAgents), "# Host App Context") ||
 		!strings.Contains(string(codexAgents), "standard Markdown syntax, for example `![alt](/absolute/path.png)`") ||
 		!strings.Contains(string(codexAgents), "you MUST include that image in your final response using Markdown image syntax") ||
@@ -233,9 +237,16 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if !strings.Contains(string(workspaceAppSkill), "mention://workspace-app") ||
 		!strings.Contains(string(workspaceAppSkill), "appId") ||
-		!strings.Contains(string(workspaceAppSkill), "read the materialized sibling `tutti-cli/SKILL.md`") ||
+		!strings.Contains(string(workspaceAppSkill), "use the injected `tutti-cli` command reference") ||
+		!strings.Contains(string(workspaceAppSkill), "Do not derive filesystem paths from the plugin directory, plugin name, or skill slug") ||
 		!strings.Contains(string(workspaceAppSkill), "inherits the caller agent session working directory") {
 		t.Fatalf("workspace-app skill content = %q", string(workspaceAppSkill))
+	}
+	if strings.Contains(string(workspaceAppSkill), "read the materialized sibling `tutti-cli/SKILL.md`") {
+		t.Fatalf("workspace-app skill should not ask agents to guess sibling skill paths: %q", string(workspaceAppSkill))
+	}
+	if strings.Contains(string(workspaceAppSkill), "plugin root `tutti-cli/SKILL.md`") {
+		t.Fatalf("workspace-app skill should not anchor agents to plugin-root paths: %q", string(workspaceAppSkill))
 	}
 	appFactorySkill, err := os.ReadFile(filepath.Join(codexHome, "skills", "app-factory", "SKILL.md"))
 	if err != nil {
@@ -671,17 +682,21 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	if !strings.Contains(string(systemPrompt), "tutti issue list") {
 		t.Fatalf("claude system prompt content = %q", string(systemPrompt))
 	}
-	if !strings.Contains(string(systemPrompt), "First, if provider-native skills are visible") ||
+	if !strings.Contains(string(systemPrompt), "First use the relevant injected Tutti skill") ||
+		!strings.Contains(string(systemPrompt), "If a provider-native Skill tool is available, use the exact skill name exposed by the provider") ||
+		!strings.Contains(string(systemPrompt), "If no exact provider-native Skill tool is available") ||
 		!strings.Contains(string(systemPrompt), "Provider-native skill names may be namespaced") ||
 		!strings.Contains(string(systemPrompt), "Claude Code mention routing") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:issue-manager`") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:workspace-app`") ||
-		!strings.Contains(string(systemPrompt), `Skill(skill="issue-manager", args="<full mention URI>")`) ||
-		!strings.Contains(string(systemPrompt), `Skill(skill="workspace-app", args="<full mention URI>")`) ||
-		!strings.Contains(string(systemPrompt), `Skill(skill="tutti-cli", args="<full mention URI>")`) ||
-		!strings.Contains(string(systemPrompt), "Do not call Bash, Read, ls, WebFetch, browser, MCP lookup, file search, or raw CLI commands before this skill call") ||
+		!strings.Contains(string(systemPrompt), `Skill(skill="tutti-cli:workspace-app")`) ||
+		!strings.Contains(string(systemPrompt), "Do not call a plain skill name that is not visible") ||
+		!strings.Contains(string(systemPrompt), "Do not pass arguments to Skill") ||
+		!strings.Contains(string(systemPrompt), "the skill reads the mention URI from the current user turn") ||
+		!strings.Contains(string(systemPrompt), "Call the exact visible Skill tool for `workspace-app`") ||
+		!strings.Contains(string(systemPrompt), "fall back to that materialized skill file") ||
+		!strings.Contains(string(systemPrompt), "Do not guess a directory from the plain skill slug") ||
 		!strings.Contains(string(systemPrompt), "Treat mention routing as higher priority than guessing the source platform from the display label") ||
-		!strings.Contains(string(systemPrompt), "you MUST use the relevant injected skill") ||
 		!strings.Contains(string(systemPrompt), "Treat `mention://...` links as internal Tutti references") ||
 		!strings.Contains(string(systemPrompt), "Do not try to open `mention://...` links in a browser") ||
 		!strings.Contains(string(systemPrompt), "If no matching skill is visible") ||
@@ -706,11 +721,20 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 	if !strings.Contains(string(systemPrompt), "Provider-native skill names may be namespaced") ||
 		!strings.Contains(string(systemPrompt), "Claude Code skill listings can omit descriptions") ||
-		!strings.Contains(string(systemPrompt), "you MUST use the relevant injected skill") ||
+		!strings.Contains(string(systemPrompt), "First use the relevant injected Tutti skill") ||
+		!strings.Contains(string(systemPrompt), "do not call a plain slug that is not visible") ||
+		!strings.Contains(string(systemPrompt), "if no exact visible Skill tool is available or it fails, fall back to that materialized skill file") ||
 		!strings.Contains(string(systemPrompt), "Do not open `mention://...` links in a browser") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want strict Tutti mention routing", string(systemPrompt))
+	}
+	if strings.Contains(string(systemPrompt), "CODEX_HOME/skills/<skill>/SKILL.md") ||
+		strings.Contains(string(systemPrompt), ".claude/skills/<skill>/SKILL.md") ||
+		strings.Contains(string(systemPrompt), "`workspace-app/SKILL.md`") ||
+		strings.Contains(string(systemPrompt), `args="<full mention URI>"`) ||
+		strings.Contains(string(systemPrompt), "with the full mention URI") {
+		t.Fatalf("claude system prompt content = %q, want no guessed materialized skill paths", string(systemPrompt))
 	}
 	pluginDir := envValue(prepared.Env, claudePluginDirEnv)
 	if pluginDir == "" {

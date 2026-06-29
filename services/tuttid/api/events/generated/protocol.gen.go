@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:383a72c2e96d915a"
+	BusinessEventCatalogRevision = "sha256:a7c346d98bac9dfc"
 )
 
 type Topic string
@@ -144,8 +144,8 @@ type WorkspaceWorkspaceApp struct {
 	Description string `json:"description"`
 	Authors     []struct {
 		Name      string  `json:"name"`
-		AvatarUrl *string `json:"avatarUrl"`
-		Url       *string `json:"url"`
+		Url       *string `json:"url,omitempty"`
+		AvatarUrl *string `json:"avatarUrl,omitempty"`
 	} `json:"authors"`
 	Repository *struct {
 		Type string `json:"type"`

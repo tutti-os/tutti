@@ -25,7 +25,10 @@ export interface WorkspaceAgentServiceRegistrationInput {
   tuttidClient: TuttidClient;
   reporterService?: Pick<IReporterService, "trackEvents">;
   notifications?: NotificationService;
-  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  runtimeApi: Pick<
+    DesktopRuntimeApi,
+    "logRendererDiagnostic" | "logTerminalDiagnostic"
+  >;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
@@ -42,6 +45,7 @@ export function registerWorkspaceAgentServices(
     {
       tuttidClient: input.tuttidClient,
       reporterService: input.reporterService,
+      runtimeApi: input.runtimeApi,
       terminalCommandRunner: input.terminalCommandRunner
     },
     input.notifications

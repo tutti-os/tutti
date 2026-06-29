@@ -9,6 +9,7 @@ import (
 	workspaceapi "github.com/tutti-os/tutti/services/tuttid/api/workspace"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
@@ -18,6 +19,7 @@ type AppFactoryService interface {
 	Delete(context.Context, string, string) error
 	Fix(context.Context, string, string, workspaceservice.FixAppFactoryJobInput) (workspacebiz.AppFactoryJob, error)
 	Get(context.Context, string, string) (workspacebiz.AppFactoryJob, error)
+	GetProviderComposerOptions(context.Context, string, workspaceservice.AppFactoryProviderComposerOptionsInput) (agentservice.ComposerOptions, error)
 	List(context.Context, string) ([]workspacebiz.AppFactoryJob, error)
 	PrepareModification(context.Context, string, string) (workspacebiz.AppFactoryJob, error)
 	Publish(context.Context, string, string) (workspacebiz.AppFactoryJob, workspacebiz.WorkspaceApp, error)
@@ -82,6 +84,44 @@ func (api DaemonAPI) CreateWorkspaceAppFactoryJob(ctx context.Context, request t
 		WorkspaceId: workspaceID,
 		Job:         generatedAppFactoryJob(job),
 	}, nil
+}
+
+func (api DaemonAPI) GetWorkspaceAppFactoryProviderComposerOptions(ctx context.Context, request tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptionsRequestObject) (tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptionsResponseObject, error) {
+	if api.AppFactoryService == nil {
+		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions503JSONResponse{ServiceUnavailableErrorJSONResponse: workspaceAppFactoryServiceUnavailableError()}, nil
+	}
+	workspaceID := strings.TrimSpace(string(request.WorkspaceID))
+	if workspaceID == "" {
+		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions400JSONResponse{InvalidRequestErrorJSONResponse: invalidWorkspaceIDError()}, nil
+	}
+	provider := strings.TrimSpace(string(request.Provider))
+	if provider == "" {
+		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(
+				apierrors.WithDeveloperMessage("agent provider is required"),
+				apierrors.WithParams(map[string]any{"field": "provider"}),
+			)),
+		}, nil
+	}
+	settings := api.composerDefaultsForProvider(ctx, provider)
+	if request.Body != nil && request.Body.Settings != nil {
+		settings = mergeComposerSettings(settings, composerSettingsFromGenerated(*request.Body.Settings))
+	}
+	locale := api.composerDefaultLocale(ctx)
+	if request.Body != nil && request.Body.Locale != nil {
+		locale = string(*request.Body.Locale)
+	}
+	options, err := api.AppFactoryService.GetProviderComposerOptions(ctx, workspaceID, workspaceservice.AppFactoryProviderComposerOptionsInput{
+		Locale:   locale,
+		Provider: provider,
+		Settings: settings,
+	})
+	if err != nil {
+		return writeGetWorkspaceAppFactoryProviderComposerOptionsError(err), nil
+	}
+	return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions200JSONResponse(
+		generatedAgentProviderComposerOptions(options),
+	), nil
 }
 
 func (api DaemonAPI) GetWorkspaceAppFactoryJob(ctx context.Context, request tuttigenerated.GetWorkspaceAppFactoryJobRequestObject) (tuttigenerated.GetWorkspaceAppFactoryJobResponseObject, error) {
@@ -305,6 +345,18 @@ func writeCreateWorkspaceAppFactoryJobError(err error) tuttigenerated.CreateWork
 		return tuttigenerated.CreateWorkspaceAppFactoryJob400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
 	default:
 		return tuttigenerated.CreateWorkspaceAppFactoryJob502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr)}
+	}
+}
+
+func writeGetWorkspaceAppFactoryProviderComposerOptionsError(err error) tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptionsResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions404JSONResponse{WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr)}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
+	default:
+		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr)}
 	}
 }
 

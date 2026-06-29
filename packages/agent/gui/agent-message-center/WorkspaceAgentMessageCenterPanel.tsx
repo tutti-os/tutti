@@ -54,6 +54,10 @@ import {
   type MessageCenterGroupBy,
   type MessageCenterStatusFilter
 } from "./workspaceAgentMessageCenterViewModel";
+import {
+  readMessageCenterFilterPreferences,
+  writeMessageCenterFilterPreferences
+} from "./messageCenterFilterPreferences";
 
 export {
   buildWorkspaceAgentInteractivePromptLabels,
@@ -148,12 +152,24 @@ function WorkspaceAgentMessageCenterPanelContent({
 >): JSX.Element | null {
   "use memo";
   const { t } = useTranslation();
-  const [groupBy, setGroupBy] = useState<MessageCenterGroupBy>("priority");
-  const [statusFilters, setStatusFilters] =
-    useState<Set<MessageCenterStatusFilter> | null>(null);
-  const [providerFilters, setProviderFilters] = useState<Set<string> | null>(
-    null
+  const [initialFilters] = useState(readMessageCenterFilterPreferences);
+  const [groupBy, setGroupBy] = useState<MessageCenterGroupBy>(
+    initialFilters.groupBy
   );
+  const [statusFilters, setStatusFilters] =
+    useState<Set<MessageCenterStatusFilter> | null>(
+      initialFilters.statusFilters
+    );
+  const [providerFilters, setProviderFilters] = useState<Set<string> | null>(
+    initialFilters.providerFilters
+  );
+  useEffect(() => {
+    writeMessageCenterFilterPreferences({
+      groupBy,
+      statusFilters,
+      providerFilters
+    });
+  }, [groupBy, statusFilters, providerFilters]);
   const [expandedStackIds, setExpandedStackIds] = useState<Set<string>>(
     () => new Set()
   );

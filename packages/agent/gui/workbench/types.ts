@@ -1,3 +1,5 @@
+import type { AgentGUIProviderTargetRef } from "../types";
+
 export type AgentGuiWorkbenchProvider =
   | "claude-code"
   | "codex"
@@ -39,6 +41,8 @@ export interface AgentGuiWorkbenchNodeState {
   /** @deprecated Conversation titles are derived from the active session id. */
   lastActiveConversationTitle?: string | null;
   provider: AgentGuiWorkbenchProvider;
+  providerTargetId?: string | null;
+  providerTargetRef?: AgentGUIProviderTargetRef | null;
 }
 
 export interface AgentGuiWorkbenchState {
@@ -49,6 +53,8 @@ export interface AgentGuiWorkbenchState {
   lastActiveAgentSessionId: string | null;
   /** @deprecated Conversation titles are derived from the active session id. */
   lastActiveConversationTitle?: string | null;
+  providerTargetId?: string | null;
+  providerTargetRef?: AgentGUIProviderTargetRef | null;
 }
 
 export interface AgentGuiWorkbenchWorkspaceState {

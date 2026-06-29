@@ -116,7 +116,7 @@ export function RichTextTriggerEditor({
   textareaClassName,
   placeholderClassName,
   minQueryLength = 0,
-  maxResults = 8,
+  maxResults,
   removeDecorationAriaLabel,
   i18n,
   textOverrides,

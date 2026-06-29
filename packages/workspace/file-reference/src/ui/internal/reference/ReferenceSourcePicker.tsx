@@ -3,7 +3,9 @@ import {
   useId,
   useRef,
   useState,
+  type CSSProperties,
   type JSX,
+  type MouseEvent,
   type ReactNode,
   type RefObject
 } from "react";
@@ -40,6 +42,13 @@ import {
   WorkspaceFilePreviewSurface,
   type WorkspaceFilePreviewSurfaceState
 } from "@tutti-os/workspace-file-preview/react";
+import {
+  WorkspaceFileManagerContextMenu,
+  resolveRevealInFolderLabel,
+  type WorkspaceFileEntry,
+  type WorkspaceFileManagerI18nRuntime,
+  type WorkspaceFileOpenWithApplication
+} from "@tutti-os/workspace-file-manager";
 import type {
   ReferenceLocateTarget,
   ReferenceNode
@@ -61,6 +70,7 @@ import {
 import {
   formatReferenceNodePathText,
   formatReferencePreviewDateTime,
+  resolveReferencePreviewTimestampMs,
   resolveReferencePreviewSizeBytes
 } from "./referenceSourcePickerPresentation.ts";
 
@@ -70,6 +80,11 @@ export interface ReferenceSourcePickerProps {
   /** 可选:打开时直达某事项/应用分组(展开并聚焦)。 */
   initialTarget?: ReferenceLocateTarget | null;
   isNodeSelectable?: (node: ReferenceNode) => boolean;
+  fileManagerCopy?: WorkspaceFileManagerI18nRuntime;
+  hostOs?: NodeJS.Platform;
+  resolveOpenWithApplicationIcon?: (
+    application: WorkspaceFileOpenWithApplication
+  ) => JSX.Element | null;
   onClose: () => void;
   onConfirm: (refs: WorkspaceFileReference[]) => void;
   /**
@@ -89,6 +104,11 @@ export interface ReferenceSourcePickerProps {
 const SIDEBAR_GROUP_PAGE_SIZE = 5;
 
 type PickerView = ReturnType<typeof useReferenceSourcePickerView>;
+interface ReferenceSourceContextMenuState {
+  node: ReferenceNode;
+  x: number;
+  y: number;
+}
 
 /** react-resizable-panels 命令式句柄(只用到 resize)。 */
 type ResizablePanelHandle = { resize: (size: number) => void };
@@ -133,12 +153,15 @@ function autoFitPanelWidth(
 export function ReferenceSourcePicker({
   aggregator,
   copy,
+  fileManagerCopy,
+  hostOs = "darwin",
   initialTarget,
   isNodeSelectable,
   onClose,
   onConfirm,
   onConfirmBundles,
   open,
+  resolveOpenWithApplicationIcon,
   workspaceId
 }: ReferenceSourcePickerProps): JSX.Element | null {
   const titleId = useId();
@@ -173,10 +196,108 @@ export function ReferenceSourcePicker({
 
   // 三栏可拖拽 + 双击自动适配:layoutRef 量整体宽度,content/panel ref 用于双击适配。
   const layoutRef = useRef<HTMLDivElement | null>(null);
+  const menuBoundaryRef = useRef<HTMLDivElement | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const sidebarContentRef = useRef<HTMLDivElement | null>(null);
   const middleContentRef = useRef<HTMLDivElement | null>(null);
   const sidebarPanelRef = useRef<ResizablePanelHandle | null>(null);
   const middlePanelRef = useRef<ResizablePanelHandle | null>(null);
+  const [contextMenu, setContextMenu] =
+    useState<ReferenceSourceContextMenuState | null>(null);
+  const [openWithApplications, setOpenWithApplications] = useState<
+    WorkspaceFileOpenWithApplication[]
+  >([]);
+  const [openWithLoading, setOpenWithLoading] = useState(false);
+
+  useEffect(() => {
+    if (!contextMenu || !fileManagerCopy) {
+      setOpenWithApplications([]);
+      setOpenWithLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const cachedApplications = view.getCachedOpenWithApplications(
+      contextMenu.node
+    );
+    if (cachedApplications) {
+      setOpenWithApplications(cachedApplications);
+      setOpenWithLoading(false);
+      return;
+    }
+
+    setOpenWithApplications([]);
+    setOpenWithLoading(true);
+    void view
+      .listOpenWithApplications(contextMenu.node)
+      .then((applications) => {
+        if (cancelled) {
+          return;
+        }
+        setOpenWithApplications(applications);
+        setOpenWithLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setOpenWithApplications([]);
+        setOpenWithLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contextMenu?.node, fileManagerCopy]);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    function handlePointerDown(event: globalThis.PointerEvent): void {
+      const target = event.target;
+      if (target instanceof Node && contextMenuRef.current?.contains(target)) {
+        return;
+      }
+      if (
+        target instanceof Element &&
+        target.closest("[data-workspace-file-manager-submenu]")
+      ) {
+        return;
+      }
+      setContextMenu(null);
+    }
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setContextMenu(null);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [contextMenu]);
+
+  const openReferenceContextMenu = (
+    event: MouseEvent<HTMLElement>,
+    node: ReferenceNode
+  ): void => {
+    if (!fileManagerCopy || node.kind !== "file") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    view.setFocusedNode(node);
+    setContextMenu({
+      node,
+      x: event.clientX,
+      y: event.clientY
+    });
+  };
 
   if (!open) {
     return null;
@@ -267,7 +388,18 @@ export function ReferenceSourcePicker({
                   middlePanelRef.current = handle;
                 }}
               >
-                <div className="flex h-full min-h-0 flex-col">
+                <div
+                  ref={menuBoundaryRef}
+                  className="relative flex h-full min-h-0 flex-col"
+                  data-slot="viewport-menu-boundary"
+                  data-workspace-file-menu-boundary=""
+                  style={
+                    {
+                      "--workspace-file-manager-dialog-overlay-z-index":
+                        "100710"
+                    } as CSSProperties
+                  }
+                >
                   <div className="flex items-center gap-2 border-b border-[var(--line-1)] p-3">
                     <div className="relative flex-1">
                       <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
@@ -334,6 +466,8 @@ export function ReferenceSourcePicker({
                               node={node}
                               selected={view.isSelected(node)}
                               onFocus={view.setFocusedNode}
+                              onContextMenu={openReferenceContextMenu}
+                              onOpen={view.openNode}
                               selectable={view.isSelectable(node)}
                               onSingleSelect={
                                 view.toggleSingleSelectionAndExpand
@@ -358,6 +492,7 @@ export function ReferenceSourcePicker({
                             copy={copy}
                             depth={0}
                             node={node}
+                            onContextMenu={openReferenceContextMenu}
                             view={view}
                           />
                         ))
@@ -379,6 +514,85 @@ export function ReferenceSourcePicker({
                       ) : null}
                     </div>
                   </ScrollArea>
+                  {fileManagerCopy ? (
+                    <WorkspaceFileManagerContextMenu
+                      busy={view.isOpeningReference}
+                      contextMenu={
+                        contextMenu
+                          ? {
+                              entry: referenceNodeToWorkspaceFileEntry(
+                                contextMenu.node
+                              ),
+                              x: contextMenu.x,
+                              y: contextMenu.y
+                            }
+                          : null
+                      }
+                      contextMenuRef={contextMenuRef}
+                      copy={fileManagerCopy}
+                      openWithApplications={openWithApplications}
+                      openWithLoading={openWithLoading}
+                      positionMode="viewport"
+                      revealInFolderLabel={resolveRevealInFolderLabel(
+                        fileManagerCopy,
+                        hostOs
+                      )}
+                      resolveOpenWithApplicationIcon={
+                        resolveOpenWithApplicationIcon
+                      }
+                      showCopyAction={false}
+                      showCopyPathAction={false}
+                      showCreateAction={false}
+                      showDeleteAction={false}
+                      showExportAction={false}
+                      showImportAction={false}
+                      showOpenInAppBrowserAction={false}
+                      showOpenInDefaultBrowserAction={false}
+                      showOpenInFileViewerAction={false}
+                      showOpenWithAction={true}
+                      showOpenWithOtherAction={true}
+                      showRevealInFolderAction={true}
+                      showRenameAction={false}
+                      onClose={() => setContextMenu(null)}
+                      onCopy={noopAsync}
+                      onCopyPath={noopAsync}
+                      onCreateDirectory={noopVoid}
+                      onCreateFile={noopVoid}
+                      onDelete={noopVoid}
+                      onExport={noopAsync}
+                      onImport={noopAsync}
+                      onOpen={async () => {
+                        if (contextMenu) {
+                          await view.openNode(contextMenu.node);
+                        }
+                      }}
+                      onOpenInAppBrowser={noopAsync}
+                      onOpenInDefaultBrowser={noopAsync}
+                      onOpenInFileViewer={noopAsync}
+                      onOpenWithApplication={async (applicationPath) => {
+                        if (contextMenu) {
+                          await view.openWithApplication(
+                            contextMenu.node,
+                            applicationPath
+                          );
+                        }
+                      }}
+                      onOpenWithOtherApplication={async () => {
+                        if (contextMenu) {
+                          await view.openWithOtherApplication(
+                            contextMenu.node,
+                            fileManagerCopy.t("openWithOtherPickerPrompt")
+                          );
+                        }
+                      }}
+                      onRevealInFolder={async () => {
+                        if (contextMenu) {
+                          await view.revealNode(contextMenu.node);
+                        }
+                      }}
+                      onRename={noopVoid}
+                    />
+                  ) : null}
                 </div>
               </ResizablePanel>
               <ResizableHandle
@@ -599,7 +813,9 @@ function SearchResultRow({
   selected,
   selectable,
   onFocus,
+  onContextMenu,
   onSingleSelect,
+  onOpen,
   onToggle
 }: {
   node: ReferenceNode;
@@ -607,6 +823,8 @@ function SearchResultRow({
   selected: boolean;
   selectable: boolean;
   onFocus: (node: ReferenceNode) => void;
+  onContextMenu: (event: MouseEvent<HTMLElement>, node: ReferenceNode) => void;
+  onOpen: (node: ReferenceNode) => Promise<void>;
   onSingleSelect: (node: ReferenceNode) => void;
   onToggle: (node: ReferenceNode) => void;
 }): JSX.Element {
@@ -624,6 +842,15 @@ function SearchResultRow({
       onClick={() => {
         onFocus(node);
         onSingleSelect(node);
+      }}
+      onContextMenu={(event) => onContextMenu(event, node)}
+      onDoubleClick={(event) => {
+        if (node.kind !== "file") {
+          return;
+        }
+        event.stopPropagation();
+        onFocus(node);
+        void onOpen(node);
       }}
     >
       <div className="flex min-w-0 items-center gap-3 text-left">
@@ -659,6 +886,7 @@ function SearchResultRow({
             onFocus(node);
             onToggle(node);
           }}
+          onDoubleClick={(event) => event.stopPropagation()}
         >
           {selected ? (
             <CheckIcon size={14} />
@@ -803,6 +1031,7 @@ function PreviewInfoPane({
   const sizeBytes = node
     ? resolveReferencePreviewSizeBytes(node, previewState)
     : null;
+  const timestampMs = node ? resolveReferencePreviewTimestampMs(node) : null;
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-[var(--background-fronted)]">
       {node ? (
@@ -845,9 +1074,9 @@ function PreviewInfoPane({
                 {sourceLabel}
               </Badge>
             </InfoRow>
-            {node.mtimeMs != null ? (
+            {timestampMs != null ? (
               <InfoRow label={copy.t("referencePicker.previewModified")}>
-                {formatReferencePreviewDateTime(node.mtimeMs)}
+                {formatReferencePreviewDateTime(timestampMs)}
               </InfoRow>
             ) : null}
             {sizeBytes != null ? (
@@ -1195,11 +1424,13 @@ function isFocused(
 function TreeNodeRow({
   node,
   depth,
+  onContextMenu,
   view,
   copy
 }: {
   node: ReferenceNode;
   depth: number;
+  onContextMenu: (event: MouseEvent<HTMLElement>, node: ReferenceNode) => void;
   view: PickerView;
   copy: WorkspaceFileReferenceCopy;
 }): JSX.Element {
@@ -1252,6 +1483,7 @@ function TreeNodeRow({
             copy={copy}
             depth={depth + 1}
             node={child}
+            onContextMenu={onContextMenu}
             view={view}
           />
         ))}
@@ -1280,6 +1512,15 @@ function TreeNodeRow({
         onClick={() => {
           view.setFocusedNode(node);
           view.toggleSingleSelectionAndExpand(node);
+        }}
+        onContextMenu={(event) => onContextMenu(event, node)}
+        onDoubleClick={(event) => {
+          if (node.kind !== "file") {
+            return;
+          }
+          event.stopPropagation();
+          view.setFocusedNode(node);
+          void view.openNode(node);
         }}
       >
         {isFolder ? (
@@ -1327,6 +1568,7 @@ function TreeNodeRow({
               view.setFocusedNode(node);
               view.toggleSelection(node);
             }}
+            onDoubleClick={(event) => event.stopPropagation()}
           >
             {selected ? (
               <CheckIcon size={14} />
@@ -1378,3 +1620,20 @@ function formatBytes(bytes: number): string {
   }
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
+
+function referenceNodeToWorkspaceFileEntry(
+  node: ReferenceNode
+): WorkspaceFileEntry {
+  return {
+    hasChildren: node.kind === "folder",
+    kind: node.kind === "folder" ? "directory" : "file",
+    mtimeMs: node.mtimeMs ?? null,
+    name: node.displayName,
+    path: nodeRefKey(node.ref),
+    sizeBytes: node.sizeBytes ?? null
+  };
+}
+
+function noopVoid(): void {}
+
+async function noopAsync(): Promise<void> {}

@@ -13,6 +13,7 @@ import type {
 } from "@preload/types";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IReporterService } from "@renderer/features/analytics";
+import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import {
   createReferenceSourceAggregator,
@@ -78,6 +79,10 @@ export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
   richTextAtService: IDesktopRichTextAtService;
   runtimeApi: DesktopRuntimeApi;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
+  workspaceFileManagerService?: Pick<
+    IWorkspaceFileManagerService,
+    "openCanvasFilePreview"
+  >;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
   workspaceId: string;
 }
@@ -92,6 +97,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   richTextAtService,
   runtimeApi,
   workspaceAgentActivityService,
+  workspaceFileManagerService,
   workspaceUserProjectService,
   workspaceId
 }: CreateDesktopAgentGUIWorkbenchHostInputInput): DesktopAgentGUIWorkbenchHostInput {
@@ -143,6 +149,13 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   const workspaceFileReferenceAdapter =
     createDesktopWorkspaceFileReferenceAdapter({
       hostFilesApi,
+      openCanvasFilePreview: workspaceFileManagerService
+        ? (target, workspaceId) =>
+            workspaceFileManagerService.openCanvasFilePreview(
+              workspaceId,
+              target
+            )
+        : undefined,
       tuttidClient,
       workspaceId
     });

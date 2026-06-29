@@ -48,13 +48,22 @@ export interface IAgentProviderStatusService {
   getStatus(provider: WorkspaceAgentProvider): AgentProviderStatus | null;
   ensureLoaded(input?: {
     providers?: WorkspaceAgentProvider[];
+    /**
+     * Opt into the network connectivity probe. Off by default so the dock /
+     * startup path stays local and never blocks; only the agent-env wizard,
+     * which renders the network diagnostic, sets this.
+     */
+    includeNetwork?: boolean;
   }): Promise<AgentProviderStatusListResponse | null>;
   runAction(
     provider: WorkspaceAgentProvider,
     actionId: string,
     context?: AgentProviderStatusActionContext
   ): Promise<void>;
-  refresh(providers?: WorkspaceAgentProvider[]): Promise<void>;
+  refresh(
+    providers?: WorkspaceAgentProvider[],
+    options?: { includeNetwork?: boolean }
+  ): Promise<void>;
   subscribe(listener: () => void): () => void;
   /** Whether the user agreed to send fuller diagnostics via "report problem". */
   getDiagnosticsConsent(): boolean;

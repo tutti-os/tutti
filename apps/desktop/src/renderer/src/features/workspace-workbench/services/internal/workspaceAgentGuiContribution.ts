@@ -1,4 +1,5 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
+import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
 import { createAgentGuiWorkbenchContribution } from "@tutti-os/agent-gui/workbench/contribution";
 import {
   normalizeAgentGuiWorkbenchProvider,
@@ -25,6 +26,7 @@ import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at"
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
+import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import type { IReporterService } from "@renderer/features/analytics";
 import {
   createDesktopAgentGUIWorkbenchHostInput,
@@ -59,6 +61,8 @@ export function createWorkspaceAgentGuiContribution(input: {
   onCapabilitySettingsRequest?: Parameters<
     typeof DesktopAgentGUIWorkbenchBody
   >[0]["onCapabilitySettingsRequest"];
+  providerTargets?: readonly AgentGUIProviderTarget[];
+  defaultProviderTargetId?: string | null;
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -68,6 +72,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   richTextAtService: IDesktopRichTextAtService;
   runtimeApi: DesktopRuntimeApi;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
+  workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceId: string;
 }): WorkbenchContribution {
@@ -79,6 +84,7 @@ export function createWorkspaceAgentGuiContribution(input: {
     richTextAtService: input.richTextAtService,
     runtimeApi: input.runtimeApi,
     workspaceAgentActivityService: input.workspaceAgentActivityService,
+    workspaceFileManagerService: input.workspaceFileManagerService,
     workspaceUserProjectService: input.workspaceUserProjectService,
     workspaceId: input.workspaceId
   });
@@ -131,6 +137,8 @@ export function createWorkspaceAgentGuiContribution(input: {
       },
       onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
+      providerTargets: input.providerTargets,
+      defaultProviderTargetId: input.defaultProviderTargetId,
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
       runtimeApi: input.runtimeApi,

@@ -44,6 +44,7 @@ export interface ReferenceListFile {
    * 各源在「跨整源搜索拍平」时填入父级上下文;不填则副标题回退展示 nodeId。
    */
   parentLabel?: string | null;
+  createdTimeMs?: number | null;
   sizeBytes?: number | null;
   mtimeMs?: number | null;
   mimeType?: string | null;
@@ -176,6 +177,41 @@ export function createReferenceListSource(
       await adapter.openReference?.(fileReferenceOf(node));
     },
 
+    async listOpenWithApplications(
+      _scope: ReferenceScope,
+      node: ReferenceNode
+    ) {
+      return (
+        (await adapter.listOpenWithApplications?.(fileReferenceOf(node))) ?? []
+      );
+    },
+
+    async openWithApplication(
+      _scope: ReferenceScope,
+      node: ReferenceNode,
+      applicationPath: string
+    ): Promise<void> {
+      await adapter.openReferenceWithApplication?.(
+        fileReferenceOf(node),
+        applicationPath
+      );
+    },
+
+    async openWithOtherApplication(
+      _scope: ReferenceScope,
+      node: ReferenceNode,
+      applicationPickerPrompt?: string
+    ): Promise<void> {
+      await adapter.openReferenceWithOtherApplication?.(
+        fileReferenceOf(node),
+        applicationPickerPrompt
+      );
+    },
+
+    async reveal(_scope: ReferenceScope, node: ReferenceNode): Promise<void> {
+      await adapter.revealReference?.(fileReferenceOf(node));
+    },
+
     async readPreview(
       scope: ReferenceScope,
       node: ReferenceNode
@@ -289,6 +325,9 @@ function itemToNode(sourceId: string, item: ReferenceListItem): ReferenceNode {
     ...(reference.parentLabel?.trim()
       ? { contextLabel: reference.parentLabel.trim() }
       : {}),
+    ...(reference.createdTimeMs == null
+      ? {}
+      : { createdTimeMs: reference.createdTimeMs }),
     ...(reference.sizeBytes == null ? {} : { sizeBytes: reference.sizeBytes }),
     ...(reference.mtimeMs == null ? {} : { mtimeMs: reference.mtimeMs }),
     ...(reference.mimeType ? { mimeType: reference.mimeType } : {})

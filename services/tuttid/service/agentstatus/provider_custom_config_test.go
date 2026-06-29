@@ -76,6 +76,16 @@ func TestProviderUsesCustomConfigClaudeSettings(t *testing.T) {
 	}
 }
 
+func TestProviderUsesCustomConfigClaudeAuthToken(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".claude", "settings.json"),
+		`{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-test"}}`)
+	svc := customConfigService(home)
+	if !svc.providerUsesCustomConfig(agentprovider.ClaudeCode) {
+		t.Fatal("expected claude settings ANTHROPIC_AUTH_TOKEN to count as custom config")
+	}
+}
+
 func TestProviderUsesCustomConfigClaudeApiKeyHelper(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".claude", "settings.json"),
@@ -104,5 +114,99 @@ func TestProviderUsesCustomConfigNoConfigNoEnv(t *testing.T) {
 	}
 	if svc.providerUsesCustomConfig(agentprovider.ClaudeCode) {
 		t.Fatal("no env and no config should not be custom")
+	}
+}
+
+func TestProviderHasAPICredentialEnvAPIKey(t *testing.T) {
+	svc := customConfigService(t.TempDir())
+	svc.Environ = func() []string { return []string{"ANTHROPIC_API_KEY=sk-test"} }
+	if !svc.providerHasAPICredential(agentprovider.ClaudeCode) {
+		t.Fatal("expected env ANTHROPIC_API_KEY to count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialEnvAuthToken(t *testing.T) {
+	svc := customConfigService(t.TempDir())
+	svc.Environ = func() []string { return []string{"ANTHROPIC_AUTH_TOKEN=sk-test"} }
+	if !svc.providerHasAPICredential(agentprovider.ClaudeCode) {
+		t.Fatal("expected env ANTHROPIC_AUTH_TOKEN to count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialSettingsAuthToken(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".claude", "settings.json"),
+		`{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-test"}}`)
+	svc := customConfigService(home)
+	if !svc.providerHasAPICredential(agentprovider.ClaudeCode) {
+		t.Fatal("expected settings ANTHROPIC_AUTH_TOKEN to count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialSettingsApiKeyHelper(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".claude", "settings.json"),
+		`{"apiKeyHelper":"/usr/local/bin/get-key.sh"}`)
+	svc := customConfigService(home)
+	if !svc.providerHasAPICredential(agentprovider.ClaudeCode) {
+		t.Fatal("expected apiKeyHelper to count as an API credential")
+	}
+}
+
+// A bare custom endpoint without any API credential must NOT be reported as an
+// API credential: the user may still be on an OAuth/subscription session against
+// that endpoint, so labeling them "API Usage Billing" would be wrong.
+func TestProviderHasAPICredentialCustomEndpointOnlyIsNotCredential(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".claude", "settings.json"),
+		`{"env":{"ANTHROPIC_BASE_URL":"https://gw.local"}}`)
+	svc := customConfigService(home)
+	if svc.providerHasAPICredential(agentprovider.ClaudeCode) {
+		t.Fatal("a custom endpoint without a credential must not count as API billing")
+	}
+	// ...but it still counts as custom config for the network-probe skip.
+	if !svc.providerUsesCustomConfig(agentprovider.ClaudeCode) {
+		t.Fatal("a custom endpoint should still count as custom config")
+	}
+}
+
+func TestProviderHasAPICredentialEnvBaseUrlOnlyIsNotCredential(t *testing.T) {
+	svc := customConfigService(t.TempDir())
+	svc.Environ = func() []string { return []string{"ANTHROPIC_BASE_URL=https://gw.local"} }
+	if svc.providerHasAPICredential(agentprovider.ClaudeCode) {
+		t.Fatal("env ANTHROPIC_BASE_URL alone must not count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialCodexConfigTomlInlineKey(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".codex", "config.toml"),
+		`[model_providers.openai]`+"\n"+`api_key = "sk-inline"`)
+	svc := customConfigService(home)
+	if !svc.providerHasAPICredential(agentprovider.Codex) {
+		t.Fatal("expected codex config.toml api_key to count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialCodexConfigTomlEndpointOnlyIsNotCredential(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".codex", "config.toml"), `
+model_provider = "mycorp"
+[model_providers.mycorp]
+base_url = "https://gateway.mycorp.com/v1"
+`)
+	svc := customConfigService(home)
+	if svc.providerHasAPICredential(agentprovider.Codex) {
+		t.Fatal("codex config.toml base_url without api_key must not count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialNone(t *testing.T) {
+	svc := customConfigService(t.TempDir())
+	if svc.providerHasAPICredential(agentprovider.ClaudeCode) {
+		t.Fatal("no env and no config should not have an API credential")
+	}
+	if svc.providerHasAPICredential(agentprovider.Codex) {
+		t.Fatal("no env and no config should not have an API credential")
 	}
 }

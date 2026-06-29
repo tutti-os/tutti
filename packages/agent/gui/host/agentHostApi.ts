@@ -38,6 +38,10 @@ type AgentHostDeleteWorkspaceAgentSessionRuntimeInput =
   AgentHostWorkspaceScopedInput<AgentHostDeleteWorkspaceAgentSessionInput>;
 
 export type AgentHostClipboardApi = {
+  writeImage?: (input: {
+    data: string;
+    mimeType: "image/png";
+  }) => AgentHostAsyncResult<void>;
   writeText: (text: string) => AgentHostAsyncResult<void>;
 };
 

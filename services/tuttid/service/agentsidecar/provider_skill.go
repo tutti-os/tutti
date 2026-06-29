@@ -29,6 +29,7 @@ func tuttiCLISkill(input PrepareInput) string {
 		"skill_templates/tutti-cli.md",
 		map[string]string{
 			"{{COMMAND_GUIDE}}":    commandGuide(input),
+			"{{CLI_COMMAND}}":      normalizeCLICommandName(input.CLICommand),
 			"{{AGENT_PROVIDER}}":   strings.TrimSpace(input.Provider),
 			"{{AGENT_SESSION_ID}}": strings.TrimSpace(input.AgentSessionID),
 		},

@@ -1,4 +1,8 @@
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import {
+  resolveWorkspaceFileActivationTarget,
+  type WorkspaceFileEntry
+} from "@tutti-os/workspace-file-manager/services";
 import type {
   WorkspaceFileReference,
   WorkspaceFileReferenceAdapter,
@@ -16,10 +20,17 @@ import type { DesktopHostFilesApi } from "@preload/types";
 
 export function createDesktopWorkspaceFileReferenceAdapter(input: {
   hostFilesApi: DesktopHostFilesApi;
+  openCanvasFilePreview?: (
+    target: NonNullable<
+      ReturnType<typeof resolveWorkspaceFileActivationTarget>
+    >,
+    workspaceId: string
+  ) => Promise<boolean> | boolean;
   tuttidClient: TuttidClient;
   workspaceId: string;
 }): WorkspaceFileReferenceAdapter {
-  const { hostFilesApi, tuttidClient, workspaceId } = input;
+  const { hostFilesApi, openCanvasFilePreview, tuttidClient, workspaceId } =
+    input;
 
   return {
     async loadReferenceTree({
@@ -72,7 +83,50 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
         });
         return;
       }
+      const entry = referenceToWorkspaceFileEntry({
+        ...reference,
+        path: trimmedPath
+      });
+      const target =
+        entry.kind === "file"
+          ? resolveWorkspaceFileActivationTarget(entry)
+          : null;
+      if (
+        target &&
+        (await openCanvasFilePreview?.(target, workspaceId)) === true
+      ) {
+        return;
+      }
       await hostFilesApi.openFile(workspaceId, trimmedPath);
+    },
+    async listOpenWithApplications(reference) {
+      return hostFilesApi.listOpenWithApplications(
+        workspaceId,
+        reference.path.trim()
+      );
+    },
+    async openReferenceWithApplication(reference, applicationPath) {
+      await hostFilesApi.openFileWithApplication(
+        workspaceId,
+        reference.path.trim(),
+        applicationPath
+      );
+    },
+    async openReferenceWithOtherApplication(
+      reference,
+      applicationPickerPrompt
+    ) {
+      await hostFilesApi.openFileWithOtherApplication(
+        workspaceId,
+        reference.path.trim(),
+        applicationPickerPrompt
+      );
+    },
+    async revealReference(reference) {
+      await hostFilesApi.revealWorkspaceFile(
+        workspaceId,
+        reference.path.trim()
+      );
     },
     async readReferencePreview({ reference, workspaceId }) {
       const previewKind = classifyWorkspaceFilePreviewKind(reference);
@@ -119,6 +173,7 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
 }
 
 export function mapDesktopWorkspaceFileReferenceEntry(entry: {
+  createdTimeMs?: number | null;
   kind: string;
   mtimeMs?: number | null;
   name?: string;
@@ -147,6 +202,7 @@ function mapReferenceTreeDirectory(
 }
 
 type ReferenceTreeTransportEntry = {
+  createdTimeMs?: number | null;
   hasChildren?: boolean;
   kind: string;
   mtimeMs?: number | null;
@@ -176,12 +232,16 @@ function mapReferenceTreeEntry(
     prefetchedDirectory: entry.prefetchedDirectory
       ? mapReferenceTreeDirectory(entry.prefetchedDirectory)
       : null,
+    ...(entry.createdTimeMs === undefined
+      ? {}
+      : { createdTimeMs: entry.createdTimeMs }),
     ...(entry.mtimeMs === undefined ? {} : { mtimeMs: entry.mtimeMs }),
     ...(entry.sizeBytes === undefined ? {} : { sizeBytes: entry.sizeBytes })
   };
 }
 
 function mapFileReferenceEntry(entry: {
+  createdTimeMs?: number | null;
   kind: string;
   mtimeMs?: number | null;
   name?: string;
@@ -192,9 +252,32 @@ function mapFileReferenceEntry(entry: {
     displayName: entry.name,
     kind: entry.kind === "directory" ? "folder" : "file",
     path: entry.path,
+    ...(entry.createdTimeMs === undefined
+      ? {}
+      : { createdTimeMs: entry.createdTimeMs }),
     ...(entry.mtimeMs === undefined ? {} : { mtimeMs: entry.mtimeMs }),
     ...(entry.sizeBytes === undefined ? {} : { sizeBytes: entry.sizeBytes })
   };
+}
+
+function referenceToWorkspaceFileEntry(
+  reference: WorkspaceFileReference
+): WorkspaceFileEntry {
+  return {
+    createdTimeMs: reference.createdTimeMs ?? null,
+    hasChildren: reference.kind === "folder",
+    kind: reference.kind === "folder" ? "directory" : "file",
+    mtimeMs: reference.mtimeMs ?? null,
+    name: reference.displayName?.trim() || basename(reference.path),
+    path: reference.path,
+    sizeBytes: reference.sizeBytes ?? null
+  };
+}
+
+function basename(path: string): string {
+  const trimmed = path.replace(/\/+$/, "");
+  const index = trimmed.lastIndexOf("/");
+  return index >= 0 ? trimmed.slice(index + 1) : trimmed;
 }
 
 function isTerminalReferencePath(path: string): boolean {

@@ -197,6 +197,14 @@ export interface AgentActivityAdapter {
 }
 ```
 
+`AgentActivityCreateSessionInput.providerTargetRef` is an optional opaque
+host-owned reference for selecting which target under the real provider should
+launch the session. It is not authority, a credential, or an invocation plan.
+Adapters and trusted launchers must re-authenticate and resolve it before using
+any concrete provider invocation. UI packages must keep `provider` as the real
+provider identity and must not synthesize providers for shared or remote
+targets.
+
 The adapter decides how to connect. The controller decides when to connect,
 when to disconnect, and how to merge the resulting events.
 

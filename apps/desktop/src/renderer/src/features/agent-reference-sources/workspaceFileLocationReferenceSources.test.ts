@@ -199,6 +199,36 @@ test("location reference source scopes directory search by selected location", a
   assert.deepEqual(withinValues, ["/Users/local/repo"]);
 });
 
+test("location reference source preserves creation times on search results", async () => {
+  const adapter: WorkspaceFileReferenceAdapter = {
+    async searchReferences() {
+      return [
+        {
+          createdTimeMs: 1_800_000_000_000,
+          kind: "file",
+          mtimeMs: 1_800_000_001_000,
+          path: "/Users/local/report.md"
+        }
+      ];
+    }
+  };
+  const [, localSource] = createWorkspaceFileLocationReferenceSources({
+    adapter,
+    getLocationSections: () => locationSections,
+    localLabel: "Local",
+    projectLabel: "Project"
+  });
+
+  const result = await localSource?.search?.(
+    { workspaceId: "workspace-1" },
+    {
+      query: "report"
+    }
+  );
+
+  assert.equal(result?.entries[0]?.createdTimeMs, 1_800_000_000_000);
+});
+
 const locationSections: WorkspaceFileLocationSection[] = [
   {
     id: "project",

@@ -39,6 +39,7 @@ import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
 import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentation/renderer/components/shared/CanvasNodeGhostIconButton";
+import { ConversationImageContextMenu } from "./ConversationImageContextMenu";
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
 const CONTEXT_COMPACTION_NOTICE_TITLE = "Context compacted.";
@@ -336,12 +337,14 @@ function AgentUserImageGrid({
             className="max-h-20 min-w-0 overflow-hidden rounded-[6px]"
           >
             {src ? (
-              <ZoomableImage
-                src={src}
-                alt={image.name?.trim() || "image"}
-                className="block max-h-20 w-full rounded-[6px] object-contain"
-                draggable={false}
-              />
+              <ConversationImageContextMenu src={src}>
+                <ZoomableImage
+                  src={src}
+                  alt={image.name?.trim() || "image"}
+                  className="block max-h-20 w-full rounded-[6px] object-contain"
+                  draggable={false}
+                />
+              </ConversationImageContextMenu>
             ) : loading ? (
               <div
                 className="flex h-20 w-full items-center justify-center bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]"

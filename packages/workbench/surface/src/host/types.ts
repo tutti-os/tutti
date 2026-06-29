@@ -27,6 +27,7 @@ import type {
 import type {
   WorkbenchDockPlacement,
   WorkbenchMinimizeAnimation,
+  WorkbenchWindowSurfaceLayer,
   WorkbenchWindowHeaderDragHandleProps
 } from "../react/types.ts";
 import type { WorkbenchDockPreviewCache } from "../react/dockPreviewCache.ts";
@@ -250,6 +251,11 @@ export interface WorkbenchHostDockEntry {
   badge?: WorkbenchHostDockEntryBadge;
   capturePopupItemPreview?: WorkbenchHostNodePreviewCapture;
   clickActionId?: string;
+  /**
+   * `launch` keeps clicks on the launch request path even when matching nodes
+   * already exist.
+   */
+  clickBehavior?: "default" | "launch";
   hoverActions?: readonly WorkbenchHostDockEntryAction[];
   icon: ReactNode;
   iconSize?: "default" | "large";
@@ -308,7 +314,13 @@ export interface WorkbenchHostNodeWindowCapabilities {
   minimizedDock?: WorkbenchHostNodeMinimizedDockCapability;
   persists?: boolean;
   restoreOnLoad?: boolean;
+  surfaceLayer?: WorkbenchHostNodeWindowSurfaceLayer;
 }
+
+export type WorkbenchHostNodeWindowSurfaceLayer = Exclude<
+  WorkbenchWindowSurfaceLayer,
+  "default"
+>;
 
 export type WorkbenchHostNodeMinimizedDockCapability =
   | {

@@ -42,6 +42,7 @@
   "scripts": {
     "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/styles dist/styles src/metadata/components.json dist/metadata/components.json src/metadata/components.schema.json dist/metadata/components.schema.json",
     "dev:server": "tsx src/dev-server/server.ts",
+    "test": "vitest run",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
@@ -58,12 +59,16 @@
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@types/ws": "^8.18.1",
+    "jsdom": "^27.2.0",
     "tsx": "^4.22.3",
     "typescript": "^5.8.3",
-    "vite": "^6.4.2"
+    "vite": "^6.4.2",
+    "vitest": "^4.0.13"
   },
   "peerDependencies": {
     "react": "^19.1.0",

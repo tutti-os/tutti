@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
 import type {
   TuttidClient,
   TuttidEventStreamClient
@@ -44,6 +45,7 @@ export interface DesktopWorkbenchContributionContext {
   ) => Promise<boolean> | boolean;
   dockPreviewCache: WorkbenchDockPreviewCache;
   defaultAgentProvider?: string | null;
+  defaultProviderTargetId?: string | null;
   dockIcons: {
     agents: Record<string, string>;
     applications: string;
@@ -57,6 +59,7 @@ export interface DesktopWorkbenchContributionContext {
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget
   ) => void;
+  providerTargets?: readonly AgentGUIProviderTarget[];
   agentProviderStatusService: AgentProviderStatusService;
   workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;

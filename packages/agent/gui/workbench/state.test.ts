@@ -64,6 +64,52 @@ describe("agent gui workbench state", () => {
     });
   });
 
+  it("persists provider target references as opaque state", () => {
+    const providerTargetRef = {
+      kind: "shared-agent",
+      provider: "codex" as const,
+      sharedAgentId: "agent-1"
+    };
+
+    expect(
+      projectAgentGuiWorkbenchState({
+        ...createDefaultAgentGuiWorkbenchNodeState("codex"),
+        providerTargetId: "shared-agent:agent-1",
+        providerTargetRef
+      })
+    ).toMatchObject({
+      providerTargetId: "shared-agent:agent-1",
+      providerTargetRef
+    });
+
+    expect(
+      normalizeAgentGuiWorkbenchNodeState({
+        provider: "codex",
+        providerTargetId: "shared-agent:agent-1",
+        providerTargetRef
+      })
+    ).toMatchObject({
+      provider: "codex",
+      providerTargetId: "shared-agent:agent-1",
+      providerTargetRef
+    });
+
+    expect(
+      normalizeAgentGuiWorkbenchNodeState({
+        provider: "codex",
+        providerTargetId: "shared-agent:agent-1",
+        providerTargetRef: {
+          ...providerTargetRef,
+          provider: "claude-code"
+        }
+      })
+    ).toMatchObject({
+      provider: "codex",
+      providerTargetId: "shared-agent:agent-1",
+      providerTargetRef: null
+    });
+  });
+
   it("compares persisted workbench state", () => {
     expect(
       areAgentGuiWorkbenchStatesEqual(
@@ -266,5 +312,29 @@ describe("agent gui workbench state", () => {
       lastActiveAgentSessionId: "session-2",
       lastActiveConversationTitle: "Second title"
     });
+  });
+
+  it("locates a node launch instanceId by the session it is showing", () => {
+    const source = createAgentGuiWorkbenchNodeStateSource({
+      workspaceId: "workspace-1"
+    });
+
+    // A conversation started fresh: its launch instanceId is panel-scoped (not
+    // session-keyed), and its live state is written under a node-scoped key.
+    source.writeNodeState({
+      instanceId: "agent-gui:codex:panel:abc123",
+      nodeId: "node-1",
+      state: { lastActiveAgentSessionId: "session-xyz" },
+      typeId: "agent-gui"
+    });
+
+    expect(source.findInstanceIdByAgentSessionId("session-xyz")).toBe(
+      "agent-gui:codex:panel:abc123"
+    );
+    expect(source.findInstanceIdByAgentSessionId("  session-xyz  ")).toBe(
+      "agent-gui:codex:panel:abc123"
+    );
+    expect(source.findInstanceIdByAgentSessionId("other-session")).toBeNull();
+    expect(source.findInstanceIdByAgentSessionId("")).toBeNull();
   });
 });

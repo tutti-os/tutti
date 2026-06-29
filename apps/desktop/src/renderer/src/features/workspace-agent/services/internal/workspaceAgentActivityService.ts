@@ -357,6 +357,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         planMode: input.settings?.planMode ?? null,
         permissionModeId: resolveComposerPermissionMode(input.settings),
         provider,
+        providerTargetRef: input.providerTargetRef ?? null,
         reasoningEffort: input.settings?.reasoningEffort ?? null,
         speed: input.settings?.speed ?? null,
         title: input.title ?? null,

@@ -201,7 +201,12 @@ func (s Service) installMissingProviderRuntime(
 			"adapterVersion", current.AdapterVersion,
 			"installDir", current.InstallDir,
 		)
-		command, result, err := s.executeInstaller(ctx, installer, &current)
+		setActiveAction(ctx, spec.Provider, ActiveAction{
+			ID:     ActionInstall,
+			Status: "running",
+			Step:   installTarget,
+		})
+		command, result, err := s.executeInstaller(ctx, spec.Provider, installer, &current)
 		if command != "" {
 			summary.Commands = append(summary.Commands, command)
 		}
@@ -323,6 +328,7 @@ func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, v
 
 func (s Service) executeInstaller(
 	ctx context.Context,
+	provider string,
 	spec InstallerSpec,
 	runtime *providerRuntimeResolution,
 ) (string, InstallCommandResult, error) {
@@ -352,15 +358,16 @@ func (s Service) executeInstaller(
 	switch spec.Kind {
 	case InstallerKindShellCommand:
 		result, err := s.installCommand(installCtx, InstallCommandInput{
-			Command: spec.ShellCommand,
-			Env:     s.commandResolver().Env(nil),
+			Command:  spec.ShellCommand,
+			Env:      s.commandResolver().Env(nil),
+			OnStdout: activeActionStdoutAppender(ctx, provider),
 		})
 		if err == nil && result.ExitCode == 0 {
 			result = s.applyInstallerPostStep(installCtx, spec, result)
 		}
 		return runResult(result, err)
 	case InstallerKindOfficialScript:
-		result, err := s.runOfficialScriptInstaller(installCtx, spec)
+		result, err := s.runOfficialScriptInstaller(installCtx, provider, spec)
 		return runResult(result, err)
 	case InstallerKindGitHubReleaseBinary:
 		installDir := ""
@@ -387,7 +394,7 @@ func (s Service) executeInstaller(
 		result, err := s.runCodexCLILatestInstaller(installCtx, spec, "")
 		return runResult(result, err)
 	case InstallerKindExternalAgentRegistryNPM:
-		result, err := s.runExternalAgentRegistryNPMInstaller(installCtx, spec)
+		result, err := s.runExternalAgentRegistryNPMInstaller(installCtx, provider, spec)
 		if err == nil && result.ExitCode == 0 {
 			result = s.applyInstallerPostStep(installCtx, spec, result)
 		}
@@ -412,7 +419,7 @@ func installerLockCommand(spec InstallerSpec) string {
 	return ""
 }
 
-func (s Service) runOfficialScriptInstaller(ctx context.Context, spec InstallerSpec) (InstallCommandResult, error) {
+func (s Service) runOfficialScriptInstaller(ctx context.Context, provider string, spec InstallerSpec) (InstallCommandResult, error) {
 	installerFile, err := os.CreateTemp("", "tutti-agent-provider-install-*.sh")
 	if err != nil {
 		return InstallCommandResult{ExitCode: 1}, err
@@ -437,8 +444,9 @@ func (s Service) runOfficialScriptInstaller(ctx context.Context, spec InstallerS
 		}, nil
 	}
 	return s.installCommand(ctx, InstallCommandInput{
-		Command: joinShellCommand([]string{spec.ScriptShell, scriptPath}),
-		Env:     s.commandResolver().Env(nil),
+		Command:  joinShellCommand([]string{spec.ScriptShell, scriptPath}),
+		Env:      s.commandResolver().Env(nil),
+		OnStdout: activeActionStdoutAppender(ctx, provider),
 	})
 }
 
@@ -510,7 +518,7 @@ func (s Service) runReleaseBinaryInstaller(
 	}, nil
 }
 
-func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, spec InstallerSpec) (InstallCommandResult, error) {
+func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provider string, spec InstallerSpec) (InstallCommandResult, error) {
 	if spec.RegistryNPM == nil {
 		return InstallCommandResult{ExitCode: 1, Stderr: "external agent registry npm installer config is required"}, nil
 	}
@@ -531,6 +539,10 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, spec 
 		packageSpec,
 	})
 	baseEnv := managedruntime.ProcessEnv(append(appRuntime.EnvOverrides, envMapToList(npmSpec.Env)...)...)
+	// Use a dedicated, tutti-owned npm cache inside the install prefix rather than
+	// the user's global ~/.npm, which on some machines holds root-owned files that
+	// make every user-mode npm install fail with EACCES before any registry is hit.
+	baseEnv = withAgentNPMCache(baseEnv, filepath.Join(npmSpec.PrefixDir, agentNPMCacheDirName))
 
 	// Try official npm first (fastest when reachable), then fall back through the
 	// CN-available mirrors when it is slow or blocked. Each attempt is bounded so a
@@ -539,11 +551,18 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, spec 
 	registries := s.agentNPMRegistries()
 	var result InstallCommandResult
 	for i, registry := range registries {
+		setActiveAction(ctx, provider, ActiveAction{
+			ID:       ActionInstall,
+			Status:   "running",
+			Step:     "adapter",
+			Registry: displayNPMRegistry(registry),
+		})
 		env := withAgentNPMRegistry(slices.Clone(baseEnv), registry)
 		attemptCtx, cancel := context.WithTimeout(ctx, perRegistryInstallTimeout)
 		result, err = s.installCommand(attemptCtx, InstallCommandInput{
-			Command: command,
-			Env:     env,
+			Command:  command,
+			Env:      env,
+			OnStdout: activeActionStdoutAppender(ctx, provider),
 		})
 		cancel()
 		if err == nil && result.ExitCode == 0 {

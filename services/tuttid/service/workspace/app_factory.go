@@ -88,6 +88,7 @@ func (l *keyedOperationLocks) Lock(key string) func() {
 
 type FactoryAgentSessionService interface {
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
 }
@@ -117,6 +118,12 @@ type FixAppFactoryJobInput struct {
 	Prompt string
 }
 
+type AppFactoryProviderComposerOptionsInput struct {
+	Locale   string
+	Provider string
+	Settings agentservice.ComposerSettings
+}
+
 func (s *AppFactoryService) List(ctx context.Context, workspaceID string) ([]workspacebiz.AppFactoryJob, error) {
 	if _, err := s.workspaceSummary(ctx, workspaceID); err != nil {
 		return nil, err
@@ -144,6 +151,28 @@ func (s *AppFactoryService) List(ctx context.Context, workspaceID string) ([]wor
 		jobs[index] = updated
 	}
 	return jobs, nil
+}
+
+func (s *AppFactoryService) GetProviderComposerOptions(ctx context.Context, workspaceID string, input AppFactoryProviderComposerOptionsInput) (agentservice.ComposerOptions, error) {
+	if _, err := s.workspaceSummary(ctx, workspaceID); err != nil {
+		return agentservice.ComposerOptions{}, err
+	}
+	if s.AgentSessionService == nil {
+		return agentservice.ComposerOptions{}, errors.New("agent session service is unavailable")
+	}
+	cwd := s.appFactoryComposerDraftDir(workspaceID)
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		return agentservice.ComposerOptions{}, fmt.Errorf("create app factory composer draft dir: %w", err)
+	}
+	includeCapabilityCatalog := false
+	return s.AgentSessionService.GetComposerOptions(ctx, agentservice.ComposerOptionsInput{
+		Cwd:                      cwd,
+		IncludeCapabilityCatalog: &includeCapabilityCatalog,
+		Locale:                   strings.TrimSpace(input.Locale),
+		Provider:                 strings.TrimSpace(input.Provider),
+		Settings:                 input.Settings,
+		WorkspaceID:              strings.TrimSpace(workspaceID),
+	})
 }
 
 func (s *AppFactoryService) ReconcileInterruptedJobs(ctx context.Context) (int, error) {
@@ -281,6 +310,13 @@ func (s *AppFactoryService) Create(ctx context.Context, workspaceID string, inpu
 		_ = s.putAndPublish(ctx, job)
 		return job, nil
 	}
+	agentWorkspaceAppSkill, err := agentWorkspaceAppReferenceSkillBundle()
+	if err != nil {
+		job.Status = workspacebiz.AppFactoryJobStatusFailed
+		job.FailureReason = err.Error()
+		_ = s.putAndPublish(ctx, job)
+		return job, nil
+	}
 	session, err := s.AgentSessionService.Create(ctx, workspaceID, agentservice.CreateSessionInput{
 		AgentSessionID: agentSessionID,
 		Provider:       job.Provider,
@@ -294,7 +330,7 @@ func (s *AppFactoryService) Create(ctx context.Context, workspaceID string, inpu
 		ReasoningEffort: optionalStringPointer(
 			strings.TrimSpace(job.ReasoningEffort),
 		),
-		ExtraSkills: []agentservice.SessionSkillBundle{appFactorySkill},
+		ExtraSkills: []agentservice.SessionSkillBundle{appFactorySkill, agentWorkspaceAppSkill},
 	})
 	if err != nil {
 		job.Status = workspacebiz.AppFactoryJobStatusFailed
@@ -755,4 +791,15 @@ func (s *AppFactoryService) stateDir() string {
 		return value
 	}
 	return tuttitypes.DefaultStateDir()
+}
+
+func (s *AppFactoryService) appFactoryComposerDraftDir(workspaceID string) string {
+	return filepath.Join(
+		s.stateDir(),
+		"apps",
+		"factory",
+		"composer",
+		safeAppPathSegment(workspaceID),
+		"draft",
+	)
 }

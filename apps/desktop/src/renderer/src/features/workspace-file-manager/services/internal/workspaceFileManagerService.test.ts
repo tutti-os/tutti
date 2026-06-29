@@ -742,6 +742,7 @@ function createDependenciesStub(): {
       selectAppIconImage: fail,
       selectDirectory: fail,
       selectUploadFiles: fail,
+      copyImageToClipboard: fail,
       copyFilesToClipboard: fail
     },
     tuttidClient: {
@@ -787,6 +788,7 @@ function createDependenciesStub(): {
       getWorkspace: fail,
       getWorkspaceAgentSession: fail,
       getWorkspaceAppFactoryJob: fail,
+      getWorkspaceAppFactoryProviderComposerOptions: fail,
       getAgentProviderComposerOptions: fail,
       getAgentProviderStatuses: fail,
       probeAgentProvider: fail,

@@ -377,16 +377,16 @@ export const workspaceWorkspaceAppSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["name", "avatarUrl", "url"],
+        required: ["name"],
         properties: {
           name: {
             type: "string",
             minLength: 1
           },
-          avatarUrl: {
+          url: {
             type: ["string", "null"]
           },
-          url: {
+          avatarUrl: {
             type: ["string", "null"]
           }
         }
@@ -1491,16 +1491,16 @@ export const workspaceAppUpdatedPayloadSchema = {
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["name", "avatarUrl", "url"],
+            required: ["name"],
             properties: {
               name: {
                 type: "string",
                 minLength: 1
               },
-              avatarUrl: {
+              url: {
                 type: ["string", "null"]
               },
-              url: {
+              avatarUrl: {
                 type: ["string", "null"]
               }
             }

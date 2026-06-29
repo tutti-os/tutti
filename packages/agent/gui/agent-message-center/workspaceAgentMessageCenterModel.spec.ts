@@ -913,6 +913,70 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     expect(model.items[0]?.pendingPrompt).toBeNull();
   });
 
+  it("uses the latest user message as the message-center title", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "user-1",
+            role: "user",
+            payload: { text: "First task" },
+            occurredAtUnixMs: 10
+          }),
+          message({
+            agentSessionId: "session-1",
+            messageId: "user-2",
+            role: "user",
+            payload: { text: "Latest task" },
+            occurredAtUnixMs: 30
+          })
+        ],
+        sessions: [
+          session({
+            agentSessionId: "session-1",
+            provider: "codex",
+            status: "completed",
+            title: "AI generated summary"
+          })
+        ]
+      })
+    );
+    expect(model.items[0]?.title).toBe("Latest task");
+  });
+
+  it("uses the newest user message by timestamp even when messages are out of order", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "user-newer",
+            role: "user",
+            payload: { text: "Latest task" },
+            occurredAtUnixMs: 30
+          }),
+          message({
+            agentSessionId: "session-1",
+            messageId: "user-older",
+            role: "user",
+            payload: { text: "First task" },
+            occurredAtUnixMs: 10
+          })
+        ],
+        sessions: [
+          session({
+            agentSessionId: "session-1",
+            provider: "codex",
+            status: "completed",
+            title: "AI generated summary"
+          })
+        ]
+      })
+    );
+    expect(model.items[0]?.title).toBe("Latest task");
+  });
+
   it("does not synthesize a plan decision for non-codex providers", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({

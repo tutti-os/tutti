@@ -100,6 +100,7 @@ func seedGeneratedFileBenchmarkMessages(
 					Kind:      "tool_call",
 					Status:    "completed",
 					Payload: map[string]any{
+						"toolName": "Write",
 						"fileChanges": map[string]any{
 							"files": []any{
 								map[string]any{

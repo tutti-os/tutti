@@ -12,12 +12,44 @@ test("floating window bodies do not reserve a right-side content margin", () => 
   );
 });
 
+test("floating window corner resize handles do not intrude further than the edge handles", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  // Edge handles (north/south/east/west) reach 4px into the window before
+  // being clipped by `.workbench-window`'s overflow:hidden. Corner handles
+  // used to be sized/offset so they reached 16px inward instead, which let
+  // them sit on top of interactive chrome anchored to a window's corners
+  // (for example the agent-gui conversation rail's bottom-left config
+  // button) and swallow clicks meant for that content.
+  assert.match(
+    css,
+    /\.workbench-window__resize-handle\[data-handle="north-east"\],\s*\.workbench-window__resize-handle\[data-handle="north-west"\],\s*\.workbench-window__resize-handle\[data-handle="south-east"\],\s*\.workbench-window__resize-handle\[data-handle="south-west"\]\s*{[^}]*width:\s*16px;[^}]*height:\s*16px;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-window__resize-handle\[data-handle="south-west"\]\s*{[^}]*bottom:\s*-12px;[^}]*left:\s*-12px;/s
+  );
+});
+
 test("mission control hidden presentation windows are invisible and inert", () => {
   const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
 
   assert.match(
     css,
     /\.workbench-window-shell\[data-presentation-visibility="hidden"\]\s*{[^}]*visibility:\s*hidden;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s
+  );
+});
+
+test("dialog popover node layer sits above dialog overlays and remains clickable", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    css,
+    /\.workbench-node-layer--dialog-popover\s*{[^}]*position:\s*fixed;[^}]*z-index:\s*var\(--z-dialog-popover\);[^}]*pointer-events:\s*none;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-node-layer--dialog-popover\[data-workbench-interactive="true"\]\s+\.workbench-window-shell\[data-minimized-mount="visible"\]\[data-genie-state="visible"\]\s*{[^}]*pointer-events:\s*auto;/s
   );
 });
 

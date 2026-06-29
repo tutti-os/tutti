@@ -65,11 +65,11 @@ func generatedAppAuthorsFromBiz(manifest workspacebiz.AppManifest) []tuttigenera
 }
 
 func generatedAppRepositoryFromBiz(manifest workspacebiz.AppManifest) *tuttigenerated.WorkspaceAppRepository {
-	if manifest.SourceInfo == nil {
+	if manifest.Source == nil {
 		return nil
 	}
-	repositoryType := trimString(manifest.SourceInfo.Type)
-	repositoryURL := trimString(manifest.SourceInfo.URL)
+	repositoryType := trimString(manifest.Source.Type)
+	repositoryURL := trimString(manifest.Source.URL)
 	if repositoryType != "github" || repositoryURL == "" {
 		return nil
 	}

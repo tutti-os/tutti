@@ -1,11 +1,39 @@
 import { accessSync, constants } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { clipboard } from "electron";
+import { clipboard, nativeImage } from "electron";
+import { writeImageToClipboardWriter } from "./clipboardImageWriter.ts";
 import { buildFilenamesPlist } from "./clipboardFilePlist.ts";
 
+type SystemClipboardWriter = Pick<
+  typeof clipboard,
+  "clear" | "writeBuffer" | "writeImage"
+>;
+type NativeImageFactory = Pick<typeof nativeImage, "createFromBuffer">;
+
+export interface SystemClipboardDependencies {
+  clipboard?: SystemClipboardWriter;
+  nativeImage?: NativeImageFactory;
+}
+
+export function writeImageToSystemClipboard(
+  input: {
+    data: string;
+    mimeType: "image/png";
+  },
+  deps: SystemClipboardDependencies = {}
+): void {
+  const clipboardWriter = deps.clipboard ?? clipboard;
+  const imageFactory = deps.nativeImage ?? nativeImage;
+  writeImageToClipboardWriter(input, {
+    clipboard: clipboardWriter,
+    nativeImage: imageFactory
+  });
+}
+
 export function writeFilesToSystemClipboard(
-  filePaths: readonly string[]
+  filePaths: readonly string[],
+  deps: SystemClipboardDependencies = {}
 ): void {
   const normalizedPaths = [
     ...new Set(
@@ -27,8 +55,10 @@ export function writeFilesToSystemClipboard(
     }
   }
 
+  const clipboardWriter = deps.clipboard ?? clipboard;
   if (process.platform === "darwin") {
-    clipboard.writeBuffer(
+    clipboardWriter.clear();
+    clipboardWriter.writeBuffer(
       "NSFilenamesPboardType",
       Buffer.from(buildFilenamesPlist(normalizedPaths))
     );
@@ -36,7 +66,11 @@ export function writeFilesToSystemClipboard(
   }
 
   if (process.platform === "win32") {
-    clipboard.writeBuffer("CF_HDROP", buildCFHDropBuffer(normalizedPaths));
+    clipboardWriter.clear();
+    clipboardWriter.writeBuffer(
+      "CF_HDROP",
+      buildCFHDropBuffer(normalizedPaths)
+    );
     return;
   }
 

@@ -32,3 +32,9 @@ test("component minimized previews do not request snapshot preview capture", () 
   assert.match(source, /shouldCaptureNodePreviewImage,/);
   assert.match(source, /renderNodeGeniePreview,/);
 });
+
+test("host window surface layers can raise selected nodes above dialog overlays", () => {
+  assert.match(source, /const resolveWindowSurfaceLayer = useCallback/);
+  assert.match(source, /\.window\?\.surfaceLayer\s*\?\?\s*"default"/);
+  assert.match(source, /resolveWindowSurfaceLayer,/);
+});

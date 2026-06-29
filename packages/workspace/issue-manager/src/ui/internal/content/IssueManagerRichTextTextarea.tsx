@@ -54,7 +54,6 @@ export function IssueManagerRichTextTextarea({
   return (
     <RichTextTriggerEditor
       focusSignal={focusSignal}
-      maxResults={8}
       minQueryLength={0}
       triggerProviders={providers}
       textOverrides={{

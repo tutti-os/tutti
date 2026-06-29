@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { defaultIssueManagerNodeFrame } from "@tutti-os/workspace-issue-manager/workbench/constants";
 import {
@@ -88,6 +89,15 @@ test("workspace file previews open at the task center default height", () => {
     workspaceFilePreviewNodeFrame.height,
     defaultIssueManagerNodeFrame.height
   );
+});
+
+test("workspace file preview contribution uses the dialog popover layer", () => {
+  const source = readFileSync(
+    new URL("./workspaceFilePreviewContribution.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(source, /surfaceLayer:\s*"dialog-popover"/);
 });
 
 test("workspace agent GUI opens at the files window default size", () => {

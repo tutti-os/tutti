@@ -116,6 +116,8 @@ export function createDesktopAgentHostApi({
       windowsPty: null
     },
     clipboard: {
+      writeImage: (input: { data: string; mimeType: "image/png" }) =>
+        hostFilesApi.copyImageToClipboard(input),
       writeText: (text: string) => navigator.clipboard.writeText(text)
     },
     debug: {

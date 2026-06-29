@@ -44,6 +44,8 @@ export interface AgentNodeData {
 
 export interface AgentGUINodeData {
   provider: AgentGUIProvider;
+  providerTargetId?: string | null;
+  providerTargetRef?: AgentGUIProviderTargetRef | null;
   lastActiveAgentSessionId: string | null;
   lastActiveConversationTitle?: string | null;
   conversationCount?: number | null;
@@ -59,6 +61,23 @@ export type AgentGUIProvider = Extract<
   AgentProvider,
   "claude-code" | "codex" | "nexight" | "gemini" | "hermes" | "openclaw"
 >;
+
+export interface AgentGUIProviderTargetRef {
+  kind: string;
+  provider: AgentGUIProvider;
+  [key: string]: unknown;
+}
+
+export interface AgentGUIProviderTarget {
+  targetId: string;
+  provider: AgentGUIProvider;
+  ref: AgentGUIProviderTargetRef;
+  label: string;
+  description?: string;
+  ownerLabel?: string;
+  disabled?: boolean;
+  unavailableReason?: string;
+}
 
 export interface WebsiteNodeData {
   url: string;

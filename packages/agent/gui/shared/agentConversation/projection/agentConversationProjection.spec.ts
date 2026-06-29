@@ -573,6 +573,44 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("scopes the transient processing row identity to the latest turn", () => {
+    const firstTurn = detailViewModel().turns[0]!;
+    const secondTurn = {
+      id: "turn-2",
+      userMessage: {
+        id: "user-2",
+        body: "Follow-up request",
+        turnId: "turn-2"
+      },
+      userMessages: [
+        { id: "user-2", body: "Follow-up request", turnId: "turn-2" }
+      ],
+      agentMessages: [],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: []
+    };
+
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [firstTurn, secondTurn],
+        showProcessingIndicator: true
+      })
+    );
+
+    const processing = conversation.rows.find(
+      (row) => row.kind === "processing"
+    );
+
+    expect(processing).toEqual(
+      expect.objectContaining({
+        id: "processing:turn-2",
+        turnId: "turn-2"
+      })
+    );
+  });
+
   it("keeps Edit and Write tool calls as standalone rows when avoidGroupingEdits is enabled", () => {
     const detail = detailViewModel();
 

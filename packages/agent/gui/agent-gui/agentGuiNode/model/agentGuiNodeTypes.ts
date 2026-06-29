@@ -1,5 +1,5 @@
 import type { AgentActivityUsage } from "@tutti-os/agent-activity-core";
-import type { AgentGUINodeData } from "../../../types";
+import type { AgentGUINodeData, AgentGUIProviderTarget } from "../../../types";
 import type {
   AgentGUIApprovalRequest,
   AgentGUIConversationSummary,
@@ -158,6 +158,7 @@ export interface AgentGUINodeViewModel {
   workspacePath?: string | null;
   currentUserId?: string | null;
   data: AgentGUINodeData;
+  selectedProviderTarget: AgentGUIProviderTarget;
   conversations: AgentGUIConversationSummary[];
   userProjects: AgentGUIConversationUserProject[];
   activeConversation: AgentGUIConversationSummary | null;

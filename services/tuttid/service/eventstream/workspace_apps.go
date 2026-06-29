@@ -85,8 +85,8 @@ func (p WorkspaceAppPublisher) PublishWorkspaceAppUpdated(ctx context.Context, w
 
 func generatedEventAppAuthors(manifest workspacebiz.AppManifest) []struct {
 	Name      string  `json:"name"`
-	AvatarUrl *string `json:"avatarUrl"`
-	Url       *string `json:"url"`
+	Url       *string `json:"url,omitempty"`
+	AvatarUrl *string `json:"avatarUrl,omitempty"`
 } {
 	manifestAuthors := manifest.Authors
 	if len(manifestAuthors) == 0 && manifest.Author != nil {
@@ -94,8 +94,8 @@ func generatedEventAppAuthors(manifest workspacebiz.AppManifest) []struct {
 	}
 	authors := make([]struct {
 		Name      string  `json:"name"`
-		AvatarUrl *string `json:"avatarUrl"`
-		Url       *string `json:"url"`
+		Url       *string `json:"url,omitempty"`
+		AvatarUrl *string `json:"avatarUrl,omitempty"`
 	}, 0, len(manifestAuthors))
 	for _, author := range manifestAuthors {
 		name := strings.TrimSpace(author.Name)
@@ -104,12 +104,12 @@ func generatedEventAppAuthors(manifest workspacebiz.AppManifest) []struct {
 		}
 		authors = append(authors, struct {
 			Name      string  `json:"name"`
-			AvatarUrl *string `json:"avatarUrl"`
-			Url       *string `json:"url"`
+			Url       *string `json:"url,omitempty"`
+			AvatarUrl *string `json:"avatarUrl,omitempty"`
 		}{
 			Name:      name,
-			AvatarUrl: stringPointer(strings.TrimSpace(author.AvatarURL)),
 			Url:       stringPointer(strings.TrimSpace(author.URL)),
+			AvatarUrl: stringPointer(strings.TrimSpace(author.AvatarURL)),
 		})
 	}
 	return authors
@@ -119,11 +119,11 @@ func generatedEventAppRepository(manifest workspacebiz.AppManifest) *struct {
 	Type string `json:"type"`
 	Url  string `json:"url"`
 } {
-	if manifest.SourceInfo == nil {
+	if manifest.Source == nil {
 		return nil
 	}
-	repositoryType := strings.TrimSpace(manifest.SourceInfo.Type)
-	repositoryURL := strings.TrimSpace(manifest.SourceInfo.URL)
+	repositoryType := strings.TrimSpace(manifest.Source.Type)
+	repositoryURL := strings.TrimSpace(manifest.Source.URL)
 	if repositoryType != "github" || repositoryURL == "" {
 		return nil
 	}

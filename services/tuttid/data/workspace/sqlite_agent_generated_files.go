@@ -39,7 +39,7 @@ func (s *SQLiteStore) ListWorkspaceGeneratedFiles(
 	scanLimit := generatedFileMessageScanLimit(limit)
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT s.cwd, m.payload_json
+SELECT s.cwd, m.kind, m.status, m.payload_json
 FROM workspace_agent_messages m
 JOIN workspace_agent_sessions s
   ON s.workspace_id = m.workspace_id
@@ -60,13 +60,18 @@ LIMIT ?
 	files := make([]agentactivitybiz.GeneratedFile, 0, limit)
 	for rows.Next() {
 		var cwd string
+		var kind string
+		var status string
 		var payloadJSON string
-		if err := rows.Scan(&cwd, &payloadJSON); err != nil {
+		if err := rows.Scan(&cwd, &kind, &status, &payloadJSON); err != nil {
 			return agentactivitybiz.GeneratedFileList{}, false, fmt.Errorf("scan workspace agent generated file message: %w", err)
 		}
 		var payload map[string]any
 		if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
 			return agentactivitybiz.GeneratedFileList{}, false, fmt.Errorf("decode workspace agent generated file payload: %w", err)
+		}
+		if !isSuccessfulGeneratedFileMessage(kind, status, payload) {
+			continue
 		}
 		for _, filePath := range generatedFilePathsFromPayload(payload, cwd) {
 			if _, exists := filesByPath[filePath]; exists {
@@ -111,6 +116,141 @@ func generatedFileMessageScanLimit(limit int) int {
 		return 5000
 	}
 	return scanLimit
+}
+
+func isSuccessfulGeneratedFileMessage(kind string, status string, payload map[string]any) bool {
+	if normalizeGeneratedFileToken(kind) != "tool_call" {
+		return false
+	}
+	if !generatedFileStatusAllows(status) {
+		return false
+	}
+	if !generatedFilePayloadStatusAllows(payload) {
+		return false
+	}
+	return hasGeneratedFileChangeSignal(payload)
+}
+
+func generatedFilePayloadStatusAllows(payload map[string]any) bool {
+	if payload == nil {
+		return true
+	}
+	if !generatedFileRecordStatusAllows(payload) {
+		return false
+	}
+	if output, ok := objectField(payload, "output"); ok {
+		if !generatedFileRecordStatusAllows(output) {
+			return false
+		}
+	}
+	return true
+}
+
+func generatedFileRecordStatusAllows(record map[string]any) bool {
+	if record == nil {
+		return true
+	}
+	if status, ok := stringField(record, "status"); ok && !generatedFileStatusAllows(status) {
+		return false
+	}
+	if success, ok := boolField(record, "success"); ok && !success {
+		return false
+	}
+	return true
+}
+
+func generatedFileStatusAllows(status string) bool {
+	normalized := normalizeGeneratedFileToken(status)
+	if normalized == "" {
+		return true
+	}
+	switch normalized {
+	case "completed", "success", "succeeded", "ok":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasGeneratedFileChangeSignal(payload map[string]any) bool {
+	for _, record := range generatedFileSignalRecords(payload) {
+		if recordHasGeneratedFileToolSignal(record) {
+			return true
+		}
+	}
+	return false
+}
+
+func generatedFileSignalRecords(payload map[string]any) []map[string]any {
+	if payload == nil {
+		return nil
+	}
+	records := []map[string]any{payload}
+	if input, ok := objectField(payload, "input"); ok {
+		records = append(records, input)
+	}
+	if output, ok := objectField(payload, "output"); ok {
+		records = append(records, output)
+	}
+	if toolState, ok := objectField(payload, "tool_state"); ok {
+		if input, ok := objectField(toolState, "input"); ok {
+			records = append(records, input)
+		}
+	}
+	return records
+}
+
+func recordHasGeneratedFileToolSignal(record map[string]any) bool {
+	if record == nil {
+		return false
+	}
+	if activityKind, ok := stringField(record, "activityKind"); ok &&
+		isGeneratedFileChangeToolName(normalizeGeneratedFileToolName(activityKind)) {
+		return true
+	}
+	if _, ok := stringField(record, "fileChangeKind"); ok {
+		return true
+	}
+	if toolCall, ok := objectField(record, "toolCall"); ok {
+		if kind, ok := stringField(toolCall, "kind"); ok {
+			switch normalizeGeneratedFileToken(kind) {
+			case "write", "edit", "delete":
+				return true
+			}
+		}
+	}
+	for _, key := range []string{"toolName", "title", "name"} {
+		if name, ok := stringField(record, key); ok &&
+			isGeneratedFileChangeToolName(normalizeGeneratedFileToolName(name)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isGeneratedFileChangeToolName(normalized string) bool {
+	if normalized == "" {
+		return false
+	}
+	for _, candidate := range []string{
+		"write",
+		"writefile",
+		"create",
+		"createfile",
+		"delete",
+		"deletefile",
+		"edit",
+		"editfile",
+		"multiedit",
+		"applypatch",
+		"move",
+		"notebookedit",
+	} {
+		if normalized == candidate || strings.HasPrefix(normalized, candidate+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func generatedFilePathsFromPayload(payload map[string]any, cwd string) []string {
@@ -182,6 +322,40 @@ func objectField(payload map[string]any, key string) (map[string]any, bool) {
 	}
 	object, ok := value.(map[string]any)
 	return object, ok
+}
+
+func stringField(payload map[string]any, key string) (string, bool) {
+	value, ok := payload[key]
+	if !ok {
+		return "", false
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+	text = strings.TrimSpace(text)
+	return text, text != ""
+}
+
+func boolField(payload map[string]any, key string) (bool, bool) {
+	value, ok := payload[key]
+	if !ok {
+		return false, false
+	}
+	boolValue, ok := value.(bool)
+	return boolValue, ok
+}
+
+func normalizeGeneratedFileToken(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizeGeneratedFileToolName(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	return normalized
 }
 
 func normalizeGeneratedFilePath(value any, cwd string) string {

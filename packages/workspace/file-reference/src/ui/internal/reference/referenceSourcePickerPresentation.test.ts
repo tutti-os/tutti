@@ -6,6 +6,7 @@ import {
   formatHierarchyTitle,
   formatReferenceNodePathText,
   formatReferencePreviewDateTime,
+  resolveReferencePreviewTimestampMs,
   resolveReferencePreviewSizeBytes
 } from "./referenceSourcePickerPresentation.ts";
 
@@ -69,6 +70,29 @@ test("formatReferencePreviewDateTime formats timestamps in the requested user ti
     }),
     "2026-06-12 11:24"
   );
+});
+
+test("resolveReferencePreviewTimestampMs prefers creation time over modified time", () => {
+  const node = {
+    createdTimeMs: 1_800_000_000_000,
+    displayName: "prd.md",
+    kind: "file",
+    mtimeMs: 1_800_000_001_000,
+    ref: { sourceId: "workspace-file", nodeId: "f:prd.md" }
+  } satisfies ReferenceNode;
+
+  assert.equal(resolveReferencePreviewTimestampMs(node), 1_800_000_000_000);
+});
+
+test("resolveReferencePreviewTimestampMs falls back to modified time", () => {
+  const node = {
+    displayName: "prd.md",
+    kind: "file",
+    mtimeMs: 1_800_000_001_000,
+    ref: { sourceId: "workspace-file", nodeId: "f:prd.md" }
+  } satisfies ReferenceNode;
+
+  assert.equal(resolveReferencePreviewTimestampMs(node), 1_800_000_001_000);
 });
 
 test("resolveReferencePreviewSizeBytes prefers loaded preview bytes over zero metadata", () => {

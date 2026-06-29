@@ -270,6 +270,9 @@ function createWebHostApi(): DesktopHostApi {
       selectUploadFiles() {
         return Promise.reject(electronDebugRequired("selectUploadFiles"));
       },
+      copyImageToClipboard() {
+        return Promise.reject(electronDebugRequired("copyImageToClipboard"));
+      },
       copyFilesToClipboard() {
         return Promise.reject(electronDebugRequired("copyFilesToClipboard"));
       }

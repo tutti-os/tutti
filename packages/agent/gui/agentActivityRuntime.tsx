@@ -28,6 +28,7 @@ import type {
   AgentHostUnactivateAgentSessionResult,
   AgentHostAgentSessionState
 } from "./shared/contracts/dto";
+import type { AgentGUIProviderTargetRef } from "./types";
 
 export interface AgentActivityRuntimeListSessionMessagesInput {
   afterVersion?: number;
@@ -129,6 +130,11 @@ export interface AgentActivityRuntimeActivateSessionInput {
   mode: "existing" | "new";
   openclawGatewayReady?: boolean;
   provider?: string;
+  /**
+   * Opaque host-owned target reference. AgentGUI passes this through only; hosts
+   * must not treat it as authority and must re-authenticate before launch.
+   */
+  providerTargetRef?: AgentGUIProviderTargetRef | null;
   settings?: AgentHostAgentSessionComposerSettings;
   title?: string;
   visible?: boolean;

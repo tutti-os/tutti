@@ -309,6 +309,19 @@ export function createDesktopTuttidClient(
         agentSessionID
       );
     },
+    async getWorkspaceAppFactoryProviderComposerOptions(
+      workspaceID,
+      provider,
+      request
+    ) {
+      return (
+        await resolveClient()
+      ).getWorkspaceAppFactoryProviderComposerOptions(
+        workspaceID,
+        provider,
+        request
+      );
+    },
     async getAgentProviderComposerOptions(provider, request, requestOptions) {
       return (await resolveClient()).getAgentProviderComposerOptions(
         provider,

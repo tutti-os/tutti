@@ -25,6 +25,10 @@ export interface IWorkspaceFileManagerService {
   getSnapshotState(
     workspaceID: string
   ): WorkspaceFileManagerPersistedState | null;
+  openCanvasFilePreview(
+    workspaceID: string,
+    target: WorkspaceFileActivationTarget
+  ): Promise<boolean>;
   resolveEntryIconUrl(
     workspaceID: string,
     entry: WorkspaceFileEntry

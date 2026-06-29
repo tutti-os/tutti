@@ -1,128 +1,205 @@
 <div align="center">
 
-<img src="docs/assets/banner.jpg" alt="Tutti" width="720" />
+<img src="docs/assets/banner.jpg" alt="Tutti" width="100%" />
 
 **Where people and agents build in tune.**
 
-[Website](https://tutti.sh) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
+[Website](https://tutti.sh/?tc=25q) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Website](https://img.shields.io/badge/website-tutti.sh-black.svg)](https://tutti.sh)
+[![Website](https://img.shields.io/badge/website-tutti.sh-black.svg)](https://tutti.sh/?tc=25q)
 
 </div>
 
 ---
 
-Like Tutti? Give us a star, fork the repo, open an issue, or send a PR.
+If you like Tutti, give our GitHub repo a star, fork it, open an issue, or send a PR.
 
-We're building Tutti with the community. Join our Discord to meet the team and other builders, share feedback, ask questions, and help shape what comes next:
+Anyone interested is welcome to join our [Discord](https://discord.gg/UUemKEWtw6) to share feedback, ask questions, and help shape the future of human-agent collaboration.
 
-<img src="docs/assets/join-discord.jpg" alt="Join our Discord — scan to meet Tutti" width="360" />
+**Tutti is now open-source.**
+
+**Tutti · VM is on the way. If you're interested, join the waitlist on our site:**
+
+**[tutti.sh →](https://tutti.sh/?tc=25q)**
 
 ## What is Tutti?
 
-Agents work in isolation by default. Tutti brings them into one live workspace, where your Claude, Codex, and Gemini can share context, files, apps, and running tasks. Your Codex can see what Claude built.
+Claude Code is powerful. So is Codex. So is Canvas. So is Claude Design.
 
-Tutti also comes with its own app ecosystem, including apps for image generation, UI/UX design, docs, decks, and more. You can use them, and your agents can use them too.
+But the moment a real workflow needs dependencies and handoffs, the busiest person in the room ends up being you.
 
-When Codex calls an image-generation app to create an image, Claude Code can use that image directly to build the frontend. No copy-pasting required.
+Claude finishes an API; now Codex has to build the frontend. So you paste the API docs, bring Codex up to speed on where things stand, and re-explain why you built it that way. And before the frontend even starts, if you want decent UI, you need design and assets too. So you summarize everything again, generate visuals in an image app, then download, upload, and paste them into the next agent and explain the requirements one more time.
 
-Everything is visible and connected inside Tutti. Any artifact, including app-generated outputs, can be passed across agents and used directly in the next step.
+Agents were supposed to do the work for you. Instead, you've become the messenger between them.
 
-No terminal. No setup friction. Just open Tutti and start building.
+### Tutti provides a real-time shared workspace where context, files, apps, and tasks are all connected
 
-## Features
+![Tutti's real-time shared workspace](docs/assets/en/workspace-hero.jpg)
 
-### The Live Workspace
+Codex can pick up Claude's output without losing any context, as if they shared one brain.
 
-Agents don't hand off summaries. They share the same live workspace: context, files, running tasks, and apps. Your Codex sees what Claude changed, what's running, and the current project state. This unlocks two key capabilities:
+On top of that, Tutti has its own app ecosystem: image generation, UI/UX design, docs, and presentations. You can use them, and so can your agents. When Codex calls the prototype-design app, it's as if it gained Claude Design's abilities, and Claude Code can take the result straight into frontend work, with no copy-pasting on your part.
 
-**Big @**
+**Everything in Tutti is visible and connected. Any output, including what apps generate, can flow between agents and be used directly in the next step.**
 
-- In Codex, you can use `@` to reference past conversations, files, apps, app outputs, and tasks. No repeated copy-pasting or re-uploading.
-- You can also reference Claude Code's past conversations, files, apps, app outputs, and tasks from inside Codex, then build on top of them without manually moving context around.
+## Sounds like you?
 
-**Task orchestration and multi-project building**
+- You work with several AI agents at once (Codex, Claude Code, Canvas, and so on).
+- You've copied context between agents more than once, maybe even built your own Markdown-based handoff workflow.
+- You try to let AI handle everything, but it never quite flows, and every new session starts from scratch.
+- You've subscribed to a few different AI products, but it never feels worth the money.
+- For anything complex, your tools sit in separate silos, and the back-and-forth only grows.
 
-- With shared visibility into each other's work, agents can avoid or resolve conflicts and decide whether work should run in parallel or in sequence. Agents from different providers, such as Claude and Codex, or Gemini and OpenClaw (DeepSeek), can work together without getting in each other's way.
+**Tutti is not a replacement for your coding agent. It's a real-time shared workspace for your agents.**
 
-![The live workspace — agents sharing one live context, files, and running state](docs/assets/live-workspace.jpg)
+<p align="center">
+  <img src="docs/assets/en/why-tutti.png" alt="Tutti is a real-time shared workspace for your agents" width="70%" />
+</p>
 
-### The Apps
+## Three core features
 
-Apps run on Tutti, for you and your agents. Use them yourself, or let any agent call them. Create images, videos, and more with official, community-built, or custom apps.
+### 1) A real-time shared workspace
 
-All apps reuse your existing agent subscriptions.
+Agents no longer just hand off summaries. They share the same real-time workspace, with context, files, running tasks, and apps all connected. Your Codex can see what Claude changed, what is running, and the current state of the project.
 
-![The Apps — official, community-built, and custom apps you and your agents can call](docs/assets/apps.jpg)
+This unlocks three core capabilities:
 
-### Goal to Tasks
+#### Big @
 
-Stop assigning every step by hand. Describe the goal. Tutti breaks it into clear tasks. Review each task, then assign it to the agent you want.
+- In Codex, you can @ past conversations, files, app invocations, and tasks. No repeated copy-pasting or uploading.
+- You can also @ Claude Code's past conversations, files, app invocations, and tasks from inside Codex, then build on top of them without manually carrying over context.
+- You can also ask Codex to direct @ Claude Code (app) to do the work.
 
-![Goal to Tasks — describe a goal and Tutti breaks it into clear, assignable tasks](docs/assets/goal-to-tasks.jpg)
+<p align="center">
+  <img src="docs/assets/en/at-history.png" width="32%" />
+  <img src="docs/assets/en/at-claude.png" width="32%" />
+  <img src="docs/assets/en/at-command.png" width="32%" />
+</p>
 
-### Control Center
+#### Reference with "+"
 
-No more switching back and forth across multiple tabs. One view gives you the full picture: all agent conversations, actions waiting for your approval, and running tasks. When something needs your confirmation, you can quickly locate it and approve it with one click.
+In the agent chat box, click "+" to reference local files or outputs generated by apps.
 
-![Control Center — every agent conversation, pending approval, and running task in one view](docs/assets/your-control.jpg)
+<p align="center">
+  <img src="docs/assets/en/plus-reference.png" width="60%" />
+</p>
 
-### Bring Your Own Subscriptions
+#### Task orchestration and multi-project work
 
-Connect your existing Claude, Codex, and Gemini subscriptions directly. All apps and agents run on top of them, with no extra fees.
+With shared visibility into each other's work, agents can avoid or resolve conflicts and decide whether work should run in parallel or in sequence. Agents from different providers, such as Claude and Codex, or Gemini and OpenClaw (DeepSeek), can work together without getting in each other's way.
 
-![Bring Your Own Subscriptions — connect your existing Claude, Codex, and Gemini plans](docs/assets/bring-your-own-subscriptions.jpg)
+**In Tutti · VM:**
 
-### Personalize Your Workspace
+- @ works across collaborators too. @ a teammate to pull in any of their agents' conversations, files, or tasks, and click "+" to reference outputs from apps they've used.
 
-Set up your workspace the way you like. Switch between dark mode and light mode, change your desktop background, adjust the dock position, customize icon styles, and more.
+### 2) Apps that both you and your agents can use
 
-![Personalize Your Workspace — dark or light mode, desktop background, dock, and icon styles](docs/assets/personalize-your-workspace.jpg)
+A full workflow is rarely one agent's job. Building a page might start with a prototype, then code, then visuals. Writing an article might need images, layout, and export. Each of these is handled by a different powerful agent or tool, so you end up subscribing to several and switching between them all day: opening, downloading, uploading, screenshotting, pasting. The work itself doesn't get harder; moving information around is what wears you out.
+
+Tutti has its own app center, shared in real time across the whole workspace. You can use these apps yourself, or have your agents call them.
+
+<img src="docs/assets/en/apps-1.png" width="49%" /> <img src="docs/assets/en/apps-2.png" width="49%" />
+
+<img src="docs/assets/en/apps-3.png" width="49%" /> <img src="docs/assets/en/apps-4.png" width="49%" />
+
+**For example:**
+
+- In Codex, @ a prototype-design app to generate UI drafts, which effectively gives Codex Claude Design-like abilities. The output goes straight into Codex's development work.
+- Generate visuals yourself in the image app (AI Canvas), then have Claude Code or Codex drop them into the page.
+- Once you've agreed on an article's structure, @ Codex with a doc app to draft and organize it, then export to HTML.
+- Need a deck in a few days for an external product intro? @ Claude Code with the AI PPT app to generate one. Want to tweak a few details by hand? AI PPT lets you drag modules around and edit text freely.
+
+<img src="docs/assets/en/ppt-1.png" width="49%" /> <img src="docs/assets/en/ppt-2.png" width="49%" />
+
+<img src="docs/assets/en/ppt-3.png" width="49%" /> <img src="docs/assets/en/ppt-4.png" width="49%" />
+
+Every app output stays in the same workspace. When the next step needs it, just reference it with "+" and keep going.
+
+Apps also run on your existing agent subscriptions, instead of bundling and reselling capabilities on top of a model. Use official apps, community-built ones, or build your own.
+
+### 3) Less work about work
+
+#### Goals to tasks
+
+No manual breakdown, no planning every step. Just describe the goal, for example "I want to build a website," and Tutti breaks it into clear sub-tasks. You review them and assign each to the right agent.
+
+<p align="center">
+  <img src="docs/assets/en/goal-to-tasks.png" width="60%" />
+</p>
+
+#### Control Center
+
+No more tab-switching. One view for everything: every agent conversation, every action waiting on your approval, every task that's running. Anything that needs you is surfaced clearly, so you can find it fast and handle it in one click.
+
+<p align="center">
+  <img src="docs/assets/en/control-center.png" width="60%" />
+</p>
+
+#### GUI Interface
+
+No command line. Open Tutti and start using agents, apps, tasks, and files right away. Power users skip several steps and cut the friction; builders, designers, and content creators who'd rather not touch a terminal can just get going.
+
+## Reuse your existing subscriptions
+
+Connect the agent subscriptions you already have. Every app and agent runs on top of them, at zero extra cost. (Currently Claude Code and Codex; Gemini, OpenClaw, and Hermes are coming soon.)
+
+<img src="docs/assets/en/subscriptions-1.png" width="49%" /> <img src="docs/assets/en/subscriptions-2.png" width="49%" />
+
+## Tutti vs Tutti · VM
+
+|                   | Tutti (open source)                                                                                                                    | Tutti · VM (coming soon)                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Best for**      | One person, multiple agents                                                                                                            | One person, multiple agents<br>One person, multiple devices<br>Two or more people, each with their own agents                                                                                                                                                                                                                                                                       |
+| **Runs on**       | Agents run locally, and the working state stays local                                                                                  | Multi-layer virtualization virtualizes your local agent into a real-time shared cloud workspace.<br><br>The agent still runs locally while its working state lives in the cloud in real time: what's being discussed, what's running, and what's already been created. This enables cross-device, multi-user collaboration among agents, with no context loss, like a shared brain. |
+| **Shares**        | Context, apps, outputs, tasks, and running state across multiple agents                                                                | Everything in the local version, plus sharing across multiple people and devices                                                                                                                                                                                                                                                                                                    |
+| **Subscriptions** | Your own Claude, Codex, and other subscriptions<br>(Currently Claude Code and Codex; OpenClaw, Gemini, and Hermes are in development.) | Your own Claude, Codex, and other subscriptions<br>(Currently Claude Code and Codex; OpenClaw, Gemini, and Hermes are in development.)                                                                                                                                                                                                                                              |
+
+### What can you do with Tutti?
+
+- Let Codex continue work Claude started, with no need to re-explain context.
+- After Claude writes a PRD, have it call a design app to generate visuals.
+- Use your existing agent subscriptions to run every app inside Tutti.
+- Describe a goal, let Tutti break it into sub-tasks, then assign each to the agent best suited for it.
+
+### What can you do with Tutti · VM?
+
+**Everything in Tutti, plus:**
+
+- Open a cloud room where several devices work together, as if they're on one machine.
+- Collaborate without sending files, pasting progress, or re-explaining what your agents did. In the same room, you see conversations, files, outputs, task progress, and app results in real time.
+- @ a teammate's files or agent conversations, so your agents can build straight on top of them.
+- Your local work (e.g. a localhost site) opens right in the room with no deploy, so others can preview it and give feedback on the spot.
+- Assign tasks to a teammate's agent when a workflow needs more than one person.
+
+> ⚠️ All sharing is scoped to the room: only what's created inside the same room is shared with the people you invite. Everything else stays private.
 
 ## Who is Tutti for?
 
-Tutti is built for anyone who uses AI agents to build. If you are tired of switching back and forth between different agents and apps, re-briefing them over and over, and manually moving outputs from one place to another, Tutti is designed for you.
+Anyone building with AI agents. If you're tired of switching between agents and apps, tired of re-explaining context over and over, tired of moving outputs around by hand, and tired of paying separately for every subscription, Tutti is for you.
 
-- **Indie developers:** Have Claude create the plan, then let Codex take over the development, without having to explain the project context again.
-- **Designers:** Create a design using a design app in Tutti, then let Codex use it directly to build the final implementation.
-- **Product managers:** After Codex writes the PRD, it can automatically call a UI/UX design app in Tutti to generate a prototype, without you having to open Figma.
+- **Independent developers**: let Claude draft the plan and Codex carry development forward, with no project context to re-explain.
+- **Designers**: build mockups in a design app, then let Codex turn them straight into working code.
+- **Product managers**: after Codex writes a PRD, have it call a UI/UX design app to generate a prototype, no Figma required.
+- **Content creators**: produce scripts, visuals, and layouts end to end in one shared workspace.
 
-Whatever your role, Tutti helps you find the lowest-friction way to combine the tools and agents you need at each step. It is fully GUI-based, with no terminal or command line required. Just open it and start using it.
+Whatever your role, you'll find the lowest-friction path through each step. Fully GUI-based, no terminal, just open and go.
 
-## What You Can Do With Tutti
+### What about Tutti · VM?
 
-**In Tutti · Local** (Runs locally. Outputs stay local.)
+Tutti first solves collaboration between you and your agents.
 
-- Ask Codex to continue Claude's work without re-briefing.
-- Let Claude write a PRD, then directly call a design app to generate visuals.
-- Use all apps inside Tutti with your existing agent subscriptions.
-- Describe a goal, let agents break it into subtasks, then assign each task to the right agent.
+Tutti · VM solves the next layer: when work moves outward, how different people, different devices, and each person's agents can stay in the same real-time shared space. In other words, multi-user agent-to-agent collaboration.
 
-**In Tutti · Cloud** (Agents run locally. Outputs live in the cloud.)
+Using multi-layer virtualization technology, Tutti · VM virtualizes your local agent into a real-time shared cloud workspace.
 
-Everything in the local version, plus:
+Here, the agent still runs locally, using your own subscriptions and configurations. But its working state lives in the cloud: what is being discussed, what is being worked on, and what has already been created all stay in the same Room. Websites, images, documents, and decks no longer need to be uploaded or downloaded. Just share them with a link.
 
-- Work across multiple devices as if you were using the same computer.
-- Collaborate with friends without sending files back and forth, pasting progress updates, or summarizing what an agent just did. As long as you are in the same cloud workspace, you can see each other's conversations, files, outputs, task progress, and app-generated results within that workspace.
-- Use `@` to reference your teammate's files, agent conversations, and more, then let your agent build on top of them.
-- Preview a locally running website (localhost) directly in the cloud workspace without deploying it first. Your friends can open it, give feedback, and help you make changes.
-- When a task requires more than one person, assign it to a teammate's agent.
+You and your friends join the same room. You can @ a task someone started last night, or hand a piece of work to their agent to keep running.
 
-> ⚠️ Sharing is scoped to each workspace. The inviter and invitees must join the same workspace, and only the content created inside that workspace will be shared. Everything else remains private.
-
-## Tutti · Local vs Tutti · Cloud
-
-|                   | Tutti · Local (open source)                                                | Tutti · Cloud (coming soon)                                                                                 |
-| ----------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Best for**      | One person, multiple agents                                                | One person, multiple agents · One person, multiple devices · Two or more people, each with their own agents |
-| **Runs on**       | Runs locally. Outputs stay local.                                          | Agents run locally. Outputs live in the cloud.                                                                    |
-| **Shares**        | Context, files, outputs, tasks, running state, and apps across your agents | Everything in the Local version, plus sharing across multiple people and multiple devices                   |
-| **Subscriptions** | Use your existing Claude, Codex, Gemini, and other agent subscriptions     | Use your existing Claude, Codex, Gemini, and other agent subscriptions                                      |
-
-This repository contains **Tutti · Local**: the desktop app and the local daemon. It is free and open source under Apache-2.0. Tutti · Cloud is a separate hosted service and its code is not part of this repository.
+**In Tutti · VM, the Room is both the boundary and the oasis.**
 
 ## FAQ
 
@@ -132,15 +209,15 @@ No. Tutti works with your existing Claude, Codex, Gemini, and other agent subscr
 
 ### What if I don't have an agent subscription?
 
-You can start with Tutti Agent inside Tutti. Tutti Agent is free during Early Access. Usage-based billing may apply later.
+You can start with the Tutti Agent inside Tutti. Tutti Agent is free during Early Access. Usage-based billing may apply later.
 
-### What's the difference between Tutti Local and Tutti Cloud?
+### What's the difference between Tutti and Tutti · VM?
 
-Use Local if you work alone with multiple agents. Use Cloud if you want to collaborate with teammates, work across multiple devices, or keep outputs in a shared cloud workspace.
+Use Tutti · VM if you want to collaborate with teammates, work across multiple devices, or keep outputs in a shared cloud workspace.
 
-### In the Cloud version, can my teammates see my private work?
+### In the Tutti · VM version, can my teammates see my private work?
 
-Only work created inside a cloud workspace is visible to the people you invite. If you create a workspace in Tutti Cloud and invite teammates or friends, they can see and collaborate on what's built there. Everything else remains private.
+If you create a room in Tutti · VM and invite teammates or friends, they can see and collaborate on what's built there. Everything else remains private.
 
 ### Does Tutti replace my coding agent?
 

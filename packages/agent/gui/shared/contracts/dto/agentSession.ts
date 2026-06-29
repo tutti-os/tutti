@@ -7,6 +7,11 @@ export type AgentHostAgentSessionProvider =
   | "gemini"
   | "hermes"
   | "openclaw";
+export interface AgentHostAgentSessionProviderTargetRef {
+  kind: string;
+  provider: AgentHostAgentSessionProvider;
+  [key: string]: unknown;
+}
 export type AgentHostAgentSessionPermissionModeSemantic =
   | "ask-before-write"
   | "accept-edits"
@@ -147,6 +152,12 @@ interface AgentHostActivateAgentSessionInputBase {
 export interface AgentHostActivateNewAgentSessionInput extends AgentHostActivateAgentSessionInputBase {
   mode: "new";
   provider: AgentHostAgentSessionProvider;
+  /**
+   * Opaque target reference supplied by the host. It is not authority,
+   * credential material, or an invocation plan; trusted host code must
+   * re-authenticate and resolve it before launching.
+   */
+  providerTargetRef?: AgentHostAgentSessionProviderTargetRef | null;
   cwd: string;
   title: string;
   settings: AgentHostAgentSessionComposerSettings;

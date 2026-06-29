@@ -829,6 +829,9 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSession(t *testing.T) {
 				if input.AgentSessionID != "11111111-1111-4111-8111-111111111111" {
 					t.Fatalf("agent session id = %q", input.AgentSessionID)
 				}
+				if input.ProviderTargetRef["kind"] != "sharedAgent" || input.ProviderTargetRef["sharedAgentId"] != "agent-1" {
+					t.Fatalf("provider target ref = %#v, want shared agent ref", input.ProviderTargetRef)
+				}
 				return agentservice.Session{
 					ID:        input.AgentSessionID,
 					Provider:  "codex",
@@ -843,6 +846,11 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSession(t *testing.T) {
 		"agentSessionId": "11111111-1111-4111-8111-111111111111",
 		"initialContent": []map[string]any{{"type": "text", "text": "hello"}},
 		"provider":       "codex",
+		"providerTargetRef": map[string]any{
+			"kind":          "sharedAgent",
+			"provider":      "codex",
+			"sharedAgentId": "agent-1",
+		},
 	})
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusCreated, recorder.Body.String())

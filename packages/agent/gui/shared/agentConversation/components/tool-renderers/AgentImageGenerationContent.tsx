@@ -121,6 +121,7 @@ function ImageGenerationPreview({
         className={cn(
           "block max-h-[360px] max-w-full rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] object-contain"
         )}
+        downloadName={localPath ? localPath.split(/[\\/]/).pop() : "image.png"}
         src={src}
         wrapElement="span"
       />

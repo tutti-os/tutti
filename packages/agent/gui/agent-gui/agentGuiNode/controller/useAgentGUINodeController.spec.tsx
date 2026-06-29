@@ -894,12 +894,17 @@ describe("useAgentGUINodeController", () => {
       sessionStatus: "working",
       status: "started"
     }));
+    const listUserProjects = vi.fn(async () => ({ projects: [] }));
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
       activate,
-      exec
+      exec,
+      userProjects: {
+        list: listUserProjects,
+        use: vi.fn()
+      }
     });
 
     const { result } = renderHook(() =>
@@ -913,8 +918,19 @@ describe("useAgentGUINodeController", () => {
       })
     );
 
+    await waitFor(() => {
+      expect(listUserProjects).toHaveBeenCalled();
+    });
+
     act(() => {
-      result.current.actions.updateSelectedProjectPath("/workspace/app");
+      result.current.actions.updateSelectedProjectPath("/workspace/app", {
+        action: "select_existing",
+        project: {
+          id: "app",
+          path: "/workspace/app",
+          label: "App"
+        }
+      });
       result.current.actions.createConversation();
       result.current.actions.submitPrompt(promptBlocks("start in app"));
     });
@@ -928,6 +944,201 @@ describe("useAgentGUINodeController", () => {
         })
       );
     });
+    await waitFor(() => {
+      expect(result.current.viewModel.conversations[0]?.project).toEqual({
+        id: "app",
+        path: "/workspace/app",
+        label: "App"
+      });
+    });
+  });
+
+  it("passes the selected provider target ref when starting a new conversation", async () => {
+    const providerTargetRef = {
+      kind: "shared-agent",
+      provider: "codex" as const,
+      sharedAgentId: "agent-1"
+    };
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId, {
+          provider: input.mode === "new" ? input.provider : "codex"
+        }),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+    const onDataChange = vi.fn();
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        providerTargets: [
+          {
+            targetId: "shared-agent:agent-1",
+            provider: "codex",
+            ref: providerTargetRef,
+            label: "Alice's Codex"
+          }
+        ],
+        defaultProviderTargetId: "shared-agent:agent-1",
+        onDataChange
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("start shared codex"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "new",
+          provider: "codex",
+          providerTargetRef
+        })
+      );
+    });
+    expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+      targetId: "shared-agent:agent-1",
+      provider: "codex",
+      label: "Alice's Codex"
+    });
+    expect(onDataChange).toHaveBeenCalled();
+    const persistTargetUpdate = onDataChange.mock.calls.find(([updater]) => {
+      const next = updater(agentGuiData(null));
+      return next.providerTargetId === "shared-agent:agent-1";
+    })?.[0];
+    expect(persistTargetUpdate?.(agentGuiData(null))).toMatchObject({
+      provider: "codex",
+      providerTargetId: "shared-agent:agent-1",
+      providerTargetRef
+    });
+  });
+
+  it("does not send a fallback local provider target ref when provider targets are omitted", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId, {
+          provider: input.mode === "new" ? input.provider : "codex"
+        }),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+    const onDataChange = vi.fn();
+    const initialData = agentGuiData(null);
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: initialData,
+        onDataChange
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("start local codex"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "new",
+          provider: "codex",
+          providerTargetRef: null
+        })
+      );
+    });
+    const providerTargetUpdates = onDataChange.mock.calls
+      .map(([updater]) => updater(initialData))
+      .filter(
+        (next) =>
+          next !== initialData &&
+          ("providerTargetId" in next || "providerTargetRef" in next)
+      );
+    expect(providerTargetUpdates).toEqual([]);
+  });
+
+  it("does not send a fallback local provider target ref when no explicit target matches the provider", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId, {
+          provider: input.mode === "new" ? input.provider : "claude-code"
+        }),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+    const onDataChange = vi.fn();
+    const initialData = agentGuiData(null, "claude-code");
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: initialData,
+        providerTargets: [
+          {
+            targetId: "shared-agent:codex-1",
+            provider: "codex",
+            ref: {
+              kind: "shared-agent",
+              provider: "codex",
+              sharedAgentId: "codex-1"
+            },
+            label: "Alice's Codex"
+          }
+        ],
+        onDataChange
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("start local claude"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "new",
+          provider: "claude-code",
+          providerTargetRef: null
+        })
+      );
+    });
+    const providerTargetUpdates = onDataChange.mock.calls
+      .map(([updater]) => updater(initialData))
+      .filter(
+        (next) =>
+          next !== initialData &&
+          ("providerTargetId" in next || "providerTargetRef" in next)
+      );
+    expect(providerTargetUpdates).toEqual([]);
   });
 
   it("prefills draft prompts without activating or executing a session", async () => {
@@ -1854,6 +2065,129 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("backfills older selected conversation messages when the latest page has no user prompt", async () => {
+    const timelineRequests: Array<{
+      beforeVersion?: number;
+      cache?: boolean;
+      limit?: number;
+      order?: string;
+    }> = [];
+    const listSessionTimeline = vi.fn(
+      async ({
+        beforeVersion,
+        cache,
+        agentSessionId,
+        limit,
+        order
+      }: {
+        beforeVersion?: number;
+        cache?: boolean;
+        agentSessionId: string;
+        limit?: number;
+        order?: string;
+      }) => {
+        if (agentSessionId !== "session-2") {
+          return { timelineItems: [], hasMore: false };
+        }
+        timelineRequests.push({ beforeVersion, cache, limit, order });
+        if (order === "desc" && beforeVersion === undefined) {
+          return {
+            timelineItems: Array.from({ length: 100 }, (_, index) => {
+              const id = 102 - index;
+              return timelineMessage({
+                agentSessionId: "session-2",
+                id,
+                eventId: `assistant-${id}`,
+                role: "assistant",
+                content: id === 102 ? "latest answer" : `assistant ${id}`,
+                turnId: "turn-1"
+              });
+            }),
+            latestVersion: 102,
+            hasMore: true
+          };
+        }
+        if (order === "desc" && beforeVersion === 3) {
+          return {
+            timelineItems: [
+              timelineMessage({
+                agentSessionId: "session-2",
+                id: 2,
+                eventId: "assistant-2",
+                role: "assistant",
+                content: "early answer",
+                turnId: "turn-1"
+              }),
+              timelineMessage({
+                agentSessionId: "session-2",
+                id: 1,
+                eventId: "user-1",
+                role: "user",
+                content: "initial ask",
+                turnId: "turn-1"
+              })
+            ],
+            latestVersion: 102,
+            hasMore: false
+          };
+        }
+        return { timelineItems: [], latestVersion: 102, hasMore: false };
+      }
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline,
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      const bodies = conversationBodies(result.current.viewModel);
+      expect(bodies).toContain("initial ask");
+      expect(bodies).toContain("latest answer");
+      expect(result.current.viewModel.hasOlderMessages).toBe(false);
+    });
+    expect(timelineRequests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          beforeVersion: undefined,
+          cache: false,
+          limit: 100,
+          order: "desc"
+        }),
+        expect.objectContaining({
+          beforeVersion: 3,
+          cache: false,
+          limit: 100,
+          order: "desc"
+        })
+      ])
+    );
+  });
+
   it("keeps streamed detail messages that arrive while the initial page is loading", async () => {
     let activityListener:
       | ((event: AgentHostAgentActivityStreamEvent) => void)
@@ -2219,6 +2553,104 @@ describe("useAgentGUINodeController", () => {
         result.current.viewModel.conversationDetail?.turns.at(-1)?.agentMessages
       ).toEqual([expect.objectContaining({ body: "latest answer" })]);
     });
+  });
+
+  it("suppresses repeated older message loads for the same failed cursor", async () => {
+    const timelineRequests: Array<{
+      beforeVersion?: number;
+      agentSessionId: string;
+      order?: string;
+    }> = [];
+    const listSessionTimeline = vi.fn(
+      async ({
+        beforeVersion,
+        agentSessionId,
+        order
+      }: {
+        beforeVersion?: number;
+        agentSessionId: string;
+        order?: string;
+      }) => {
+        timelineRequests.push({ agentSessionId, beforeVersion, order });
+        if (agentSessionId !== "session-2") {
+          return { timelineItems: [], hasMore: false };
+        }
+        if (order === "desc" && beforeVersion === undefined) {
+          return {
+            timelineItems: [
+              timelineMessage({
+                agentSessionId: "session-2",
+                id: 1,
+                eventId: "user-1",
+                role: "user",
+                content: "latest ask",
+                turnId: "turn-1"
+              })
+            ],
+            hasMore: true
+          };
+        }
+        throw new Error("older page failed");
+      }
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline,
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.hasOlderMessages).toBe(true);
+    });
+    await act(async () => {
+      await result.current.actions.loadOlderConversationMessages();
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.isLoadingOlderMessages).toBe(false);
+    });
+    const failedOlderRequestCount = timelineRequests.filter(
+      (request) =>
+        request.agentSessionId === "session-2" &&
+        request.order === "desc" &&
+        request.beforeVersion === 1
+    ).length;
+
+    await act(async () => {
+      await result.current.actions.loadOlderConversationMessages();
+    });
+
+    expect(
+      timelineRequests.filter(
+        (request) =>
+          request.agentSessionId === "session-2" &&
+          request.order === "desc" &&
+          request.beforeVersion === 1
+      )
+    ).toHaveLength(failedOlderRequestCount);
   });
 
   it("clears older message loading when a stale older request resolves", async () => {
@@ -3358,6 +3790,18 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
     expect(result.current.viewModel.draftPrompt).toBe("first prompt");
     expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: createdId
+      })?.overlayMessages
+    ).toEqual([
+      expect.objectContaining({
+        agentSessionId: createdId,
+        payload: expect.objectContaining({ text: "first prompt" }),
+        role: "user"
+      })
+    ]);
+    expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
     ).toBeUndefined();
     expect(exec).not.toHaveBeenCalled();
@@ -3865,6 +4309,74 @@ describe("useAgentGUINodeController", () => {
       expect(exec).toHaveBeenCalledWith({
         workspaceId: "room-1",
         agentSessionId: "session-openclaw",
+        ...promptContent("keep going")
+      });
+    });
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  it("keeps the existing submit target after controller lifecycle dependencies update", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId, {
+          provider: "claude-code",
+          status: "ready",
+          title: "Claude Code"
+        }),
+        activation: { mode: input.mode, status: "attached" as const },
+        events: []
+      })
+    );
+    const exec = vi.fn(async () => ({ turnId: "turn-1" }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          {
+            ...workspaceAgentSession("session-claude"),
+            provider: "claude-code",
+            title: "Claude Code",
+            effectiveStatus: "ready",
+            turnPhase: "idle"
+          }
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      exec
+    });
+
+    const { result, rerender } = renderHook(
+      (props: { currentUserId: string }) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: props.currentUserId,
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData("session-claude", "claude-code"),
+          onDataChange: vi.fn()
+        }),
+      { initialProps: { currentUserId: "user-1" } }
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "session-claude"
+      );
+    });
+
+    rerender({ currentUserId: "user-2" });
+    await Promise.resolve();
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("keep going"));
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-claude",
         ...promptContent("keep going")
       });
     });
@@ -6784,6 +7296,18 @@ describe("useAgentGUINodeController", () => {
     // The failure is surfaced and the global loading flag is cleared today.
     expect(result.current.viewModel.detailError).toBe("runtime not connected");
     expect(result.current.viewModel.isLoadingMessages).toBe(false);
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: failedId as string
+      })?.overlayMessages
+    ).toEqual([]);
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: failedId as string
+      })?.detailMessages
+    ).toEqual([]);
     // First-create failure should not leave a per-session messages-loading flag
     // behind; otherwise a later detail view for the id can spin forever.
     await waitFor(() => {
@@ -7945,8 +8469,7 @@ describe("useAgentGUINodeController", () => {
         workspaceId: "room-1",
         agentSessionId: "session-1",
         settings: {
-          model: "gpt-5.4",
-          permissionModeId: "full-access"
+          model: "gpt-5.4"
         }
       });
     });
@@ -8076,7 +8599,7 @@ describe("useAgentGUINodeController", () => {
     ).toEqual([]);
   });
 
-  it("updates the active session while syncing next-conversation defaults on an active session", async () => {
+  it("updates the active session without syncing next-conversation defaults", async () => {
     let resolveUpdateSettings:
       | ((value: {
           settings: {
@@ -8120,6 +8643,7 @@ describe("useAgentGUINodeController", () => {
         }))
     );
     const onDataChange = vi.fn();
+    const onRememberComposerDefaults = vi.fn();
     installAgentHostApi({
       list: vi.fn(async () => snapshotWithSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
@@ -8172,7 +8696,8 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData("session-1"),
-        onDataChange
+        onDataChange,
+        onRememberComposerDefaults
       })
     );
 
@@ -8193,6 +8718,7 @@ describe("useAgentGUINodeController", () => {
     expect(
       result.current.viewModel.composerSettings.selectedReasoningEffortValue
     ).toBe("medium");
+    onDataChange.mockClear();
 
     act(() => {
       result.current.actions.updateComposerSettings({
@@ -8255,42 +8781,8 @@ describe("useAgentGUINodeController", () => {
         permissionModeId: "auto"
       });
     });
-    expect(
-      result.current.viewModel.composerSettings.draftSettings
-    ).toMatchObject({
-      model: "gpt-5.1",
-      reasoningEffort: "high",
-      // The server echo (daemon clamp) resyncs the draft back to false.
-      planMode: false,
-      permissionModeId: "auto"
-    });
-    expect(onDataChange).toHaveBeenCalled();
-    const lastUpdater = onDataChange.mock.calls.at(-1)?.[0] as
-      | ((current: AgentGUINodeData) => AgentGUINodeData)
-      | undefined;
-    expect(lastUpdater).toBeTypeOf("function");
-    expect(
-      lastUpdater?.(
-        agentGuiData("session-1", "codex", {
-          composerOverrides: {
-            model: "gpt-5",
-            reasoningEffort: "medium",
-            speed: null,
-            planMode: false,
-            permissionModeId: "preset"
-          }
-        })
-      )
-    ).toMatchObject({
-      composerOverrides: {
-        model: "gpt-5.1",
-        reasoningEffort: "high",
-        // Node defaults persist the requested value unclamped — the daemon
-        // clamps it whenever the stored value is used.
-        planMode: true,
-        permissionModeId: "auto"
-      }
-    });
+    expect(onDataChange).not.toHaveBeenCalled();
+    expect(onRememberComposerDefaults).not.toHaveBeenCalled();
   });
 
   it("queues later active session settings updates while an earlier request is still in flight", async () => {
@@ -8472,7 +8964,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("keeps node defaults from the latest user settings when an active session settings update fails", async () => {
+  it("does not update node defaults when an active session settings update fails", async () => {
     const updateSettings = vi.fn(async () => {
       throw new Error("Claude Code custom models require a new session");
     });
@@ -8553,27 +9045,7 @@ describe("useAgentGUINodeController", () => {
         permissionModeId: "default"
       });
     });
-    expect(onDataChange).toHaveBeenCalled();
-    const lastUpdater = onDataChange.mock.calls.at(-1)?.[0] as
-      | ((current: AgentGUINodeData) => AgentGUINodeData)
-      | undefined;
-    expect(lastUpdater).toBeTypeOf("function");
-    expect(
-      lastUpdater?.(
-        agentGuiData("session-1", "claude-code", {
-          composerOverrides: {
-            model: "sonnet",
-            reasoningEffort: "medium"
-          }
-        })
-      )
-    ).toMatchObject({
-      composerOverrides: {
-        model: "MiniMax-M2.7",
-        reasoningEffort: "medium",
-        permissionModeId: "default"
-      }
-    });
+    expect(onDataChange).not.toHaveBeenCalled();
   });
 
   it("shows a warning tip when an active session settings update requires a new session", async () => {
@@ -9212,6 +9684,7 @@ describe("useAgentGUINodeController", () => {
 
   it("updates node defaults before any conversation exists", async () => {
     const onDataChange = vi.fn();
+    const onRememberComposerDefaults = vi.fn();
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
@@ -9225,7 +9698,8 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null),
-        onDataChange
+        onDataChange,
+        onRememberComposerDefaults
       })
     );
 
@@ -9249,6 +9723,14 @@ describe("useAgentGUINodeController", () => {
       permissionModeId: "full-access"
     });
     expect(onDataChange).toHaveBeenCalled();
+    expect(onRememberComposerDefaults).toHaveBeenCalledWith({
+      provider: "codex",
+      defaults: {
+        model: "gpt-5",
+        permissionModeId: "full-access",
+        reasoningEffort: "high"
+      }
+    });
   });
 
   it("notifies the host when pre-launch composer settings change", async () => {
@@ -13503,6 +13985,7 @@ function installAgentActivityRuntimeForHostMocks({
         ...(input.mode === "new"
           ? {
               provider: input.provider,
+              providerTargetRef: input.providerTargetRef,
               cwd: input.cwd,
               initialContent: input.initialContent,
               title: input.title,

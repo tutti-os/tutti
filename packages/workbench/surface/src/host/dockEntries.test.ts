@@ -221,6 +221,32 @@ test("dock click resolution allows a dock entry to override a multi node type", 
   );
 });
 
+test("dock click resolution can keep an entry on the launch path", () => {
+  const entry: WorkbenchHostDockEntry = {
+    clickBehavior: "launch",
+    icon: null,
+    id: "workspace-app:calendar",
+    instanceMode: "single",
+    label: "Calendar",
+    typeId: "workspace-app-webview"
+  };
+
+  assert.deepEqual(
+    resolveWorkbenchDockEntryClick({
+      entry,
+      instanceMode: entry.instanceMode,
+      matchedNodes: [
+        makeNode(
+          "workspace-app:calendar",
+          "workspace-app-webview",
+          "workspace-app:calendar"
+        )
+      ]
+    }),
+    { kind: "launch" }
+  );
+});
+
 test("dock click resolution can trigger host actions", () => {
   const entry: WorkbenchHostDockEntry = {
     clickActionId: "open-launchpad",

@@ -14,6 +14,7 @@ import {
   type WorkspaceUserProjectSelectLabelOverrides
 } from "@tutti-os/workspace-user-project/ui";
 import { prepareWorkspaceUserProjectSelection } from "@tutti-os/workspace-user-project/core";
+import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { useAgentHostApi } from "../../agentActivityHost";
 import {
@@ -63,6 +64,7 @@ export type AgentProjectDropdownLabels = Pick<
 
 export interface AgentProjectPathChangeMetadata {
   action: WorkspaceUserProjectSelectChangeAction;
+  project?: WorkspaceUserProject;
 }
 
 function basenameProjectPath(path: string): string {
@@ -75,6 +77,7 @@ export function AgentProjectDropdown({
   labels,
   i18n,
   previewMode = false,
+  selectProjectDirectory,
   onProjectMissingChange,
   onProjectPathChange
 }: {
@@ -85,6 +88,7 @@ export function AgentProjectDropdown({
   i18n: WorkspaceUserProjectI18nRuntime;
   labels: AgentProjectDropdownLabels;
   previewMode?: boolean;
+  selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onProjectMissingChange?: (isMissing: boolean) => void;
   onProjectPathChange: (
     path: string | null,
@@ -102,13 +106,15 @@ export function AgentProjectDropdown({
       !previewMode && agentHostApi.userProjects
         ? {
             ...agentHostApi.userProjects,
-            selectDirectory: agentHostApi.workspace.selectDirectory
+            selectDirectory:
+              selectProjectDirectory ?? agentHostApi.workspace.selectDirectory
           }
         : null,
     [
       agentHostApi.userProjects,
       agentHostApi.workspace.selectDirectory,
-      previewMode
+      previewMode,
+      selectProjectDirectory
     ]
   );
 
@@ -180,7 +186,6 @@ export function AgentProjectDropdown({
       )}
       selectedProjectPath={composerSettings.selectedProjectPath}
       service={agentHostApi.userProjects?.service ?? null}
-      showCreateProjectAction
       onProjectMissingChange={onProjectMissingChange}
       onProjectPathChange={onProjectPathChange}
     />
@@ -197,7 +202,10 @@ export function AgentPermissionModeDropdown({
   composerSettings: AgentGUIComposerSettingsVM;
   disabled?: boolean;
   previewMode?: boolean;
-  labels: Pick<AgentComposerSettingsMenuLabels, "permissionLabel">;
+  labels: Pick<
+    AgentComposerSettingsMenuLabels,
+    "permissionLabel" | "loadingOptions"
+  >;
   onSettingsChange: (patch: {
     permissionModeId?: string | null;
     planMode?: boolean;
@@ -205,6 +213,12 @@ export function AgentPermissionModeDropdown({
 }): React.JSX.Element {
   "use memo";
   const [isSelectOpen, setIsSelectOpen] = useState(false);
+  // While the daemon's composer options load, the permission options are empty
+  // and the trigger is disabled; surface a hover hint so the user knows it is
+  // still loading rather than permanently unavailable.
+  const isLoading =
+    composerSettings.isSettingsLoading ||
+    composerSettings.isModelOptionsLoading === true;
   const availableOptions = composerSettings.availablePermissionModes ?? [];
   const selectedValue =
     composerSettings.selectedPermissionModeValue ??
@@ -222,8 +236,14 @@ export function AgentPermissionModeDropdown({
     permissionOptions.length === 0;
   const selectedOption =
     permissionOptions.find((option) => option.value === selectedValue) ?? null;
-  const triggerLabel =
-    selectedOption?.label ?? selectedValue?.trim() ?? labels.permissionLabel;
+  // While loading, the permission options are empty and `selectedValue` is a
+  // raw mode id (e.g. "full-access"); show the loading copy instead so the
+  // trigger never surfaces an untranslated enum value.
+  const triggerLabel = isLoading
+    ? labels.loadingOptions
+    : (selectedOption?.label ??
+      selectedValue?.trim() ??
+      labels.permissionLabel);
   const triggerTone = selectDisabled
     ? undefined
     : resolvePermissionModeTriggerTone(selectedValue);
@@ -272,6 +292,24 @@ export function AgentPermissionModeDropdown({
     return trigger;
   }
 
+  const selectTrigger = (
+    <SelectTrigger
+      className={cn(
+        "w-auto max-w-full",
+        styles.composerMenuTrigger,
+        selectDisabled &&
+          "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:text-[var(--agent-gui-text-tertiary)]",
+        isLoading && "animate-pulse"
+      )}
+      aria-label={labels.permissionLabel}
+      data-permission-tone={triggerTone}
+    >
+      <span className="flex min-w-0 flex-1 items-center">
+        <span className="truncate">{triggerLabel}</span>
+      </span>
+    </SelectTrigger>
+  );
+
   return (
     <Select
       open={isSelectOpen}
@@ -280,21 +318,21 @@ export function AgentPermissionModeDropdown({
       onOpenChange={setIsSelectOpen}
       onValueChange={applyPermissionModeId}
     >
-      <SelectTrigger
-        className={cn(
-          "w-auto max-w-full",
-          styles.composerMenuTrigger,
-          selectDisabled &&
-            "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:text-[var(--agent-gui-text-tertiary)]",
-          composerSettings.isSettingsLoading && "animate-pulse"
-        )}
-        aria-label={labels.permissionLabel}
-        data-permission-tone={triggerTone}
-      >
-        <span className="flex min-w-0 flex-1 items-center">
-          <span className="truncate">{triggerLabel}</span>
-        </span>
-      </SelectTrigger>
+      {isLoading ? (
+        // The trigger is disabled while loading, so pointer events never reach
+        // it. Target the tooltip at a focusable wrapper span (Radix's pattern
+        // for disabled triggers) so hover/focus reliably surfaces the hint.
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex" tabIndex={0}>
+              {selectTrigger}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top">{labels.loadingOptions}</TooltipContent>
+        </Tooltip>
+      ) : (
+        selectTrigger
+      )}
       {isSelectOpen ? (
         <SelectContent
           align="end"
@@ -491,6 +529,12 @@ export function AgentModelReasoningDropdown({
   const [menuOpen, setMenuOpen] = useState(false);
   const menu = buildComposerModelMenuModel(composerSettings, labels);
   const menuDisabled = disabled || menu.disabled;
+  // While the model list is still loading the trigger shows a placeholder
+  // ("Default") that reads like a real selection. Surface a hover hint so the
+  // user knows the list is still loading rather than already resolved.
+  const isModelLoading =
+    composerSettings.isModelOptionsLoading ||
+    composerSettings.isSettingsLoading;
   const applySettingsChange = (patch: {
     model?: string;
     reasoningEffort?: string;
@@ -542,9 +586,25 @@ export function AgentModelReasoningDropdown({
 
   return (
     <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-      <DropdownMenuTrigger asChild disabled={menuDisabled}>
-        {trigger}
-      </DropdownMenuTrigger>
+      {isModelLoading ? (
+        // The trigger is disabled while loading, so pointer events never reach
+        // it. Target the tooltip at a focusable wrapper span (Radix's pattern
+        // for disabled triggers) so hover/focus reliably surfaces the hint.
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex" tabIndex={0}>
+              <DropdownMenuTrigger asChild disabled={menuDisabled}>
+                {trigger}
+              </DropdownMenuTrigger>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top">{labels.loadingOptions}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <DropdownMenuTrigger asChild disabled={menuDisabled}>
+          {trigger}
+        </DropdownMenuTrigger>
+      )}
       <DropdownMenuContent
         align="end"
         side="top"

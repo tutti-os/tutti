@@ -1,12 +1,13 @@
 import { createRef } from "react";
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
   waitFor
 } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@tiptap/pm/view";
 import {
   AgentRichTextEditor,
@@ -48,6 +49,26 @@ function createDataTransferStub(files: readonly File[] = []): DataTransfer {
   };
   return dataTransfer as unknown as DataTransfer;
 }
+
+function selectEditorText(editor: HTMLElement, from: number, to: number): void {
+  const textNode = editor.querySelector("p")?.firstChild;
+  if (!textNode) {
+    throw new Error("Editor text node not found.");
+  }
+  const range = document.createRange();
+  range.setStart(textNode, from);
+  range.setEnd(textNode, to);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+}
+
+afterEach(() => {
+  cleanup();
+  Reflect.deleteProperty(navigator, "clipboard");
+  vi.unstubAllGlobals();
+});
 
 describe("AgentRichTextEditor", () => {
   it("renders the placeholder on the empty editor paragraph so it shares the caret line box", async () => {
@@ -246,6 +267,117 @@ describe("AgentRichTextEditor", () => {
     });
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("/caveman"));
+  });
+
+  it("shows composer text actions from the context menu", async () => {
+    render(
+      <AgentRichTextEditor
+        value="hello"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    fireEvent.contextMenu(
+      await screen.findByRole("textbox", { name: "Prompt" }),
+      { clientX: 48, clientY: 72 }
+    );
+
+    expect(
+      screen.getByRole("menu", { name: "Composer text actions" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Cut" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Copy" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Paste" })).toBeEnabled();
+  });
+
+  it("pastes clipboard text from the composer context menu", async () => {
+    const onChange = vi.fn();
+    const readText = vi.fn().mockResolvedValue("hello /browser");
+    Object.assign(navigator, {
+      clipboard: {
+        readText
+      }
+    });
+
+    render(
+      <AgentRichTextEditor
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        availableCapabilities={[
+          {
+            capability: "browserUse",
+            label: "浏览器",
+            name: "browser",
+            trigger: "/browser"
+          }
+        ]}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    fireEvent.contextMenu(editor, { clientX: 48, clientY: 72 });
+    fireEvent.pointerDown(screen.getByRole("menuitem", { name: "Paste" }), {
+      button: 0
+    });
+
+    await waitFor(() => expect(readText).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith("hello /browser")
+    );
+    await waitFor(() =>
+      expect(
+        editor.querySelector('[data-agent-capability-token="true"]')
+      ).not.toBeNull()
+    );
+    expect(
+      screen.queryByRole("menu", { name: "Composer text actions" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("cuts selected text from the composer context menu on pointer down", async () => {
+    const onChange = vi.fn();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText
+      }
+    });
+
+    render(
+      <AgentRichTextEditor
+        value="hello world"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    selectEditorText(editor, 0, "hello world".length);
+    fireEvent.contextMenu(editor, { clientX: 48, clientY: 72 });
+    expect(screen.getByRole("menuitem", { name: "Cut" })).toBeEnabled();
+    fireEvent.pointerDown(screen.getByRole("menuitem", { name: "Cut" }), {
+      button: 0
+    });
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("hello world"));
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(""));
+    expect(
+      screen.queryByRole("menu", { name: "Composer text actions" })
+    ).not.toBeInTheDocument();
   });
 
   it("submits on Enter and ignores Enter during IME composition", async () => {

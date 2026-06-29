@@ -49,10 +49,7 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
     const seq = index + 1;
     const eventId = message.messageId.trim() || `message:${id}`;
     const turnId = message.turnId?.trim() || undefined;
-    const occurredAtUnixMs =
-      message.occurredAtUnixMs ??
-      message.completedAtUnixMs ??
-      message.startedAtUnixMs;
+    const occurredAtUnixMs = messageDisplayOrderTime(message);
 
     if (kind === "tool_call") {
       const callId = firstNonEmptyString(
@@ -269,10 +266,14 @@ function compareMessagesByDisplayOrder(
   left: WorkspaceAgentActivityMessage,
   right: WorkspaceAgentActivityMessage
 ): number {
+  // This comparator decides the rendered message position. startedAt is the
+  // start time for long-running items, occurredAt is the append time for plain
+  // messages, and completedAt is only a last fallback; version/id are stable
+  // tie-breakers when two messages share the same display time.
   return (
+    messageDisplayOrderTime(left) - messageDisplayOrderTime(right) ||
     normalizedPositiveNumber(left.version) -
       normalizedPositiveNumber(right.version) ||
-    messageOrderTime(left) - messageOrderTime(right) ||
     normalizedPositiveNumber(left.id) - normalizedPositiveNumber(right.id) ||
     (left.version ?? 0) - (right.version ?? 0) ||
     left.messageId.localeCompare(right.messageId)
@@ -292,10 +293,12 @@ function normalizedPositiveNumber(value: number | undefined): number {
     : 0;
 }
 
-function messageOrderTime(message: WorkspaceAgentActivityMessage): number {
+function messageDisplayOrderTime(
+  message: WorkspaceAgentActivityMessage
+): number {
   return (
-    normalizedPositiveNumber(message.occurredAtUnixMs) ||
     normalizedPositiveNumber(message.startedAtUnixMs) ||
+    normalizedPositiveNumber(message.occurredAtUnixMs) ||
     normalizedPositiveNumber(message.completedAtUnixMs)
   );
 }

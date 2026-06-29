@@ -1,4 +1,11 @@
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
+import type {
+  AgentActivityMessage,
+  AgentActivityMessagePage,
+  AgentActivitySession,
+  AgentActivitySessionEventEnvelope,
+  AgentActivitySnapshot
+} from "@tutti-os/agent-activity-core";
 import type { DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import { AgentConversationPinnedReporter } from "../../analytics/reporters/agent-conversation-pinned/agentConversationPinnedReporter.ts";
@@ -46,6 +53,78 @@ export function createDesktopAgentActivityRuntime(
   workspaceAgentActivityService: IWorkspaceAgentActivityService,
   options: CreateDesktopAgentActivityRuntimeOptions = {}
 ): AgentActivityRuntime {
+  const runtimeSnapshotDiagnosticSignatures = new Map<string, string>();
+  const runtimeMessagePageDiagnosticSignatures = new Map<string, string>();
+  const reportRuntimeDiagnostic = (input: {
+    details?: Record<string, unknown>;
+    event: string;
+    level?: "debug" | "info" | "warn" | "error";
+    workspaceId?: string | null;
+  }): void => {
+    try {
+      void options.runtimeApi
+        ?.logRendererDiagnostic({
+          details: input.details ?? {},
+          event: input.event,
+          level: input.level ?? "info",
+          source: "agent-gui",
+          workspaceId: input.workspaceId ?? undefined
+        })
+        .catch(() => {});
+    } catch {
+      // Diagnostic logging must never affect the render tree.
+    }
+  };
+  const reportSnapshotDiagnostic = (
+    workspaceId: string,
+    snapshot: AgentActivitySnapshot,
+    source: "get_snapshot" | "load" | "subscribe"
+  ): void => {
+    const signature = agentActivitySnapshotDiagnosticSignature(snapshot);
+    const key = `${workspaceId}:${source}`;
+    if (runtimeSnapshotDiagnosticSignatures.get(key) === signature) {
+      return;
+    }
+    runtimeSnapshotDiagnosticSignatures.set(key, signature);
+    reportRuntimeDiagnostic({
+      details: {
+        source,
+        ...agentActivitySnapshotDiagnosticDetails(snapshot)
+      },
+      event: "agent.gui.runtime.snapshot_changed",
+      level: source === "get_snapshot" ? "debug" : "info",
+      workspaceId
+    });
+  };
+  const reportMessagePageDiagnostic = (
+    input: Parameters<AgentActivityRuntime["listSessionMessages"]>[0],
+    page: AgentActivityMessagePage
+  ): void => {
+    const signature = agentActivityMessagePageDiagnosticSignature(page);
+    const key = `${input.workspaceId}:${input.agentSessionId}:${input.afterVersion ?? ""}:${input.beforeVersion ?? ""}:${input.order ?? ""}:${input.limit ?? ""}`;
+    if (runtimeMessagePageDiagnosticSignatures.get(key) === signature) {
+      return;
+    }
+    runtimeMessagePageDiagnosticSignatures.set(key, signature);
+    reportRuntimeDiagnostic({
+      details: {
+        afterVersion: input.afterVersion ?? null,
+        agentSessionId: input.agentSessionId,
+        beforeVersion: input.beforeVersion ?? null,
+        cache: input.cache ?? null,
+        hasMore: page.hasMore,
+        lastMessage: agentActivityMessageDiagnosticDetails(
+          page.messages.at(-1) ?? null
+        ),
+        latestVersion: page.latestVersion,
+        messageCount: page.messages.length,
+        order: input.order ?? null
+      },
+      event: "agent.gui.runtime.messages.resolved",
+      level: "info",
+      workspaceId: input.workspaceId
+    });
+  };
   const messageSentTracker = createAgentMessageSentTracker({
     reporterNow: options.reporterNow,
     reporterService: options.reporterService
@@ -125,16 +204,39 @@ export function createDesktopAgentActivityRuntime(
       workspaceAgentActivityService.getSession(workspaceId, agentSessionId),
     getSessionControlState: (input) =>
       workspaceAgentActivityService.getSessionControlState(input),
-    getSnapshot: (workspaceId) =>
-      workspaceAgentActivityService.getSnapshot(workspaceId),
-    listSessionMessages: (input) =>
-      workspaceAgentActivityService.listSessionMessages(input),
+    getSnapshot(workspaceId) {
+      const snapshot = workspaceAgentActivityService.getSnapshot(workspaceId);
+      reportSnapshotDiagnostic(workspaceId, snapshot, "get_snapshot");
+      return snapshot;
+    },
+    async listSessionMessages(input) {
+      const page =
+        await workspaceAgentActivityService.listSessionMessages(input);
+      reportMessagePageDiagnostic(input, page);
+      return page;
+    },
     listAgentGeneratedFiles: (input) =>
       workspaceAgentActivityService.listAgentGeneratedFiles(input),
-    load: (workspaceId, signal) =>
-      workspaceAgentActivityService.load(workspaceId, signal),
-    ensureSessionSynchronized: (input) =>
-      workspaceAgentActivityService.ensureSessionSynchronized(input),
+    async load(workspaceId, signal) {
+      const snapshot = await workspaceAgentActivityService.load(
+        workspaceId,
+        signal
+      );
+      reportSnapshotDiagnostic(workspaceId, snapshot, "load");
+      return snapshot;
+    },
+    ensureSessionSynchronized(input) {
+      reportRuntimeDiagnostic({
+        details: {
+          afterVersion: input.afterVersion ?? null,
+          agentSessionId: input.agentSessionId
+        },
+        event: "agent.gui.runtime.ensure_session_synchronized",
+        level: "debug",
+        workspaceId: input.workspaceId
+      });
+      return workspaceAgentActivityService.ensureSessionSynchronized(input);
+    },
     retainSessionEvents: (input) =>
       workspaceAgentActivityService.retainSessionEvents(input),
     async sendInput(input) {
@@ -270,20 +372,12 @@ export function createDesktopAgentActivityRuntime(
       });
     },
     reportDiagnostic(input) {
-      try {
-        void options.runtimeApi
-          ?.logRendererDiagnostic({
-            details: input.details ?? {},
-            event: input.event,
-            level: input.level ?? "info",
-            source: input.source ?? "agent-gui",
-            workspaceId: input.workspaceId ?? undefined
-          })
-          .catch(() => {});
-      } catch {
-        // IPC structured-clone can fail if details contains non-serializable values;
-        // diagnostic failures must never propagate into the render tree.
-      }
+      reportRuntimeDiagnostic({
+        details: input.details,
+        event: input.event,
+        level: input.level,
+        workspaceId: input.workspaceId
+      });
     },
     ...(options.warmupOpenclawGateway
       ? {
@@ -291,13 +385,214 @@ export function createDesktopAgentActivityRuntime(
         }
       : {}),
     subscribeSessionEvents: (workspaceId, listener) =>
-      workspaceAgentActivityService.onSessionEvent(workspaceId, listener),
+      workspaceAgentActivityService.onSessionEvent(workspaceId, (event) => {
+        reportSessionEventDiagnostic(
+          workspaceId,
+          event,
+          reportRuntimeDiagnostic
+        );
+        listener(event);
+      }),
     unactivateSession: (input) =>
       workspaceAgentActivityService.unactivateSession(input),
     submitInteractive: (input) =>
       workspaceAgentActivityService.submitInteractive(input),
     subscribe: (workspaceId, listener) =>
-      workspaceAgentActivityService.subscribe(workspaceId, listener)
+      workspaceAgentActivityService.subscribe(workspaceId, (snapshot) => {
+        reportSnapshotDiagnostic(workspaceId, snapshot, "subscribe");
+        listener(snapshot);
+      })
+  };
+}
+
+function agentActivitySnapshotDiagnosticSignature(
+  snapshot: AgentActivitySnapshot
+): string {
+  return snapshot.sessions
+    .map((session) => agentActivitySessionDiagnosticSignature(session))
+    .sort()
+    .join("|");
+}
+
+function agentActivitySnapshotDiagnosticDetails(
+  snapshot: AgentActivitySnapshot
+): Record<string, unknown> {
+  const sessions = [...snapshot.sessions].sort(
+    (left, right) =>
+      agentActivitySessionSortTimeUnixMs(right) -
+      agentActivitySessionSortTimeUnixMs(left)
+  );
+  const activeOrRecentSessions = sessions
+    .filter(
+      (session, index) => index < 8 || agentActivitySessionIsBusy(session)
+    )
+    .slice(0, 12)
+    .map((session) => agentActivitySessionDiagnosticDetails(session));
+  return {
+    activeOrRecentSessions,
+    busySessionCount: snapshot.sessions.filter(agentActivitySessionIsBusy)
+      .length,
+    presenceCount: snapshot.presences.length,
+    sessionCount: snapshot.sessions.length,
+    workspaceId: snapshot.workspaceId
+  };
+}
+
+function agentActivitySessionDiagnosticSignature(
+  session: AgentActivitySession
+): string {
+  const lifecycle = session.turnLifecycle;
+  const submitAvailability = session.submitAvailability;
+  return [
+    session.agentSessionId,
+    session.provider,
+    session.status,
+    session.currentPhase ?? "",
+    lifecycle?.activeTurnId ?? "",
+    lifecycle?.phase ?? "",
+    lifecycle?.outcome ?? "",
+    submitAvailability?.state ?? "",
+    submitAvailability?.reason ?? "",
+    session.messageVersion ?? "",
+    session.lastEventUnixMs ?? "",
+    session.updatedAtUnixMs ?? ""
+  ].join(":");
+}
+
+function agentActivitySessionDiagnosticDetails(
+  session: AgentActivitySession
+): Record<string, unknown> {
+  const lifecycle = session.turnLifecycle;
+  const submitAvailability = session.submitAvailability;
+  return {
+    activeTurnId: lifecycle?.activeTurnId ?? null,
+    agentSessionId: session.agentSessionId,
+    currentPhase: session.currentPhase ?? null,
+    lastEventUnixMs: session.lastEventUnixMs ?? null,
+    messageVersion: session.messageVersion ?? null,
+    outcome: lifecycle?.outcome ?? null,
+    provider: session.provider,
+    status: session.status,
+    submitAvailabilityReason: submitAvailability?.reason ?? null,
+    submitAvailabilityState: submitAvailability?.state ?? null,
+    turnPhase: lifecycle?.phase ?? null,
+    updatedAtUnixMs: session.updatedAtUnixMs ?? null
+  };
+}
+
+function agentActivitySessionIsBusy(session: AgentActivitySession): boolean {
+  const status = session.status;
+  const phase = session.turnLifecycle?.phase;
+  const submitState = session.submitAvailability?.state;
+  return (
+    status === "queued" ||
+    status === "working" ||
+    status === "waiting" ||
+    phase === "working" ||
+    phase === "waiting" ||
+    submitState === "blocked"
+  );
+}
+
+function agentActivitySessionSortTimeUnixMs(
+  session: AgentActivitySession
+): number {
+  return (
+    session.lastEventUnixMs ??
+    session.updatedAtUnixMs ??
+    session.createdAtUnixMs ??
+    session.startedAtUnixMs ??
+    0
+  );
+}
+
+function agentActivityMessagePageDiagnosticSignature(
+  page: AgentActivityMessagePage
+): string {
+  return [
+    page.latestVersion,
+    page.hasMore ? "1" : "0",
+    page.messages.length,
+    page.messages.at(0)?.version ?? "",
+    page.messages.at(-1)?.version ?? "",
+    page.messages.at(-1)?.kind ?? "",
+    page.messages.at(-1)?.status ?? ""
+  ].join(":");
+}
+
+function agentActivityMessageDiagnosticDetails(
+  message: AgentActivityMessage | null
+): Record<string, unknown> | null {
+  if (!message) {
+    return null;
+  }
+  return {
+    agentSessionId: message.agentSessionId,
+    kind: message.kind,
+    messageId: message.messageId,
+    role: message.role,
+    status: message.status ?? null,
+    turnId: message.turnId,
+    version: message.version
+  };
+}
+
+function reportSessionEventDiagnostic(
+  workspaceId: string,
+  event: unknown,
+  reportRuntimeDiagnostic: (input: {
+    details?: Record<string, unknown>;
+    event: string;
+    level?: "debug" | "info" | "warn" | "error";
+    workspaceId?: string | null;
+  }) => void
+): void {
+  const envelope = isAgentActivitySessionEventEnvelope(event) ? event : null;
+  reportRuntimeDiagnostic({
+    details: envelope
+      ? {
+          agentSessionId: envelope.agentSessionId,
+          data: agentActivitySessionEventDataDiagnosticDetails(envelope.data),
+          eventType: envelope.eventType
+        }
+      : {
+          eventType: "unknown"
+        },
+    event: "agent.gui.runtime.session_event_received",
+    level: "debug",
+    workspaceId
+  });
+}
+
+function isAgentActivitySessionEventEnvelope(
+  value: unknown
+): value is AgentActivitySessionEventEnvelope {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    typeof (value as { agentSessionId?: unknown }).agentSessionId ===
+      "string" &&
+    typeof (value as { eventType?: unknown }).eventType === "string"
+  );
+}
+
+function agentActivitySessionEventDataDiagnosticDetails(
+  data: unknown
+): Record<string, unknown> | null {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+  const record = data as Record<string, unknown>;
+  return {
+    kind: typeof record.kind === "string" ? record.kind : null,
+    messageId: typeof record.messageId === "string" ? record.messageId : null,
+    role: typeof record.role === "string" ? record.role : null,
+    status: typeof record.status === "string" ? record.status : null,
+    turnId: typeof record.turnId === "string" ? record.turnId : null,
+    version:
+      typeof record.version === "number" && Number.isFinite(record.version)
+        ? record.version
+        : null
   };
 }
 

@@ -43,12 +43,19 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentStatusService: stubAgentStatusService{
 			listFn: func(_ context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
-				if len(input.Providers) != 1 || input.Providers[0] != "codex" {
-					t.Fatalf("providers = %#v, want [codex]", input.Providers)
+				if len(input.Providers) != 1 || input.Providers[0] != "claude-code" {
+					t.Fatalf("providers = %#v, want [claude-code]", input.Providers)
 				}
 				return agentstatusservice.Snapshot{
 					CapturedAt: capturedAt,
 					Providers: []agentstatusservice.ProviderStatus{{
+						ActiveAction: &agentstatusservice.ActiveAction{
+							ID:       agentstatusservice.ActionInstall,
+							Status:   "running",
+							Step:     "adapter",
+							Registry: "https://registry.example.test",
+							Stdout:   "installing adapter\nstill installing",
+						},
 						Actions: []agentstatusservice.Action{{
 							ID:   agentstatusservice.ActionRefresh,
 							Kind: agentstatusservice.ActionKindRefresh,
@@ -62,14 +69,14 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 						CLI: agentstatusservice.CLIStatus{
 							Installed: true,
 						},
-						Provider: "codex",
+						Provider: "claude-code",
 					}},
 				}, nil
 			},
 		},
 	}))
 
-	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-providers/status?providers=codex", nil)
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-providers/status?providers=claude-code", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
@@ -82,8 +89,21 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 	if len(response.Providers) != 1 {
 		t.Fatalf("providers length = %d, want 1", len(response.Providers))
 	}
-	if response.Providers[0].Provider != "codex" {
-		t.Fatalf("provider = %q, want codex", response.Providers[0].Provider)
+	if response.Providers[0].Provider != "claude-code" {
+		t.Fatalf("provider = %q, want claude-code", response.Providers[0].Provider)
+	}
+	activeAction := response.Providers[0].ActiveAction
+	if activeAction == nil {
+		t.Fatal("activeAction = nil, want install progress")
+	}
+	if activeAction.Phase != tuttigenerated.AgentProviderActiveActionPhaseInstall {
+		t.Fatalf("activeAction.phase = %q, want install", activeAction.Phase)
+	}
+	if activeAction.Registry == nil || *activeAction.Registry != "https://registry.example.test" {
+		t.Fatalf("activeAction.registry = %#v, want registry", activeAction.Registry)
+	}
+	if len(activeAction.Log) != 2 || activeAction.Log[0] != "installing adapter" {
+		t.Fatalf("activeAction.log = %#v, want split installer stdout", activeAction.Log)
 	}
 }
 
@@ -147,6 +167,56 @@ func TestDaemonAPIRoutesUnsupportedAgentProviderStatus(t *testing.T) {
 	}
 	if len(status.Actions) != 0 {
 		t.Fatalf("actions = %#v, want none", status.Actions)
+	}
+}
+
+func TestDaemonAPIRoutesAgentProviderAuthIncludesAuthMethod(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentStatusService: stubAgentStatusService{
+			listFn: func(_ context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
+				if len(input.Providers) != 1 || input.Providers[0] != "claude-code" {
+					t.Fatalf("providers = %#v, want [claude-code]", input.Providers)
+				}
+				return agentstatusservice.Snapshot{
+					Providers: []agentstatusservice.ProviderStatus{{
+						Actions: []agentstatusservice.Action{},
+						Auth: agentstatusservice.AuthInfo{
+							Status:       agentstatusservice.AuthAuthenticated,
+							AccountLabel: "API Usage Billing",
+							AuthMethod:   "apiKey",
+						},
+						Availability: agentstatusservice.Availability{
+							Status: agentstatusservice.AvailabilityReady,
+						},
+						CLI:      agentstatusservice.CLIStatus{Installed: true, BinaryPath: "/usr/local/bin/claude"},
+						Adapter:  agentstatusservice.AdapterStatus{Installed: true},
+						Provider: "claude-code",
+					}},
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-providers/status?providers=claude-code", nil)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.AgentProviderStatusListResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if len(response.Providers) != 1 {
+		t.Fatalf("providers length = %d, want 1", len(response.Providers))
+	}
+	auth := response.Providers[0].Auth
+	if auth.Status != tuttigenerated.AgentProviderAuthStatusAuthenticated {
+		t.Fatalf("auth status = %q, want authenticated", auth.Status)
+	}
+	if auth.AccountLabel == nil || *auth.AccountLabel != "API Usage Billing" {
+		t.Fatalf("accountLabel = %#v, want API Usage Billing", auth.AccountLabel)
+	}
+	if auth.AuthMethod == nil || *auth.AuthMethod != "apiKey" {
+		t.Fatalf("authMethod = %#v, want apiKey", auth.AuthMethod)
 	}
 }
 

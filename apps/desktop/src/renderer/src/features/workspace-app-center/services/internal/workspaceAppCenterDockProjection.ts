@@ -1,4 +1,7 @@
-import type { WorkbenchHostDockEntryState } from "@tutti-os/workbench-surface";
+import type {
+  WorkbenchHostDockEntry,
+  WorkbenchHostDockEntryState
+} from "@tutti-os/workbench-surface";
 import type {
   WorkspaceAppCenterApp,
   WorkspaceAppCenterRuntimeStatus
@@ -6,6 +9,7 @@ import type {
 
 export interface WorkspaceAppCenterDockProjection {
   app: WorkspaceAppCenterApp;
+  clickBehavior?: WorkbenchHostDockEntry["clickBehavior"];
   launchEnabled: boolean;
   state?: WorkbenchHostDockEntryState;
 }
@@ -29,7 +33,10 @@ export function projectWorkspaceAppCenterDockState(
   status: WorkspaceAppCenterRuntimeStatus,
   launchUrl: string | null | undefined,
   installed = true
-): Pick<WorkspaceAppCenterDockProjection, "launchEnabled" | "state"> {
+): Pick<
+  WorkspaceAppCenterDockProjection,
+  "clickBehavior" | "launchEnabled" | "state"
+> {
   if (status === "installing") {
     return {
       launchEnabled: false,
@@ -50,6 +57,7 @@ export function projectWorkspaceAppCenterDockState(
   }
   if (status === "installed_pending_restart") {
     return {
+      clickBehavior: "launch",
       launchEnabled: true,
       state: { kind: "enabled" }
     };

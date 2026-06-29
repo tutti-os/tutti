@@ -128,6 +128,9 @@ export function resolveWorkbenchDockEntryClick(input: {
   if (isWorkbenchDockEntryBlocked(input.entry)) {
     return { kind: "blocked" };
   }
+  if (input.entry.clickBehavior === "launch") {
+    return { kind: "launch" };
+  }
   if (input.instanceMode === "multi" && input.matchedNodes.length > 0) {
     return { kind: "open-popup" };
   }

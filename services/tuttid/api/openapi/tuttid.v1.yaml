@@ -1283,6 +1283,49 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: provider
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/WorkspaceAgentProvider"
+    post:
+      operationId: getWorkspaceAppFactoryProviderComposerOptions
+      tags:
+        - app-factory
+      summary: Get App Factory provider composer options
+      description: >
+        Resolves provider composer options for App Factory using daemon-owned
+        workspace and factory draft context. Clients provide workspace and
+        provider selection, while tuttid owns the working directory used for
+        provider discovery.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetWorkspaceAppFactoryProviderComposerOptionsRequest"
+      responses:
+        "200":
+          description: App Factory provider composer options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProviderComposerOptionsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/app-factory/jobs/{jobID}:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -1760,6 +1803,16 @@ paths:
             type: array
             items:
               $ref: "#/components/schemas/WorkspaceAgentProvider"
+        - name: includeNetwork
+          in: query
+          required: false
+          description: >-
+            Opt into the network connectivity probe (registry / provider API /
+            proxy reachability). Off by default so the common detection path
+            stays local and never blocks on the network; only the agent-env
+            wizard's network diagnostic sets this.
+          schema:
+            type: boolean
       responses:
         "200":
           description: Agent provider status snapshot
@@ -4417,21 +4470,24 @@ components:
           $ref: "#/components/schemas/WorkspaceAppCliState"
         references:
           $ref: "#/components/schemas/WorkspaceAppReferencesState"
+    WorkspaceAppMinimizeBehavior:
+      type: string
+      enum:
+        - hibernate
+        - keep-mounted
     WorkspaceAppAuthor:
       type: object
       additionalProperties: false
       required:
         - name
-        - avatarUrl
-        - url
       properties:
         name:
           type: string
           minLength: 1
-        avatarUrl:
+        url:
           type: string
           nullable: true
-        url:
+        avatarUrl:
           type: string
           nullable: true
     WorkspaceAppRepository:
@@ -4448,11 +4504,6 @@ components:
         url:
           type: string
           minLength: 1
-    WorkspaceAppMinimizeBehavior:
-      type: string
-      enum:
-        - hibernate
-        - keep-mounted
     WorkspaceAppUploadPurpose:
       type: string
       enum:
@@ -5145,6 +5196,14 @@ components:
           $ref: "#/components/schemas/DesktopLocale"
         settings:
           $ref: "#/components/schemas/AgentSessionComposerSettings"
+    GetWorkspaceAppFactoryProviderComposerOptionsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        locale:
+          $ref: "#/components/schemas/DesktopLocale"
+        settings:
+          $ref: "#/components/schemas/AgentSessionComposerSettings"
     AgentProviderComposerOptionsResponse:
       type: object
       additionalProperties: false
@@ -5301,6 +5360,82 @@ components:
       enum:
         - completed
         - failed
+    AgentProviderActiveActionPhase:
+      type: string
+      enum:
+        - detect
+        - install
+        - repair
+        - verify
+        - done
+        - error
+    AgentProviderActiveActionStepStatus:
+      type: string
+      enum:
+        - pending
+        - running
+        - ok
+        - error
+        - skipped
+    AgentProviderActiveActionStep:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - label
+        - status
+        - detail
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/AgentProviderActiveActionStepStatus"
+        detail:
+          type: string
+          nullable: true
+    AgentProviderActiveActionError:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+    AgentProviderActiveAction:
+      type: object
+      additionalProperties: false
+      required:
+        - phase
+        - steps
+        - registry
+        - log
+        - error
+      properties:
+        phase:
+          $ref: "#/components/schemas/AgentProviderActiveActionPhase"
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentProviderActiveActionStep"
+        registry:
+          type: string
+          nullable: true
+        log:
+          type: array
+          items:
+            type: string
+        error:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderActiveActionError"
+          nullable: true
     AgentProviderProbeResponse:
       type: object
       additionalProperties: false
@@ -5449,6 +5584,19 @@ components:
           type: array
           items:
             type: string
+        version:
+          type: string
+          nullable: true
+          description: >-
+            The installed ACP adapter package version, when resolvable. Lets the
+            UI and telemetry show the actual adapter version (not just a path).
+        requiredVersion:
+          type: string
+          nullable: true
+          description: >-
+            The adapter package version this provider requires. With version,
+            lets the UI show "current X, requires Y" for an adapter version
+            mismatch and makes the drift visible in telemetry.
     AgentProviderAuthInfo:
       type: object
       additionalProperties: false
@@ -5460,6 +5608,10 @@ components:
         accountLabel:
           type: string
           nullable: true
+        authMethod:
+          type: string
+          nullable: true
+          description: The authentication method reported by the provider CLI (e.g. oauth, apiKey).
     AgentProviderStatus:
       type: object
       additionalProperties: false
@@ -5488,6 +5640,10 @@ components:
         network:
           allOf:
             - $ref: "#/components/schemas/AgentProviderNetworkStatus"
+          nullable: true
+        activeAction:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderActiveAction"
           nullable: true
     AgentProviderNetworkStatus:
       type: object
@@ -6119,6 +6275,11 @@ components:
           type: object
           additionalProperties: true
           description: Optional client-provided diagnostic metadata for the first turn, such as submit trace ids. This metadata is not provider prompt content.
+        providerTargetRef:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Opaque host-owned provider target reference. It is not authority; trusted launchers must re-authenticate and resolve it before invoking a provider.
         title:
           type: string
           nullable: true

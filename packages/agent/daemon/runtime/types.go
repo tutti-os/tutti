@@ -60,6 +60,7 @@ type StartInput struct {
 	Env                  []string
 	Title                string
 	Visible              *bool
+	ProviderTargetRef    map[string]any
 	OpenclawGatewayReady bool
 	PermissionModeID     string
 	Settings             *SessionSettings
@@ -165,6 +166,7 @@ type Session struct {
 	Title                string              `json:"title,omitempty"`
 	LastError            string              `json:"lastError,omitempty"`
 	Visible              bool                `json:"visible"`
+	ProviderTargetRef    map[string]any      `json:"-"`
 	OpenclawGatewayReady bool                `json:"-"`
 	PermissionModeID     string              `json:"permissionModeId,omitempty"`
 	Settings             *SessionSettings    `json:"settings,omitempty"`

@@ -14,3 +14,33 @@
 - Status: fixed locally
 - Commit: pending
 - Feishu status update: not updated; real Base record id could not be resolved from the supplied short link.
+
+## NFCyrr5Z8eVe02c7uNDcKVKrnog - workspace app update reopens stale Vibe Design
+
+- Link: https://ccn53rwonxso.feishu.cn/record/NFCyrr5Z8eVe02c7uNDcKVKrnog
+- Base record id: `recvmCg08QQojR`
+- Bug: 点击更新按钮后，关掉 Vibe Design 后再打开没有获取到最新版本，需要重启 Tutti 才能看到最新功能改动。
+- Evidence: The Base record has no downloadable log zip; it includes recording attachment `录屏2026-06-15 20.44.23.mov`. Code inspection showed `installed_pending_restart` apps can still have a matching `workspace-app-webview` dock node, and workbench dock single-instance clicks focus that node before launch resolution.
+- Cause: The dock entry for a pending-restart workspace app still used the default single-instance focus behavior. When a stale app webview node still matched the dock entry, dock clicks bypassed `resolveWorkspaceAppCenterLaunchRequest`, so `restartAndOpenApp` did not close the old view and restart/open the updated package.
+- Fix: Pending-restart workspace app dock entries now force dock clicks through the normal launch request path. The existing launch resolver then calls `restartAndOpenApp`; normal running apps keep the regular focus behavior.
+- Verification:
+  - `node --import ./apps/desktop/test/register-asset-stub.mjs --test --experimental-strip-types ./apps/desktop/src/renderer/src/features/workspace-app-center/services/internal/workspaceAppCenterContribution.test.ts`
+  - `node --test --experimental-strip-types packages/workbench/surface/src/host/dockEntries.test.ts`
+- Status: fixed locally
+- Commit: pending
+- Feishu status update: not updated.
+
+## Untracked - workspace app update confirmation shown for unopened app
+
+- Bug: App Center showed the strong update confirmation for a running workspace app even when no workbench app window was currently open.
+- Evidence: The shared App Center panel gated the confirmation on `app.installed && app.status === "running"`, which reflects runtime process state rather than whether a `workspace-app-webview` node is open in the workspace.
+- Cause: Runtime state and visible/open workbench state were conflated. A background running runtime can be updated without interrupting an open app window, so it should not require the restart warning prompt.
+- Fix: Desktop now provides App Center with a real-time workbench webview-open check from the current `WorkbenchHost` snapshot. The update confirmation appears only when the app runtime is running and its workspace app webview is currently open; unopened running apps go directly into the update flow.
+- Verification:
+  - `node --test --experimental-strip-types ./src/ui/AppCenterPanel.source.test.ts` from `packages/workspace/app-center`
+  - `node --import ./test/register-asset-stub.mjs --test --experimental-strip-types ./src/renderer/src/features/workspace-app-center/services/internal/workspaceAppCenterService.test.ts` from `apps/desktop`
+  - `pnpm lint:ts`
+  - `pnpm typecheck`
+  - `pnpm check:changed --tail-lines 120`
+- Status: fixed locally
+- Commit: pending

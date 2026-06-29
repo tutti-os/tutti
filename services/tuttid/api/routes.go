@@ -140,6 +140,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.GetAgentProviderStatuses(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetWorkspaceAppFactoryProviderComposerOptions(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

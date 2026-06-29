@@ -41,15 +41,17 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 package_dir="${TUTTI_APP_PACKAGE_DIR:-$script_dir}"
 
 export HOST="${TUTTI_APP_HOST:-127.0.0.1}"
-export APP_PORT="${TUTTI_APP_PORT:-3001}"
+: "${TUTTI_APP_PORT:?TUTTI_APP_PORT is required}"
+export APP_PORT="$TUTTI_APP_PORT"
 export APP_DATA_ROOT="${TUTTI_APP_DATA_DIR:-$package_dir/.data}"
 export APP_RUNTIME_ROOT="${TUTTI_APP_RUNTIME_DIR:-$APP_DATA_ROOT/.runtime}"
 export APP_WEB_DIST="$package_dir/dist"
 export APP_TOOLS_MCP_PATH="$package_dir/server/tools-mcp.js"
 
-node_bin="${TUTTI_APP_NODE:-node}"
+node_bin="${TUTTI_APP_NODE:?TUTTI_APP_NODE is required}"
 mkdir -p "$APP_DATA_ROOT" "$APP_RUNTIME_ROOT"
 
+cd "$APP_RUNTIME_ROOT"
 "$node_bin" "$package_dir/server/server.js"
 ```
 

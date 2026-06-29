@@ -59,3 +59,43 @@ Run this boundary check after changing AgentGUI data flow:
 ```sh
 pnpm check:agent-activity-runtime-boundaries
 ```
+
+## Provider Targets
+
+`provider` remains the real provider identity, such as `codex`,
+`claude-code`, or `nexight`. AgentGUI uses that identity for composer options,
+settings, icons, probes, status, and provider-specific UI policy.
+
+Hosts may pass `providerTargets` when a real provider has multiple launch
+targets. A target has display metadata plus an opaque `ref`:
+
+```ts
+export interface AgentGUIProviderTargetRef {
+  kind: string;
+  provider: AgentGUIProvider;
+  [key: string]: unknown;
+}
+
+export interface AgentGUIProviderTarget {
+  targetId: string;
+  provider: AgentGUIProvider;
+  ref: AgentGUIProviderTargetRef;
+  label: string;
+  description?: string;
+  ownerLabel?: string;
+  disabled?: boolean;
+  unavailableReason?: string;
+}
+```
+
+AgentGUI does not interpret `ref.kind` and does not treat `targetId` or `ref`
+as authority. It displays `target.label`, keeps provider logic keyed by the
+real `target.provider`, and passes `providerTargetRef` through activation.
+Trusted host code must re-authenticate the current user/workspace and resolve
+any invocation plan before launching.
+
+If `providerTargets` is omitted or empty, AgentGUI creates local targets such as
+`local:codex` and `local:claude-code` from the static provider catalog for
+display/backward compatibility. Those fallback local targets are not persisted
+or sent as `providerTargetRef`; legacy hosts continue to receive only the real
+`provider`.

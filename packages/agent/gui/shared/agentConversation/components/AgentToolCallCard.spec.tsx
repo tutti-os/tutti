@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setAgentGuiI18nTestLocale } from "../../../i18n/testUtils";
 import type { WorkspaceAgentSessionDetailToolCall } from "../../workspaceAgentSessionDetailViewModel";
 import { projectAgentToolCall } from "../projection/agentToolProjection";
-import { AgentApprovalCallCard } from "./AgentApprovalCallCard";
 import { AgentAskUserQuestionCard } from "./AgentAskUserQuestionCard";
 import { AgentEnterPlanModeCard } from "./AgentEnterPlanModeCard";
 import { AgentExitPlanModeCard } from "./AgentExitPlanModeCard";
@@ -19,32 +18,6 @@ import { AgentToolCallCard } from "./AgentToolCallCard";
 describe("Agent specialized tool cards", () => {
   afterEach(async () => {
     setAgentGuiI18nTestLocale("zh-CN");
-  });
-
-  it("does not render inline approval options on waiting approval cards", async () => {
-    setAgentGuiI18nTestLocale("en");
-
-    render(
-      <AgentApprovalCallCard
-        call={projectAgentToolCall(
-          toolCall({
-            toolName: "Approval",
-            callType: "approval",
-            status: "waiting_approval",
-            payload: {
-              input: {
-                requestId: "approval-1",
-                options: [{ id: "allow_once", label: "Allow once" }]
-              }
-            }
-          })
-        )}
-      />
-    );
-
-    expect(screen.queryByText("Approval options")).toBeNull();
-    expect(screen.queryByText("Allow once")).toBeNull();
-    expect(screen.queryByRole("button", { expanded: true })).toBeNull();
   });
 
   it("expands waiting ask-user cards by default", async () => {

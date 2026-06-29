@@ -1,6 +1,7 @@
 export { createWorkspaceFileManagerService } from "./services/createWorkspaceFileManagerService.ts";
 export {
   createWorkspaceFileManagerI18nRuntime,
+  resolveRevealInFolderLabel,
   workspaceFileManagerI18nNamespace,
   workspaceFileManagerI18nResources,
   type WorkspaceFileManagerI18nKey,
@@ -47,6 +48,7 @@ export {
   type WorkspaceFileDirectoryLocation,
   type WorkspaceFileRecentLocation,
   type WorkspaceFileManagerCapabilities,
+  type WorkspaceFileOpenWithApplication,
   type WorkspaceFileManagerPersistedState,
   type WorkspaceFilePreviewKind,
   type WorkspaceFilePreviewState,
@@ -59,6 +61,10 @@ export {
   WorkspaceFileManager,
   type WorkspaceFileManagerProps
 } from "./ui/WorkspaceFileManager.tsx";
+export {
+  WorkspaceFileManagerContextMenu,
+  type WorkspaceFileManagerContextMenuProps
+} from "./ui/WorkspaceFileManagerContextMenu.tsx";
 export type { WorkspaceFileManagerEntryDragMode } from "./ui/WorkspaceFileManagerPanels.tsx";
 export type {
   WorkspaceFileManagerFileActivationRequest,

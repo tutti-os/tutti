@@ -541,6 +541,7 @@ function createHostFilesApi(
     async selectUploadFiles() {
       return [];
     },
+    async copyImageToClipboard() {},
     async copyFilesToClipboard() {},
     async listOpenWithApplications() {
       return [];

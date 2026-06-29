@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -156,7 +157,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	)
 	permissionModeID := settings.PermissionModeID
 	if agentSessionID == "" {
-		if existing, ok := c.findStartSession(roomID, provider, input.CWD, input.Title, settings); ok {
+		if existing, ok := c.findStartSession(roomID, provider, input.CWD, input.Title, settings, input.ProviderTargetRef); ok {
 			return StartResult{Session: existing}, nil
 		}
 		agentSessionID = newID()
@@ -174,6 +175,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		Status:               SessionStatusReady,
 		Title:                firstNonEmpty(strings.TrimSpace(input.Title), provider),
 		Visible:              sessionVisible(input.Visible),
+		ProviderTargetRef:    clonePayload(input.ProviderTargetRef),
 		OpenclawGatewayReady: input.OpenclawGatewayReady,
 		PermissionModeID:     permissionModeID,
 		Settings:             cloneSessionSettings(settings),
@@ -1662,7 +1664,14 @@ func (c *Controller) get(roomID, agentSessionID string) (Session, bool) {
 	return session, ok
 }
 
-func (c *Controller) findStartSession(roomID, provider, cwd, title string, settings SessionSettings) (Session, bool) {
+func (c *Controller) findStartSession(
+	roomID,
+	provider,
+	cwd,
+	title string,
+	settings SessionSettings,
+	providerTargetRef map[string]any,
+) (Session, bool) {
 	if c == nil {
 		return Session{}, false
 	}
@@ -1683,6 +1692,9 @@ func (c *Controller) findStartSession(roomID, provider, cwd, title string, setti
 		if strings.TrimSpace(session.CWD) != cwd {
 			continue
 		}
+		if !providerTargetRefsEqual(session.ProviderTargetRef, providerTargetRef) {
+			continue
+		}
 		if title != "" && strings.TrimSpace(session.Title) != title {
 			continue
 		}
@@ -1701,6 +1713,13 @@ func (c *Controller) findStartSession(roomID, provider, cwd, title string, setti
 		}
 	}
 	return Session{}, false
+}
+
+func providerTargetRefsEqual(left, right map[string]any) bool {
+	if len(left) == 0 && len(right) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(left, right)
 }
 
 func (s Session) SettingsValue() SessionSettings {

@@ -25,7 +25,7 @@
 | 决策               | 结论                                                                                                                                                                                           |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 统一键             | **`NodeRef { sourceId, nodeId }`** 不透明句柄;picker 不解析 nodeId。本地源 `nodeId = path`                                                                                                     |
-| 源边界             | **各源自治**(取数 / open / preview 各自负责)+ **共享 base 工具层**(形状处理,非文件系统调用)                                                                                                    |
+| 源边界             | **各源自治**(取数 / open / open-with / reveal / preview 各自负责)+ **共享 base 工具层**(形状处理,非文件系统调用)                                                                               |
 | 范围               | 只做 `+` picker;不动 `@` palette 的 `AgentRichTextAtProvider`,但接口设计为将来可复用                                                                                                           |
 | 本地文件(回归防护) | 目标是**改造不引入 bug**:本地源 1:1 包装现有 adapter、行为逐项保持;唯一变化是 picker 树 key 从 path-keyed → node-keyed                                                                         |
 | open / preview     | 应用产物**复用本地文件同一条 host 链路**(解析路径在 `~/.tutti` 内,过 homedir 校验),无新增 daemon 通道                                                                                          |
@@ -71,15 +71,15 @@ host openFile  host openFile   任务通道
 
 ### 1.2 组件职责
 
-| 组件                           | 职责                                                                     | 位置(建议)                                |
-| ------------------------------ | ------------------------------------------------------------------------ | ----------------------------------------- |
-| `WorkspaceFileReferencePicker` | 树/搜索/预览/多选 UI;node-keyed 状态;导航栈                              | `packages/workspace/file-reference`(改造) |
-| `ReferenceSourceRegistry`      | 收集、过滤(`isAvailable`)、排序源                                        | 共享契约 + desktop DI                     |
-| Aggregator                     | 根=源列表;按 sourceId 委派 listChildren/search/open/preview              | 共享                                      |
-| `ReferenceSourceService`       | 单源契约(各源自治)                                                       | 契约共享,实现分散                         |
-| 本地文件源                     | 1:1 包装现有 `WorkspaceFileReferenceAdapter`                             | `apps/desktop`                            |
-| 应用产物源                     | 包 `tuttidClient.listWorkspaceAppReferences`;open/preview 复用 host 链路 | `apps/desktop`                            |
-| 共享 base 工具                 | 形状处理(非取数)                                                         | 共享                                      |
+| 组件                           | 职责                                                                         | 位置(建议)                                |
+| ------------------------------ | ---------------------------------------------------------------------------- | ----------------------------------------- |
+| `WorkspaceFileReferencePicker` | 树/搜索/预览/多选 UI;node-keyed 状态;导航栈                                  | `packages/workspace/file-reference`(改造) |
+| `ReferenceSourceRegistry`      | 收集、过滤(`isAvailable`)、排序源                                            | 共享契约 + desktop DI                     |
+| Aggregator                     | 根=源列表;按 sourceId 委派 listChildren/search/open/open-with/reveal/preview | 共享                                      |
+| `ReferenceSourceService`       | 单源契约(各源自治)                                                           | 契约共享,实现分散                         |
+| 本地文件源                     | 1:1 包装现有 `WorkspaceFileReferenceAdapter`                                 | `apps/desktop`                            |
+| 应用产物源                     | 包 `tuttidClient.listWorkspaceAppReferences`;open/preview 复用 host 链路     | `apps/desktop`                            |
+| 共享 base 工具                 | 形状处理(非取数)                                                             | 共享                                      |
 
 ### 1.3 包边界与依赖
 
@@ -127,31 +127,31 @@ host openFile  host openFile   任务通道
 
 ### 2.2 实体与值对象
 
-| 概念                                    | 类型             | 定义与职责                                                                                                                                                                          | 生命周期 / 标识                                               |
-| --------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **ReferenceSource**                     | 聚合根(服务)     | 一个文件来源的边界。拥有自己的节点命名空间;声明 `metadata`(身份/排序)与 `capabilities`(可搜/可预览/可分页);对外暴露 browse / search / open / preview / resolveSelection。各源自治。 | 注册即存在;`isAvailable(scope)` 决定在某 workspace 下是否激活 |
-| **NodeRef**                             | 值对象           | 节点的全局身份 `{ sourceId, nodeId }`。不可变,按值相等。`nodeId` 对 picker **不透明**,只有所属源能解释。                                                                            | 无独立生命周期;随节点产生                                     |
-| **ReferenceNode**                       | 实体             | 树中一个节点,身份 = `NodeRef`。`kind: folder \| file`,携带展示名与文件元数据。folder 可有子节点,file 不可。                                                                         | 由源在 `listChildren` 时产出;源内身份须稳定                   |
-| **ReferenceScope**                      | 值对象           | `{ workspaceId }`,所有源操作的上下文。                                                                                                                                              | —                                                             |
-| **SelectedReference**                   | 值对象           | 选中后插入 composer 的产物,**统一形态** `{ path, kind, displayName }`。各源 `resolveSelection` 归一到此。                                                                           | 插入即固化进草稿/会话                                         |
-| **ReferencePreview**                    | 值对象           | 预览内容 `{ bytes, contentType, kind }`。                                                                                                                                           | 瞬时                                                          |
-| **BrowseSession / NavigationStack**     | 实体(UI 态)      | 当前浏览位置 = 一个 `NodeRef` 栈;空栈 = 根(展示源列表)。下钻 push,返回 pop。                                                                                                        | 随弹窗打开创建,关闭销毁                                       |
-| **NodeChildrenState**                   | 值对象(局部状态) | 某 folder 的子节点缓存 `{ entries[], nextCursor, status }`。以 `sourceId:nodeId` 为 key。                                                                                           | 弹窗会话内缓存                                                |
-| **SourceMetadata / SourceCapabilities** | 值对象           | 源的展示身份与能力开关,驱动 UI 取舍。                                                                                                                                               | 随源                                                          |
+| 概念                                    | 类型             | 定义与职责                                                                                                                                                                                               | 生命周期 / 标识                                               |
+| --------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **ReferenceSource**                     | 聚合根(服务)     | 一个文件来源的边界。拥有自己的节点命名空间;声明 `metadata`(身份/排序)与 `capabilities`(可搜/可预览/可分页);对外暴露 browse / search / open / open-with / reveal / preview / resolveSelection。各源自治。 | 注册即存在;`isAvailable(scope)` 决定在某 workspace 下是否激活 |
+| **NodeRef**                             | 值对象           | 节点的全局身份 `{ sourceId, nodeId }`。不可变,按值相等。`nodeId` 对 picker **不透明**,只有所属源能解释。                                                                                                 | 无独立生命周期;随节点产生                                     |
+| **ReferenceNode**                       | 实体             | 树中一个节点,身份 = `NodeRef`。`kind: folder \| file`,携带展示名与文件元数据。folder 可有子节点,file 不可。                                                                                              | 由源在 `listChildren` 时产出;源内身份须稳定                   |
+| **ReferenceScope**                      | 值对象           | `{ workspaceId }`,所有源操作的上下文。                                                                                                                                                                   | —                                                             |
+| **SelectedReference**                   | 值对象           | 选中后插入 composer 的产物,**统一形态** `{ path, kind, displayName }`。各源 `resolveSelection` 归一到此。                                                                                                | 插入即固化进草稿/会话                                         |
+| **ReferencePreview**                    | 值对象           | 预览内容 `{ bytes, contentType, kind }`。                                                                                                                                                                | 瞬时                                                          |
+| **BrowseSession / NavigationStack**     | 实体(UI 态)      | 当前浏览位置 = 一个 `NodeRef` 栈;空栈 = 根(展示源列表)。下钻 push,返回 pop。                                                                                                                             | 随弹窗打开创建,关闭销毁                                       |
+| **NodeChildrenState**                   | 值对象(局部状态) | 某 folder 的子节点缓存 `{ entries[], nextCursor, status }`。以 `sourceId:nodeId` 为 key。                                                                                                                | 弹窗会话内缓存                                                |
+| **SourceMetadata / SourceCapabilities** | 值对象           | 源的展示身份与能力开关,驱动 UI 取舍。                                                                                                                                                                    | 随源                                                          |
 
 ### 2.3 各源的领域映射
 
 同一套领域概念,在三个源里的具体含义:
 
-| 领域概念        | 本地文件源 `workspace-file`       | 应用产物源 `app-artifact`                         | 任务产物源 `task-artifact`(将来) |
-| --------------- | --------------------------------- | ------------------------------------------------- | -------------------------------- |
-| `nodeId` 含义   | 文件逻辑路径(`/workspace/...`)    | 编码 `appId` + 不透明 group 链(见 §4.6)           | 任务/产物 id                     |
-| 根(`node=null`) | workspace root 目录               | 支持 references 的 app 列表(每 app 一个 folder)   | 任务列表                         |
-| folder          | 目录                              | app 节点、group(项目)节点                         | 任务/分组节点                    |
-| file            | 文件                              | reference(`AppFileReference`,携带解析绝对路径)    | 产物文件                         |
-| 分页            | 无(`nextCursor` 恒 null)          | 有(references `cursor`)                           | 视后端                           |
-| open / preview  | host `openFile`/`readPreviewFile` | **同一条 host 链路**(解析路径在 `~/.tutti`)       | 视后端                           |
-| `isAvailable`   | 恒 true                           | 存在任一 `references.listSupported===true` 的 app | 任务中心启用时                   |
+| 领域概念        | 本地文件源 `workspace-file`                  | 应用产物源 `app-artifact`                         | 任务产物源 `task-artifact`(将来) |
+| --------------- | -------------------------------------------- | ------------------------------------------------- | -------------------------------- |
+| `nodeId` 含义   | 文件逻辑路径(`/workspace/...`)               | 编码 `appId` + 不透明 group 链(见 §4.6)           | 任务/产物 id                     |
+| 根(`node=null`) | workspace root 目录                          | 支持 references 的 app 列表(每 app 一个 folder)   | 任务列表                         |
+| folder          | 目录                                         | app 节点、group(项目)节点                         | 任务/分组节点                    |
+| file            | 文件                                         | reference(`AppFileReference`,携带解析绝对路径)    | 产物文件                         |
+| 分页            | 无(`nextCursor` 恒 null)                     | 有(references `cursor`)                           | 视后端                           |
+| open / preview  | preview-first activation / `readPreviewFile` | **同一条 host 链路**(解析路径在 `~/.tutti`)       | 视后端                           |
+| `isAvailable`   | 恒 true                                      | 存在任一 `references.listSupported===true` 的 app | 任务中心启用时                   |
 
 ### 2.4 不变式(Invariants)
 
@@ -230,8 +230,9 @@ BrowseSession:
 双击 / 打开 → source.open(scope, node)
 ```
 
-- 本地源:走 host `openFile` / `readPreviewFile`(受 homedir 校验)。
-- 应用产物源:**与本地文件走同一条 host 链路**。daemon 解析出的 app 文件绝对路径在 `~/.tutti/apps/workspaces/{ws}/{appId}/data/...` 下,落在 homedir 内,能通过 host 的 `isPathWithinRoot(homedir, …)` 校验;references OpenAPI 也明确这些路径"可当普通文件链接打开"。因此 `open/readPreview` 直接复用现有 `openReference/readReferencePreview`,传 `{ path: 解析绝对路径, kind:"file" }` 即可。`capabilities.previewable = true`,无需新建 daemon 通道。
+- 本地源:`open` 复用文件管理器的 preview-first activation 语义:先把文件解析为 `WorkspaceFileActivationTarget`,调用当前 workspace 注册的 Tutti canvas preview launcher;若格式不支持或 launcher 未处理,再 fallback 到 host `openFile`(系统默认应用)。`readPreview` 继续走 `readPreviewFile`(受 homedir 校验)。
+- 应用产物源:**与本地文件走同一条 host 链路**。daemon 解析出的 app 文件绝对路径在 `~/.tutti/apps/workspaces/{ws}/{appId}/data/...` 下,落在 homedir 内,能通过 host 的 `isPathWithinRoot(homedir, …)` 校验;references OpenAPI 也明确这些路径"可当普通文件链接打开"。因此 `open/readPreview` 直接复用现有 `openReference/readReferencePreview`,传 `{ path: 解析绝对路径, kind:"file" }` 即可。`open` 保持文件管理器一致的 preview-first/fallback 语义,`capabilities.previewable = true`,无需新建 daemon 通道。
+- 右键菜单的 `打开方式` 与 `在 Finder/文件管理器中显示` 也属于同一组 source 自治的 host 文件动作。picker 不解析 `nodeId` 或路径,只把 `ReferenceNode` 原样交给 aggregator;本地源、应用产物源、任务产物源各自通过 `WorkspaceFileReferenceAdapter` 复用 `listOpenWithApplications` / `openFileWithApplication` / `openFileWithOtherApplication` / `revealWorkspaceFile` 等 host 能力。
 
 ### 3.5 选中确认 → 插入 composer
 
@@ -373,7 +374,7 @@ export interface ReferenceSourceRegistry {
 
 - `listSources(scope)` → 返回可用源的 `{ sourceId, label, capabilities }`,用于渲染顶部 tab。
 - 某 tab 激活时,以 `listChildren(scope, { sourceId, nodeId: SOURCE_ROOT })` 取该源根层级,其后下钻原样回传 node。
-- `search / open / readPreview / resolveSelection` 均按 `node.ref.sourceId`(或当前 tab sourceId)委派。
+- `search / open / open-with / reveal / readPreview / resolveSelection` 均按 `node.ref.sourceId`(或当前 tab sourceId)委派。
 
 ### 4.5 插入产物(所有源统一为"文件路径",不引入多态)
 
@@ -405,7 +406,7 @@ file 节点: nodeId = "app:" + appId + "|ref:" + base64url(location.path)
 
 - 分隔符 `|`、前缀 `app:/grp:/ref:` 仅源内部使用;opaque groupId 走 base64url 避免特殊字符。
 - 解码后映射到协议参数:`appId`、`parentGroupId`(= group 的 opaque id)、`cursor`(来自 `ListChildrenInput.cursor`)、`filterText`(= `filter`)。
-- **open / preview**:**复用本地文件同一条 host 链路**(`hostFilesApi.openFile` / `readPreviewFile`),传入 daemon 解析出的绝对路径(在 `~/.tutti/...` 下,通过 homedir 校验)。`capabilities.previewable = true`,无需新建 daemon 通道。
+- **open / preview**:**复用本地文件同一条 host 链路**。`open` 走 preview-first activation,先尝试 Tutti canvas preview,未处理再 fallback 到 `hostFilesApi.openFile`;`preview` 走 `readPreviewFile`。传入 daemon 解析出的绝对路径(在 `~/.tutti/...` 下,通过 homedir 校验)。`capabilities.previewable = true`,无需新建 daemon 通道。
 
 ### 4.7 约定
 
@@ -425,6 +426,6 @@ file 节点: nodeId = "app:" + appId + "|ref:" + base64url(location.path)
 
 ## 6. 待实现前对齐项(均已确认)
 
-1. ~~应用产物 open/preview 的 daemon 中介通道是否本期提供~~ —— **不需要新通道**。app 数据在 `~/.tutti/...`(homedir 内),复用本地文件同一条 host `openFile`/`readPreviewFile` 即可通过校验;OpenAPI 亦明确这些绝对路径可当普通文件链接打开。`capabilities.previewable = true`。
+1. ~~应用产物 open/preview 的 daemon 中介通道是否本期提供~~ —— **不需要新通道**。app 数据在 `~/.tutti/...`(homedir 内),复用本地文件同一条 host 链路即可通过校验:`open` 为 preview-first activation + `openFile` fallback,`preview` 为 `readPreviewFile`;OpenAPI 亦明确这些绝对路径可当普通文件链接打开。`capabilities.previewable = true`。
 2. ~~应用产物插入/序列化格式与 composer/agent 侧对齐~~ —— **与现有 picker 一致(统一为文件路径)**,不引入新 kind,composer/序列化/agent 零改动(§4.5)。
 3. ~~`references.listSupported` 是否在 `listWorkspaceApps` 响应中返回~~ —— **有**。`listWorkspaceApps` → `WorkspaceAppListResponse.apps[].references.listSupported: boolean`(OpenAPI 3556 / types.gen.ts 418、304,均为必填)。应用产物源 `isAvailable` = 列表中存在任一 `listSupported === true`;根层级 app 列表 = 过滤 `listSupported === true` 的 app。无需额外探测调用。

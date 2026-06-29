@@ -5,20 +5,20 @@ description: Use for `mention://agent-session/<sessionId>?workspaceId=...` links
 
 # Tutti CLI
 
-Use this skill as the router and operating contract for the local Tutti CLI. It tells you which command family to reach for, how to call commands safely, and where to look up exact flags as the CLI expands.
+Use this skill as the routing and operating contract for the local Tutti CLI. It tells you which command family to reach for, how to call commands safely, and how to handle the dynamic command snapshot rendered for this agent runtime.
 
 ## Route First
 
-Classify the request before invoking commands:
+Classify the request before invoking any Tutti CLI command:
 
 1. Workspace issue work uses `issue ...`. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke the `issue-manager` skill and use this skill only as its CLI reference.
-2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke the `workspace-app` skill.
+2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke the `workspace-app` skill and use this skill as its command reference.
 3. Agent session work uses `agent ...`, `codex ...`, or `claude ...`. For `mention://agent-session/<sessionId>?workspaceId=...`, start with `agent session-summary --session-id <session-id> --json`.
 4. Browser automation uses `browser ...`.
 5. macOS desktop automation uses `computer ...`.
 6. If none match, read the command guide below before guessing.
 
-Completion criterion: every CLI call you make should be traceable to a routed family, a mention URI, prior command output, or a command-guide entry.
+Completion criterion: every Tutti CLI call must be traceable to a routed family, a mention URI, prior command output, current CLI help, or a command-guide entry.
 
 ## Mention Links
 
@@ -35,11 +35,13 @@ Agent session summary JSON is compact and includes session context plus recent m
 
 Use this protocol for every Tutti CLI command:
 
-1. Read the command guide entry for the family or command. If exact flags are unclear, use CLI help for that family or command before guessing.
-2. Prefer `--json` whenever output becomes reasoning context, workflow state, or input to another command.
-3. Use IDs from mention URIs, prior command output, or list/get commands. Do not invent workspace ids, app scopes, issue ids, task ids, run ids, provider names, or session ids.
-4. If a required input is missing, ask the user or run the relevant discovery command. Follow daemon recovery hints when an error includes one.
-5. Treat unknown-input or invalid-input errors as a signal to re-read command help or the guide, not to retry with guessed flags.
+1. Read the command guide entry for the family or command. Treat the guide as a snapshot, not a complete or permanent CLI manual.
+2. If exact flags are unclear for a known command, re-check current CLI help such as `{{CLI_COMMAND}} <scope> --help` before guessing.
+3. If app-specific commands look missing or stale, refresh the command guide or skill bundle capability reference that preserves `App id:` metadata before deciding the app has no CLI support. Do not use CLI help alone to map a workspace app id to a CLI scope.
+4. Prefer `--json` whenever output becomes reasoning context, workflow state, or input to another command.
+5. Use IDs from mention URIs, prior command output, or list/get commands. Do not invent workspace ids, app scopes, issue ids, task ids, run ids, provider names, or session ids.
+6. If a required input is missing, ask the user or run the relevant discovery command. Follow daemon recovery hints when an error includes one.
+7. Treat unknown-input or invalid-input errors as a signal to re-read current command help or the guide, not to retry with guessed flags.
 
 App window opening:
 
@@ -61,6 +63,18 @@ Output rules:
 
 When you use a command guide example for reasoning, workflow state, or follow-up CLI input, add `--json` unless the command family normally returns plain text, such as `browser ...` or `computer ...`.
 
+## Dynamic Command Snapshot
+
+The command guide below is rendered when this agent runtime or skill bundle is prepared. It is a current snapshot, not a stable inventory of every command the daemon may expose later.
+
+Builtin command families are relatively stable. Workspace app command families are dynamic: an app command appears only after the app is installed, enabled, and active enough for Tutti to register its CLI capabilities. App commands may change after app install, reload, start, stop, daemon restart, or agent session refresh.
+
+If a user mentions a workspace app or asks for app-specific work and the expected command is missing from this guide:
+
+1. Prefer a freshly rendered skill bundle or current capability reference that preserves `App id:` metadata over an older materialized command guide.
+2. Use CLI help only after a guide or capability entry has matched the workspace app id to a CLI scope/path; help output is for syntax and flags, not app-id matching.
+3. If the command is still unavailable, explain that the app is not currently exposing usable CLI capabilities; do not guess an app-specific command from app files, labels, or source code.
+
 ## Family Reference
 
 `issue ...` covers issue topics, issues, tasks, and issue/task run reporting. Workflow sequencing belongs to `issue-manager`, not this skill.
@@ -71,7 +85,7 @@ When you use a command guide example for reasoning, workflow state, or follow-up
 
 `computer ...` drives the daemon-owned macOS desktop session. Prefer it over generic desktop automation when Tutti computer context is requested.
 
-Workspace app scopes are discovered from the command guide. Use `workspace-app` for app mention interpretation and command selection.
+Workspace app scopes are discovered from command guide or capability metadata that preserves `App id:`. Use `workspace-app` for app mention interpretation and command selection; `workspace-app` is a skill and mention kind, not a CLI scope. Use CLI help only after the scope is known.
 
 ## Issue Guardrails
 

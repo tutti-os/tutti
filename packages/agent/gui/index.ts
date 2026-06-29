@@ -7,6 +7,19 @@ export {
 export { AgentGUI } from "./AgentGUI";
 export type { AgentGUIProps } from "./AgentGUI";
 export {
+  agentGUIDefaultTargetProviders,
+  createLocalAgentGUIProviderTarget,
+  createLocalAgentGUIProviderTargets,
+  localAgentGUIProviderTargetId,
+  normalizeAgentGUIProviderTargets,
+  resolveAgentGUIProviderTarget
+} from "./providerTargets";
+export type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget,
+  AgentGUIProviderTargetRef
+} from "./types";
+export {
   AgentGuiI18nProvider,
   agentGuiI18nModule,
   agentGuiI18nResources

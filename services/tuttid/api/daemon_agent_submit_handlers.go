@@ -40,6 +40,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		PermissionModeID:     request.Body.PermissionModeId,
 		PlanMode:             request.Body.PlanMode,
 		BrowserUse:           request.Body.BrowserUse,
+		ProviderTargetRef:    mapValue(request.Body.ProviderTargetRef),
 		Provider:             string(request.Body.Provider),
 		ReasoningEffort:      request.Body.ReasoningEffort,
 		Speed:                request.Body.Speed,

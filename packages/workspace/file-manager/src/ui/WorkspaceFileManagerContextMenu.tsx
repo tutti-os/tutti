@@ -35,13 +35,63 @@ import type {
   WorkspaceFileOpenWithApplication
 } from "../services/workspaceFileManagerTypes.ts";
 
+export interface WorkspaceFileManagerContextMenuProps {
+  busy: boolean;
+  copy: WorkspaceFileManagerI18nRuntime;
+  contextMenu: {
+    entry: WorkspaceFileEntry | null;
+    x: number;
+    y: number;
+  } | null;
+  contextMenuRef: RefObject<HTMLDivElement | null>;
+  openInAppBrowserIcon?: ReactElement;
+  positionMode?: "local" | "viewport";
+  resolveOpenWithApplicationIcon?: (
+    application: WorkspaceFileOpenWithApplication
+  ) => ReactElement | null;
+  showCopyAction: boolean;
+  showCopyPathAction: boolean;
+  showCreateAction: boolean;
+  showDeleteAction: boolean;
+  showImportAction: boolean;
+  showExportAction: boolean;
+  showOpenInAppBrowserAction: boolean;
+  showOpenInDefaultBrowserAction: boolean;
+  showOpenInFileViewerAction: boolean;
+  showOpenWithAction: boolean;
+  showOpenWithOtherAction: boolean;
+  showRevealInFolderAction: boolean;
+  showRenameAction: boolean;
+  revealInFolderLabel: string;
+  openWithApplications: readonly WorkspaceFileOpenWithApplication[];
+  openWithLoading: boolean;
+  onClose: () => void;
+  onCreateDirectory: () => void;
+  onCreateFile: () => void;
+  onCopy: () => Promise<void>;
+  onCopyPath: () => Promise<void>;
+  onDelete: () => void;
+  onExport: () => Promise<void>;
+  onOpen: () => Promise<void>;
+  onOpenInAppBrowser: () => Promise<void>;
+  onOpenInDefaultBrowser: () => Promise<void>;
+  onOpenInFileViewer: () => Promise<void>;
+  onOpenWithApplication: (applicationPath: string) => Promise<void>;
+  onOpenWithOtherApplication: () => Promise<void>;
+  onImport: () => Promise<void>;
+  onRevealInFolder: () => Promise<void>;
+  onRename: () => void;
+}
+
 export function WorkspaceFileManagerContextMenu({
   busy,
   copy,
   contextMenu,
   contextMenuRef,
   openInAppBrowserIcon,
+  positionMode = "local",
   showCopyAction,
+  showCopyPathAction,
   showCreateAction,
   showDeleteAction,
   showImportAction,
@@ -73,51 +123,7 @@ export function WorkspaceFileManagerContextMenu({
   onImport,
   onRevealInFolder,
   onRename
-}: {
-  busy: boolean;
-  copy: WorkspaceFileManagerI18nRuntime;
-  contextMenu: {
-    entry: WorkspaceFileEntry | null;
-    x: number;
-    y: number;
-  } | null;
-  contextMenuRef: RefObject<HTMLDivElement | null>;
-  openInAppBrowserIcon?: ReactElement;
-  resolveOpenWithApplicationIcon?: (
-    application: WorkspaceFileOpenWithApplication
-  ) => ReactElement | null;
-  showCopyAction: boolean;
-  showCreateAction: boolean;
-  showDeleteAction: boolean;
-  showImportAction: boolean;
-  showExportAction: boolean;
-  showOpenInAppBrowserAction: boolean;
-  showOpenInDefaultBrowserAction: boolean;
-  showOpenInFileViewerAction: boolean;
-  showOpenWithAction: boolean;
-  showOpenWithOtherAction: boolean;
-  showRevealInFolderAction: boolean;
-  showRenameAction: boolean;
-  revealInFolderLabel: string;
-  openWithApplications: readonly WorkspaceFileOpenWithApplication[];
-  openWithLoading: boolean;
-  onClose: () => void;
-  onCreateDirectory: () => void;
-  onCreateFile: () => void;
-  onCopy: () => Promise<void>;
-  onCopyPath: () => Promise<void>;
-  onDelete: () => void;
-  onExport: () => Promise<void>;
-  onOpen: () => Promise<void>;
-  onOpenInAppBrowser: () => Promise<void>;
-  onOpenInDefaultBrowser: () => Promise<void>;
-  onOpenInFileViewer: () => Promise<void>;
-  onOpenWithApplication: (applicationPath: string) => Promise<void>;
-  onOpenWithOtherApplication: () => Promise<void>;
-  onImport: () => Promise<void>;
-  onRevealInFolder: () => Promise<void>;
-  onRename: () => void;
-}): ReactElement | null {
+}: WorkspaceFileManagerContextMenuProps): ReactElement | null {
   const [position, setPosition] = useState({
     x: contextMenu?.x ?? 0,
     y: contextMenu?.y ?? 0
@@ -137,17 +143,25 @@ export function WorkspaceFileManagerContextMenu({
     }
 
     const menu = contextMenuRef.current;
-    const boundary = menu?.closest("[data-workspace-file-manager]");
-    if (!menu || !boundary) {
+    if (!menu) {
       return;
     }
 
-    const boundaryRect = boundary.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
+    const boundary =
+      positionMode === "local"
+        ? menu.closest(
+            "[data-workspace-file-menu-boundary], [data-workspace-file-manager]"
+          )
+        : null;
+    if (positionMode === "local" && !boundary) {
+      return;
+    }
+    const boundaryRect = boundary?.getBoundingClientRect();
     setPosition(
       clampContextMenuPosition({
-        boundaryHeight: boundaryRect.height,
-        boundaryWidth: boundaryRect.width,
+        boundaryHeight: boundaryRect?.height ?? window.innerHeight,
+        boundaryWidth: boundaryRect?.width ?? window.innerWidth,
         menuHeight: menuRect.height,
         menuWidth: menuRect.width,
         x: contextMenu.x,
@@ -159,7 +173,9 @@ export function WorkspaceFileManagerContextMenu({
     contextMenuRef,
     openWithApplications.length,
     openWithLoading,
+    positionMode,
     showCopyAction,
+    showCopyPathAction,
     showExportAction,
     showImportAction,
     showOpenInAppBrowserAction,
@@ -201,13 +217,15 @@ export function WorkspaceFileManagerContextMenu({
         label: copy.t("copyLabel")
       });
     }
-    editItems.push({
-      action: onCopyPath,
-      disabled: busy,
-      icon: <CopyIcon className="size-4" />,
-      key: "copy-path",
-      label: copy.t("copyPathLabel")
-    });
+    if (showCopyPathAction) {
+      editItems.push({
+        action: onCopyPath,
+        disabled: busy,
+        icon: <CopyIcon className="size-4" />,
+        key: "copy-path",
+        label: copy.t("copyPathLabel")
+      });
+    }
     if (showRevealInFolderAction) {
       editItems.push({
         action: onRevealInFolder,
@@ -292,7 +310,10 @@ export function WorkspaceFileManagerContextMenu({
   return (
     <MenuSurface
       ref={contextMenuRef}
-      className="absolute w-[220px] overflow-visible p-1"
+      className={cn(
+        "w-[220px] overflow-visible p-1",
+        positionMode === "viewport" ? "fixed" : "absolute"
+      )}
       role="menu"
       style={{
         left: `${position.x}px`,
@@ -384,18 +405,31 @@ function ContextMenuActionGroup({
 }
 
 function ContextMenuActionButton({
+  activateOnPointerDown = false,
   danger = false,
   disabled = false,
   icon,
   label,
   onClick
 }: {
+  activateOnPointerDown?: boolean;
   danger?: boolean;
   disabled?: boolean;
   icon: ReactElement;
   label: string;
   onClick: () => void;
 }): ReactElement {
+  const pointerActivatedRef = useRef(false);
+  const pointerActivationResetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pointerActivationResetTimerRef.current !== null) {
+        window.clearTimeout(pointerActivationResetTimerRef.current);
+      }
+    };
+  }, []);
+
   return (
     <button
       className={cn(
@@ -407,7 +441,33 @@ function ContextMenuActionButton({
       disabled={disabled}
       role="menuitem"
       type="button"
-      onClick={onClick}
+      onClick={() => {
+        if (pointerActivatedRef.current) {
+          pointerActivatedRef.current = false;
+          if (pointerActivationResetTimerRef.current !== null) {
+            window.clearTimeout(pointerActivationResetTimerRef.current);
+            pointerActivationResetTimerRef.current = null;
+          }
+          return;
+        }
+        onClick();
+      }}
+      onPointerDown={(event) => {
+        if (!activateOnPointerDown || disabled || event.button !== 0) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        pointerActivatedRef.current = true;
+        if (pointerActivationResetTimerRef.current !== null) {
+          window.clearTimeout(pointerActivationResetTimerRef.current);
+        }
+        pointerActivationResetTimerRef.current = window.setTimeout(() => {
+          pointerActivatedRef.current = false;
+          pointerActivationResetTimerRef.current = null;
+        }, 750);
+        onClick();
+      }}
     >
       <span
         className={cn(
@@ -467,7 +527,7 @@ function OpenWithMenuItem({
 }): ReactElement {
   const triggerRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [placementPoint, setPlacementPoint] = useState({ x: 0, y: 0 });
+  const [submenuPosition, setSubmenuPosition] = useState({ left: 0, top: 0 });
   const closeTimerRef = useRef<number | null>(null);
   const showExternalSection =
     showOpenInDefaultBrowser ||
@@ -521,9 +581,14 @@ function OpenWithMenuItem({
     }
 
     const rect = trigger.getBoundingClientRect();
-    setPlacementPoint({
-      x: rect.right + CONTEXT_MENU_SUBMENU_GAP_PX,
-      y: rect.top
+    const maxHeight = Math.min(
+      estimatedSubmenuHeight,
+      480,
+      Math.max(0, window.innerHeight - 24)
+    );
+    setSubmenuPosition({
+      left: rect.right + CONTEXT_MENU_SUBMENU_GAP_PX,
+      top: Math.max(12, Math.min(rect.top, window.innerHeight - maxHeight - 12))
     });
   }, [open, estimatedSubmenuHeight]);
 
@@ -575,38 +640,40 @@ function OpenWithMenuItem({
         dismissOnPointerDownOutside={false}
         dismissOnScroll={false}
         placement={{
-          type: "point",
-          point: placementPoint,
-          alignX: "start",
-          alignY: "auto",
-          estimatedSize: {
-            width: 220,
-            height: estimatedSubmenuHeight
-          }
+          type: "absolute",
+          left: submenuPosition.left,
+          top: submenuPosition.top,
+          boundaryPoint: { x: -1, y: -1 },
+          constrainToBoundary: false
         }}
         role="menu"
+        style={{ zIndex: "calc(var(--z-panel-popover) + 200)" }}
         onPointerEnter={openSubmenu}
         onPointerLeave={scheduleClose}
       >
         {showOpenInFileViewer ? (
           <ContextMenuActionButton
+            activateOnPointerDown
             disabled={busy}
             icon={<EyeIcon className="size-4" />}
             label={copy.t("openInFileViewerLabel")}
             onClick={() => {
+              const openPromise = onOpenInFileViewer();
               onClose();
-              void onOpenInFileViewer();
+              void openPromise;
             }}
           />
         ) : null}
         {showOpenInAppBrowser ? (
           <ContextMenuActionButton
+            activateOnPointerDown
             disabled={busy}
             icon={openInAppBrowserIcon ?? <WebIcon className="size-4" />}
             label={copy.t("openInAppBrowserLabel")}
             onClick={() => {
+              const openPromise = onOpenInAppBrowser();
               onClose();
-              void onOpenInAppBrowser();
+              void openPromise;
             }}
           />
         ) : null}
@@ -621,6 +688,7 @@ function OpenWithMenuItem({
 
           return (
             <ContextMenuActionButton
+              activateOnPointerDown
               key={application.applicationPath}
               disabled={busy}
               icon={
@@ -637,31 +705,38 @@ function OpenWithMenuItem({
               }
               label={application.name}
               onClick={() => {
+                const openPromise = onOpenWithApplication(
+                  application.applicationPath
+                );
                 onClose();
-                void onOpenWithApplication(application.applicationPath);
+                void openPromise;
               }}
             />
           );
         })}
         {showOpenInDefaultBrowser ? (
           <ContextMenuActionButton
+            activateOnPointerDown
             disabled={busy}
             icon={<WebIcon className="size-4" />}
             label={copy.t("openInDefaultBrowserLabel")}
             onClick={() => {
+              const openPromise = onOpenInDefaultBrowser();
               onClose();
-              void onOpenInDefaultBrowser();
+              void openPromise;
             }}
           />
         ) : null}
         {showOpenWithOther ? (
           <ContextMenuActionButton
+            activateOnPointerDown
             disabled={busy}
             icon={<LaunchIcon className="size-4" />}
             label={copy.t("openWithOtherLabel")}
             onClick={() => {
+              const openPromise = onOpenWithOtherApplication();
               onClose();
-              void onOpenWithOtherApplication();
+              void openPromise;
             }}
           />
         ) : null}

@@ -67,6 +67,66 @@ test("runAction executes terminal commands and refreshes the provider status", a
   assert.equal(pendingSnapshots.includes(true), false);
 });
 
+test("refresh sends includeNetwork only when the caller opts in", async () => {
+  const includeNetworkRequests: Array<boolean | undefined> = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      onStatusRequest: (_providers, includeNetwork) => {
+        includeNetworkRequests.push(includeNetwork);
+      },
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready" })
+        ]),
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready" })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  // Dock / default poll → local-only (no flag); wizard → opts in.
+  await service.refresh(["codex"]);
+  await service.refresh(["codex"], { includeNetwork: true });
+
+  assert.deepEqual(includeNetworkRequests, [undefined, true]);
+});
+
+test("a local-only refresh keeps the network the wizard fetched", async () => {
+  const network = {
+    registry: { reachable: true, endpoint: "https://registry.npmjs.org" },
+    providerApi: { reachable: true, endpoint: "https://api.openai.com/v1" },
+    proxy: { configured: false, reachable: false }
+  };
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        // Wizard fetch (with network).
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready", network })
+        ]),
+        // Dock / poll fetch (local-only, no network).
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready" })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh(["codex"], { includeNetwork: true });
+  assert.deepEqual(service.getStatus("codex")?.network, network);
+
+  // A later local-only poll omits network; it must not wipe the diagnostic.
+  await service.refresh(["codex"]);
+  assert.deepEqual(service.getStatus("codex")?.network, network);
+});
+
 test("runAction tracks provider login initiation and successful status result", async () => {
   const events: ReporterEventInput[] = [];
   const service = new DesktopAgentProviderStatusService({
@@ -514,6 +574,51 @@ test("runAction installs providers silently and refreshes the status", async () 
   assert.deepEqual(statusCalls, [undefined, ["codex"]]);
   assert.equal(service.isActionPending("codex", "install"), false);
   assert.equal(pendingSnapshots.includes(true), true);
+});
+
+test("runAction short-polls install status while daemon action is pending", async () => {
+  const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const pollScheduler = createManualPollScheduler();
+  const installRun = createDeferred<AgentProviderActionRunResponse>();
+  const installingStatus = createProviderStatus({
+    actions: [{ id: "install", kind: "daemon_action" }],
+    availability: "not_installed",
+    provider: "claude-code"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    loginStatusPollScheduler: pollScheduler.scheduler,
+    tuttidClient: {
+      async getAgentProviderStatuses(request) {
+        statusCalls.push(request?.providers);
+        return createStatusResponse([installingStatus]);
+      },
+      async runAgentProviderAction(provider, actionID) {
+        assert.equal(provider, "claude-code");
+        assert.equal(actionID, "install");
+        return installRun.promise;
+      }
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh(["claude-code"]);
+  const runPromise = service.runAction("claude-code", "install");
+  await waitFor(() => pollScheduler.pendingTimerCount() === 1);
+
+  pollScheduler.runNext();
+  await waitFor(() => statusCalls.length >= 2);
+
+  assert.deepEqual(statusCalls, [["claude-code"], ["claude-code"]]);
+
+  installRun.resolve(
+    createActionRunResponse("claude-code", "install", "completed")
+  );
+  await runPromise;
+
+  assert.equal(pollScheduler.pendingTimerCount(), 0);
+  assert.equal(service.isActionPending("claude-code", "install"), false);
 });
 
 test("runAction reports daemon install action failures and skips refresh", async () => {
@@ -1314,7 +1419,8 @@ function createTuttidClient(input: {
     actionID: AgentProviderActionRunResponse["actionID"]
   ) => void;
   onStatusRequest?: (
-    providers: readonly WorkspaceAgentProvider[] | undefined
+    providers: readonly WorkspaceAgentProvider[] | undefined,
+    includeNetwork?: boolean
   ) => void;
   probes?: AgentProviderProbeResponse[];
   snapshots: AgentProviderStatusListResponse[];
@@ -1324,7 +1430,7 @@ function createTuttidClient(input: {
   let probeIndex = 0;
   return {
     async getAgentProviderStatuses(request) {
-      input.onStatusRequest?.(request?.providers);
+      input.onStatusRequest?.(request?.providers, request?.includeNetwork);
       const snapshot = input.snapshots[index] ?? input.snapshots.at(-1);
       index += 1;
       if (!snapshot) {
@@ -1449,6 +1555,7 @@ function createProviderStatus(input: {
   adapterInstalled?: boolean;
   availability: AgentProviderStatus["availability"]["status"];
   cliInstalled?: boolean;
+  network?: AgentProviderStatus["network"];
   provider?: WorkspaceAgentProvider;
   reasonCode?: string;
 }): AgentProviderStatus {
@@ -1475,6 +1582,7 @@ function createProviderStatus(input: {
     cli: {
       installed: cliInstalled
     },
+    network: input.network,
     provider: input.provider ?? "codex"
   };
 }

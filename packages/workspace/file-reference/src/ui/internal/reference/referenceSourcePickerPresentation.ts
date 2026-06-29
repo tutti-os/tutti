@@ -55,6 +55,15 @@ export function formatReferencePreviewDateTime(
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
+export function resolveReferencePreviewTimestampMs(
+  node: Pick<ReferenceNode, "createdTimeMs" | "mtimeMs">
+): number | null {
+  return (
+    normalizedTimestampMs(node.createdTimeMs) ??
+    normalizedTimestampMs(node.mtimeMs)
+  );
+}
+
 export function resolveReferencePreviewSizeBytes(
   node: ReferenceNode,
   previewState: {
@@ -78,6 +87,10 @@ export function resolveReferencePreviewSizeBytes(
     }
   }
   return metadataSize;
+}
+
+function normalizedTimestampMs(ms: number | null | undefined): number | null {
+  return typeof ms === "number" && Number.isFinite(ms) && ms >= 0 ? ms : null;
 }
 
 function completeHierarchy(

@@ -86,6 +86,9 @@ function createLocationReferenceSource(input: {
       kind,
       displayName: ref.displayName?.trim() || basename(ref.path),
       ...(kind === "folder" ? { hasChildren: true } : {}),
+      ...(ref.createdTimeMs == null
+        ? {}
+        : { createdTimeMs: ref.createdTimeMs }),
       ...(ref.sizeBytes == null ? {} : { sizeBytes: ref.sizeBytes }),
       ...(ref.mtimeMs == null ? {} : { mtimeMs: ref.mtimeMs })
     };
@@ -259,6 +262,41 @@ function createLocationReferenceSource(input: {
 
     async open(_scope: ReferenceScope, node: ReferenceNode): Promise<void> {
       await adapter.openReference?.(nodeToReference(node));
+    },
+
+    async listOpenWithApplications(
+      _scope: ReferenceScope,
+      node: ReferenceNode
+    ) {
+      return (
+        (await adapter.listOpenWithApplications?.(nodeToReference(node))) ?? []
+      );
+    },
+
+    async openWithApplication(
+      _scope: ReferenceScope,
+      node: ReferenceNode,
+      applicationPath: string
+    ): Promise<void> {
+      await adapter.openReferenceWithApplication?.(
+        nodeToReference(node),
+        applicationPath
+      );
+    },
+
+    async openWithOtherApplication(
+      _scope: ReferenceScope,
+      node: ReferenceNode,
+      applicationPickerPrompt?: string
+    ): Promise<void> {
+      await adapter.openReferenceWithOtherApplication?.(
+        nodeToReference(node),
+        applicationPickerPrompt
+      );
+    },
+
+    async reveal(_scope: ReferenceScope, node: ReferenceNode): Promise<void> {
+      await adapter.revealReference?.(nodeToReference(node));
     },
 
     async readPreview(

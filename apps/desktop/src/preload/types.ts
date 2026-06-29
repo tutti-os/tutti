@@ -6,6 +6,7 @@ import type {
   DesktopBackendConfig,
   DesktopComputerUseActionResult,
   DesktopComputerUseStatus,
+  DesktopClipboardImagePayload,
   DesktopCreateUserDocumentsProjectDirectoryResult,
   DesktopCustomWallpaperImage,
   DesktopLocalFileTextResult,
@@ -176,6 +177,7 @@ export interface DesktopHostFilesApi {
     }
   ): Promise<string | null>;
   selectUploadFiles(input?: DesktopSelectUploadFilesInput): Promise<string[]>;
+  copyImageToClipboard(input: DesktopClipboardImagePayload): Promise<void>;
   copyFilesToClipboard(paths: string[]): Promise<void>;
 }
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
   workspaceWorkbenchDesktopI18nKeys,
@@ -719,9 +720,11 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     dockIconStyle: DesktopDockIconStyle;
     themeAppearance: DesktopThemeAppearance;
     defaultAgentProvider?: string | null;
+    defaultProviderTargetId?: string | null;
     onCapabilitySettingsRequest?: (
       target: WorkspaceWorkbenchCapabilitySettingsTarget
     ) => void;
+    providerTargets?: readonly AgentGUIProviderTarget[];
     renderFilesNodeBody: (
       context: WorkspaceWorkbenchBodyRendererContext
     ) => ReactNode;
@@ -732,8 +735,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       cached &&
       cached.appI18n === input.appI18n &&
       cached.defaultAgentProvider === input.defaultAgentProvider &&
+      cached.defaultProviderTargetId === input.defaultProviderTargetId &&
       cached.dockIconStyle === input.dockIconStyle &&
       cached.i18n === input.i18n &&
+      cached.providerTargets === input.providerTargets &&
       cached.themeAppearance === input.themeAppearance
     ) {
       cached.capabilitySettingsRequestRef.current =
@@ -777,6 +782,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           confirmCloseGuard: (request) => confirmCloseGuardRef.current(request),
           dockPreviewCache,
           defaultAgentProvider: input.defaultAgentProvider,
+          defaultProviderTargetId: input.defaultProviderTargetId,
           dockIcons: {
             agents: dockIcons.agents,
             applications: dockIcons.applications,
@@ -790,6 +796,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           onCapabilitySettingsRequest: (target) => {
             capabilitySettingsRequestRef.current?.(target);
           },
+          providerTargets: input.providerTargets,
           agentProviderStatusService:
             this.dependencies.agentProviderStatusService,
           eventStreamClient: this.dependencies.eventStreamClient,
@@ -865,9 +872,11 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       capabilitySettingsRequestRef,
       confirmCloseGuardRef,
       defaultAgentProvider: input.defaultAgentProvider,
+      defaultProviderTargetId: input.defaultProviderTargetId,
       dockIconStyle: input.dockIconStyle,
       dockIcons,
       i18n: input.i18n,
+      providerTargets: input.providerTargets,
       renderFilesNodeBodyRef,
       themeAppearance: input.themeAppearance
     };
@@ -1265,12 +1274,14 @@ interface CachedWorkspaceWorkbenchHostInput {
     ) => Promise<boolean> | boolean;
   };
   defaultAgentProvider?: string | null;
+  defaultProviderTargetId?: string | null;
   dockIconStyle: DesktopDockIconStyle;
   dockIcons: WorkspaceDockIconSet;
   dynamicAppI18n?: I18nRuntime<string>;
   dynamicDockSignature?: string;
   dynamicHostInput?: WorkspaceWorkbenchHostInput;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+  providerTargets?: readonly AgentGUIProviderTarget[];
   renderFilesNodeBodyRef: {
     current: (context: WorkspaceWorkbenchBodyRendererContext) => ReactNode;
   };

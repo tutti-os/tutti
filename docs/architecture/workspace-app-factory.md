@@ -51,6 +51,8 @@ MVP does not include:
 - Factory job lifecycle
 - generated package staging
 - package validation
+- App Factory provider composer configuration context, including the
+  daemon-owned working directory used for Claude Code live model discovery
 - publish, rollback, and catalog pointer changes
 - app package persistence
 - factory and app runtime logs
@@ -62,6 +64,9 @@ MVP does not include:
 - Workbench and Dock behavior
 - host actions such as opening data, log, package, and job folders
 - adapting generated tuttid client calls into package UI actions
+- App Factory provider composer configuration loading through the tuttid
+  App Factory endpoint and the shared desktop composer-options projection used
+  by Agent GUI
 
 `packages/workspace/app-center` may own host-neutral App Factory presentation:
 
@@ -184,6 +189,9 @@ Factory staging lives under the Tutti state directory:
 ~/.tutti[-dev]/
   apps/
     factory/
+      composer/
+        <workspaceId>/
+          draft/
       jobs/
         <jobId>/
           draft/

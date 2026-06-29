@@ -1,16 +1,20 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
+import { createPortal } from "react-dom";
 import { Extension, type Editor, type JSONContent } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { cn } from "../../../app/renderer/lib/utils";
+import { useTranslation } from "../../../i18n/index";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import { createAgentRichTextInputExtensions } from "./agentRichTextExtensions";
 import type {
@@ -73,6 +77,15 @@ export interface AgentRichTextEditorHandle {
 }
 
 export type AgentRichTextPastedImage = AgentRichTextPromptImage;
+
+interface AgentRichTextContextMenuState {
+  canEdit: boolean;
+  hasSelection: boolean;
+  selectionFrom: number;
+  selectionTo: number;
+  x: number;
+  y: number;
+}
 
 function buildWorkspaceFileMentionDropContent(
   entries: ReadonlyArray<{
@@ -180,6 +193,77 @@ function scrollEditorSelectionIntoView(editor: Editor): void {
   }
 }
 
+function readSelectedPlainText(editor: Editor): string {
+  const { from, to } = editor.state.selection;
+  if (from === to) {
+    return "";
+  }
+  return editor.state.doc.textBetween(from, to, "\n", "\n");
+}
+
+function readEditorDomSelectionRange(
+  editor: Editor
+): { from: number; to: number } | null {
+  const dom = editor.view.dom;
+  const selection = dom.ownerDocument.getSelection();
+  if (
+    !selection ||
+    selection.rangeCount === 0 ||
+    !selection.anchorNode ||
+    !selection.focusNode ||
+    selection.isCollapsed ||
+    !dom.contains(selection.anchorNode) ||
+    !dom.contains(selection.focusNode)
+  ) {
+    return null;
+  }
+
+  try {
+    const anchor = editor.view.posAtDOM(
+      selection.anchorNode,
+      selection.anchorOffset
+    );
+    const focus = editor.view.posAtDOM(
+      selection.focusNode,
+      selection.focusOffset
+    );
+    if (anchor === focus) {
+      return null;
+    }
+    return {
+      from: Math.min(anchor, focus),
+      to: Math.max(anchor, focus)
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writePlainTextToClipboard(text: string): Promise<boolean> {
+  if (!text || typeof navigator.clipboard?.writeText !== "function") {
+    return false;
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readPlainTextFromClipboard(): Promise<string | null> {
+  if (typeof navigator.clipboard?.readText !== "function") {
+    return null;
+  }
+
+  try {
+    return await navigator.clipboard.readText();
+  } catch {
+    return null;
+  }
+}
+
 export const AgentRichTextEditor = forwardRef<
   AgentRichTextEditorHandle,
   AgentRichTextEditorProps
@@ -207,6 +291,7 @@ export const AgentRichTextEditor = forwardRef<
   ref
 ): React.JSX.Element {
   "use memo";
+  const { t } = useTranslation();
   const lastEmittedPromptRef = useRef<string | null>(value);
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
@@ -227,6 +312,91 @@ export const AgentRichTextEditor = forwardRef<
   const availableSkillsRef = useRef(availableSkills);
   const availableCapabilitiesRef = useRef(availableCapabilities);
   const scrollFrameRef = useRef<number | null>(null);
+  const [contextMenu, setContextMenu] =
+    useState<AgentRichTextContextMenuState | null>(null);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  const insertPlainText = useCallback((text: string): void => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor || currentEditor.isDestroyed || !text) {
+      return;
+    }
+    currentEditor
+      .chain()
+      .focus()
+      .insertContent(
+        plainTextToAgentRichTextInlineContent(text, {
+          capabilities: availableCapabilitiesRef.current,
+          skills: availableSkillsRef.current
+        })
+      )
+      .run();
+  }, []);
+
+  const copySelection = useCallback(async (): Promise<void> => {
+    const currentEditor = editorRef.current;
+    const selectedText =
+      contextMenu && contextMenu.hasSelection && currentEditor
+        ? currentEditor.state.doc.textBetween(
+            contextMenu.selectionFrom,
+            contextMenu.selectionTo,
+            "\n",
+            "\n"
+          )
+        : currentEditor
+          ? readSelectedPlainText(currentEditor)
+          : "";
+    closeContextMenu();
+    if (!currentEditor || currentEditor.isDestroyed) {
+      return;
+    }
+    await writePlainTextToClipboard(selectedText);
+  }, [closeContextMenu, contextMenu]);
+
+  const cutSelection = useCallback(async (): Promise<void> => {
+    const currentEditor = editorRef.current;
+    const selectionFrom = contextMenu?.selectionFrom ?? null;
+    const selectionTo = contextMenu?.selectionTo ?? null;
+    const selectedText =
+      contextMenu && contextMenu.hasSelection && currentEditor
+        ? currentEditor.state.doc.textBetween(
+            contextMenu.selectionFrom,
+            contextMenu.selectionTo,
+            "\n",
+            "\n"
+          )
+        : currentEditor
+          ? readSelectedPlainText(currentEditor)
+          : "";
+    closeContextMenu();
+    if (!currentEditor || currentEditor.isDestroyed || disabled) {
+      return;
+    }
+    if (!(await writePlainTextToClipboard(selectedText))) {
+      return;
+    }
+    const { from, to } =
+      selectionFrom !== null &&
+      selectionTo !== null &&
+      selectionFrom < selectionTo
+        ? { from: selectionFrom, to: selectionTo }
+        : currentEditor.state.selection;
+    currentEditor.chain().focus().deleteRange({ from, to }).run();
+  }, [closeContextMenu, contextMenu, disabled]);
+
+  const pasteClipboardText = useCallback(async (): Promise<void> => {
+    closeContextMenu();
+    if (disabled) {
+      return;
+    }
+    const text = await readPlainTextFromClipboard();
+    if (text) {
+      insertPlainText(text);
+    }
+  }, [closeContextMenu, disabled, insertPlainText]);
 
   const scheduleSelectionScroll = (targetEditor: Editor): void => {
     if (typeof window.requestAnimationFrame !== "function") {
@@ -323,6 +493,29 @@ export const AgentRichTextEditor = forwardRef<
           event.preventDefault();
           event.stopPropagation();
           onLinkClickRef.current(href);
+          return true;
+        },
+        contextmenu: (_view, event) => {
+          const currentEditor = editorRef.current;
+          if (!currentEditor || currentEditor.isDestroyed) {
+            return false;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          const stateSelection = currentEditor.state.selection;
+          const domSelection = stateSelection.empty
+            ? readEditorDomSelectionRange(currentEditor)
+            : null;
+          const from = domSelection?.from ?? stateSelection.from;
+          const to = domSelection?.to ?? stateSelection.to;
+          setContextMenu({
+            canEdit: !disabled,
+            hasSelection: from < to,
+            selectionFrom: from,
+            selectionTo: to,
+            x: event.clientX,
+            y: event.clientY
+          });
           return true;
         },
         paste: (_view, event) => {
@@ -537,6 +730,27 @@ export const AgentRichTextEditor = forwardRef<
     []
   );
 
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    const close = () => closeContextMenu();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeContextMenu();
+      }
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [closeContextMenu, contextMenu]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -666,6 +880,82 @@ export const AgentRichTextEditor = forwardRef<
           )}
         />
       )}
+      {contextMenu
+        ? createPortal(
+            <div
+              role="menu"
+              aria-label={t("agentHost.agentGui.composerTextMenu")}
+              className="fixed z-[var(--z-popover)] min-w-[132px] rounded-[8px] border border-[var(--line-1)] bg-[var(--background-panel)] p-1 text-[13px] text-[var(--text-primary)] shadow-[0_14px_34px_rgb(0_0_0_/_0.28)]"
+              data-agent-composer-text-menu="true"
+              style={{
+                left: contextMenu.x,
+                top: contextMenu.y
+              }}
+              onContextMenu={(event) => event.preventDefault()}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <AgentRichTextContextMenuButton
+                disabled={!contextMenu.canEdit || !contextMenu.hasSelection}
+                label={t("common.cut")}
+                onSelect={cutSelection}
+              />
+              <AgentRichTextContextMenuButton
+                disabled={!contextMenu.hasSelection}
+                label={t("common.copy")}
+                onSelect={copySelection}
+              />
+              <AgentRichTextContextMenuButton
+                disabled={!contextMenu.canEdit}
+                label={t("common.paste")}
+                onSelect={pasteClipboardText}
+              />
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 });
+
+function AgentRichTextContextMenuButton({
+  disabled,
+  label,
+  onSelect
+}: {
+  disabled: boolean;
+  label: string;
+  onSelect: () => void | Promise<void>;
+}): React.JSX.Element {
+  const selectionStartedRef = useRef(false);
+  const select = useCallback(() => {
+    if (disabled || selectionStartedRef.current) {
+      return;
+    }
+    selectionStartedRef.current = true;
+    void Promise.resolve(onSelect()).finally(() => {
+      selectionStartedRef.current = false;
+    });
+  }, [disabled, onSelect]);
+
+  return (
+    <button
+      role="menuitem"
+      className="block w-full rounded-[6px] px-3 py-1.5 text-left font-medium transition-colors hover:bg-[var(--transparency-hover)] focus-visible:bg-[var(--transparency-hover)] focus-visible:outline-none disabled:cursor-default disabled:opacity-45"
+      disabled={disabled}
+      type="button"
+      onClick={() => {
+        select();
+      }}
+      onPointerDown={(event) => {
+        if (event.button !== 0) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        select();
+      }}
+    >
+      {label}
+    </button>
+  );
+}

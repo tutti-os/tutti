@@ -96,7 +96,9 @@ export function collectWorkspaceAgentGeneratedFiles(
     if (messages.length === 0) {
       continue;
     }
-    for (const file of changedFilesForSession(messages, normalizePath)) {
+    for (const file of changedFilesForSession(messages, normalizePath, {
+      requireSuccessfulFileChangeTool: true
+    })) {
       filesByPath.set(file.path, file);
     }
     for (const path of imageGenerationPathsFromMessages(
@@ -458,9 +460,14 @@ function resolveLatestActivity(
 
 type ChangedFilePathNormalizer = (value: unknown) => string | null;
 
+interface ChangedFileCollectionOptions {
+  requireSuccessfulFileChangeTool?: boolean;
+}
+
 function changedFilesForSession(
   messages: readonly WorkspaceAgentActivityMessage[],
-  normalizePath: ChangedFilePathNormalizer = defaultChangedFilePathNormalizer
+  normalizePath: ChangedFilePathNormalizer = defaultChangedFilePathNormalizer,
+  options: ChangedFileCollectionOptions = {}
 ): WorkspaceAgentChangedFile[] {
   const changedFilesByPath = new Map<string, WorkspaceAgentChangedFile>();
   const appendPath = (path: string | null): void => {
@@ -474,7 +481,11 @@ function changedFilesForSession(
   };
 
   for (const message of messages) {
-    for (const path of changedFilePathsFromMessage(message, normalizePath)) {
+    for (const path of changedFilePathsFromMessage(
+      message,
+      normalizePath,
+      options
+    )) {
       appendPath(path);
     }
   }
@@ -484,8 +495,13 @@ function changedFilesForSession(
 
 function changedFilePathsFromMessage(
   message: WorkspaceAgentActivityMessage,
-  normalizePath: ChangedFilePathNormalizer = defaultChangedFilePathNormalizer
+  normalizePath: ChangedFilePathNormalizer = defaultChangedFilePathNormalizer,
+  options: ChangedFileCollectionOptions = {}
 ): string[] {
+  const isSuccessfulFileChangeTool = isSuccessfulFileChangeToolMessage(message);
+  if (options.requireSuccessfulFileChangeTool && !isSuccessfulFileChangeTool) {
+    return [];
+  }
   const payload = objectValue(message.payload);
   const explicitFileChanges = fileChangePaths(
     arrayValue(objectValue(payload?.fileChanges)?.files),
@@ -494,7 +510,7 @@ function changedFilePathsFromMessage(
   if (explicitFileChanges.length > 0) {
     return explicitFileChanges;
   }
-  if (!isSuccessfulFileChangeToolMessage(message)) {
+  if (!isSuccessfulFileChangeTool) {
     return [];
   }
 
@@ -781,29 +797,84 @@ function isSuccessfulFileChangeToolMessage(
   if (normalizeToken(message.kind) !== "tool_call") {
     return false;
   }
-  const normalizedStatus = normalizeToken(message.status ?? undefined);
-  if (
-    normalizedStatus &&
-    normalizedStatus !== "completed" &&
-    normalizedStatus !== "success"
-  ) {
+  if (!isSuccessfulFileChangeStatus(message.status ?? undefined)) {
     return false;
   }
   const payload = objectValue(message.payload);
-  const activityKind = stringValue(payload?.activityKind);
+  if (!isSuccessfulFileChangePayloadStatus(payload)) {
+    return false;
+  }
+  return hasFileChangeSignal(payload);
+}
+
+function isSuccessfulFileChangePayloadStatus(
+  payload: Record<string, unknown> | null
+): boolean {
+  if (!payload) {
+    return true;
+  }
+  if (!isSuccessfulFileChangeRecordStatus(payload)) {
+    return false;
+  }
+  const output = objectValue(payload.output);
+  if (output && !isSuccessfulFileChangeRecordStatus(output)) {
+    return false;
+  }
+  return true;
+}
+
+function isSuccessfulFileChangeRecordStatus(
+  record: Record<string, unknown>
+): boolean {
+  const status = stringValue(record.status);
+  if (status && !isSuccessfulFileChangeStatus(status)) {
+    return false;
+  }
+  const success = booleanValue(record.success);
+  if (success === false) {
+    return false;
+  }
+  return true;
+}
+
+function isSuccessfulFileChangeStatus(value: string | undefined): boolean {
+  const normalizedStatus = normalizeToken(value);
+  return (
+    !normalizedStatus ||
+    normalizedStatus === "completed" ||
+    normalizedStatus === "success" ||
+    normalizedStatus === "succeeded" ||
+    normalizedStatus === "ok"
+  );
+}
+
+function hasFileChangeSignal(payload: Record<string, unknown> | null): boolean {
+  if (!payload) {
+    return false;
+  }
+  const toolState = objectValue(payload.tool_state);
+  return [
+    payload,
+    objectValue(payload.input),
+    objectValue(payload.output),
+    objectValue(toolState?.input)
+  ].some((record) => record !== null && recordHasFileChangeToolSignal(record));
+}
+
+function recordHasFileChangeToolSignal(
+  record: Record<string, unknown>
+): boolean {
+  const activityKind = stringValue(record.activityKind);
   if (
-    activityKind === "write_file" ||
-    activityKind === "edit_file" ||
-    activityKind === "delete_file"
+    activityKind &&
+    isFileChangeNormalizedToolName(normalizeToolName(activityKind))
   ) {
     return true;
   }
-  if (stringValue(payload?.fileChangeKind)) {
+  if (stringValue(record.fileChangeKind)) {
     return true;
   }
-  const input = objectValue(payload?.input);
-  const toolCall =
-    objectValue(input?.toolCall) ?? objectValue(payload?.toolCall);
+  const toolCall = objectValue(record.toolCall);
   const toolCallKind = normalizeToken(stringValue(toolCall?.kind) ?? undefined);
   if (
     toolCallKind === "write" ||
@@ -813,9 +884,9 @@ function isSuccessfulFileChangeToolMessage(
     return true;
   }
   const toolName = normalizeToolName(
-    stringValue(payload?.toolName) ??
-      stringValue(payload?.title) ??
-      stringValue(payload?.name) ??
+    stringValue(record.toolName) ??
+      stringValue(record.title) ??
+      stringValue(record.name) ??
       ""
   );
   return isFileChangeNormalizedToolName(toolName);
@@ -916,6 +987,10 @@ function arrayValue(value: unknown): readonly unknown[] | null {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function booleanValue(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function dedupeStrings(values: Array<string | null>): string[] {

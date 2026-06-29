@@ -28,6 +28,7 @@ export type {
 export {
   deriveAgentSetupStages,
   projectRevealedStages,
+  reasonCodeIndicatesCliVersionUnsupported,
   resolveWizardAutoStartAction,
   shouldAdvanceReveal,
   stageRemediation
@@ -40,5 +41,15 @@ export type {
   ResolveWizardAutoStartInput,
   StageActionId,
   StageProblem,
+  StageDetailToken,
   StageRemediation
 } from "./agentEnvWizardFlow.ts";
+export {
+  buildAgentEnvWizardViewModel,
+  deriveHasAnomaly
+} from "./agentEnvViewModel.ts";
+export type {
+  AgentEnvWizardViewModel,
+  AgentEnvWizardViewModelInput,
+  NetworkCheck
+} from "./agentEnvViewModel.ts";

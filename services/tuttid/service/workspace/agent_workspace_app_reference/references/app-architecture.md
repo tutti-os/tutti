@@ -45,8 +45,8 @@ For a multi-app catalog repository, use `apps/<app-id>/` with each app owning it
 
 Use `pnpm` workspaces by default. Common choices:
 
-- Server: Fastify, `@fastify/static`, `@fastify/websocket`, zod or ajv for schemas.
-- Web: React with Vite, Next, or TanStack Start, matching the repo's current stack.
+- Server: Node built-ins for tiny apps; Fastify, `@fastify/static`, `@fastify/websocket`, zod or ajv for larger API servers. Express is acceptable when the existing project already uses it.
+- Web: React with Vite, Next, or TanStack Start, matching the repo's current stack. For React/Tailwind apps, use shadcn/ui components and Tailwind CSS utilities as the default UI/component styling system.
 - Agent runtime: `@tutti-os/agent-acp-kit` when local Codex/Claude execution is required.
 - I18n: `i18next`, `react-i18next`, and `i18next-cli` for larger web apps.
 - Tests: Vitest or Node test runner for packages, Playwright only for cross-boundary UI flows.
@@ -68,7 +68,7 @@ Tutti package startup:
 
 - `bootstrap.sh` takes no arguments.
 - Bind to `$TUTTI_APP_HOST:$TUTTI_APP_PORT`.
-- Use `$TUTTI_APP_NODE`, `$TUTTI_APP_PYTHON`, and `$TUTTI_APP_NPM`; do not rely on system runtime names.
+- Use `$TUTTI_APP_NODE` for the app server and `$TUTTI_APP_NPM` for prepare/build steps; do not rely on system runtime names. Use `$TUTTI_APP_PYTHON` only when adapting an existing Python helper, not as the primary agent-enabled app server.
 - Treat `$TUTTI_APP_PACKAGE_DIR` as read-only after startup.
 - Store durable data under `$TUTTI_APP_DATA_DIR`.
 - Store scratch files under `$TUTTI_APP_RUNTIME_DIR`.

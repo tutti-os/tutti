@@ -535,18 +535,18 @@ export type WorkspaceApp = {
   references: WorkspaceAppReferencesState;
 };
 
+export type WorkspaceAppMinimizeBehavior = "hibernate" | "keep-mounted";
+
 export type WorkspaceAppAuthor = {
   name: string;
-  avatarUrl: string | null;
-  url: string | null;
+  url?: string | null;
+  avatarUrl?: string | null;
 };
 
 export type WorkspaceAppRepository = {
   type: "github";
   url: string;
 };
-
-export type WorkspaceAppMinimizeBehavior = "hibernate" | "keep-mounted";
 
 export type WorkspaceAppUploadPurpose = "app-asset";
 
@@ -840,6 +840,11 @@ export type GetAgentProviderComposerOptionsRequest = {
   settings?: AgentSessionComposerSettings;
 };
 
+export type GetWorkspaceAppFactoryProviderComposerOptionsRequest = {
+  locale?: DesktopLocale;
+  settings?: AgentSessionComposerSettings;
+};
+
 export type AgentProviderComposerOptionsResponse = {
   provider: WorkspaceAgentProvider;
   modelConfig: AgentProviderComposerConfig;
@@ -910,6 +915,41 @@ export type AgentProviderProbeStatus = "ready" | "failed" | "skipped";
 
 export type AgentProviderActionRunStatus = "completed" | "failed";
 
+export type AgentProviderActiveActionPhase =
+  | "detect"
+  | "install"
+  | "repair"
+  | "verify"
+  | "done"
+  | "error";
+
+export type AgentProviderActiveActionStepStatus =
+  | "pending"
+  | "running"
+  | "ok"
+  | "error"
+  | "skipped";
+
+export type AgentProviderActiveActionStep = {
+  id: string;
+  label: string | null;
+  status: AgentProviderActiveActionStepStatus;
+  detail: string | null;
+};
+
+export type AgentProviderActiveActionError = {
+  code: string | null;
+  message: string | null;
+};
+
+export type AgentProviderActiveAction = {
+  phase: AgentProviderActiveActionPhase;
+  steps: Array<AgentProviderActiveActionStep>;
+  registry: string | null;
+  log: Array<string>;
+  error: AgentProviderActiveActionError | null;
+};
+
 export type AgentProviderProbeResponse = {
   provider: WorkspaceAgentProvider;
   status: AgentProviderProbeStatus;
@@ -965,11 +1005,23 @@ export type AgentProviderAdapterStatus = {
   installed: boolean;
   binaryPath?: string | null;
   command: Array<string>;
+  /**
+   * The installed ACP adapter package version, when resolvable. Lets the UI and telemetry show the actual adapter version (not just a path).
+   */
+  version?: string | null;
+  /**
+   * The adapter package version this provider requires. With version, lets the UI show "current X, requires Y" for an adapter version mismatch and makes the drift visible in telemetry.
+   */
+  requiredVersion?: string | null;
 };
 
 export type AgentProviderAuthInfo = {
   status: AgentProviderAuthStatus;
   accountLabel?: string | null;
+  /**
+   * The authentication method reported by the provider CLI (e.g. oauth, apiKey).
+   */
+  authMethod?: string | null;
 };
 
 export type AgentProviderStatus = {
@@ -980,6 +1032,7 @@ export type AgentProviderStatus = {
   auth: AgentProviderAuthInfo;
   actions: Array<AgentProviderAction>;
   network?: AgentProviderNetworkStatus | null;
+  activeAction?: AgentProviderActiveAction | null;
 };
 
 export type AgentProviderNetworkStatus = {
@@ -1217,6 +1270,12 @@ export type CreateWorkspaceAgentSessionRequest = {
   metadata?: {
     [key: string]: unknown;
   };
+  /**
+   * Opaque host-owned provider target reference. It is not authority; trusted launchers must re-authenticate and resolve it before invoking a provider.
+   */
+  providerTargetRef?: {
+    [key: string]: unknown;
+  } | null;
   title?: string | null;
   cwd?: string | null;
   permissionModeId?: string | null;
@@ -3953,6 +4012,56 @@ export type CreateWorkspaceAppFactoryJobResponses = {
 export type CreateWorkspaceAppFactoryJobResponse =
   CreateWorkspaceAppFactoryJobResponses[keyof CreateWorkspaceAppFactoryJobResponses];
 
+export type GetWorkspaceAppFactoryProviderComposerOptionsData = {
+  body?: GetWorkspaceAppFactoryProviderComposerOptionsRequest;
+  path: {
+    workspaceID: string;
+    provider: WorkspaceAgentProvider;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options";
+};
+
+export type GetWorkspaceAppFactoryProviderComposerOptionsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAppFactoryProviderComposerOptionsError =
+  GetWorkspaceAppFactoryProviderComposerOptionsErrors[keyof GetWorkspaceAppFactoryProviderComposerOptionsErrors];
+
+export type GetWorkspaceAppFactoryProviderComposerOptionsResponses = {
+  /**
+   * App Factory provider composer options
+   */
+  200: AgentProviderComposerOptionsResponse;
+};
+
+export type GetWorkspaceAppFactoryProviderComposerOptionsResponse =
+  GetWorkspaceAppFactoryProviderComposerOptionsResponses[keyof GetWorkspaceAppFactoryProviderComposerOptionsResponses];
+
 export type DeleteWorkspaceAppFactoryJobData = {
   body?: never;
   path: {
@@ -4693,6 +4802,10 @@ export type GetAgentProviderStatusesData = {
   path?: never;
   query?: {
     providers?: Array<WorkspaceAgentProvider>;
+    /**
+     * Opt into the network connectivity probe (registry / provider API / proxy reachability). Off by default so the common detection path stays local and never blocks on the network; only the agent-env wizard's network diagnostic sets this.
+     */
+    includeNetwork?: boolean;
   };
   url: "/v1/agent-providers/status";
 };

@@ -142,8 +142,8 @@ export interface WorkspaceWorkspaceAppV1 {
   description: string;
   authors: readonly {
     name: string;
-    avatarUrl: string | null;
-    url: string | null;
+    url?: string | null;
+    avatarUrl?: string | null;
   }[];
   repository: Record<string, unknown> | null;
   iconUrl: string | null;

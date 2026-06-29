@@ -4,6 +4,8 @@ import type { WorkbenchNode } from "../core/types.ts";
 import type {
   WorkbenchRenderNodeContext,
   WorkbenchRenderWindowHeader,
+  WorkbenchResolveWindowSurfaceLayer,
+  WorkbenchResolveWindowZIndex,
   WorkbenchResolveWindowChromeMode,
   WorkbenchWindowActionContext
 } from "../react/types.ts";
@@ -412,6 +414,19 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     [input.nodeDefinitionByType]
   );
 
+  const resolveWindowZIndex = useCallback<
+    WorkbenchResolveWindowZIndex<WorkbenchHostNodeData>
+  >(({ baseZIndex }) => baseZIndex, []);
+
+  const resolveWindowSurfaceLayer = useCallback<
+    WorkbenchResolveWindowSurfaceLayer<WorkbenchHostNodeData>
+  >(
+    ({ node }) =>
+      input.nodeDefinitionByType.get(node.data.typeId)?.window?.surfaceLayer ??
+      "default",
+    [input.nodeDefinitionByType]
+  );
+
   const resolveFullscreenHeaderMode = useCallback(
     ({ node }: { node: WorkbenchNode<WorkbenchHostNodeData> }) =>
       input.nodeDefinitionByType.get(node.data.typeId)?.window
@@ -433,6 +448,8 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     resolveDockAnchorKey,
     resolveDockPreviewCacheKey,
     resolveFullscreenHeaderMode,
+    resolveWindowSurfaceLayer,
+    resolveWindowZIndex,
     windowChromeMode
   };
 }

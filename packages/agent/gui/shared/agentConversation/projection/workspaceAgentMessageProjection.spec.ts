@@ -118,6 +118,68 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     ]);
   });
 
+  it("orders late completed tool calls by start time before the final assistant answer", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      messages: [
+        message({
+          messageId: "user-1",
+          id: 1,
+          version: 1,
+          role: "user",
+          kind: "text",
+          payload: { text: "Inspect AI Canvas" },
+          occurredAtUnixMs: 100,
+          startedAtUnixMs: 100
+        }),
+        message({
+          messageId: "toolcall:search-1",
+          id: 2,
+          version: 4,
+          role: "assistant",
+          kind: "tool_call",
+          status: "completed",
+          payload: {
+            callId: "search-1",
+            title: "Bash",
+            toolName: "Bash",
+            input: { command: "rg 陶瓷家具与冲浪 /Users/Sun" }
+          },
+          startedAtUnixMs: 110,
+          occurredAtUnixMs: 400,
+          completedAtUnixMs: 400
+        }),
+        message({
+          messageId: "assistant-final",
+          id: 3,
+          version: 3,
+          role: "assistant",
+          kind: "text",
+          payload: { text: "项目里有图片和视频。" },
+          occurredAtUnixMs: 300,
+          startedAtUnixMs: 300
+        })
+      ]
+    });
+
+    expect(
+      conversation.rows.map((row) => {
+        if (row.kind === "message") {
+          return `${row.speaker}:${row.messages[0]?.body}`;
+        }
+        if (row.kind === "tool-group") {
+          return `tool:${row.calls[0]?.toolName}`;
+        }
+        return row.kind;
+      })
+    ).toEqual([
+      "user:Inspect AI Canvas",
+      "tool:Bash",
+      "assistant:项目里有图片和视频。"
+    ]);
+  });
+
   it("projects text, reasoning, errors, and unknown kinds conservatively", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),

@@ -133,6 +133,9 @@ import type {
   GetWorkspaceAppFactoryJobData,
   GetWorkspaceAppFactoryJobErrors,
   GetWorkspaceAppFactoryJobResponses,
+  GetWorkspaceAppFactoryProviderComposerOptionsData,
+  GetWorkspaceAppFactoryProviderComposerOptionsErrors,
+  GetWorkspaceAppFactoryProviderComposerOptionsResponses,
   GetWorkspaceData,
   GetWorkspaceErrors,
   GetWorkspaceFileTreeSnapshotData,
@@ -1193,6 +1196,34 @@ export const createWorkspaceAppFactoryJob = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/app-factory/jobs",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get App Factory provider composer options
+ *
+ * Resolves provider composer options for App Factory using daemon-owned workspace and factory draft context. Clients provide workspace and provider selection, while tuttid owns the working directory used for provider discovery.
+ *
+ */
+export const getWorkspaceAppFactoryProviderComposerOptions = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    GetWorkspaceAppFactoryProviderComposerOptionsData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).post<
+    GetWorkspaceAppFactoryProviderComposerOptionsResponses,
+    GetWorkspaceAppFactoryProviderComposerOptionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options",
     ...options,
     headers: {
       "Content-Type": "application/json",

@@ -107,6 +107,54 @@ test("WorkspaceAppCenterService tracks app install and forwards app open status"
   ]);
 });
 
+test("WorkspaceAppCenterService delegates workspace app view open checks", () => {
+  const checkedInputs: Array<{ appId: string; workspaceId: string }> = [];
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway(),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi()
+  });
+
+  assert.equal(
+    service.isWorkspaceAppViewOpen({
+      appId: "app-1",
+      workspaceId: "workspace-1"
+    }),
+    false
+  );
+
+  service.setWorkspaceAppViewOpenChecker((input) => {
+    checkedInputs.push(input);
+    return input.appId === "app-1" && input.workspaceId === "workspace-1";
+  });
+
+  assert.equal(
+    service.isWorkspaceAppViewOpen({
+      appId: "app-1",
+      workspaceId: "workspace-1"
+    }),
+    true
+  );
+  assert.equal(
+    service.isWorkspaceAppViewOpen({
+      appId: "app-2",
+      workspaceId: "workspace-1"
+    }),
+    false
+  );
+  assert.deepEqual(checkedInputs, [
+    {
+      appId: "app-1",
+      workspaceId: "workspace-1"
+    },
+    {
+      appId: "app-2",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("WorkspaceAppCenterService refreshes failed runtime state after launch is rejected", async () => {
   let listCalls = 0;
   const service = new WorkspaceAppCenterService({
@@ -1287,7 +1335,11 @@ test("WorkspaceAppCenterService normalizes provider configuration", async () => 
     hostFilesApi: createHostFilesApi(),
     hostWorkspaceApi: createHostWorkspaceApi(),
     tuttidClient: createTuttidClient({
-      async getAgentProviderComposerOptions(provider) {
+      async getWorkspaceAppFactoryProviderComposerOptions(
+        workspaceId,
+        provider
+      ) {
+        assert.equal(workspaceId, "workspace-1");
         assert.equal(provider, "codex");
         return {
           effectiveSettings: {},
@@ -1335,7 +1387,10 @@ test("WorkspaceAppCenterService normalizes provider configuration", async () => 
     })
   });
 
-  const configuration = await service.getFactoryProviderConfiguration("codex");
+  const configuration = await service.getFactoryProviderConfiguration({
+    provider: "codex",
+    workspaceId: "workspace-1"
+  });
 
   assert.deepEqual(configuration, {
     defaultModel: "gpt-5",
@@ -1367,7 +1422,10 @@ test("WorkspaceAppCenterService makes effective permission default visible", asy
     hostFilesApi: createHostFilesApi(),
     hostWorkspaceApi: createHostWorkspaceApi(),
     tuttidClient: createTuttidClient({
-      async getAgentProviderComposerOptions(provider) {
+      async getWorkspaceAppFactoryProviderComposerOptions(
+        _workspaceId,
+        provider
+      ) {
         return {
           effectiveSettings: {
             permissionModeId: "full-access"
@@ -1393,7 +1451,10 @@ test("WorkspaceAppCenterService makes effective permission default visible", asy
     })
   });
 
-  const configuration = await service.getFactoryProviderConfiguration("codex");
+  const configuration = await service.getFactoryProviderConfiguration({
+    provider: "codex",
+    workspaceId: "workspace-1"
+  });
 
   assert.deepEqual(configuration, {
     defaultModel: null,
@@ -1406,6 +1467,87 @@ test("WorkspaceAppCenterService makes effective permission default visible", asy
     ],
     reasoningEffortOptions: []
   });
+});
+
+test("WorkspaceAppCenterService passes workspace id and prefers live composer model options", async () => {
+  const composerOptionsCalls: unknown[] = [];
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway(),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi(),
+    tuttidClient: createTuttidClient({
+      async getWorkspaceAppFactoryProviderComposerOptions(
+        workspaceId,
+        provider,
+        request
+      ) {
+        composerOptionsCalls.push({ provider, request, workspaceId });
+        return {
+          effectiveSettings: {
+            model: "sonnet",
+            reasoningEffort: "high"
+          },
+          modelConfig: {
+            configurable: true,
+            currentValue: "default",
+            options: [{ id: "default", label: "Default", value: "default" }]
+          },
+          permissionConfig: {
+            configurable: true,
+            defaultValue: "default",
+            modes: [
+              {
+                id: "default",
+                label: "Default",
+                semantic: "ask-before-write"
+              }
+            ]
+          },
+          provider,
+          reasoningConfig: {
+            configurable: true,
+            currentValue: "high",
+            options: [{ id: "high", label: "High", value: "high" }]
+          },
+          runtimeContext: {
+            configOptions: [
+              {
+                currentValue: "sonnet",
+                id: "model",
+                options: [
+                  { name: "Default", value: "default" },
+                  { name: "Sonnet", value: "sonnet" },
+                  { name: "Haiku", value: "haiku" }
+                ]
+              }
+            ]
+          },
+          skills: [],
+          capabilityCatalog: []
+        };
+      }
+    })
+  });
+
+  const configuration = await service.getFactoryProviderConfiguration({
+    provider: "claude-code",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(composerOptionsCalls, [
+    {
+      provider: "claude-code",
+      request: undefined,
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.deepEqual(configuration.modelOptions, [
+    { label: "Default", value: "default" },
+    { label: "Sonnet", value: "sonnet" },
+    { label: "Haiku", value: "haiku" }
+  ]);
+  assert.equal(configuration.defaultModel, "sonnet");
 });
 
 function createApp(
@@ -1672,10 +1814,15 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 function createTuttidClient(
-  overrides: Partial<Pick<TuttidClient, "getAgentProviderComposerOptions">> = {}
-): Pick<TuttidClient, "getAgentProviderComposerOptions"> {
+  overrides: Partial<
+    Pick<TuttidClient, "getWorkspaceAppFactoryProviderComposerOptions">
+  > = {}
+): Pick<TuttidClient, "getWorkspaceAppFactoryProviderComposerOptions"> {
   return {
-    async getAgentProviderComposerOptions(provider) {
+    async getWorkspaceAppFactoryProviderComposerOptions(
+      _workspaceId,
+      provider
+    ) {
       return {
         effectiveSettings: {},
         modelConfig: {

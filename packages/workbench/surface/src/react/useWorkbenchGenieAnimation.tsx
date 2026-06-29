@@ -29,6 +29,7 @@ import {
 } from "./genieAnimation.ts";
 
 const genieDurationMs = 400;
+const previewCaptureRaceTimeoutMs = 120;
 const scaleMinimizeDurationMs = 220;
 const genieMaxDevicePixelRatio = 2;
 const genieSnapshotScale = 1;
@@ -78,6 +79,33 @@ function resolveWorkbenchCaptureElement(
 function waitForNextAnimationFrame(): Promise<void> {
   return new Promise((resolve) => {
     window.requestAnimationFrame(() => resolve());
+  });
+}
+
+function racePreviewImageCapture(
+  promise: Promise<string | null>,
+  timeoutMs: number
+): Promise<{
+  previewImageUrl: string | null;
+  status: "pending" | "resolved";
+}> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve({ previewImageUrl: null, status: "pending" });
+    }, timeoutMs);
+    promise.then((previewImageUrl) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve({ previewImageUrl, status: "resolved" });
+    });
   });
 }
 
@@ -1687,7 +1715,36 @@ export function useWorkbenchGenieAnimation<TData>({
               () => null
             )
           : Promise.resolve(null);
-        const previewImageUrl = await previewImageUrlPromise;
+        const previewCaptureOutcome = await racePreviewImageCapture(
+          previewImageUrlPromise,
+          previewCaptureRaceTimeoutMs
+        );
+        const previewImageUrl = previewCaptureOutcome.previewImageUrl;
+        if (previewCaptureOutcome.status === "pending") {
+          logWorkbenchGenieDiagnostic(
+            debugDiagnostics,
+            "workbench.genie.preview_capture.deferred",
+            {
+              ...describeGenieNode(target),
+              mode: "genie",
+              timeoutMs: previewCaptureRaceTimeoutMs
+            },
+            "debug"
+          );
+          void previewImageUrlPromise.then((latePreviewImageUrl) => {
+            if (
+              !latePreviewImageUrl ||
+              generation !== animationGenerationRef.current
+            ) {
+              return;
+            }
+            writeCachedWorkbenchNodePreviewImage(nodeID, latePreviewImageUrl);
+            persistWorkbenchNodePreviewImage(target, latePreviewImageUrl, {
+              dockPreviewCache,
+              resolveDockPreviewCacheKey
+            });
+          });
+        }
         const previewImageTexture =
           shouldCapturePreview && previewImageUrl
             ? await renderPreviewImageTexture({

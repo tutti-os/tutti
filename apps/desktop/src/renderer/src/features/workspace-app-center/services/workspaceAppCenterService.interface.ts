@@ -43,9 +43,10 @@ export interface IWorkspaceAppCenterService {
     workspaceId: string,
     restoredState?: WorkspaceAppCenterViewState | null
   ): WorkspaceAppCenterViewState;
-  getFactoryProviderConfiguration(
-    provider: string
-  ): Promise<WorkspaceAppFactoryProviderConfiguration>;
+  getFactoryProviderConfiguration(input: {
+    provider: string;
+    workspaceId: string;
+  }): Promise<WorkspaceAppFactoryProviderConfiguration>;
   prepareAppLaunch(input: {
     appId: string;
     workspaceId: string;
@@ -77,6 +78,10 @@ export interface IWorkspaceAppCenterService {
     intent?: TuttiExternalWorkspaceOpenRouteIntent;
     workspaceId: string;
   }): Promise<boolean>;
+  isWorkspaceAppViewOpen(input: {
+    appId: string;
+    workspaceId: string;
+  }): boolean;
   retryFactoryValidation(input: {
     jobId: string;
     workspaceId: string;
@@ -99,6 +104,9 @@ export interface IWorkspaceAppCenterService {
   ): void;
   setWorkspaceAppViewCloser(
     closer: ((input: { appId: string; workspaceId: string }) => void) | null
+  ): void;
+  setWorkspaceAppViewOpenChecker(
+    checker: ((input: { appId: string; workspaceId: string }) => boolean) | null
   ): void;
   startWorkspacePolling(workspaceId: string): () => void;
   subscribe(listener: () => void): () => void;

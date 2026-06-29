@@ -14,7 +14,13 @@ import {
   type ReactElement,
   type ReactNode
 } from "react";
-import { ChevronDown, ChevronUp, ExternalLink, Info } from "lucide-react";
+import {
+  AppWindow,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Info
+} from "lucide-react";
 import {
   Button,
   cn,
@@ -23,8 +29,13 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@tutti-os/ui-system";
-import { useTranslation } from "../i18n/index";
+import {
+  isRichTextMentionHref,
+  parseRichTextMentionHref
+} from "@tutti-os/ui-rich-text/core";
+import { getActiveUiLanguage, useTranslation } from "../i18n/index";
 import { normalizeAgentTitleText } from "../shared/utils/agentTitleText";
+import { formatAgentSessionMentionText } from "../shared/utils/agentSessionMentionText";
 import { AgentInteractivePromptSurface } from "../shared/agentConversation/components/AgentInteractivePromptSurface";
 import { AgentMessageMarkdown } from "../shared/AgentMessageMarkdown";
 import { AgentVerticalScrollArea } from "../shared/AgentVerticalScrollArea";
@@ -518,7 +529,7 @@ function MessageCenterStackSummary({
         </span>
         <span className="min-w-0 rounded-md bg-transparency-block p-2.5 text-[13px] leading-[1.45] text-[var(--text-primary)]">
           <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">
-            {messageCenterStackPreviewText(firstItem)}
+            {messageCenterStackPreviewNodes(firstItem)}
           </span>
         </span>
       </span>
@@ -526,13 +537,129 @@ function MessageCenterStackSummary({
   );
 }
 
-function messageCenterStackPreviewText(
+function messageCenterStackRawPreviewText(
   item: WorkspaceAgentMessageCenterItem
 ): string {
   return (
     item.digest.primary.summary.trim() ||
     item.lastAgentMessageSummary.trim() ||
     normalizeAgentTitleText(item.title)
+  );
+}
+
+export function messageCenterStackPreviewText(
+  item: WorkspaceAgentMessageCenterItem
+): string {
+  return formatAgentSessionMentionText(messageCenterStackRawPreviewText(item), {
+    language: getActiveUiLanguage()
+  });
+}
+
+const MESSAGE_CENTER_PREVIEW_MARKDOWN_LINK_PATTERN =
+  /\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)/g;
+const MESSAGE_CENTER_PREVIEW_LABEL_ESCAPE_PATTERN = /\\([\\[\]()])/g;
+
+type MessageCenterPreviewMentionKind =
+  | "session"
+  | "workspace-app"
+  | "workspace-issue";
+
+/**
+ * 收起态预览只展示纯文本 + 一个静态(不可点击)的 mention 图标,复用
+ * AgentMessageMarkdown 里那套富文本 chip 的视觉样式,但不渲染成 <a>——
+ * 这块预览本身嵌套在外层切换展开/收起的 <button> 里,塞一个可点击链接
+ * 会出现交互元素嵌套交互元素的问题。
+ */
+export function messageCenterStackPreviewNodes(
+  item: WorkspaceAgentMessageCenterItem
+): ReactNode[] {
+  const text = messageCenterStackRawPreviewText(item);
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let mentionIndex = 0;
+
+  for (const match of text.matchAll(
+    MESSAGE_CENTER_PREVIEW_MARKDOWN_LINK_PATTERN
+  )) {
+    const [fullMatch, rawLabel = "", href = ""] = match;
+    const matchStart = match.index ?? 0;
+    if (matchStart > lastIndex) {
+      nodes.push(text.slice(lastIndex, matchStart));
+    }
+
+    const label = rawLabel.replace(
+      MESSAGE_CENTER_PREVIEW_LABEL_ESCAPE_PATTERN,
+      "$1"
+    );
+    const mention = parseRichTextMentionHref(href, label);
+    if (!mention) {
+      nodes.push(isRichTextMentionHref(href) ? label : fullMatch);
+    } else {
+      const kind = messageCenterPreviewMentionKind(mention.providerId);
+      const displayLabel = label || mention.label;
+      nodes.push(
+        kind ? (
+          <MessageCenterPreviewMentionChip
+            key={`mention-${mentionIndex}`}
+            kind={kind}
+            label={displayLabel}
+          />
+        ) : (
+          displayLabel
+        )
+      );
+      mentionIndex += 1;
+    }
+
+    lastIndex = matchStart + fullMatch.length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
+function messageCenterPreviewMentionKind(
+  providerId: string
+): MessageCenterPreviewMentionKind | null {
+  switch (providerId.trim().toLowerCase()) {
+    case "agent-session":
+      return "session";
+    case "workspace-app":
+      return "workspace-app";
+    case "workspace-issue":
+      return "workspace-issue";
+    default:
+      return null;
+  }
+}
+
+function MessageCenterPreviewMentionChip({
+  kind,
+  label
+}: {
+  kind: MessageCenterPreviewMentionKind;
+  label: string;
+}): ReactElement {
+  return (
+    <span
+      className="tsh-agent-object-token tsh-agent-object-token--entity"
+      data-agent-mention-kind={kind}
+    >
+      <span className="tsh-agent-object-token__kind" aria-hidden="true">
+        {kind === "workspace-app" ? (
+          <AppWindow className="size-3.5" aria-hidden="true" />
+        ) : (
+          <span
+            className="tsh-agent-object-token__kind-icon"
+            aria-hidden="true"
+          />
+        )}
+      </span>
+      <span className="tsh-agent-object-token__main">{label}</span>
+    </span>
   );
 }
 

@@ -526,10 +526,11 @@ func parseClaudeAuthStatusOutput(output []byte) (AuthInfo, bool) {
 		if *payload.LoggedIn {
 			return AuthInfo{
 				AccountLabel: firstNonBlank(payload.AccountLabel, payload.Email, payload.AuthMethod),
+				AuthMethod:   payload.AuthMethod,
 				Status:       AuthAuthenticated,
 			}, true
 		}
-		return AuthInfo{Status: AuthRequired}, true
+		return AuthInfo{Status: AuthRequired, AuthMethod: payload.AuthMethod}, true
 	}
 	normalized := strings.ToLower(string(output))
 	if strings.Contains(normalized, `"loggedin":false`) ||
@@ -571,10 +572,11 @@ func parseClaudeAuthMarkerContent(content []byte) (AuthInfo, bool) {
 		if *payload.LoggedIn {
 			return AuthInfo{
 				AccountLabel: firstNonBlank(payload.AccountLabel, payload.Email, payload.AuthMethod, payload.UserID),
+				AuthMethod:   payload.AuthMethod,
 				Status:       AuthAuthenticated,
 			}, true
 		}
-		return AuthInfo{Status: AuthRequired}, true
+		return AuthInfo{Status: AuthRequired, AuthMethod: payload.AuthMethod}, true
 	}
 	if strings.TrimSpace(payload.UserID) != "" {
 		return AuthInfo{

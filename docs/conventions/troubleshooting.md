@@ -102,6 +102,36 @@ Use this shape for new entries:
   [apps.go](../../services/tuttid/service/workspace/apps.go)
   [apps_test.go](../../services/tuttid/service/workspace/apps_test.go)
 
+### Workspace app update reopens the old dock window
+
+- Symptom:
+  After updating a running workspace app, clicking the app from the dock still
+  shows the old UI or old port until Tutti itself is restarted.
+- Quick checks:
+  Inspect the App Center snapshot for `installed_pending_restart` while a
+  matching `workspace-app-webview` node still exists. Dock debug logs showing
+  `clickResolution.kind = "focus-node"` for that app mean the launch resolver
+  is being bypassed.
+- Root cause:
+  Workbench dock single-instance entries focus a matching node before launching.
+  If a workspace app is waiting for restart and the dock entry still uses the
+  default click behavior, clicking the dock can restore the stale webview
+  instead of entering `resolveWorkspaceAppCenterLaunchRequest` and
+  `restartAndOpenApp`.
+- Fix:
+  Route `installed_pending_restart` workspace app dock clicks through the
+  launch request path even when a stale webview node still matches the dock
+  entry. Keep normal `running` apps on the default focus path so existing app
+  state is preserved.
+- Validation:
+  Run the workspace app-center contribution tests and the workspace workbench
+  surface dock click-resolution tests that cover pending-restart launch
+  routing.
+- References:
+  [workspaceAppCenterContribution.tsx](../../apps/desktop/src/renderer/src/features/workspace-app-center/services/internal/workspaceAppCenterContribution.tsx)
+  [workspaceAppCenterLaunchRequest.ts](../../apps/desktop/src/renderer/src/features/workspace-app-center/services/internal/workspaceAppCenterLaunchRequest.ts)
+  [dockEntries.ts](../../packages/workbench/surface/src/host/dockEntries.ts)
+
 ### Load unpacked project roots with source manifests
 
 - Symptom:
@@ -611,6 +641,36 @@ delimited by ---`, and the composer skill picker may show partial or
   Run `pnpm lint:go` plus `cd services/tuttid && go test ./... && go build ./...`.
   Then trigger two install actions in quick succession and confirm the second
   waits for the first instead of starting another global npm mutation.
+
+### Agent provider install looks idle while a non-Codex installer is running
+
+- Symptom:
+  Provider setup appears stuck or idle even though `tuttid.log` has an
+  `agent provider install step started` entry and no matching completed/failed
+  line yet. This is most visible for Claude Code CLI or ACP adapter installs.
+- Quick checks:
+  Compare the install start timestamp with the log export timestamp before
+  calling it hung. Also check for a later completed install log line and the
+  provider binary path in the rechecked runtime log. If `tuttid.log` shows
+  `active_action.output_appended` but desktop diagnostics keep reporting
+  `logLines=0`, check whether the status request copied `activeAction` before
+  installer output arrived, or whether the renderer stopped refreshing while
+  the install action was still pending.
+- Root cause:
+  The provider installer is daemon-owned and can legitimately run for minutes,
+  but renderer progress must come from the generic provider `activeAction`
+  status field. Do not special-case long-running install progress to Codex.
+- Fix:
+  Set, stream stdout into, expose, and clear `ActiveAction` for every provider
+  install action. Keep provider-specific installer details inside
+  `services/tuttid/service/agentstatus` and project only the transport-safe
+  active action shape through the API seam. Refresh the provider's active action
+  snapshot at the end of `List`, and short-poll provider status while a daemon
+  install action is pending so live installer output can reach the wizard.
+- Validation:
+  Run `cd services/tuttid && go test ./service/agentstatus ./api` and
+  `pnpm check:api-generated`. Trigger a Claude Code install and confirm status
+  responses include `activeAction` while the CLI or adapter step is in flight.
 
 ### ACP adapter appears stale after external registry migration
 

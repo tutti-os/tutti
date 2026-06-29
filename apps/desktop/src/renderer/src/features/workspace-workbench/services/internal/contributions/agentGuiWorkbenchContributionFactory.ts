@@ -13,15 +13,18 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         computerUseApi: context.computerUseApi,
         dockIconUrls: context.dockIcons.agents,
         dockPreviewCache: context.dockPreviewCache,
+        defaultProviderTargetId: context.defaultProviderTargetId,
         hostFilesApi: context.hostFilesApi,
         i18n: context.i18n,
         onCapabilitySettingsRequest: context.onCapabilitySettingsRequest,
+        providerTargets: context.providerTargets,
         tuttidClient: context.tuttidClient,
         platformApi: context.platformApi,
         reporterService: context.reporterService,
         richTextAtService: context.richTextAtService,
         runtimeApi: context.runtimeApi,
         workspaceAgentActivityService: context.workspaceAgentActivityService,
+        workspaceFileManagerService: context.workspaceFileManagerService,
         workspaceUserProjectService: context.workspaceUserProjectService,
         workspaceId: context.workspaceId
       });

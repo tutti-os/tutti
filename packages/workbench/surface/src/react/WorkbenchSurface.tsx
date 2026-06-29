@@ -31,6 +31,8 @@ import type {
   WorkbenchRenderWindowActions,
   WorkbenchRenderWindowHeader,
   WorkbenchResolveFullscreenHeaderMode,
+  WorkbenchResolveWindowSurfaceLayer,
+  WorkbenchResolveWindowZIndex,
   WorkbenchResolveWindowChromeMode,
   WorkbenchWindowChromeMode
 } from "./types.ts";
@@ -65,6 +67,8 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
   renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
   shouldKeepMinimizedNodeMounted?: WorkbenchKeepMinimizedNodeMounted<TData>;
   resolveFullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
+  resolveWindowSurfaceLayer?: WorkbenchResolveWindowSurfaceLayer<TData>;
+  resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
   resolveDockAnchorKey?: (node: WorkbenchNode<TData>) => string;
   resolveDockPreviewCacheKey?: WorkbenchDockPreviewCacheKeyResolver<TData>;
   shortcutsEnabled?: boolean;
@@ -118,6 +122,8 @@ export function WorkbenchSurface<TData>({
   renderWindowHeader,
   shouldKeepMinimizedNodeMounted,
   resolveFullscreenHeaderMode,
+  resolveWindowSurfaceLayer,
+  resolveWindowZIndex,
   resolveDockAnchorKey,
   resolveDockPreviewCacheKey,
   shortcutsEnabled,
@@ -151,6 +157,8 @@ export function WorkbenchSurface<TData>({
         renderWindowHeader={renderWindowHeader}
         shouldKeepMinimizedNodeMounted={shouldKeepMinimizedNodeMounted}
         resolveFullscreenHeaderMode={resolveFullscreenHeaderMode}
+        resolveWindowSurfaceLayer={resolveWindowSurfaceLayer}
+        resolveWindowZIndex={resolveWindowZIndex}
         resolveDockAnchorKey={resolveDockAnchorKey}
         resolveDockPreviewCacheKey={resolveDockPreviewCacheKey}
         shortcutsEnabled={shortcutsEnabled}
@@ -186,6 +194,8 @@ function WorkbenchSurfaceInner<TData>({
   renderWindowHeader,
   shouldKeepMinimizedNodeMounted,
   resolveFullscreenHeaderMode,
+  resolveWindowSurfaceLayer,
+  resolveWindowZIndex,
   resolveDockAnchorKey,
   resolveDockPreviewCacheKey,
   shortcutsEnabled,
@@ -263,6 +273,8 @@ function WorkbenchSurfaceInner<TData>({
         renderWindowHeader={renderWindowHeader}
         shouldKeepMinimizedNodeMounted={shouldKeepMinimizedNodeMounted}
         resolveFullscreenHeaderMode={resolveFullscreenHeaderMode}
+        resolveWindowSurfaceLayer={resolveWindowSurfaceLayer}
+        resolveWindowZIndex={resolveWindowZIndex}
         windowChromeMode={windowChromeMode}
         windowChromeI18n={windowChromeI18n}
       />

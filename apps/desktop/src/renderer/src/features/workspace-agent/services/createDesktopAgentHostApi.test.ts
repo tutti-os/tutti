@@ -12,6 +12,7 @@ import type {
   DesktopRuntimeApi
 } from "@preload/types";
 import type {
+  DesktopClipboardImagePayload,
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest
 } from "@shared/contracts/ipc";
@@ -23,6 +24,10 @@ import type { IWorkspaceUserProjectService } from "../../workspace-user-project/
 const workspaceId = "workspace-1";
 
 interface DesktopAgentHostApiUnderTest {
+  clipboard: {
+    writeImage(input: DesktopClipboardImagePayload): Promise<void>;
+    writeText(text: string): Promise<void>;
+  };
   agentGuiBatch: {
     exportRun(input: unknown): Promise<unknown>;
   };
@@ -464,6 +469,24 @@ test("desktop agent host api routes session commands through injected tuttid cli
       method: "cancel"
     }
   ]);
+});
+
+test("desktop agent host api writes images through the host clipboard", async () => {
+  const copiedImages: DesktopClipboardImagePayload[] = [];
+  const api = createAgentHostApi({
+    hostFilesApi: createHostFilesApi({
+      async copyImageToClipboard(input) {
+        copiedImages.push(input);
+      }
+    })
+  });
+
+  await api.clipboard.writeImage({
+    data: "cG5n",
+    mimeType: "image/png"
+  });
+
+  assert.deepEqual(copiedImages, [{ data: "cG5n", mimeType: "image/png" }]);
 });
 
 test("desktop agent host api returns no-active-turn cancel metadata", async () => {
@@ -2785,6 +2808,7 @@ function createHostFilesApi(
     async selectUploadFiles() {
       return [];
     },
+    async copyImageToClipboard() {},
     async copyFilesToClipboard() {},
     async listOpenWithApplications() {
       return [];

@@ -2,6 +2,7 @@ import type {
   WorkspaceFileReferencePreview,
   WorkspaceFileReferenceScope
 } from "./index.ts";
+import type { WorkspaceFileOpenWithApplication } from "@tutti-os/workspace-file-manager/services";
 
 /**
  * Reference Source Services 契约。
@@ -38,6 +39,7 @@ export interface ReferenceNode {
   childCount?: number | null;
   /** 可选图标(data URL / 远程 URL),如应用产物源的 app 图标;有则替代默认文件夹图标。 */
   iconUrl?: string | null;
+  createdTimeMs?: number | null;
   sizeBytes?: number | null;
   mtimeMs?: number | null;
   mimeType?: string | null;
@@ -200,6 +202,21 @@ export interface ReferenceSourceService {
   search?(scope: ReferenceScope, input: SearchInput): Promise<SearchResult>;
 
   open?(scope: ReferenceScope, node: ReferenceNode): Promise<void>;
+  listOpenWithApplications?(
+    scope: ReferenceScope,
+    node: ReferenceNode
+  ): Promise<WorkspaceFileOpenWithApplication[]>;
+  openWithApplication?(
+    scope: ReferenceScope,
+    node: ReferenceNode,
+    applicationPath: string
+  ): Promise<void>;
+  openWithOtherApplication?(
+    scope: ReferenceScope,
+    node: ReferenceNode,
+    applicationPickerPrompt?: string
+  ): Promise<void>;
+  reveal?(scope: ReferenceScope, node: ReferenceNode): Promise<void>;
   readPreview?(
     scope: ReferenceScope,
     node: ReferenceNode

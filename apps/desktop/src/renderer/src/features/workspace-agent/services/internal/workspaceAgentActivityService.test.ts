@@ -42,6 +42,64 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
   assert.equal(snapshotSession?.currentPhase, "working");
 });
 
+test("WorkspaceAgentActivityService.activateSession forwards provider target refs to create", async () => {
+  const createCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      createWorkspaceAgentSession: async (
+        workspaceId: string,
+        request: Parameters<TuttidClient["createWorkspaceAgentSession"]>[1]
+      ) => {
+        createCalls.push({ request, workspaceId });
+        return workspaceAgentSession({ status: "created" });
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  await service.activateSession({
+    agentSessionId: "11111111-1111-4111-8111-111111111111",
+    cwd: "/workspace",
+    initialContent: [{ type: "text", text: "hello" }],
+    mode: "new",
+    provider: "codex",
+    providerTargetRef: {
+      kind: "sharedAgent",
+      provider: "codex",
+      sharedAgentId: "agent-1"
+    },
+    title: "Shared Codex",
+    visible: true,
+    workspaceId: "ws-1"
+  });
+
+  assert.equal(createCalls.length, 1);
+  assert.deepEqual(createCalls[0], {
+    workspaceId: "ws-1",
+    request: {
+      agentSessionId: "11111111-1111-4111-8111-111111111111",
+      cwd: "/workspace",
+      initialContent: [{ type: "text", text: "hello" }],
+      initialDisplayPrompt: null,
+      model: null,
+      permissionModeId: null,
+      planMode: null,
+      provider: "codex",
+      providerTargetRef: {
+        kind: "sharedAgent",
+        provider: "codex",
+        sharedAgentId: "agent-1"
+      },
+      reasoningEffort: null,
+      speed: null,
+      title: "Shared Codex",
+      visible: true
+    }
+  });
+});
+
 test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions and projects", async () => {
   const importCalls: unknown[] = [];
   let listCalls = 0;

@@ -20,6 +20,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   isConversationRailAutoCollapsed: boolean;
   isConversationRailCollapsed: boolean;
   conversationTitle?: string | null;
+  iconUrl?: string | null;
   onCreateConversation?: () => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
   title?: string;
@@ -32,6 +33,7 @@ export function AgentGuiWorkbenchHeader({
   isConversationRailAutoCollapsed,
   isConversationRailCollapsed,
   conversationTitle,
+  iconUrl,
   onCreateConversation,
   onToggleConversationRail,
   title,
@@ -55,6 +57,16 @@ export function AgentGuiWorkbenchHeader({
     createElement(
       "div",
       { className: "flex min-w-0 flex-1 items-center gap-1" },
+      iconUrl
+        ? createElement("img", {
+            alt: "",
+            "aria-hidden": true,
+            className: "mr-1 size-4 shrink-0 rounded-[4px]",
+            "data-agent-gui-workbench-header-icon": "true",
+            draggable: false,
+            src: iconUrl
+          })
+        : null,
       createElement(
         "span",
         {

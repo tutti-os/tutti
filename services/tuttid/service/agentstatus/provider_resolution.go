@@ -140,6 +140,9 @@ func (s Service) resolveExternalRegistryNPMSpec(
 	// registry (override, else official). Harmless when running the installed bin
 	// directly, which never consults npm.
 	spec.AdapterEnv = withAgentNPMRegistry(spec.AdapterEnv, s.primaryAgentNPMRegistry())
+	// Pin a dedicated cache for the `npm exec` fallback too, so it never trips over
+	// a root-owned global ~/.npm. Harmless when running the installed bin directly.
+	spec.AdapterEnv = withAgentNPMCache(spec.AdapterEnv, filepath.Join(prefixDir, agentNPMCacheDirName))
 	return spec
 }
 

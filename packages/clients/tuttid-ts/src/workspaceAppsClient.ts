@@ -7,6 +7,7 @@ import {
   exportWorkspaceApp,
   fixWorkspaceAppFactoryJob,
   getWorkspaceAppFactoryJob,
+  getWorkspaceAppFactoryProviderComposerOptions,
   importWorkspaceApp,
   installWorkspaceApp,
   launchWorkspaceApp,
@@ -42,6 +43,7 @@ type WorkspaceAppsClient = Pick<
   | "exportWorkspaceApp"
   | "fixWorkspaceAppFactoryJob"
   | "getWorkspaceAppFactoryJob"
+  | "getWorkspaceAppFactoryProviderComposerOptions"
   | "importWorkspaceApp"
   | "installWorkspaceApp"
   | "launchWorkspaceApp"
@@ -248,6 +250,21 @@ export function createWorkspaceAppsClient(client: Client): WorkspaceAppsClient {
       return unwrapData(
         response,
         "List workspace app factory jobs request failed."
+      );
+    },
+    async getWorkspaceAppFactoryProviderComposerOptions(
+      workspaceID,
+      provider,
+      request = {}
+    ) {
+      const response = await getWorkspaceAppFactoryProviderComposerOptions({
+        client,
+        body: request,
+        path: { provider, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Get workspace app factory provider composer options request failed."
       );
     },
     async createWorkspaceAppFactoryJob(workspaceID, request) {

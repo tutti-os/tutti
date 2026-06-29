@@ -33,6 +33,8 @@ import {
 } from "../../app/renderer/components/ui/tooltip";
 import { ZoomableImage } from "../../app/renderer/components/ZoomableImage";
 import type { AgentConversationPromptVM } from "../../shared/agentConversation/contracts/agentConversationVM";
+import { ConversationImageContextMenu } from "../../shared/agentConversation/components/ConversationImageContextMenu";
+import { AgentUsageMeter, agentUsageBarColor } from "./AgentUsageMeter";
 import { cn } from "../../app/renderer/lib/utils";
 import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
 import { ListChecks, X } from "lucide-react";
@@ -144,6 +146,8 @@ import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 
 export { formatSlashStatusTokenCount };
 
+const USAGE_POPOVER_HOVER_DELAY_MS = 120;
+
 /**
  * 引用 picker 的确认结果:松散文件按 file mention 插入;mentionItems(如文件夹 bundle)
  * 作为整体节点插入。两者各走各的插入路径,composer 不需要理解 bundle 内部结构。
@@ -186,7 +190,6 @@ export interface AgentComposerProps {
   promptImagesSupported?: boolean;
   composerFocusRequestSequence?: number | null;
   layoutMode?: "dock" | "hero";
-  showProjectSelector?: boolean;
   labels: {
     send: string;
     modelLabel: string;
@@ -194,6 +197,7 @@ export interface AgentComposerProps {
     modelContextWindowSuffix: string;
     modelTooltipVersionLabel: string;
     defaultModel: string;
+    loadingOptions: string;
     inheritedUnavailable: string;
     loadingConversation: string;
     reasoningLabel: string;
@@ -275,6 +279,7 @@ export interface AgentComposerProps {
     usageContextWindowLabel: string;
     usageTokensLabel: string;
     usageLimitsLabel: string;
+    usageCompactAction: string;
     approvalLead: string;
     planLead: string;
     planModes: Array<{ id: string; label: string; description: string }>;
@@ -361,6 +366,7 @@ export interface AgentComposerProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
+  selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
 }
@@ -450,38 +456,117 @@ function AgentUsageChip({
   percentUsed,
   usedTokens,
   totalTokens,
-  limits,
   labels,
-  tooltipsEnabled = true
+  tooltipsEnabled = true,
+  onCompact,
+  compactSupported,
+  compactDisabled
 }: {
   percentUsed: number;
   usedTokens: number | null;
   totalTokens: number | null;
-  limits: readonly AgentComposerSlashStatusLimit[];
   tooltipsEnabled?: boolean;
+  onCompact?: () => void;
+  compactSupported?: boolean;
+  compactDisabled?: boolean;
   labels: Pick<
     AgentComposerProps["labels"],
     | "usageChipLabel"
     | "usageTooltipLabel"
     | "usagePopoverTitle"
     | "usageContextWindowLabel"
-    | "usageLimitsLabel"
+    | "usageCompactAction"
   >;
 }): React.JSX.Element {
   "use memo";
 
+  const [usagePopoverOpen, setUsagePopoverOpen] = useState(false);
+  const usagePopoverHoverTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const clampedPercent = Math.max(0, Math.min(100, percentUsed));
   const chipLabel = labels.usageChipLabel({ percent: clampedPercent });
   const showTokens = usedTokens !== null && totalTokens !== null;
   const usageLevel = agentUsageChipLevel(clampedPercent);
   const ringColor = agentUsageRingColor(usageLevel);
+  const usagePopoverCloseTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const clearUsagePopoverHoverTimer = useCallback(() => {
+    if (usagePopoverHoverTimerRef.current) {
+      clearTimeout(usagePopoverHoverTimerRef.current);
+      usagePopoverHoverTimerRef.current = null;
+    }
+  }, []);
+  const clearUsagePopoverCloseTimer = useCallback(() => {
+    if (usagePopoverCloseTimerRef.current) {
+      clearTimeout(usagePopoverCloseTimerRef.current);
+      usagePopoverCloseTimerRef.current = null;
+    }
+  }, []);
+  const openUsagePopover = useCallback(() => {
+    clearUsagePopoverHoverTimer();
+    clearUsagePopoverCloseTimer();
+    setUsagePopoverOpen(true);
+  }, [clearUsagePopoverCloseTimer, clearUsagePopoverHoverTimer]);
+  const openUsagePopoverAfterHoverDelay = useCallback(() => {
+    clearUsagePopoverHoverTimer();
+    clearUsagePopoverCloseTimer();
+    usagePopoverHoverTimerRef.current = setTimeout(() => {
+      usagePopoverHoverTimerRef.current = null;
+      setUsagePopoverOpen(true);
+    }, USAGE_POPOVER_HOVER_DELAY_MS);
+  }, [clearUsagePopoverCloseTimer, clearUsagePopoverHoverTimer]);
+  const closeUsagePopover = useCallback(() => {
+    clearUsagePopoverHoverTimer();
+    clearUsagePopoverCloseTimer();
+    setUsagePopoverOpen(false);
+  }, [clearUsagePopoverCloseTimer, clearUsagePopoverHoverTimer]);
+  const scheduleUsagePopoverClose = useCallback(() => {
+    clearUsagePopoverHoverTimer();
+    clearUsagePopoverCloseTimer();
+    usagePopoverCloseTimerRef.current = setTimeout(() => {
+      usagePopoverCloseTimerRef.current = null;
+      setUsagePopoverOpen(false);
+    }, 140);
+  }, [clearUsagePopoverCloseTimer, clearUsagePopoverHoverTimer]);
+  const handleUsagePopoverOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        openUsagePopover();
+        return;
+      }
+      closeUsagePopover();
+    },
+    [closeUsagePopover, openUsagePopover]
+  );
+
+  useEffect(
+    () => () => {
+      clearUsagePopoverHoverTimer();
+      clearUsagePopoverCloseTimer();
+    },
+    [clearUsagePopoverCloseTimer, clearUsagePopoverHoverTimer]
+  );
   const trigger = (
     <button
       type="button"
       aria-label={chipLabel}
-      className="nodrag relative mr-2 inline-flex size-4 shrink-0 cursor-default items-center justify-center rounded-full p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] [-webkit-app-region:no-drag]"
+      className={cn(
+        "nodrag relative mr-2 inline-flex size-4 shrink-0 items-center justify-center rounded-full p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] [-webkit-app-region:no-drag]",
+        tooltipsEnabled ? "cursor-pointer" : "cursor-default"
+      )}
       data-testid="agent-gui-usage-chip"
       data-usage-level={usageLevel}
+      onBlur={tooltipsEnabled ? closeUsagePopover : undefined}
+      onClick={tooltipsEnabled ? openUsagePopover : undefined}
+      onFocus={tooltipsEnabled ? openUsagePopoverAfterHoverDelay : undefined}
+      onPointerEnter={(event) => {
+        if (tooltipsEnabled && event.pointerType !== "touch") {
+          openUsagePopoverAfterHoverDelay();
+        }
+      }}
+      onPointerLeave={tooltipsEnabled ? scheduleUsagePopoverClose : undefined}
       title={chipLabel}
       style={{
         background: `conic-gradient(${ringColor} ${clampedPercent}%, color-mix(in srgb, ${ringColor} 16%, transparent) 0)`
@@ -499,95 +584,49 @@ function AgentUsageChip({
   }
 
   return (
-    <Popover>
-      <TooltipProvider delayDuration={0}>
-        <Tooltip>
-          <PopoverTrigger asChild>
-            <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-          </PopoverTrigger>
-          <TooltipContent side="top">{labels.usageTooltipLabel}</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <PopoverContent
-        side="bottom"
-        align="end"
-        className="w-[320px] max-w-[calc(100vw-32px)] gap-3 text-xs"
-        data-testid="agent-gui-usage-popover"
-      >
-        <div className="flex min-w-0 flex-col gap-3">
-          <span className="text-[13px] font-semibold leading-4">
-            {labels.usagePopoverTitle}
-          </span>
-          {showTokens ? (
-            <AgentUsageMeter
-              label={labels.usageContextWindowLabel}
-              value={`${formatSlashStatusTokenCount(usedTokens)} / ${formatSlashStatusTokenCount(totalTokens)} (${clampedPercent}%)`}
-              percent={clampedPercent}
-              testId="agent-gui-usage-context-meter"
-            />
-          ) : null}
-          {limits.length > 0 ? (
-            <div className="flex min-w-0 flex-col gap-2">
-              <span className="font-semibold">{labels.usageLimitsLabel}</span>
-              {limits.map((limit) => (
-                <AgentUsageMeter
-                  key={limit.id}
-                  label={limit.label}
-                  value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
-                  percent={
-                    typeof limit.percentRemaining === "number" &&
-                    Number.isFinite(limit.percentRemaining)
-                      ? limit.percentRemaining
-                      : null
-                  }
-                />
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function AgentUsageMeter({
-  label,
-  value,
-  percent,
-  testId
-}: {
-  label: string;
-  value: string;
-  percent: number | null;
-  testId?: string;
-}): React.JSX.Element {
-  const clampedPercent =
-    typeof percent === "number" && Number.isFinite(percent)
-      ? Math.max(0, Math.min(100, percent))
-      : null;
-
-  return (
-    <div className="grid min-w-0 gap-1" data-testid={testId}>
-      <div className="flex min-w-0 items-center justify-between gap-3">
-        <span className="min-w-0 truncate text-[var(--text-secondary)]">
-          {label}
-        </span>
-        <span className="shrink-0 whitespace-nowrap text-[var(--text-secondary)]">
-          {value}
-        </span>
-      </div>
-      {clampedPercent !== null ? (
-        <span
-          aria-hidden="true"
-          className="relative h-1.5 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--text-primary)_10%,transparent)]"
+    <Popover
+      open={usagePopoverOpen}
+      onOpenChange={handleUsagePopoverOpenChange}
+    >
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      {usagePopoverOpen ? (
+        <PopoverContent
+          side="bottom"
+          align="end"
+          className="w-[320px] max-w-[calc(100vw-32px)] gap-3 text-xs"
+          data-testid="agent-gui-usage-popover"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onPointerEnter={openUsagePopover}
+          onPointerLeave={scheduleUsagePopoverClose}
         >
-          <span
-            className="absolute inset-y-0 left-0 min-w-0.5 rounded-full bg-[var(--agent-gui-text-primary,var(--text-primary))]"
-            style={{ width: `${clampedPercent}%` }}
-          />
-        </span>
+          <div className="flex min-w-0 flex-col gap-3">
+            <span className="text-[13px] font-semibold leading-4">
+              {labels.usagePopoverTitle}
+            </span>
+            {showTokens ? (
+              <AgentUsageMeter
+                label={labels.usageContextWindowLabel}
+                value={`${formatSlashStatusTokenCount(usedTokens)} / ${formatSlashStatusTokenCount(totalTokens)} (${clampedPercent}%)`}
+                percent={clampedPercent}
+                barColor={agentUsageBarColor(clampedPercent)}
+                testId="agent-gui-usage-context-meter"
+              />
+            ) : null}
+            {compactSupported && onCompact ? (
+              <button
+                type="button"
+                data-testid="agent-gui-compact-button"
+                disabled={compactDisabled}
+                className="nodrag inline-flex items-center justify-center rounded-[6px] bg-[var(--transparency-block)] px-2 py-1 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] focus-visible:bg-[var(--transparency-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[var(--transparency-block)] [-webkit-app-region:no-drag]"
+                onClick={onCompact}
+              >
+                {labels.usageCompactAction}
+              </button>
+            ) : null}
+          </div>
+        </PopoverContent>
       ) : null}
-    </div>
+    </Popover>
   );
 }
 
@@ -606,6 +645,11 @@ const MENTION_PALETTE_MIN_HEIGHT_PX = 280;
 const MENTION_PALETTE_MAX_HEIGHT_PX = 320;
 const MENTION_PALETTE_GAP_PX = 8;
 const MENTION_PALETTE_VIEWPORT_PADDING_PX = 8;
+const DRAFT_IMAGE_PREVIEW_BASE_HEIGHT_PX = 72;
+const DRAFT_IMAGE_PREVIEW_MIN_WIDTH_PX = 56;
+const DRAFT_IMAGE_PREVIEW_MAX_WIDTH_PX = 180;
+const DRAFT_IMAGE_PREVIEW_MIN_RATIO = 0.5;
+const DRAFT_IMAGE_PREVIEW_MAX_RATIO = 3;
 const EMPTY_CONTEXT_MENTION_PROVIDERS: readonly AgentContextMentionProvider[] =
   [];
 const EMPTY_PROMPT_TIPS: readonly AgentComposerPromptTip[] = [];
@@ -702,7 +746,6 @@ export function AgentComposer({
   promptImagesSupported = true,
   composerFocusRequestSequence = null,
   layoutMode = "dock",
-  showProjectSelector = true,
   labels,
   workspaceUserProjectI18n,
   onDraftContentChange,
@@ -719,6 +762,7 @@ export function AgentComposer({
   onCapabilitySettingsRequest,
   onLinkAction,
   onRequestWorkspaceReferences = null,
+  selectProjectDirectory,
   onRequestGitBranches = null,
   contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS
 }: AgentComposerProps): React.JSX.Element {
@@ -2149,12 +2193,10 @@ export function AgentComposer({
   const showEdgeGlow = layoutMode === "hero" && !inputDisabled;
   const showPromptTips = layoutMode === "hero" && promptTips.length > 0;
   const activePromptTip = showPromptTips ? (promptTips[0] ?? null) : null;
-  const showHeroProjectSelector = layoutMode === "hero" && showProjectSelector;
-  const showProjectRow =
-    layoutMode === "hero" && (showHeroProjectSelector || activePromptTip);
+  const showHeroProjectSelector = layoutMode === "hero";
+  const showProjectRow = layoutMode === "hero";
   const showProjectMissingProbe =
     !showProjectRow &&
-    showProjectSelector &&
     Boolean(composerSettings.projectLocked) &&
     selectedProjectPath !== "";
   const activePromptTipId = activePromptTip?.id ?? null;
@@ -2418,57 +2460,22 @@ export function AgentComposer({
             modal={false}
           >
             <PopoverAnchor asChild>
-              <div ref={promptInputAreaRef} className="min-w-0 self-start">
+              <div
+                ref={promptInputAreaRef}
+                className="w-full min-w-0 self-start"
+              >
                 {draftImages.length > 0 ? (
                   <div
-                    className="mb-2 grid max-w-[320px] grid-cols-[repeat(auto-fill,minmax(56px,1fr))] gap-2"
+                    className="mb-2 flex w-full max-w-full flex-wrap items-start gap-2"
                     data-testid="agent-gui-composer-image-drafts"
                   >
                     {draftImages.map((image) => (
-                      <div
+                      <AgentComposerDraftImagePreview
                         key={image.id}
-                        className={cn(
-                          "group relative aspect-square min-w-0 overflow-hidden rounded-[6px] border border-[var(--line-1)] bg-[var(--background-fronted)]",
-                          "[&>[data-rmiz]]:block [&>[data-rmiz]]:size-full",
-                          "[&>[data-rmiz]>[data-rmiz-content]]:block [&>[data-rmiz]>[data-rmiz-content]]:size-full",
-                          image.uploadError &&
-                            "border-[color:color-mix(in_srgb,var(--danger)_55%,var(--line-1))]"
-                        )}
-                        data-uploading={image.uploading ? "true" : undefined}
-                        data-upload-error={
-                          image.uploadError ? "true" : undefined
-                        }
-                      >
-                        <ZoomableImage
-                          src={image.previewUrl}
-                          alt={image.name}
-                          className="size-full object-cover"
-                          draggable={false}
-                        />
-                        {image.uploading ? (
-                          <div
-                            className="absolute inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--background-fronted)_62%,transparent)]"
-                            data-testid="agent-gui-composer-image-uploading"
-                          >
-                            <Spinner
-                              className="text-[var(--text-primary)]"
-                              size={18}
-                              strokeWidth={2.4}
-                              trackColor="var(--transparency-hover)"
-                              testId="agent-gui-composer-image-upload-spinner"
-                            />
-                          </div>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="absolute right-1 top-1 inline-flex size-5 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--text-primary)_16%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_88%,transparent)] text-[var(--text-primary)] opacity-90 shadow-sm transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)]"
-                          aria-label={labels.removeMention}
-                          title={labels.removeMention}
-                          onClick={() => removeDraftImage(image.id)}
-                        >
-                          <X size={12} strokeWidth={2.4} aria-hidden />
-                        </button>
-                      </div>
+                        image={image}
+                        removeLabel={labels.removeMention}
+                        onRemove={removeDraftImage}
+                      />
                     ))}
                   </div>
                 ) : null}
@@ -2678,7 +2685,7 @@ export function AgentComposer({
                   className={cn(
                     styles.composerMenuTrigger,
                     styles.composerReferenceTrigger,
-                    "w-auto justify-center px-1 text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
+                    "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
                   )}
                 >
                   <AddIcon
@@ -2716,7 +2723,7 @@ export function AgentComposer({
                     className={cn(
                       styles.composerMenuTrigger,
                       styles.composerReferenceTrigger,
-                      "w-auto justify-center px-1 text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
+                      "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
                     )}
                   >
                     <AddIcon
@@ -2757,14 +2764,20 @@ export function AgentComposer({
                   percentUsed={usage.percentUsed}
                   usedTokens={usage.usedTokens}
                   totalTokens={usage.totalTokens}
-                  limits={slashStatus?.limits ?? []}
                   tooltipsEnabled={!previewMode}
+                  compactSupported={compactSupported ?? false}
+                  compactDisabled={
+                    !hasCompactableContext ||
+                    settingsControlsDisabled ||
+                    inputDisabled
+                  }
+                  onCompact={() => onSubmit(textPromptContent("/compact"))}
                   labels={{
                     usageChipLabel: labels.usageChipLabel,
                     usageTooltipLabel: labels.usageTooltipLabel,
                     usagePopoverTitle: labels.usagePopoverTitle,
                     usageContextWindowLabel: labels.usageContextWindowLabel,
-                    usageLimitsLabel: labels.usageLimitsLabel
+                    usageCompactAction: labels.usageCompactAction
                   }}
                 />
               ) : null}
@@ -2774,7 +2787,8 @@ export function AgentComposer({
                   disabled={settingsControlsDisabled}
                   previewMode={previewMode}
                   labels={{
-                    permissionLabel: labels.permissionLabel
+                    permissionLabel: labels.permissionLabel,
+                    loadingOptions: labels.loadingOptions
                   }}
                   onSettingsChange={(patch) => onSettingsChange(patch)}
                 />
@@ -2811,8 +2825,8 @@ export function AgentComposer({
                     permissionLabel: labels.permissionLabel,
                     modelDescriptions: labels.modelDescriptions,
                     defaultModel: labels.defaultModel,
-                    inheritedUnavailable: labels.inheritedUnavailable,
-                    loadingSettings: labels.loadingConversation
+                    loadingOptions: labels.loadingOptions,
+                    inheritedUnavailable: labels.inheritedUnavailable
                   }}
                   onSettingsChange={onSettingsChange}
                 />
@@ -2888,6 +2902,7 @@ export function AgentComposer({
                   projectLocked: labels.projectLocked,
                   projectMissingDescription: labels.projectMissingDescription
                 }}
+                selectProjectDirectory={selectProjectDirectory}
                 onProjectMissingChange={setIsSelectedProjectMissing}
                 onProjectPathChange={onProjectPathChange}
               />
@@ -2919,6 +2934,92 @@ export function AgentComposer({
         ) : null}
       </div>
     </form>
+  );
+}
+
+function AgentComposerDraftImagePreview({
+  image,
+  removeLabel,
+  onRemove
+}: {
+  image: AgentComposerDraftImage;
+  removeLabel: string;
+  onRemove: (id: string) => void;
+}): React.JSX.Element {
+  const [aspectRatio, setAspectRatio] = useState(1);
+  const previewWidth = Math.round(
+    Math.min(
+      DRAFT_IMAGE_PREVIEW_MAX_WIDTH_PX,
+      Math.max(
+        DRAFT_IMAGE_PREVIEW_MIN_WIDTH_PX,
+        aspectRatio * DRAFT_IMAGE_PREVIEW_BASE_HEIGHT_PX
+      )
+    )
+  );
+  const previewStyle = {
+    aspectRatio: String(aspectRatio),
+    width: `${previewWidth}px`
+  } satisfies CSSProperties;
+
+  return (
+    <div
+      className={cn(
+        "group relative min-w-0 overflow-hidden rounded-[6px] border border-[var(--line-1)] bg-[var(--background-fronted)]",
+        "[&>[data-rmiz]]:block [&>[data-rmiz]]:size-full",
+        "[&>[data-rmiz]>[data-rmiz-content]]:block [&>[data-rmiz]>[data-rmiz-content]]:size-full",
+        image.uploadError &&
+          "border-[color:color-mix(in_srgb,var(--danger)_55%,var(--line-1))]"
+      )}
+      data-testid="agent-gui-composer-image-draft"
+      data-uploading={image.uploading ? "true" : undefined}
+      data-upload-error={image.uploadError ? "true" : undefined}
+      style={previewStyle}
+    >
+      <ConversationImageContextMenu src={image.previewUrl}>
+        <ZoomableImage
+          src={image.previewUrl}
+          alt={image.name}
+          className="size-full object-contain"
+          draggable={false}
+          onLoad={(event) => {
+            const element = event.currentTarget;
+            const width = element.naturalWidth;
+            const height = element.naturalHeight;
+            if (width <= 0 || height <= 0) {
+              return;
+            }
+            const nextRatio = Math.min(
+              DRAFT_IMAGE_PREVIEW_MAX_RATIO,
+              Math.max(DRAFT_IMAGE_PREVIEW_MIN_RATIO, width / height)
+            );
+            setAspectRatio(nextRatio);
+          }}
+        />
+      </ConversationImageContextMenu>
+      {image.uploading ? (
+        <div
+          className="absolute inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--background-fronted)_62%,transparent)]"
+          data-testid="agent-gui-composer-image-uploading"
+        >
+          <Spinner
+            className="text-[var(--text-primary)]"
+            size={18}
+            strokeWidth={2.4}
+            trackColor="var(--transparency-hover)"
+            testId="agent-gui-composer-image-upload-spinner"
+          />
+        </div>
+      ) : null}
+      <button
+        type="button"
+        className="absolute right-1 top-1 inline-flex size-5 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--text-primary)_16%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_88%,transparent)] text-[var(--text-primary)] opacity-90 shadow-sm transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)]"
+        aria-label={removeLabel}
+        title={removeLabel}
+        onClick={() => onRemove(image.id)}
+      >
+        <X size={12} strokeWidth={2.4} aria-hidden />
+      </button>
+    </div>
   );
 }
 

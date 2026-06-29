@@ -16,21 +16,22 @@ type SkillBundleRenderer interface {
 }
 
 type PrepareInput struct {
-	WorkspaceID      string
-	AgentSessionID   string
-	Provider         string
-	Cwd              string
-	CLICommand       string
-	CommandGuide     string
-	Title            string
-	PermissionModeID string
-	PlanMode         bool
-	BrowserUse       bool
-	ComputerUse      bool
-	Model            string
-	ReasoningEffort  string
-	ExtraSkills      []ProviderSkillBundle
-	Metadata         map[string]any
+	WorkspaceID       string
+	AgentSessionID    string
+	Provider          string
+	Cwd               string
+	CLICommand        string
+	CommandGuide      string
+	Title             string
+	PermissionModeID  string
+	PlanMode          bool
+	BrowserUse        bool
+	ComputerUse       bool
+	ProviderTargetRef map[string]any
+	Model             string
+	ReasoningEffort   string
+	ExtraSkills       []ProviderSkillBundle
+	Metadata          map[string]any
 }
 
 type PreparedRuntime struct {

@@ -114,6 +114,7 @@ export function buildWorkspaceAgentMessageCenterModel(
       const lastAgentMessage = messageAnalysis.latestAgentMessage;
       const title = resolveSessionTitle(
         session,
+        messageAnalysis.latestUserMessageSummary,
         messageAnalysis.firstUserMessageSummary
       );
       const pendingPrompt =
@@ -273,8 +274,13 @@ function resolveSessionMessages(
 
 function resolveSessionTitle(
   session: AgentActivitySession,
+  latestUserMessageSummary: string,
   firstUserMessageSummary: string
 ): string {
+  const latest = latestUserMessageSummary.trim();
+  if (latest) {
+    return latest;
+  }
   const title = session.title.trim();
   if (title) {
     return title;
@@ -288,6 +294,7 @@ function resolveDigestFallbackTitle(session: AgentActivitySession): string {
 
 interface MessageCenterSessionMessageAnalysis {
   firstUserMessageSummary: string;
+  latestUserMessageSummary: string;
   latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
   latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
   latestTurnOutcome: WorkspaceAgentMessageCenterTurnOutcome | null;
@@ -309,6 +316,8 @@ function analyzeMessageCenterSessionMessages(
   messages: readonly AgentActivityMessage[]
 ): MessageCenterSessionMessageAnalysis {
   let firstUserMessageSummary = "";
+  let latestUserMessageSummary = "";
+  let latestUserMessageAtUnixMs = Number.NEGATIVE_INFINITY;
   let latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
     null;
   let latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
@@ -317,8 +326,18 @@ function analyzeMessageCenterSessionMessages(
   let latestOutcome: TurnOutcomeCandidate | null = null;
 
   for (const message of messages) {
-    if (!firstUserMessageSummary && isUserMessageRole(message.role)) {
-      firstUserMessageSummary = messageSummary(message);
+    if (isUserMessageRole(message.role)) {
+      const summary = messageSummary(message);
+      if (!firstUserMessageSummary && summary) {
+        firstUserMessageSummary = summary;
+      }
+      if (summary) {
+        const occurredAtUnixMs = messageTimeUnixMs(message);
+        if (occurredAtUnixMs >= latestUserMessageAtUnixMs) {
+          latestUserMessageSummary = summary;
+          latestUserMessageAtUnixMs = occurredAtUnixMs;
+        }
+      }
     }
 
     if (isAgentMessageRole(message.role)) {
@@ -371,6 +390,7 @@ function analyzeMessageCenterSessionMessages(
 
   return {
     firstUserMessageSummary,
+    latestUserMessageSummary,
     latestDigestAgentMessage,
     latestAgentMessage,
     latestTurnOutcome: latestOutcome?.outcome ?? null,

@@ -178,7 +178,7 @@ func clonePayload(payload map[string]any) map[string]any {
 	}
 	out := make(map[string]any, len(payload))
 	for key, value := range payload {
-		out[key] = value
+		out[key] = clonePayloadValue(value)
 	}
 	return out
 }

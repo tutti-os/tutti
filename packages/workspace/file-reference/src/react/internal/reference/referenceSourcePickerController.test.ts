@@ -65,6 +65,10 @@ function fakeAggregator(options: FakeOptions): ReferenceSourceAggregator {
       );
     },
     open: async () => {},
+    listOpenWithApplications: async () => [],
+    openWithApplication: async () => {},
+    openWithOtherApplication: async () => {},
+    reveal: async () => {},
     readPreview: async () => null,
     resolveSelection(node): SelectedReference {
       return { path: node.ref.nodeId, kind: node.kind };

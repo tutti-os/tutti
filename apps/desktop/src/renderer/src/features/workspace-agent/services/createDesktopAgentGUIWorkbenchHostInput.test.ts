@@ -13,6 +13,7 @@ import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/cont
 import type { ReporterEventInput } from "@renderer/features/analytics/services/reporterService.interface.ts";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
+import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import {
   USER_PROJECT_REFERENCE_SOURCE_ID,
   WORKSPACE_FILE_SOURCE_ID
@@ -91,6 +92,37 @@ test("desktop agent GUI workbench host input creates the default agent host api"
       rootPath: "/workspace"
     }
   );
+});
+
+test("desktop agent GUI workbench host input opens workspace references through the file manager canvas preview first", async () => {
+  const calls: string[] = [];
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: {
+      ...createHostFilesApi(),
+      async openFile(workspaceId, path) {
+        calls.push(`open-file:${workspaceId}:${path}`);
+      }
+    },
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
+    workspaceFileManagerService: createWorkspaceFileManagerService({
+      async openCanvasFilePreview(workspaceId, target) {
+        calls.push(`preview:${workspaceId}:${target.path}:${target.fileKind}`);
+        return true;
+      }
+    }),
+    workspaceId
+  });
+
+  await hostInput.workspaceFileReferenceAdapter.openReference?.({
+    kind: "file",
+    path: "/workspace/image.png"
+  });
+
+  assert.deepEqual(calls, ["preview:workspace-1:/workspace/image.png:image"]);
 });
 
 test("desktop agent GUI workbench host input wires project references first", async () => {
@@ -1004,6 +1036,7 @@ function createHostFilesApi(): DesktopHostFilesApi {
     async selectUploadFiles() {
       return [];
     },
+    async copyImageToClipboard() {},
     async copyFilesToClipboard() {},
     async listOpenWithApplications() {
       return [];
@@ -1149,6 +1182,14 @@ function createPlatformApi(): Pick<
     resolveDroppedPaths() {
       return [];
     }
+  };
+}
+
+function createWorkspaceFileManagerService(input: {
+  openCanvasFilePreview: IWorkspaceFileManagerService["openCanvasFilePreview"];
+}): Pick<IWorkspaceFileManagerService, "openCanvasFilePreview"> {
+  return {
+    openCanvasFilePreview: input.openCanvasFilePreview
   };
 }
 

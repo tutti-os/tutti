@@ -394,6 +394,13 @@ export function useWorkspaceWorkbenchShellRuntime({
       appCenterService.setWorkspaceAppViewCloser(
         host ? (input) => closeWorkspaceAppWebviews(host, input.appId) : null
       );
+      appCenterService.setWorkspaceAppViewOpenChecker(
+        host
+          ? (input) =>
+              input.workspaceId === state.workspace.id &&
+              isWorkspaceAppWebviewOpen(host, input.appId)
+          : null
+      );
     },
     [
       appCenterService,
@@ -463,6 +470,20 @@ function closeWorkspaceAppWebviews(
       host.closeNode(node.id);
     }
   }
+}
+
+function isWorkspaceAppWebviewOpen(
+  host: WorkbenchHostHandle,
+  appId: string
+): boolean {
+  const instanceId = workspaceAppWebviewInstanceId(appId);
+  return host
+    .getSnapshot()
+    .nodes.some(
+      (node) =>
+        node.data.typeId === workspaceAppWebviewTypeID &&
+        node.data.instanceId === instanceId
+    );
 }
 
 function syncWorkspaceAppWebviewNodes(input: {

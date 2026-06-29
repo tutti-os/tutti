@@ -395,17 +395,16 @@ function validateAuthor(
   }
 
   const name = readOptionalString(value.name);
-  const avatarUrl = readOptionalString(value.avatarUrl);
   const url = readOptionalString(value.url);
+  const avatarUrl = readOptionalString(value.avatarUrl);
   if (
     !name ||
-    (value.avatarUrl !== undefined && !avatarUrl) ||
-    (value.url !== undefined && !url)
+    (value.url !== undefined && !url) ||
+    (value.avatarUrl !== undefined && !avatarUrl)
   ) {
     issues.push({
       code: "manifest.author",
-      message:
-        "author must include name and optional non-empty avatarUrl and url.",
+      message: "author must include name and optional non-empty url/avatarUrl.",
       path: "$.author"
     });
     return undefined;
@@ -426,60 +425,51 @@ function validateAuthors(
     return undefined;
   }
 
-  if (!Array.isArray(value)) {
+  if (!Array.isArray(value) || value.length === 0) {
     issues.push({
       code: "manifest.authors",
-      message: "authors must be an array when provided.",
+      message: "authors must be a non-empty array when provided.",
       path: "$.authors"
     });
     return undefined;
   }
 
-  const authors = value
-    .map((entry, index) => {
-      if (!isRecord(entry)) {
-        issues.push({
-          code: "manifest.authors",
-          message: "authors entries must be objects.",
-          path: `$.authors[${index}]`
-        });
-        return null;
-      }
-      const name = readOptionalString(entry.name);
-      const avatarUrl = readOptionalString(entry.avatarUrl);
-      const url = readOptionalString(entry.url);
-      if (
-        !name ||
-        (entry.avatarUrl !== undefined && !avatarUrl) ||
-        (entry.url !== undefined && !url)
-      ) {
-        issues.push({
-          code: "manifest.authors",
-          message:
-            "authors entries must include name and optional non-empty avatarUrl and url.",
-          path: `$.authors[${index}]`
-        });
-        return null;
-      }
-      return {
-        name,
-        ...(avatarUrl ? { avatarUrl } : {}),
-        ...(url ? { url } : {})
-      };
-    })
-    .filter(
-      (author): author is NonNullable<WorkspaceAppManifest["author"]> =>
-        author !== null
-    );
+  const authors: NonNullable<WorkspaceAppManifest["authors"]>[number][] = [];
+  for (const [index, entry] of value.entries()) {
+    if (!isRecord(entry)) {
+      issues.push({
+        code: "manifest.authors",
+        message: "authors entries must be objects.",
+        path: `$.authors[${index}]`
+      });
+      continue;
+    }
 
-  if (
-    value.length === 0 ||
-    authors.length !== value.length ||
-    issues.some((issue) => issue.code === "manifest.authors")
-  ) {
-    return undefined;
+    const name = readOptionalString(entry.name);
+    const url = readOptionalString(entry.url);
+    const avatarUrl = readOptionalString(entry.avatarUrl);
+    if (
+      !name ||
+      (entry.url !== undefined && !url) ||
+      (entry.avatarUrl !== undefined && !avatarUrl)
+    ) {
+      issues.push({
+        code: "manifest.authors",
+        message:
+          "authors entries must include name and optional non-empty url/avatarUrl.",
+        path: `$.authors[${index}]`
+      });
+      continue;
+    }
+
+    authors.push({
+      name,
+      ...(avatarUrl ? { avatarUrl } : {}),
+      ...(url ? { url } : {})
+    });
   }
-  return authors;
+
+  return authors.length > 0 ? authors : undefined;
 }
 
 function validateSource(
@@ -499,8 +489,9 @@ function validateSource(
     return undefined;
   }
 
+  const type = value.type;
   const url = readOptionalString(value.url);
-  if (value.type !== "github" || !url) {
+  if (type !== "github" || !url) {
     issues.push({
       code: "manifest.source",
       message: "source must include type=github and a non-empty url.",
@@ -509,10 +500,7 @@ function validateSource(
     return undefined;
   }
 
-  return {
-    type: "github",
-    url
-  };
+  return { type, url };
 }
 
 function validateTags(

@@ -2999,6 +2999,58 @@
       ],
       "migrationHints": [],
       "iconVariant": "filled"
+    },
+    {
+      "id": "context-menu",
+      "layer": "base",
+      "name": "ContextMenu",
+      "export": "ContextMenu",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Context menu root primitive for right-click contextual actions.",
+      "useCases": ["Right-click menus", "Image context actions"],
+      "migrationHints": []
+    },
+    {
+      "id": "context-menu-trigger",
+      "layer": "base",
+      "name": "ContextMenuTrigger",
+      "export": "ContextMenuTrigger",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Trigger primitive that opens the context menu on right-click.",
+      "useCases": ["Right-click target areas"],
+      "migrationHints": []
+    },
+    {
+      "id": "context-menu-content",
+      "layer": "base",
+      "name": "ContextMenuContent",
+      "export": "ContextMenuContent",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Popup content surface for ContextMenu options.",
+      "useCases": ["Context menu panels"],
+      "migrationHints": []
+    },
+    {
+      "id": "context-menu-item",
+      "layer": "base",
+      "name": "ContextMenuItem",
+      "export": "ContextMenuItem",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Selectable action row for ContextMenu content.",
+      "useCases": ["Context menu actions", "Right-click menu items"],
+      "migrationHints": []
     }
   ]
 }

@@ -123,6 +123,7 @@ export function createIssueReferenceListBackend(
       const items: ReferenceListItem[] = detail.latestOutputs.map((output) => ({
         type: "reference",
         reference: {
+          createdTimeMs: unixSecondsToMs(output.createdAtUnix),
           path: output.path,
           displayName: output.displayName,
           parentLabel: issueLabel,
@@ -161,6 +162,7 @@ export function createIssueReferenceListBackend(
       const items: ReferenceListItem[] = response.items.map((hit) => ({
         type: "reference",
         reference: {
+          createdTimeMs: unixSecondsToMs(hit.output.createdAtUnix),
           path: hit.output.path,
           displayName: hit.output.displayName,
           parentLabel: hit.issueTitle?.trim() || hit.output.issueId,

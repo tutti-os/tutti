@@ -176,9 +176,12 @@ export function WorkspaceAppCenterPane({
       async (
         provider: string
       ): Promise<AppCenterFactoryProviderConfiguration> => {
-        return service.getFactoryProviderConfiguration(provider);
+        return service.getFactoryProviderConfiguration({
+          provider,
+          workspaceId
+        });
       },
-    [service]
+    [service, workspaceId]
   );
   const appCenterActions = useMemo<AppCenterHostActions>(
     () => ({
@@ -252,6 +255,8 @@ export function WorkspaceAppCenterPane({
       restartAndOpenApp: (appId) => {
         void service.restartAndOpenApp({ appId, workspaceId });
       },
+      shouldConfirmAppUpdate: (appId) =>
+        service.isWorkspaceAppViewOpen({ appId, workspaceId }),
       updateApp: (appId, trigger) =>
         service.updateApp({ appId, trigger, workspaceId }),
       uninstallApp: (appId) => service.uninstallApp({ appId, workspaceId })

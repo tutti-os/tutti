@@ -98,3 +98,21 @@ test("mission control presentation tracks the visible target window ids", () => 
     /visibleNodeIds: new Set\(orderedNodes\.map\(\(node\) => node\.id\)\)/
   );
 });
+
+test("dialog popover windows render through a body-level portal", () => {
+  const source = readFileSync(
+    resolve("src/react/WorkbenchNodeLayer.tsx"),
+    "utf8"
+  );
+
+  assert.match(source, /import \{ createPortal \} from "react-dom";/);
+  assert.match(
+    source,
+    /resolveWindowSurfaceLayer\(\{ node \}\) === "dialog-popover"/
+  );
+  assert.match(
+    source,
+    /className="workbench-node-layer workbench-node-layer--dialog-popover"/
+  );
+  assert.match(source, /createPortal\(dialogPopoverLayer, document\.body\)/);
+});

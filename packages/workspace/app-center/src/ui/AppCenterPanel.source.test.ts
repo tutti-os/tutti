@@ -53,3 +53,11 @@ test("local app load repair dialog routes through the agent repair action", () =
   assert.match(source, /actions\.repairLocalApp\?\.\(\{/);
   assert.match(source, /copy\.t\("localDev\.repairPrompt"/);
 });
+
+test("running app update confirmation depends on an open workspace app view", () => {
+  assert.match(
+    source,
+    /actions\.shouldConfirmAppUpdate\?\.\(app\.id\) \?\? true/
+  );
+  assert.match(source, /if \(shouldConfirmUpdate\) \{/);
+});

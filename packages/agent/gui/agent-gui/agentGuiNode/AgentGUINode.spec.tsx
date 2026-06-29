@@ -6,7 +6,7 @@ import {
   within
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StrictMode, act, type ReactNode } from "react";
+import { StrictMode, act } from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
@@ -19,6 +19,7 @@ import type {
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
+import { agentGuiDockIconUrls } from "../../dockIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
@@ -34,6 +35,7 @@ import type {
   AgentGUINodeViewModel
 } from "./model/agentGuiNodeTypes";
 import type { AgentGUINodeData } from "../../types";
+import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
 import { writeWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
 
 const mockCreateConversation = vi.fn();
@@ -111,6 +113,12 @@ function createHostLocalReferenceAggregator(
       return { entries: [], nextCursor: null };
     },
     async open() {},
+    async listOpenWithApplications() {
+      return [];
+    },
+    async openWithApplication() {},
+    async openWithOtherApplication() {},
+    async reveal() {},
     async readPreview() {
       return null;
     },
@@ -664,25 +672,6 @@ vi.mock("../../i18n/index", () => ({
   translateInUiLanguage: (_language: string, key: string) => key
 }));
 
-vi.mock("../../app/renderer/components/WarningDialog", () => ({
-  WarningDialog: ({
-    dataTestId,
-    title,
-    lead,
-    actions
-  }: {
-    dataTestId: string;
-    title: string;
-    lead?: string;
-    actions: ReactNode;
-  }) => (
-    <section role="dialog" aria-label={title} data-testid={dataTestId}>
-      {lead ? <p>{lead}</p> : null}
-      {actions}
-    </section>
-  )
-}));
-
 vi.mock("./controller/useAgentGUINodeController", () => ({
   useAgentGUINodeController: () => ({
     viewModel: mockViewModel,
@@ -1102,6 +1091,40 @@ describe("AgentGUINode", () => {
     expect(windowTitle).toHaveTextContent("Codex");
   });
 
+  it("shows the provider dock icon before the Agent GUI window title", () => {
+    const codex = renderAgentGUINode({
+      title: "Agent",
+      state: {
+        provider: "codex",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      }
+    });
+
+    const codexIcon = codex.container.querySelector<HTMLImageElement>(
+      '[data-agent-gui-window-provider-icon="true"]'
+    );
+    expect(codexIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
+    codex.unmount();
+
+    const claude = renderAgentGUINode({
+      title: "Agent",
+      state: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      }
+    });
+
+    const claudeIcon = claude.container.querySelector<HTMLImageElement>(
+      '[data-agent-gui-window-provider-icon="true"]'
+    );
+    expect(claudeIcon).toHaveAttribute(
+      "src",
+      agentGuiDockIconUrls["claude-code"]
+    );
+  });
+
   it("uses the active conversation as the window title when the rail is collapsed", () => {
     mockViewModel = createViewModel({
       activeConversation: {
@@ -1427,7 +1450,9 @@ describe("AgentGUINode", () => {
     fireEvent.click(getChromeNewConversationButton());
 
     expect(mockCreateConversation).toHaveBeenCalledTimes(1);
-    expect(mockCreateConversation).toHaveBeenCalledWith();
+    expect(mockCreateConversation).toHaveBeenCalledWith({
+      source: "rail_toolbar"
+    });
   });
 
   it("renders a single new-conversation button in the chrome", () => {
@@ -7269,6 +7294,7 @@ function createViewModel(
       lastActiveAgentSessionId: null,
       conversationRailWidthPx: null
     },
+    selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     conversations: [],
     userProjects: [],
     activeConversation: null,

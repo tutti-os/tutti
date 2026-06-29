@@ -251,13 +251,14 @@ func (a agentRuntimeAdapter) Sessions(workspaceID string) []agentservice.Runtime
 
 func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.RuntimeStartInput) (agentservice.RuntimeSession, error) {
 	result, err := a.controller.Start(ctx, agentruntime.StartInput{
-		RoomID:           input.WorkspaceID,
-		AgentSessionID:   input.AgentSessionID,
-		Provider:         input.Provider,
-		CWD:              input.Cwd,
-		Env:              append([]string(nil), input.Env...),
-		Title:            input.Title,
-		PermissionModeID: input.PermissionModeID,
+		RoomID:            input.WorkspaceID,
+		AgentSessionID:    input.AgentSessionID,
+		Provider:          input.Provider,
+		CWD:               input.Cwd,
+		Env:               append([]string(nil), input.Env...),
+		Title:             input.Title,
+		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
+		PermissionModeID:  input.PermissionModeID,
 		Settings: &agentruntime.SessionSettings{
 			Model:            input.Model,
 			ReasoningEffort:  input.ReasoningEffort,
@@ -377,9 +378,28 @@ func cloneRuntimeContext(value map[string]any) map[string]any {
 	}
 	cloned := make(map[string]any, len(value))
 	for key, item := range value {
-		cloned[key] = item
+		cloned[key] = cloneRuntimeContextValue(item)
 	}
 	return cloned
+}
+
+func cloneRuntimeContextValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, item := range typed {
+			out[key] = cloneRuntimeContextValue(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(typed))
+		for index, item := range typed {
+			out[index] = cloneRuntimeContextValue(item)
+		}
+		return out
+	default:
+		return value
+	}
 }
 
 func cloneOptionalBool(value *bool) *bool {

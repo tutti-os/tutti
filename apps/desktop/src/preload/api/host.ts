@@ -164,6 +164,12 @@ export function createHostDesktopApi(): DesktopHostApi {
           input
         );
       },
+      copyImageToClipboard(input): Promise<void> {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.files.copyImageToClipboard,
+          input
+        );
+      },
       copyFilesToClipboard(paths: string[]): Promise<void> {
         return invokeDesktopApi(
           desktopIpcChannels.host.files.copyFilesToClipboard,

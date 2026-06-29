@@ -429,6 +429,7 @@ func TestSQLiteStoreListsWorkspaceGeneratedFiles(t *testing.T) {
 				Kind:      "tool_call",
 				Status:    "completed",
 				Payload: map[string]any{
+					"toolName": "Write",
 					"fileChanges": map[string]any{
 						"files": []any{
 							map[string]any{"path": "report.md"},
@@ -525,6 +526,131 @@ func TestSQLiteStoreListsWorkspaceGeneratedFiles(t *testing.T) {
 	if arrayResult.Files[0].Path != "/workspace/slides/02-why-now.html" ||
 		arrayResult.Files[1].Path != "/workspace/slides/01-cover.html" {
 		t.Fatalf("array files = %#v, want Codex Edit changes array paths", arrayResult.Files)
+	}
+}
+
+func TestSQLiteStoreListWorkspaceGeneratedFilesIgnoresFailedAndReadTools(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-agent-generated-files-failed",
+		Name: "Workspace Agent Generated Files Failed",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:      "ws-agent-generated-files-failed",
+		AgentSessionID:   "session-1",
+		Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:         "codex",
+		Cwd:              "/workspace",
+		Status:           "completed",
+		OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
+		WorkspaceID:    "ws-agent-generated-files-failed",
+		AgentSessionID: "session-1",
+		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Messages: []agentactivitybiz.MessageUpdate{
+			{
+				MessageID: "failed-status",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "failed",
+				Payload: map[string]any{
+					"toolName": "Write",
+					"fileChanges": map[string]any{
+						"files": []any{
+							map[string]any{"path": "failed-status.md"},
+						},
+					},
+				},
+				OccurredAtUnixMS: 110,
+			},
+			{
+				MessageID: "failed-output",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "completed",
+				Payload: map[string]any{
+					"toolName": "Write",
+					"output": map[string]any{
+						"path":    "failed-output.md",
+						"status":  "failed",
+						"success": false,
+					},
+				},
+				OccurredAtUnixMS: 120,
+			},
+			{
+				MessageID: "read-tool",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "completed",
+				Payload: map[string]any{
+					"toolName": "Bash",
+					"fileChanges": map[string]any{
+						"files": []any{
+							map[string]any{"path": "read-filechanges.md"},
+						},
+					},
+					"input": map[string]any{
+						"command":   "nl -ba readme.md",
+						"changes":   map[string]any{"read-input-changes.md": "read"},
+						"file_path": "readme.md",
+					},
+					"output": map[string]any{
+						"status":  "completed",
+						"success": true,
+					},
+				},
+				OccurredAtUnixMS: 130,
+			},
+			{
+				MessageID: "successful-write",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "completed",
+				Payload: map[string]any{
+					"toolName": "Write",
+					"output": map[string]any{
+						"filePath": "ok.md",
+						"status":   "completed",
+						"success":  true,
+					},
+				},
+				OccurredAtUnixMS: 140,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("ReportSessionMessages() error = %v", err)
+	}
+
+	result, ok, err := store.ListWorkspaceGeneratedFiles(ctx, agentactivitybiz.ListWorkspaceGeneratedFilesInput{
+		WorkspaceID: "ws-agent-generated-files-failed",
+		SessionCwd:  "/workspace",
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListWorkspaceGeneratedFiles() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("ListWorkspaceGeneratedFiles() ok = false, want true")
+	}
+	if len(result.Files) != 1 {
+		t.Fatalf("len(files) = %d, want 1: %#v", len(result.Files), result.Files)
+	}
+	if result.Files[0].Path != "/workspace/ok.md" {
+		t.Fatalf("file path = %q, want /workspace/ok.md", result.Files[0].Path)
 	}
 }
 

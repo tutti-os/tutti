@@ -49,6 +49,7 @@ export type {
   AgentActivityComposerSettings,
   AgentActivityComposerSkillOption,
   AgentActivityCreateSessionInput,
+  AgentActivityProviderTargetRef,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
   AgentActivityCompletedCommand,

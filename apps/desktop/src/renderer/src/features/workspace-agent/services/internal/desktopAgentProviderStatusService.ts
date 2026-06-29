@@ -5,6 +5,7 @@ import type {
   TuttidClient,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
+import type { DesktopRuntimeApi } from "@preload/types";
 import { AgentProviderLoginInitiatedReporter } from "../../../analytics/reporters/agent-provider-login-initiated/agentProviderLoginInitiatedReporter.ts";
 import { AgentProviderLoginResultReporter } from "../../../analytics/reporters/agent-provider-login-result/agentProviderLoginResultReporter.ts";
 import { AgentProviderReadyReporter } from "../../../analytics/reporters/agent-provider-ready/agentProviderReadyReporter.ts";
@@ -44,6 +45,7 @@ export interface DesktopAgentProviderStatusServiceDependencies {
   reporterService?: Pick<IReporterService, "trackEvents">;
   diagnosticsConsentStore?: DiagnosticsConsentStore;
   requestTimeoutMs?: number;
+  runtimeApi?: Pick<DesktopRuntimeApi, "logRendererDiagnostic">;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
 }
 
@@ -67,6 +69,7 @@ type AgentProviderStatusPollTimer = number | { unref?: () => void };
 const defaultRequestTimeoutMs = 15_000;
 const defaultLoginStatusPollDurationMs = 3 * 60 * 1000;
 const defaultLoginStatusPollIntervalMs = 5_000;
+const pendingInstallStatusPollIntervalMs = 1_000;
 
 const defaultLoginStatusPollScheduler: AgentProviderStatusPollScheduler = {
   clearTimeout: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
@@ -93,6 +96,10 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   private readonly loginStatusPolls = new Map<
     WorkspaceAgentProvider,
     { deadlineMs: number; timer: AgentProviderStatusPollTimer | null }
+  >();
+  private readonly pendingActionStatusPolls = new Map<
+    string,
+    AgentProviderStatusPollTimer
   >();
   private requestSequence = 0;
   private readonly listeners = new Set<() => void>();
@@ -148,6 +155,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   async ensureLoaded(
     input: {
       providers?: WorkspaceAgentProvider[];
+      includeNetwork?: boolean;
     } = {}
   ): Promise<AgentProviderStatusListResponse | null> {
     if (this.hasLoadedProviderSnapshot(input.providers)) {
@@ -167,6 +175,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   private async requestStatuses(
     input: {
       providers?: WorkspaceAgentProvider[];
+      includeNetwork?: boolean;
     } = {}
   ): Promise<AgentProviderStatusListResponse | null> {
     if (this.inflightRequest) {
@@ -201,6 +210,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
             pendingActions: this.snapshot.pendingActions,
             statuses: reconciledStatuses
           });
+          this.logActiveActionSnapshotDiagnostics(reconciledStatuses);
           // Report provider_ready before reportCompletedLoginResults so the
           // pendingLoginResults set is still populated when we classify how a
           // provider became ready (login vs. already-ready vs. external).
@@ -324,11 +334,17 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     }
   }
 
-  async refresh(providers?: WorkspaceAgentProvider[]): Promise<void> {
+  async refresh(
+    providers?: WorkspaceAgentProvider[],
+    options?: { includeNetwork?: boolean }
+  ): Promise<void> {
     if (this.inflightRequest) {
       await this.inflightRequest;
     }
-    await this.requestStatuses({ providers });
+    await this.requestStatuses({
+      providers,
+      includeNetwork: options?.includeNetwork
+    });
   }
 
   subscribe(listener: () => void): () => void {
@@ -401,7 +417,10 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       const previous = previousByProvider.get(status.provider);
       nextByProvider.set(
         status.provider,
-        this.stabilizeProviderStatus(previous, status)
+        this.preserveNetwork(
+          previous,
+          this.stabilizeProviderStatus(previous, status)
+        )
       );
     }
 
@@ -421,6 +440,23 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       }
     }
     return merged;
+  }
+
+  /**
+   * Network reachability is now fetched on-demand (only the wizard requests it),
+   * so a local-only poll (dock / visibility / install / login) returns a status
+   * with no `network`. Carry the last-known network forward so those polls don't
+   * wipe the diagnostic the wizard fetched; a later with-network response replaces
+   * it.
+   */
+  private preserveNetwork(
+    previous: AgentProviderStatus | undefined,
+    next: AgentProviderStatus
+  ): AgentProviderStatus {
+    if (next.network || !previous?.network) {
+      return next;
+    }
+    return { ...next, network: previous.network };
   }
 
   private stabilizeProviderStatus(
@@ -444,10 +480,15 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     if (this.isActionPending(provider, actionId)) {
       return;
     }
+    this.logRendererDiagnostic("agent_provider_status.pending_action_added", {
+      actionId,
+      provider
+    });
     this.setSnapshot({
       ...this.snapshot,
       pendingActions: [...this.snapshot.pendingActions, { actionId, provider }]
     });
+    this.startPendingActionStatusPolling(provider, actionId);
   }
 
   private removePendingAction(
@@ -460,6 +501,11 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     if (pendingActions.length === this.snapshot.pendingActions.length) {
       return;
     }
+    this.logRendererDiagnostic("agent_provider_status.pending_action_removed", {
+      actionId,
+      provider
+    });
+    this.stopPendingActionStatusPolling(provider, actionId);
     this.setSnapshot({
       ...this.snapshot,
       pendingActions
@@ -556,6 +602,59 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       this.dependencies.loginStatusPollScheduler ??
       defaultLoginStatusPollScheduler
     );
+  }
+
+  private startPendingActionStatusPolling(
+    provider: WorkspaceAgentProvider,
+    actionId: string
+  ): void {
+    if (actionId !== "install") {
+      return;
+    }
+    this.schedulePendingActionStatusPoll(provider, actionId);
+  }
+
+  private schedulePendingActionStatusPoll(
+    provider: WorkspaceAgentProvider,
+    actionId: string
+  ): void {
+    if (!this.isActionPending(provider, actionId)) {
+      return;
+    }
+    const key = pendingActionKey(provider, actionId);
+    if (this.pendingActionStatusPolls.has(key)) {
+      return;
+    }
+    const timer = this.loginStatusPollScheduler.setTimeout(() => {
+      this.pendingActionStatusPolls.delete(key);
+      void this.runPendingActionStatusPoll(provider, actionId);
+    }, pendingInstallStatusPollIntervalMs);
+    this.pendingActionStatusPolls.set(key, timer);
+    unrefPollTimer(timer);
+  }
+
+  private async runPendingActionStatusPoll(
+    provider: WorkspaceAgentProvider,
+    actionId: string
+  ): Promise<void> {
+    if (!this.isActionPending(provider, actionId)) {
+      return;
+    }
+    await this.refresh([provider]);
+    this.schedulePendingActionStatusPoll(provider, actionId);
+  }
+
+  private stopPendingActionStatusPolling(
+    provider: WorkspaceAgentProvider,
+    actionId: string
+  ): void {
+    const key = pendingActionKey(provider, actionId);
+    const timer = this.pendingActionStatusPolls.get(key);
+    if (timer === undefined) {
+      return;
+    }
+    this.loginStatusPollScheduler.clearTimeout(timer);
+    this.pendingActionStatusPolls.delete(key);
   }
 
   private async reportCompletedLoginResults(
@@ -732,6 +831,64 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       // Analytics must not block agent provider actions.
     }
   }
+
+  private logActiveActionSnapshotDiagnostics(
+    statuses: readonly AgentProviderStatus[]
+  ): void {
+    for (const status of statuses) {
+      const activeAction = status.activeAction ?? null;
+      const installPending = this.isActionPending(status.provider, "install");
+      if (!activeAction && !installPending) {
+        continue;
+      }
+      const log = activeAction?.log ?? [];
+      this.logRendererDiagnostic(
+        "agent_provider_status.active_action_snapshot",
+        {
+          activeActionPresent: activeAction !== null,
+          availability: status.availability.status,
+          installPending,
+          latestLogPresent: latestProviderStatusLogLine(log) !== null,
+          logLines: log.length,
+          phase: activeAction?.phase ?? null,
+          provider: status.provider,
+          reasonCode: status.availability.reasonCode ?? null,
+          registryPresent: Boolean(activeAction?.registry)
+        }
+      );
+    }
+  }
+
+  private logRendererDiagnostic(
+    event: string,
+    details: Record<string, unknown>
+  ): void {
+    void this.dependencies.runtimeApi
+      ?.logRendererDiagnostic({
+        details,
+        event,
+        level: "info",
+        source: "agent-provider-status"
+      })
+      .catch(() => {});
+  }
+}
+
+function latestProviderStatusLogLine(log: readonly string[]): string | null {
+  for (let index = log.length - 1; index >= 0; index -= 1) {
+    const line = log[index]?.trim();
+    if (line) {
+      return line;
+    }
+  }
+  return null;
+}
+
+function pendingActionKey(
+  provider: WorkspaceAgentProvider,
+  actionId: string
+): string {
+  return `${provider}:${actionId}`;
 }
 
 function createOptionalReporterService(

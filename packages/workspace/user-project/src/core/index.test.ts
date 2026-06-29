@@ -272,3 +272,45 @@ test("prepareWorkspaceUserProjectSelection preserves explicit no-project default
     }
   );
 });
+
+test("prepareWorkspaceUserProjectSelection treats no-project paths as present roots", async () => {
+  const projects = [
+    {
+      id: "project-alpha",
+      label: "Alpha",
+      path: "/workspace/alpha"
+    }
+  ];
+  let checkPathCalls = 0;
+
+  assert.deepEqual(
+    await prepareWorkspaceUserProjectSelection(
+      {
+        async checkPath() {
+          checkPathCalls += 1;
+          return {
+            exists: false,
+            isDirectory: false,
+            path: "/workspace/workspace-1"
+          };
+        },
+        isNoProjectPath({ path }) {
+          return path === "/workspace" || path === "/workspace/workspace-1";
+        },
+        async list() {
+          return { projects };
+        }
+      },
+      {
+        projectLocked: true,
+        selectedPath: "/workspace/workspace-1"
+      }
+    ),
+    {
+      isSelectedPathMissing: false,
+      projects,
+      selection: { kind: "none" }
+    }
+  );
+  assert.equal(checkPathCalls, 0);
+});

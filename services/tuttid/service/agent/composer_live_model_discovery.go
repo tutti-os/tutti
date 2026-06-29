@@ -407,10 +407,17 @@ func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOpt
 		if label == "" {
 			label = value
 		}
-		result = append(result, map[string]string{
+		entry := map[string]string{
 			"name":  label,
 			"value": value,
-		})
+		}
+		// Carry the per-model description through to RuntimeContext. The desktop
+		// composer projection prefers this live model list over ModelConfig.Options,
+		// so dropping the description here removes the model hover detail.
+		if description := strings.TrimSpace(option.Description); description != "" {
+			entry["description"] = description
+		}
+		result = append(result, entry)
 	}
 	return result
 }

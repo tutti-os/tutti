@@ -180,6 +180,9 @@ function createFileManagerServiceStub(
     getSnapshotState() {
       return snapshotState;
     },
+    async openCanvasFilePreview() {
+      return false;
+    },
     async resolveEntryIconUrl() {
       return null;
     },

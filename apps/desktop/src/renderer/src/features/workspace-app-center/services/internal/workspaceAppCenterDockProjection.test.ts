@@ -35,6 +35,7 @@ test("projectWorkspaceAppCenterDockState maps runtime status to dock state", () 
   assert.deepEqual(
     projectWorkspaceAppCenterDockState("installed_pending_restart", null),
     {
+      clickBehavior: "launch",
       launchEnabled: true,
       state: { kind: "enabled" }
     }

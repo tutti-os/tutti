@@ -85,14 +85,17 @@ export async function prepareWorkspaceUserProjectSelection(
   const response = await api.list();
   const projects = response.projects;
   const selectedPath = input.selectedPath?.trim() ?? "";
+  const isSelectedPathNoProject =
+    selectedPath && api.isNoProjectPath?.({ path: selectedPath }) === true;
   const isSelectedPathMissing =
-    input.projectLocked && selectedPath
+    input.projectLocked && selectedPath && !isSelectedPathNoProject
       ? await checkWorkspaceUserProjectPathMissing(api, selectedPath)
       : false;
 
   if (
     !input.projectLocked &&
     selectedPath &&
+    !isSelectedPathNoProject &&
     !projects.some((project) => project.path === selectedPath)
   ) {
     await api.rememberDefaultSelection?.({ path: null });

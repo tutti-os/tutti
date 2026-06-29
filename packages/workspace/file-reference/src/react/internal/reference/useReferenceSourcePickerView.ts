@@ -16,7 +16,9 @@ import {
 } from "../../../core/index.ts";
 import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAggregator.ts";
 import {
+  resolveWorkspaceFileOpenWithCacheKey,
   sortWorkspaceFileEntriesForArrangeMode,
+  WorkspaceFileOpenWithApplicationsCache,
   type WorkspaceFileEntry,
   type WorkspaceFileManagerArrangeMode
 } from "@tutti-os/workspace-file-manager/services";
@@ -32,6 +34,16 @@ import {
 export type { WorkspaceFileManagerArrangeMode };
 
 export { WORKSPACE_ROOT_GROUP_NODE_ID } from "../../../core/index.ts";
+
+function referenceNodeToOpenWithCacheEntry(
+  node: ReferenceNode
+): Pick<WorkspaceFileEntry, "kind" | "name" | "path"> {
+  return {
+    kind: node.kind === "folder" ? "directory" : "file",
+    name: node.displayName,
+    path: node.displayName
+  };
+}
 
 /**
  * 焦点节点的预览态(node-keyed)。复用 file-manager / file-preview 的分类逻辑
@@ -148,6 +160,9 @@ export function useReferenceSourcePickerView({
   const [focusedNode, setFocusedNode] = useState<ReferenceNode | null>(null);
   const [arrangeMode, setArrangeMode] =
     useState<WorkspaceFileManagerArrangeMode>("none");
+  const openWithApplicationsCache = useRef(
+    new WorkspaceFileOpenWithApplicationsCache()
+  );
 
   // 复用 file-manager 的排序能力:把 ReferenceNode 映射成 WorkspaceFileEntry 排序后映射回。
   const sortNodes = useCallback(
@@ -558,6 +573,21 @@ export function useReferenceSourcePickerView({
 
   // app/issue 源的文件夹引用需异步递归枚举展开,故 confirm 异步;期间置 isConfirming 防重复提交。
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isOpeningReference, setIsOpeningReference] = useState(false);
+  const runReferenceAction = useCallback(
+    async (action: () => Promise<void>): Promise<void> => {
+      if (isOpeningReference) {
+        return;
+      }
+      setIsOpeningReference(true);
+      try {
+        await action();
+      } finally {
+        setIsOpeningReference(false);
+      }
+    },
+    [isOpeningReference]
+  );
   const confirm = useCallback(async () => {
     if (isConfirming) {
       return;
@@ -822,6 +852,39 @@ export function useReferenceSourcePickerView({
       isQuery ? controller.loadMoreSearch() : controller.loadMore(currentNode),
     isSelectable,
     isSelected,
+    isOpeningReference,
+    getCachedOpenWithApplications: (node: ReferenceNode) =>
+      openWithApplicationsCache.current.get(
+        resolveWorkspaceFileOpenWithCacheKey(
+          referenceNodeToOpenWithCacheEntry(node)
+        )
+      ),
+    listOpenWithApplications: (node: ReferenceNode) =>
+      openWithApplicationsCache.current.resolve(
+        resolveWorkspaceFileOpenWithCacheKey(
+          referenceNodeToOpenWithCacheEntry(node)
+        ),
+        () => aggregator.listOpenWithApplications(scope, node)
+      ),
+    openNode: (node: ReferenceNode) =>
+      runReferenceAction(() => aggregator.open(scope, node)),
+    openWithApplication: (node: ReferenceNode, applicationPath: string) =>
+      runReferenceAction(() =>
+        aggregator.openWithApplication(scope, node, applicationPath)
+      ),
+    openWithOtherApplication: (
+      node: ReferenceNode,
+      applicationPickerPrompt?: string
+    ) =>
+      runReferenceAction(() =>
+        aggregator.openWithOtherApplication(
+          scope,
+          node,
+          applicationPickerPrompt
+        )
+      ),
+    revealNode: (node: ReferenceNode) =>
+      runReferenceAction(() => aggregator.reveal(scope, node)),
     confirm,
     isConfirming
   };

@@ -1,4 +1,5 @@
-import { memo, useMemo } from "react";
+import { Fragment, memo, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   selectFocusedWorkbenchNode,
   selectWorkbenchNodeZIndex,
@@ -12,6 +13,8 @@ import type {
   WorkbenchRenderWindowActions,
   WorkbenchRenderWindowHeader,
   WorkbenchResolveFullscreenHeaderMode,
+  WorkbenchResolveWindowSurfaceLayer,
+  WorkbenchResolveWindowZIndex,
   WorkbenchResolveWindowChromeMode,
   WorkbenchWindowChromeMode
 } from "./types.ts";
@@ -33,6 +36,8 @@ export interface WorkbenchNodeLayerProps<TData = unknown> {
   renderWindowActions?: WorkbenchRenderWindowActions<TData>;
   renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
   resolveFullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
+  resolveWindowSurfaceLayer?: WorkbenchResolveWindowSurfaceLayer<TData>;
+  resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
   windowChromeMode?:
     | WorkbenchWindowChromeMode
     | WorkbenchResolveWindowChromeMode<TData>;
@@ -49,6 +54,8 @@ export function WorkbenchNodeLayer<TData>({
   renderWindowActions,
   renderWindowHeader,
   resolveFullscreenHeaderMode,
+  resolveWindowSurfaceLayer,
+  resolveWindowZIndex,
   windowChromeMode,
   windowChromeI18n
 }: WorkbenchNodeLayerProps<TData>) {
@@ -60,22 +67,141 @@ export function WorkbenchNodeLayer<TData>({
   const nodeIDs = useWorkbenchSelector<TData, readonly string[]>(
     selectRenderedNodeIDs
   );
+  const { defaultNodeIDs, dialogPopoverNodeIDs } = useWorkbenchSelector<
+    TData,
+    {
+      defaultNodeIDs: readonly string[];
+      dialogPopoverNodeIDs: readonly string[];
+    }
+  >((state) => {
+    if (
+      !resolveWindowSurfaceLayer ||
+      presentation?.mode === "mission-control"
+    ) {
+      return {
+        defaultNodeIDs: nodeIDs,
+        dialogPopoverNodeIDs: [] as string[]
+      };
+    }
+
+    const nodeByID = new Map(state.nodes.map((node) => [node.id, node]));
+    const nextDefaultNodeIDs: string[] = [];
+    const nextDialogPopoverNodeIDs: string[] = [];
+
+    for (const nodeID of nodeIDs) {
+      const node = nodeByID.get(nodeID);
+      if (node && resolveWindowSurfaceLayer({ node }) === "dialog-popover") {
+        nextDialogPopoverNodeIDs.push(nodeID);
+      } else {
+        nextDefaultNodeIDs.push(nodeID);
+      }
+    }
+
+    return {
+      defaultNodeIDs: nextDefaultNodeIDs,
+      dialogPopoverNodeIDs: nextDialogPopoverNodeIDs
+    };
+  });
   const snapPreviewRect = useWorkbenchSelector(selectWorkbenchSnapPreviewRect);
   const presentationInteraction =
     interactive && presentation?.mode === "mission-control"
       ? (presentation.interaction ?? null)
       : null;
+  const dialogPopoverLayer =
+    dialogPopoverNodeIDs.length > 0 ? (
+      <WorkbenchNodeLayerGroup
+        className="workbench-node-layer workbench-node-layer--dialog-popover"
+        edgeSnapEnabled={edgeSnapEnabled}
+        fullscreenHeaderMode={resolveFullscreenHeaderMode}
+        genie={genie}
+        interactive={interactive}
+        nodeIDs={dialogPopoverNodeIDs}
+        presentation={presentation}
+        renderNode={renderNode}
+        renderWindowActions={renderWindowActions}
+        renderWindowHeader={renderWindowHeader}
+        resolveWindowZIndex={resolveWindowZIndex}
+        windowChromeI18n={windowChromeI18n}
+        windowChromeMode={windowChromeMode}
+      />
+    ) : null;
 
   return (
+    <Fragment>
+      <WorkbenchNodeLayerGroup
+        className="workbench-node-layer"
+        edgeSnapEnabled={edgeSnapEnabled}
+        fullscreenHeaderMode={resolveFullscreenHeaderMode}
+        genie={genie}
+        interactive={interactive}
+        nodeIDs={defaultNodeIDs}
+        onBackdropPress={presentationInteraction?.onBackdropPress}
+        presentation={presentation}
+        renderNode={renderNode}
+        renderWindowActions={renderWindowActions}
+        renderWindowHeader={renderWindowHeader}
+        resolveWindowZIndex={resolveWindowZIndex}
+        snapPreviewRect={snapPreviewRect}
+        windowChromeI18n={windowChromeI18n}
+        windowChromeMode={windowChromeMode}
+      />
+      {typeof document === "undefined"
+        ? dialogPopoverLayer
+        : dialogPopoverLayer
+          ? createPortal(dialogPopoverLayer, document.body)
+          : null}
+    </Fragment>
+  );
+}
+
+interface WorkbenchNodeLayerGroupProps<TData = unknown> {
+  className: string;
+  edgeSnapEnabled: boolean;
+  fullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
+  genie: WorkbenchGenieController<TData>;
+  interactive: boolean;
+  nodeIDs: readonly string[];
+  onBackdropPress?: () => void;
+  presentation?: WorkbenchSurfacePresentation | null;
+  renderNode: WorkbenchRenderNode<TData>;
+  renderWindowActions?: WorkbenchRenderWindowActions<TData>;
+  renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
+  resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
+  snapPreviewRect?: ReturnType<typeof selectWorkbenchSnapPreviewRect>;
+  windowChromeMode?:
+    | WorkbenchWindowChromeMode
+    | WorkbenchResolveWindowChromeMode<TData>;
+  windowChromeI18n?: WorkbenchWindowChromeI18nRuntime;
+}
+
+function WorkbenchNodeLayerGroup<TData>({
+  className,
+  edgeSnapEnabled,
+  fullscreenHeaderMode,
+  genie,
+  interactive,
+  nodeIDs,
+  onBackdropPress,
+  presentation,
+  renderNode,
+  renderWindowActions,
+  renderWindowHeader,
+  resolveWindowZIndex,
+  snapPreviewRect,
+  windowChromeI18n,
+  windowChromeMode
+}: WorkbenchNodeLayerGroupProps<TData>) {
+  return (
     <div
-      className="workbench-node-layer"
+      className={className}
+      data-workbench-interactive={interactive ? "true" : "false"}
       onClick={
-        presentationInteraction
+        onBackdropPress
           ? (event) => {
               if (event.target !== event.currentTarget) {
                 return;
               }
-              presentationInteraction.onBackdropPress();
+              onBackdropPress();
             }
           : undefined
       }
@@ -94,7 +220,7 @@ export function WorkbenchNodeLayer<TData>({
       {nodeIDs.map((nodeID) => (
         <MemoizedWorkbenchNodeLayerItem
           key={nodeID}
-          fullscreenHeaderMode={resolveFullscreenHeaderMode}
+          fullscreenHeaderMode={fullscreenHeaderMode}
           genie={genie}
           edgeSnapEnabled={edgeSnapEnabled}
           interactive={interactive}
@@ -103,6 +229,7 @@ export function WorkbenchNodeLayer<TData>({
           renderNode={renderNode}
           renderWindowActions={renderWindowActions}
           renderWindowHeader={renderWindowHeader}
+          resolveWindowZIndex={resolveWindowZIndex}
           windowChromeI18n={windowChromeI18n}
           windowChromeMode={windowChromeMode}
         />
@@ -121,6 +248,7 @@ interface WorkbenchNodeLayerItemProps<TData = unknown> {
   renderNode: WorkbenchRenderNode<TData>;
   renderWindowActions?: WorkbenchRenderWindowActions<TData>;
   renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
+  resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
   windowChromeMode?:
     | WorkbenchWindowChromeMode
     | WorkbenchResolveWindowChromeMode<TData>;
@@ -137,6 +265,7 @@ function WorkbenchNodeLayerItem<TData>({
   renderNode,
   renderWindowActions,
   renderWindowHeader,
+  resolveWindowZIndex,
   windowChromeI18n,
   windowChromeMode
 }: WorkbenchNodeLayerItemProps<TData>) {
@@ -163,6 +292,7 @@ function WorkbenchNodeLayerItem<TData>({
       presentation={presentation}
       node={node}
       genie={genie}
+      resolveWindowZIndex={resolveWindowZIndex}
       fullscreenHeaderMode={fullscreenHeaderMode?.({
         controller,
         node

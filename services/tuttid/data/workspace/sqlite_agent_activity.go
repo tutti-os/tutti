@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -448,6 +449,17 @@ LIMIT ?
 		return agentactivitybiz.MessagePage{}, false, fmt.Errorf("unsupported workspace agent message order: %s", order)
 	}
 	if err != nil {
+		slog.Warn("workspace agent messages query failed",
+			"event", "workspace.agent_session.messages.sqlite.query_failed",
+			"workspace_id", workspaceID,
+			"agent_session_id", agentSessionID,
+			"after_version", input.AfterVersion,
+			"before_version", input.BeforeVersion,
+			"order", order,
+			"limit", input.Limit,
+			"query_limit", queryLimit,
+			"error", err,
+		)
 		return agentactivitybiz.MessagePage{}, false, fmt.Errorf("list workspace agent messages: %w", err)
 	}
 	defer rows.Close()
@@ -456,11 +468,35 @@ LIMIT ?
 	for rows.Next() {
 		message, err := scanAgentMessage(rows)
 		if err != nil {
+			slog.Warn("workspace agent message row scan failed",
+				"event", "workspace.agent_session.messages.sqlite.scan_failed",
+				"workspace_id", workspaceID,
+				"agent_session_id", agentSessionID,
+				"after_version", input.AfterVersion,
+				"before_version", input.BeforeVersion,
+				"order", order,
+				"limit", input.Limit,
+				"query_limit", queryLimit,
+				"scanned_message_count", len(messages),
+				"error", err,
+			)
 			return agentactivitybiz.MessagePage{}, false, err
 		}
 		messages = append(messages, message)
 	}
 	if err := rows.Err(); err != nil {
+		slog.Warn("workspace agent messages row iteration failed",
+			"event", "workspace.agent_session.messages.sqlite.iterate_failed",
+			"workspace_id", workspaceID,
+			"agent_session_id", agentSessionID,
+			"after_version", input.AfterVersion,
+			"before_version", input.BeforeVersion,
+			"order", order,
+			"limit", input.Limit,
+			"query_limit", queryLimit,
+			"scanned_message_count", len(messages),
+			"error", err,
+		)
 		return agentactivitybiz.MessagePage{}, false, fmt.Errorf("iterate workspace agent messages: %w", err)
 	}
 	hasMore := false

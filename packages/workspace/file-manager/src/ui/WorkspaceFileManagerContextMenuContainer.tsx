@@ -88,6 +88,7 @@ export function WorkspaceFileManagerContextMenuContainer({
       contextMenu={view.contextMenu}
       contextMenuRef={contextMenuRef}
       showCopyAction={view.showCopyAction}
+      showCopyPathAction={true}
       showCreateAction={view.showCreateAction}
       showDeleteAction={view.showDeleteAction}
       showImportAction={view.showImportAction}

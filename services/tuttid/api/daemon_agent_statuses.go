@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
@@ -28,7 +30,8 @@ func (api DaemonAPI) GetAgentProviderStatuses(ctx context.Context, request tutti
 	}
 
 	snapshot, err := api.AgentStatusService.List(ctx, agentstatusservice.ListInput{
-		Providers: generatedAgentStatusProviders(request.Params.Providers),
+		Providers:      generatedAgentStatusProviders(request.Params.Providers),
+		IncludeNetwork: request.Params.IncludeNetwork != nil && *request.Params.IncludeNetwork,
 	})
 	if err != nil {
 		return writeGetAgentProviderStatusesError(err), nil
@@ -232,6 +235,7 @@ func generatedAgentProviderStatuses(statuses []agentstatusservice.ProviderStatus
 
 func generatedAgentProviderStatus(status agentstatusservice.ProviderStatus) tuttigenerated.AgentProviderStatus {
 	return tuttigenerated.AgentProviderStatus{
+		ActiveAction: generatedAgentProviderActiveAction(status.Provider, status.ActiveAction),
 		Actions:      generatedAgentProviderActions(status.Actions),
 		Adapter:      generatedAgentProviderAdapterStatus(status.Adapter),
 		Auth:         generatedAgentProviderAuthInfo(status.Auth),
@@ -240,6 +244,54 @@ func generatedAgentProviderStatus(status agentstatusservice.ProviderStatus) tutt
 		Network:      generatedAgentProviderNetworkStatus(status.Network),
 		Provider:     tuttigenerated.WorkspaceAgentProvider(status.Provider),
 	}
+}
+
+func generatedAgentProviderActiveAction(provider string, action *agentstatusservice.ActiveAction) *tuttigenerated.AgentProviderActiveAction {
+	if action == nil {
+		return nil
+	}
+	logLines := activeActionLog(action.Stdout)
+	phase := activeActionPhase(action.Step)
+	slog.Info(
+		"agent provider API mapped active action",
+		"event", "tutti.agent_provider.api.active_action_mapped",
+		"provider", provider,
+		"phase", phase,
+		"step", action.Step,
+		"registryPresent", strings.TrimSpace(action.Registry) != "",
+		"logLines", len(logLines),
+	)
+	return &tuttigenerated.AgentProviderActiveAction{
+		Error:    nil,
+		Log:      logLines,
+		Phase:    phase,
+		Registry: stringPointerIfNotBlank(action.Registry),
+		Steps:    []tuttigenerated.AgentProviderActiveActionStep{},
+	}
+}
+
+func activeActionPhase(step string) tuttigenerated.AgentProviderActiveActionPhase {
+	switch strings.TrimSpace(step) {
+	case "verify":
+		return tuttigenerated.AgentProviderActiveActionPhaseVerify
+	default:
+		return tuttigenerated.AgentProviderActiveActionPhaseInstall
+	}
+}
+
+func activeActionLog(output string) []string {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return []string{}
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func generatedAgentProviderNetworkStatus(network *agentstatusservice.NetworkStatus) *tuttigenerated.AgentProviderNetworkStatus {
@@ -291,15 +343,18 @@ func generatedAgentProviderCLIStatus(status agentstatusservice.CLIStatus) tuttig
 
 func generatedAgentProviderAdapterStatus(status agentstatusservice.AdapterStatus) tuttigenerated.AgentProviderAdapterStatus {
 	return tuttigenerated.AgentProviderAdapterStatus{
-		BinaryPath: stringPointerIfNotBlank(status.BinaryPath),
-		Command:    cloneGeneratedStrings(status.Command),
-		Installed:  status.Installed,
+		BinaryPath:      stringPointerIfNotBlank(status.BinaryPath),
+		Command:         cloneGeneratedStrings(status.Command),
+		Installed:       status.Installed,
+		Version:         stringPointerIfNotBlank(status.Version),
+		RequiredVersion: stringPointerIfNotBlank(status.RequiredVersion),
 	}
 }
 
 func generatedAgentProviderAuthInfo(auth agentstatusservice.AuthInfo) tuttigenerated.AgentProviderAuthInfo {
 	return tuttigenerated.AgentProviderAuthInfo{
 		AccountLabel: stringPointerIfNotBlank(auth.AccountLabel),
+		AuthMethod:   stringPointerIfNotBlank(auth.AuthMethod),
 		Status:       tuttigenerated.AgentProviderAuthStatus(auth.Status),
 	}
 }

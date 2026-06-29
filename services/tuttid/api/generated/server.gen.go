@@ -163,6 +163,9 @@ type ServerInterface interface {
 	// Retry validation for one App Factory draft
 	// (POST /v1/workspaces/{workspaceID}/app-factory/jobs/{jobID}/retry-validation)
 	RetryWorkspaceAppFactoryJobValidation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, jobID WorkspaceAppFactoryJobID)
+	// Get App Factory provider composer options
+	// (POST /v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options)
+	GetWorkspaceAppFactoryProviderComposerOptions(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, provider WorkspaceAgentProvider)
 	// List app catalog and installation state for one workspace
 	// (GET /v1/workspaces/{workspaceID}/apps)
 	ListWorkspaceApps(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
@@ -420,6 +423,19 @@ func (siw *ServerInterfaceWrapper) GetAgentProviderStatuses(w http.ResponseWrite
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "providers"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providers", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeNetwork" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeNetwork", r.URL.Query(), &params.IncludeNetwork, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeNetwork"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeNetwork", Err: err})
 		}
 		return
 	}
@@ -2147,6 +2163,47 @@ func (siw *ServerInterfaceWrapper) RetryWorkspaceAppFactoryJobValidation(w http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RetryWorkspaceAppFactoryJobValidation(w, r, workspaceID, jobID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkspaceAppFactoryProviderComposerOptions operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkspaceAppFactoryProviderComposerOptions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider" -------------
+	var provider WorkspaceAgentProvider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", r.PathValue("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkspaceAppFactoryProviderComposerOptions(w, r, workspaceID, provider)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5593,6 +5650,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/app-factory/jobs/{jobID}/prepare-modification", wrapper.PrepareWorkspaceAppFactoryJobModification)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/app-factory/jobs/{jobID}/publish", wrapper.PublishWorkspaceAppFactoryJob)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/app-factory/jobs/{jobID}/retry-validation", wrapper.RetryWorkspaceAppFactoryJobValidation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options", wrapper.GetWorkspaceAppFactoryProviderComposerOptions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps", wrapper.ListWorkspaceApps)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/catalog/refresh", wrapper.RefreshWorkspaceAppCatalog)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/import", wrapper.ImportWorkspaceApp)
@@ -10799,6 +10857,124 @@ type RetryWorkspaceAppFactoryJobValidation503JSONResponse struct {
 }
 
 func (response RetryWorkspaceAppFactoryJobValidation503JSONResponse) VisitRetryWorkspaceAppFactoryJobValidationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppFactoryProviderComposerOptionsRequestObject struct {
+	WorkspaceID WorkspaceID            `json:"workspaceID"`
+	Provider    WorkspaceAgentProvider `json:"provider"`
+	Body        *GetWorkspaceAppFactoryProviderComposerOptionsJSONRequestBody
+}
+
+type GetWorkspaceAppFactoryProviderComposerOptionsResponseObject interface {
+	VisitGetWorkspaceAppFactoryProviderComposerOptionsResponse(w http.ResponseWriter) error
+}
+
+type GetWorkspaceAppFactoryProviderComposerOptions200JSONResponse AgentProviderComposerOptionsResponse
+
+func (response GetWorkspaceAppFactoryProviderComposerOptions200JSONResponse) VisitGetWorkspaceAppFactoryProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppFactoryProviderComposerOptions400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetWorkspaceAppFactoryProviderComposerOptions400JSONResponse) VisitGetWorkspaceAppFactoryProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppFactoryProviderComposerOptions401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetWorkspaceAppFactoryProviderComposerOptions401JSONResponse) VisitGetWorkspaceAppFactoryProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppFactoryProviderComposerOptions404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response GetWorkspaceAppFactoryProviderComposerOptions404JSONResponse) VisitGetWorkspaceAppFactoryProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppFactoryProviderComposerOptions405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetWorkspaceAppFactoryProviderComposerOptions405JSONResponse) VisitGetWorkspaceAppFactoryProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppFactoryProviderComposerOptions502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetWorkspaceAppFactoryProviderComposerOptions502JSONResponse) VisitGetWorkspaceAppFactoryProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppFactoryProviderComposerOptions503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetWorkspaceAppFactoryProviderComposerOptions503JSONResponse) VisitGetWorkspaceAppFactoryProviderComposerOptionsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -19756,6 +19932,9 @@ type StrictServerInterface interface {
 	// Retry validation for one App Factory draft
 	// (POST /v1/workspaces/{workspaceID}/app-factory/jobs/{jobID}/retry-validation)
 	RetryWorkspaceAppFactoryJobValidation(ctx context.Context, request RetryWorkspaceAppFactoryJobValidationRequestObject) (RetryWorkspaceAppFactoryJobValidationResponseObject, error)
+	// Get App Factory provider composer options
+	// (POST /v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options)
+	GetWorkspaceAppFactoryProviderComposerOptions(ctx context.Context, request GetWorkspaceAppFactoryProviderComposerOptionsRequestObject) (GetWorkspaceAppFactoryProviderComposerOptionsResponseObject, error)
 	// List app catalog and installation state for one workspace
 	// (GET /v1/workspaces/{workspaceID}/apps)
 	ListWorkspaceApps(ctx context.Context, request ListWorkspaceAppsRequestObject) (ListWorkspaceAppsResponseObject, error)
@@ -21427,6 +21606,45 @@ func (sh *strictHandler) RetryWorkspaceAppFactoryJobValidation(w http.ResponseWr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RetryWorkspaceAppFactoryJobValidationResponseObject); ok {
 		if err := validResponse.VisitRetryWorkspaceAppFactoryJobValidationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkspaceAppFactoryProviderComposerOptions operation middleware
+func (sh *strictHandler) GetWorkspaceAppFactoryProviderComposerOptions(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, provider WorkspaceAgentProvider) {
+	var request GetWorkspaceAppFactoryProviderComposerOptionsRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.Provider = provider
+
+	var body GetWorkspaceAppFactoryProviderComposerOptionsJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkspaceAppFactoryProviderComposerOptions(ctx, request.(GetWorkspaceAppFactoryProviderComposerOptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkspaceAppFactoryProviderComposerOptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkspaceAppFactoryProviderComposerOptionsResponseObject); ok {
+		if err := validResponse.VisitGetWorkspaceAppFactoryProviderComposerOptionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

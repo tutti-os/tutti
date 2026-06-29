@@ -1,7 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TooltipProvider } from "@tutti-os/ui-system";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  messageCenterFiltersStorageKey,
+  writeMessageCenterFilterPreferences
+} from "./messageCenterFilterPreferences";
 import {
   WorkspaceAgentMessageCenterCard,
   WorkspaceAgentMessageCenterPanel
@@ -839,6 +843,13 @@ describe("WorkspaceAgentMessageCenterCard", () => {
 });
 
 describe("WorkspaceAgentMessageCenterPanel", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
   it("groups visible message center items by status when selected", () => {
     render(
       <WorkspaceAgentMessageCenterPanel
@@ -1718,6 +1729,53 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     expect(
       screen.getByText("No messages match the current filters")
     ).toBeTruthy();
+  });
+
+  describe("localStorage persistence", () => {
+    afterEach(() => {
+      window.localStorage.removeItem(messageCenterFiltersStorageKey);
+    });
+
+    it("reads and applies stored groupBy on mount", () => {
+      // Approach (a): write groupBy: "status" before mount, then assert that
+      // the panel renders status-group section headings instead of priority headings.
+      writeMessageCenterFilterPreferences({
+        groupBy: "status",
+        statusFilters: null,
+        providerFilters: null
+      });
+
+      render(
+        <WorkspaceAgentMessageCenterPanel
+          open
+          model={createMessageCenterModel([
+            createMessageCenterItem({
+              agentSessionId: "working-session",
+              title: "Running task",
+              status: "working"
+            }),
+            createMessageCenterItem({
+              agentSessionId: "completed-session",
+              title: "Done task",
+              status: "completed"
+            })
+          ])}
+          onClose={vi.fn()}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      );
+
+      // With groupBy "status", items appear under status headings (not priority).
+      expect(screen.getByRole("heading", { name: "Running · 1" })).toBeTruthy();
+      expect(
+        screen.getByRole("heading", { name: "Completed · 1" })
+      ).toBeTruthy();
+      // Priority-mode heading should not be present.
+      expect(
+        screen.queryByRole("heading", { name: /Needs attention/ })
+      ).toBeNull();
+    });
   });
 
   it("advances to the next interactive card after the top one is answered", () => {

@@ -1,12 +1,16 @@
 import {
   desktopIpcChannels,
+  type DesktopClipboardImagePayload,
   type DesktopCreateUserDocumentsProjectDirectoryInput,
   type DesktopTerminalLinkPathPayload,
   type DesktopWorkspaceFileEntryIconPayload,
   type DesktopWorkspaceFilePathPayload
 } from "../../shared/contracts/ipc";
 import { app, shell } from "electron";
-import { writeFilesToSystemClipboard } from "../host/clipboardFiles.ts";
+import {
+  writeFilesToSystemClipboard,
+  writeImageToSystemClipboard
+} from "../host/clipboardFiles.ts";
 import type { DesktopFileDialogAccess } from "../host/desktopFileDialogAccess";
 import { createWorkspaceFileHostAccess } from "../host/workspaceFileHostAccess.ts";
 import type { WorkspaceFileIconCacheStore } from "../host/workspaceFileIconCacheStore.ts";
@@ -139,6 +143,12 @@ export function registerHostFilesIpc(deps: HostFilesIpcDependencies): void {
         resolveOwnerWindowFromEvent(event),
         input
       )
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.copyImageToClipboard,
+    (_event, payload: DesktopClipboardImagePayload) => {
+      writeImageToSystemClipboard(payload);
+    }
   );
   registerDesktopIpcHandler(
     desktopIpcChannels.host.files.copyFilesToClipboard,

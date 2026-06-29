@@ -30,6 +30,7 @@ import {
   getDesktopErrorCode,
   resolveDesktopErrorMessage
 } from "../../../../lib/desktopErrors.ts";
+import { agentActivityComposerOptionsFromTuttidResult } from "../../../../lib/agentComposerOptionsProjection.ts";
 import { AppCenterAppDeletedReporter } from "../../../analytics/reporters/app-center-app-deleted/appCenterAppDeletedReporter.ts";
 import { AppCenterAppInstallFailedReporter } from "../../../analytics/reporters/app-center-app-install-failed/appCenterAppInstallFailedReporter.ts";
 import { AppCenterAppInstalledReporter } from "../../../analytics/reporters/app-center-app-installed/appCenterAppInstalledReporter.ts";
@@ -54,7 +55,7 @@ const factoryJobDiagnosticLimit = 20;
 
 type AgentProviderComposerOptionsClient = Pick<
   TuttidClient,
-  "getAgentProviderComposerOptions"
+  "getWorkspaceAppFactoryProviderComposerOptions"
 >;
 
 export interface WorkspaceAppCenterServiceDependencies {
@@ -94,6 +95,9 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
   private workspaceAppLauncher: WorkspaceAppLauncher | null = null;
   private workspaceAppViewCloser:
     | ((input: { appId: string; workspaceId: string }) => void)
+    | null = null;
+  private workspaceAppViewOpenChecker:
+    | ((input: { appId: string; workspaceId: string }) => boolean)
     | null = null;
   private updates: WorkspaceAppCenterUpdateState | null = null;
 
@@ -202,20 +206,27 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     await this.controller.createFactoryJob(input);
   }
 
-  async getFactoryProviderConfiguration(
-    provider: string
-  ): Promise<WorkspaceAppFactoryProviderConfiguration> {
-    const normalizedProvider = provider.trim();
-    if (!normalizedProvider || !this.dependencies.tuttidClient) {
+  async getFactoryProviderConfiguration(input: {
+    provider: string;
+    workspaceId: string;
+  }): Promise<WorkspaceAppFactoryProviderConfiguration> {
+    const normalizedProvider = input.provider.trim();
+    const normalizedWorkspaceId = input.workspaceId.trim();
+    if (
+      !normalizedProvider ||
+      !normalizedWorkspaceId ||
+      !this.dependencies.tuttidClient
+    ) {
       return emptyFactoryProviderConfiguration();
     }
     const response =
-      await this.dependencies.tuttidClient.getAgentProviderComposerOptions(
+      await this.dependencies.tuttidClient.getWorkspaceAppFactoryProviderComposerOptions(
+        normalizedWorkspaceId,
         normalizedProvider as Parameters<
-          AgentProviderComposerOptionsClient["getAgentProviderComposerOptions"]
-        >[0]
+          AgentProviderComposerOptionsClient["getWorkspaceAppFactoryProviderComposerOptions"]
+        >[1]
       );
-    return normalizeFactoryProviderConfiguration(response);
+    return normalizeFactoryProviderConfiguration(normalizedProvider, response);
   }
 
   async cancelFactoryJob(input: {
@@ -684,6 +695,19 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     this.workspaceAppViewCloser = closer;
   }
 
+  setWorkspaceAppViewOpenChecker(
+    checker: ((input: { appId: string; workspaceId: string }) => boolean) | null
+  ): void {
+    this.workspaceAppViewOpenChecker = checker;
+  }
+
+  isWorkspaceAppViewOpen(input: {
+    appId: string;
+    workspaceId: string;
+  }): boolean {
+    return this.workspaceAppViewOpenChecker?.(input) === true;
+  }
+
   private async startWorkspaceUpdates(
     workspaceId: string,
     isDisposed: () => boolean,
@@ -1135,13 +1159,6 @@ function isControlCharacter(value: string): boolean {
   return code >= 0 && code <= 31;
 }
 
-type FactoryConfigOptionRecord = {
-  currentValue?: unknown;
-  current_value?: unknown;
-  id?: unknown;
-  options?: unknown;
-};
-
 type FactoryPermissionConfigRecord = {
   configurable?: unknown;
   defaultValue?: unknown;
@@ -1155,17 +1172,9 @@ type FactoryPermissionModeRecord = {
 };
 
 type FactoryComposerConfigRecord = {
-  configurable?: unknown;
   currentValue?: unknown;
   defaultValue?: unknown;
-  options?: unknown;
 };
-
-function isFactoryConfigOptionRecord(
-  value: unknown
-): value is FactoryConfigOptionRecord {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function isFactoryPermissionConfigRecord(
   value: unknown
@@ -1186,16 +1195,25 @@ function isFactoryComposerConfigRecord(
 }
 
 function normalizeFactoryProviderConfiguration(
+  provider: string,
   response: AgentProviderComposerOptionsResponse
 ): WorkspaceAppFactoryProviderConfiguration {
-  const modelOptions = normalizeFactoryComposerConfigOptions(
-    response.modelConfig
+  const composerOptions = agentActivityComposerOptionsFromTuttidResult(
+    provider,
+    response
   );
-  const reasoningEffortOptions = normalizeFactoryComposerConfigOptions(
-    response.reasoningConfig
+  const modelOptions = composerOptions.models.map((option) => ({
+    label: option.label,
+    value: option.value
+  }));
+  const reasoningEffortOptions = composerOptions.reasoningEfforts.map(
+    (option) => ({
+      label: option.label,
+      value: option.value
+    })
   );
   const permissionModeOptions = normalizeFactoryPermissionOptions(
-    response.permissionConfig
+    composerOptions.permissionConfig
   );
   const defaultModel =
     response.effectiveSettings?.model?.trim() ||
@@ -1248,51 +1266,6 @@ function normalizeFactoryProviderConfiguration(
     permissionModeOptions,
     reasoningEffortOptions
   };
-}
-
-function normalizeFactoryConfigOptions(
-  rawConfigOption: unknown
-): Array<{ label: string; value: string }> {
-  const rawOptions =
-    isFactoryConfigOptionRecord(rawConfigOption) &&
-    Array.isArray(rawConfigOption.options)
-      ? rawConfigOption.options
-      : [];
-  return rawOptions
-    .map((option) => {
-      if (!isFactoryConfigOptionRecord(option)) {
-        return null;
-      }
-      const value =
-        typeof (option as { value?: unknown }).value === "string"
-          ? (option as { value: string }).value.trim()
-          : "";
-      if (!value) {
-        return null;
-      }
-      const label =
-        typeof (option as { label?: unknown }).label === "string"
-          ? (option as { label: string }).label.trim() || value
-          : typeof (option as { name?: unknown }).name === "string"
-            ? (option as { name: string }).name.trim() || value
-            : value;
-      return { label, value };
-    })
-    .filter((option) => option != null);
-}
-
-function normalizeFactoryComposerConfigOptions(
-  rawComposerConfig: unknown
-): Array<{ label: string; value: string }> {
-  if (
-    isFactoryComposerConfigRecord(rawComposerConfig) &&
-    Array.isArray(rawComposerConfig.options)
-  ) {
-    return normalizeFactoryConfigOptions({
-      options: rawComposerConfig.options
-    });
-  }
-  return [];
 }
 
 function normalizeFactoryPermissionOptions(

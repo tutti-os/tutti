@@ -113,6 +113,7 @@ export interface AppCenterHostActions {
   readonly retryFactoryValidation?: (jobId: string) => Promise<void> | void;
   readonly retryApp?: (appId: string) => Promise<void> | void;
   readonly restartAndOpenApp?: (appId: string) => Promise<void> | void;
+  readonly shouldConfirmAppUpdate?: (appId: string) => boolean;
   readonly updateApp?: (
     appId: string,
     trigger: "badge_button" | "primary_action"

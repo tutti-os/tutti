@@ -148,7 +148,8 @@ function createWorkspaceFilePreviewNodeDefinition(input: {
       minimizedDock: {
         kind: "snapshot"
       },
-      minimizable: true
+      minimizable: true,
+      surfaceLayer: "dialog-popover"
     }
   };
 }

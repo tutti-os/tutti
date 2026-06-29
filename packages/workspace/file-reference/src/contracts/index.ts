@@ -1,4 +1,7 @@
+import type { WorkspaceFileOpenWithApplication } from "@tutti-os/workspace-file-manager/services";
+
 export interface WorkspaceFileReference {
+  createdTimeMs?: number | null;
   displayName?: string;
   hostPath?: string;
   kind: "file" | "folder" | (string & {});
@@ -79,6 +82,18 @@ export interface WorkspaceFileReferenceAdapter {
     }
   ): Promise<WorkspaceFileReference[]>;
   openReference?(reference: WorkspaceFileReference): Promise<void> | void;
+  listOpenWithApplications?(
+    reference: WorkspaceFileReference
+  ): Promise<WorkspaceFileOpenWithApplication[]>;
+  openReferenceWithApplication?(
+    reference: WorkspaceFileReference,
+    applicationPath: string
+  ): Promise<void> | void;
+  openReferenceWithOtherApplication?(
+    reference: WorkspaceFileReference,
+    applicationPickerPrompt?: string
+  ): Promise<void> | void;
+  revealReference?(reference: WorkspaceFileReference): Promise<void> | void;
   readReferencePreview?(
     input: WorkspaceFileReferenceScope & { reference: WorkspaceFileReference }
   ): Promise<WorkspaceFileReferencePreview | null>;
