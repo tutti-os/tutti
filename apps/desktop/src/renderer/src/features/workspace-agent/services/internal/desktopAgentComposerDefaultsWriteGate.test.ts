@@ -1,119 +1,56 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createDefaultDesktopAgentGUINodeState } from "../../desktopAgentGUINodeState.ts";
 import {
-  resolveDesktopAgentComposerDefaultsWriteIntent,
-  shouldRememberDesktopAgentComposerDefaults,
-  type DesktopAgentComposerDefaultsWriteIntent
+  desktopAgentComposerDefaultsEqual,
+  desktopAgentComposerOverridesToDefaults
 } from "./desktopAgentComposerDefaultsWriteGate.ts";
 
-test("resolveDesktopAgentComposerDefaultsWriteIntent captures user composer setting changes", () => {
-  const current = {
-    ...createDefaultDesktopAgentGUINodeState("codex"),
-    composerOverrides: {
-      permissionModeId: "auto",
-      reasoningEffort: "high"
-    }
-  };
-  const next = {
-    ...current,
-    composerOverrides: {
-      permissionModeId: "read-only",
-      reasoningEffort: "high"
-    }
-  };
-
+test("desktopAgentComposerOverridesToDefaults keeps only durable composer defaults", () => {
   assert.deepEqual(
-    resolveDesktopAgentComposerDefaultsWriteIntent(current, next),
+    desktopAgentComposerOverridesToDefaults({
+      model: " gpt-5.5 ",
+      permissionModeId: " full-access ",
+      planMode: true,
+      reasoningEffort: " high "
+    }),
     {
-      defaults: {
-        permissionModeId: "read-only",
-        reasoningEffort: "high"
-      },
-      provider: "codex"
+      model: "gpt-5.5",
+      permissionModeId: "full-access",
+      reasoningEffort: "high"
     }
   );
 });
 
-test("resolveDesktopAgentComposerDefaultsWriteIntent ignores non-composer state changes", () => {
-  const current = {
-    ...createDefaultDesktopAgentGUINodeState("codex"),
-    composerOverrides: {
-      permissionModeId: "auto"
-    },
-    conversationRailCollapsed: false
-  };
-  const next = {
-    ...current,
-    conversationRailCollapsed: true
-  };
-
+test("desktopAgentComposerOverridesToDefaults returns null for empty defaults", () => {
   assert.equal(
-    resolveDesktopAgentComposerDefaultsWriteIntent(current, next),
-    undefined
+    desktopAgentComposerOverridesToDefaults({
+      planMode: true
+    }),
+    null
   );
 });
 
-test("shouldRememberDesktopAgentComposerDefaults accepts only the pending user write", () => {
-  const pendingWrite: DesktopAgentComposerDefaultsWriteIntent = {
-    defaults: {
-      permissionModeId: "read-only",
-      reasoningEffort: "high"
-    },
-    provider: "codex"
-  };
-
+test("desktopAgentComposerDefaultsEqual compares normalized default values", () => {
   assert.equal(
-    shouldRememberDesktopAgentComposerDefaults({
-      defaults: {
-        permissionModeId: "read-only",
-        reasoningEffort: "high"
+    desktopAgentComposerDefaultsEqual(
+      {
+        model: " gpt-5.5 ",
+        permissionModeId: " full-access ",
+        reasoningEffort: " high "
       },
-      pendingWrite,
-      provider: "codex"
-    }),
+      {
+        model: "gpt-5.5",
+        permissionModeId: "full-access",
+        reasoningEffort: "high"
+      }
+    ),
     true
   );
-});
-
-test("shouldRememberDesktopAgentComposerDefaults rejects stale preference replay", () => {
-  const pendingWrite: DesktopAgentComposerDefaultsWriteIntent = {
-    defaults: {
-      permissionModeId: "read-only",
-      reasoningEffort: "high"
-    },
-    provider: "codex"
-  };
-
   assert.equal(
-    shouldRememberDesktopAgentComposerDefaults({
-      defaults: {
-        permissionModeId: "auto",
-        reasoningEffort: "high"
-      },
-      pendingWrite,
-      provider: "codex"
-    }),
-    false
-  );
-});
-
-test("shouldRememberDesktopAgentComposerDefaults rejects provider mismatch", () => {
-  const pendingWrite: DesktopAgentComposerDefaultsWriteIntent = {
-    defaults: {
-      permissionModeId: "read-only"
-    },
-    provider: "codex"
-  };
-
-  assert.equal(
-    shouldRememberDesktopAgentComposerDefaults({
-      defaults: {
-        permissionModeId: "read-only"
-      },
-      pendingWrite,
-      provider: "gemini"
-    }),
+    desktopAgentComposerDefaultsEqual(
+      { permissionModeId: "auto" },
+      { permissionModeId: "full-access" }
+    ),
     false
   );
 });

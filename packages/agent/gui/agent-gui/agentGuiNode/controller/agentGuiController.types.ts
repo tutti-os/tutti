@@ -25,7 +25,6 @@ export interface QueuedPromptRetryBlock {
 
 export interface QueuedComposerSettingsUpdate {
   sessionSettingsPatch: AgentSessionComposerSettings;
-  nextNodeDefaults: AgentSessionComposerSettings;
 }
 
 export interface ACPConfigOptionSelection {

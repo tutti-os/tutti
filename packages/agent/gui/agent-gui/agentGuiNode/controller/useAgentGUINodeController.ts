@@ -244,12 +244,41 @@ interface QueuedPromptRetryBlock {
 
 interface QueuedComposerSettingsUpdate {
   sessionSettingsPatch: AgentSessionComposerSettings;
-  nextNodeDefaults: AgentSessionComposerSettings;
 }
 
 interface ACPConfigOptionSelection {
   options: AgentGUIComposerSettingOption[];
   currentValue: string | null;
+}
+
+export interface AgentGUIComposerDefaults {
+  model?: string;
+  permissionModeId?: string;
+  reasoningEffort?: string;
+}
+
+export interface AgentGUIRememberComposerDefaultsInput {
+  provider: AgentGUINodeData["provider"];
+  defaults: AgentGUIComposerDefaults | null;
+}
+
+function composerDefaultsFromSettings(
+  settings: AgentSessionComposerSettings
+): AgentGUIComposerDefaults | null {
+  const defaults: AgentGUIComposerDefaults = {};
+  const model = normalizeOptionalText(settings.model);
+  const permissionModeId = normalizeOptionalText(settings.permissionModeId);
+  const reasoningEffort = normalizeOptionalText(settings.reasoningEffort);
+  if (model) {
+    defaults.model = model;
+  }
+  if (permissionModeId) {
+    defaults.permissionModeId = permissionModeId;
+  }
+  if (reasoningEffort) {
+    defaults.reasoningEffort = reasoningEffort;
+  }
+  return Object.keys(defaults).length > 0 ? defaults : null;
 }
 
 type AgentSubmitTraceState = {
@@ -3177,6 +3206,9 @@ interface UseAgentGUINodeControllerInput {
   onDataChange: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
   ) => void;
+  onRememberComposerDefaults?: (
+    input: AgentGUIRememberComposerDefaultsInput
+  ) => void | Promise<void>;
   onShowMessage?: (
     message: string,
     tone?: "info" | "warning" | "error"
@@ -3208,6 +3240,7 @@ export function useAgentGUINodeController({
   prefillPromptRequest = null,
   previewMode = false,
   onDataChange,
+  onRememberComposerDefaults,
   onShowMessage
 }: UseAgentGUINodeControllerInput) {
   const agentActivityRuntime = useAgentActivityRuntime();
@@ -3705,6 +3738,7 @@ export function useAgentGUINodeController({
     selectedProviderTargetIsExplicit;
   const draftSettingsBySessionIdRef = useRef(draftSettingsBySessionId);
   const onDataChangeRef = useRef(onDataChange);
+  const onRememberComposerDefaultsRef = useRef(onRememberComposerDefaults);
   const onShowMessageRef = useRef(onShowMessage);
   const handledPrefillPromptSequenceRef = useRef<number | null>(null);
   const pendingAutoSubmitPromptRef = useRef<string | null>(null);
@@ -4070,6 +4104,10 @@ export function useAgentGUINodeController({
   useEffect(() => {
     onDataChangeRef.current = onDataChange;
   }, [onDataChange]);
+
+  useEffect(() => {
+    onRememberComposerDefaultsRef.current = onRememberComposerDefaults;
+  }, [onRememberComposerDefaults]);
 
   useEffect(() => {
     onShowMessageRef.current = onShowMessage;
@@ -7897,17 +7935,7 @@ export function useAgentGUINodeController({
         agentSessionId: string;
       }
     ) => {
-      const { agentSessionId, nextNodeDefaults, sessionSettingsPatch } = input;
-      const persistNodeDefaults = () => {
-        const defaultDraftKey = nodeDefaultDraftKey(dataRef.current.provider);
-        setDraftSettingsBySessionId((current) => ({
-          ...current,
-          [defaultDraftKey]: nextNodeDefaults
-        }));
-        onDataChangeRef.current((current) =>
-          nodeDataFromComposerSettings(current, nextNodeDefaults)
-        );
-      };
+      const { agentSessionId, sessionSettingsPatch } = input;
       void agentActivityRuntime
         .updateSessionSettings({
           workspaceId,
@@ -7945,7 +7973,6 @@ export function useAgentGUINodeController({
                 : existing
           );
           if (queuedUpdate === null) {
-            persistNodeDefaults();
             if (
               sessionSettingsPatch.model !== undefined &&
               dataRef.current.provider === "claude-code"
@@ -7988,8 +8015,7 @@ export function useAgentGUINodeController({
             delete queuedComposerSettingsUpdatesRef.current[agentSessionId];
             flushQueuedComposerSettingsUpdate({
               agentSessionId,
-              sessionSettingsPatch: queuedUpdate.sessionSettingsPatch,
-              nextNodeDefaults: queuedUpdate.nextNodeDefaults
+              sessionSettingsPatch: queuedUpdate.sessionSettingsPatch
             });
             return;
           }
@@ -8044,6 +8070,10 @@ export function useAgentGUINodeController({
         onDataChangeRef.current((current) =>
           nodeDataFromComposerSettings(current, merged)
         );
+        void onRememberComposerDefaultsRef.current?.({
+          provider: dataRef.current.provider,
+          defaults: composerDefaultsFromSettings(merged)
+        });
         void agentActivityRuntime.trackDraftComposerSettingsChange?.({
           workspaceId,
           provider: dataRef.current.provider,
@@ -8063,63 +8093,10 @@ export function useAgentGUINodeController({
       const sessionSettings = cloneComposerSettings(
         activeSessionState?.settings ?? null
       );
-      const currentDefaults = readNodeDefaultDraftSettings({
-        data: dataRef.current,
-        defaultReasoningEffort,
-        drafts: draftSettingsBySessionIdRef.current
-      });
-      const baseDefaultsFromSession: AgentSessionComposerSettings = {
-        ...currentDefaults,
-        model: sessionSettings?.model ?? currentDefaults.model,
-        reasoningEffort:
-          sessionSettings?.reasoningEffort ?? currentDefaults.reasoningEffort,
-        speed: sessionSettings?.speed ?? currentDefaults.speed,
-        planMode: sessionSettings?.planMode ?? currentDefaults.planMode,
-        browserUse: sessionSettings?.browserUse ?? currentDefaults.browserUse,
-        computerUse:
-          sessionSettings?.computerUse ?? currentDefaults.computerUse,
-        permissionModeId:
-          sessionSettings?.permissionModeId ?? currentDefaults.permissionModeId
-      };
-      const nextNodeDefaults: AgentSessionComposerSettings = {
-        ...baseDefaultsFromSession,
-        model:
-          supportedNextSettings.model !== undefined
-            ? supportedNextSettings.model
-            : baseDefaultsFromSession.model,
-        reasoningEffort:
-          supportedNextSettings.reasoningEffort !== undefined
-            ? supportedNextSettings.reasoningEffort
-            : baseDefaultsFromSession.reasoningEffort,
-        speed:
-          supportedNextSettings.speed !== undefined
-            ? supportedNextSettings.speed
-            : baseDefaultsFromSession.speed,
-        planMode:
-          supportedNextSettings.planMode ?? baseDefaultsFromSession.planMode,
-        browserUse:
-          supportedNextSettings.browserUse ??
-          baseDefaultsFromSession.browserUse,
-        permissionModeId:
-          supportedNextSettings.permissionModeId !== undefined
-            ? supportedNextSettings.permissionModeId
-            : baseDefaultsFromSession.permissionModeId
-      };
-      const persistNodeDefaults = () => {
-        const defaultDraftKey = nodeDefaultDraftKey(dataRef.current.provider);
-        setDraftSettingsBySessionId((current) => ({
-          ...current,
-          [defaultDraftKey]: nextNodeDefaults
-        }));
-        onDataChangeRef.current((current) =>
-          nodeDataFromComposerSettings(current, nextNodeDefaults)
-        );
-      };
-      const nextPermission = normalizeOptionalText(
-        nextSettings.permissionModeId ??
-          sessionSettings?.permissionModeId ??
-          currentDefaults.permissionModeId
-      );
+      const nextPermission =
+        supportedNextSettings.permissionModeId !== undefined
+          ? normalizeOptionalText(supportedNextSettings.permissionModeId)
+          : undefined;
       const currentPermission = normalizeOptionalText(
         sessionSettings?.permissionModeId
       );
@@ -8174,6 +8151,7 @@ export function useAgentGUINodeController({
         sessionSettingsPatch.computerUse = nextComputerUse;
       }
       if (
+        nextPermission !== undefined &&
         nextPermission &&
         nextPermission !== currentPermission &&
         activeSessionState !== null
@@ -8185,7 +8163,6 @@ export function useAgentGUINodeController({
         Object.keys(sessionSettingsPatch).length > 0 &&
         activeSessionState !== null
       ) {
-        persistNodeDefaults();
         updateAgentSessionViewControlState(
           sessionViewRef(agentSessionId),
           (existing) =>
@@ -8214,20 +8191,17 @@ export function useAgentGUINodeController({
             sessionSettingsPatch: {
               ...(queuedUpdate?.sessionSettingsPatch ?? {}),
               ...sessionSettingsPatch
-            },
-            nextNodeDefaults
+            }
           };
         } else {
           markSessionSettingsRequestState(agentSessionId, true);
           flushQueuedComposerSettingsUpdate({
             agentSessionId,
-            sessionSettingsPatch,
-            nextNodeDefaults
+            sessionSettingsPatch
           });
         }
         return;
       }
-      persistNodeDefaults();
     },
     [
       defaultReasoningEffort,
