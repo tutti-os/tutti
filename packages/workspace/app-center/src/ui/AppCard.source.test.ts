@@ -25,3 +25,17 @@ test("official app authors fall back to the configured developer icon instead of
   );
   assert.match(source, /className="size-5 shrink-0 rounded-\[5px\]/);
 });
+
+test("developer source popup opens on hover instead of requiring a click", () => {
+  assert.match(
+    source,
+    /<Popover open=\{popoverOpen\} onOpenChange=\{setPopoverOpen\}>/
+  );
+  assert.match(source, /onPointerEnter=\{openPopover\}/);
+  assert.match(source, /onPointerLeave=\{scheduleClosePopover\}/);
+});
+
+test("bundled apps without source metadata still show the official source row", () => {
+  assert.match(source, /app\.sourceKind === "bundled"/);
+  assert.match(source, /\? \[\{ name: "Tutti" \}\]/);
+});

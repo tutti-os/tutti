@@ -1,5 +1,5 @@
 import type { KeyboardEvent, ReactElement } from "react";
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import {
   Button,
   ChatIcon,
@@ -14,6 +14,9 @@ import {
   GitHubBrandIcon,
   MoreHorizontalIcon,
   NavApplicationsFilledIcon,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   RefreshIcon,
   UninstallIcon,
   UploadIcon,
@@ -361,8 +364,34 @@ function AppDeveloperSourceRow({
   readonly copy: AppCenterI18nRuntime;
   readonly officialDeveloperIconUrl?: string | null;
 }): ReactElement | null {
-  const authors = app.authors ?? [];
+  const sourceAuthors = app.authors ?? [];
   const repository = app.repository ?? null;
+  const authors =
+    sourceAuthors.length > 0
+      ? sourceAuthors
+      : app.sourceKind === "bundled"
+        ? [{ name: "Tutti" }]
+        : [];
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
+  const clearCloseTimer = useCallback((): void => {
+    if (closeTimerRef.current === null) {
+      return;
+    }
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }, []);
+  const openPopover = useCallback((): void => {
+    clearCloseTimer();
+    setPopoverOpen(true);
+  }, [clearCloseTimer]);
+  const scheduleClosePopover = useCallback((): void => {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setPopoverOpen(false);
+      closeTimerRef.current = null;
+    }, 120);
+  }, [clearCloseTimer]);
   if (authors.length === 0 && repository === null) {
     return null;
   }
@@ -410,27 +439,33 @@ function AppDeveloperSourceRow({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+      <PopoverTrigger asChild>
         <button
           className="block w-full min-w-0 border-0 bg-transparent p-0 text-left"
           type="button"
+          onFocus={openPopover}
+          onBlur={scheduleClosePopover}
           onClick={(event) => {
             event.stopPropagation();
           }}
+          onPointerEnter={openPopover}
+          onPointerLeave={scheduleClosePopover}
           onPointerDown={(event) => {
             event.stopPropagation();
           }}
         >
           {content}
         </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
+      </PopoverTrigger>
+      <PopoverContent
         align="start"
         className="w-[280px] max-w-[min(280px,calc(100vw-32px))]"
         collisionPadding={12}
         side="bottom"
         style={{ zIndex: "var(--z-panel-popover)" }}
+        onPointerEnter={openPopover}
+        onPointerLeave={scheduleClosePopover}
         onClick={(event) => {
           event.stopPropagation();
         }}
@@ -444,13 +479,14 @@ function AppDeveloperSourceRow({
         <div className="px-2 py-1.5 text-[12px] font-semibold leading-4 text-[var(--text-primary)]">
           {copy.t("sources.title")}
         </div>
-        <DropdownMenuGroup className="gap-[2px]">
+        <div className="flex flex-col gap-[2px]">
           {authors.map((author, index) => (
-            <DropdownMenuItem
-              className="font-normal"
+            <button
+              className="flex min-h-8 min-w-0 items-center gap-2 rounded-[6px] px-2 py-1 text-left text-[12px] font-normal leading-4 text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] disabled:cursor-default disabled:opacity-60"
               disabled={!author.url}
               key={`${author.name}:${author.url ?? ""}`}
-              onSelect={(event) => {
+              type="button"
+              onClick={(event) => {
                 event.stopPropagation();
                 openExternalURL(author.url);
               }}
@@ -464,12 +500,13 @@ function AppDeveloperSourceRow({
                 }
               />
               <span className="min-w-0 flex-1 truncate">{author.name}</span>
-            </DropdownMenuItem>
+            </button>
           ))}
           {repository ? (
-            <DropdownMenuItem
-              className="font-normal"
-              onSelect={(event) => {
+            <button
+              className="flex min-h-8 min-w-0 items-center gap-2 rounded-[6px] px-2 py-1 text-left text-[12px] font-normal leading-4 text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]"
+              type="button"
+              onClick={(event) => {
                 event.stopPropagation();
                 openExternalURL(repository.url);
               }}
@@ -478,11 +515,11 @@ function AppDeveloperSourceRow({
               <span className="min-w-0 flex-1 truncate">
                 {displayRepositoryURL(repository.url)}
               </span>
-            </DropdownMenuItem>
+            </button>
           ) : null}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
