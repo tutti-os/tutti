@@ -334,6 +334,7 @@ function ReadyWorkspaceWorkbench({
             await host.launchNode(
               normalizedDraftPrompt
                 ? createWorkspaceAgentGuiDraftLaunchRequest({
+                    agentSessionId,
                     autoSubmit,
                     draftPrompt: normalizedDraftPrompt,
                     provider,

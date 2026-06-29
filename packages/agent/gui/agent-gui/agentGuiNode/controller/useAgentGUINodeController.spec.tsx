@@ -1232,6 +1232,67 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
+  it("uses prefilled agent session ids for the next draft submission", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    type PrefillPromptRequest = Parameters<
+      typeof useAgentGUINodeController
+    >[0]["prefillPromptRequest"];
+    const { result, rerender } = renderHook(
+      (props: { prefillPromptRequest?: PrefillPromptRequest }) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData(null),
+          onDataChange: vi.fn(),
+          ...props
+        }),
+      {
+        initialProps: {
+          prefillPromptRequest: null as PrefillPromptRequest
+        }
+      }
+    );
+
+    rerender({
+      prefillPromptRequest: {
+        agentSessionId: " issue-run-session ",
+        draftPrompt: "Handle this issue",
+        sequence: 1
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.draftPrompt).toBe("Handle this issue");
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("Handle this issue"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentSessionId: "issue-run-session",
+          mode: "new"
+        })
+      );
+    });
+  });
+
   it("tracks active conversation project setting changes through the host reporter", async () => {
     const trackSettingsProjectChange = vi.fn(async () => undefined);
     installAgentHostApi({

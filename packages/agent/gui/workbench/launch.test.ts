@@ -86,6 +86,7 @@ describe("agent gui workbench launch contract", () => {
   it("creates draft prompt launch requests for provider dock entries", () => {
     expect(
       createAgentGuiWorkbenchDraftLaunchRequest({
+        agentSessionId: "session-1",
         draftPrompt: "Review this issue",
         provider: "codex",
         userProjectPath: "/Users/example/project"
@@ -93,6 +94,7 @@ describe("agent gui workbench launch contract", () => {
     ).toEqual({
       dockEntryId: "agent-gui",
       payload: {
+        agentSessionId: "session-1",
         draftPrompt: "Review this issue",
         provider: "codex",
         userProjectPath: "/Users/example/project"
@@ -106,6 +108,7 @@ describe("agent gui workbench launch contract", () => {
     expect(
       createAgentGuiWorkbenchLaunchDescriptor(
         createAgentGuiWorkbenchDraftLaunchRequest({
+          agentSessionId: "session-1",
           draftPrompt: "Review this issue",
           provider: "codex"
         })
@@ -113,6 +116,7 @@ describe("agent gui workbench launch contract", () => {
     ).toMatchObject({
       activation: {
         payload: {
+          agentSessionId: "session-1",
           draftPrompt: "Review this issue"
         },
         type: agentGuiWorkbenchPrefillPromptActivationType

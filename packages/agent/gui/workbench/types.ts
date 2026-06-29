@@ -15,6 +15,7 @@ export const agentGuiWorkbenchPrefillPromptActivationType =
   "agent-gui:prefill-prompt";
 
 export interface AgentGuiWorkbenchPrefillPromptPayload {
+  agentSessionId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
   userProjectPath?: string | null;

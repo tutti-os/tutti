@@ -26,7 +26,7 @@ test("desktop issue-manager agent runner opens execute prompt as an agent draft"
 
   const capturedPrompt = capturedLaunch?.draftPrompt ?? "";
   assert.equal(capturedCreate, undefined);
-  assert.equal(capturedLaunch?.agentSessionId, undefined);
+  assert.equal(capturedLaunch?.agentSessionId, "agent-session-1");
   assert.equal(capturedLaunch?.provider, "codex");
   assert.equal(capturedLaunch?.userProjectPath, undefined);
   assert.equal(capturedLaunch?.workspaceId, "workspace-1");

@@ -157,9 +157,10 @@ test("workspace agent GUI session launches target exact session instances", () =
   });
 });
 
-test("workspace agent GUI draft launches reuse the provider dock entry without a session", () => {
+test("workspace agent GUI draft launches can carry the next session id", () => {
   const descriptor = createWorkspaceAgentGuiLaunchDescriptor(
     createWorkspaceAgentGuiDraftLaunchRequest({
+      agentSessionId: "agent-session-1",
       draftPrompt: "Review this issue",
       provider: "codex",
       userProjectPath: "/workspace/app/"
@@ -172,6 +173,7 @@ test("workspace agent GUI draft launches reuse the provider dock entry without a
   assert.equal(descriptor.reuseDockEntryNode, true);
   assert.deepEqual(descriptor.activation, {
     payload: {
+      agentSessionId: "agent-session-1",
       draftPrompt: "Review this issue",
       userProjectPath: "/workspace/app"
     },
