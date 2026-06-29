@@ -1,5 +1,5 @@
 import type { KeyboardEvent, ReactElement } from "react";
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import {
   Button,
   ChatIcon,
@@ -11,8 +11,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   FolderIcon,
+  GitHubBrandIcon,
   MoreHorizontalIcon,
   NavApplicationsFilledIcon,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   RefreshIcon,
   UninstallIcon,
   UploadIcon,
@@ -20,6 +24,7 @@ import {
 } from "@tutti-os/ui-system";
 import type {
   WorkspaceAppActionContext,
+  WorkspaceAppAuthorViewModel,
   WorkspaceAppCardViewModel
 } from "../contracts/viewModel.ts";
 import type { WorkspaceAppInstallProgress } from "../contracts/runtime.ts";
@@ -124,13 +129,17 @@ export interface AppCardProps {
   readonly app: WorkspaceAppCardViewModel;
   readonly className?: string;
   readonly copy: AppCenterI18nRuntime;
+  readonly officialDeveloperIconUrl?: string | null;
+  readonly showDeveloperSources?: boolean;
 }
 
 export const AppCard = memo(function AppCard({
   actions,
   app,
   className,
-  copy
+  copy,
+  officialDeveloperIconUrl = null,
+  showDeveloperSources = false
 }: AppCardProps): ReactElement {
   const statusLabel = copy.t(app.statusLabelKey);
   const installBusy =
@@ -323,6 +332,14 @@ export const AppCard = memo(function AppCard({
             </p>
           </div>
         ) : null}
+
+        {showDeveloperSources ? (
+          <AppDeveloperSourceRow
+            app={app}
+            copy={copy}
+            officialDeveloperIconUrl={officialDeveloperIconUrl}
+          />
+        ) : null}
       </div>
     </article>
   );
@@ -336,6 +353,257 @@ function createWorkspaceAppActionContext(
     runtimeId: app.runtimeId ?? null,
     launchUrl: app.launchUrl ?? null
   };
+}
+
+function AppDeveloperSourceRow({
+  app,
+  copy,
+  officialDeveloperIconUrl
+}: {
+  readonly app: WorkspaceAppCardViewModel;
+  readonly copy: AppCenterI18nRuntime;
+  readonly officialDeveloperIconUrl?: string | null;
+}): ReactElement | null {
+  const sourceAuthors = app.authors ?? [];
+  const repository = app.repository ?? null;
+  const authors =
+    sourceAuthors.length > 0
+      ? sourceAuthors
+      : app.sourceKind === "bundled"
+        ? [{ name: "Tutti" }]
+        : [];
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
+  const clearCloseTimer = useCallback((): void => {
+    if (closeTimerRef.current === null) {
+      return;
+    }
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }, []);
+  const openPopover = useCallback((): void => {
+    clearCloseTimer();
+    setPopoverOpen(true);
+  }, [clearCloseTimer]);
+  const scheduleClosePopover = useCallback((): void => {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setPopoverOpen(false);
+      closeTimerRef.current = null;
+    }, 120);
+  }, [clearCloseTimer]);
+  if (authors.length === 0 && repository === null) {
+    return null;
+  }
+
+  const primaryAuthor = authors[0] ?? null;
+  const rowLabel =
+    authors.length > 1
+      ? copy.t("sources.developerCount", { count: String(authors.length) })
+      : primaryAuthor?.name ||
+        (repository ? copy.t("sources.githubRepository") : "");
+  const official = isOfficialAuthor(primaryAuthor?.name);
+  const canOpenPopover =
+    repository !== null || authors.some((author) => Boolean(author.url));
+
+  const content = (
+    <div className="mt-auto min-w-0 pt-3">
+      <div className="group/source flex min-h-7 min-w-0 items-center gap-2 border-t border-[color:var(--line-2)] pt-2 text-[12px] leading-4 text-[var(--text-secondary)]">
+        <AvatarStack
+          authors={authors}
+          fallbackIconUrl={official ? officialDeveloperIconUrl : null}
+        />
+        <span className="min-w-0 flex-1 truncate">{rowLabel}</span>
+        {official ? (
+          <span className="shrink-0 rounded-[5px] border border-[color:var(--line-2)] px-1.5 py-0 text-[10px] font-medium leading-4 text-[var(--text-secondary)]">
+            {copy.t("sources.official")}
+          </span>
+        ) : null}
+        {canOpenPopover ? (
+          <span className="flex size-5 shrink-0 items-center justify-center text-[var(--text-secondary)]">
+            <GitHubBrandIcon className="size-4 group-hover/source:hidden" />
+            <span
+              aria-hidden="true"
+              className="hidden text-[18px] leading-none group-hover/source:block"
+            >
+              ›
+            </span>
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  if (!canOpenPopover) {
+    return content;
+  }
+
+  return (
+    <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className="block w-full min-w-0 border-0 bg-transparent p-0 text-left"
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+          onPointerEnter={openPopover}
+          onPointerLeave={scheduleClosePopover}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          {content}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[280px] max-w-[min(280px,calc(100vw-32px))]"
+        collisionPadding={12}
+        side="bottom"
+        style={{ zIndex: "var(--z-panel-popover)" }}
+        onPointerEnter={openPopover}
+        onPointerLeave={scheduleClosePopover}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+        }}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        <div className="px-2 py-1.5 text-[12px] font-semibold leading-4 text-[var(--text-primary)]">
+          {copy.t("sources.title")}
+        </div>
+        <div className="flex flex-col gap-[2px]">
+          {authors.map((author, index) => (
+            <button
+              className="flex min-h-8 min-w-0 items-center gap-2 rounded-[6px] px-2 py-1 text-left text-[12px] font-normal leading-4 text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] disabled:cursor-default disabled:opacity-60"
+              disabled={!author.url}
+              key={`${author.name}:${author.url ?? ""}`}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                openExternalURL(author.url);
+              }}
+            >
+              <AuthorAvatar
+                author={author}
+                fallbackIconUrl={
+                  index === 0 && isOfficialAuthor(author.name)
+                    ? officialDeveloperIconUrl
+                    : null
+                }
+              />
+              <span className="min-w-0 flex-1 truncate">{author.name}</span>
+            </button>
+          ))}
+          {repository ? (
+            <button
+              className="flex min-h-8 min-w-0 items-center gap-2 rounded-[6px] px-2 py-1 text-left text-[12px] font-normal leading-4 text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                openExternalURL(repository.url);
+              }}
+            >
+              <GitHubBrandIcon className="size-4" />
+              <span className="min-w-0 flex-1 truncate">
+                {displayRepositoryURL(repository.url)}
+              </span>
+            </button>
+          ) : null}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function AvatarStack({
+  authors,
+  fallbackIconUrl
+}: {
+  readonly authors: readonly WorkspaceAppAuthorViewModel[];
+  readonly fallbackIconUrl?: string | null;
+}): ReactElement {
+  const visibleAuthors = authors.slice(0, 2);
+  if (visibleAuthors.length === 0) {
+    return (
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--transparency-block)]">
+        <GitHubBrandIcon className="size-3.5" />
+      </span>
+    );
+  }
+  return (
+    <span className="flex shrink-0 -space-x-1">
+      {visibleAuthors.map((author, index) => (
+        <AuthorAvatar
+          author={author}
+          fallbackIconUrl={index === 0 ? fallbackIconUrl : null}
+          key={`${author.name}:${author.url ?? ""}`}
+        />
+      ))}
+    </span>
+  );
+}
+
+function AuthorAvatar({
+  author,
+  fallbackIconUrl
+}: {
+  readonly author: WorkspaceAppAuthorViewModel;
+  readonly fallbackIconUrl?: string | null;
+}): ReactElement {
+  if (author.avatarUrl) {
+    return (
+      <img
+        alt=""
+        className="size-5 shrink-0 rounded-full border border-[var(--background-fronted)] object-cover"
+        draggable={false}
+        src={author.avatarUrl}
+      />
+    );
+  }
+  if (fallbackIconUrl) {
+    return (
+      <img
+        alt=""
+        className="size-5 shrink-0 rounded-[5px] border border-[var(--background-fronted)] object-contain"
+        draggable={false}
+        src={fallbackIconUrl}
+      />
+    );
+  }
+  return (
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-[var(--background-fronted)] bg-[var(--transparency-block)] text-[10px] font-semibold uppercase text-[var(--text-secondary)]">
+      {author.name.slice(0, 1)}
+    </span>
+  );
+}
+
+function isOfficialAuthor(name: string | null | undefined): boolean {
+  const normalized = name?.trim().toLowerCase() ?? "";
+  return normalized === "tutti" || normalized === "tutti official";
+}
+
+function displayRepositoryURL(url: string): string {
+  return url.replace(/^https?:\/\//u, "");
+}
+
+function openExternalURL(url: string | null | undefined): void {
+  const target = url?.trim();
+  if (!target) {
+    return;
+  }
+  window.open(target, "_blank", "noopener,noreferrer");
 }
 
 function AppCardMoreActions({

@@ -48,6 +48,17 @@ test("buildTuttiAppRelease writes immutable release and latest metadata", async 
   assert.equal(result.release.appId, "vibe-design");
   assert.equal(result.release.version, "0.1.0+abc123");
   assert.equal(result.release.manifest.version, "0.1.0+abc123");
+  assert.deepEqual(result.release.manifest.authors, [
+    {
+      name: "Tutti Developer",
+      avatarUrl: "https://github.com/tutti-os.png",
+      url: "https://github.com/tutti-os"
+    }
+  ]);
+  assert.deepEqual(result.release.manifest.source, {
+    type: "github",
+    url: "https://github.com/tutti-os/vibe-design"
+  });
   assert.equal(
     result.release.artifactUrl,
     "https://cdn.example.test/tutti-apps/apps/vibe-design/0.1.0%2Babc123/vibe-design-0.1.0%2Babc123.zip"
@@ -718,6 +729,17 @@ function manifestForTest(appId, version = "0.1.0") {
     runtime: {
       bootstrap: "bootstrap.sh",
       healthcheckPath: "/"
+    },
+    authors: [
+      {
+        name: "Tutti Developer",
+        avatarUrl: "https://github.com/tutti-os.png",
+        url: "https://github.com/tutti-os"
+      }
+    ],
+    source: {
+      type: "github",
+      url: `https://github.com/tutti-os/${appId}`
     }
   };
 }

@@ -599,6 +599,10 @@ export const zhCN = {
         openLogsDirectory: "打开日志目录",
         addFileDefaultOpener: "添加",
         removeFileDefaultOpener: "移除 .{{extension}}",
+        showAppDeveloperSourcesDescription:
+          "在应用中心卡片中展示应用作者和 GitHub 来源。",
+        showAppDeveloperSourcesLabel: "展示应用作者与来源",
+        showAppDeveloperSourcesSaveFailed: "暂时无法更新应用中心来源展示设置。",
         visibilityDescription:
           "在设置中隐藏此面板。在「关于」里连续点击版本号七次即可重新显示",
         visibilityLabel: "显示开发者面板"

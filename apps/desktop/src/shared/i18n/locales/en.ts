@@ -625,6 +625,11 @@ export const en = {
         openLogsDirectory: "Open logs folder",
         addFileDefaultOpener: "Add",
         removeFileDefaultOpener: "Remove .{{extension}}",
+        showAppDeveloperSourcesDescription:
+          "Show each app's authors and GitHub source inside App Center cards.",
+        showAppDeveloperSourcesLabel: "Show app authors and source",
+        showAppDeveloperSourcesSaveFailed:
+          "We couldn't update App Center source display.",
         visibilityDescription:
           "Hide this panel from settings. Tap the version number in About seven times to bring it back",
         visibilityLabel: "Show developer panel"

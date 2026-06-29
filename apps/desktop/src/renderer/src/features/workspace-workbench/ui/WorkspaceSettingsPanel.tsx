@@ -419,6 +419,9 @@ export function WorkspaceSettingsPanel({
                 fileDefaultOpenersByExtension={
                   desktopPreferencesState.fileDefaultOpenersByExtension
                 }
+                showAppDeveloperSources={
+                  desktopPreferencesState.showAppDeveloperSources
+                }
                 onAppCatalogChannelChange={(channel) => {
                   void settingsService.changeAppCatalogChannel(channel);
                 }}
@@ -441,6 +444,9 @@ export function WorkspaceSettingsPanel({
                 }}
                 onDeveloperPanelVisibleChange={(visible) => {
                   settingsService.setDeveloperPanelVisible(visible);
+                }}
+                onShowAppDeveloperSourcesChange={(show) => {
+                  void settingsService.changeShowAppDeveloperSources(show);
                 }}
                 onExportLogs={() => {
                   void settingsService.exportDeveloperLogs();
@@ -1455,13 +1461,15 @@ function WorkspaceDeveloperSettingsSection({
   developerLogs,
   developerPanelVisible,
   fileDefaultOpenersByExtension,
+  showAppDeveloperSources,
   onAnalyticsDebugEnabledChange,
   onAppCatalogChannelChange,
   onClearConversationHistory,
   onClearLogs,
   onDeveloperPanelVisibleChange,
   onExportLogs,
-  onFileDefaultOpenersChange
+  onFileDefaultOpenersChange,
+  onShowAppDeveloperSourcesChange
 }: {
   analyticsDebugAvailable: boolean;
   analyticsDebugEnabled: boolean;
@@ -1470,6 +1478,7 @@ function WorkspaceDeveloperSettingsSection({
   developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   developerPanelVisible: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
+  showAppDeveloperSources: boolean;
   onAnalyticsDebugEnabledChange: (enabled: boolean) => void;
   onAppCatalogChannelChange: (channel: DesktopAppCatalogChannel) => void;
   onClearConversationHistory: () => void;
@@ -1479,6 +1488,7 @@ function WorkspaceDeveloperSettingsSection({
   onFileDefaultOpenersChange: (
     openersByExtension: DesktopFileDefaultOpenersByExtension
   ) => void;
+  onShowAppDeveloperSourcesChange: (show: boolean) => void;
 }) {
   const { t } = useTranslation();
   const logs = developerLogs.logs;
@@ -1516,6 +1526,26 @@ function WorkspaceDeveloperSettingsSection({
         changingAppCatalogChannel={changingAppCatalogChannel}
         onAppCatalogChannelChange={onAppCatalogChannelChange}
       />
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.showAppDeveloperSourcesLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t(
+              "workspace.settings.developer.showAppDeveloperSourcesDescription"
+            )}
+          </p>
+        </div>
+        <Switch
+          aria-label={t(
+            "workspace.settings.developer.showAppDeveloperSourcesLabel"
+          )}
+          checked={showAppDeveloperSources}
+          onCheckedChange={onShowAppDeveloperSourcesChange}
+        />
+      </div>
 
       {analyticsDebugAvailable ? (
         <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">

@@ -13,6 +13,7 @@ import {
   defaultDesktopDockPlacement,
   defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopMinimizeAnimation,
+  defaultDesktopShowAppDeveloperSources,
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
@@ -76,6 +77,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       locale: this.dependencies.initialLocale,
       minimizeAnimation: defaultDesktopMinimizeAnimation,
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
+      showAppDeveloperSources: defaultDesktopShowAppDeveloperSources,
       theme: this.dependencies.initialTheme,
       updateChannel: defaultDesktopUpdateChannel,
       updatePolicy: defaultDesktopUpdatePolicy,
@@ -424,6 +426,32 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     }
   }
 
+  async setShowAppDeveloperSources(show: boolean): Promise<boolean> {
+    if (this.store.changingShowAppDeveloperSources === show) {
+      return show;
+    }
+
+    const previousShow = this.store.showAppDeveloperSources;
+    this.store.changingShowAppDeveloperSources = show;
+    this.store.showAppDeveloperSources = show;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            showAppDeveloperSources: show
+          })
+        });
+      return authoritativePreferences.showAppDeveloperSources ?? false;
+    } catch (error) {
+      this.store.showAppDeveloperSources = previousShow;
+      throw error;
+    } finally {
+      if (this.store.changingShowAppDeveloperSources === show) {
+        this.store.changingShowAppDeveloperSources = null;
+      }
+    }
+  }
+
   async setUpdatePolicy(
     policy: DesktopUpdatePolicy
   ): Promise<DesktopUpdatePolicy> {
@@ -603,6 +631,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     locale: DesktopLocale;
     minimizeAnimation?: DesktopMinimizeAnimation;
     sleepPreventionMode: DesktopSleepPreventionMode;
+    showAppDeveloperSources?: boolean;
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
     updatePolicy: DesktopUpdatePolicy;
@@ -632,6 +661,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     this.store.minimizeAnimation =
       preferences.minimizeAnimation ?? defaultDesktopMinimizeAnimation;
     this.store.sleepPreventionMode = preferences.sleepPreventionMode;
+    this.store.showAppDeveloperSources =
+      preferences.showAppDeveloperSources ??
+      defaultDesktopShowAppDeveloperSources;
     this.applyTheme(this.dependencies.resolveTheme(preferences.themeSource));
     this.store.updateChannel = preferences.updateChannel;
     this.store.updatePolicy = preferences.updatePolicy;
@@ -654,6 +686,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       locale: DesktopLocale;
       minimizeAnimation: DesktopMinimizeAnimation;
       sleepPreventionMode: DesktopSleepPreventionMode;
+      showAppDeveloperSources: boolean;
       themeSource: DesktopThemeSource;
       updateChannel: DesktopUpdateChannel;
       updatePolicy: DesktopUpdatePolicy;
@@ -671,6 +704,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     locale: DesktopLocale;
     minimizeAnimation: DesktopMinimizeAnimation;
     sleepPreventionMode: DesktopSleepPreventionMode;
+    showAppDeveloperSources: boolean;
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
     updatePolicy: DesktopUpdatePolicy;
@@ -711,6 +745,8 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         overrides.minimizeAnimation ?? this.store.minimizeAnimation,
       sleepPreventionMode:
         overrides.sleepPreventionMode ?? this.store.sleepPreventionMode,
+      showAppDeveloperSources:
+        overrides.showAppDeveloperSources ?? this.store.showAppDeveloperSources,
       themeSource: overrides.themeSource ?? this.store.theme.source,
       updateChannel: overrides.updateChannel ?? this.store.updateChannel,
       updatePolicy: overrides.updatePolicy ?? this.store.updatePolicy,

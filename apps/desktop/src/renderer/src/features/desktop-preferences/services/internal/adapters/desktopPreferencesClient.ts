@@ -242,6 +242,7 @@ function createPreferencesKey(
     ),
     preferences.locale,
     preferences.sleepPreventionMode,
+    preferences.showAppDeveloperSources ? "app-sources:on" : "app-sources:off",
     preferences.themeSource,
     preferences.updateChannel,
     preferences.updatePolicy,
@@ -279,6 +280,8 @@ function preferencesEqual(
       ) &&
     left.locale === right.locale &&
     left.sleepPreventionMode === right.sleepPreventionMode &&
+    (left.showAppDeveloperSources ?? false) ===
+      (right.showAppDeveloperSources ?? false) &&
     left.themeSource === right.themeSource &&
     left.updateChannel === right.updateChannel &&
     left.updatePolicy === right.updatePolicy &&

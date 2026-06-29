@@ -15,6 +15,7 @@ const (
 	DefaultDesktopLocale                   = "en"
 	DefaultDesktopMinimizeAnimation        = "scale"
 	DefaultDesktopSleepPreventionMode      = "never"
+	DefaultDesktopShowAppDeveloperSources  = false
 	DefaultDesktopThemeSource              = "dark"
 	DefaultDesktopUpdateChannel            = "rc"
 	DefaultDesktopUpdatePolicy             = "prompt"
@@ -35,6 +36,7 @@ type DesktopPreferences struct {
 	Locale                                      string
 	MinimizeAnimation                           string
 	SleepPreventionMode                         string
+	ShowAppDeveloperSources                     bool
 	ThemeSource                                 string
 	UpdateChannel                               string
 	UpdatePolicy                                string
@@ -67,6 +69,7 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		Locale:                       DefaultDesktopLocale,
 		MinimizeAnimation:            DefaultDesktopMinimizeAnimation,
 		SleepPreventionMode:          DefaultDesktopSleepPreventionMode,
+		ShowAppDeveloperSources:      DefaultDesktopShowAppDeveloperSources,
 		ThemeSource:                  DefaultDesktopThemeSource,
 		UpdateChannel:                DefaultDesktopUpdateChannel,
 		UpdatePolicy:                 DefaultDesktopUpdatePolicy,

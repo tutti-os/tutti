@@ -243,7 +243,6 @@ export type DesktopPreferences = {
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   appCatalogChannel: DesktopAppCatalogChannel;
-  showAppDeveloperSources?: boolean;
   browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
   defaultAgentProvider: WorkspaceAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
@@ -252,6 +251,7 @@ export type DesktopPreferences = {
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
+  showAppDeveloperSources: boolean;
   themeSource: DesktopThemeSource;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
@@ -508,7 +508,7 @@ export type WorkspaceApp = {
   displayName: string;
   version: string;
   description: string;
-  authors?: Array<WorkspaceAppAuthor>;
+  authors: Array<WorkspaceAppAuthor>;
   repository?: WorkspaceAppRepository;
   createdAtUnixMs: number;
   installProgress?: WorkspaceAppInstallProgress;

@@ -13,6 +13,7 @@ type desktopPreferencesMutationPayload struct {
 		Locale                                      string                                                    `json:"locale"`
 		MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
 		SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
+		ShowAppDeveloperSources                     bool                                                      `json:"showAppDeveloperSources"`
 		ThemeSource                                 string                                                    `json:"themeSource"`
 		UpdateChannel                               string                                                    `json:"updateChannel"`
 		UpdatePolicy                                string                                                    `json:"updatePolicy"`
@@ -37,6 +38,7 @@ type desktopPreferencesSettingsPayload struct {
 	Locale                                      string                                                    `json:"locale"`
 	MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
 	SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
+	ShowAppDeveloperSources                     bool                                                      `json:"showAppDeveloperSources"`
 	ThemeSource                                 string                                                    `json:"themeSource"`
 	UpdateChannel                               string                                                    `json:"updateChannel"`
 	UpdatePolicy                                string                                                    `json:"updatePolicy"`

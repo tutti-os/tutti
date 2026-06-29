@@ -26,6 +26,7 @@ import {
   IAgentProviderStatusService,
   requestWorkspaceAgentGuiLaunch
 } from "@renderer/features/workspace-agent";
+import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
 import { useTranslation } from "@renderer/i18n";
 import { Toast } from "@renderer/lib/toast";
@@ -63,6 +64,10 @@ const designReviewAppIconUrl = new URL(
 ).href;
 const documentSummarizerAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/aisummary.png",
+  import.meta.url
+).href;
+const tuttiDeveloperIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/tutti.png",
   import.meta.url
 ).href;
 
@@ -126,6 +131,7 @@ export function WorkspaceAppCenterPane({
   workspaceId: string;
 }) {
   const { service, state } = useWorkspaceAppCenterService();
+  const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const agentProviderStatusService = useService(IAgentProviderStatusService);
   const agentProviderSnapshot = useSyncExternalStore(
     (listener) => agentProviderStatusService.subscribe(listener),
@@ -325,9 +331,11 @@ export function WorkspaceAppCenterPane({
         defaultAgentProvider={agentProviderSnapshot.defaultProvider}
         loadProviderConfiguration={loadFactoryProviderConfiguration}
         onActiveAppTabChange={handleActiveAppTabChange}
+        officialDeveloperIconUrl={tuttiDeveloperIconUrl}
         providerErrorMessage={agentProviderSnapshot.error}
         providerLoading={agentProviderSnapshot.isLoading}
         providerOptions={factoryProviderOptions}
+        showDeveloperSources={desktopPreferencesState.showAppDeveloperSources}
         viewModel={viewModel}
       />
     </>
@@ -537,6 +545,7 @@ function toWorkspaceAppRecord(
 function toWorkspaceAppManifest(
   app: WorkspaceAppCenterApp
 ): WorkspaceAppManifest {
+  const authors = normalizeWorkspaceAppManifestAuthors(app);
   return {
     appId: app.appId,
     description: app.description ?? "",
@@ -553,6 +562,8 @@ function toWorkspaceAppManifest(
         }
       : {}),
     name: app.name,
+    ...(authors.length > 0 ? { authors } : {}),
+    ...(app.repository ? { source: app.repository } : {}),
     schemaVersion: workspaceAppManifestSchemaVersion,
     tags: app.tags ?? [],
     version: app.version ?? "0.1.0",
@@ -560,6 +571,26 @@ function toWorkspaceAppManifest(
       minimizeBehavior: app.minimizeBehavior
     }
   };
+}
+
+function normalizeWorkspaceAppManifestAuthors(
+  app: WorkspaceAppCenterApp
+): NonNullable<WorkspaceAppManifest["authors"]> {
+  return (app.authors ?? [])
+    .map((author) => {
+      const name = author.name.trim();
+      const avatarUrl = author.avatarUrl?.trim();
+      const url = author.url?.trim();
+      if (!name) {
+        return null;
+      }
+      return {
+        name,
+        ...(avatarUrl ? { avatarUrl } : {}),
+        ...(url ? { url } : {})
+      };
+    })
+    .filter((author): author is NonNullable<typeof author> => author !== null);
 }
 
 function toWorkspaceAppRuntimeState(

@@ -3752,6 +3752,7 @@ components:
         - locale
         - minimizeAnimation
         - sleepPreventionMode
+        - showAppDeveloperSources
         - themeSource
         - updateChannel
         - updatePolicy
@@ -3762,8 +3763,6 @@ components:
           $ref: "#/components/schemas/DesktopAgentGuiConversationRailCollapsedByProvider"
         appCatalogChannel:
           $ref: "#/components/schemas/DesktopAppCatalogChannel"
-        showAppDeveloperSources:
-          type: boolean
         browserUseConnectionMode:
           $ref: "#/components/schemas/DesktopBrowserUseConnectionMode"
         defaultAgentProvider:
@@ -3780,6 +3779,8 @@ components:
           $ref: "#/components/schemas/DesktopMinimizeAnimation"
         sleepPreventionMode:
           $ref: "#/components/schemas/DesktopSleepPreventionMode"
+        showAppDeveloperSources:
+          type: boolean
         themeSource:
           $ref: "#/components/schemas/DesktopThemeSource"
         updateChannel:
@@ -4358,6 +4359,7 @@ components:
         - displayName
         - version
         - description
+        - authors
         - createdAtUnixMs
         - iconUrl
         - availableVersion

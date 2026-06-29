@@ -2307,7 +2307,7 @@ type DesktopPreferences struct {
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`
-	ShowAppDeveloperSources                     *bool                                              `json:"showAppDeveloperSources,omitempty"`
+	ShowAppDeveloperSources                     bool                                               `json:"showAppDeveloperSources"`
 	SleepPreventionMode                         DesktopSleepPreventionMode                         `json:"sleepPreventionMode"`
 	ThemeSource                                 DesktopThemeSource                                 `json:"themeSource"`
 	UpdateChannel                               DesktopUpdateChannel                               `json:"updateChannel"`
@@ -3142,7 +3142,7 @@ type WorkspaceAgentSessionStatus string
 // WorkspaceApp defines model for WorkspaceApp.
 type WorkspaceApp struct {
 	AppId            string                       `json:"appId"`
-	Authors          *[]WorkspaceAppAuthor        `json:"authors,omitempty"`
+	Authors          []WorkspaceAppAuthor         `json:"authors"`
 	AvailableIconUrl *string                      `json:"availableIconUrl"`
 	AvailableVersion *string                      `json:"availableVersion"`
 	Cli              WorkspaceAppCliState         `json:"cli"`

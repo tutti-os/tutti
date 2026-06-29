@@ -360,13 +360,14 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromGenerated(
 			request.Body.Preferences.FileDefaultOpenersByExtension,
 		),
-		Locale:              locale,
-		MinimizeAnimation:   minimizeAnimation,
-		SleepPreventionMode: sleepPreventionMode,
-		ThemeSource:         themeSource,
-		UpdateChannel:       updateChannel,
-		UpdatePolicy:        updatePolicy,
-		WindowSnapping:      windowSnapping,
+		Locale:                  locale,
+		MinimizeAnimation:       minimizeAnimation,
+		SleepPreventionMode:     sleepPreventionMode,
+		ShowAppDeveloperSources: request.Body.Preferences.ShowAppDeveloperSources,
+		ThemeSource:             themeSource,
+		UpdateChannel:           updateChannel,
+		UpdatePolicy:            updatePolicy,
+		WindowSnapping:          windowSnapping,
 	})
 	if err != nil {
 		return tuttigenerated.PutDesktopPreferences502JSONResponse{
