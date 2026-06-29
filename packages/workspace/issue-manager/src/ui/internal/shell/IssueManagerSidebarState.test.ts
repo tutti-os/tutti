@@ -60,22 +60,34 @@ test("sidebar empty state renders body copy without a standalone title", () => {
   );
 });
 
-test("node header sidebar toggle uses the shared window chrome icon treatment", () => {
+test("node header keeps task center chrome inside the sidebar header", () => {
   assert.match(
     issueManagerNodeSource,
-    /const issueManagerHeaderChromeIconButtonClassName =[\s\S]*text-\[var\(--text-secondary\)\][\s\S]*hover:text-\[var\(--text-primary\)\]/
+    /const issueManagerHeaderChromeIconButtonClassName =[\s\S]*size-7[\s\S]*text-\[var\(--text-secondary\)\][\s\S]*hover:text-\[var\(--text-primary\)\]/
   );
   assert.match(
     issueManagerNodeSource,
-    /const issueManagerHeaderChromeIconClassName = "size-3\.5";/
+    /const issueManagerHeaderChromeIconClassName = "size-\[18px\]";/
   );
   assert.match(
     issueManagerNodeSource,
-    /className="z-10 flex min-w-0 flex-1 cursor-grab items-center gap-1 active:cursor-grabbing"/
+    /const issueManagerHeaderTrafficLightClassName =[\s\S]*rounded-full/
+  );
+  assert.match(
+    issueManagerNodeSource,
+    /width: effectiveCollapsed[\s\S]*var\(--issue-manager-sidebar-width, 280px\)/
+  );
+  assert.match(
+    issueManagerNodeSource,
+    /<IssueManagerTopicSelector[\s\S]*className="max-w-\[150px\] flex-none text-\[var\(--text-primary\)\]"/
+  );
+  assert.match(
+    issueManagerNodeSource,
+    /<IssueManagerTrafficLightButton[\s\S]*tone="close"[\s\S]*<IssueManagerTrafficLightButton[\s\S]*tone="minimize"[\s\S]*<IssueManagerTrafficLightButton[\s\S]*tone="maximize"/
   );
   assert.doesNotMatch(
     issueManagerNodeSource,
-    /--cove-canvas-control-text|PanelIcon className="size-\[18px\]"/
+    /--cove-canvas-control-text|pointer-events-none absolute top-1\/2 left-1\/2/
   );
 });
 

@@ -3864,6 +3864,228 @@ aside.workspace-agents-status-panel
   transition: none;
 }
 
+.workbench-window:has([data-agent-gui-workbench-header="true"]) {
+  --agent-gui-workbench-header-height: 44px;
+
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workbench-window:has([data-agent-gui-workbench-header="true"])
+  .workbench-window__header {
+  position: absolute !important;
+  top: 0 !important;
+  right: 0 !important;
+  left: 0 !important;
+  z-index: 30;
+  width: 100% !important;
+  height: var(--agent-gui-workbench-header-height);
+  min-height: var(--agent-gui-workbench-header-height);
+  padding: 0;
+  overflow: visible;
+  border-bottom: 0;
+  background: transparent;
+  cursor: default;
+  pointer-events: none !important;
+  user-select: auto;
+}
+
+.workbench-window:has([data-agent-gui-workbench-header="true"])
+  .workbench-window__body {
+  grid-row: 1;
+  overflow: hidden;
+}
+
+.workbench-window:has(
+    [data-agent-gui-workbench-header="true"][data-agent-gui-workbench-header-collapsed="false"]
+  )
+  .agent-gui-node__rail-toolbar {
+  padding-top: calc(16px + var(--agent-gui-workbench-header-height));
+}
+
+.workbench-window:has([data-agent-gui-workbench-header="true"])
+  .agent-gui-node__detail-panel {
+  position: relative;
+}
+
+.workbench-window:has([data-agent-gui-workbench-header="true"])
+  .agent-gui-node__detail-header {
+  display: none;
+}
+
+.workbench-window:has([data-agent-gui-workbench-header="true"])
+  .agent-gui-node__timeline-with-composer {
+  padding-top: calc(var(--agent-gui-workbench-header-height) + 20px);
+}
+
+.agent-gui-workbench-header {
+  --agent-gui-workbench-header-rail-width: 280px;
+  --agent-gui-workbench-header-text: var(--text-primary);
+  --agent-gui-workbench-header-muted: var(--text-secondary);
+
+  display: grid;
+  width: 100%;
+  height: var(--agent-gui-workbench-header-height, 44px);
+  min-height: var(--agent-gui-workbench-header-height, 44px);
+  grid-template-columns:
+    minmax(0, var(--agent-gui-workbench-header-rail-width))
+    minmax(0, 1fr);
+  align-items: center;
+  background: transparent;
+  color: var(--agent-gui-workbench-header-text);
+  cursor: grab;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.agent-gui-workbench-header:active {
+  cursor: grabbing;
+}
+
+.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.agent-gui-workbench-header__primary {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 0 30px;
+  background: var(--background-panel);
+  pointer-events: auto;
+}
+
+.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="false"]
+  .agent-gui-workbench-header__primary {
+  border-right: 1px solid var(--agent-gui-border-subtle, var(--line-1));
+}
+
+.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"]
+  .agent-gui-workbench-header__primary {
+  width: min(100%, 720px);
+  background: transparent;
+}
+
+.agent-gui-workbench-header__traffic-lights {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  margin-right: 18px;
+}
+
+.agent-gui-workbench-header__traffic-light {
+  display: inline-flex;
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-tertiary) 72%, transparent);
+  cursor: default;
+  opacity: 0.78;
+}
+
+.agent-gui-workbench-header__traffic-light:hover,
+.agent-gui-workbench-header__traffic-light:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="close"]:hover,
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="close"]:focus-visible {
+  background: #ff5f57;
+}
+
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="minimize"]:hover,
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="minimize"]:focus-visible {
+  background: #ffbd2e;
+}
+
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="maximize"]:hover,
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="maximize"]:focus-visible {
+  background: #28c840;
+}
+
+.agent-gui-workbench-header__agent-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 7px;
+  object-fit: cover;
+  box-shadow: 0 1px 2px color-mix(in srgb, black 18%, transparent);
+}
+
+.agent-gui-workbench-header__agent-name,
+.agent-gui-workbench-header__session-title,
+.agent-gui-workbench-header__detail-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--agent-gui-workbench-header-text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-gui-workbench-header__agent-name {
+  flex: 0 1 auto;
+  max-width: 160px;
+}
+
+.agent-gui-workbench-header__session-title {
+  flex: 1 1 auto;
+  max-width: 360px;
+  margin-left: 4px;
+}
+
+.agent-gui-workbench-header__detail-title {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  align-items: center;
+  padding: 0 20px;
+  pointer-events: none;
+}
+
+.agent-gui-workbench-header__icon-button {
+  display: inline-flex !important;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: var(--agent-gui-workbench-header-muted) !important;
+  cursor: pointer;
+}
+
+.agent-gui-workbench-header__icon-button:hover,
+.agent-gui-workbench-header__icon-button:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--text-primary) 8%,
+    transparent
+  ) !important;
+  color: var(--agent-gui-workbench-header-text) !important;
+}
+
+.agent-gui-workbench-header__icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
 .agent-gui-node__rail-panel {
   position: relative;
   z-index: 2;

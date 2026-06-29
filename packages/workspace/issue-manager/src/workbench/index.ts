@@ -190,10 +190,16 @@ export function createIssueManagerWorkbenchNodeDefinition<
         activeTopicId: nodeState.activeTopicId ?? null,
         copy: feature.i18n,
         defaultActions,
+        displayMode: node.displayMode,
         isSidebarAutoCollapsed,
         isSidebarCollapsed,
         nodeId: node.id,
         title: node.title,
+        windowActions: {
+          close: windowActions.close,
+          minimize: windowActions.minimize,
+          toggleDisplayMode: windowActions.toggleDisplayMode
+        },
         workspaceId: externalWorkspaceState.workspaceId ?? "",
         ...dragHandleProps,
         onPointerDown: (event) => {
