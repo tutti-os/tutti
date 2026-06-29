@@ -34,7 +34,10 @@ export function WorkspaceFilePreviewNodeHeader({
   };
 
   return (
-    <div className="flex h-full min-h-0 items-center gap-2 bg-[var(--background-panel)] px-2 pl-3">
+    <div className="flex h-full min-h-0 items-center gap-3 bg-[var(--background-panel)] px-3 pl-4">
+      <div className="nodrag flex shrink-0 items-center">
+        {context.defaultActions}
+      </div>
       <div
         {...context.dragHandleProps}
         className="flex h-full min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
@@ -51,9 +54,6 @@ export function WorkspaceFilePreviewNodeHeader({
           nodeId={context.node.id}
         />
       ) : null}
-      <div className="nodrag flex shrink-0 items-center gap-1.5">
-        {context.defaultActions}
-      </div>
     </div>
   );
 }
