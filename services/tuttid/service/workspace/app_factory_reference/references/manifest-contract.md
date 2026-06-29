@@ -29,8 +29,16 @@ Create `tutti.app.json` in the package root with this shape:
     "minWidth": 720,
     "minHeight": 520
   },
-  "author": {
-    "name": "Tutti"
+  "authors": [
+    {
+      "name": "Tutti",
+      "url": "https://github.com/tutti-os",
+      "avatarUrl": "https://github.com/tutti-os.png"
+    }
+  ],
+  "source": {
+    "type": "github",
+    "url": "https://github.com/tutti-os/example-app"
   },
   "tags": ["generated"]
 }
@@ -58,6 +66,9 @@ Rules:
 - `window.minimizeBehavior` may be `keep-mounted` or `hibernate`; omitted defaults to `keep-mounted`.
 - `window.minWidth` and `window.minHeight` are optional integer minimum dimensions for the app webview window.
 - `window.minWidth` must be between `280` and `1600`; `window.minHeight` must be between `160` and `1200`.
+- `authors` is optional but preferred for App Center source display. Use a flat list of people or teams; do not add maintainer/contributor role labels. Each author requires `name`; `url` and `avatarUrl` are optional non-empty strings.
+- `author` is a legacy single-author fallback. Do not set both `author` and `authors` in new manifests.
+- `source` is optional. Include it for GitHub-hosted apps as `{ "type": "github", "url": "https://github.com/org/repo" }`.
 - `localizationInfo` is optional. Omit it when the app only needs the default manifest language.
 - When the user asks for localized app metadata, keep `name`, `description`, and `tags` as the default language, then add `localizationInfo.defaultLocale` and one `additionalLocales` entry for each non-default locale.
 - Each `localizationInfo.additionalLocales[].file` must be a relative package path.
