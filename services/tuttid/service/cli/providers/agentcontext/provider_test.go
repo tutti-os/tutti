@@ -438,20 +438,19 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	}
 }
 
-func TestStartCommandRequiresProviderModelAndPrompt(t *testing.T) {
+func TestStartCommandRequiresProviderAndPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
 	required, ok := command.Capability.InputSchema["required"].([]string)
 	if !ok {
 		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
 	}
-	if len(required) != 3 || required[0] != "provider" || required[1] != "model" || required[2] != "prompt" {
+	if len(required) != 2 || required[0] != "provider" || required[1] != "prompt" {
 		t.Fatalf("required = %#v", required)
 	}
 
 	for name, input := range map[string]map[string]any{
 		"missing provider": {"model": "gpt-5", "prompt": "do work"},
-		"missing model":    {"provider": "codex", "prompt": "do work"},
 		"missing prompt":   {"provider": "codex", "model": "gpt-5"},
 	} {
 		_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: input})
@@ -461,6 +460,18 @@ func TestStartCommandRequiresProviderModelAndPrompt(t *testing.T) {
 	}
 	if sessions.createCallCount != 0 {
 		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
+	}
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"provider": "codex", "prompt": "do work"},
+	}); err != nil {
+		t.Fatalf("Handler without model: %v", err)
+	}
+	if sessions.createCallCount != 1 {
+		t.Fatalf("createCallCount = %d, want 1", sessions.createCallCount)
+	}
+	if sessions.createInput.Model != nil {
+		t.Fatalf("Model = %#v, want nil when omitted", sessions.createInput.Model)
 	}
 }
 
@@ -1050,7 +1061,7 @@ func TestProviderHiddenAgentAppCapabilityRemainsInvokable(t *testing.T) {
 	}
 }
 
-func TestProviderStartCommandRequiresModelAndPrompt(t *testing.T) {
+func TestProviderStartCommandRequiresPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newProviderStartCommand(providerStartCommandSpec{
 		AppID:       codexAgentAppID,
@@ -1065,11 +1076,10 @@ func TestProviderStartCommandRequiresModelAndPrompt(t *testing.T) {
 	if !ok {
 		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
 	}
-	if len(required) != 2 || required[0] != "model" || required[1] != "prompt" {
+	if len(required) != 1 || required[0] != "prompt" {
 		t.Fatalf("required = %#v", required)
 	}
 	for name, input := range map[string]map[string]any{
-		"missing model":  {"prompt": "do work"},
 		"missing prompt": {"model": "gpt-5"},
 	} {
 		_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: input})
@@ -1079,6 +1089,18 @@ func TestProviderStartCommandRequiresModelAndPrompt(t *testing.T) {
 	}
 	if sessions.createCallCount != 0 {
 		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
+	}
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"prompt": "do work"},
+	}); err != nil {
+		t.Fatalf("Handler without model: %v", err)
+	}
+	if sessions.createCallCount != 1 {
+		t.Fatalf("createCallCount = %d, want 1", sessions.createCallCount)
+	}
+	if sessions.createInput.Model != nil {
+		t.Fatalf("Model = %#v, want nil when omitted", sessions.createInput.Model)
 	}
 }
 

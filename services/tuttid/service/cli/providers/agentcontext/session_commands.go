@@ -22,7 +22,7 @@ type startInput struct {
 	Provider        string `cli:"provider" validate:"required"`
 	Cwd             string `cli:"cwd"`
 	DisplayPrompt   string `cli:"display-prompt"`
-	Model           string `cli:"model" validate:"required"`
+	Model           string `cli:"model"`
 	PermissionMode  string `cli:"permission-mode"`
 	Prompt          string `cli:"prompt" validate:"required"`
 	ReasoningEffort string `cli:"reasoning-effort"`
@@ -35,7 +35,7 @@ type startInput struct {
 type providerStartInput struct {
 	Cwd             string `cli:"cwd"`
 	DisplayPrompt   string `cli:"display-prompt"`
-	Model           string `cli:"model" validate:"required"`
+	Model           string `cli:"model"`
 	PermissionMode  string `cli:"permission-mode"`
 	Prompt          string `cli:"prompt" validate:"required"`
 	ReasoningEffort string `cli:"reasoning-effort"`
