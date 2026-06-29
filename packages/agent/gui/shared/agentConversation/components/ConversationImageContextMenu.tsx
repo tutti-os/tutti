@@ -22,7 +22,7 @@ export function ConversationImageContextMenu({
   asChild = false,
   contentStyle
 }: {
-  src: string;
+  src: string | undefined;
   children: ReactNode;
   /**
    * Attach the right-click listener directly to the child element instead of a
@@ -40,7 +40,7 @@ export function ConversationImageContextMenu({
   const copyStartedRef = useRef(false);
   const [menuResetKey, setMenuResetKey] = useState(0);
   const copyAndClose = useCallback(() => {
-    if (copyStartedRef.current) {
+    if (!src || copyStartedRef.current) {
       return;
     }
     copyStartedRef.current = true;
