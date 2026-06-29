@@ -51,6 +51,7 @@ export APP_TOOLS_MCP_PATH="$package_dir/server/tools-mcp.js"
 node_bin="${TUTTI_APP_NODE:?TUTTI_APP_NODE is required}"
 mkdir -p "$APP_DATA_ROOT" "$APP_RUNTIME_ROOT"
 
+cd "$APP_RUNTIME_ROOT"
 "$node_bin" "$package_dir/server/server.js"
 ```
 
