@@ -1482,6 +1482,10 @@ describe("AgentGUINodeView provider setup notice", () => {
       ".agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice"
     );
     expect(css).toContain("top: calc(64px + 4px);");
+    const setupNoticeActionRule = css.match(
+      /\.agent-gui-node__provider-setup-notice-action\s*{[^}]*}/s
+    )?.[0];
+    expect(setupNoticeActionRule).toContain("-webkit-app-region: no-drag;");
   });
 
   it("hides the setup notice when the provider is ready", () => {

@@ -23,6 +23,7 @@ import { agentGuiDockIconUrls } from "../../dockIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
+import { getAgentEnvPanelStore } from "../../shared/agentEnv/agentEnvPanelStore";
 import {
   resolveAgentGUIHeroIconUrl,
   shouldEmphasizeEmptyHeroProvider
@@ -707,6 +708,10 @@ describe("AgentGUINode", () => {
 
   beforeEach(() => {
     mockViewModel = createViewModel();
+    const agentEnvPanelStore = getAgentEnvPanelStore();
+    agentEnvPanelStore.open = false;
+    agentEnvPanelStore.provider = null;
+    agentEnvPanelStore.focus = null;
     mockCreateConversation.mockClear();
     mockSelectConversation.mockClear();
     mockSubmitPrompt.mockClear();
@@ -2674,6 +2679,43 @@ describe("AgentGUINode", () => {
     expect(
       screen.getByTestId("agent-gui-provider-setup-notice")
     ).toHaveTextContent("agentHost.agentGui.installRequiredPlaceholder");
+  });
+
+  it("opens the provider setup panel from the setup notice action", () => {
+    mockViewModel = createViewModel({
+      data: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      activeConversationId: "session-1",
+      draftPrompt: "hello",
+      canQueueWhileBusy: true
+    });
+
+    renderAgentGUINode({
+      state: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      managedAgentsState: createManagedAgentsState({
+        readyAgentIds: ["codex"]
+      })
+    });
+
+    fireEvent.pointerDown(
+      screen.getByTestId("agent-gui-provider-setup-notice-action")
+    );
+    fireEvent.click(
+      screen.getByTestId("agent-gui-provider-setup-notice-action")
+    );
+
+    expect(getAgentEnvPanelStore()).toMatchObject({
+      open: true,
+      provider: "claude-code",
+      focus: "detect"
+    });
   });
 
   it("renders composer setting controls with permission mode UI", async () => {

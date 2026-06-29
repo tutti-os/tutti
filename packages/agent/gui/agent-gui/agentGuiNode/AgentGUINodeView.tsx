@@ -2466,6 +2466,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
             )}
             data-testid="agent-gui-provider-setup-notice-action"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={() =>
               openAgentEnvPanel({
                 provider: viewModel.data.provider,

@@ -5867,6 +5867,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 
 .agent-gui-node__layout [data-slot="status-dot"],
