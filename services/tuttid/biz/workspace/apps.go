@@ -35,6 +35,8 @@ type AppManifest struct {
 	Window           *AppManifestWindow           `json:"window,omitempty"`
 	Launch           *AppManifestLaunch           `json:"launch,omitempty"`
 	Author           *AppManifestAuthor           `json:"author,omitempty"`
+	Authors          []AppManifestAuthor          `json:"authors,omitempty"`
+	Source           *AppManifestSource           `json:"source,omitempty"`
 	Tags             []string                     `json:"tags,omitempty"`
 	LocalizationInfo *AppManifestLocalizationInfo `json:"localizationInfo,omitempty"`
 }
@@ -70,8 +72,14 @@ type AppManifestLaunch struct {
 }
 
 type AppManifestAuthor struct {
-	Name string `json:"name"`
-	URL  string `json:"url,omitempty"`
+	Name      string `json:"name"`
+	URL       string `json:"url,omitempty"`
+	AvatarURL string `json:"avatarUrl,omitempty"`
+}
+
+type AppManifestSource struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
 }
 
 type AppManifestLocalizationInfo struct {
@@ -589,6 +597,21 @@ func ValidateAppManifest(manifest AppManifest) error {
 	}
 	if manifest.Author != nil && strings.TrimSpace(manifest.Author.Name) == "" {
 		return errors.New("app manifest author.name is required when author is provided")
+	}
+	if len(manifest.Authors) > 0 {
+		for index, author := range manifest.Authors {
+			if strings.TrimSpace(author.Name) == "" {
+				return fmt.Errorf("app manifest authors[%d].name is required", index)
+			}
+		}
+	}
+	if manifest.Source != nil {
+		if strings.TrimSpace(manifest.Source.Type) != "github" {
+			return errors.New("app manifest source.type must be github when source is provided")
+		}
+		if strings.TrimSpace(manifest.Source.URL) == "" {
+			return errors.New("app manifest source.url is required when source is provided")
+		}
 	}
 	if manifest.Launch != nil {
 		mode := strings.TrimSpace(manifest.Launch.Mode)

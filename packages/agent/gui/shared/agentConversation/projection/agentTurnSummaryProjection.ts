@@ -783,6 +783,25 @@ function dedupeFiles(
       byPath.set(file.path, file);
       return;
     }
+    if (existing.changeType === "deleted" && file.changeType === "created") {
+      byPath.set(file.path, {
+        ...file,
+        changeType: "modified",
+        unifiedDiff: null,
+        oldString:
+          existing.oldString ??
+          existing.content ??
+          existing.unifiedDiff ??
+          null,
+        newString: file.newString ?? file.content ?? file.unifiedDiff ?? null,
+        content: null
+      });
+      return;
+    }
+    if (file.changeType === "deleted" || existing.changeType === "deleted") {
+      byPath.set(file.path, file);
+      return;
+    }
     if (existing.changeType === "modified" && file.changeType === "created") {
       byPath.set(file.path, file);
       return;

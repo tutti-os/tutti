@@ -81,7 +81,11 @@ export function describeStageProblem(
 // A completed step reads in the done tense ("已安装 CLI") rather than the
 // imperative track label ("安装 CLI"); the imperative is kept for pending/running
 // rows where the step is still a to-do.
-export function doneStageLabel(stageId: AgentSetupStageId, t: T): string {
+export function doneStageLabel(
+  stageId: AgentSetupStageId,
+  authMethod: string | null | undefined,
+  t: T
+): string {
   switch (stageId) {
     case "detect":
       return t("workspace.agentEnv.stageDetectDone");
@@ -92,6 +96,9 @@ export function doneStageLabel(stageId: AgentSetupStageId, t: T): string {
     case "adapter":
       return t("workspace.agentEnv.stageAdapterDone");
     case "login":
+      if (authMethod === "apiKey") {
+        return t("workspace.agentEnv.stageLoginDoneApiBilling");
+      }
       return t("workspace.agentEnv.stageLoginDone");
     case "ready":
       return t("workspace.agentEnv.stageReadyDone");

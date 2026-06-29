@@ -138,6 +138,10 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 		t.Fatalf("recommended system prompt = %#v", bundle.RecommendedSystemPrompt)
 	}
 	for _, want := range []string{
+		"do not treat this dynamic skill bundle by itself as routing intent",
+		"unless the user explicitly asks for Tutti",
+		"Do not choose Tutti routing, Tutti skills, or a shell-mediated Tutti CLI call merely because this bundle or command guide is present.",
+		"This guidance does not restrict host-application tools that are needed for the user's non-Tutti task.",
 		"agent session id: `run-1`",
 		"provider: `codex`",
 		"tutti-dev issue list --topic-id <topic-id>",
@@ -157,6 +161,9 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "CODEX_HOME/skills/<skill>/SKILL.md") ||
 		strings.Contains(bundle.RecommendedSystemPrompt.Content, "`workspace-app/SKILL.md`") {
 		t.Fatalf("recommended system prompt should not guess materialized skill paths: %q", bundle.RecommendedSystemPrompt.Content)
+	}
+	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "does not contain any `mention://...` URI, do not use Tutti CLI") {
+		t.Fatalf("recommended system prompt should not ban explicit no-mention Tutti requests: %q", bundle.RecommendedSystemPrompt.Content)
 	}
 	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "# Host App Context") ||
 		strings.Contains(bundle.RecommendedSystemPrompt.Content, "The app displays images and videos using standard Markdown syntax") {

@@ -35,6 +35,7 @@ export interface AgentSetupStage {
   label: string;
   status: CodexSetupStepStatus;
   detail: StageDetailToken | null;
+  authMethod?: string | null;
 }
 
 export interface AgentSetupStageLabels {
@@ -73,6 +74,7 @@ export interface DeriveAgentSetupStagesInput {
   cliVersionDetail: StageDetailToken | null;
   adapterDetail: StageDetailToken | null;
   accountDetail: StageDetailToken | null;
+  authMethod: string | null;
   networkDetail: StageDetailToken | null;
   labels: AgentSetupStageLabels;
 }
@@ -171,7 +173,8 @@ export function deriveAgentSetupStages(
       id: "login",
       label: input.labels.login,
       status: loginStatus,
-      detail: input.accountDetail
+      detail: input.accountDetail,
+      authMethod: input.authMethod
     },
     {
       id: "ready",

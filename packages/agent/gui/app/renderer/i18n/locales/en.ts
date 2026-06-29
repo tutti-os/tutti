@@ -15,6 +15,8 @@ export const en = {
     delete: "Delete",
     deleting: "Deleting...",
     download: "Download",
+    copyImage: "Copy image",
+    downloadImage: "Download image",
     expandImage: "Zoom image",
     error: "Error",
     generateByAi: "Generate by AI",

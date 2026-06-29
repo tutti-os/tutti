@@ -170,6 +170,56 @@ func TestDaemonAPIRoutesUnsupportedAgentProviderStatus(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIRoutesAgentProviderAuthIncludesAuthMethod(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentStatusService: stubAgentStatusService{
+			listFn: func(_ context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
+				if len(input.Providers) != 1 || input.Providers[0] != "claude-code" {
+					t.Fatalf("providers = %#v, want [claude-code]", input.Providers)
+				}
+				return agentstatusservice.Snapshot{
+					Providers: []agentstatusservice.ProviderStatus{{
+						Actions: []agentstatusservice.Action{},
+						Auth: agentstatusservice.AuthInfo{
+							Status:       agentstatusservice.AuthAuthenticated,
+							AccountLabel: "API Usage Billing",
+							AuthMethod:   "apiKey",
+						},
+						Availability: agentstatusservice.Availability{
+							Status: agentstatusservice.AvailabilityReady,
+						},
+						CLI:      agentstatusservice.CLIStatus{Installed: true, BinaryPath: "/usr/local/bin/claude"},
+						Adapter:  agentstatusservice.AdapterStatus{Installed: true},
+						Provider: "claude-code",
+					}},
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-providers/status?providers=claude-code", nil)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.AgentProviderStatusListResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if len(response.Providers) != 1 {
+		t.Fatalf("providers length = %d, want 1", len(response.Providers))
+	}
+	auth := response.Providers[0].Auth
+	if auth.Status != tuttigenerated.AgentProviderAuthStatusAuthenticated {
+		t.Fatalf("auth status = %q, want authenticated", auth.Status)
+	}
+	if auth.AccountLabel == nil || *auth.AccountLabel != "API Usage Billing" {
+		t.Fatalf("accountLabel = %#v, want API Usage Billing", auth.AccountLabel)
+	}
+	if auth.AuthMethod == nil || *auth.AuthMethod != "apiKey" {
+		t.Fatalf("authMethod = %#v, want apiKey", auth.AuthMethod)
+	}
+}
+
 func TestDaemonAPIRoutesAgentProviderProbe(t *testing.T) {
 	checkedAt := time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 	mux := http.NewServeMux()

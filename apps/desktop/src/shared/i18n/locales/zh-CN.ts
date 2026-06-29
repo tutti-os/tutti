@@ -184,6 +184,7 @@ export const zhCN = {
       stageInstallDone: "已安装 CLI",
       stageAdapterDone: "已安装适配器",
       stageLoginDone: "已登录账号",
+      stageLoginDoneApiBilling: "已配置 API 计费",
       stageReadyDone: "已就绪",
       networkCheckRegistry: "安装源",
       networkCheckApi: "服务接口",

@@ -1877,6 +1877,129 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("backfills older selected conversation messages when the latest page has no user prompt", async () => {
+    const timelineRequests: Array<{
+      beforeVersion?: number;
+      cache?: boolean;
+      limit?: number;
+      order?: string;
+    }> = [];
+    const listSessionTimeline = vi.fn(
+      async ({
+        beforeVersion,
+        cache,
+        agentSessionId,
+        limit,
+        order
+      }: {
+        beforeVersion?: number;
+        cache?: boolean;
+        agentSessionId: string;
+        limit?: number;
+        order?: string;
+      }) => {
+        if (agentSessionId !== "session-2") {
+          return { timelineItems: [], hasMore: false };
+        }
+        timelineRequests.push({ beforeVersion, cache, limit, order });
+        if (order === "desc" && beforeVersion === undefined) {
+          return {
+            timelineItems: Array.from({ length: 100 }, (_, index) => {
+              const id = 102 - index;
+              return timelineMessage({
+                agentSessionId: "session-2",
+                id,
+                eventId: `assistant-${id}`,
+                role: "assistant",
+                content: id === 102 ? "latest answer" : `assistant ${id}`,
+                turnId: "turn-1"
+              });
+            }),
+            latestVersion: 102,
+            hasMore: true
+          };
+        }
+        if (order === "desc" && beforeVersion === 3) {
+          return {
+            timelineItems: [
+              timelineMessage({
+                agentSessionId: "session-2",
+                id: 2,
+                eventId: "assistant-2",
+                role: "assistant",
+                content: "early answer",
+                turnId: "turn-1"
+              }),
+              timelineMessage({
+                agentSessionId: "session-2",
+                id: 1,
+                eventId: "user-1",
+                role: "user",
+                content: "initial ask",
+                turnId: "turn-1"
+              })
+            ],
+            latestVersion: 102,
+            hasMore: false
+          };
+        }
+        return { timelineItems: [], latestVersion: 102, hasMore: false };
+      }
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline,
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      const bodies = conversationBodies(result.current.viewModel);
+      expect(bodies).toContain("initial ask");
+      expect(bodies).toContain("latest answer");
+      expect(result.current.viewModel.hasOlderMessages).toBe(false);
+    });
+    expect(timelineRequests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          beforeVersion: undefined,
+          cache: false,
+          limit: 100,
+          order: "desc"
+        }),
+        expect.objectContaining({
+          beforeVersion: 3,
+          cache: false,
+          limit: 100,
+          order: "desc"
+        })
+      ])
+    );
+  });
+
   it("keeps streamed detail messages that arrive while the initial page is loading", async () => {
     let activityListener:
       | ((event: AgentHostAgentActivityStreamEvent) => void)
@@ -2985,7 +3108,9 @@ describe("useAgentGUINodeController", () => {
     });
 
     act(() => {
-      result.current.actions.submitPrompt(promptBlocks("start outside old chat"));
+      result.current.actions.submitPrompt(
+        promptBlocks("start outside old chat")
+      );
     });
 
     await waitFor(() => {
@@ -3378,6 +3503,18 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.activeConversationId).toBeNull();
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
     expect(result.current.viewModel.draftPrompt).toBe("first prompt");
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: createdId
+      })?.overlayMessages
+    ).toEqual([
+      expect.objectContaining({
+        agentSessionId: createdId,
+        payload: expect.objectContaining({ text: "first prompt" }),
+        role: "user"
+      })
+    ]);
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
     ).toBeUndefined();
@@ -6805,6 +6942,18 @@ describe("useAgentGUINodeController", () => {
     // The failure is surfaced and the global loading flag is cleared today.
     expect(result.current.viewModel.detailError).toBe("runtime not connected");
     expect(result.current.viewModel.isLoadingMessages).toBe(false);
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: failedId as string
+      })?.overlayMessages
+    ).toEqual([]);
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: failedId as string
+      })?.detailMessages
+    ).toEqual([]);
     // First-create failure should not leave a per-session messages-loading flag
     // behind; otherwise a later detail view for the id can spin forever.
     await waitFor(() => {

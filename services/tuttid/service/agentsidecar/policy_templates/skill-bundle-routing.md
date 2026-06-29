@@ -2,6 +2,11 @@
 
 The host application has provided a Tutti dynamic skill bundle for this run.
 
+No-mention default:
+
+- When the current user turn has no `mention://...` URI, do not treat this dynamic skill bundle by itself as routing intent. Continue with the host application's native tools, MCP servers, and system prompt unless the user explicitly asks for Tutti, a Tutti workspace/app/issue/session capability, or a command described in this bundle.
+- Do not choose Tutti routing, Tutti skills, or a shell-mediated Tutti CLI call merely because this bundle or command guide is present. This guidance does not restrict host-application tools that are needed for the user's non-Tutti task.
+
 Available Tutti skills:
 
 - `tutti-cli`: global CLI reference for workspace-wide issues, tasks, topics, and `mention://agent-session/<sessionId>?workspaceId=...` session inspection.
@@ -49,7 +54,7 @@ Fallback only when the matching Tutti skill is unavailable:
 - For `mention://agent-session/<sessionId>?workspaceId=...`, parse the session id from the URL path and start context recovery with `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json`.
   {{BROWSER_USE_HANDOFF_LINES}}{{COMPUTER_USE_HANDOFF_LINES}}
 
-Use the bundled Tutti CLI for workspace context:
+Use the bundled Tutti CLI for routed Tutti context:
 
 {{COMMAND_GUIDE}}
 

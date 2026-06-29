@@ -34,7 +34,11 @@ function status(
       version: "2.0.0",
       requiredVersion: "2.0.0"
     },
-    auth: { status: "authenticated", accountLabel: "me@x.com" },
+    auth: {
+      status: "authenticated",
+      accountLabel: "me@x.com",
+      authMethod: "oauth"
+    },
     actions: [],
     network: null,
     activeAction: null,
@@ -174,7 +178,7 @@ describe("buildAgentEnvWizardViewModel", () => {
       input({
         status: status({
           availability: { status: "auth_required", reasonCode: null },
-          auth: { status: "required", accountLabel: null }
+          auth: { status: "required", accountLabel: null, authMethod: null }
         })
       })
     );
@@ -185,7 +189,7 @@ describe("buildAgentEnvWizardViewModel", () => {
     const vm = buildAgentEnvWizardViewModel(
       input({
         status: status({
-          auth: { status: "required", accountLabel: null },
+          auth: { status: "required", accountLabel: null, authMethod: null },
           availability: { status: "auth_required", reasonCode: null }
         }),
         revealIndex: 0

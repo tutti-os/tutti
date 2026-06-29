@@ -3704,6 +3704,8 @@ components:
           $ref: "#/components/schemas/DesktopAgentGuiConversationRailCollapsedByProvider"
         appCatalogChannel:
           $ref: "#/components/schemas/DesktopAppCatalogChannel"
+        showAppDeveloperSources:
+          type: boolean
         browserUseConnectionMode:
           $ref: "#/components/schemas/DesktopBrowserUseConnectionMode"
         defaultAgentProvider:
@@ -4334,6 +4336,13 @@ components:
           minLength: 1
         description:
           type: string
+        authors:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAppAuthor"
+        repository:
+          $ref: "#/components/schemas/WorkspaceAppRepository"
+          nullable: true
         createdAtUnixMs:
           type: integer
           format: int64
@@ -4421,6 +4430,35 @@ components:
       enum:
         - hibernate
         - keep-mounted
+    WorkspaceAppAuthor:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        url:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+    WorkspaceAppRepository:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - url
+      properties:
+        type:
+          type: string
+          enum:
+            - github
+        url:
+          type: string
+          minLength: 1
     WorkspaceAppUploadPurpose:
       type: string
       enum:
@@ -5517,6 +5555,10 @@ components:
         accountLabel:
           type: string
           nullable: true
+        authMethod:
+          type: string
+          nullable: true
+          description: The authentication method reported by the provider CLI (e.g. oauth, apiKey).
     AgentProviderStatus:
       type: object
       additionalProperties: false

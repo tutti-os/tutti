@@ -188,6 +188,7 @@ export function buildAgentEnvWizardViewModel(
     : status?.auth.status === "authenticated"
       ? { kind: "text", text: "__SIGNED_IN__" }
       : null;
+  const authMethod: string | null = status?.auth.authMethod ?? null;
 
   const stages = deriveAgentSetupStages({
     detected: status !== null,
@@ -205,6 +206,7 @@ export function buildAgentEnvWizardViewModel(
     cliVersionDetail: cliDetail,
     adapterDetail,
     accountDetail,
+    authMethod,
     networkDetail: null,
     labels: input.stageLabels
   });

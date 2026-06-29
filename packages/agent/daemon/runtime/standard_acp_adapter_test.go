@@ -1413,6 +1413,25 @@ func TestClaudeCodeStandardACPUpdateDoesNotProjectSyntheticInterruptTitleAsSessi
 	}
 }
 
+func TestClaudeCodeStandardACPUpdateDoesNotOverwritePromptTitle(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "claude-session-1"
+	session.Title = "帮我做一个这周行业报告的ppt出来"
+
+	events := standardACPUpdateEvents(standardACPClaudeCodeConfig(), session, "turn-2", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "session_info_update",
+			"title": "继续多生成一些多个版本的ppt 看看"
+		}
+	}`), newACPTurnNormalizer())
+
+	if len(events) != 0 {
+		t.Fatalf("events = %#v, want no title overwrite", events)
+	}
+}
+
 func TestClaudeCodeStandardACPUpdateMarksSyntheticInterruptTitleAsInterrupted(t *testing.T) {
 	t.Parallel()
 

@@ -1213,6 +1213,21 @@ func (e WorkspaceAppMinimizeBehavior) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAppRepositoryType.
+const (
+	Github WorkspaceAppRepositoryType = "github"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAppRepositoryType enum.
+func (e WorkspaceAppRepositoryType) Valid() bool {
+	switch e {
+	case Github:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAppRuntimeStatus.
 const (
 	WorkspaceAppRuntimeStatusFailed                  WorkspaceAppRuntimeStatus = "failed"
@@ -1632,8 +1647,11 @@ type AgentProviderAdapterStatus struct {
 
 // AgentProviderAuthInfo defines model for AgentProviderAuthInfo.
 type AgentProviderAuthInfo struct {
-	AccountLabel *string                 `json:"accountLabel,omitempty"`
-	Status       AgentProviderAuthStatus `json:"status"`
+	AccountLabel *string `json:"accountLabel,omitempty"`
+
+	// AuthMethod The authentication method reported by the provider CLI (e.g. oauth, apiKey).
+	AuthMethod *string                 `json:"authMethod,omitempty"`
+	Status     AgentProviderAuthStatus `json:"status"`
 }
 
 // AgentProviderAuthStatus defines model for AgentProviderAuthStatus.
@@ -2274,6 +2292,7 @@ type DesktopPreferences struct {
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`
+	ShowAppDeveloperSources                     *bool                                              `json:"showAppDeveloperSources,omitempty"`
 	SleepPreventionMode                         DesktopSleepPreventionMode                         `json:"sleepPreventionMode"`
 	ThemeSource                                 DesktopThemeSource                                 `json:"themeSource"`
 	UpdateChannel                               DesktopUpdateChannel                               `json:"updateChannel"`
@@ -3097,6 +3116,7 @@ type WorkspaceAgentSessionStatus string
 // WorkspaceApp defines model for WorkspaceApp.
 type WorkspaceApp struct {
 	AppId            string                       `json:"appId"`
+	Authors          *[]WorkspaceAppAuthor        `json:"authors,omitempty"`
 	AvailableIconUrl *string                      `json:"availableIconUrl"`
 	AvailableVersion *string                      `json:"availableVersion"`
 	Cli              WorkspaceAppCliState         `json:"cli"`
@@ -3118,6 +3138,7 @@ type WorkspaceApp struct {
 	MinimizeBehavior WorkspaceAppMinimizeBehavior `json:"minimizeBehavior"`
 	Port             *int                         `json:"port"`
 	References       WorkspaceAppReferencesState  `json:"references"`
+	Repository       *WorkspaceAppRepository      `json:"repository,omitempty"`
 	Source           WorkspaceAppSource           `json:"source"`
 	StartedAtUnixMs  *int64                       `json:"startedAtUnixMs"`
 	StateRevision    int64                        `json:"stateRevision"`
@@ -3128,6 +3149,13 @@ type WorkspaceApp struct {
 	Version          string                       `json:"version"`
 	WindowMinHeight  *int                         `json:"windowMinHeight"`
 	WindowMinWidth   *int                         `json:"windowMinWidth"`
+}
+
+// WorkspaceAppAuthor defines model for WorkspaceAppAuthor.
+type WorkspaceAppAuthor struct {
+	AvatarUrl *string `json:"avatarUrl,omitempty"`
+	Name      string  `json:"name"`
+	Url       *string `json:"url,omitempty"`
 }
 
 // WorkspaceAppCatalogLoadState defines model for WorkspaceAppCatalogLoadState.
@@ -3261,6 +3289,15 @@ type WorkspaceAppReferencesState struct {
 	ListSupported   bool `json:"listSupported"`
 	SearchSupported bool `json:"searchSupported"`
 }
+
+// WorkspaceAppRepository defines model for WorkspaceAppRepository.
+type WorkspaceAppRepository struct {
+	Type WorkspaceAppRepositoryType `json:"type"`
+	Url  string                     `json:"url"`
+}
+
+// WorkspaceAppRepositoryType defines model for WorkspaceAppRepository.Type.
+type WorkspaceAppRepositoryType string
 
 // WorkspaceAppResponse defines model for WorkspaceAppResponse.
 type WorkspaceAppResponse struct {

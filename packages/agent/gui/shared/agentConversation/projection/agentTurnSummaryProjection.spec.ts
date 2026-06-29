@@ -156,6 +156,96 @@ describe("projectAgentTurnSummaryRowForTurn", () => {
     ]);
   });
 
+  it("summarizes Codex delete-add replacements as modified files", () => {
+    const rows = projectAgentTurnSummaryRowForTurn(
+      {
+        id: "turn-codex-replace",
+        userMessage: null,
+        userMessages: [],
+        agentMessages: [],
+        toolCalls: [
+          {
+            id: "call:delete-index",
+            name: "Edit file",
+            toolName: "Edit",
+            callType: "tool",
+            status: "Completed",
+            statusKind: "completed",
+            summary: "Deleted index.html",
+            occurredAtUnixMs: 14,
+            payload: {
+              input: {
+                changes: [
+                  {
+                    path: "/workspace/game/index.html",
+                    kind: { type: "delete" },
+                    diff: "<!doctype html>\n<title>Old</title>\n"
+                  },
+                  {
+                    path: "/workspace/game/stale.css",
+                    kind: { type: "update" },
+                    diff: "@@ -1 +1 @@\n-body{}\n+body{color:red}\n"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            id: "call:add-index",
+            name: "Edit file",
+            toolName: "Edit",
+            callType: "tool",
+            status: "Completed",
+            statusKind: "completed",
+            summary: "Created index.html",
+            occurredAtUnixMs: 15,
+            payload: {
+              input: {
+                changes: [
+                  {
+                    path: "/workspace/game/index.html",
+                    kind: { type: "add" },
+                    diff: "<!doctype html>\n<title>Snake</title>\n"
+                  },
+                  {
+                    path: "/workspace/game/stale.css",
+                    kind: { type: "delete" },
+                    diff: "body{color:red}\n"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        toolCallCount: 2,
+        hasFailedToolCall: false,
+        agentItems: []
+      } satisfies WorkspaceAgentSessionDetailTurn,
+      { workspaceRoot: "/workspace" }
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      fileCount: 2,
+      modifiedCount: 2,
+      createdCount: 0
+    });
+    expect(rows[0]?.files).toEqual([
+      expect.objectContaining({
+        path: "/workspace/game/index.html",
+        changeType: "modified",
+        oldString: "<!doctype html>\n<title>Old</title>",
+        newString: "<!doctype html>\n<title>Snake</title>",
+        unifiedDiff: null
+      }),
+      expect.objectContaining({
+        path: "/workspace/game/stale.css",
+        changeType: "deleted",
+        unifiedDiff: "body{color:red}"
+      })
+    ]);
+  });
+
   it("extracts nested task step file changes for durable reopen summaries", () => {
     const rows = projectAgentTurnSummaryRowForTurn(
       {

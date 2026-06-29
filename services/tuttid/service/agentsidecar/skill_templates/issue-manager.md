@@ -5,7 +5,7 @@ description: Issue-manager for Tutti workspace issues — `mention://workspace-i
 
 # Issue Manager
 
-Owns issue **handoff** interpretation, **mode** selection, and **run** lifecycle. Use the injected `tutti-cli` skill as the command reference for CLI syntax and flags.
+Owns issue **handoff** interpretation, **mode** selection, and **run** lifecycle. Before choosing issue commands, read the materialized sibling `tutti-cli/SKILL.md` file and use its `## Commands` section as the command reference for CLI syntax and flags.
 
 Run metadata: `--agent-provider {{AGENT_PROVIDER}}`, `--agent-session-id {{AGENT_SESSION_ID}}`. Do not guess or substitute provider or session ids.
 

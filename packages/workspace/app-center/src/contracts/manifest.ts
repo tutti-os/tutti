@@ -31,7 +31,13 @@ export interface WorkspaceAppManifestWindow {
 
 export interface WorkspaceAppManifestAuthor {
   readonly name: string;
+  readonly avatarUrl?: string;
   readonly url?: string;
+}
+
+export interface WorkspaceAppManifestSource {
+  readonly type: "github";
+  readonly url: string;
 }
 
 export interface WorkspaceAppManifestLocalizationInfo {
@@ -55,6 +61,8 @@ export interface WorkspaceAppManifest {
   readonly references?: WorkspaceAppManifestReferences;
   readonly window?: WorkspaceAppManifestWindow;
   readonly author?: WorkspaceAppManifestAuthor;
+  readonly authors?: readonly WorkspaceAppManifestAuthor[];
+  readonly source?: WorkspaceAppManifestSource;
   readonly tags?: readonly string[];
   readonly localizationInfo?: WorkspaceAppManifestLocalizationInfo;
 }

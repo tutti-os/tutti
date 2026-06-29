@@ -17,6 +17,8 @@ export const zhCN = {
     delete: "删除",
     deleting: "删除中...",
     download: "下载",
+    copyImage: "复制图片",
+    downloadImage: "下载图片",
     expandImage: "放大图片",
     error: "错误",
     generateByAi: "AI 生成",

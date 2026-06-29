@@ -354,6 +354,7 @@ func generatedAgentProviderAdapterStatus(status agentstatusservice.AdapterStatus
 func generatedAgentProviderAuthInfo(auth agentstatusservice.AuthInfo) tuttigenerated.AgentProviderAuthInfo {
 	return tuttigenerated.AgentProviderAuthInfo{
 		AccountLabel: stringPointerIfNotBlank(auth.AccountLabel),
+		AuthMethod:   stringPointerIfNotBlank(auth.AuthMethod),
 		Status:       tuttigenerated.AgentProviderAuthStatus(auth.Status),
 	}
 }

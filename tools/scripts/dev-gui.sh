@@ -456,7 +456,7 @@ prepare_tuttid_binary() {
   log "building daemon dev binary at ${binary_path}"
   (
     cd "${TUTTID_DIR}"
-    run_go build -o "${binary_path}" .
+    run_go build -buildvcs=false -o "${binary_path}" .
   )
 
   TUTTID_BINARY_PATH="${binary_path}"

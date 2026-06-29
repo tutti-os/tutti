@@ -65,6 +65,7 @@ function input(
     cliVersionDetail: null,
     adapterDetail: null,
     accountDetail: null,
+    authMethod: null,
     networkDetail: null,
     labels,
     ...overrides
@@ -214,7 +215,8 @@ describe("deriveAgentSetupStages", () => {
         ready: true,
         activePhase: "done",
         cliVersionDetail: { kind: "text", text: "0.142.1" },
-        accountDetail: { kind: "text", text: "user@example.com" }
+        accountDetail: { kind: "text", text: "user@example.com" },
+        authMethod: "oauth"
       })
     );
     expect(stages.map((s) => s.status)).toEqual([
@@ -229,6 +231,21 @@ describe("deriveAgentSetupStages", () => {
       kind: "text",
       text: "user@example.com"
     });
+    expect(stage(stages, "login").authMethod).toBe("oauth");
+  });
+
+  it("carries authMethod on the login stage for API billing", () => {
+    const stages = deriveAgentSetupStages(
+      input({
+        cliInstalled: true,
+        adapterInstalled: true,
+        authenticated: true,
+        ready: true,
+        accountDetail: { kind: "text", text: "API Usage Billing" },
+        authMethod: "apiKey"
+      })
+    );
+    expect(stage(stages, "login").authMethod).toBe("apiKey");
   });
 
   it("flags the network stage as error when connectivity is unreachable", () => {

@@ -171,7 +171,7 @@ export function AgentEnvSetupTrack({
                     {problem
                       ? problem.headline
                       : stage.status === "ok"
-                        ? doneStageLabel(stage.id, t)
+                        ? doneStageLabel(stage.id, stage.authMethod, t)
                         : stage.label}
                   </span>
                   {stageDetailText ? (

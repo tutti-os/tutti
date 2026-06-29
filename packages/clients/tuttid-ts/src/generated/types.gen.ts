@@ -237,6 +237,7 @@ export type DesktopPreferences = {
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   appCatalogChannel: DesktopAppCatalogChannel;
+  showAppDeveloperSources?: boolean;
   browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
   defaultAgentProvider: WorkspaceAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
@@ -501,6 +502,8 @@ export type WorkspaceApp = {
   displayName: string;
   version: string;
   description: string;
+  authors?: Array<WorkspaceAppAuthor>;
+  repository?: WorkspaceAppRepository;
   createdAtUnixMs: number;
   installProgress?: WorkspaceAppInstallProgress;
   iconUrl: string | null;
@@ -533,6 +536,17 @@ export type WorkspaceApp = {
 };
 
 export type WorkspaceAppMinimizeBehavior = "hibernate" | "keep-mounted";
+
+export type WorkspaceAppAuthor = {
+  name: string;
+  url?: string | null;
+  avatarUrl?: string | null;
+};
+
+export type WorkspaceAppRepository = {
+  type: "github";
+  url: string;
+};
 
 export type WorkspaceAppUploadPurpose = "app-asset";
 
@@ -999,6 +1013,10 @@ export type AgentProviderAdapterStatus = {
 export type AgentProviderAuthInfo = {
   status: AgentProviderAuthStatus;
   accountLabel?: string | null;
+  /**
+   * The authentication method reported by the provider CLI (e.g. oauth, apiKey).
+   */
+  authMethod?: string | null;
 };
 
 export type AgentProviderStatus = {
