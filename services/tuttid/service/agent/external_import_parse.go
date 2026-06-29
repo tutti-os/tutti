@@ -224,7 +224,7 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 		return externalImportedSession{}, false, nil
 	}
 	session.Cwd = cwd
-	session.NoProject = isExternalImportNoProjectCwd(cwd)
+	session.NoProject = isExternalImportNoProjectCwd(session.Provider, cwd)
 	messages := make([]externalImportedMessage, 0, len(session.Messages))
 	for i, message := range session.Messages {
 		message.Role = normalizeExternalMessageRole(message.Role)
@@ -270,7 +270,7 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 	return session, true, nil
 }
 
-func isExternalImportNoProjectCwd(cwd string) bool {
+func isExternalImportNoProjectCwd(provider string, cwd string) bool {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false
@@ -279,7 +279,40 @@ func isExternalImportNoProjectCwd(cwd string) bool {
 	if !ok {
 		return false
 	}
-	return filepath.Clean(cwd) == filepath.Clean(home)
+	cwd = filepath.Clean(cwd)
+	home = filepath.Clean(home)
+	if cwd == home {
+		return true
+	}
+	return agentproviderbiz.Normalize(provider) == agentproviderbiz.Codex &&
+		isExternalImportCodexScratchCwd(home, cwd)
+}
+
+func isExternalImportCodexScratchCwd(home string, cwd string) bool {
+	rel, err := filepath.Rel(home, cwd)
+	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) != 4 || parts[0] != "Documents" || parts[1] != "Codex" || parts[3] == "" {
+		return false
+	}
+	return isExternalImportDateSegment(parts[2])
+}
+
+func isExternalImportDateSegment(value string) bool {
+	if len(value) != len("2006-01-02") || value[4] != '-' || value[7] != '-' {
+		return false
+	}
+	for index, char := range value {
+		if index == 4 || index == 7 {
+			continue
+		}
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func externalImportedMessageHasContent(message externalImportedMessage) bool {
