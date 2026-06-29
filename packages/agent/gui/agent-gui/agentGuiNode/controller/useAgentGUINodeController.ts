@@ -784,7 +784,7 @@ function isCancelSessionTransientError(error: unknown): boolean {
     return false;
   }
   return (
-    message === "cancel workspace agent session failed." ||
+    message.includes("cancel workspace agent session failed") ||
     message.includes("failed to fetch") ||
     message.includes("networkerror") ||
     message.includes("econnrefused") ||
