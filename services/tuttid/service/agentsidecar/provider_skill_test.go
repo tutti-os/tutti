@@ -79,7 +79,7 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 	for _, want := range []string{
 		"tutti-dev codex start --prompt <task> --show --json",
 		"tutti-dev claude start --prompt <task> --show --json",
-		"when image context may be useful",
+		"When image context may be useful",
 		"tutti-dev agent session-summary --session-id <caller-session-id> --json",
 		"discover candidate turn ids",
 		"inspect the active turn and any recent user turns",

@@ -1107,7 +1107,7 @@ test("controller actions run selected task through task-scoped handoff", async (
   await harness.actions.runTask();
 
   assert.equal(runnerCalls.length, 1);
-  assert.match(runnerCalls[0]?.agentSessionId ?? "", /^[0-9a-f-]{36}$/);
+  assert.equal("agentSessionId" in (runnerCalls[0] ?? {}), false);
   assert.deepEqual(runnerCalls[0]?.issue, issue);
   assert.equal(runnerCalls[0]?.provider, "codex");
   assert.deepEqual(runnerCalls[0]?.task, task);
@@ -1196,7 +1196,7 @@ test("controller actions run selected issues without selected subtasks", async (
   await harness.actions.runTask();
 
   assert.equal(runnerCalls.length, 1);
-  assert.match(runnerCalls[0]?.agentSessionId ?? "", /^[0-9a-f-]{36}$/);
+  assert.equal("agentSessionId" in (runnerCalls[0] ?? {}), false);
   assert.deepEqual(runnerCalls[0]?.issue, issue);
   assert.equal(runnerCalls[0]?.provider, "codex");
   assert.equal(runnerCalls[0]?.task, undefined);
@@ -1339,7 +1339,7 @@ test("controller actions honor provider overrides from the run entry menu", asyn
   await harness.actions.runTask("claude");
 
   assert.equal(runnerCalls.length, 1);
-  assert.match(runnerCalls[0]?.agentSessionId ?? "", /^[0-9a-f-]{36}$/);
+  assert.equal("agentSessionId" in (runnerCalls[0] ?? {}), false);
   assert.deepEqual(runnerCalls[0]?.issue, issue);
   assert.equal(runnerCalls[0]?.provider, "claude");
   assert.deepEqual(runnerCalls[0]?.task, task);

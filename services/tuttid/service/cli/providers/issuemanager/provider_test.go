@@ -437,11 +437,13 @@ func TestIssueRunCreateDoesNotRequireTaskID(t *testing.T) {
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newIssueRunCreateCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Context: cliservice.InvokeContext{
+			AgentSessionID: "SESSION-1",
+		},
 		Input: map[string]any{
-			"issue-id":         "ISS-1",
-			"agent-provider":   "codex",
-			"agent-session-id": "SESSION-1",
-			"agent-user-id":    "local",
+			"issue-id":       "ISS-1",
+			"agent-provider": "codex",
+			"agent-user-id":  "local",
 		},
 	})
 	if err != nil {
@@ -455,6 +457,38 @@ func TestIssueRunCreateDoesNotRequireTaskID(t *testing.T) {
 		t.Fatalf("run = %#v", run)
 	}
 	assertAbsent(t, run, "requesterUserId", "agentUserId", "outputDir", "executionDirectory")
+}
+
+func TestTaskRunCreateDefaultsAgentSessionIDFromInvokeContext(t *testing.T) {
+	issues := &fakeIssueManager{}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newRunCreateCommand()
+
+	required, ok := command.Capability.InputSchema["required"].([]string)
+	if !ok {
+		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
+	}
+	for _, field := range required {
+		if field == "agent-session-id" {
+			t.Fatalf("agent-session-id should not be required: %#v", required)
+		}
+	}
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Context: cliservice.InvokeContext{
+			AgentSessionID: "SESSION-CONTEXT",
+		},
+		Input: map[string]any{
+			"issue-id":       "ISS-1",
+			"task-id":        "TASK-1",
+			"agent-provider": "codex",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if issues.created.AgentSessionID != "SESSION-CONTEXT" {
+		t.Fatalf("created = %#v, want context agent session id", issues.created)
+	}
 }
 
 func TestIssueRunCompleteDoesNotRequireTaskID(t *testing.T) {

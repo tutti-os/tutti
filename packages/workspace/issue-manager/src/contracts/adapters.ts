@@ -83,7 +83,6 @@ export interface IssueManagerFileAdapter extends WorkspaceFileReferenceAdapter {
 }
 
 export interface IssueManagerAgentRunRequest extends IssueManagerScope {
-  agentSessionId: string;
   executionDirectory?: string | null;
   issue: IssueManagerIssueSummary;
   provider: string;

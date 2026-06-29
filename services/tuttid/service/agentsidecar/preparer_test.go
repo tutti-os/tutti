@@ -219,11 +219,15 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(issueSkill), "Create the run yourself before doing the work") ||
 		!strings.Contains(string(issueSkill), "inspect issue tasks before creating a run") ||
 		!strings.Contains(string(issueSkill), "execute each child task in issue order") ||
-		!strings.Contains(string(issueSkill), "--agent-provider codex --agent-session-id session-1") ||
+		!strings.Contains(string(issueSkill), "--agent-provider codex --json") ||
+		!strings.Contains(string(issueSkill), "current AgentGUI session from the runtime context") ||
 		!strings.Contains(string(issueSkill), "complete that same run") ||
 		!strings.Contains(string(issueSkill), "Do not edit code, do not execute the task, and do not create or complete runs in breakdown mode") ||
 		!strings.Contains(string(issueSkill), "**Done when:**") {
 		t.Fatalf("issue-manager skill content = %q", string(issueSkill))
+	}
+	if strings.Contains(string(issueSkill), "--agent-session-id session-1") {
+		t.Fatalf("issue-manager skill should not hard-code explicit session ids: %q", string(issueSkill))
 	}
 	if envValue(prepared.Env, "TUTTI_AGENT_PROVIDER") != "codex" {
 		t.Fatalf("prepared env = %#v, want TUTTI_AGENT_PROVIDER", prepared.Env)

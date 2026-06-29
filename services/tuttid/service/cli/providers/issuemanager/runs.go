@@ -2,6 +2,7 @@ package issuemanager
 
 import (
 	"context"
+	"strings"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -21,7 +22,7 @@ type taskRunCreateInput struct {
 	RunID          string `cli:"run-id"`
 	AgentProvider  string `cli:"agent-provider" validate:"required"`
 	AgentUserID    string `cli:"agent-user-id"`
-	AgentSessionID string `cli:"agent-session-id" validate:"required"`
+	AgentSessionID string `cli:"agent-session-id" description:"Optional override; defaults to the current AgentGUI session when invoked from an agent runtime."`
 }
 
 type issueRunCreateInput struct {
@@ -29,7 +30,7 @@ type issueRunCreateInput struct {
 	RunID          string `cli:"run-id"`
 	AgentProvider  string `cli:"agent-provider" validate:"required"`
 	AgentUserID    string `cli:"agent-user-id"`
-	AgentSessionID string `cli:"agent-session-id" validate:"required"`
+	AgentSessionID string `cli:"agent-session-id" description:"Optional override; defaults to the current AgentGUI session when invoked from an agent runtime."`
 }
 
 type taskRunCompleteInput struct {
@@ -209,11 +210,15 @@ func (p Provider) runTaskRunCreate(ctx context.Context, invoke framework.InvokeC
 	if err := p.requireIssueManager(); err != nil {
 		return nil, err
 	}
+	agentSessionID, err := issueRunAgentSessionID(invoke, input.AgentSessionID)
+	if err != nil {
+		return nil, err
+	}
 	return p.issues.CreateRun(ctx, invoke.WorkspaceID, input.IssueID, input.TaskID, workspaceservice.CreateIssueManagerRunInput{
 		RunID:          input.RunID,
 		AgentProvider:  input.AgentProvider,
 		AgentUserID:    input.AgentUserID,
-		AgentSessionID: input.AgentSessionID,
+		AgentSessionID: agentSessionID,
 	})
 }
 
@@ -221,12 +226,29 @@ func (p Provider) runIssueRunCreate(ctx context.Context, invoke framework.Invoke
 	if err := p.requireIssueManager(); err != nil {
 		return nil, err
 	}
+	agentSessionID, err := issueRunAgentSessionID(invoke, input.AgentSessionID)
+	if err != nil {
+		return nil, err
+	}
 	return p.issues.CreateRun(ctx, invoke.WorkspaceID, input.IssueID, "", workspaceservice.CreateIssueManagerRunInput{
 		RunID:          input.RunID,
 		AgentProvider:  input.AgentProvider,
 		AgentUserID:    input.AgentUserID,
-		AgentSessionID: input.AgentSessionID,
+		AgentSessionID: agentSessionID,
 	})
+}
+
+func issueRunAgentSessionID(
+	invoke framework.InvokeContext,
+	override string,
+) (string, error) {
+	if agentSessionID := strings.TrimSpace(override); agentSessionID != "" {
+		return agentSessionID, nil
+	}
+	if agentSessionID := strings.TrimSpace(invoke.Request.Context.AgentSessionID); agentSessionID != "" {
+		return agentSessionID, nil
+	}
+	return "", cliservice.MissingRequiredInputError("agent-session-id")
 }
 
 func (p Provider) runTaskRunComplete(ctx context.Context, invoke framework.InvokeContext, input taskRunCompleteInput) (any, error) {
