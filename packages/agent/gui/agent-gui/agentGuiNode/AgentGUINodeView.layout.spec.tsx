@@ -1464,7 +1464,7 @@ describe("AgentGUINodeView provider setup notice", () => {
     )?.[0];
 
     expect(setupNoticeRule).toContain("position: absolute;");
-    expect(setupNoticeRule).toContain("top: 8px;");
+    expect(setupNoticeRule).toContain("top: 56px;");
     // Horizontally centered above the detail content.
     expect(setupNoticeRule).toContain("left: 50%;");
     expect(setupNoticeRule).toContain("transform: translateX(-50%);");
@@ -1481,7 +1481,7 @@ describe("AgentGUINodeView provider setup notice", () => {
     expect(css).toContain(
       ".agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice"
     );
-    expect(css).toContain("top: calc(64px + 4px);");
+    expect(css).toContain("top: calc(64px + 16px);");
     const setupNoticeActionRule = css.match(
       /\.agent-gui-node__provider-setup-notice-action\s*{[^}]*}/s
     )?.[0];

@@ -5838,7 +5838,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__provider-setup-notice {
   position: absolute;
-  top: 8px;
+  top: 56px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -5854,7 +5854,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice {
-  top: calc(64px + 4px);
+  top: calc(64px + 16px);
 }
 
 .agent-gui-node__provider-setup-notice-action {
