@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -28,6 +29,29 @@ func TestNormalizeInputIgnoresUnknownAndCoercesScalars(t *testing.T) {
 	}
 	if _, ok := input["unknown"]; ok {
 		t.Fatalf("unknown input was forwarded: %#v", input)
+	}
+}
+
+func TestNormalizeInputWithWarningsReportsUnknownInput(t *testing.T) {
+	input, warnings, err := NormalizeInputWithWarnings(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name": map[string]any{"type": "string"},
+		},
+	}, map[string]any{
+		"name":     "daily",
+		"schedule": "0 9 * * *",
+	})
+	if err != nil {
+		t.Fatalf("NormalizeInputWithWarnings() error = %v", err)
+	}
+	if input["name"] != "daily" {
+		t.Fatalf("input = %#v", input)
+	}
+	if len(warnings) != 1 ||
+		warnings[0].Code != "unknown_input_ignored" ||
+		!strings.Contains(warnings[0].Message, `"schedule"`) {
+		t.Fatalf("warnings = %#v", warnings)
 	}
 }
 

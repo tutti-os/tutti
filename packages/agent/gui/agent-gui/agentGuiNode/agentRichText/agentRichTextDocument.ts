@@ -127,15 +127,25 @@ export function agentRichTextDocToPromptText(doc: JSONContent): string {
   if (doc.type !== "doc") {
     return nodeToPromptText(doc);
   }
-  const blocks = doc.content ?? [];
-  if (blocks.length === 0) {
-    return "";
-  }
-  return blocks.map((block) => nodeToPromptText(block)).join("\n");
+  return agentRichTextContentToPromptText(doc.content ?? []);
 }
 
 export function editorToPromptText(editor: Editor): string {
   return agentRichTextDocToPromptText(editor.getJSON());
+}
+
+export function agentRichTextContentToPromptText(
+  content: readonly JSONContent[]
+): string {
+  if (content.length === 0) {
+    return "";
+  }
+  const separator = content.some((node) => isBlockPromptNode(node)) ? "\n" : "";
+  return content.map((node) => nodeToPromptText(node)).join(separator);
+}
+
+function isBlockPromptNode(node: JSONContent): boolean {
+  return node.type === "doc" || node.type === "paragraph";
 }
 
 function nodeToPromptText(node: JSONContent): string {

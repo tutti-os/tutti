@@ -2011,11 +2011,18 @@ type CliCapabilityVisibility string
 
 // CliCommandOutput defines model for CliCommandOutput.
 type CliCommandOutput struct {
-	Columns *[]CliTableColumn         `json:"columns,omitempty"`
-	Kind    CliOutputMode             `json:"kind"`
-	Rows    *[]map[string]interface{} `json:"rows,omitempty"`
-	Text    *string                   `json:"text,omitempty"`
-	Value   *map[string]interface{}   `json:"value,omitempty"`
+	Columns  *[]CliTableColumn         `json:"columns,omitempty"`
+	Kind     CliOutputMode             `json:"kind"`
+	Rows     *[]map[string]interface{} `json:"rows,omitempty"`
+	Text     *string                   `json:"text,omitempty"`
+	Value    *map[string]interface{}   `json:"value,omitempty"`
+	Warnings *[]CliCommandWarning      `json:"warnings,omitempty"`
+}
+
+// CliCommandWarning defines model for CliCommandWarning.
+type CliCommandWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 // CliInvokeContext Client-supplied invocation context. These fields are hints for routing and audit only; authorization and workspace validation remain daemon-owned.

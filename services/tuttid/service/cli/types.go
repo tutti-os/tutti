@@ -79,11 +79,17 @@ type InvokeRequest struct {
 }
 
 type CommandOutput struct {
-	Kind    OutputMode
-	Columns []TableColumn
-	Rows    []map[string]any
-	Value   map[string]any
-	Text    string
+	Kind     OutputMode
+	Columns  []TableColumn
+	Rows     []map[string]any
+	Value    map[string]any
+	Text     string
+	Warnings []CommandWarning
+}
+
+type CommandWarning struct {
+	Code    string
+	Message string
 }
 
 type Handler func(context.Context, InvokeRequest) (CommandOutput, error)

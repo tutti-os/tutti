@@ -3515,6 +3515,21 @@ components:
         text:
           type: string
           nullable: true
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/CliCommandWarning"
+    CliCommandWarning:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
     CliInvokeResponse:
       type: object
       additionalProperties: false

@@ -2026,7 +2026,7 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeAdapterExecKeepsMentionPromptUnmodified(t *testing.T) {
+func TestClaudeCodeAdapterExecAddsInternalMentionRoutingPromptOnlyForProvider(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Claude Agent", "claude-session-mention-routing")
@@ -2043,9 +2043,16 @@ func TestClaudeCodeAdapterExecKeepsMentionPromptUnmodified(t *testing.T) {
 		t.Fatalf("Exec: %v", err)
 	}
 
-	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
-	if text != prompt {
-		t.Fatalf("prompt text = %q, want unmodified prompt %q", text, prompt)
+	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
+	if len(texts) < 2 {
+		t.Fatalf("prompt texts = %#v, want internal routing plus user prompt", texts)
+	}
+	if !strings.Contains(texts[0], "Claude Code mention handoff routing for this user turn:") ||
+		!strings.Contains(texts[0], "Skill(skill=\"tutti-cli:tutti-cli\")") {
+		t.Fatalf("routing prompt = %q, want internal Claude mention routing", texts[0])
+	}
+	if texts[1] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[1], prompt)
 	}
 	userContent := firstUserMessageContent(t, events)
 	if !strings.Contains(userContent, prompt) ||
@@ -2070,9 +2077,15 @@ func TestClaudeCodeAdapterExecRoutesWorkspaceReferenceMention(t *testing.T) {
 		t.Fatalf("Exec: %v", err)
 	}
 
-	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
-	if text != prompt {
-		t.Fatalf("prompt text = %q, want unmodified prompt %q", text, prompt)
+	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
+	if len(texts) < 2 {
+		t.Fatalf("prompt texts = %#v, want internal routing plus user prompt", texts)
+	}
+	if !strings.Contains(texts[0], "Skill(skill=\"tutti-cli:reference\")") {
+		t.Fatalf("routing prompt = %q, want reference skill routing", texts[0])
+	}
+	if texts[1] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[1], prompt)
 	}
 }
 
@@ -2234,19 +2247,32 @@ func TestClaudeCodeAdapterMirrorsSDKGoalStatusIntoRuntimeContext(t *testing.T) {
 
 func firstPromptText(t *testing.T, params map[string]any) string {
 	t.Helper()
+	texts := promptTexts(t, params)
+	if len(texts) == 0 {
+		t.Fatalf("prompt params = %#v, want prompt text", params)
+	}
+	return texts[0]
+}
+
+func promptTexts(t *testing.T, params map[string]any) []string {
+	t.Helper()
 	items, ok := params["prompt"].([]any)
 	if !ok || len(items) == 0 {
 		t.Fatalf("prompt params = %#v, want prompt items", params)
 	}
-	first, ok := items[0].(map[string]any)
-	if !ok {
-		t.Fatalf("first prompt item = %#v, want map", items[0])
+	texts := make([]string, 0, len(items))
+	for _, item := range items {
+		block, ok := item.(map[string]any)
+		if !ok {
+			t.Fatalf("prompt item = %#v, want map", item)
+		}
+		text, ok := block["text"].(string)
+		if !ok {
+			continue
+		}
+		texts = append(texts, text)
 	}
-	text, ok := first["text"].(string)
-	if !ok {
-		t.Fatalf("first prompt text = %#v, want string", first["text"])
-	}
-	return text
+	return texts
 }
 
 func firstUserMessageContent(t *testing.T, events []activityshared.Event) string {

@@ -28,6 +28,7 @@ type AgentSessions interface {
 	ListActivePeers(context.Context, string) (agentservice.ActivePeers, error)
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	ListProviderAvailability(context.Context, agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error)
+	LocalAttachmentPath(context.Context, string, string, string, string) (string, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 }
 
@@ -102,6 +103,7 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newCancelCommand(),
 		p.newSessionsCommand([]string{"agent", "sessions"}, appID+".agent.sessions"),
 		p.newSessionSummaryCommand(),
+		p.newTurnResourcesCommand(),
 		p.newActivePeersCommand(),
 	}
 }

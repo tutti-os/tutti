@@ -707,6 +707,9 @@ describe("agent GUI workbench contribution copy", () => {
       /--agent-gui-workbench-header-traffic-light-size:\s*12px;/
     );
     expect(css).toMatch(
+      /--agent-gui-workbench-header-traffic-light-hit-area-size:\s*20px;/
+    );
+    expect(css).toMatch(
       /--agent-gui-workbench-header-traffic-light-gap:\s*8px;/
     );
     expect(css).toMatch(
@@ -727,7 +730,16 @@ describe("agent GUI workbench contribution copy", () => {
       /\.agent-gui-workbench-header__traffic-lights\s*{[^}]*margin-right:\s*0;/s
     );
     expect(css).toMatch(
-      /\.agent-gui-workbench-header__traffic-light\s*{[^}]*width:\s*var\(--agent-gui-workbench-header-traffic-light-size\);[^}]*height:\s*var\(--agent-gui-workbench-header-traffic-light-size\);/s
+      /\.agent-gui-workbench-header__traffic-light\s*{[^}]*width:\s*var\(--agent-gui-workbench-header-traffic-light-hit-area-size\);[^}]*height:\s*var\(--agent-gui-workbench-header-traffic-light-hit-area-size\);[^}]*margin:\s*calc\(/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-light\s*{[^}]*cursor:\s*pointer;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-light\s*{[^}]*transition:\s*opacity 160ms ease;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-light::before\s*{[^}]*inset:\s*calc\([^}]*--agent-gui-workbench-header-traffic-light-size[^}]*content:\s*"";[^}]*transition:\s*background-color 160ms ease;/s
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__agent-brand\s*{[^}]*gap:\s*8px;/s

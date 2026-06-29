@@ -143,6 +143,12 @@ export type CliCommandOutput = {
     [key: string]: unknown;
   } | null;
   text?: string | null;
+  warnings?: Array<CliCommandWarning>;
+};
+
+export type CliCommandWarning = {
+  code: string;
+  message: string;
 };
 
 export type CliInvokeResponse = {

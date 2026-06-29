@@ -43,10 +43,93 @@ test("fullscreen toggle releases button focus when entering fullscreen", () => {
     "utf8"
   );
 
-  assert.match(source, /onClick=\{\(event\) =>/);
+  assert.match(source, /onClick:\s*\(event\) =>/);
   assert.match(
     source,
     /event\.currentTarget\.blur\(\);[\s\S]*controller\.commands\.enterFullscreen\(node\.id\);/
+  );
+});
+
+test("window controls use left-aligned traffic lights", () => {
+  const frameSource = readFileSync(
+    resolve("src/react/WorkbenchWindowFrame.tsx"),
+    "utf8"
+  );
+  const fullscreenSource = readFileSync(
+    resolve("src/react/WorkbenchWindowFullscreenToggle.tsx"),
+    "utf8"
+  );
+  const hostActionsSource = readFileSync(
+    resolve("src/host/WorkbenchHostWindowActions.tsx"),
+    "utf8"
+  );
+  const styleSource = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    frameSource,
+    /className="workbench-window__traffic-light-actions"/
+  );
+  assert.match(
+    frameSource,
+    /\{defaultActions\}[\s\S]*<div className="workbench-window__title">/
+  );
+  assert.match(hostActionsSource, /<WorkbenchWindowTrafficLights[\s\S]*close=/);
+  assert.match(
+    hostActionsSource,
+    /<WorkbenchWindowTrafficLights[\s\S]*minimize=/
+  );
+  assert.match(
+    fullscreenSource,
+    /<WorkbenchWindowTrafficLights[\s\S]*maximize=/
+  );
+  assert.match(
+    styleSource,
+    /\.workbench-window__header\s*\{[\s\S]*justify-content:\s*flex-start;[\s\S]*padding:\s*0 12px 0 16px;/s
+  );
+  assert.match(
+    styleSource,
+    /\.workbench-window__title\s*\{[\s\S]*font-size:\s*15px;[\s\S]*font-weight:\s*600;[\s\S]*line-height:\s*20px;/s
+  );
+  assert.match(
+    styleSource,
+    /\.workbench-window-traffic-light::before\s*\{[\s\S]*inset:\s*4px;/s
+  );
+  const trafficLightsSource = readFileSync(
+    resolve("src/react/WorkbenchWindowTrafficLights.tsx"),
+    "utf8"
+  );
+  assert.match(
+    trafficLightsSource,
+    /<TooltipProvider delayDuration=\{250\} skipDelayDuration=\{0\}>[\s\S]*<TooltipTrigger asChild>\{button\}<\/TooltipTrigger>[\s\S]*<TooltipContent side="bottom">\{input\.label\}<\/TooltipContent>/
+  );
+});
+
+test("corner resize handles render outside the clipped window surface", () => {
+  const frameSource = readFileSync(
+    resolve("src/react/WorkbenchWindowFrame.tsx"),
+    "utf8"
+  );
+  const styleSource = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    frameSource,
+    /<div className="workbench-window__body">\{children\}<\/div>\s*<\/div>\s*\{node\.displayMode === "floating"/
+  );
+  assert.match(
+    styleSource,
+    /\.workbench-window__resize-handle\[data-handle="north-east"\]\s*\{[\s\S]*top:\s*-8px;[\s\S]*right:\s*-8px;[\s\S]*width:\s*24px;[\s\S]*height:\s*24px;[\s\S]*cursor:\s*nesw-resize;/s
+  );
+  assert.match(
+    styleSource,
+    /\.workbench-window__resize-handle\[data-handle="north-west"\]\s*\{[\s\S]*top:\s*-12px;[\s\S]*left:\s*-12px;[\s\S]*cursor:\s*nwse-resize;/s
+  );
+  assert.match(
+    styleSource,
+    /\.workbench-window__resize-handle\[data-handle="south-east"\]\s*\{[\s\S]*right:\s*-12px;[\s\S]*bottom:\s*-12px;[\s\S]*cursor:\s*nwse-resize;/s
+  );
+  assert.match(
+    styleSource,
+    /\.workbench-window__resize-handle\[data-handle="south-west"\]\s*\{[\s\S]*bottom:\s*-12px;[\s\S]*left:\s*-12px;[\s\S]*cursor:\s*nesw-resize;/s
   );
 });
 

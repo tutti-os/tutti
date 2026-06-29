@@ -234,6 +234,7 @@ export type {
   CliCapabilityVisibility,
   CliCommandId,
   CliCommandOutput,
+  CliCommandWarning,
   ClientOptions,
   CliInvokeContext,
   CliInvokeRequest,

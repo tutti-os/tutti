@@ -218,14 +218,25 @@ func validateInputSchema(schema map[string]any, location string) error {
 		if !ok {
 			return fmt.Errorf("cli manifest %s.properties.%s must be an object", location, name)
 		}
-		switch schemaType(propertyMap) {
+		propertyType := schemaType(propertyMap)
+		switch propertyType {
 		case "string", "boolean", "integer":
 		default:
 			return fmt.Errorf("cli manifest %s.properties.%s.type must be string, boolean, or integer", location, name)
 		}
 		for key := range propertyMap {
-			if key != "type" && key != "description" {
+			if key != "type" && key != "description" && key != "enum" && key != "default" {
 				return fmt.Errorf("cli manifest %s.properties.%s has unsupported key %q", location, name, key)
+			}
+		}
+		if enum, ok := propertyMap["enum"]; ok {
+			if err := validateInputSchemaEnum(propertyType, enum, fmt.Sprintf("%s.properties.%s.enum", location, name)); err != nil {
+				return err
+			}
+		}
+		if defaultValue, ok := propertyMap["default"]; ok {
+			if err := validateInputSchemaValue(propertyType, defaultValue, fmt.Sprintf("%s.properties.%s.default", location, name)); err != nil {
+				return err
 			}
 		}
 	}
@@ -238,6 +249,47 @@ func validateInputSchema(schema map[string]any, location string) error {
 		if key != "type" && key != "properties" && key != "required" {
 			return fmt.Errorf("cli manifest %s has unsupported key %q", location, key)
 		}
+	}
+	return nil
+}
+
+func validateInputSchemaEnum(typeName string, value any, location string) error {
+	items, ok := value.([]any)
+	if !ok {
+		return fmt.Errorf("cli manifest %s must be an array", location)
+	}
+	for index, item := range items {
+		if err := validateInputSchemaValue(typeName, item, fmt.Sprintf("%s[%d]", location, index)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateInputSchemaValue(typeName string, value any, location string) error {
+	switch typeName {
+	case "string":
+		if _, ok := value.(string); !ok {
+			return fmt.Errorf("cli manifest %s must be a string", location)
+		}
+	case "boolean":
+		if _, ok := value.(bool); !ok {
+			return fmt.Errorf("cli manifest %s must be a boolean", location)
+		}
+	case "integer":
+		switch typed := value.(type) {
+		case int, int64:
+			return nil
+		case float64:
+			if typed == float64(int64(typed)) {
+				return nil
+			}
+		case json.Number:
+			if _, err := typed.Int64(); err == nil {
+				return nil
+			}
+		}
+		return fmt.Errorf("cli manifest %s must be an integer", location)
 	}
 	return nil
 }

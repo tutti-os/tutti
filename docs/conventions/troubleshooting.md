@@ -440,7 +440,8 @@ delimited by ---`, and the composer skill picker may show partial or
   user-project paths. For imported sessions, inspect `runtimeContext` for the
   daemon-owned `externalImportNoProject` marker. Check both the in-memory
   `rememberNoProjectPath` path and the restart fallback that recognizes
-  `Documents/tutti/session-<uuid>`.
+  `Documents/tutti/session-<uuid>`. Codex external history can also record its
+  own scratch cwd under `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
 - Root cause:
   Conversation project grouping is a view-model join of `cwd x userProjects`.
   If a generated no-project cwd is not recognized before prefix/parent project
@@ -449,18 +450,20 @@ delimited by ---`, and the composer skill picker may show partial or
   `isNoProjectPath` callback because it has the user home-directory context;
   a package-level suffix check would misclassify real projects that contain a
   `Documents/tutti/session-<uuid>` subdirectory. External import has a similar
-  trap because provider transcripts may record `$HOME` as the cwd when no
-  project was selected; that intent must be persisted as session metadata rather
-  than inferred later from user-project prefix matching.
+  trap because provider transcripts may record `$HOME` or a provider-owned
+  scratch working directory as the cwd when no project was selected; that intent
+  must be persisted as session metadata rather than inferred later from
+  user-project prefix matching.
 - Fix:
   Treat exact user-project path matches as explicit user intent, then call the
   host no-project resolver before parent project matching. The desktop resolver
   should recognize generated `$HOME/Documents/tutti/session-<uuid>` cwd values
   while allowing explicit registered projects to override them. External import
-  should mark home-cwd sessions as no-project in `runtimeContext`, skip them
-  when registering user-project paths, and let Agent GUI preserve that no-project
-  mode during later project re-resolution. Keep the project field derived in the
-  Agent GUI view-model rather than writing it back into the conversation store.
+  should mark home-cwd sessions and known provider scratch cwd shapes as
+  no-project in `runtimeContext`, skip them when registering user-project paths,
+  and let Agent GUI preserve that no-project mode during later project
+  re-resolution. Keep the project field derived in the Agent GUI view-model
+  rather than writing it back into the conversation store.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,

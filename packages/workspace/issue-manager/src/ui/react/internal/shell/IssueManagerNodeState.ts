@@ -58,6 +58,11 @@ interface IssueManagerTopicUpdateDetail {
   workspaceId: string;
 }
 
+interface IssueManagerIssueCreateRequestDetail {
+  nodeId: string;
+  workspaceId: string;
+}
+
 type IssueManagerEventHubListener<TDetail> = (detail: TDetail) => void;
 
 function createIssueManagerKeyedEventHub<TDetail>(input: {
@@ -143,6 +148,10 @@ const issueManagerTopicUpdateHub =
   createIssueManagerKeyedEventHub<IssueManagerTopicUpdateDetail>({
     getKey: issueManagerNodeScopeKey
   });
+const issueManagerIssueCreateRequestHub =
+  createIssueManagerKeyedEventHub<IssueManagerIssueCreateRequestDetail>({
+    getKey: issueManagerNodeScopeKey
+  });
 
 export function resolveIssueManagerTopicHeaderState(input: {
   activeTopicId: string | null;
@@ -206,6 +215,12 @@ export function dispatchIssueManagerTopicUpdate(
   input: IssueManagerTopicUpdateDetail
 ): void {
   issueManagerTopicUpdateHub.publish(input);
+}
+
+export function dispatchIssueManagerIssueCreateRequest(
+  input: IssueManagerIssueCreateRequestDetail
+): void {
+  issueManagerIssueCreateRequestHub.publish(input);
 }
 
 export function useIssueManagerTaskListCollapsedSync(input: {
@@ -338,6 +353,25 @@ export function useIssueManagerTopicHeaderCommandSync(input: {
     onSelectTopic,
     onUpdateTopic
   ]);
+}
+
+export function useIssueManagerIssueCreateRequestSync(input: {
+  nodeId: string;
+  onCreateIssue: () => void;
+  workspaceId: string;
+}): void {
+  const onCreateIssue = useEffectEvent(input.onCreateIssue);
+
+  useEffect(() => {
+    const handleCreateIssueRequest = () => {
+      onCreateIssue();
+    };
+
+    return issueManagerIssueCreateRequestHub.subscribe(
+      issueManagerNodeScopeKey(input),
+      handleCreateIssueRequest
+    );
+  }, [input.nodeId, input.workspaceId, onCreateIssue]);
 }
 
 export function useIssueManagerNodeHeaderView(input: {

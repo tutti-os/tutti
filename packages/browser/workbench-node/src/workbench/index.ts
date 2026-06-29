@@ -106,6 +106,7 @@ export function createBrowserNodeDefinition({
     renderHeader: ({
       defaultActions,
       activation,
+      displayMode,
       dragHandleProps,
       externalNodeState,
       isFocused,
@@ -119,6 +120,7 @@ export function createBrowserNodeDefinition({
           defaultUrl,
           externalNodeState
         }),
+        displayMode,
         dragHandleProps,
         feature,
         nodeId: node.id,

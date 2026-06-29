@@ -12,6 +12,8 @@ export const zhCN = {
     close: "关闭",
     confirm: "确认",
     copy: "复制",
+    copying: "复制中...",
+    copyFailed: "复制失败",
     create: "创建",
     cut: "剪切",
     delete: "删除",

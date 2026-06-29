@@ -35,6 +35,66 @@ func TestValidateManifestRejectsUnknownVisibility(t *testing.T) {
 	}
 }
 
+func TestValidateManifestAcceptsEnumAndDefaultInputAnnotations(t *testing.T) {
+	err := ValidateManifest(Manifest{
+		SchemaVersion: ManifestSchemaVersion,
+		Scope:         "automation",
+		Commands: []ManifestCommand{{
+			Path:    []string{"create"},
+			Summary: "Create automation",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"schedule-type": map[string]any{
+						"type":        "string",
+						"description": "Schedule type.",
+						"enum":        []any{"manual", "interval", "daily", "weekly", "cron"},
+						"default":     "manual",
+					},
+					"enabled": map[string]any{
+						"type":    "boolean",
+						"default": true,
+					},
+					"interval-minutes": map[string]any{
+						"type":    "integer",
+						"default": 60,
+					},
+				},
+			},
+			Output:  ManifestCommandOutput{DefaultMode: OutputModeJSON, JSON: true},
+			Handler: ManifestCommandHandler{Kind: "http", Method: "POST", Path: "/tutti/cli/create"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ValidateManifest() error = %v", err)
+	}
+}
+
+func TestValidateManifestRejectsEnumValuesWithWrongType(t *testing.T) {
+	err := ValidateManifest(Manifest{
+		SchemaVersion: ManifestSchemaVersion,
+		Scope:         "automation",
+		Commands: []ManifestCommand{{
+			Path:    []string{"create"},
+			Summary: "Create automation",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"schedule-type": map[string]any{
+						"type": "string",
+						"enum": []any{"manual", 1},
+					},
+				},
+			},
+			Output:  ManifestCommandOutput{DefaultMode: OutputModeJSON, JSON: true},
+			Handler: ManifestCommandHandler{Kind: "http", Method: "POST", Path: "/tutti/cli/create"},
+		}},
+	})
+	if err == nil {
+		t.Fatal("ValidateManifest() error = nil, want enum type error")
+	}
+}
+
 func TestBuildCommandsBuildsAppCapability(t *testing.T) {
 	manifest := Manifest{
 		SchemaVersion: ManifestSchemaVersion,

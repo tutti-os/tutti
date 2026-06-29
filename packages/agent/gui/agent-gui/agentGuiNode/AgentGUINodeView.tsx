@@ -442,6 +442,10 @@ interface AgentGUINodeViewProps {
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
+    submitGuidancePrompt: (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string
+    ) => void;
     loadOlderConversationMessages: () => void;
     showPromptImagesUnsupported: () => void;
     submitApprovalOption: (requestId: string, optionId: string) => void;
@@ -2040,6 +2044,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.updateComposerSettings
   );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
+  const submitGuidancePrompt = useStableEventCallback(
+    actions.submitGuidancePrompt
+  );
   const showPromptImagesUnsupported = useStableEventCallback(
     actions.showPromptImagesUnsupported
   );
@@ -2117,6 +2124,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
       onSubmit: submitPrompt,
+      onSubmitGuidance: submitGuidancePrompt,
       onPromptImagesUnsupported: showPromptImagesUnsupported,
       onSendQueuedPromptNext: sendQueuedPromptNext,
       onRemoveQueuedPrompt: removeQueuedPrompt,
@@ -2156,6 +2164,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       submitDisabled,
       submitInteractivePrompt,
       submitPrompt,
+      submitGuidancePrompt,
       stableLinkAction,
       stableRequestGitBranches,
       stableSelectProjectDirectory,
@@ -2223,6 +2232,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     sessionChrome.auth?.message ?? "",
     sessionChrome.recovery?.kind ?? "",
     sessionChrome.recovery?.message ?? "",
+    viewModel.queuedPrompts.map((prompt) => prompt.id).join(","),
+    viewModel.drainingQueuedPromptId ?? "",
     viewModel.isRespondingApproval ? "1" : "0"
   ].join("|");
 
@@ -2301,7 +2312,28 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
 
     let animationFrameId: number | null = null;
 
+    const syncBottomDockSafeArea = (): void => {
+      const bottomDockRect = bottomDock.getBoundingClientRect();
+      let visualTop = bottomDockRect.top;
+      bottomDock.querySelectorAll("*").forEach((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          visualTop = Math.min(visualTop, rect.top);
+        }
+      });
+      const overflowHeight = Math.max(
+        0,
+        Math.ceil(bottomDockRect.top - visualTop)
+      );
+      timeline.style.setProperty(
+        "--agent-gui-bottom-dock-safe-area",
+        `${overflowHeight}px`
+      );
+    };
+
     const syncBottomDockSpace = (): void => {
+      syncBottomDockSafeArea();
+
       const anchor = timelineScrollAnchorRef.current;
       if (!anchor || anchor.conversationId !== activeConversationId) {
         return;
@@ -2335,6 +2367,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     syncBottomDockSpace();
     if (typeof ResizeObserver === "undefined") {
       return () => {
+        timeline.style.removeProperty("--agent-gui-bottom-dock-safe-area");
         if (animationFrameId !== null) {
           window.cancelAnimationFrame(animationFrameId);
         }
@@ -2343,13 +2376,20 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
 
     const observer = new ResizeObserver(syncBottomDockSpace);
     observer.observe(bottomDock);
+    const promptInputArea = bottomDock.querySelector(
+      ".agent-gui-node__composer-prompt-input-area"
+    );
+    if (promptInputArea instanceof Element) {
+      observer.observe(promptInputArea);
+    }
     return () => {
+      timeline.style.removeProperty("--agent-gui-bottom-dock-safe-area");
       if (animationFrameId !== null) {
         window.cancelAnimationFrame(animationFrameId);
       }
       observer.disconnect();
     };
-  }, [viewModel.activeConversationId]);
+  }, [bottomDockStoreRevision, viewModel.activeConversationId]);
 
   useEffect(() => {
     const timeline = timelineRef.current;

@@ -189,7 +189,7 @@ func (r *Registry) Invoke(ctx context.Context, request cliservice.InvokeRequest)
 	if request.OutputMode == "" {
 		request.OutputMode = serviceOutputMode(command.Capability.Output.DefaultMode)
 	}
-	input, err := appclicore.NormalizeInput(command.Manifest.InputSchema, request.Input)
+	input, warnings, err := appclicore.NormalizeInputWithWarnings(command.Manifest.InputSchema, request.Input)
 	if err != nil {
 		return cliservice.CommandOutput{}, serviceInvokeError(err)
 	}
@@ -218,7 +218,9 @@ func (r *Registry) Invoke(ctx context.Context, request cliservice.InvokeRequest)
 	if err != nil {
 		return cliservice.CommandOutput{}, serviceInvokeError(err)
 	}
-	return serviceCommandOutput(output), nil
+	result := serviceCommandOutput(output)
+	result.Warnings = serviceInputWarnings(warnings)
+	return result, nil
 }
 
 func (r *Registry) command(workspaceID string, commandID string) (appclicore.RegisteredApp, appclicore.Command, bool) {
@@ -441,6 +443,20 @@ func serviceCommandOutput(output appclicore.CommandOutput) cliservice.CommandOut
 		Value:   output.Value,
 		Text:    output.Text,
 	}
+}
+
+func serviceInputWarnings(warnings []appclicore.InputWarning) []cliservice.CommandWarning {
+	if len(warnings) == 0 {
+		return nil
+	}
+	result := make([]cliservice.CommandWarning, 0, len(warnings))
+	for _, warning := range warnings {
+		result = append(result, cliservice.CommandWarning{
+			Code:    warning.Code,
+			Message: warning.Message,
+		})
+	}
+	return result
 }
 
 func serviceTableColumns(columns []appclicore.TableColumn) []cliservice.TableColumn {

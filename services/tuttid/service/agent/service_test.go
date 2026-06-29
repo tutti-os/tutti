@@ -309,6 +309,71 @@ func TestServiceImportsHomeCwdAsNoProjectWithoutRegisteringUserHome(t *testing.T
 	}
 }
 
+func TestServiceImportsCodexScratchCwdAsNoProjectWithoutRegisteringIt(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	scratchCwd := filepath.Join(home, "Documents", "Codex", "2026-06-26", "ge")
+	if err := os.MkdirAll(scratchCwd, 0o755); err != nil {
+		t.Fatalf("create codex scratch cwd error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(home); ok {
+		home = canonical
+	}
+	if canonical, ok := canonicalExistingDir(scratchCwd); ok {
+		scratchCwd = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-scratch.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "codex-scratch", "cwd": scratchCwd},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "codex-scratch-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Scratch question"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: scratchCwd}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 || result.ImportedMessages != 1 {
+		t.Fatalf("import result = %#v, want one imported no-project session", result)
+	}
+	if len(result.ProjectPaths) != 0 || result.ImportedProjects != 0 {
+		t.Fatalf("import result = %#v, want no registered project paths for Codex scratch cwd", result)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "codex-scratch"))
+	if err != nil {
+		t.Fatalf("Get imported Codex scratch session error = %v", err)
+	}
+	if session.Cwd != scratchCwd {
+		t.Fatalf("session cwd = %q, want imported scratch cwd %q", session.Cwd, scratchCwd)
+	}
+	if session.RuntimeContext["externalImportNoProject"] != true {
+		t.Fatalf("runtime context = %#v, want externalImportNoProject true", session.RuntimeContext)
+	}
+}
+
 func TestServiceListsImportedSessionsByExternalActivityTime(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
@@ -1077,6 +1142,41 @@ func TestServiceSendInputRejectsUnsupportedImageBeforePersistingAttachment(t *te
 	}
 	if entries, err := os.ReadDir(filepath.Join(tempDir, "agent", "attachments")); err == nil && len(entries) > 0 {
 		t.Fatalf("attachment entries = %#v, want none", entries)
+	}
+}
+
+func TestServiceLocalAttachmentPathRequiresWorkspaceSession(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		Visible:     true,
+	}
+	service := NewService(runtime)
+	tempDir := t.TempDir()
+	service.PromptAttachmentStore = PromptAttachmentStore{RootDir: tempDir}
+	path, err := service.PromptAttachmentStore.attachmentPath("ws-1", "session-1", "attachment-1", "image/png")
+	if err != nil {
+		t.Fatalf("attachmentPath() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("png"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := service.LocalAttachmentPath(context.Background(), "ws-1", "session-1", "attachment-1", "image/png")
+	if err != nil {
+		t.Fatalf("LocalAttachmentPath() error = %v", err)
+	}
+	if got != path {
+		t.Fatalf("LocalAttachmentPath() = %q, want %q", got, path)
+	}
+	if _, err := service.LocalAttachmentPath(context.Background(), "ws-2", "session-1", "attachment-1", "image/png"); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("LocalAttachmentPath() cross-workspace error = %v, want ErrSessionNotFound", err)
 	}
 }
 
@@ -2670,8 +2770,10 @@ func TestHasStaleResumeOpenToolCall(t *testing.T) {
 func TestServiceListsSessionMessages(t *testing.T) {
 	service := NewService(newFakeRuntime())
 	lastLimit := 0
+	lastTurnID := ""
 	service.MessageReader = fakeMessageReader{
-		lastLimit: &lastLimit,
+		lastLimit:  &lastLimit,
+		lastTurnID: &lastTurnID,
 		page: SessionMessagesPage{
 			AgentSessionID: "session-1",
 			Messages: []SessionMessage{
@@ -2691,7 +2793,7 @@ func TestServiceListsSessionMessages(t *testing.T) {
 		context.Background(),
 		"ws-1",
 		"session-1",
-		ListMessagesInput{AfterVersion: 1, Limit: 20},
+		ListMessagesInput{TurnID: "turn-1", AfterVersion: 1, Limit: 20},
 	)
 	if err != nil {
 		t.Fatalf("ListMessages returned error: %v", err)
@@ -2701,6 +2803,9 @@ func TestServiceListsSessionMessages(t *testing.T) {
 	}
 	if len(page.Messages) != 1 {
 		t.Fatalf("len(page.Messages) = %d, want 1", len(page.Messages))
+	}
+	if lastTurnID != "turn-1" {
+		t.Fatalf("turn id = %q, want turn-1", lastTurnID)
 	}
 	page.Messages[0].Payload["content"] = "mutated"
 	nextPage, err := service.ListMessages(
@@ -3578,8 +3683,9 @@ func writeAgentServiceJSONL(t *testing.T, path string, items ...map[string]any) 
 }
 
 type fakeMessageReader struct {
-	lastLimit *int
-	page      SessionMessagesPage
+	lastLimit  *int
+	lastTurnID *string
+	page       SessionMessagesPage
 }
 
 type fakeProviderAvailabilityChecker struct {
@@ -3608,6 +3714,9 @@ func (f fakeMessageReader) ListSessionMessages(
 ) (SessionMessagesPage, bool) {
 	if f.lastLimit != nil {
 		*f.lastLimit = input.Limit
+	}
+	if f.lastTurnID != nil {
+		*f.lastTurnID = input.TurnID
 	}
 	if input.AgentSessionID != "session-1" {
 		return SessionMessagesPage{}, false

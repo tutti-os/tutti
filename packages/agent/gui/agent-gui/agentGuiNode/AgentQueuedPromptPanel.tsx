@@ -189,9 +189,7 @@ export function AgentQueuedPromptPanel({
         typeof window === "undefined"
           ? 280
           : Math.round(window.innerHeight * 0.38);
-      setExpandedListMaxHeightPx(
-        Math.max(32, Math.min(280, viewportCap, element.scrollHeight))
-      );
+      setExpandedListMaxHeightPx(Math.max(32, Math.min(280, viewportCap)));
     };
 
     measure();

@@ -10,6 +10,8 @@ export const en = {
     close: "Close",
     confirm: "Confirm",
     copy: "Copy",
+    copying: "Copying...",
+    copyFailed: "Copy failed",
     create: "Create",
     cut: "Cut",
     delete: "Delete",

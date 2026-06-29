@@ -7516,7 +7516,8 @@ export function useAgentGUINodeController({
     (
       agentSessionId: string,
       normalizedContent: AgentPromptContentBlock[],
-      displayPromptText?: string
+      displayPromptText?: string,
+      options?: { bypassLocalQueue?: boolean }
     ) => {
       if (isSessionMarkedNonResumable(agentSessionId)) {
         setDetailError(
@@ -7539,7 +7540,10 @@ export function useAgentGUINodeController({
         );
         return;
       }
-      if (shouldQueuePromptLocally(agentSessionId)) {
+      if (
+        shouldQueuePromptLocally(agentSessionId) &&
+        options?.bypassLocalQueue !== true
+      ) {
         queuePromptLocally(
           agentSessionId,
           normalizedContent,
@@ -7637,6 +7641,45 @@ export function useAgentGUINodeController({
       startConversation,
       submitExistingPrompt,
       workspaceId
+    ]
+  );
+
+  const submitGuidancePrompt = useCallback(
+    (content: AgentPromptContentBlock[], displayPrompt?: string) => {
+      const agentSessionId = activeConversationIdRef.current;
+      const normalizedContent = normalizeAgentPromptContentBlocks(content);
+      if (!agentSessionId || normalizedContent.length === 0) {
+        return;
+      }
+      if (
+        resolvedPromptImagesSupported === false &&
+        agentPromptContentHasImage(normalizedContent)
+      ) {
+        setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));
+        return;
+      }
+      const activeTurnId =
+        activeSessionState?.turnLifecycle?.activeTurnId?.trim() ?? "";
+      const canSteerActiveTurn =
+        activeTurnId !== "" ||
+        activeSessionState?.submitAvailability?.reason === "active_turn";
+      if (!canSteerActiveTurn) {
+        return;
+      }
+      const displayPromptText =
+        displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
+      submitExistingPrompt(
+        agentSessionId,
+        normalizedContent,
+        displayPromptText,
+        { bypassLocalQueue: true }
+      );
+    },
+    [
+      activeSessionState,
+      resolvedPromptImagesSupported,
+      submitExistingPrompt,
+      translate
     ]
   );
 
@@ -9940,6 +9983,8 @@ export function useAgentGUINodeController({
   const stableSelectConversation =
     useStableControllerEventCallback(selectConversation);
   const stableSubmitPrompt = useStableControllerEventCallback(submitPrompt);
+  const stableSubmitGuidancePrompt =
+    useStableControllerEventCallback(submitGuidancePrompt);
   const stableShowPromptImagesUnsupported = useStableControllerEventCallback(
     showPromptImagesUnsupported
   );
@@ -9999,6 +10044,7 @@ export function useAgentGUINodeController({
       createConversation: stableCreateConversation,
       selectConversation: stableSelectConversation,
       submitPrompt: stableSubmitPrompt,
+      submitGuidancePrompt: stableSubmitGuidancePrompt,
       loadOlderConversationMessages: stableLoadOlderConversationMessages,
       showPromptImagesUnsupported: stableShowPromptImagesUnsupported,
       submitApprovalOption: stableSubmitApprovalOption,
@@ -10042,6 +10088,7 @@ export function useAgentGUINodeController({
       stableRetryOpenclawGateway,
       stableSelectConversation,
       stableSendQueuedPromptNext,
+      stableSubmitGuidancePrompt,
       stableShowPromptImagesUnsupported,
       stableSubmitApprovalOption,
       stableSubmitInteractivePrompt,

@@ -4006,6 +4006,7 @@ aside.workspace-agents-status-panel
   --agent-gui-workbench-header-agent-icon-radius: 5px;
   --agent-gui-workbench-header-agent-icon-size: 20px;
   --agent-gui-workbench-header-primary-gap: 12px;
+  --agent-gui-workbench-header-traffic-light-hit-area-size: 20px;
   --agent-gui-workbench-header-traffic-light-gap: 8px;
   --agent-gui-workbench-header-traffic-light-size: 12px;
   --agent-gui-workbench-header-title-max-width: 280px;
@@ -4063,16 +4064,40 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-workbench-header__traffic-light {
+  position: relative;
   display: inline-flex;
-  width: var(--agent-gui-workbench-header-traffic-light-size);
-  height: var(--agent-gui-workbench-header-traffic-light-size);
+  width: var(--agent-gui-workbench-header-traffic-light-hit-area-size);
+  height: var(--agent-gui-workbench-header-traffic-light-hit-area-size);
   flex: 0 0 auto;
+  margin: calc(
+    (
+        var(--agent-gui-workbench-header-traffic-light-size) -
+          var(--agent-gui-workbench-header-traffic-light-hit-area-size)
+      ) /
+      2
+  );
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text-tertiary) 72%, transparent);
-  cursor: default;
+  background: transparent;
+  cursor: pointer;
   opacity: 0.78;
+  transition: opacity 160ms ease;
+}
+
+.agent-gui-workbench-header__traffic-light::before {
+  position: absolute;
+  inset: calc(
+    (
+        var(--agent-gui-workbench-header-traffic-light-hit-area-size) -
+          var(--agent-gui-workbench-header-traffic-light-size)
+      ) /
+      2
+  );
+  border-radius: inherit;
+  background-color: color-mix(in srgb, var(--text-tertiary) 72%, transparent);
+  content: "";
+  transition: background-color 160ms ease;
 }
 
 .agent-gui-workbench-header__traffic-light:hover,
@@ -4081,19 +4106,19 @@ aside.workspace-agents-status-panel
   outline: none;
 }
 
-.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="close"]:hover,
-.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="close"]:focus-visible {
-  background: #ff5f57;
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="close"]:hover::before,
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="close"]:focus-visible::before {
+  background-color: #ff5f57;
 }
 
-.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="minimize"]:hover,
-.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="minimize"]:focus-visible {
-  background: #ffbd2e;
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="minimize"]:hover::before,
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="minimize"]:focus-visible::before {
+  background-color: #ffbd2e;
 }
 
-.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="maximize"]:hover,
-.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="maximize"]:focus-visible {
-  background: #28c840;
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="maximize"]:hover::before,
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="maximize"]:focus-visible::before {
+  background-color: #28c840;
 }
 
 .agent-gui-workbench-header__agent-brand {
@@ -5453,8 +5478,11 @@ button.agent-gui-node__conversation-section-toggle:hover
   gap: 24px;
   min-height: 0;
   overflow: auto;
-  padding: 32px var(--agent-gui-detail-padding-x) 24px;
-  scroll-padding-bottom: 24px;
+  padding: 32px var(--agent-gui-detail-padding-x)
+    calc(24px + var(--agent-gui-bottom-dock-safe-area, 0px));
+  scroll-padding-bottom: calc(
+    24px + var(--agent-gui-bottom-dock-safe-area, 0px)
+  );
   background: transparent;
 }
 
@@ -5521,8 +5549,10 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__timeline-with-composer {
   padding-top: 24px;
-  padding-bottom: 32px;
-  scroll-padding-bottom: 32px;
+  padding-bottom: calc(120px + var(--agent-gui-bottom-dock-safe-area, 0px));
+  scroll-padding-bottom: calc(
+    120px + var(--agent-gui-bottom-dock-safe-area, 0px)
+  );
   -webkit-mask-image: linear-gradient(
     180deg,
     transparent 0,
@@ -6098,6 +6128,94 @@ button.agent-gui-node__conversation-section-toggle:hover
   background: var(--agent-gui-surface-raised);
   box-shadow: 0 8px 24px rgb(0 0 0 / 4%);
   transition: box-shadow 140ms ease;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-input-shell {
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  box-sizing: border-box;
+  height: var(--agent-gui-composer-input-height, 56px);
+  min-height: 56px;
+  max-height: var(--agent-gui-composer-input-max-height, 120px);
+  align-items: center;
+  overflow: hidden;
+  padding: 0 12px;
+  border: 1px solid var(--agent-gui-border-subtle);
+  border-radius: 10px;
+  background: var(--agent-gui-surface-raised);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 4%);
+  transition:
+    height 160ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area:focus-within,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area:hover {
+  border-color: var(--agent-gui-border-subtle);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 6%);
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"] {
+  grid-template-rows:
+    minmax(0, var(--agent-gui-composer-attachment-height, 0px))
+    minmax(40px, 1fr);
+  align-items: stretch;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
+  [data-testid="agent-gui-composer-image-drafts"] {
+  min-height: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
+  [data-testid="agent-gui-composer-image-draft"] {
+  max-height: 56px;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  box-sizing: border-box;
+  gap: 8px;
+  height: calc(var(--agent-gui-composer-text-height, 56px) - 2px);
+  min-height: 54px;
+  max-height: 118px;
+  min-width: 0;
+  padding: 12px 0;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
+  .agent-gui-node__composer-prompt-input-line {
+  min-height: 40px;
+  height: calc(var(--agent-gui-composer-text-height, 56px) - 2px);
+  max-height: 118px;
+  padding: 4px 0 11px;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-send-button {
+  align-self: end;
 }
 
 .agent-gui-node__composer-input-shell > * {
@@ -6744,6 +6862,61 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   -ms-overflow-style: auto;
 }
 
+.agent-gui-node__composer[data-layout="dock"] textarea,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-textarea {
+  display: block;
+  height: auto;
+  min-height: 24px;
+  max-height: calc(var(--agent-gui-composer-text-height, 56px) - 26px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+  scrollbar-width: none;
+  white-space: pre-wrap;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
+  textarea,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
+  .agent-gui-node__composer-textarea {
+  max-height: calc(var(--agent-gui-composer-text-height, 56px) - 26px);
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area:hover
+  .agent-gui-node__composer-textarea,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area:focus-within
+  .agent-gui-node__composer-textarea {
+  scrollbar-width: thin;
+}
+
+.agent-gui-node__composer[data-layout="dock"] textarea::-webkit-scrollbar,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-textarea::-webkit-scrollbar {
+  display: none;
+  width: 4px;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area:hover
+  textarea::-webkit-scrollbar,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area:hover
+  .agent-gui-node__composer-textarea::-webkit-scrollbar,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area:focus-within
+  textarea::-webkit-scrollbar,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area:focus-within
+  .agent-gui-node__composer-textarea::-webkit-scrollbar {
+  display: block;
+}
+
 .agent-gui-node__composer textarea::-webkit-scrollbar,
 .agent-gui-node__composer-textarea::-webkit-scrollbar {
   display: block;
@@ -6789,6 +6962,28 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   min-height: 1.4em;
 }
 
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-textarea
+  p {
+  display: block;
+  width: auto;
+  min-width: 0;
+  min-height: 24px;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: pre-wrap;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-textarea
+  .agent-rich-text-placeholder-node:first-child {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 24px;
+}
+
 .agent-gui-node__composer-textarea
   p:empty:not(.agent-rich-text-placeholder-node) {
   min-height: 0;
@@ -6806,6 +7001,19 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   pointer-events: none;
 }
 
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-textarea
+  .agent-rich-text-placeholder-node:first-child::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  float: none;
+  height: 24px;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
 .agent-gui-node__composer textarea::placeholder,
 .agent-gui-node__composer-textarea::placeholder {
   color: var(--agent-gui-text-tertiary);
@@ -6815,6 +7023,13 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-input-shell:focus-within,
 .agent-gui-node__composer-input-shell:hover {
   box-shadow: 0 8px 24px rgb(0 0 0 / 6%);
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-input-shell:focus-within,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-input-shell:hover {
+  box-shadow: none;
 }
 
 .agent-gui-node__composer-input-shell:focus-within {
@@ -6989,6 +7204,10 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   justify-content: space-between;
   gap: 12px;
   padding-top: 0;
+}
+
+.agent-gui-node__composer[data-layout="dock"] .agent-gui-node__composer-footer {
+  padding: 0 2px;
 }
 
 .agent-gui-node__composer-footer-left,
@@ -7272,8 +7491,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__empty-hero-icon-effect {
   display: block;
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   border-radius: 14px;
   animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
@@ -7286,7 +7505,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--text-primary);
   font-size: 28px;
   line-height: 1.3;
-  font-weight: 600;
+  font-weight: 500;
   animation: agent-gui-empty-hero-enter 280ms cubic-bezier(0.16, 1, 0.3, 1)
     110ms both;
 }

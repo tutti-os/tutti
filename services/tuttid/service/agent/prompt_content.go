@@ -183,6 +183,25 @@ func (s PromptAttachmentStore) ReadAttachment(workspaceID, agentSessionID, attac
 	}, nil
 }
 
+func (s PromptAttachmentStore) LocalPath(workspaceID, agentSessionID, attachmentID, mimeType string) (string, error) {
+	mimeType = strings.TrimSpace(mimeType)
+	if mimeType == "" {
+		path, _, err := s.findAttachmentPath(workspaceID, agentSessionID, attachmentID)
+		return path, err
+	}
+	path, err := s.attachmentPath(workspaceID, agentSessionID, attachmentID, mimeType)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", ErrSessionNotFound
+		}
+		return "", fmt.Errorf("stat agent prompt attachment: %w", err)
+	}
+	return path, nil
+}
+
 func (s PromptAttachmentStore) findAttachmentPath(workspaceID, agentSessionID, attachmentID string) (string, string, error) {
 	for _, candidate := range []struct {
 		mimeType string

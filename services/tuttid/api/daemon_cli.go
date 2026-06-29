@@ -213,6 +213,16 @@ func generatedCliCommandOutput(output cliservice.CommandOutput) *tuttigenerated.
 		}
 		result.Value = &value
 	}
+	if len(output.Warnings) > 0 {
+		warnings := make([]tuttigenerated.CliCommandWarning, 0, len(output.Warnings))
+		for _, warning := range output.Warnings {
+			warnings = append(warnings, tuttigenerated.CliCommandWarning{
+				Code:    warning.Code,
+				Message: warning.Message,
+			})
+		}
+		result.Warnings = &warnings
+	}
 	if output.Text != "" {
 		result.Text = stringPointer(output.Text)
 	}

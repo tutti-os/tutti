@@ -2,17 +2,11 @@ import {
   useMemo,
   type CSSProperties,
   type HTMLAttributes,
+  type MouseEvent,
   type ReactNode
 } from "react";
 import { useTranslation } from "../../i18n/index";
 import { cn } from "../../app/renderer/lib/utils";
-import { CanvasNodeMinimizeButton } from "./CanvasNodeMinimizeButton";
-import { CanvasNodeGhostIconButton } from "./CanvasNodeGhostIconButton";
-import {
-  CanvasNodeCloseIcon,
-  CanvasNodeMaximizeLinedIcon,
-  CanvasNodeMinimizeLinedIcon
-} from "./canvasNodeChromeIcons";
 import { NodeResizeHandles } from "./NodeResizeHandles";
 import { WindowLayoutMenuButton } from "../workspaceDesktop/view/WindowLayoutMenuButton";
 import {
@@ -211,7 +205,7 @@ export function WorkspaceNodeWindow({
         customHeader
       ) : (
         <header
-          className="workspace-node-window__header flex h-[var(--node-header-height)] min-h-[var(--node-header-height)] cursor-grab items-center gap-2 border-b border-[var(--node-header-border)] bg-[var(--node-header-surface)] px-2 pl-[var(--node-header-padding-x)] active:cursor-grabbing"
+          className="workspace-node-window__header relative flex h-[var(--node-header-height)] min-h-[var(--node-header-height)] cursor-grab items-center gap-2 border-b border-[var(--node-header-border)] bg-[var(--node-header-surface)] px-2 pl-[var(--node-header-padding-x)] active:cursor-grabbing"
           style={{
             borderBottomColor: "var(--node-header-border)",
             background: "var(--node-header-surface)"
@@ -231,7 +225,35 @@ export function WorkspaceNodeWindow({
           }}
         >
           <div
-            className="workspace-node-window__title flex min-w-0 max-w-[280px] flex-1 items-center gap-2 text-[13px] leading-[18px] font-semibold text-foreground"
+            className="workspace-node-window__controls nodrag absolute left-4 top-1/2 inline-flex -translate-y-1/2 items-center gap-2"
+            data-workspace-node-window-controls="true"
+          >
+            <WorkspaceNodeTrafficLightButton
+              ariaLabel={t("common.close")}
+              onClick={onClose}
+              tone="close"
+            />
+            {onMinimize ? (
+              <WorkspaceNodeTrafficLightButton
+                ariaLabel={t("common.minimize")}
+                onClick={onMinimize}
+                testId={`${kind}-node-minimize`}
+                tone="minimize"
+              />
+            ) : null}
+            {onToggleMaximize && !hideMaximizeButton ? (
+              <WorkspaceNodeTrafficLightButton
+                ariaLabel={
+                  isMaximized ? t("common.restore") : t("common.maximize")
+                }
+                onClick={onToggleMaximize}
+                pressed={isMaximized}
+                tone="maximize"
+              />
+            ) : null}
+          </div>
+          <div
+            className="workspace-node-window__title ml-[64px] flex min-w-0 max-w-[280px] flex-1 items-center gap-2 text-[15px] leading-5 font-semibold text-foreground"
             // i18n-check-ignore: Test selector marker, not a tooltip.
             data-workspace-node-window-title="true"
             title={title}
@@ -265,45 +287,14 @@ export function WorkspaceNodeWindow({
             </div>
           ) : null}
           <div
-            className="workspace-node-window__controls nodrag inline-flex flex-none items-center gap-0.5"
-            data-workspace-node-window-controls="true"
+            className="workspace-node-window__header-tools nodrag inline-flex flex-none items-center gap-0.5"
+            data-workspace-node-window-header-tools="true"
           >
             {controlStartAccessory}
-            {onMinimize ? (
-              <CanvasNodeMinimizeButton
-                onMinimize={onMinimize}
-                testId={`${kind}-node-minimize`}
-                data-window-header="top"
-              />
-            ) : null}
             <WindowLayoutMenuButton
               windowId={nodeId}
               desktopSize={desktopSize}
             />
-            {onToggleMaximize && !hideMaximizeButton ? (
-              <CanvasNodeGhostIconButton
-                aria-label={
-                  isMaximized ? t("common.restore") : t("common.maximize")
-                }
-                title={isMaximized ? t("common.restore") : t("common.maximize")}
-                data-window-header="top"
-                onClick={onToggleMaximize}
-              >
-                {isMaximized ? (
-                  <CanvasNodeMinimizeLinedIcon aria-hidden="true" />
-                ) : (
-                  <CanvasNodeMaximizeLinedIcon aria-hidden="true" />
-                )}
-              </CanvasNodeGhostIconButton>
-            ) : null}
-            <CanvasNodeGhostIconButton
-              aria-label={t("common.close")}
-              title={t("common.close")}
-              data-window-header="top"
-              onClick={onClose}
-            >
-              <CanvasNodeCloseIcon aria-hidden="true" />
-            </CanvasNodeGhostIconButton>
           </div>
         </header>
       )}
@@ -327,5 +318,48 @@ export function WorkspaceNodeWindow({
         />
       ) : null}
     </div>
+  );
+}
+
+function WorkspaceNodeTrafficLightButton({
+  ariaLabel,
+  onClick,
+  pressed,
+  testId,
+  tone
+}: {
+  ariaLabel: string;
+  onClick: () => void;
+  pressed?: boolean;
+  testId?: string;
+  tone: "close" | "maximize" | "minimize";
+}): React.JSX.Element {
+  const handleClick = (event: MouseEvent<HTMLButtonElement>): void => {
+    event.stopPropagation();
+    onClick();
+  };
+
+  return (
+    <button
+      aria-label={ariaLabel}
+      aria-pressed={pressed}
+      className={cn(
+        "relative -m-1 inline-flex size-5 shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 opacity-[0.78] outline-none transition-opacity duration-150 before:absolute before:inset-1 before:rounded-full before:bg-[color-mix(in_srgb,var(--text-tertiary)_72%,transparent)] before:content-[''] hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--node-header-surface)]",
+        tone === "close" &&
+          "hover:before:bg-[#ff5f57] focus-visible:before:bg-[#ff5f57]",
+        tone === "minimize" &&
+          "hover:before:bg-[#ffbd2e] focus-visible:before:bg-[#ffbd2e]",
+        tone === "maximize" &&
+          "hover:before:bg-[#28c840] focus-visible:before:bg-[#28c840]"
+      )}
+      data-window-header="top"
+      data-workspace-node-window-traffic-light={tone}
+      data-testid={testId}
+      title={ariaLabel}
+      type="button"
+      onClick={handleClick}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    />
   );
 }

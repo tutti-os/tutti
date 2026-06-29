@@ -97,11 +97,17 @@ type InvokeResponse struct {
 }
 
 type CommandOutput struct {
-	Kind    string           `json:"kind"`
-	Columns []TableColumn    `json:"columns,omitempty"`
-	Rows    []map[string]any `json:"rows,omitempty"`
-	Value   map[string]any   `json:"value,omitempty"`
-	Text    string           `json:"text,omitempty"`
+	Kind     string           `json:"kind"`
+	Columns  []TableColumn    `json:"columns,omitempty"`
+	Rows     []map[string]any `json:"rows,omitempty"`
+	Value    map[string]any   `json:"value,omitempty"`
+	Text     string           `json:"text,omitempty"`
+	Warnings []CommandWarning `json:"warnings,omitempty"`
+}
+
+type CommandWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 func NewClient(endpoint Endpoint) (*Client, error) {

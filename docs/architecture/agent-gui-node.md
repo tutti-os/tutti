@@ -304,6 +304,15 @@ ready-looking session while the turn is still being processed, the desktop
 service can preserve optimistic `working` until a later authoritative event
 settles the session.
 
+When an existing conversation is busy, normal composer submits may be captured
+as local queued prompts so the next turn can run after the current one settles.
+Composer guidance is different: `Cmd+Enter` on macOS, or `Ctrl+Enter` on other
+platforms, sends the draft as active-turn guidance and bypasses the local queue.
+For Codex app-server sessions this reaches `RuntimeController.Exec` while an
+active provider turn is registered, so the adapter sends `turn/steer` and emits
+a user message with `steered: true`. `Shift+Enter` remains the multiline
+composer shortcut and must not submit either a normal prompt or guidance.
+
 The submit target is not just a render detail. A detail-page composer must not
 fall back to `startConversation` because a UI-local active conversation ref is
 temporarily empty. If the view is not on the home composer, resolve the existing

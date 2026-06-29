@@ -32,6 +32,7 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       createConversation: vi.fn(),
       selectConversation: vi.fn(),
       submitPrompt: vi.fn(),
+      submitGuidancePrompt: vi.fn(),
       showPromptImagesUnsupported: vi.fn(),
       submitApprovalOption: vi.fn(),
       submitInteractivePrompt: vi.fn(),
