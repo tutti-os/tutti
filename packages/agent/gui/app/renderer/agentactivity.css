@@ -6931,10 +6931,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-textarea {
   --agent-gui-composer-text-line-height: 24px;
   --agent-gui-composer-text-max-visible-lines: 3.5;
-  --agent-gui-composer-text-viewport-height: calc(
-    var(--agent-gui-composer-text-line-height) *
-      var(--agent-gui-composer-text-max-visible-lines)
-  );
+  /* prettier-ignore */
+  --agent-gui-composer-text-viewport-height: calc(var(--agent-gui-composer-text-line-height) * var(--agent-gui-composer-text-max-visible-lines));
 
   width: 100%;
   min-width: 0;
