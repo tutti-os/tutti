@@ -6045,7 +6045,7 @@ button.agent-gui-node__conversation-section-toggle:hover
      margin-left:auto has no free space to absorb and the message text would butt
      directly against "Set up". Space the message and action explicitly. */
   column-gap: 6px;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice {
@@ -6062,6 +6062,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
+  pointer-events: auto;
   -webkit-app-region: no-drag;
 }
 

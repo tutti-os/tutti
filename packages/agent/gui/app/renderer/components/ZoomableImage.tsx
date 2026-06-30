@@ -67,6 +67,7 @@ export function ZoomableImage({
   const [copyStatus, setCopyStatus] = useState<ImageCopyStatus | null>(null);
   const [imagePreviewZoom, setImagePreviewZoom] = useState(1);
   const [isWheelZooming, setIsWheelZooming] = useState(false);
+  const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
   const imagePreviewZoomPercent = Math.round(imagePreviewZoom * 100);
   const canZoomOut = imagePreviewZoom > IMAGE_PREVIEW_ZOOM_MIN;
   const canZoomIn = imagePreviewZoom < IMAGE_PREVIEW_ZOOM_MAX;
@@ -283,6 +284,18 @@ export function ZoomableImage({
             />
           </div>
         ) : null}
+        {copyStatus ? (
+          <ImageCopyStatusToast
+            busy={copyStatus.busy}
+            message={copyStatus.message}
+            variant={copyStatus.variant}
+            onOpenChange={(open) => {
+              if (!open) {
+                setCopyStatus(null);
+              }
+            }}
+          />
+        ) : null}
         <Button
           asChild
           className="tsh-zoom-dialog__icon-button nodrag tsh-desktop-no-drag"
@@ -314,6 +327,13 @@ export function ZoomableImage({
         wrapElement={wrapElement}
         zoomMargin={24}
         ZoomContent={renderZoomContent}
+        onZoomChange={(zoomed) => {
+          setIsImagePreviewOpen(zoomed);
+          if (!zoomed) {
+            setIsWheelZooming(false);
+            setImagePreviewZoom(1);
+          }
+        }}
       >
         <img
           {...props}
@@ -323,28 +343,29 @@ export function ZoomableImage({
           className={cn("nodrag tsh-desktop-no-drag cursor-zoom-in", className)}
         />
       </Zoom>
-      {contextMenuPosition &&
-      !contextMenuPosition.inZoomDialog &&
-      actionButtons ? (
-        <div
-          className="tsh-image-context-menu nodrag tsh-desktop-no-drag"
-          style={{
-            left: contextMenuPosition.x,
-            top: contextMenuPosition.y
-          }}
-          role="menu"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <ImageActionButtons
-            copyLabel={t("common.copyImage")}
-            downloadLabel={t("common.downloadImage")}
-            itemRole="menuitem"
-            onCopy={handleCopyImageAction}
-            onDownload={handleDownloadImage}
-          />
-        </div>
-      ) : null}
-      {copyStatus
+      {contextMenuPosition && !contextMenuPosition.inZoomDialog && actionButtons
+        ? createPortal(
+            <div
+              className="tsh-image-context-menu nodrag tsh-desktop-no-drag"
+              style={{
+                left: contextMenuPosition.x,
+                top: contextMenuPosition.y
+              }}
+              role="menu"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <ImageActionButtons
+                copyLabel={t("common.copyImage")}
+                downloadLabel={t("common.downloadImage")}
+                itemRole="menuitem"
+                onCopy={handleCopyImageAction}
+                onDownload={handleDownloadImage}
+              />
+            </div>,
+            document.body
+          )
+        : null}
+      {copyStatus && !isImagePreviewOpen
         ? createPortal(
             <ImageCopyStatusToast
               busy={copyStatus.busy}
@@ -381,6 +402,8 @@ function ImageCopyStatusToast({
         anchor="viewport"
         busy={busy}
         variant={variant}
+        data-tsh-image-copy-status="true"
+        style={{ zIndex: 100303 }}
         onOpenChange={onOpenChange}
       >
         <ToastTitle>{message}</ToastTitle>
@@ -485,6 +508,7 @@ function ImageActionButtons({
           className="tsh-zoom-dialog__icon-button"
           size="icon"
           title={copyLabel}
+          onPointerDown={(event) => event.stopPropagation()}
           variant="chrome"
           onClick={(event) => {
             event.preventDefault();
@@ -499,6 +523,7 @@ function ImageActionButtons({
           className="tsh-zoom-dialog__icon-button"
           size="icon"
           title={downloadLabel}
+          onPointerDown={(event) => event.stopPropagation()}
           variant="chrome"
           onClick={(event) => {
             event.preventDefault();
@@ -518,6 +543,7 @@ function ImageActionButtons({
         type="button"
         role={itemRole}
         title={copyLabel}
+        onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -531,6 +557,7 @@ function ImageActionButtons({
         type="button"
         role={itemRole}
         title={downloadLabel}
+        onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();

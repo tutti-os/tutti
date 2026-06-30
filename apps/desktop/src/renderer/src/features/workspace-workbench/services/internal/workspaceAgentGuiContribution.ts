@@ -154,6 +154,8 @@ export function createWorkspaceAgentGuiContribution(input: {
       onRequestGitBranches: agentGUIWorkbenchHostInput.onRequestGitBranches,
       referenceSourceAggregator:
         agentGUIWorkbenchHostInput.referenceSourceAggregator,
+      resolveWorkspaceReferenceEntryIconUrl:
+        agentGUIWorkbenchHostInput.resolveWorkspaceReferenceEntryIconUrl,
       resolveMentionReferenceTarget:
         agentGUIWorkbenchHostInput.resolveMentionReferenceTarget,
       resolveWorkspaceReferenceInitialTarget:

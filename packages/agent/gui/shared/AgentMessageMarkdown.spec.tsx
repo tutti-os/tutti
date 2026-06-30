@@ -877,7 +877,9 @@ describe("AgentMessageMarkdown", () => {
 
     const image = await screen.findByRole("img", { name: "generated image" });
     fireEvent.contextMenu(image, { clientX: 12, clientY: 34 });
-    expect(screen.getByRole("menu")).toHaveStyle({ left: "12px", top: "34px" });
+    const inlineMenu = screen.getByRole("menu");
+    expect(inlineMenu).toHaveStyle({ left: "12px", top: "34px" });
+    expect(inlineMenu.parentElement).toBe(document.body);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy image" }));
     await waitFor(() => {

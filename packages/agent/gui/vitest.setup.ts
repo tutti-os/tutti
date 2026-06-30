@@ -86,12 +86,17 @@ vi.mock("react-medium-image-zoom", () => ({
     a11yNameButtonUnzoom,
     children,
     classDialog,
+    onZoomChange,
     ZoomContent
   }: {
     a11yNameButtonZoom?: string;
     a11yNameButtonUnzoom?: string;
     children?: ReactNode;
     classDialog?: string;
+    onZoomChange?: (
+      value: boolean,
+      data: { event: ReactMouseEvent | Event }
+    ) => void;
     ZoomContent?: (props: {
       buttonUnzoom: ReactElement;
       img: ReactElement | null;
@@ -114,6 +119,7 @@ vi.mock("react-medium-image-zoom", () => ({
         ? cloneElement(childElement, {
             onClick: (event: ReactMouseEvent) => {
               childElement.props.onClick?.(event);
+              onZoomChange?.(true, { event });
               setModalState("LOADED");
             }
           })
@@ -130,7 +136,10 @@ vi.mock("react-medium-image-zoom", () => ({
       {
         type: "button",
         "aria-label": labelUnzoom,
-        onClick: () => setModalState("UNLOADING")
+        onClick: (event: ReactMouseEvent) => {
+          onZoomChange?.(false, { event });
+          setModalState("UNLOADING");
+        }
       },
       labelUnzoom
     );
@@ -149,7 +158,10 @@ vi.mock("react-medium-image-zoom", () => ({
             "aria-label": labelZoom,
             "aria-hidden": isOpen ? true : undefined,
             "data-rmiz-btn-zoom": "",
-            onClick: () => setModalState("LOADED")
+            onClick: (event: ReactMouseEvent) => {
+              onZoomChange?.(true, { event });
+              setModalState("LOADED");
+            }
           },
           labelZoom
         )

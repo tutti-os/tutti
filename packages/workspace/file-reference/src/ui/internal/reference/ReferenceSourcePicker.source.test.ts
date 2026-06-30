@@ -155,3 +155,26 @@ test("reference picker context menu uses the same viewport boundary as file mana
   assert.match(source, /data-slot="viewport-menu-boundary"/);
   assert.match(source, /data-workspace-file-menu-boundary=""/);
 });
+
+test("reference source picker renders rows with workspace file manager entry icons", () => {
+  assert.match(
+    source,
+    /WorkspaceFileEntryIcon,\s*useWorkspaceFileEntryIconUrls,/
+  );
+  assert.match(source, /function referenceNodeToWorkspaceFileEntry/);
+  assert.match(source, /function ReferenceNodeIcon/);
+  assert.match(
+    source,
+    /<ReferenceNodeIcon[\s\S]*frameClassName="size-7"[\s\S]*iconClassName="size-6"[\s\S]*node=\{node\}/
+  );
+  assert.match(
+    source,
+    /<ReferenceNodeIcon[\s\S]*frameClassName="size-7"[\s\S]*iconClassName="size-6"[\s\S]*node=\{node\}/
+  );
+  assert.match(
+    source,
+    /<ReferenceNodeIcon[\s\S]*frameClassName="size-10"[\s\S]*iconClassName="size-9"[\s\S]*node=\{entry\}/
+  );
+  assert.match(source, /function resolveReferenceNodeIconPath/);
+  assert.doesNotMatch(source, /path:\s*nodeRefKey\(node\.ref\),/);
+});

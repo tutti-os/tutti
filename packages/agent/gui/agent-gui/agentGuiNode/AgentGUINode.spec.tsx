@@ -473,6 +473,7 @@ function ensurePointerCaptureSupport(): void {
 }
 
 vi.mock("../../i18n/index", () => ({
+  getActiveUiLanguage: () => "zh-CN",
   translate: (key: string, options?: { count?: number }) => {
     if (key === "agentHost.agentGui.contextPickerExpandMore") {
       return `展开更多 ${options?.count ?? 0} 条`;

@@ -1537,7 +1537,7 @@ describe("AgentGUINodeView provider setup notice", () => {
     );
     expect(setupNoticeRule).toContain("margin: 0;");
     expect(setupNoticeRule).not.toContain("background:");
-    expect(setupNoticeRule).toContain("pointer-events: auto;");
+    expect(setupNoticeRule).toContain("pointer-events: none;");
     expect(css).toContain(
       ".agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice"
     );
@@ -1545,6 +1545,7 @@ describe("AgentGUINodeView provider setup notice", () => {
     const setupNoticeActionRule = css.match(
       /\.agent-gui-node__provider-setup-notice-action\s*{[^}]*}/s
     )?.[0];
+    expect(setupNoticeActionRule).toContain("pointer-events: auto;");
     expect(setupNoticeActionRule).toContain("-webkit-app-region: no-drag;");
   });
 

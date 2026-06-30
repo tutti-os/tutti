@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
+import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import { useTranslation, type TranslateFn } from "../../i18n/index";
 import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
 import type {
@@ -162,6 +163,9 @@ export interface AgentGUINodeProps {
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveWorkspaceReferenceEntryIconUrl?: (
+    entry: WorkspaceFileEntry
+  ) => Promise<string | null | undefined>;
   resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
   resolveWorkspaceReferenceInitialTarget?: AgentWorkspaceReferenceInitialTargetResolver | null;
   agentSettings: Pick<AgentSettings, "avoidGroupingEdits">;
@@ -476,6 +480,8 @@ function areAgentGUINodePropsEqual(
       next.workspaceFileReferenceAdapter &&
     previous.selectProjectDirectory === next.selectProjectDirectory &&
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
+    previous.resolveWorkspaceReferenceEntryIconUrl ===
+      next.resolveWorkspaceReferenceEntryIconUrl &&
     previous.resolveMentionReferenceTarget ===
       next.resolveMentionReferenceTarget &&
     previous.resolveWorkspaceReferenceInitialTarget ===
@@ -537,6 +543,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   onRequestGitBranches = null,
   selectProjectDirectory,
   referenceSourceAggregator = null,
+  resolveWorkspaceReferenceEntryIconUrl,
   resolveMentionReferenceTarget = null,
   resolveWorkspaceReferenceInitialTarget = null,
   agentSettings,
@@ -1488,6 +1495,9 @@ export const AgentGUINode = memo(function AgentGUINode({
             onRequestGitBranches={onRequestGitBranches}
             selectProjectDirectory={selectProjectDirectory}
             referenceSourceAggregator={referenceSourceAggregator}
+            resolveWorkspaceReferenceEntryIconUrl={
+              resolveWorkspaceReferenceEntryIconUrl
+            }
             resolveMentionReferenceTarget={resolveMentionReferenceTarget}
             resolveWorkspaceReferenceInitialTarget={
               resolveWorkspaceReferenceInitialTarget
