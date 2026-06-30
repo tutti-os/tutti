@@ -813,6 +813,136 @@ describe("Agent specialized tool cards", () => {
       document.querySelector(".workspace-agents-status-panel__detail-tool-body")
     ).not.toBeInTheDocument();
   });
+  it("expands command approval cards to show command details", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentToolCallCard
+        call={projectAgentToolCall(
+          toolCall({
+            name: "Approval",
+            toolName: "Approval",
+            callType: "tool",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                requestId: "req-1",
+                toolCall: {
+                  kind: "bash",
+                  title: "Run command",
+                  toolName: "Bash",
+                  rawInput: {
+                    command: "npm test"
+                  }
+                },
+                options: [
+                  { optionId: "approved", name: "Allow" }
+                ]
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    // Card should be collapsible (has expand button)
+    const toggle = screen.getByRole("button", { expanded: false });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    // Expand it
+    fireEvent.click(toggle);
+    await flushCollapsibleRevealFrames();
+
+    // Command detail should be visible
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("npm test")).toBeTruthy();
+  });
+
+  it("expands bash approval cards with array-form command", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentToolCallCard
+        call={projectAgentToolCall(
+          toolCall({
+            name: "Approval",
+            toolName: "Approval",
+            callType: "tool",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                requestId: "req-2",
+                toolCall: {
+                  kind: "bash",
+                  title: "Run script",
+                  toolName: "Bash",
+                  rawInput: {
+                    command: ["/bin/bash", "-c", "echo hello && ls -la"]
+                  }
+                },
+                options: [
+                  { optionId: "approved", name: "Allow" }
+                ]
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    const toggle = screen.getByRole("button", { expanded: false });
+    fireEvent.click(toggle);
+    await flushCollapsibleRevealFrames();
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("echo hello && ls -la")).toBeTruthy();
+  });
+
+  it("expands path approval cards to show file path details", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentToolCallCard
+        call={projectAgentToolCall(
+          toolCall({
+            name: "Approval",
+            toolName: "Approval",
+            callType: "tool",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                requestId: "req-3",
+                toolCall: {
+                  kind: "read",
+                  title: "Read file",
+                  toolName: "Read",
+                  rawInput: {
+                    file_path: "/workspace/src/index.ts",
+                    startLine: 1,
+                    endLine: 50
+                  }
+                },
+                options: [
+                  { optionId: "approved", name: "Allow" }
+                ]
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    const toggle = screen.getByRole("button", { expanded: false });
+    fireEvent.click(toggle);
+    await flushCollapsibleRevealFrames();
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("/workspace/src/index.ts")).toBeTruthy();
+  });
+
 });
 
 async function flushCollapsibleRevealFrames(): Promise<void> {
