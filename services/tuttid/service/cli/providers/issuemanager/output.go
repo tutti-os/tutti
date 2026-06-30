@@ -2,6 +2,7 @@ package issuemanager
 
 import (
 	"strings"
+	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -133,7 +134,9 @@ func issueDetailValue(item workspaceissues.Issue) map[string]any {
 		"creatorUserId":          item.CreatorUserID,
 		"creatorDisplayName":     item.CreatorDisplayName,
 		"creatorAvatarUrl":       item.CreatorAvatarURL,
+		"createdAt":              unixMillisTimestamp(item.CreatedAtUnixMS),
 		"createdAtUnixMs":        item.CreatedAtUnixMS,
+		"updatedAt":              unixMillisTimestamp(item.UpdatedAtUnixMS),
 		"updatedAtUnixMs":        item.UpdatedAtUnixMS,
 	}
 }
@@ -175,7 +178,9 @@ func taskDetailValue(item workspaceissues.Task) map[string]any {
 		"creatorDisplayName": item.CreatorDisplayName,
 		"creatorAvatarUrl":   item.CreatorAvatarURL,
 		"latestRunId":        item.LatestRunID,
+		"createdAt":          unixMillisTimestamp(item.CreatedAtUnixMS),
 		"createdAtUnixMs":    item.CreatedAtUnixMS,
+		"updatedAt":          unixMillisTimestamp(item.UpdatedAtUnixMS),
 		"updatedAtUnixMs":    item.UpdatedAtUnixMS,
 	}
 }
@@ -206,9 +211,13 @@ func runDetailValue(item workspaceissues.Run) map[string]any {
 		"errorMessage":       item.ErrorMessage,
 		"outputDir":          item.OutputDir,
 		"executionDirectory": item.ExecutionDirectory,
+		"createdAt":          unixMillisTimestamp(item.CreatedAtUnixMS),
 		"createdAtUnixMs":    item.CreatedAtUnixMS,
+		"startedAt":          unixMillisTimestamp(item.StartedAtUnixMS),
 		"startedAtUnixMs":    item.StartedAtUnixMS,
+		"completedAt":        unixMillisTimestamp(item.CompletedAtUnixMS),
 		"completedAtUnixMs":  item.CompletedAtUnixMS,
+		"updatedAt":          unixMillisTimestamp(item.UpdatedAtUnixMS),
 		"updatedAtUnixMs":    item.UpdatedAtUnixMS,
 	}
 }
@@ -231,6 +240,7 @@ func runOutputValue(item workspaceissues.RunOutput) map[string]any {
 		"displayName":     item.DisplayName,
 		"mediaType":       item.MediaType,
 		"sizeBytes":       item.SizeBytes,
+		"createdAt":       unixMillisTimestamp(item.CreatedAtUnixMS),
 		"createdAtUnixMs": item.CreatedAtUnixMS,
 	}
 }
@@ -299,4 +309,11 @@ func maybeAddNextPageToken(value map[string]any, token string) {
 	if token = strings.TrimSpace(token); token != "" {
 		value["nextPageToken"] = token
 	}
+}
+
+func unixMillisTimestamp(value int64) string {
+	if value <= 0 {
+		return ""
+	}
+	return time.UnixMilli(value).UTC().Format(time.RFC3339)
 }
