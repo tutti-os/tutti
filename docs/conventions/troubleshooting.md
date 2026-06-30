@@ -1040,10 +1040,14 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 - Fix:
   Stop managed `tuttid` inside `installUpdate()` before calling
   `quitAndInstall()`, mark the update install as pending, and bypass the async
-  `before-quit` gate while that flag is set.
+  `before-quit` gate while that flag is set. If the updater reports an install
+  error after the pending flag is set, clear the flag and restart managed
+  `tuttid` so the desktop process does not stay open with its daemon stopped.
 - Validation:
-  Run `src/main/desktopAppLifecycle.test.ts` and install a downloaded update in
-  a packaged macOS build; the app should relaunch on the new version.
+  Run `src/main/desktopAppLifecycle.test.ts` and
+  `src/main/update/appUpdateService.test.ts`, including mock install failure
+  recovery cases. Then install a downloaded update in a packaged macOS build;
+  the app should relaunch on the new version.
 - References:
   [appUpdateService.ts](../../apps/desktop/src/main/update/appUpdateService.ts)
   [desktopAppLifecycle.ts](../../apps/desktop/src/main/desktopAppLifecycle.ts)

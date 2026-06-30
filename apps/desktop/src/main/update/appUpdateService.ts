@@ -78,6 +78,7 @@ export interface AppUpdateService {
 interface AppUpdateServiceOptions {
   prefixedReleaseResolver?: PrefixedDesktopReleaseResolver | null;
   prepareQuitAndInstall?: () => Promise<void>;
+  recoverAfterQuitAndInstallFailure?: () => Promise<void>;
   supportsUpdates?: boolean;
   unsupportedMessage?: string;
 }
@@ -476,6 +477,8 @@ export function createAppUpdateService(
   let preserveAvailableStateDuringCheck = false;
   let quitAndInstallPending = false;
   const prepareQuitAndInstall = options.prepareQuitAndInstall;
+  const recoverAfterQuitAndInstallFailure =
+    options.recoverAfterQuitAndInstallFailure;
   const stateChangedListeners = new Set<
     (state: AppUpdateState, previousState: AppUpdateState) => void
   >();
@@ -504,6 +507,51 @@ export function createAppUpdateService(
     if (intervalId) {
       clearInterval(intervalId);
       intervalId = null;
+    }
+  };
+
+  const applyUpdaterError = (error: Error): void => {
+    getDesktopLogger().error("application updater failed", {
+      error: error.message,
+      error_name: error.name
+    });
+    applyState({
+      ...buildBaseState(
+        currentVersion,
+        state.policy,
+        state.channel,
+        "error",
+        normalizeMessage(error)
+      ),
+      checkedAt: new Date().toISOString(),
+      latestVersion: state.latestVersion,
+      releaseDate: state.releaseDate,
+      releaseName: state.releaseName
+    });
+  };
+
+  const recoverAfterFailedQuitAndInstall = async (
+    error: unknown
+  ): Promise<void> => {
+    if (!quitAndInstallPending) {
+      return;
+    }
+
+    quitAndInstallPending = false;
+    if (!recoverAfterQuitAndInstallFailure) {
+      return;
+    }
+
+    try {
+      await recoverAfterQuitAndInstallFailure();
+    } catch (recoverError) {
+      getDesktopLogger().error(
+        "failed to recover managed tuttid after update install failure",
+        {
+          error: formatErrorDetail(recoverError),
+          install_error: formatErrorDetail(error)
+        }
+      );
     }
   };
 
@@ -623,23 +671,8 @@ export function createAppUpdateService(
         return;
       }
 
-      getDesktopLogger().error("application updater failed", {
-        error: error.message,
-        error_name: error.name
-      });
-      applyState({
-        ...buildBaseState(
-          currentVersion,
-          state.policy,
-          state.channel,
-          "error",
-          normalizeMessage(error)
-        ),
-        checkedAt: new Date().toISOString(),
-        latestVersion: state.latestVersion,
-        releaseDate: state.releaseDate,
-        releaseName: state.releaseName
-      });
+      applyUpdaterError(error);
+      void recoverAfterFailedQuitAndInstall(error);
     })
   ];
 
@@ -795,7 +828,15 @@ export function createAppUpdateService(
         }
       }
 
-      resolvedDriver.quitAndInstall();
+      try {
+        resolvedDriver.quitAndInstall();
+      } catch (error) {
+        applyUpdaterError(
+          error instanceof Error ? error : new Error(String(error))
+        );
+        await recoverAfterFailedQuitAndInstall(error);
+        throw error;
+      }
     },
     isQuitAndInstallPending() {
       return quitAndInstallPending;

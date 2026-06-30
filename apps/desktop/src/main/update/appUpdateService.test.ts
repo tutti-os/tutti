@@ -321,6 +321,185 @@ test("createAppUpdateService prepares managed tuttid stop before quitAndInstall"
   }
 });
 
+test("createAppUpdateService ignores duplicate install requests while quitAndInstall is pending", async () => {
+  const events: string[] = [];
+  const listeners: {
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  let releasePrepare: () => void = () => {
+    throw new Error("prepare resolver was not initialized");
+  };
+  const preparePromise = new Promise<void>((resolve) => {
+    releasePrepare = resolve;
+  });
+  const driver = createFakeDriver({
+    async downloadUpdate() {
+      listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  driver.quitAndInstall = () => {
+    events.push("updater:quit-and-install");
+  };
+  const service = createAppUpdateService(driver, {
+    prepareQuitAndInstall: async () => {
+      events.push("tuttid:stop:start");
+      await preparePromise;
+      events.push("tuttid:stop:done");
+    },
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.available?.(createUpdateInfoFixture("1.1.0"));
+    await service.downloadUpdate();
+
+    const firstInstall = service.installUpdate();
+    const secondInstall = service.installUpdate();
+    await Promise.resolve();
+
+    assert.equal(service.isQuitAndInstallPending(), true);
+    assert.deepEqual(events, ["tuttid:stop:start"]);
+
+    releasePrepare();
+    await Promise.all([firstInstall, secondInstall]);
+
+    assert.deepEqual(events, [
+      "tuttid:stop:start",
+      "tuttid:stop:done",
+      "updater:quit-and-install"
+    ]);
+  } finally {
+    service.dispose();
+  }
+});
+
+test("createAppUpdateService recovers managed tuttid when quitAndInstall emits an updater error", async () => {
+  const events: string[] = [];
+  const listeners: {
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const driver = createFakeDriver({
+    async downloadUpdate() {
+      listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  driver.quitAndInstall = () => {
+    events.push("updater:quit-and-install");
+  };
+  const service = createAppUpdateService(driver, {
+    prepareQuitAndInstall: async () => {
+      events.push("tuttid:stop");
+    },
+    recoverAfterQuitAndInstallFailure: async () => {
+      events.push("tuttid:start");
+    },
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.available?.(createUpdateInfoFixture("1.1.0"));
+    await service.downloadUpdate();
+
+    await service.installUpdate();
+    assert.equal(service.isQuitAndInstallPending(), true);
+
+    driver.emitError(new Error("Squirrel failed to install update"));
+    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(service.isQuitAndInstallPending(), false);
+    assert.equal(service.getState().status, "error");
+    assert.deepEqual(events, [
+      "tuttid:stop",
+      "updater:quit-and-install",
+      "tuttid:start"
+    ]);
+  } finally {
+    service.dispose();
+  }
+});
+
+test("createAppUpdateService recovers managed tuttid when quitAndInstall throws synchronously", async () => {
+  const events: string[] = [];
+  const listeners: {
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const driver = createFakeDriver({
+    async downloadUpdate() {
+      listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  driver.quitAndInstall = () => {
+    events.push("updater:quit-and-install");
+    throw new Error("native quit failed");
+  };
+  const service = createAppUpdateService(driver, {
+    prepareQuitAndInstall: async () => {
+      events.push("tuttid:stop");
+    },
+    recoverAfterQuitAndInstallFailure: async () => {
+      events.push("tuttid:start");
+    },
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.available?.(createUpdateInfoFixture("1.1.0"));
+    await service.downloadUpdate();
+
+    await assert.rejects(service.installUpdate(), /native quit failed/);
+
+    assert.equal(service.isQuitAndInstallPending(), false);
+    assert.equal(service.getState().status, "error");
+    assert.deepEqual(events, [
+      "tuttid:stop",
+      "updater:quit-and-install",
+      "tuttid:start"
+    ]);
+  } finally {
+    service.dispose();
+  }
+});
+
 test("createAppUpdateService skips identical consecutive download progress states", async () => {
   const progressListeners = new Set<(progress: ProgressInfo) => void>();
   let stateChangeCount = 0;

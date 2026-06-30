@@ -53,7 +53,8 @@ export async function createDesktopAppServices(
 ): Promise<DesktopAppServices> {
   const daemonRuntime = await resolveDaemonRuntime(factories);
   const updateService = await resolveUpdateService(factories, {
-    prepareQuitAndInstall: () => daemonRuntime.tuttid.stop()
+    prepareQuitAndInstall: () => daemonRuntime.tuttid.stop(),
+    recoverAfterQuitAndInstallFailure: () => daemonRuntime.tuttid.start()
   });
 
   try {
@@ -142,6 +143,7 @@ async function resolveUpdateService(
   factories?: Partial<DesktopAppServiceFactories>,
   options: {
     prepareQuitAndInstall?: () => Promise<void>;
+    recoverAfterQuitAndInstallFailure?: () => Promise<void>;
   } = {}
 ): Promise<AppUpdateService> {
   if (factories?.createUpdateService) {
@@ -151,7 +153,8 @@ async function resolveUpdateService(
   const { createAppUpdateService } =
     await import("./update/appUpdateService.ts");
   return createAppUpdateService(undefined, {
-    prepareQuitAndInstall: options.prepareQuitAndInstall
+    prepareQuitAndInstall: options.prepareQuitAndInstall,
+    recoverAfterQuitAndInstallFailure: options.recoverAfterQuitAndInstallFailure
   });
 }
 
