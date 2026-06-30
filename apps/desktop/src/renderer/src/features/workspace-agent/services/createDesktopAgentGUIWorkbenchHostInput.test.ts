@@ -103,6 +103,54 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
   ]);
 });
 
+test("desktop agent GUI resolves dropped system files as host-local references", async () => {
+  const droppedFileA = new File(["a"], "report.pdf", {
+    type: "application/pdf"
+  });
+  const droppedFileB = new File(["b"], "notes.txt", {
+    type: "text/plain"
+  });
+  const resolvedFiles: File[][] = [];
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi({
+      resolveDroppedPaths(files) {
+        resolvedFiles.push([...files]);
+        return [
+          "/Users/local/Downloads/report.pdf",
+          "/Users/local/Downloads/notes.txt"
+        ];
+      }
+    }),
+    richTextAtService: createRichTextAtService({ providers: [] }),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
+    workspaceId
+  });
+
+  assert.deepEqual(
+    await hostInput.resolveDroppedFileReferences([droppedFileA, droppedFileB]),
+    [
+      {
+        displayName: "report.pdf",
+        hostPath: "/Users/local/Downloads/report.pdf",
+        kind: "file",
+        path: "/Users/local/Downloads/report.pdf",
+        sourceId: "host-local-file"
+      },
+      {
+        displayName: "notes.txt",
+        hostPath: "/Users/local/Downloads/notes.txt",
+        kind: "file",
+        path: "/Users/local/Downloads/notes.txt",
+        sourceId: "host-local-file"
+      }
+    ]
+  );
+  assert.deepEqual(resolvedFiles, [[droppedFileA, droppedFileB]]);
+});
+
 test("desktop agent GUI workbench host input creates the default agent host api", async () => {
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
     hostFilesApi: createHostFilesApi(),
@@ -1030,6 +1078,13 @@ function createHostFilesApi(): DesktopHostFilesApi {
     async readLocalPreviewFile() {
       return new Uint8Array();
     },
+    async archiveAgentPromptFile(input) {
+      return {
+        name: input.displayName ?? "attachment",
+        path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/report.pdf",
+        sizeBytes: 10
+      };
+    },
     async readPreviewFile() {
       return new Uint8Array();
     },
@@ -1184,7 +1239,14 @@ function createTuttidClient(): TuttidClient {
   } as unknown as TuttidClient;
 }
 
-function createPlatformApi(): Pick<
+function createPlatformApi(
+  overrides: Partial<
+    Pick<
+      DesktopPlatformApi,
+      "homeDirectory" | "os" | "resolveDroppedEntries" | "resolveDroppedPaths"
+    >
+  > = {}
+): Pick<
   DesktopPlatformApi,
   "homeDirectory" | "os" | "resolveDroppedEntries" | "resolveDroppedPaths"
 > {
@@ -1196,7 +1258,8 @@ function createPlatformApi(): Pick<
     },
     resolveDroppedPaths() {
       return [];
-    }
+    },
+    ...overrides
   };
 }
 

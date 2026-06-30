@@ -106,6 +106,9 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspaceFileReferenceAdapter"]
   >;
+  resolveDroppedFileReferences: NonNullable<
+    AgentGUIProps["resolveDroppedFileReferences"]
+  >;
   onRequestGitBranches: NonNullable<AgentGUIProps["onRequestGitBranches"]>;
   referenceSourceAggregator?: AgentGUIProps["referenceSourceAggregator"];
   resolveWorkspaceReferenceEntryIconUrl?: AgentGUIProps["resolveWorkspaceReferenceEntryIconUrl"];
@@ -167,6 +170,8 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.trackWorkspaceFileReferences &&
     previous.workspaceFileReferenceAdapter ===
       next.workspaceFileReferenceAdapter &&
+    previous.resolveDroppedFileReferences ===
+      next.resolveDroppedFileReferences &&
     previous.onRequestGitBranches === next.onRequestGitBranches &&
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
     previous.resolveWorkspaceReferenceEntryIconUrl ===
@@ -242,6 +247,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   trackAgentProviderChatReady,
   trackWorkspaceFileReferences,
   workspaceFileReferenceAdapter,
+  resolveDroppedFileReferences,
   onRequestGitBranches,
   referenceSourceAggregator,
   resolveWorkspaceReferenceEntryIconUrl,
@@ -988,6 +994,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         width={frame.width}
         workspaceFileReferenceAdapter={
           previewMode ? null : workspaceFileReferenceAdapter
+        }
+        resolveDroppedFileReferences={
+          previewMode ? null : resolveDroppedFileReferences
         }
         onRequestGitBranches={previewMode ? null : onRequestGitBranches}
         referenceSourceAggregator={

@@ -58,20 +58,37 @@ function createDraft(
   return { prompt, images, files };
 }
 
-function createImageDataTransfer(file: File): DataTransfer {
+function createFileDataTransfer(files: readonly File[]): DataTransfer {
   return {
     effectAllowed: "copy",
     dropEffect: "none",
     types: ["Files"],
-    files: [file],
-    items: [
-      {
-        kind: "file",
-        type: file.type,
-        getAsFile: () => file
-      }
-    ]
+    files,
+    items: files.map((file) => ({
+      kind: "file",
+      type: file.type,
+      getAsFile: () => file
+    }))
   } as unknown as DataTransfer;
+}
+
+function createProtectedFileDragDataTransfer(
+  files: readonly File[]
+): DataTransfer {
+  const dataTransfer = createFileDataTransfer(files) as unknown as {
+    files: readonly File[];
+    items: Array<{ getAsFile: () => File | null }>;
+  };
+  dataTransfer.files = [];
+  dataTransfer.items = dataTransfer.items.map((item) => ({
+    ...item,
+    getAsFile: () => null
+  }));
+  return dataTransfer as unknown as DataTransfer;
+}
+
+function createImageDataTransfer(file: File): DataTransfer {
+  return createFileDataTransfer([file]);
 }
 
 vi.mock("../../app/renderer/components/ui/popover", () => ({
@@ -3231,6 +3248,265 @@ describe("AgentComposer", () => {
         "data:image/png;base64,aW1hZ2U="
       )
     );
+  });
+
+  it("uploads dropped non-image system files on the AgentGUI detail panel as file mentions", async () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const uploadPromptContent = vi.fn(async () => ({
+      content: [
+        {
+          type: "file" as const,
+          path: "/var/cache/tsh/local-assets/room-1/report.pdf",
+          name: "report.pdf",
+          kind: "file" as const
+        }
+      ]
+    }));
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+    const report = new File(["report"], "report.pdf", {
+      type: "application/pdf"
+    });
+    const renderComposer = () => (
+      <div id="agent-gui-detail">
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          draftContent={draftContent}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={onDraftContentChange}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+          resolveDroppedFileReferences={(files) =>
+            files.map((file) => ({
+              path: "/Users/local/Downloads/report.pdf",
+              hostPath: "/Users/local/Downloads/report.pdf",
+              displayName: file.name,
+              kind: "file",
+              sourceId: "host-local-file"
+            }))
+          }
+        />
+      </div>
+    );
+    const { container } = render(renderComposer());
+    const detailPanel = container.querySelector("#agent-gui-detail");
+    const dragDataTransfer = createProtectedFileDragDataTransfer([report]);
+    const dataTransfer = createFileDataTransfer([report]);
+
+    fireEvent.dragOver(detailPanel!, { dataTransfer: dragDataTransfer });
+    expect(dragDataTransfer.dropEffect).toBe("copy");
+    fireEvent.drop(detailPanel!, { dataTransfer });
+
+    await waitFor(() =>
+      expect(uploadPromptContent).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        content: [
+          {
+            type: "file",
+            hostPath: "/Users/local/Downloads/report.pdf",
+            name: "report.pdf",
+            kind: "file"
+          }
+        ]
+      })
+    );
+    await waitFor(() =>
+      expect(onDraftContentChange).toHaveBeenCalledWith(
+        createDraft(
+          "[@report.pdf](/var/cache/tsh/local-assets/room-1/report.pdf) "
+        )
+      )
+    );
+    expect(draftContent.prompt).not.toContain("/Users/local/Downloads");
+  });
+
+  it("does not accept dropped host files when prompt file uploads are unsupported", async () => {
+    const uploadPromptContent = vi.fn();
+    const resolveDroppedFileReferences = vi.fn(() => [
+      {
+        path: "/Users/local/Downloads/report.pdf",
+        hostPath: "/Users/local/Downloads/report.pdf",
+        displayName: "report.pdf",
+        kind: "file" as const,
+        sourceId: "host-local-file"
+      }
+    ]);
+    const onDraftContentChange = vi.fn();
+    setAgentActivityRuntimeForTests({
+      promptContentUploadSupport: { file: false },
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+    const report = new File(["report"], "report.pdf", {
+      type: "application/pdf"
+    });
+    const { container } = render(
+      <div id="agent-gui-detail">
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          draftContent={createDraft("")}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={onDraftContentChange}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+          resolveDroppedFileReferences={resolveDroppedFileReferences}
+        />
+      </div>
+    );
+    const detailPanel = container.querySelector("#agent-gui-detail");
+    const dragDataTransfer = createProtectedFileDragDataTransfer([report]);
+    const dataTransfer = createFileDataTransfer([report]);
+
+    fireEvent.dragOver(detailPanel!, { dataTransfer: dragDataTransfer });
+    expect(dragDataTransfer.dropEffect).toBe("none");
+    fireEvent.drop(detailPanel!, { dataTransfer });
+
+    expect(resolveDroppedFileReferences).not.toHaveBeenCalled();
+    expect(uploadPromptContent).not.toHaveBeenCalled();
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps mixed system image and file drops on their separate draft paths", async () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const uploadPromptContent = vi.fn(async () => ({
+      content: [
+        {
+          type: "file" as const,
+          path: "/var/cache/tsh/local-assets/room-1/report.pdf",
+          name: "report.pdf",
+          kind: "file" as const
+        }
+      ]
+    }));
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+    const renderComposer = () => (
+      <div id="agent-gui-detail">
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          draftContent={draftContent}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={onDraftContentChange}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+          resolveDroppedFileReferences={(files) =>
+            files.map((file) => ({
+              path: "/Users/local/Downloads/report.pdf",
+              hostPath: "/Users/local/Downloads/report.pdf",
+              displayName: file.name,
+              kind: "file",
+              sourceId: "host-local-file"
+            }))
+          }
+        />
+      </div>
+    );
+    const { container, rerender } = render(renderComposer());
+    const detailPanel = container.querySelector("#agent-gui-detail");
+    const dataTransfer = createFileDataTransfer([
+      new File(["image"], "panel.png", { type: "image/png" }),
+      new File(["report"], "report.pdf", { type: "application/pdf" })
+    ]);
+
+    fireEvent.drop(detailPanel!, { dataTransfer });
+
+    await waitFor(() =>
+      expect(onDraftContentChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt:
+            "[@report.pdf](/var/cache/tsh/local-assets/room-1/report.pdf) "
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(draftContent.images).toEqual([
+        expect.objectContaining({
+          name: "panel.png",
+          mimeType: "image/png",
+          data: "aW1hZ2U="
+        })
+      ])
+    );
+    rerender(renderComposer());
+    expect(
+      await screen.findByTestId("agent-gui-composer-image-drafts")
+    ).toBeInTheDocument();
   });
 
   it("uses the tracked spinner while the send button is waiting for a turn to start", () => {

@@ -35,7 +35,9 @@ import type {
   DesktopWorkspaceAppExternalRendererRequest,
   DesktopWorkspaceAppExternalRendererResult,
   DesktopWorkspaceAppOpenFileResolvedPayload,
-  DesktopWorkspaceOpenFeatureRequest
+  DesktopWorkspaceOpenFeatureRequest,
+  DesktopArchiveAgentPromptFileInput,
+  DesktopArchiveAgentPromptFileResult
 } from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 
@@ -172,6 +174,9 @@ export interface DesktopHostFilesApi {
   }): Promise<void>;
   readLocalFileText(path: string): Promise<DesktopLocalFileTextResult>;
   readLocalPreviewFile(path: string): Promise<Uint8Array>;
+  archiveAgentPromptFile(
+    input: DesktopArchiveAgentPromptFileInput
+  ): Promise<DesktopArchiveAgentPromptFileResult>;
   readPreviewFile(workspaceID: string, path: string): Promise<Uint8Array>;
   resolveEntryIcon(
     workspaceID: string,

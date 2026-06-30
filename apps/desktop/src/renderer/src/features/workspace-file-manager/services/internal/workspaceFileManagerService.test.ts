@@ -735,6 +735,7 @@ function createDependenciesStub(): {
       openTerminalLink: fail,
       readLocalFileText: fail,
       readLocalPreviewFile: fail,
+      archiveAgentPromptFile: fail,
       readPreviewFile: fail,
       resolveEntryIcon: async () => null,
       selectAppArchive: fail,

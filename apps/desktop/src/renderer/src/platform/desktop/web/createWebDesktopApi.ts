@@ -264,6 +264,9 @@ function createWebHostApi(): DesktopHostApi {
       readLocalPreviewFile() {
         return Promise.reject(electronDebugRequired("readLocalPreviewFile"));
       },
+      archiveAgentPromptFile() {
+        return Promise.reject(electronDebugRequired("archiveAgentPromptFile"));
+      },
       readPreviewFile() {
         return Promise.reject(electronDebugRequired("readPreviewFile"));
       },

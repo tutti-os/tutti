@@ -71,6 +71,43 @@ export function nonImageFilesFromDataTransfer(
   return files;
 }
 
+export function systemFileDragInfoFromDataTransfer(
+  dataTransfer: DataTransfer | null
+): { hasImageFiles: boolean; hasRegularFiles: boolean } {
+  if (!dataTransfer) {
+    return { hasImageFiles: false, hasRegularFiles: false };
+  }
+  const items = (dataTransfer as { items?: DataTransferItemList | null }).items;
+  if (items) {
+    let hasImageFiles = false;
+    let hasRegularFiles = false;
+    for (const item of Array.from(items)) {
+      if (item.kind !== "file") {
+        continue;
+      }
+      if (supportedPromptImageMimeType(item.type)) {
+        hasImageFiles = true;
+      } else {
+        hasRegularFiles = true;
+      }
+    }
+    return { hasImageFiles, hasRegularFiles };
+  }
+  let hasImageFiles = false;
+  let hasRegularFiles = false;
+  for (const file of Array.from(dataTransfer.files ?? [])) {
+    if (
+      supportedPromptImageMimeType(file.type) ||
+      supportedPromptImageFileName(file.name)
+    ) {
+      hasImageFiles = true;
+    } else {
+      hasRegularFiles = true;
+    }
+  }
+  return { hasImageFiles, hasRegularFiles };
+}
+
 export function supportedPromptImageMimeType(
   value: string
 ): value is AgentRichTextPromptImage["mimeType"] {

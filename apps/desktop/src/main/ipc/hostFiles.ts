@@ -1,5 +1,7 @@
 import {
   desktopIpcChannels,
+  type DesktopArchiveAgentPromptFileInput,
+  type DesktopArchiveAgentPromptFileResult,
   type DesktopClipboardImagePayload,
   type DesktopCreateUserDocumentsProjectDirectoryInput,
   type DesktopTerminalLinkPathPayload,
@@ -7,6 +9,10 @@ import {
   type DesktopWorkspaceFilePathPayload
 } from "../../shared/contracts/ipc";
 import { app, shell } from "electron";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { chmod, copyFile, mkdir, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 import {
   writeFilesToSystemClipboard,
   writeImageToSystemClipboard
@@ -104,6 +110,11 @@ export function registerHostFilesIpc(deps: HostFilesIpcDependencies): void {
     (_event, payload: string) => hostAccess.readLocalPreviewFile(payload)
   );
   registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.archiveAgentPromptFile,
+    (_event, payload: DesktopArchiveAgentPromptFileInput) =>
+      archiveAgentPromptFile(payload)
+  );
+  registerDesktopIpcHandler(
     desktopIpcChannels.host.files.readPreviewFile,
     (_event, payload: DesktopWorkspaceFilePathPayload) =>
       hostAccess.readPreviewFile(payload)
@@ -156,4 +167,110 @@ export function registerHostFilesIpc(deps: HostFilesIpcDependencies): void {
       writeFilesToSystemClipboard(payload);
     }
   );
+}
+
+async function archiveAgentPromptFile(
+  input: DesktopArchiveAgentPromptFileInput
+): Promise<DesktopArchiveAgentPromptFileResult> {
+  const workspaceID = sanitizeAgentPromptAssetSegment(input.workspaceID);
+  const displayName = normalizeAgentPromptAssetDisplayName(
+    input.displayName ?? input.hostPath ?? "attachment"
+  );
+  const dataBase64 = input.dataBase64?.trim() ?? "";
+  const hostPath = input.hostPath?.trim() ?? "";
+  let bytes: Buffer | null = null;
+  let sourcePath = "";
+  let sizeBytes = 0;
+  if (dataBase64) {
+    bytes = Buffer.from(dataBase64, "base64");
+    sizeBytes = bytes.byteLength;
+  } else if (hostPath) {
+    const sourceStat = await stat(hostPath);
+    if (!sourceStat.isFile()) {
+      throw new Error("Only regular files can be archived as prompt assets.");
+    }
+    sourcePath = hostPath;
+    sizeBytes = sourceStat.size;
+  } else {
+    throw new Error("Prompt asset archive requires hostPath or dataBase64.");
+  }
+  const hash = createHash("sha256");
+  if (bytes) {
+    hash.update(bytes);
+  } else {
+    await new Promise<void>((resolve, reject) => {
+      const stream = createReadStream(sourcePath);
+      stream.on("data", (chunk) => hash.update(chunk));
+      stream.on("error", reject);
+      stream.on("end", resolve);
+    });
+  }
+  const sha256 = hash.digest("hex");
+  const extension =
+    safeAgentPromptAssetExtension(displayName) ??
+    safeAgentPromptAssetExtension(input.mimeType ?? "") ??
+    "";
+  const archiveDir = path.join(
+    app.getPath("userData"),
+    "agent-prompt-assets",
+    workspaceID,
+    sha256.slice(0, 2)
+  );
+  await mkdir(archiveDir, { recursive: true, mode: 0o700 });
+  const archivePath = path.join(archiveDir, `${sha256}${extension}`);
+  if (bytes) {
+    await writeFile(archivePath, bytes, { mode: 0o600 });
+  } else {
+    await copyFile(sourcePath, archivePath);
+    await chmod(archivePath, 0o600);
+  }
+  return {
+    name: displayName,
+    path: archivePath,
+    sizeBytes
+  };
+}
+
+function normalizeAgentPromptAssetDisplayName(value: string): string {
+  const baseName = path.basename(value.trim()) || "attachment";
+  return baseName.replace(/[\r\n]/g, " ").trim() || "attachment";
+}
+
+function sanitizeAgentPromptAssetSegment(value: string): string {
+  const normalized = value.trim().replace(/[^a-zA-Z0-9._-]/g, "_");
+  if (!normalized || normalized === "." || normalized === "..") {
+    throw new Error("workspaceID is required to archive prompt assets.");
+  }
+  return normalized;
+}
+
+function safeAgentPromptAssetExtension(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  const fromMimeType = normalized.includes("/")
+    ? promptAssetExtensionFromMimeType(normalized)
+    : "";
+  const extension = fromMimeType || path.extname(normalized);
+  if (!extension || extension.length > 16) {
+    return null;
+  }
+  return /^\.[a-z0-9]+$/.test(extension) ? extension : null;
+}
+
+function promptAssetExtensionFromMimeType(mimeType: string): string {
+  switch (mimeType) {
+    case "image/png":
+      return ".png";
+    case "image/jpeg":
+      return ".jpg";
+    case "image/webp":
+      return ".webp";
+    case "application/pdf":
+      return ".pdf";
+    case "text/plain":
+      return ".txt";
+    case "application/json":
+      return ".json";
+    default:
+      return "";
+  }
 }

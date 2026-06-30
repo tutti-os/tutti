@@ -59,6 +59,7 @@ import {
   workspaceAgentProbeRenderStateEqualsForProvider
 } from "../workspaceDesktop/view/desktopDockAgentProbeTooltipModel";
 import { AgentProbeInfoPopover } from "../workspaceDesktop/view/AgentProbeInfoPopover";
+import type { AgentComposerProps } from "./AgentComposer";
 import {
   getAgentHostManagedToolchainAgentByName,
   resolveAgentHostManagedToolchainAgentAction
@@ -162,6 +163,7 @@ export interface AgentGUINodeProps {
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
   resolveWorkspaceReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry
@@ -478,6 +480,8 @@ function areAgentGUINodePropsEqual(
     previous.workspacePath === next.workspacePath &&
     previous.workspaceFileReferenceAdapter ===
       next.workspaceFileReferenceAdapter &&
+    previous.resolveDroppedFileReferences ===
+      next.resolveDroppedFileReferences &&
     previous.selectProjectDirectory === next.selectProjectDirectory &&
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
     previous.resolveWorkspaceReferenceEntryIconUrl ===
@@ -542,6 +546,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   workspaceFileReferenceAdapter = null,
   onRequestGitBranches = null,
   selectProjectDirectory,
+  resolveDroppedFileReferences = null,
   referenceSourceAggregator = null,
   resolveWorkspaceReferenceEntryIconUrl,
   resolveMentionReferenceTarget = null,
@@ -1486,6 +1491,7 @@ export const AgentGUINode = memo(function AgentGUINode({
                 ? handleWorkspaceFileReferencesAdded
                 : undefined
             }
+            resolveDroppedFileReferences={resolveDroppedFileReferences}
             onConversationRailWidthChanged={handleConversationRailWidthChanged}
             labels={labels}
             workspaceUserProjectI18n={workspaceUserProjectI18n}

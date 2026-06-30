@@ -504,6 +504,7 @@ interface AgentGUINodeViewProps {
   onWorkspaceFileReferencesAdded?: (
     references: readonly WorkspaceFileReference[]
   ) => void | Promise<void>;
+  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
   onConversationRailWidthChanged: (widthPx: number) => void;
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
@@ -826,6 +827,7 @@ export function AgentGUINodeView({
   detailMinWidthPx,
   uiLanguage,
   onWorkspaceFileReferencesAdded,
+  resolveDroppedFileReferences = null,
   onConversationRailWidthChanged,
   labels,
   workspaceUserProjectI18n,
@@ -1383,6 +1385,7 @@ export function AgentGUINodeView({
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
             onAgentProviderLogin={onAgentProviderLogin}
             onRequestWorkspaceReferences={requestWorkspaceReferences}
+            resolveDroppedFileReferences={resolveDroppedFileReferences}
             selectProjectDirectory={selectProjectDirectory}
             onRequestGitBranches={onRequestGitBranches}
             contextMentionProviders={contextMentionProviders}
@@ -1450,6 +1453,7 @@ interface AgentGUIDetailPaneProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
+  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
@@ -1540,6 +1544,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
+  resolveDroppedFileReferences = null,
   selectProjectDirectory,
   onRequestGitBranches,
   contextMentionProviders,
@@ -2187,6 +2192,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onCapabilitySettingsRequest,
       onLinkAction: stableLinkAction,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
+      resolveDroppedFileReferences,
       selectProjectDirectory: stableSelectProjectDirectory,
       onRequestGitBranches: stableRequestGitBranches,
       contextMentionProviders
@@ -2210,6 +2216,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onCapabilitySettingsRequest,
       contextMentionProviders,
       removeQueuedPrompt,
+      resolveDroppedFileReferences,
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
       showStopButton,

@@ -206,6 +206,10 @@ export interface AgentActivityRuntimePromptAsset {
 }
 
 export interface AgentActivityRuntime {
+  promptContentUploadSupport?: {
+    file?: boolean;
+    image?: boolean;
+  };
   cancelSession(
     input: AgentActivityCancelSessionInput
   ): Promise<AgentActivityCancelSessionResult>;

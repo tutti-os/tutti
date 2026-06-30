@@ -1000,6 +1000,21 @@ For `source=app` references, readonly and markdown renderers should hydrate the
 icon from the same `workspaceAppIcons` appId/workspaceId table used by ordinary
 `workspace-app` mentions.
 
+System file drag-and-drop uses the same composer mention path as the reference
+picker. `@tutti-os/agent-gui` receives a host-injected dropped-file resolver
+that returns host-local `WorkspaceFileReference` values with `hostPath`,
+`displayName`, `kind`, and `sourceId`; it must not import Electron or resolve
+desktop `File` objects itself. The desktop host owns `File -> hostPath`
+resolution through platform capabilities. Before insertion, AgentGUI sends
+host-local file references through `AgentActivityRuntime.uploadPromptContent`
+and only inserts the returned agent-readable path as a normal markdown file
+mention. The original host path is an upload source, not prompt content.
+The desktop runtime implements this upload by asking the host file capability
+to archive the selected file under a Tutti-managed agent prompt assets
+directory, then returns that managed absolute path to AgentGUI. This capability
+is file-only in desktop today; image drafts keep the existing image input path
+unless a runtime explicitly advertises image prompt upload support.
+
 Quick check:
 
 ```sh

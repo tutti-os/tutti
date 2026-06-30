@@ -39,6 +39,120 @@ test("desktop agent activity runtime forwards package diagnostics to renderer di
   ]);
 });
 
+test("desktop agent activity runtime hides prompt uploads without archive support", () => {
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService()
+  );
+
+  assert.equal(runtime.promptContentUploadSupport?.file, false);
+  assert.equal(runtime.uploadPromptContent, undefined);
+});
+
+test("desktop agent activity runtime archives prompt file uploads", async () => {
+  const archiveInputs: unknown[] = [];
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService(),
+    {
+      hostFilesApi: {
+        async archiveAgentPromptFile(input) {
+          archiveInputs.push(input);
+          return {
+            name: input.displayName ?? "attachment",
+            path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/report.pdf",
+            sizeBytes: 42
+          };
+        }
+      }
+    }
+  );
+
+  const result = await runtime.uploadPromptContent?.({
+    workspaceId: "workspace-1",
+    content: [
+      {
+        type: "file",
+        hostPath: "/Users/local/Downloads/report.pdf",
+        name: "report.pdf",
+        kind: "file"
+      }
+    ]
+  });
+
+  assert.deepEqual(archiveInputs, [
+    {
+      workspaceID: "workspace-1",
+      hostPath: "/Users/local/Downloads/report.pdf",
+      displayName: "report.pdf",
+      mimeType: null
+    }
+  ]);
+  assert.deepEqual(result, {
+    content: [
+      {
+        type: "file",
+        hostPath: "/Users/local/Downloads/report.pdf",
+        name: "report.pdf",
+        kind: "file",
+        path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/report.pdf",
+        sizeBytes: 42,
+        uploadStatus: "uploaded"
+      }
+    ]
+  });
+});
+
+test("desktop agent activity runtime archives prompt image uploads", async () => {
+  const archiveInputs: unknown[] = [];
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService(),
+    {
+      hostFilesApi: {
+        async archiveAgentPromptFile(input) {
+          archiveInputs.push(input);
+          return {
+            name: input.displayName ?? "image.png",
+            path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/image.png",
+            sizeBytes: 12
+          };
+        }
+      }
+    }
+  );
+
+  const result = await runtime.uploadPromptContent?.({
+    workspaceId: "workspace-1",
+    content: [
+      {
+        type: "image",
+        mimeType: "image/png",
+        data: "aW1hZ2U=",
+        name: "image.png"
+      }
+    ]
+  });
+
+  assert.deepEqual(archiveInputs, [
+    {
+      workspaceID: "workspace-1",
+      dataBase64: "aW1hZ2U=",
+      displayName: "image.png",
+      mimeType: "image/png"
+    }
+  ]);
+  assert.deepEqual(result, {
+    content: [
+      {
+        type: "image",
+        mimeType: "image/png",
+        name: "image.png",
+        path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/image.png",
+        sizeBytes: 12,
+        uploadStatus: "uploaded"
+      }
+    ]
+  });
+});
+
 function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
   return {
     _serviceBrand: undefined,

@@ -65,9 +65,7 @@ export function createAgentFileMentionContent(
         ? ([
             { type: "text", text: AGENT_RICH_TEXT_CARET_ANCHOR }
           ] as JSONContent[])
-        : index > 0
-          ? ([{ type: "text", text: " " }] as JSONContent[])
-          : []),
+        : []),
       {
         type: "agentFileMention",
         attrs: {

@@ -177,12 +177,18 @@ function pasteComposerText(text: string): void {
   });
 }
 
-function createDataTransferStub(): DataTransfer {
+function createDataTransferStub(files: readonly File[] = []): DataTransfer {
   const store = new Map<string, string>();
   const dataTransfer = {
     effectAllowed: "none",
     dropEffect: "none",
     types: [] as string[],
+    files,
+    items: files.map((file) => ({
+      kind: "file",
+      type: file.type,
+      getAsFile: () => file
+    })),
     setData(format: string, data: string) {
       store.set(format, data);
       dataTransfer.types = [...store.keys()];
@@ -4683,6 +4689,135 @@ describe("AgentGUINode", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("inserts dropped host-local files into the active conversation draft through upload", async () => {
+    const uploadPromptContent = vi.fn(async () => ({
+      content: [
+        {
+          type: "file" as const,
+          path: "/var/cache/tsh/local-assets/room-1/user-1/report.pdf",
+          name: "report.pdf",
+          kind: "file" as const
+        }
+      ]
+    }));
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      draftPrompt: "看下 "
+    });
+
+    renderAgentGUINode({
+      agentActivityRuntime: {
+        uploadPromptContent
+      } as unknown as AgentActivityRuntime,
+      resolveDroppedFileReferences: (files) =>
+        files.map((file) => ({
+          path: "/Users/local/Downloads/report.pdf",
+          hostPath: "/Users/local/Downloads/report.pdf",
+          displayName: file.name,
+          kind: "file",
+          sourceId: "host-local-file"
+        }))
+    });
+
+    const detailPanel = document.querySelector("#agent-gui-detail");
+    const dataTransfer = createDataTransferStub([
+      new File(["report"], "report.pdf", { type: "application/pdf" })
+    ]);
+
+    fireEvent.dragOver(detailPanel!, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("copy");
+    fireEvent.drop(detailPanel!, { dataTransfer });
+
+    await waitFor(() =>
+      expect(uploadPromptContent).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        content: [
+          {
+            type: "file",
+            hostPath: "/Users/local/Downloads/report.pdf",
+            name: "report.pdf",
+            kind: "file"
+          }
+        ]
+      })
+    );
+    await waitFor(() =>
+      expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+        createDraft(
+          "看下 [@report.pdf](/var/cache/tsh/local-assets/room-1/user-1/report.pdf) "
+        )
+      )
+    );
+  });
+
+  it("uploads host-local files dropped directly into the editor before inserting mentions", async () => {
+    const uploadPromptContent = vi.fn(async () => ({
+      content: [
+        {
+          type: "file" as const,
+          path: "/var/cache/tsh/local-assets/room-1/user-1/report.pdf",
+          name: "report.pdf",
+          kind: "file" as const
+        }
+      ]
+    }));
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      draftPrompt: ""
+    });
+
+    renderAgentGUINode({
+      agentActivityRuntime: {
+        uploadPromptContent
+      } as unknown as AgentActivityRuntime,
+      resolveDroppedFileReferences: (files) =>
+        files.map((file) => ({
+          path: "/Users/local/Downloads/report.pdf",
+          hostPath: "/Users/local/Downloads/report.pdf",
+          displayName: file.name,
+          kind: "file",
+          sourceId: "host-local-file"
+        }))
+    });
+
+    const editor = getComposerEditor();
+    const dataTransfer = createDataTransferStub([
+      new File(["report"], "report.pdf", { type: "application/pdf" })
+    ]);
+
+    fireEvent.dragOver(editor, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("copy");
+    fireEvent.drop(editor, {
+      dataTransfer,
+      clientX: 8,
+      clientY: 8
+    });
+
+    await waitFor(() =>
+      expect(uploadPromptContent).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        content: [
+          {
+            type: "file",
+            hostPath: "/Users/local/Downloads/report.pdf",
+            name: "report.pdf",
+            kind: "file"
+          }
+        ]
+      })
+    );
+    await waitFor(() =>
+      expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+        createDraft(
+          "[@report.pdf](/var/cache/tsh/local-assets/room-1/user-1/report.pdf) "
+        )
+      )
+    );
+    expect(mockUpdateDraftContent).not.toHaveBeenCalledWith(
+      createDraft("[@report.pdf](/Users/local/Downloads/report.pdf) ")
+    );
+  });
+
   it("opens the shared workspace reference picker with the selected project path revealed", async () => {
     const baseViewModel = createViewModel();
     const loadReferenceTree = vi.fn(
@@ -7259,6 +7394,7 @@ function renderAgentGUINode({
   >(),
   onResize = vi.fn(),
   workspaceFileReferenceAdapter = createWorkspaceFileReferenceAdapter(),
+  resolveDroppedFileReferences,
   referenceSourceAggregator,
   agentActivityRuntime,
   onShowMessage = vi.fn(),
@@ -7293,6 +7429,9 @@ function renderAgentGUINode({
   ) => void;
   onResize?: React.ComponentProps<typeof AgentGUINode>["onResize"];
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
+  resolveDroppedFileReferences?: React.ComponentProps<
+    typeof AgentGUINode
+  >["resolveDroppedFileReferences"];
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
   agentActivityRuntime?: AgentActivityRuntime | null;
   onShowMessage?: React.ComponentProps<typeof AgentGUINode>["onShowMessage"];
@@ -7326,6 +7465,7 @@ function renderAgentGUINode({
       currentUserId="user-1"
       workspacePath="/workspace"
       workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
+      resolveDroppedFileReferences={resolveDroppedFileReferences}
       referenceSourceAggregator={referenceSourceAggregator}
       agentSettings={{ avoidGroupingEdits: false }}
       title={title}

@@ -60,6 +60,9 @@ export interface DesktopAgentGUIWorkbenchHostInput {
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspaceFileReferenceAdapter"]
   >;
+  resolveDroppedFileReferences: NonNullable<
+    AgentGUIProps["resolveDroppedFileReferences"]
+  >;
   onRequestGitBranches: NonNullable<AgentGUIProps["onRequestGitBranches"]>;
   referenceSourceAggregator: ReferenceSourceAggregator;
   resolveWorkspaceReferenceEntryIconUrl: NonNullable<
@@ -139,6 +142,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     {
       reporterNow,
       reporterService,
+      hostFilesApi,
       runtimeApi,
       warmupOpenclawGateway,
       workspaceUserProjectService
@@ -200,6 +204,27 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       })
     ])
   );
+  const resolveDroppedFileReferences: NonNullable<
+    AgentGUIProps["resolveDroppedFileReferences"]
+  > = (files) => {
+    const droppedPaths = platformApi.resolveDroppedPaths([...files]);
+    return files.flatMap((file, index): WorkspaceFileReference[] => {
+      const hostPath = droppedPaths[index]?.trim() ?? "";
+      if (!hostPath) {
+        return [];
+      }
+      const displayName = file.name.trim() || hostPath.split(/[\\/]/).at(-1);
+      return [
+        {
+          path: hostPath,
+          hostPath,
+          kind: "file",
+          ...(displayName ? { displayName } : {}),
+          sourceId: "host-local-file"
+        }
+      ];
+    });
+  };
   return {
     agentActivityRuntime,
     agentQueuedPromptRuntime,
@@ -221,6 +246,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     trackWorkspaceFileReferences: (input) =>
       workspaceFileReferenceTracker.track(input),
     workspaceFileReferenceAdapter,
+    resolveDroppedFileReferences,
     onRequestGitBranches: async ({ agentSessionId, workingDirectory }) => {
       const result = agentSessionId
         ? await tuttidClient.listWorkspaceAgentSessionGitBranches(

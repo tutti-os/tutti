@@ -169,6 +169,7 @@ export const desktopIpcChannels = {
       openTerminalLink: "host:files:openTerminalLink",
       readLocalFileText: "host:files:readLocalFileText",
       readLocalPreviewFile: "host:files:readLocalPreviewFile",
+      archiveAgentPromptFile: "host:files:archiveAgentPromptFile",
       readPreviewFile: "host:files:readPreviewFile",
       resolveEntryIcon: "host:files:resolveEntryIcon",
       selectAppArchive: "host:files:selectAppArchive",
@@ -252,6 +253,20 @@ export interface DesktopWorkspaceFileEntryIconPayload extends DesktopWorkspaceFi
   entryKind: string;
   entryMtimeMs: number | null;
   entryName: string;
+}
+
+export interface DesktopArchiveAgentPromptFileInput {
+  dataBase64?: string;
+  displayName?: string | null;
+  hostPath?: string;
+  mimeType?: string | null;
+  workspaceID: string;
+}
+
+export interface DesktopArchiveAgentPromptFileResult {
+  name: string;
+  path: string;
+  sizeBytes: number;
 }
 
 export interface DesktopClipboardImagePayload {
@@ -761,6 +776,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.files.readLocalFileText]: string;
   [desktopIpcChannels.host.files.readLocalPreviewFile]: string;
   [desktopIpcChannels.host.files
+    .archiveAgentPromptFile]: DesktopArchiveAgentPromptFileInput;
+  [desktopIpcChannels.host.files
     .readPreviewFile]: DesktopWorkspaceFilePathPayload;
   [desktopIpcChannels.host.files
     .resolveEntryIcon]: DesktopWorkspaceFileEntryIconPayload;
@@ -875,6 +892,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.openTerminalLink]: void;
   [desktopIpcChannels.host.files.readLocalFileText]: DesktopLocalFileTextResult;
   [desktopIpcChannels.host.files.readLocalPreviewFile]: Uint8Array;
+  [desktopIpcChannels.host.files
+    .archiveAgentPromptFile]: DesktopArchiveAgentPromptFileResult;
   [desktopIpcChannels.host.files.readPreviewFile]: Uint8Array;
   [desktopIpcChannels.host.files.resolveEntryIcon]: string | null;
   [desktopIpcChannels.host.files.selectAppArchive]: string | null;

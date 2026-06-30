@@ -100,6 +100,8 @@ import {
 } from "./agentRichText/AgentRichTextEditor";
 import {
   imageFilesFromDataTransfer,
+  nonImageFilesFromDataTransfer,
+  systemFileDragInfoFromDataTransfer,
   readAgentRichTextPromptImages
 } from "./agentRichText/agentRichTextPromptImages";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto/agentSession";
@@ -144,6 +146,7 @@ import {
 } from "./model/agentUsageThresholds";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import { useOptionalAgentHostApi } from "../../agentActivityHost";
+import type { AgentDroppedFileReferenceResolver } from "./model/agentDroppedFileReferences";
 
 export { formatSlashStatusTokenCount };
 
@@ -402,6 +405,7 @@ export interface AgentComposerProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
+  resolveDroppedFileReferences?: AgentDroppedFileReferenceResolver | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
@@ -803,6 +807,7 @@ export function AgentComposer({
   onCapabilitySettingsRequest,
   onLinkAction,
   onRequestWorkspaceReferences = null,
+  resolveDroppedFileReferences = null,
   selectProjectDirectory,
   onRequestGitBranches = null,
   contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS
@@ -816,6 +821,13 @@ export function AgentComposer({
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const agentHostApi = useOptionalAgentHostApi();
   const getReferenceForFile = agentHostApi?.workspace.getReferenceForFile;
+  const promptFileUploadSupported = Boolean(
+    agentActivityRuntime?.uploadPromptContent &&
+    (agentActivityRuntime.promptContentUploadSupport?.file ?? true)
+  );
+  const promptFilesSupported = Boolean(
+    resolveDroppedFileReferences && promptFileUploadSupported
+  );
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -1922,7 +1934,11 @@ export function AgentComposer({
       if (remainingSlots === 0) {
         return;
       }
-      const uploadPromptContent = agentActivityRuntime?.uploadPromptContent;
+      const uploadPromptContent =
+        agentActivityRuntime?.uploadPromptContent &&
+        (agentActivityRuntime.promptContentUploadSupport?.image ?? true)
+          ? agentActivityRuntime.uploadPromptContent
+          : undefined;
       const nextImages = images.slice(0, remainingSlots).map((image) => ({
         id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
         name: image.name,
@@ -2043,7 +2059,9 @@ export function AgentComposer({
   const applyReferencePickResult = useCallback(
     async (result: WorkspaceReferencePickResult) => {
       if (result.files.length > 0) {
-        const uploadPromptContent = agentActivityRuntime?.uploadPromptContent;
+        const uploadPromptContent = promptFileUploadSupported
+          ? agentActivityRuntime?.uploadPromptContent
+          : undefined;
         const uploadedFiles = await Promise.all(
           result.files.map(async (file) => {
             const hostPath = file.hostPath?.trim() ?? "";
@@ -2093,7 +2111,7 @@ export function AgentComposer({
         editorHandleRef.current?.insertMentionItems(result.mentionItems);
       }
     },
-    [agentActivityRuntime, workspaceId]
+    [agentActivityRuntime, promptFileUploadSupported, workspaceId]
   );
 
   const handleWorkspaceReferencePicker = useCallback(async () => {
@@ -2102,6 +2120,28 @@ export function AgentComposer({
     }
     await applyReferencePickResult(await onRequestWorkspaceReferences());
   }, [applyReferencePickResult, onRequestWorkspaceReferences]);
+
+  const applyDroppedFileReferences = useCallback(
+    async (files: readonly File[]) => {
+      if (
+        !promptFilesSupported ||
+        !resolveDroppedFileReferences ||
+        files.length === 0
+      ) {
+        return;
+      }
+      const references = await resolveDroppedFileReferences(files);
+      if (references.length === 0) {
+        return;
+      }
+      await applyReferencePickResult({ files: references, mentionItems: [] });
+    },
+    [
+      applyReferencePickResult,
+      promptFilesSupported,
+      resolveDroppedFileReferences
+    ]
+  );
 
   // @ 面板里点任务/应用行的「查看产物」入口:关掉面板,打开引用 picker 并定位到该实体;
   // 选中的文件仍按常规插入,但不会把该任务/应用本身作为 mention 插入。
@@ -2259,27 +2299,63 @@ export function AgentComposer({
       return target instanceof Node && dropTarget.contains(target);
     };
 
-    const hasPromptImageFiles = (event: DragEvent): boolean => {
+    const systemFileDrag = (
+      event: DragEvent
+    ): { hasImageFiles: boolean; hasRegularFiles: boolean } | null => {
       if (
         event.defaultPrevented ||
         inputDisabled ||
         !containsEventTarget(event) ||
         hasWorkspaceFileDropData(event.dataTransfer)
       ) {
-        return false;
+        return null;
       }
-      return imageFilesFromDataTransfer(event.dataTransfer).length > 0;
+      const dragInfo = systemFileDragInfoFromDataTransfer(event.dataTransfer);
+      const hasRegularFiles = dragInfo.hasRegularFiles && promptFilesSupported;
+      if (!dragInfo.hasImageFiles && !hasRegularFiles) {
+        return null;
+      }
+      return { hasImageFiles: dragInfo.hasImageFiles, hasRegularFiles };
+    };
+
+    const systemFileDrop = (
+      event: DragEvent
+    ): { imageFiles: File[]; regularFiles: File[] } | null => {
+      if (
+        event.defaultPrevented ||
+        inputDisabled ||
+        !containsEventTarget(event) ||
+        hasWorkspaceFileDropData(event.dataTransfer)
+      ) {
+        return null;
+      }
+      const imageFiles = imageFilesFromDataTransfer(event.dataTransfer);
+      const imageFileSet = new Set(imageFiles);
+      const regularFiles = promptFilesSupported
+        ? nonImageFilesFromDataTransfer(event.dataTransfer).filter(
+            (file) => !imageFileSet.has(file)
+          )
+        : [];
+      if (imageFiles.length === 0 && regularFiles.length === 0) {
+        return null;
+      }
+      return { imageFiles, regularFiles };
     };
 
     const handleDragOver: EventListener = (event): void => {
       if (!isDragEvent(event)) {
         return;
       }
-      if (!hasPromptImageFiles(event)) {
+      const drag = systemFileDrag(event);
+      if (!drag) {
         return;
       }
       event.preventDefault();
-      if (!promptImagesSupported) {
+      if (
+        !drag.hasRegularFiles &&
+        drag.hasImageFiles &&
+        !promptImagesSupported
+      ) {
         return;
       }
       if (event.dataTransfer) {
@@ -2291,17 +2367,28 @@ export function AgentComposer({
       if (!isDragEvent(event)) {
         return;
       }
-      if (!hasPromptImageFiles(event)) {
+      const drop = systemFileDrop(event);
+      if (!drop) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
+      if (drop.regularFiles.length > 0) {
+        editorHandleRef.current?.focusAtEnd();
+        void applyDroppedFileReferences(drop.regularFiles).then(() => {
+          if (!isDisposed) {
+            scheduleComposerFocus();
+          }
+        });
+      }
+      if (drop.imageFiles.length === 0) {
+        return;
+      }
       if (!promptImagesSupported) {
         onPromptImagesUnsupported?.();
         return;
       }
-      const imageFiles = imageFilesFromDataTransfer(event.dataTransfer);
-      void readAgentRichTextPromptImages(imageFiles).then((images) => {
+      void readAgentRichTextPromptImages(drop.imageFiles).then((images) => {
         if (isDisposed || images.length === 0) {
           return;
         }
@@ -2319,8 +2406,10 @@ export function AgentComposer({
     };
   }, [
     addDraftImages,
+    applyDroppedFileReferences,
     inputDisabled,
     onPromptImagesUnsupported,
+    promptFilesSupported,
     promptImagesSupported,
     scheduleComposerFocus
   ]);
@@ -2927,6 +3016,11 @@ export function AgentComposer({
                     onPromptImagesUnsupported={onPromptImagesUnsupported}
                     onPasteImages={handlePastedImages}
                     getReferenceForFile={getReferenceForFile}
+                    onDropFiles={
+                      promptFilesSupported
+                        ? applyDroppedFileReferences
+                        : undefined
+                    }
                   />
                   {!isHeroLayout ? composerActionButton : null}
                 </div>
