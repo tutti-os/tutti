@@ -164,7 +164,7 @@ export function AgentProjectDropdown({
       classNames={{
         content: cn(
           styles.composerMenuContent,
-          "w-[240px] min-w-[240px] data-[side=top]:!translate-y-0"
+          "max-h-[min(280px,var(--radix-select-content-available-height))] w-[240px] min-w-[240px] data-[side=top]:!translate-y-0"
         ),
         item: styles.composerMenuItem,
         trigger: cn(
@@ -547,7 +547,7 @@ export function AgentModelReasoningDropdown({
     <button
       type="button"
       className={cn(
-        "w-auto",
+        "w-auto max-w-full",
         styles.composerMenuTrigger,
         menuDisabled &&
           "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:text-[var(--agent-gui-text-tertiary)]",
