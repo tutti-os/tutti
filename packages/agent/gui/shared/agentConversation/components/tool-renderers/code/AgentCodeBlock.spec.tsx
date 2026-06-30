@@ -46,4 +46,33 @@ describe("AgentCodeBlock", () => {
       "workspace-agents-status-panel__detail-scroll-region"
     );
   });
+
+  it("wraps long file paths with break-all instead of truncating (flat)", () => {
+    const longPath =
+      "/Users/test/.tutti/apps/installations/ai-slide/e7499ff49e24abc4/data/projects/1516ee94-0b47-4d04-a97c-39e08cc124cb/deck.slides/slides/02-contents.html";
+
+    render(
+      <AgentCodeBlock path={longPath} content="<html></html>" flat showHeader />
+    );
+
+    // Flat variant shows the filename, not the full path
+    const pathSpan = screen.getByText("02-contents.html");
+    expect(pathSpan.className).toContain("break-all");
+    expect(pathSpan.className).not.toContain("truncate");
+    expect(pathSpan.getAttribute("title")).toBe(longPath);
+  });
+
+  it("wraps long file paths with break-all instead of truncating (non-flat)", () => {
+    const longPath =
+      "/Users/test/.tutti/apps/installations/ai-slide/e7499ff49e24abc4/data/projects/1516ee94-0b47-4d04-a97c-39e08cc124cb/deck.slides/slides/02-contents.html";
+
+    render(
+      <AgentCodeBlock path={longPath} content="<html></html>" showHeader />
+    );
+
+    const pathSpan = screen.getByText(longPath);
+    expect(pathSpan.className).toContain("break-all");
+    expect(pathSpan.className).not.toContain("truncate");
+    expect(pathSpan.getAttribute("title")).toBe(longPath);
+  });
 });

@@ -71,7 +71,7 @@ export function AgentCodeBlock({
           {showHeader ? (
             <div className="flex items-center justify-between gap-3 border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px]">
               <span
-                className="truncate font-[var(--tsh-font-mono)] text-[var(--text-secondary)]"
+                className="break-all font-[var(--tsh-font-mono)] text-[var(--text-secondary)]"
                 title={path ?? undefined}
               >
                 {fileLabel}
@@ -102,7 +102,10 @@ export function AgentCodeBlock({
         <>
           {showHeader ? (
             <div className="flex items-center justify-between gap-3 border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]">
-              <span className="truncate font-[var(--tsh-font-mono)]">
+              <span
+                className="break-all font-[var(--tsh-font-mono)]"
+                title={path ?? undefined}
+              >
                 {path || "Code"}
               </span>
               <span className="shrink-0">

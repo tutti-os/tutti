@@ -96,7 +96,7 @@ export function AgentUnifiedPatchViewer({
               data-agent-diff-header="true"
             >
               <span
-                className="truncate font-[var(--tsh-font-mono)] text-[var(--text-secondary)]"
+                className="break-all font-[var(--tsh-font-mono)] text-[var(--text-secondary)]"
                 title={path ?? undefined}
               >
                 {fileLabel}
@@ -129,8 +129,9 @@ export function AgentUnifiedPatchViewer({
         <>
           {showHeader ? (
             <div
-              className="border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]"
+              className="break-all border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]"
               data-agent-diff-header="true"
+              title={path ?? undefined}
             >
               {path || "Patch"}
             </div>
