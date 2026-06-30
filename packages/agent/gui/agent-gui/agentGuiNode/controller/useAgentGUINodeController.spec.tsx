@@ -3198,7 +3198,7 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it("renders live assistant messages for a newly created session with only an optimistic prompt in detail", async () => {
+  it("renders a newly created session prompt only after the durable user message arrives", async () => {
     let resolveActivation:
       | ((value: AgentHostActivateAgentSessionResult) => void)
       | undefined;
@@ -3259,7 +3259,7 @@ describe("useAgentGUINodeController", () => {
 
     await waitFor(() => {
       expect(result.current.viewModel.activeConversationId).toBe(createdId);
-      expect(conversationBodies(result.current.viewModel)).toContain(
+      expect(conversationBodies(result.current.viewModel)).not.toContain(
         "Start a fresh chat"
       );
     });
@@ -3274,30 +3274,14 @@ describe("useAgentGUINodeController", () => {
     });
 
     act(() => {
-      emitRuntimeSessionEventForTests?.({
-        eventType: "state_patch",
-        data: {
-          agentSessionId: createdId,
-          lifecycleStatus: "active",
-          currentPhase: "working",
-          turn: {
-            turnId: "turn-old",
-            phase: "running"
-          },
-          occurredAtUnixMs: 1
-        }
-      });
-    });
-
-    act(() => {
       emitRuntimeSessionEventForTests?.(
         streamMessage({
           agentSessionId: createdId,
-          eventId: "assistant-old-history",
+          eventId: "user-first",
           id: 1,
-          role: "assistant",
-          content: "Old retained answer",
-          turnId: "turn-old",
+          role: "user",
+          content: "Start a fresh chat",
+          turnId: "turn-1",
           occurredAtUnixMs: 1
         })
       );
@@ -3307,9 +3291,6 @@ describe("useAgentGUINodeController", () => {
       expect(conversationMessageRows(result.current.viewModel)).toEqual([
         { speaker: "user", body: "Start a fresh chat" }
       ]);
-      expect(conversationBodies(result.current.viewModel)).not.toContain(
-        "Old retained answer"
-      );
     });
 
     act(() => {
@@ -3793,14 +3774,8 @@ describe("useAgentGUINodeController", () => {
       getAgentSessionView({
         workspaceId: "room-1",
         agentSessionId: createdId
-      })?.overlayMessages
-    ).toEqual([
-      expect.objectContaining({
-        agentSessionId: createdId,
-        payload: expect.objectContaining({ text: "first prompt" }),
-        role: "user"
-      })
-    ]);
+      })?.overlayMessages ?? []
+    ).toEqual([]);
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
     ).toBeUndefined();
@@ -3819,7 +3794,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.draftPrompt).toBe("");
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
-    ).toEqual([expect.objectContaining({ body: "first prompt" })]);
+    ).toBeUndefined();
     expect(exec).not.toHaveBeenCalled();
   });
 
@@ -11968,7 +11943,7 @@ describe("useAgentGUINodeController", () => {
     expect(activate).not.toHaveBeenCalled();
   });
 
-  it("keeps a newly submitted prompt at the tail when live events arrive before the remote timeline catches up", async () => {
+  it("does not synthesize a newly submitted prompt before the durable user message arrives", async () => {
     let emitEvent:
       | ((event: AgentHostAgentActivityStreamEvent) => void)
       | undefined;
@@ -12065,13 +12040,37 @@ describe("useAgentGUINodeController", () => {
         result.current.viewModel.conversationDetail?.turns.at(-1)
       ).toMatchObject({
         id: "turn-2",
+        userMessage: null,
+        agentMessages: [{ body: "New answer" }]
+      });
+    });
+
+    act(() => {
+      emitEvent?.(
+        streamMessage({
+          agentSessionId: "session-1",
+          eventId: "user-new",
+          id: 99,
+          role: "user",
+          content: "New ask",
+          turnId: "turn-2",
+          occurredAtUnixMs: 99
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversationDetail?.turns.at(-1)
+      ).toMatchObject({
+        id: "turn-2",
         userMessage: { body: "New ask" },
         agentMessages: [{ body: "New answer" }]
       });
     });
   });
 
-  it("keeps the optimistic user prompt visible while the remote timeline still lags behind", async () => {
+  it("does not show a submitted prompt while the remote timeline still lags behind", async () => {
     const listSessionTimeline = vi
       .fn()
       .mockResolvedValueOnce({
@@ -12157,18 +12156,10 @@ describe("useAgentGUINodeController", () => {
       });
     });
 
-    await waitFor(() => {
-      expect(result.current.viewModel.conversationDetail?.turns).toHaveLength(
-        2
-      );
-    });
-    expect(
-      result.current.viewModel.conversationDetail?.turns.at(-1)
-    ).toMatchObject({
-      id: "turn-2",
-      userMessage: { body: "New ask" },
-      agentMessages: []
-    });
+    expect(result.current.viewModel.conversationDetail?.turns).toHaveLength(1);
+    expect(conversationBodies(result.current.viewModel)).not.toContain(
+      "New ask"
+    );
   });
 
   it("keeps the processing row visible when exec acknowledges a prompt with ready status", async () => {

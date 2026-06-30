@@ -176,6 +176,10 @@ Optimistic prompt messages must stay overlay-owned even when they are used to
 scope the selected detail window. Do not promote them into durable/detail
 message bases: their local timestamp-derived versions can outrank lower
 authoritative daemon versions and suppress the durable user prompt during merge.
+The AgentGuiNode controller keeps user-prompt optimistic overlay recording
+behind a narrow policy helper so it can be disabled for diagnosis. When that
+policy is disabled, submitted prompts appear only after the durable runtime
+message lands; other local pending/session status bridges are unaffected.
 
 ## User-Facing Data Flows
 

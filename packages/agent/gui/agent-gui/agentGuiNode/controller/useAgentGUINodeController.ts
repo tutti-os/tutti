@@ -98,7 +98,6 @@ import { isWorkspaceAgentUntitledTask } from "../../../shared/workspaceAgentLate
 import { projectWorkspaceAgentMessagesToTimelineItems } from "../../../shared/agentConversation/projection/workspaceAgentMessageProjection";
 import { mergeWorkspaceAgentMessages } from "../../../host/workspaceAgentSessionMessages";
 import {
-  createWorkspaceAgentActivityUserMessageIdFromClientSubmitId,
   isWorkspaceAgentActivityOptimisticMessage,
   selectWorkspaceAgentActivityOverlayMessages,
   type WorkspaceAgentActivityMessage,
@@ -181,6 +180,12 @@ import {
   planDecisionOps,
   planImplementationPromptFromPlanTurn
 } from "../../../shared/agentConversation/planImplementation";
+import {
+  createAgentGUIOptimisticPromptMessage,
+  createPendingAgentGUIOptimisticPromptTurnId,
+  filterAgentGUIOptimisticPromptOverlayMessages,
+  shouldRecordAgentGUIOptimisticPromptOverlay
+} from "./agentGuiController.optimisticPromptOverlay";
 const EMPTY_AGENT_GUI_MESSAGES: readonly WorkspaceAgentActivityMessage[] = [];
 const EMPTY_AGENT_GUI_AVAILABLE_COMMANDS: AgentSessionCommand[] = [];
 const ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS = 150;
@@ -1539,7 +1544,8 @@ function retargetOptimisticPromptMessages(
   if (!clientSubmitId || !turnId || messages.length === 0) {
     return { changed: false, messages: [...messages] };
   }
-  const pendingTurnId = createPendingOptimisticTurnId(clientSubmitId);
+  const pendingTurnId =
+    createPendingAgentGUIOptimisticPromptTurnId(clientSubmitId);
   let changed = false;
   const retargeted = messages.map((message) => {
     if (
@@ -1971,46 +1977,6 @@ function createAgentGUIConversationId(): string {
   }
   const fallbackHex = Math.random().toString(16).slice(2).padEnd(12, "0");
   return `00000000-0000-4000-8000-${fallbackHex.slice(0, 12)}`;
-}
-
-function createOptimisticPromptMessage(input: {
-  workspaceId: string;
-  agentSessionId: string;
-  turnId: string;
-  clientSubmitId?: string;
-  userId: string;
-  prompt: string;
-  content: AgentPromptContentBlock[];
-  occurredAtUnixMs: number;
-}): WorkspaceAgentActivityMessage {
-  const clientSubmitMessageId = input.clientSubmitId
-    ? createWorkspaceAgentActivityUserMessageIdFromClientSubmitId(
-        input.clientSubmitId
-      )
-    : null;
-  return {
-    id: Math.max(1, Math.floor(input.occurredAtUnixMs)),
-    workspaceId: input.workspaceId,
-    agentSessionId: input.agentSessionId,
-    messageId: clientSubmitMessageId ?? `optimistic:user:${input.turnId}`,
-    version: Math.max(1, Math.floor(input.occurredAtUnixMs)),
-    turnId: input.turnId,
-    role: "user",
-    kind: "text",
-    payload: {
-      __agentGuiOptimisticPrompt: true,
-      actorId: input.userId,
-      ...(input.clientSubmitId ? { clientSubmitId: input.clientSubmitId } : {}),
-      content: input.content,
-      text: input.prompt
-    },
-    occurredAtUnixMs: input.occurredAtUnixMs,
-    startedAtUnixMs: input.occurredAtUnixMs
-  };
-}
-
-function createPendingOptimisticTurnId(clientSubmitId: string): string {
-  return `pending:${clientSubmitId}`;
 }
 
 function projectAgentGUIMessagesToTimelineItems(
@@ -5848,7 +5814,9 @@ export function useAgentGUINodeController({
       agentSessionId: string,
       nextMessages: readonly WorkspaceAgentActivityMessage[]
     ) => {
-      if (nextMessages.length === 0) {
+      const recordableMessages =
+        filterAgentGUIOptimisticPromptOverlayMessages(nextMessages);
+      if (recordableMessages.length === 0) {
         return;
       }
       const currentMessages =
@@ -5872,7 +5840,7 @@ export function useAgentGUINodeController({
       const detailWindowMessages = filterMessagesForDetailWindowOverlay({
         detailMessages: detailWindowScopeMessages,
         durableMessages: durableSnapshotMessages,
-        localMessages: nextMessages
+        localMessages: recordableMessages
       });
       const durableDetailWindowMessages = detailWindowMessages.filter(
         (message) => !isWorkspaceAgentActivityOptimisticMessage(message)
@@ -5899,7 +5867,7 @@ export function useAgentGUINodeController({
         durableMessages: durableSnapshotMessages,
         localMessages: mergeWorkspaceAgentMessages(
           currentMessages,
-          nextMessages
+          recordableMessages
         )
       });
       const overlayMessages = selectWorkspaceAgentActivityOverlayMessages({
@@ -5910,7 +5878,8 @@ export function useAgentGUINodeController({
         durableMessages,
         overlayMessages
       );
-      const nextItems = projectAgentGUIMessagesToTimelineItems(nextMessages);
+      const nextItems =
+        projectAgentGUIMessagesToTimelineItems(recordableMessages);
       const mergedItems =
         projectAgentGUIMessagesToTimelineItems(mergedMessages);
       setAgentSessionViewOverlayMessages(
@@ -6532,26 +6501,40 @@ export function useAgentGUINodeController({
           ...current,
           [agentSessionId]: effectiveInitialSettings
         }));
-        const optimisticPromptMessage = createOptimisticPromptMessage({
-          workspaceId,
-          agentSessionId,
-          turnId: createPendingOptimisticTurnId(submitTrace.clientSubmitId),
-          clientSubmitId: submitTrace.clientSubmitId,
-          userId: currentUserId?.trim() || "user",
-          prompt: normalizedInitialPrompt,
-          content: [...normalizedInitialContent],
-          occurredAtUnixMs: createdAtUnixMs
-        });
-        mergeAgentSessionViewOverlayMessages(sessionViewRef(agentSessionId), [
-          optimisticPromptMessage
-        ]);
-        reportAgentSubmitTraceDiagnostic({
-          event: "optimistic_user_message_recorded",
-          runtime: agentActivityRuntime,
-          trace: submitTrace,
-          workspaceId,
-          fields: { mode: "new" }
-        });
+        if (shouldRecordAgentGUIOptimisticPromptOverlay()) {
+          const optimisticPromptMessage = createAgentGUIOptimisticPromptMessage(
+            {
+              workspaceId,
+              agentSessionId,
+              turnId: createPendingAgentGUIOptimisticPromptTurnId(
+                submitTrace.clientSubmitId
+              ),
+              clientSubmitId: submitTrace.clientSubmitId,
+              userId: currentUserId?.trim() || "user",
+              prompt: normalizedInitialPrompt,
+              content: [...normalizedInitialContent],
+              occurredAtUnixMs: createdAtUnixMs
+            }
+          );
+          mergeAgentSessionViewOverlayMessages(sessionViewRef(agentSessionId), [
+            optimisticPromptMessage
+          ]);
+          reportAgentSubmitTraceDiagnostic({
+            event: "optimistic_user_message_recorded",
+            runtime: agentActivityRuntime,
+            trace: submitTrace,
+            workspaceId,
+            fields: { mode: "new" }
+          });
+        } else {
+          reportAgentSubmitTraceDiagnostic({
+            event: "optimistic_user_message_skipped",
+            runtime: agentActivityRuntime,
+            trace: submitTrace,
+            workspaceId,
+            fields: { mode: "new" }
+          });
+        }
         reportAgentSubmitTraceDiagnostic({
           event: "activation.requested",
           runtime: agentActivityRuntime,
@@ -7307,29 +7290,38 @@ export function useAgentGUINodeController({
               ...pendingTurnIdBySessionIdRef.current,
               [agentSessionId]: submittedTurnId
             };
-            recordLocalMessages(agentSessionId, [
-              createOptimisticPromptMessage({
-                workspaceId,
-                agentSessionId,
-                turnId: submittedTurnId,
-                clientSubmitId: submitTrace.clientSubmitId,
-                userId: currentUserId?.trim() || "user",
-                prompt: submittedPromptText,
-                content: normalizedContent,
-                occurredAtUnixMs: Date.now()
-              })
-            ]);
-            reportAgentSubmitTraceDiagnostic({
-              event: "optimistic_user_message_recorded",
-              runtime: agentActivityRuntime,
-              trace: submitTrace,
-              workspaceId
-            });
-            scheduleAgentSubmitTracePaint({
-              runtime: agentActivityRuntime,
-              trace: submitTrace,
-              workspaceId
-            });
+            if (shouldRecordAgentGUIOptimisticPromptOverlay()) {
+              recordLocalMessages(agentSessionId, [
+                createAgentGUIOptimisticPromptMessage({
+                  workspaceId,
+                  agentSessionId,
+                  turnId: submittedTurnId,
+                  clientSubmitId: submitTrace.clientSubmitId,
+                  userId: currentUserId?.trim() || "user",
+                  prompt: submittedPromptText,
+                  content: normalizedContent,
+                  occurredAtUnixMs: Date.now()
+                })
+              ]);
+              reportAgentSubmitTraceDiagnostic({
+                event: "optimistic_user_message_recorded",
+                runtime: agentActivityRuntime,
+                trace: submitTrace,
+                workspaceId
+              });
+              scheduleAgentSubmitTracePaint({
+                runtime: agentActivityRuntime,
+                trace: submitTrace,
+                workspaceId
+              });
+            } else {
+              reportAgentSubmitTraceDiagnostic({
+                event: "optimistic_user_message_skipped",
+                runtime: agentActivityRuntime,
+                trace: submitTrace,
+                workspaceId
+              });
+            }
           }
           void refreshMessagesFromSnapshot(agentSessionId);
           if (

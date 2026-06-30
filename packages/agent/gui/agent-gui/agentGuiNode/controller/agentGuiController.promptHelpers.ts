@@ -3,10 +3,9 @@
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import { mergeAgentGUITimelineItems } from "../model/agentGuiConversationModel";
 import { projectWorkspaceAgentMessagesToTimelineItems } from "../../../shared/agentConversation/projection/workspaceAgentMessageProjection";
-import {
-  createWorkspaceAgentActivityUserMessageIdFromClientSubmitId,
-  type WorkspaceAgentActivityMessage,
-  type WorkspaceAgentActivityTimelineItem
+import type {
+  WorkspaceAgentActivityMessage,
+  WorkspaceAgentActivityTimelineItem
 } from "../../../shared/workspaceAgentActivityTypes";
 
 export function stringPayloadValue(
@@ -23,42 +22,6 @@ export function createAgentGUIConversationId(): string {
   }
   const fallbackHex = Math.random().toString(16).slice(2).padEnd(12, "0");
   return `00000000-0000-4000-8000-${fallbackHex.slice(0, 12)}`;
-}
-
-export function createOptimisticPromptMessage(input: {
-  workspaceId: string;
-  agentSessionId: string;
-  turnId: string;
-  clientSubmitId?: string;
-  userId: string;
-  prompt: string;
-  content: AgentPromptContentBlock[];
-  occurredAtUnixMs: number;
-}): WorkspaceAgentActivityMessage {
-  const clientSubmitMessageId = input.clientSubmitId
-    ? createWorkspaceAgentActivityUserMessageIdFromClientSubmitId(
-        input.clientSubmitId
-      )
-    : null;
-  return {
-    id: Math.max(1, Math.floor(input.occurredAtUnixMs)),
-    workspaceId: input.workspaceId,
-    agentSessionId: input.agentSessionId,
-    messageId: clientSubmitMessageId ?? `optimistic:user:${input.turnId}`,
-    version: Math.max(1, Math.floor(input.occurredAtUnixMs)),
-    turnId: input.turnId,
-    role: "user",
-    kind: "text",
-    payload: {
-      __agentGuiOptimisticPrompt: true,
-      actorId: input.userId,
-      ...(input.clientSubmitId ? { clientSubmitId: input.clientSubmitId } : {}),
-      content: input.content,
-      text: input.prompt
-    },
-    occurredAtUnixMs: input.occurredAtUnixMs,
-    startedAtUnixMs: input.occurredAtUnixMs
-  };
 }
 
 export function projectAgentGUIMessagesToTimelineItems(
