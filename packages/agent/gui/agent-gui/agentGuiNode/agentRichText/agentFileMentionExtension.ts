@@ -84,7 +84,7 @@ export interface AgentMentionWorkspaceAppItem {
   name: string;
   description?: string;
   iconUrl?: string;
-  /** 应用是否能够提供产物文件(reference),决定 @ 面板行末尾是否展示「查看产物文件」入口。 */
+  /** 应用是否能够提供产物文件(reference),决定 @ 面板行末尾是否展示「查看产物」入口。 */
   referencesListSupported?: boolean;
 }
 

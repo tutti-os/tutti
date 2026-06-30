@@ -776,8 +776,17 @@ describe("agent GUI workbench contribution copy", () => {
       /\.agent-gui-workbench-header__agent-brand\s*{[^}]*gap:\s*8px;/s
     );
     expect(css).toMatch(
+      /\.agent-gui-workbench-header__agent-brand\s*{[^}]*flex:\s*0\s+0\s+auto;/s
+    );
+    expect(css).toMatch(
       /\.agent-gui-workbench-header__agent-icon\s*{[^}]*width:\s*var\(--agent-gui-workbench-header-agent-icon-size\);[^}]*height:\s*var\(--agent-gui-workbench-header-agent-icon-size\);/s
     );
+    const agentNameCss = css.match(
+      /\.agent-gui-workbench-header__agent-name\s*{(?<body>[^}]*)}/s
+    )?.groups?.body;
+    expect(agentNameCss).toBeDefined();
+    expect(agentNameCss).not.toMatch(/text-overflow:\s*ellipsis/);
+    expect(agentNameCss).not.toMatch(/overflow:\s*hidden/);
     expect(css).toMatch(
       /\.agent-gui-workbench-header__rail-toggle\s*{[^}]*margin-left:\s*auto;/s
     );

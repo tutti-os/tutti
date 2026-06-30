@@ -2191,6 +2191,8 @@ aside.workspace-agents-status-panel
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  font-size: 13px;
+  line-height: 20px;
   white-space: nowrap;
 }
 
@@ -2199,6 +2201,7 @@ aside.workspace-agents-status-panel
   appearance: none;
   border: 0;
   font: inherit;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -4163,8 +4166,7 @@ aside.workspace-agents-status-panel
 
 .agent-gui-workbench-header__agent-brand {
   display: inline-flex;
-  min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
 }
@@ -4189,7 +4191,6 @@ aside.workspace-agents-status-panel
   white-space: nowrap;
 }
 
-.agent-gui-workbench-header__agent-name,
 .agent-gui-workbench-header__title-text {
   min-width: 0;
   max-width: 100%;
@@ -4199,8 +4200,7 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-workbench-header__agent-name {
-  flex: 0 1 auto;
-  max-width: 160px;
+  flex: 0 0 auto;
 }
 
 .agent-gui-workbench-header__session-title {

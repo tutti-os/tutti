@@ -397,7 +397,7 @@ vi.mock("./AgentFileMentionPalette", () => ({
           })
         }
       >
-        查看产物文件
+        查看产物
       </button>
     ) : null,
   agentMentionItemKey: (item: {

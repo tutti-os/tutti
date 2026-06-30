@@ -973,7 +973,7 @@ export const en = {
       mentionAgentGeneratedFolderBack: "Back",
       mentionAgentGeneratedFolderFileCount: "Contains {{count}} files",
       mentionNoMatchingFiles: "No matching files",
-      mentionOpenReferences: "View output files",
+      mentionOpenReferences: "View output",
       issueRunPrompt: {
         currentWorkingDirectoryLabel: "Current working directory",
         executionRequirementsLabel: "Execution requirements",

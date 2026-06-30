@@ -2094,7 +2094,7 @@ export function AgentComposer({
     await applyReferencePickResult(await onRequestWorkspaceReferences());
   }, [applyReferencePickResult, onRequestWorkspaceReferences]);
 
-  // @ 面板里点任务/应用行的「查看产物文件」图标:关掉面板,打开引用 picker 并定位到该实体;
+  // @ 面板里点任务/应用行的「查看产物」入口:关掉面板,打开引用 picker 并定位到该实体;
   // 选中的文件仍按常规插入,但不会把该任务/应用本身作为 mention 插入。
   const handleOpenReferencesForEntity = useCallback(
     (entity: AgentContextMentionItem): void => {

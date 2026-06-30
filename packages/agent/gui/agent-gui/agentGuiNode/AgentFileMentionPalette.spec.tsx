@@ -1492,6 +1492,12 @@ describe("AgentFileMentionPalette", () => {
     expect(css).toMatch(
       /\.agent-gui-node__mention-palette-footer\s*{[^}]*min-height:\s*36px/s
     );
+    expect(css).toMatch(
+      /\.agent-gui-node__mention-palette-hint\s*{[^}]*font-size:\s*13px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__mention-palette-hint-item\s*{[^}]*font-size:\s*13px/s
+    );
     expect(css).not.toMatch(
       /\.agent-gui-node__mention-palette-hint[^{]*{[^}]*display:\s*none/s
     );
