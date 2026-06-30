@@ -82,10 +82,13 @@ func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	if finalText == "" {
 		return
 	}
-	if n.assistantMessageID == "" || n.assistantSegmentCompleted {
-		n.assistantMessageID = newID()
-		n.assistantSegmentCompleted = false
+	if n.assistantSegmentCompleted && strings.TrimSpace(n.assistantContent.String()) == finalText {
+		return
 	}
+	if n.assistantMessageID == "" {
+		n.assistantMessageID = newID()
+	}
+	n.assistantSegmentCompleted = false
 	n.assistantContent.Reset()
 	_, _ = n.assistantContent.WriteString(finalText)
 }

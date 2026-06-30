@@ -3,6 +3,8 @@ package agentruntime
 import (
 	"reflect"
 	"testing"
+
+	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
 )
 
 // appServerUserInputAnswers is the codex-specific translation of the GUI's
@@ -94,6 +96,36 @@ func TestAppServerUserInputIncludesSkillAndMentionItems(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("appServerUserInput = %#v, want %#v", got, want)
+	}
+}
+
+func TestAppServerAgentMessageCompletedAndFinalTurnDoNotDuplicateReply(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	var events []activityshared.Event
+	events = append(events, normalizer.AppendAssistantChunk(session, "turn-1", "Done.")...)
+	events = append(events, (&CodexAppServerAdapter{}).appServerItemEvents(
+		session,
+		"turn-1",
+		map[string]any{"type": "agentMessage", "text": "Done."},
+		true,
+		normalizer,
+	)...)
+	finalTurn := map[string]any{
+		"status": "completed",
+		"items":  []any{map[string]any{"type": "agentMessage", "text": "Done."}},
+	}
+	normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
+	events = append(events, appServerTurnTerminalEvents(session, "turn-1", finalTurn, normalizer)...)
+
+	assistantMessages := activityMessagesWithRole(events, activityshared.MessageRoleAssistant)
+	if len(assistantMessages) != 2 {
+		t.Fatalf("assistant message events = %d, want streaming+completed only", len(assistantMessages))
+	}
+	if assistantMessages[0].EventID == "" || assistantMessages[1].EventID != assistantMessages[0].EventID {
+		t.Fatalf("assistant event IDs = %#v, want one stable message id", assistantMessages)
 	}
 }
 

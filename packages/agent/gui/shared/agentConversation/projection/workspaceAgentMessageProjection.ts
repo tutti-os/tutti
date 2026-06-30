@@ -1,5 +1,6 @@
 import type { BuildWorkspaceAgentSessionDetailInput } from "../../workspaceAgentSessionDetailViewModel";
 import { buildCanonicalWorkspaceAgentDetailView } from "../../workspaceAgentTimelineCanonical";
+import { normalizedMessageBody } from "../../workspaceAgentTimelineMessageHelpers";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import {
   projectAgentConversationVM,
@@ -36,8 +37,8 @@ export function projectWorkspaceAgentMessagesToConversationVM(
 export function projectWorkspaceAgentMessagesToTimelineItems(
   messages: readonly WorkspaceAgentActivityMessage[]
 ): WorkspaceAgentActivityTimelineItem[] {
-  const sortedMessages = latestMessageSnapshots(messages).sort(
-    compareMessagesByDisplayOrder
+  const sortedMessages = dedupeAdjacentAssistantTextSnapshots(
+    latestMessageSnapshots(messages).sort(compareMessagesByDisplayOrder)
   );
   const mergedToolPayloadByKey = new Map<string, Record<string, unknown>>();
 
@@ -154,6 +155,52 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
       occurredAtUnixMs
     });
   });
+}
+
+function dedupeAdjacentAssistantTextSnapshots(
+  messages: readonly WorkspaceAgentActivityMessage[]
+): WorkspaceAgentActivityMessage[] {
+  const deduped: WorkspaceAgentActivityMessage[] = [];
+  for (const message of messages) {
+    const previous = deduped.at(-1);
+    if (previous && isDuplicateAssistantTextSnapshot(previous, message)) {
+      continue;
+    }
+    deduped.push(message);
+  }
+  return deduped;
+}
+
+function isDuplicateAssistantTextSnapshot(
+  previous: WorkspaceAgentActivityMessage,
+  next: WorkspaceAgentActivityMessage
+): boolean {
+  if (
+    !isRuntimeAssistantTextSnapshot(previous) ||
+    !isRuntimeAssistantTextSnapshot(next)
+  ) {
+    return false;
+  }
+  if ((previous.turnId?.trim() || "") !== (next.turnId?.trim() || "")) {
+    return false;
+  }
+  return (
+    normalizedMessageBody(messageText(previous)) ===
+    normalizedMessageBody(messageText(next))
+  );
+}
+
+function isRuntimeAssistantTextSnapshot(
+  message: WorkspaceAgentActivityMessage
+): boolean {
+  const payload = normalizedPayload(message.payload);
+  const role = normalizeToken(message.role);
+  return (
+    normalizeToken(message.kind) === "text" &&
+    (role === "assistant" || role === "agent") &&
+    stringValue(payload.source) === "runtime" &&
+    messageText(message).trim() !== ""
+  );
 }
 
 function latestMessageSnapshots(
