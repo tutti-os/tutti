@@ -29,6 +29,7 @@ import { ensureSingleInstance } from "./singleInstance";
 import { getSystemDesktopLocale } from "./desktopLocale";
 import { openDesktopWorkspaceAppFolder } from "./host/workspaceAppFolderAccess";
 import { openPerfMonitorDevToolsWindow } from "./windows/perfMonitorDevToolsWindow.ts";
+import { requestWorkspaceWindowsClose } from "./windows/workspaceWindow.ts";
 import { createTranslator } from "../shared/i18n/index.ts";
 import {
   registerTuttiAssetProtocol,
@@ -242,6 +243,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
 
   registerDesktopAppLifecycle({
     logger,
+    requestWorkspaceWindowsClose,
     tuttid: desktopAppServices.tuttid,
     disposables: [
       hostPreferencesEventStream,

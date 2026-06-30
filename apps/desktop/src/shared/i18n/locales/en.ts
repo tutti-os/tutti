@@ -655,6 +655,14 @@ export const en = {
       trigger: "Settings"
     },
     workbenchDesktop: {
+      agentQuitGuard: {
+        cancel: "Keep Tutti open",
+        confirm: "Quit and stop agents",
+        description:
+          "Local agent sessions are still running. Quitting Tutti will stop them.",
+        detailsMore: "and {{count}} more",
+        title: "Quit while agents are running?"
+      },
       closeGuard: {
         cancel: "Cancel",
         confirm: "Terminate terminal",

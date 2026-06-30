@@ -10,7 +10,8 @@ import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
   WorkbenchContribution,
-  WorkbenchDockPreviewCache
+  WorkbenchDockPreviewCache,
+  WorkbenchHostCloseDialogRequest
 } from "@tutti-os/workbench-surface";
 import type {
   DesktopComputerUseApi,
@@ -42,6 +43,7 @@ import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaun
 import { requestGroupChatLaunch } from "../groupChatLaunchCoordinator.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
 import { isWorkspaceAgentGuiDefaultDockProvider } from "./workspaceAgentProviderCatalog.ts";
+import { createAgentQuitGuardRequest } from "./workspaceAgentQuitGuard.ts";
 
 export function createWorkspaceAgentGuiContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
@@ -54,6 +56,9 @@ export function createWorkspaceAgentGuiContribution(input: {
   >[0]["dockIconUrls"];
   hostFilesApi: DesktopHostFilesApi;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+  confirmCloseGuard: (
+    request: WorkbenchHostCloseDialogRequest
+  ) => Promise<boolean> | boolean;
   onCapabilitySettingsRequest?: Parameters<
     typeof DesktopAgentGUIWorkbenchBody
   >[0]["onCapabilitySettingsRequest"];
@@ -156,7 +161,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       workspaceId: input.workspaceId
     });
 
-  return createAgentGuiWorkbenchContribution({
+  const contribution = createAgentGuiWorkbenchContribution({
     copy: {
       collapseConversationRail: input.appI18n.t(
         "workspace.agentGui.collapseConversationRail"
@@ -202,6 +207,23 @@ export function createWorkspaceAgentGuiContribution(input: {
       isWorkspaceAgentGuiDefaultDockProvider(provider) ? "always" : "never",
     workspaceId: input.workspaceId
   });
+
+  return {
+    ...contribution,
+    prepareHostClose: async () => {
+      const request = createAgentQuitGuardRequest({
+        i18n: input.i18n,
+        sessions: input.workspaceAgentActivityService.getSnapshot(
+          input.workspaceId
+        ).sessions
+      });
+      if (!request) {
+        return true;
+      }
+
+      return input.confirmCloseGuard(request);
+    }
+  };
 }
 
 function resolveWorkspaceAgentGuiDockPopupTitle(
