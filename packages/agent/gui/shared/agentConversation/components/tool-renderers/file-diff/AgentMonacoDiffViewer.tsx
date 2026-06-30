@@ -29,8 +29,9 @@ export function AgentMonacoDiffViewer({
     >
       {showHeader ? (
         <div
-          className="border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]"
+          className="break-all border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]"
           data-agent-diff-header="true"
+          title={path ?? undefined}
         >
           {path || "Diff"}
         </div>
