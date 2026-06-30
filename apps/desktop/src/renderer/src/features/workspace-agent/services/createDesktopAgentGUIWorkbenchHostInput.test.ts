@@ -1202,9 +1202,13 @@ function createPlatformApi(): Pick<
 
 function createWorkspaceFileManagerService(input: {
   openCanvasFilePreview: IWorkspaceFileManagerService["openCanvasFilePreview"];
-}): Pick<IWorkspaceFileManagerService, "openCanvasFilePreview"> {
+}): Pick<
+  IWorkspaceFileManagerService,
+  "openCanvasFilePreview" | "resolveEntryIconUrl"
+> {
   return {
-    openCanvasFilePreview: input.openCanvasFilePreview
+    openCanvasFilePreview: input.openCanvasFilePreview,
+    resolveEntryIconUrl: async () => null
   };
 }
 

@@ -108,6 +108,7 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   >;
   onRequestGitBranches: NonNullable<AgentGUIProps["onRequestGitBranches"]>;
   referenceSourceAggregator?: AgentGUIProps["referenceSourceAggregator"];
+  resolveWorkspaceReferenceEntryIconUrl?: AgentGUIProps["resolveWorkspaceReferenceEntryIconUrl"];
   resolveMentionReferenceTarget?: AgentGUIProps["resolveMentionReferenceTarget"];
   resolveWorkspaceReferenceInitialTarget?: AgentGUIProps["resolveWorkspaceReferenceInitialTarget"];
   workspaceId: string;
@@ -168,6 +169,8 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.workspaceFileReferenceAdapter &&
     previous.onRequestGitBranches === next.onRequestGitBranches &&
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
+    previous.resolveWorkspaceReferenceEntryIconUrl ===
+      next.resolveWorkspaceReferenceEntryIconUrl &&
     previous.resolveMentionReferenceTarget ===
       next.resolveMentionReferenceTarget &&
     previous.resolveWorkspaceReferenceInitialTarget ===
@@ -241,6 +244,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   workspaceFileReferenceAdapter,
   onRequestGitBranches,
   referenceSourceAggregator,
+  resolveWorkspaceReferenceEntryIconUrl,
   resolveMentionReferenceTarget,
   resolveWorkspaceReferenceInitialTarget,
   workspaceId
@@ -988,6 +992,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         onRequestGitBranches={previewMode ? null : onRequestGitBranches}
         referenceSourceAggregator={
           previewMode ? null : referenceSourceAggregator
+        }
+        resolveWorkspaceReferenceEntryIconUrl={
+          previewMode ? undefined : resolveWorkspaceReferenceEntryIconUrl
         }
         resolveMentionReferenceTarget={
           previewMode ? undefined : resolveMentionReferenceTarget

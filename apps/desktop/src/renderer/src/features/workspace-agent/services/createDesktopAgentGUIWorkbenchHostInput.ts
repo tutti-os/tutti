@@ -13,6 +13,7 @@ import type {
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
+import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
@@ -61,6 +62,9 @@ export interface DesktopAgentGUIWorkbenchHostInput {
   >;
   onRequestGitBranches: NonNullable<AgentGUIProps["onRequestGitBranches"]>;
   referenceSourceAggregator: ReferenceSourceAggregator;
+  resolveWorkspaceReferenceEntryIconUrl: NonNullable<
+    AgentGUIProps["resolveWorkspaceReferenceEntryIconUrl"]
+  >;
   resolveMentionReferenceTarget: NonNullable<
     AgentGUIProps["resolveMentionReferenceTarget"]
   >;
@@ -84,7 +88,7 @@ export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceFileManagerService?: Pick<
     IWorkspaceFileManagerService,
-    "openCanvasFilePreview"
+    "openCanvasFilePreview" | "resolveEntryIconUrl"
   >;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
   workspaceId: string;
@@ -235,6 +239,9 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       };
     },
     referenceSourceAggregator,
+    resolveWorkspaceReferenceEntryIconUrl: (entry: WorkspaceFileEntry) =>
+      workspaceFileManagerService?.resolveEntryIconUrl(workspaceId, entry) ??
+      Promise.resolve(null),
     resolveMentionReferenceTarget,
     resolveWorkspaceReferenceInitialTarget
   };

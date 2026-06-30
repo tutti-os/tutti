@@ -1,6 +1,7 @@
 import {
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -22,7 +23,6 @@ import {
   CheckIcon,
   ChevronDownIcon,
   CloseIcon,
-  FileIcon,
   FolderFilledIcon,
   Input,
   IssueIcon,
@@ -43,6 +43,8 @@ import {
   type WorkspaceFilePreviewSurfaceState
 } from "@tutti-os/workspace-file-preview/react";
 import {
+  WorkspaceFileEntryIcon,
+  useWorkspaceFileEntryIconUrls,
   WorkspaceFileManagerContextMenu,
   resolveRevealInFolderLabel,
   type WorkspaceFileEntry,
@@ -59,6 +61,7 @@ import type {
 } from "../../../contracts/index.ts";
 import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAggregator.ts";
 import {
+  base64UrlDecode,
   nodeRefKey,
   type ReferenceFilterCategory
 } from "../../../core/index.ts";
@@ -85,6 +88,9 @@ export interface ReferenceSourcePickerProps {
   resolveOpenWithApplicationIcon?: (
     application: WorkspaceFileOpenWithApplication
   ) => JSX.Element | null;
+  resolveEntryIconUrl?: (
+    entry: WorkspaceFileEntry
+  ) => Promise<string | null | undefined>;
   onClose: () => void;
   onConfirm: (refs: WorkspaceFileReference[]) => void;
   /**
@@ -104,6 +110,9 @@ export interface ReferenceSourcePickerProps {
 const SIDEBAR_GROUP_PAGE_SIZE = 5;
 
 type PickerView = ReturnType<typeof useReferenceSourcePickerView>;
+type ReferenceNodeIconUrlState = ReturnType<
+  typeof useWorkspaceFileEntryIconUrls
+>;
 interface ReferenceSourceContextMenuState {
   node: ReferenceNode;
   x: number;
@@ -161,6 +170,7 @@ export function ReferenceSourcePicker({
   onConfirm,
   onConfirmBundles,
   open,
+  resolveEntryIconUrl,
   resolveOpenWithApplicationIcon,
   workspaceId
 }: ReferenceSourcePickerProps): JSX.Element | null {
@@ -208,6 +218,31 @@ export function ReferenceSourcePicker({
     WorkspaceFileOpenWithApplication[]
   >([]);
   const [openWithLoading, setOpenWithLoading] = useState(false);
+  const retainedIconEntries = useMemo(
+    () =>
+      collectReferenceNodeIconEntries({
+        childrenByKey: view.childrenByKey,
+        currentEntries: view.currentEntries,
+        expandedKeys: view.expandedKeys,
+        focusedNode: view.focusedNode,
+        searchResults: view.searchResults,
+        selection: view.selection,
+        sidebarGroupsBySource: view.sidebarGroupsBySource
+      }),
+    [
+      view.childrenByKey,
+      view.currentEntries,
+      view.expandedKeys,
+      view.focusedNode,
+      view.searchResults,
+      view.selection,
+      view.sidebarGroupsBySource
+    ]
+  );
+  const iconUrls = useWorkspaceFileEntryIconUrls({
+    entries: retainedIconEntries,
+    resolveEntryIconUrl
+  });
 
   useEffect(() => {
     if (!contextMenu || !fileManagerCopy) {
@@ -463,6 +498,7 @@ export function ReferenceSourcePicker({
                             <SearchResultRow
                               key={nodeRefKey(node.ref)}
                               focused={isFocused(view.focusedNode, node)}
+                              iconUrls={iconUrls}
                               node={node}
                               selected={view.isSelected(node)}
                               onFocus={view.setFocusedNode}
@@ -491,6 +527,7 @@ export function ReferenceSourcePicker({
                             key={nodeRefKey(node.ref)}
                             copy={copy}
                             depth={0}
+                            iconUrls={iconUrls}
                             node={node}
                             onContextMenu={openReferenceContextMenu}
                             view={view}
@@ -610,6 +647,7 @@ export function ReferenceSourcePicker({
                 <PreviewInfoPane
                   copy={copy}
                   hierarchy={view.breadcrumb}
+                  iconUrls={iconUrls}
                   node={view.focusedNode}
                   previewState={view.previewState}
                   sourceLabel={view.activeTabLabel}
@@ -810,6 +848,7 @@ function SourceSidebar({
 function SearchResultRow({
   node,
   focused,
+  iconUrls,
   selected,
   selectable,
   onFocus,
@@ -820,6 +859,7 @@ function SearchResultRow({
 }: {
   node: ReferenceNode;
   focused: boolean;
+  iconUrls: ReferenceNodeIconUrlState;
   selected: boolean;
   selectable: boolean;
   onFocus: (node: ReferenceNode) => void;
@@ -828,7 +868,6 @@ function SearchResultRow({
   onSingleSelect: (node: ReferenceNode) => void;
   onToggle: (node: ReferenceNode) => void;
 }): JSX.Element {
-  const isFolder = node.kind === "folder";
   const contextLabel = node.contextLabel ?? node.ref.nodeId;
   const active = selected || (focused && selectable);
   return (
@@ -855,11 +894,12 @@ function SearchResultRow({
     >
       <div className="flex min-w-0 items-center gap-3 text-left">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--transparency-block)] text-[var(--text-tertiary)]">
-          {isFolder ? (
-            <FolderFilledIcon className="size-4 text-[var(--rich-text-folder)]" />
-          ) : (
-            <FileIcon className="size-4 text-[var(--text-tertiary)]" />
-          )}
+          <ReferenceNodeIcon
+            frameClassName="size-7"
+            iconClassName="size-6"
+            iconUrls={iconUrls}
+            node={node}
+          />
         </span>
         <span className="min-w-0">
           <FullTextTooltip content={node.displayName}>
@@ -1018,12 +1058,14 @@ function FullTextTooltip({
 function PreviewInfoPane({
   copy,
   hierarchy,
+  iconUrls,
   node,
   previewState,
   sourceLabel
 }: {
   copy: WorkspaceFileReferenceCopy;
   hierarchy: readonly ReferenceNode[];
+  iconUrls: ReferenceNodeIconUrlState;
   node: ReferenceNode | null;
   previewState: ReferenceNodePreviewState;
   sourceLabel: string;
@@ -1048,13 +1090,14 @@ function PreviewInfoPane({
             loadingIndicator={<Spinner size={16} />}
             loadingMessage={copy.t("referencePicker.previewLoading")}
             messageClassName="mx-auto max-w-[24ch] text-[13px] leading-5 text-[var(--text-secondary)] [overflow-wrap:anywhere]"
-            renderIcon={(entry) =>
-              entry.kind === "folder" ? (
-                <FolderFilledIcon className="size-9 text-[var(--rich-text-folder)]" />
-              ) : (
-                <FileIcon className="size-9 text-[var(--text-tertiary)]" />
-              )
-            }
+            renderIcon={(entry) => (
+              <ReferenceNodeIcon
+                frameClassName="size-10"
+                iconClassName="size-9"
+                iconUrls={iconUrls}
+                node={entry}
+              />
+            )}
             state={toPreviewSurfaceState(node, previewState, copy)}
             textClassName="h-full w-full overflow-auto p-3 text-left text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]"
             textFrameClassName="items-stretch justify-stretch"
@@ -1424,12 +1467,14 @@ function isFocused(
 function TreeNodeRow({
   node,
   depth,
+  iconUrls,
   onContextMenu,
   view,
   copy
 }: {
   node: ReferenceNode;
   depth: number;
+  iconUrls: ReferenceNodeIconUrlState;
   onContextMenu: (event: MouseEvent<HTMLElement>, node: ReferenceNode) => void;
   view: PickerView;
   copy: WorkspaceFileReferenceCopy;
@@ -1482,6 +1527,7 @@ function TreeNodeRow({
             key={nodeRefKey(child.ref)}
             copy={copy}
             depth={depth + 1}
+            iconUrls={iconUrls}
             node={child}
             onContextMenu={onContextMenu}
             view={view}
@@ -1542,11 +1588,12 @@ function TreeNodeRow({
             />
           </button>
         ) : null}
-        {isFolder ? (
-          <FolderFilledIcon className="size-4 shrink-0 text-[var(--rich-text-folder)]" />
-        ) : (
-          <FileIcon className="size-4 shrink-0 text-[var(--text-tertiary)]" />
-        )}
+        <ReferenceNodeIcon
+          frameClassName="size-7"
+          iconClassName="size-6"
+          iconUrls={iconUrls}
+          node={node}
+        />
         <FullTextTooltip content={node.displayName}>
           <span
             className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-primary)]"
@@ -1621,6 +1668,67 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
+function ReferenceNodeIcon({
+  frameClassName,
+  iconClassName,
+  iconUrls,
+  node
+}: {
+  frameClassName?: string;
+  iconClassName: string;
+  iconUrls: ReferenceNodeIconUrlState;
+  node: ReferenceNode;
+}): JSX.Element {
+  const entry = useMemo(() => referenceNodeToWorkspaceFileEntry(node), [node]);
+  return (
+    <WorkspaceFileEntryIcon
+      entry={entry}
+      frameClassName={frameClassName}
+      iconClassName={iconClassName}
+      iconUrlByCacheKey={iconUrls.iconUrlByCacheKey}
+      onViewportEnter={iconUrls.reportEntryIconViewportEnter}
+      onViewportLeave={iconUrls.reportEntryIconViewportLeave}
+    />
+  );
+}
+
+function collectReferenceNodeIconEntries(input: {
+  childrenByKey: PickerView["childrenByKey"];
+  currentEntries: readonly ReferenceNode[];
+  expandedKeys: PickerView["expandedKeys"];
+  focusedNode: ReferenceNode | null;
+  searchResults: readonly ReferenceNode[];
+  selection: readonly ReferenceNode[];
+  sidebarGroupsBySource: PickerView["sidebarGroupsBySource"];
+}): WorkspaceFileEntry[] {
+  const byKey = new Map<string, ReferenceNode>();
+  const retain = (node: ReferenceNode): void => {
+    byKey.set(nodeRefKey(node.ref), node);
+  };
+  const retainTree = (node: ReferenceNode): void => {
+    retain(node);
+    const key = nodeRefKey(node.ref);
+    if (!input.expandedKeys[key]) {
+      return;
+    }
+    for (const child of input.childrenByKey[key]?.entries ?? []) {
+      retainTree(child);
+    }
+  };
+
+  input.currentEntries.forEach(retainTree);
+  input.searchResults.forEach(retain);
+  input.selection.forEach(retain);
+  if (input.focusedNode) {
+    retain(input.focusedNode);
+  }
+  for (const groups of Object.values(input.sidebarGroupsBySource)) {
+    groups.forEach(retain);
+  }
+
+  return [...byKey.values()].map(referenceNodeToWorkspaceFileEntry);
+}
+
 function referenceNodeToWorkspaceFileEntry(
   node: ReferenceNode
 ): WorkspaceFileEntry {
@@ -1629,9 +1737,20 @@ function referenceNodeToWorkspaceFileEntry(
     kind: node.kind === "folder" ? "directory" : "file",
     mtimeMs: node.mtimeMs ?? null,
     name: node.displayName,
-    path: nodeRefKey(node.ref),
+    path: resolveReferenceNodeIconPath(node),
     sizeBytes: node.sizeBytes ?? null
   };
+}
+
+function resolveReferenceNodeIconPath(node: ReferenceNode): string {
+  if (node.kind === "file" && node.ref.nodeId.startsWith("f:")) {
+    try {
+      return base64UrlDecode(node.ref.nodeId.slice(2));
+    } catch {
+      return node.ref.nodeId;
+    }
+  }
+  return node.ref.nodeId;
 }
 
 function noopVoid(): void {}

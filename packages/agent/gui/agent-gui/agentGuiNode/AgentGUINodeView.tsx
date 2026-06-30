@@ -47,6 +47,7 @@ import {
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { WorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
+import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import { BareIconButton, ScrollArea } from "@tutti-os/ui-system/components";
 import { Button } from "../../app/renderer/components/ui/button";
 import {
@@ -514,6 +515,9 @@ interface AgentGUINodeViewProps {
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveWorkspaceReferenceEntryIconUrl?: (
+    entry: WorkspaceFileEntry
+  ) => Promise<string | null | undefined>;
   resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
   resolveWorkspaceReferenceInitialTarget?: AgentWorkspaceReferenceInitialTargetResolver | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -833,6 +837,7 @@ export function AgentGUINodeView({
   onRequestGitBranches = null,
   contextMentionProviders,
   referenceSourceAggregator = null,
+  resolveWorkspaceReferenceEntryIconUrl,
   resolveMentionReferenceTarget = null,
   resolveWorkspaceReferenceInitialTarget = null,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
@@ -1397,6 +1402,7 @@ export function AgentGUINodeView({
           isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
           fileManagerCopy={workspaceFileManagerCopy ?? undefined}
           open={workspaceReferencePickerOpen}
+          resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
           workspaceId={viewModel.workspaceId}
           onClose={closeWorkspaceReferencePicker}
           onConfirm={confirmWorkspaceReferencePicker}
