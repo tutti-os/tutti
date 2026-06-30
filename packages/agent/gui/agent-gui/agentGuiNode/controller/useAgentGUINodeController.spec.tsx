@@ -13211,6 +13211,354 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("drains queued prompts for a background session when that session becomes idle", async () => {
+    let resolveExec:
+      | ((result: {
+          accepted: boolean;
+          agentSessionId: string;
+          turnId: string;
+          sessionStatus: string;
+        }) => void)
+      | undefined;
+    const exec = vi.fn(
+      () =>
+        new Promise<{
+          accepted: boolean;
+          agentSessionId: string;
+          turnId: string;
+          sessionStatus: string;
+        }>((resolve) => {
+          resolveExec = resolve;
+        })
+    );
+    const runtime = createAgentQueuedPromptRuntime();
+    setAgentQueuedPromptRuntimeForTests(runtime);
+    runtime.enqueue({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      prompt: {
+        id: "queued-background",
+        content: promptBlocks("background queued"),
+        createdAtUnixMs: 1
+      }
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            effectiveStatus: "working",
+            turnPhase: "working"
+          }),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        nodeId: "node-1",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-2"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    });
+    expect(exec).not.toHaveBeenCalled();
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          lifecycleStatus: "active",
+          currentPhase: "idle",
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        ...promptContent("background queued")
+      });
+    });
+    expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    expect(result.current.viewModel.isSubmitting).toBe(false);
+    expect(result.current.viewModel.detailError).toBeNull();
+
+    await act(async () => {
+      resolveExec?.({
+        accepted: true,
+        agentSessionId: "session-1",
+        turnId: "turn-background",
+        sessionStatus: "working"
+      });
+    });
+  });
+
+  it("blocks background queued prompt retry after active-turn conflict until activity changes", async () => {
+    const exec = vi.fn(async () => {
+      throw new Error("agent session already has an active turn");
+    });
+    const runtime = createAgentQueuedPromptRuntime();
+    setAgentQueuedPromptRuntimeForTests(runtime);
+    runtime.enqueue({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      prompt: {
+        id: "queued-background-conflict",
+        content: promptBlocks("background conflict queued"),
+        createdAtUnixMs: 1
+      }
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            effectiveStatus: "working",
+            turnPhase: "working"
+          }),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        nodeId: "node-1",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-2"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          lifecycleStatus: "active",
+          currentPhase: "idle",
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "room-1",
+        agentSessionId: "session-1"
+      }).retryBlock
+    ).toEqual(
+      expect.objectContaining({
+        queuedPromptId: "queued-background-conflict",
+        sessionStateUpdatedAtUnixMs: 20
+      })
+    );
+  });
+
+  it("drains an active queued prompt after activity clears even if control state still has stale pendingInteractive", async () => {
+    const exec = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      turnId: "turn-2",
+      accepted: true,
+      sessionStatus: "working" as const,
+      events: []
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          effectiveStatus: "working",
+          turnPhase: "working"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          pendingInteractive: {
+            kind: "interactive",
+            requestId: "request-stale",
+            toolName: "AskUserQuestion",
+            status: "waiting"
+          }
+        })
+      ),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("stale prompt drain"));
+    });
+
+    await waitFor(() => {
+      expect(queuedPromptTexts(result.current.viewModel.queuedPrompts)).toEqual(
+        ["stale prompt drain"]
+      );
+    });
+    expect(exec).not.toHaveBeenCalled();
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          lifecycleStatus: "active",
+          currentPhase: "idle",
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        ...promptContent("stale prompt drain")
+      });
+    });
+  });
+
+  it("drains a shared queued prompt once when multiple controllers observe the same session", async () => {
+    const exec = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      turnId: "turn-2",
+      accepted: true,
+      sessionStatus: "working" as const,
+      events: []
+    }));
+    const runtime = createAgentQueuedPromptRuntime();
+    setAgentQueuedPromptRuntimeForTests(runtime);
+    runtime.enqueue({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      prompt: {
+        id: "queued-shared-live",
+        content: promptBlocks("shared live queued"),
+        createdAtUnixMs: 1
+      }
+    });
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          effectiveStatus: "working",
+          turnPhase: "working"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      exec
+    });
+
+    const first = renderHook(() =>
+      useAgentGUINodeController({
+        nodeId: "node-1",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+    const second = renderHook(() =>
+      useAgentGUINodeController({
+        nodeId: "node-2",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(first.result.current.viewModel.activeConversationId).toBe(
+        "session-1"
+      );
+      expect(second.result.current.viewModel.activeConversationId).toBe(
+        "session-1"
+      );
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          lifecycleStatus: "active",
+          currentPhase: "idle",
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledTimes(1);
+    });
+    expect(exec).toHaveBeenCalledWith({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      ...promptContent("shared live queued")
+    });
+
+    first.unmount();
+    second.unmount();
+  });
+
   it("does not enqueue or drain queued prompts in preview mode", async () => {
     const exec = vi.fn();
     installAgentHostApi({

@@ -60,6 +60,15 @@ export function useAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
   return runtime;
 }
 
+export function useAgentQueuedPromptSnapshot(): AgentQueuedPromptSnapshot {
+  const runtime = useAgentQueuedPromptRuntime();
+  return useSyncExternalStore(
+    runtime.subscribe,
+    runtime.getSnapshot,
+    runtime.getSnapshot
+  );
+}
+
 export function useAgentQueuedPromptSessionSnapshot(input: {
   agentSessionId: string | null;
   workspaceId: string;

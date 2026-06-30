@@ -685,6 +685,14 @@ release are validated by `claimId`, which prevents a stale unmounted controller
 from deleting a newer claim or sending the same queued prompt twice. Claims are
 released when the owning controller unmounts and also expire by lease timeout so
 a queued prompt cannot stay permanently stuck at the head of the queue.
+Queued prompts are session-scoped user intent, not active-detail UI intent. A
+controller that observes a queued session may drain it when runtime/list
+projection shows that target session is ready, even if another conversation is
+focused. Background drains must not clear the active conversation's draft,
+detail error, or submit spinner. Drain readiness must follow activity
+projection and retry-block timestamps instead of raw `controlState` fields such
+as `pendingInteractive`, because those fields are not guaranteed to be cleared
+by every activity `state_patch`.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,

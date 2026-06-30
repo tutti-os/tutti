@@ -16,6 +16,7 @@ import {
 } from "../../../agentActivityRuntime";
 import {
   useAgentQueuedPromptRuntime,
+  useAgentQueuedPromptSnapshot,
   useAgentQueuedPromptSessionSnapshot,
   type AgentQueuedPromptClaim
 } from "../../../agentQueuedPromptRuntime";
@@ -226,6 +227,14 @@ const AGENT_RESUME_SESSION_NOT_LOCAL_FALLBACK_MESSAGE =
   "The previous agent session is not available on this machine.";
 const AGENT_GUI_CAUGHT_ERROR_STACK_LIMIT = 4000;
 const SELECTED_SESSION_NOT_FOUND_RETRY_DELAY_MS = 150;
+
+interface ExecutePromptOptions {
+  background?: boolean;
+  retryBlockVersion?: {
+    conversationUpdatedAtUnixMs: number | null;
+    sessionStateUpdatedAtUnixMs: number | null;
+  };
+}
 
 type AgentGUIRuntimeErrorPhase =
   | "create_conversation"
@@ -2728,6 +2737,24 @@ function agentActivityDisplayStatusBusy(
   return status === "working" || status === "waiting";
 }
 
+function runtimeSessionUpdatedAtFromSnapshot(input: {
+  agentSessionId: string;
+  runtime: AgentActivityRuntime;
+  workspaceId: string;
+}): number | null {
+  const normalizedAgentSessionId = input.agentSessionId.trim();
+  if (!normalizedAgentSessionId) {
+    return null;
+  }
+  return (
+    input.runtime
+      .getSnapshot(input.workspaceId)
+      .sessions.find(
+        (session) => session.agentSessionId.trim() === normalizedAgentSessionId
+      )?.updatedAtUnixMs ?? null
+  );
+}
+
 function conversationBusyStatusFromAgentActivityDisplayStatus(
   status: AgentActivityDisplayStatus | null | undefined
 ): "working" | "waiting" | null {
@@ -3454,6 +3481,14 @@ export function useAgentGUINodeController({
   const [isPendingSubmit, setIsPendingSubmit] = useState(resolvePendingSubmit);
   const [localIsSubmitting, setLocalIsSubmitting] = useState(false);
   const isSubmitting = localIsSubmitting || isPendingSubmit;
+  const queuedPromptSnapshot = useAgentQueuedPromptSnapshot();
+  const queuedPromptQueues = useMemo(
+    () =>
+      Object.values(queuedPromptSnapshot.queuesByKey).filter(
+        (queue) => queue.workspaceId === workspaceId && queue.prompts.length > 0
+      ),
+    [queuedPromptSnapshot, workspaceId]
+  );
   const activeQueuedPromptSnapshot = useAgentQueuedPromptSessionSnapshot({
     workspaceId,
     agentSessionId: activeConversationId
@@ -3461,10 +3496,6 @@ export function useAgentGUINodeController({
   const activeQueuedPrompts =
     activeQueuedPromptSnapshot?.prompts ?? EMPTY_QUEUED_PROMPTS;
   const activeQueuedPromptClaim = activeQueuedPromptSnapshot?.claim ?? null;
-  const activeFailedQueuedPromptId =
-    activeQueuedPromptSnapshot?.failedPromptId ?? null;
-  const activeQueuedPromptRetryBlock =
-    activeQueuedPromptSnapshot?.retryBlock ?? null;
   const activeSendNextQueuedPromptId =
     activeQueuedPromptSnapshot?.sendNextPromptId ?? null;
   const [interruptingSessionIds, setInterruptingSessionIds] = useState<
@@ -7227,12 +7258,17 @@ export function useAgentGUINodeController({
       content: AgentPromptContentBlock[],
       queuedPromptId?: string | null,
       displayPrompt?: string,
-      queuedPromptClaim?: AgentQueuedPromptClaim | null
+      queuedPromptClaim?: AgentQueuedPromptClaim | null,
+      options?: ExecutePromptOptions
     ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
         return;
       }
+      const targetIsActiveConversation =
+        activeConversationIdRef.current === agentSessionId;
+      const shouldUpdateActiveSubmitState =
+        options?.background !== true || targetIsActiveConversation;
       // displayPrompt(如 bundle 折叠成单 chip)优先用于回显;否则回退到 content 派生文本。
       const submittedPromptText =
         displayPrompt && displayPrompt.trim()
@@ -7266,8 +7302,7 @@ export function useAgentGUINodeController({
           conversationKnown: targetConversation !== null,
           conversationStatus: previousConversationStatus,
           isComposerHome: isComposerHomeRef.current,
-          targetIsActiveConversation:
-            activeConversationIdRef.current === agentSessionId,
+          targetIsActiveConversation,
           targetMode: "existing"
         }
       });
@@ -7277,8 +7312,10 @@ export function useAgentGUINodeController({
           conversationId: agentSessionId
         });
       }
-      setLocalIsSubmitting(true);
-      setDetailError(null);
+      if (shouldUpdateActiveSubmitState) {
+        setLocalIsSubmitting(true);
+        setDetailError(null);
+      }
       patchConversation(agentSessionId, (conversation) => ({
         status: "working",
         sortTimeUnixMs: Math.max(
@@ -7509,6 +7546,12 @@ export function useAgentGUINodeController({
           const currentSessionState =
             getAgentSessionView(sessionViewRef(agentSessionId))?.controlState ??
             null;
+          const currentRuntimeSessionUpdatedAtUnixMs =
+            runtimeSessionUpdatedAtFromSnapshot({
+              agentSessionId,
+              runtime: agentActivityRuntime,
+              workspaceId
+            });
           const currentConversationSummary = resolveConversationSummaryById(
             conversations,
             agentSessionId,
@@ -7569,9 +7612,14 @@ export function useAgentGUINodeController({
                 retryBlock: {
                   queuedPromptId,
                   sessionStateUpdatedAtUnixMs:
-                    currentSessionState?.updatedAtUnixMs ?? null,
+                    options?.retryBlockVersion?.sessionStateUpdatedAtUnixMs ??
+                    currentRuntimeSessionUpdatedAtUnixMs ??
+                    currentSessionState?.updatedAtUnixMs ??
+                    null,
                   conversationUpdatedAtUnixMs:
-                    currentConversationSummary?.updatedAtUnixMs ?? null
+                    options?.retryBlockVersion?.conversationUpdatedAtUnixMs ??
+                    currentConversationSummary?.updatedAtUnixMs ??
+                    null
                 }
               });
             } else {
@@ -7590,7 +7638,9 @@ export function useAgentGUINodeController({
               conversationId: agentSessionId
             });
           }
-          setLocalIsSubmitting(false);
+          if (shouldUpdateActiveSubmitState) {
+            setLocalIsSubmitting(false);
+          }
           if (queuedPromptClaim && !queuedPromptClaimCompleted) {
             agentQueuedPromptRuntime.releaseClaim({
               workspaceId,
@@ -8531,60 +8581,89 @@ export function useAgentGUINodeController({
     if (previewMode) {
       return;
     }
-    if (!activeConversationId) {
-      return;
-    }
-    const queuedPrompt = activeQueuedPrompts[0] ?? null;
-    const activeSessionState =
-      getAgentSessionView(sessionViewRef(activeConversationId))?.controlState ??
-      null;
-    const activeConversationSummary = resolveConversationSummaryById(
-      conversations,
-      activeConversationId,
-      transientConversationRef.current
-    );
-    const blockedByStaleActiveTurnConflict =
-      queuedPrompt !== null &&
-      activeQueuedPromptRetryBlock?.queuedPromptId === queuedPrompt.id &&
-      activeQueuedPromptRetryBlock.sessionStateUpdatedAtUnixMs ===
-        (activeSessionState?.updatedAtUnixMs ?? null) &&
-      activeQueuedPromptRetryBlock.conversationUpdatedAtUnixMs ===
-        (activeConversationSummary?.updatedAtUnixMs ?? null);
-    const canDrainQueuedPrompt =
-      queuedPrompt !== null &&
-      queuedPrompt.id !== activeFailedQueuedPromptId &&
-      !blockedByStaleActiveTurnConflict &&
-      activeQueuedPromptClaim === null &&
-      !isSubmitting &&
-      !isRespondingApproval &&
-      !activeSessionState?.pendingInteractive &&
-      !agentActivityDisplayStatusBusy(
-        agentActivityDisplayStatuses.get(activeConversationId)
+    for (const queue of queuedPromptQueues) {
+      const agentSessionId = queue.agentSessionId.trim();
+      const queuedPrompt = queue.prompts[0] ?? null;
+      if (!agentSessionId || !queuedPrompt) {
+        continue;
+      }
+      const targetIsActiveConversation =
+        activeConversationId === agentSessionId;
+      const runtimeSession = runtimeSessionsBySessionId.get(agentSessionId);
+      const conversationSummary = resolveConversationSummaryById(
+        conversations,
+        agentSessionId,
+        transientConversationRef.current
       );
-    if (!canDrainQueuedPrompt) {
+      if (
+        !runtimeSession &&
+        !conversationSummary &&
+        !agentActivityDisplayStatuses.has(agentSessionId)
+      ) {
+        continue;
+      }
+      const targetSessionState = targetIsActiveConversation
+        ? activeSessionState
+        : (getAgentSessionView(sessionViewRef(agentSessionId))?.controlState ??
+          null);
+      const sessionStateUpdatedAtUnixMs =
+        runtimeSession?.updatedAtUnixMs ??
+        targetSessionState?.updatedAtUnixMs ??
+        null;
+      const conversationUpdatedAtUnixMs =
+        conversationSummary?.updatedAtUnixMs ?? null;
+      const blockedByStaleActiveTurnConflict =
+        queue.retryBlock?.queuedPromptId === queuedPrompt.id &&
+        (queue.retryBlock.sessionStateUpdatedAtUnixMs !== null
+          ? queue.retryBlock.sessionStateUpdatedAtUnixMs ===
+            sessionStateUpdatedAtUnixMs
+          : queue.retryBlock.conversationUpdatedAtUnixMs ===
+            conversationUpdatedAtUnixMs);
+      const canDrainQueuedPrompt =
+        queuedPrompt.id !== queue.failedPromptId &&
+        !blockedByStaleActiveTurnConflict &&
+        queue.claim === null &&
+        (!targetIsActiveConversation ||
+          (!isSubmitting && !isRespondingApproval)) &&
+        !agentActivityDisplayStatusBusy(
+          agentActivityDisplayStatuses.get(agentSessionId)
+        ) &&
+        (agentActivityDisplayStatuses.has(agentSessionId) ||
+          (conversationSummary?.status !== "working" &&
+            conversationSummary?.status !== "waiting"));
+      if (!canDrainQueuedPrompt) {
+        continue;
+      }
+      const claimResult = agentQueuedPromptRuntime.claimNextToDrain({
+        workspaceId,
+        agentSessionId,
+        ownerId: queuedPromptOwnerId
+      });
+      if (!claimResult) {
+        continue;
+      }
+      executePrompt(
+        agentSessionId,
+        claimResult.prompt.content,
+        claimResult.prompt.id,
+        claimResult.prompt.displayPrompt,
+        claimResult.claim,
+        {
+          background: !targetIsActiveConversation,
+          retryBlockVersion: {
+            sessionStateUpdatedAtUnixMs,
+            conversationUpdatedAtUnixMs:
+              sessionStateUpdatedAtUnixMs === null
+                ? conversationUpdatedAtUnixMs
+                : null
+          }
+        }
+      );
       return;
     }
-    const claimResult = agentQueuedPromptRuntime.claimNextToDrain({
-      workspaceId,
-      agentSessionId: activeConversationId,
-      ownerId: queuedPromptOwnerId
-    });
-    if (!claimResult) {
-      return;
-    }
-    executePrompt(
-      activeConversationId,
-      claimResult.prompt.content,
-      claimResult.prompt.id,
-      claimResult.prompt.displayPrompt,
-      claimResult.claim
-    );
   }, [
     activeConversationId,
-    activeFailedQueuedPromptId,
-    activeQueuedPromptClaim,
-    activeQueuedPromptRetryBlock,
-    activeQueuedPrompts,
+    activeSessionState,
     agentQueuedPromptRuntime,
     agentActivityDisplayStatuses,
     conversations,
@@ -8592,7 +8671,10 @@ export function useAgentGUINodeController({
     isRespondingApproval,
     isSubmitting,
     previewMode,
+    queuedPromptQueues,
     queuedPromptOwnerId,
+    runtimeSessionsBySessionId,
+    sessionViewRef,
     workspaceId
   ]);
 

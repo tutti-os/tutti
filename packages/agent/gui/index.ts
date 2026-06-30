@@ -66,6 +66,7 @@ export {
   resetAgentQueuedPromptRuntimeForTests,
   setAgentQueuedPromptRuntimeForTests,
   useAgentQueuedPromptRuntime,
+  useAgentQueuedPromptSnapshot,
   useAgentQueuedPromptSessionSnapshot
 } from "./agentQueuedPromptRuntime";
 export type {
