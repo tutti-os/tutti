@@ -102,9 +102,11 @@ export function buildComposerModelMenuModel(
     composerSettings.supportsModel &&
     modelItems.length > 0 &&
     !composerSettings.modelUnavailable;
+  // A single advertised effort gives the user no real choice, so hide the
+  // menu entirely rather than showing a one-item dropdown.
   const showReasoning =
     composerSettings.supportsReasoningEffort &&
-    reasoningItems.length > 0 &&
+    reasoningItems.length > 1 &&
     !composerSettings.reasoningUnavailable;
   const showSpeed =
     composerSettings.supportsSpeed &&

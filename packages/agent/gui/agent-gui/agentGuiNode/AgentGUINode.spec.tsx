@@ -2752,7 +2752,10 @@ describe("AgentGUINode", () => {
           { value: "gpt-5", label: "GPT-5" },
           { value: "gpt-5.5", label: "GPT-5.5" }
         ],
-        availableReasoningEfforts: [{ value: "high", label: "High" }],
+        availableReasoningEfforts: [
+          { value: "low", label: "Low" },
+          { value: "high", label: "High" }
+        ],
         availablePermissionModes: [
           {
             value: "read-only",

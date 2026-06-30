@@ -272,6 +272,47 @@ describe("buildComposerModelMenuModel", () => {
     expect(menu.speed.show).toBe(false);
   });
 
+  it("hides the reasoning menu when only one effort option is advertised", () => {
+    // A model like Haiku that advertises a single effort value gives the user
+    // no real choice — the dropdown should not appear.
+    const menu = buildComposerModelMenuModel(
+      vm({
+        draftSettings: {
+          model: "gpt-5.5",
+          reasoningEffort: "medium",
+          speed: "standard",
+          planMode: false,
+          permissionModeId: "preset"
+        },
+        availableReasoningEfforts: [{ value: "medium", label: "Medium" }]
+      }),
+      labels
+    );
+
+    expect(menu.reasoning.show).toBe(false);
+  });
+
+  it("shows the reasoning menu when more than one effort option is advertised", () => {
+    const menu = buildComposerModelMenuModel(
+      vm({
+        draftSettings: {
+          model: "gpt-5.5",
+          reasoningEffort: "medium",
+          speed: "standard",
+          planMode: false,
+          permissionModeId: "preset"
+        },
+        availableReasoningEfforts: [
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" }
+        ]
+      }),
+      labels
+    );
+
+    expect(menu.reasoning.show).toBe(true);
+  });
+
   it("shows the loading copy on the trigger while options load", () => {
     // No model resolved yet — the placeholder must read as loading, not the
     // "Default" fallback (which looks like a real choice).

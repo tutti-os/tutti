@@ -1403,6 +1403,12 @@ func (a *standardACPAdapter) setSessionConfigOption(
 		return err
 	}
 	a.updateSessionConfigOptionsResult(session.AgentSessionID, result)
+	// A set_config_option response re-advertises the live option set (e.g. a
+	// model switch drops effort for Haiku). Unlike a config_option_update
+	// notification, this response is not surfaced to the GUI on its own, so push
+	// it through the config-options sink — otherwise the composer keeps the stale
+	// option list until the next prompt turn replays state.
+	a.emitConfigOptionsResultUpdate(session, configID, result)
 	a.logHermesStartupDiagnostics("config_option.succeeded", map[string]any{
 		"room_id":              session.RoomID,
 		"agent_session_id":     session.AgentSessionID,
@@ -1493,27 +1499,26 @@ func (a *standardACPAdapter) ApplySessionSettings(
 
 	if patch.ReasoningEffort != nil {
 		reasoning := strings.TrimSpace(*patch.ReasoningEffort)
-		if reasoning != "" {
+		if reasoning != "" && a.sessionConfigOptionAdvertisesValue(session.AgentSessionID, "effort", reasoning) {
 			if !a.sessionConfigOptionMatches(session.AgentSessionID, "effort", reasoning) {
 				if err := a.setSessionConfigOption(ctx, acpSession.client, session, "effort", reasoning); err != nil {
-					return fmt.Errorf("agent session ACP effort configuration failed: %w", err)
+					a.logStartupConfigOptionRejected(session, "effort", reasoning, err)
+				} else {
+					a.updateSessionConfigOption(session.AgentSessionID, "effort", reasoning)
 				}
-				a.updateSessionConfigOption(session.AgentSessionID, "effort", reasoning)
 			}
 		}
 	}
 
 	if patch.Speed != nil {
 		speed := strings.TrimSpace(*patch.Speed)
-		if speed != "" {
-			if !a.sessionConfigOptionAdvertisesValue(session.AgentSessionID, "fast", speed) {
-				return nil
-			}
+		if speed != "" && a.sessionConfigOptionAdvertisesValue(session.AgentSessionID, "fast", speed) {
 			if !a.sessionConfigOptionMatches(session.AgentSessionID, "fast", speed) {
 				if err := a.setSessionConfigOption(ctx, acpSession.client, session, "fast", speed); err != nil {
-					return fmt.Errorf("agent session ACP fast configuration failed: %w", err)
+					a.logStartupConfigOptionRejected(session, "fast", speed, err)
+				} else {
+					a.updateSessionConfigOption(session.AgentSessionID, "fast", speed)
 				}
-				a.updateSessionConfigOption(session.AgentSessionID, "fast", speed)
 			}
 		}
 	}
@@ -1856,6 +1861,27 @@ func (a *standardACPAdapter) emitConfigOptionsUpdate(session Session, raw json.R
 	if !ok {
 		return
 	}
+	a.emitConfigOptionsUpdateForKey(session, configOptionKey)
+}
+
+// emitConfigOptionsResultUpdate surfaces the option set carried by a
+// set_config_option response (which has the bare {configOptions:[...]} shape,
+// not the {update:{...}} notification shape) to the config-options sink. Only
+// emits when the response actually carried descriptors.
+func (a *standardACPAdapter) emitConfigOptionsResultUpdate(session Session, configID string, raw json.RawMessage) {
+	if len(raw) == 0 {
+		return
+	}
+	var payload struct {
+		ConfigOptions []json.RawMessage `json:"configOptions"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil || len(payload.ConfigOptions) == 0 {
+		return
+	}
+	a.emitConfigOptionsUpdateForKey(session, strings.TrimSpace(configID))
+}
+
+func (a *standardACPAdapter) emitConfigOptionsUpdateForKey(session Session, configOptionKey string) {
 	a.mu.Lock()
 	sink := a.configSink
 	a.mu.Unlock()

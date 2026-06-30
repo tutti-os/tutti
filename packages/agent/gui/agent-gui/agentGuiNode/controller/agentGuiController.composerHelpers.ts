@@ -566,3 +566,57 @@ export function readNodeDefaultDraftSettings(input: {
     })
   );
 }
+
+// Returns the set of values the running agent advertises for configId, or null
+// when the agent's config options are unknown (no runtime context / no
+// configOptions). A non-null empty set means the agent advertised its options
+// but does not expose configId at all (e.g. Haiku omits "effort"), so callers
+// must distinguish "unknown" (show everything) from "not advertised" (show
+// nothing) — see filterComposerSettingOptionsByAdvertised.
+export function advertisedConfigOptionValues(
+  runtimeContext: Record<string, unknown> | null | undefined,
+  configId: string
+): Set<string> | null {
+  if (!runtimeContext || typeof runtimeContext !== "object") {
+    return null;
+  }
+
+  const configOptions = runtimeContext["configOptions"];
+  if (!Array.isArray(configOptions)) {
+    return null;
+  }
+
+  for (const descriptor of configOptions) {
+    if (
+      typeof descriptor === "object" &&
+      descriptor !== null &&
+      String(descriptor["id"]) === configId
+    ) {
+      const values = new Set<string>();
+      const options = descriptor["options"];
+      if (Array.isArray(options)) {
+        for (const option of options) {
+          if (typeof option === "object" && option !== null) {
+            const value = String(option["value"] ?? "").trim();
+            if (value) {
+              values.add(value);
+            }
+          }
+        }
+      }
+      return values;
+    }
+  }
+
+  return new Set();
+}
+
+export function filterComposerSettingOptionsByAdvertised(
+  options: readonly AgentGUIComposerSettingOption[],
+  advertisedValues: Set<string> | null
+): AgentGUIComposerSettingOption[] {
+  if (advertisedValues === null) {
+    return [...options];
+  }
+  return options.filter((option) => advertisedValues.has(option.value));
+}

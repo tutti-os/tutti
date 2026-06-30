@@ -4618,6 +4618,168 @@ describe("useAgentGUINodeController", () => {
     expect(getState).toHaveBeenCalledTimes(1);
   });
 
+  it("hides reasoning effort for a Haiku session that advertises no effort and updates on model switch", async () => {
+    let activityListener:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
+    // Live Haiku session: configOptions advertise model only, no effort.
+    const getState = vi.fn(async () =>
+      agentSessionState("session-1", {
+        provider: "claude-code",
+        settings: { model: "haiku" },
+        runtimeContext: {
+          cwd: "/workspace",
+          config: { model: "haiku" },
+          configOptions: [
+            {
+              id: "model",
+              currentValue: "haiku",
+              options: [
+                { value: "default", name: "Default" },
+                { value: "haiku", name: "Haiku" }
+              ]
+            }
+          ]
+        }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "claude-code",
+            title: "Claude Code"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn((_payload, listener) => {
+        activityListener = listener;
+        return vi.fn();
+      }),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "claude-code",
+        effectiveSettings: {
+          model: "haiku",
+          reasoningEffort: null,
+          speed: null,
+          planMode: false,
+          permissionModeId: "default"
+        },
+        modelConfig: {
+          configurable: true,
+          options: [
+            { value: "default", name: "Default" },
+            { value: "haiku", name: "Haiku" }
+          ]
+        },
+        reasoningConfig: {
+          configurable: true,
+          options: [
+            { value: "low", name: "Low" },
+            { value: "high", name: "High" }
+          ]
+        }
+      })),
+      getState
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "claude-code"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    // First screen: Haiku advertises no effort, so the effort list is empty
+    // (the menu hides) without needing to send a prompt.
+    await waitFor(() => {
+      expect(result.current.viewModel.composerSettings.isSettingsLoading).toBe(
+        false
+      );
+    });
+    expect(
+      result.current.viewModel.composerSettings.availableReasoningEfforts
+    ).toEqual([]);
+
+    // Switching to a model that advertises effort (delivered immediately via a
+    // config-options state patch) repopulates the list without a prompt turn.
+    act(() => {
+      activityListener?.({
+        eventType: "state_patch",
+        data: {
+          agentSessionId: "session-1",
+          runtimeContext: {
+            config: { model: "default" },
+            configOptions: [
+              {
+                id: "model",
+                currentValue: "default",
+                options: [
+                  { value: "default", name: "Default" },
+                  { value: "haiku", name: "Haiku" }
+                ]
+              },
+              {
+                id: "effort",
+                currentValue: "high",
+                options: [
+                  { value: "low", name: "Low" },
+                  { value: "high", name: "High" }
+                ]
+              }
+            ]
+          },
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.composerSettings.availableReasoningEfforts.map(
+          (option) => option.value
+        )
+      ).toEqual(["low", "high"]);
+    });
+
+    // Switching back to Haiku (no effort advertised) hides effort again
+    // immediately, without sending a prompt.
+    act(() => {
+      activityListener?.({
+        eventType: "state_patch",
+        data: {
+          agentSessionId: "session-1",
+          runtimeContext: {
+            config: { model: "haiku" },
+            configOptions: [
+              {
+                id: "model",
+                currentValue: "haiku",
+                options: [
+                  { value: "default", name: "Default" },
+                  { value: "haiku", name: "Haiku" }
+                ]
+              }
+            ]
+          },
+          occurredAtUnixMs: 30
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.composerSettings.availableReasoningEfforts
+      ).toEqual([]);
+    });
+  });
+
   it("does not expose Claude Code EnterPlanMode tool events as composer plan mode", async () => {
     const updateSettings = vi.fn(async () => ({
       settings: {

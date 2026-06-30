@@ -163,15 +163,19 @@ import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
+  advertisedConfigOptionValues,
   buildNodeDefaultComposerSettings,
   cloneComposerSettings,
   composerSupportForProvider,
+  filterComposerSettingOptionsByAdvertised,
   mergeRuntimeContextComposerSettings,
   nodeDataFromComposerSettings,
   normalizeConfigOptionValue,
   normalizePermissionModeId,
   resolveEffectiveComposerSettings,
-  sameComposerSettings
+  sameComposerSettings,
+  speedConfigOptionIdForProvider,
+  reasoningConfigOptionIdForProvider
 } from "./agentGuiController.composerHelpers";
 import {
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
@@ -10038,13 +10042,25 @@ export function useAgentGUINodeController({
         composerSupport.reasoning &&
         hasOptionsSource &&
         activeSessionReasoningSelection !== null
-          ? activeSessionReasoningSelection.options
+          ? filterComposerSettingOptionsByAdvertised(
+              activeSessionReasoningSelection.options,
+              advertisedConfigOptionValues(
+                activeSessionRuntimeContext,
+                reasoningConfigOptionIdForProvider(data.provider)
+              )
+            )
           : [],
       availableSpeeds:
         composerSupport.speed &&
         hasOptionsSource &&
         activeSessionSpeedSelection !== null
-          ? activeSessionSpeedSelection.options
+          ? filterComposerSettingOptionsByAdvertised(
+              activeSessionSpeedSelection.options,
+              advertisedConfigOptionValues(
+                activeSessionRuntimeContext,
+                speedConfigOptionIdForProvider(data.provider)
+              )
+            )
           : [],
       availablePermissionModes: supportsPermissionMode
         ? permissionModeOptions(data.provider, permissionConfig)
@@ -10055,6 +10071,7 @@ export function useAgentGUINodeController({
     activeConversation?.cwd,
     activeSessionModelSelection,
     activeSessionReasoningSelection,
+    activeSessionRuntimeContext,
     activeSessionSpeedSelection,
     activeSessionRuntimeContext,
     data.provider,
