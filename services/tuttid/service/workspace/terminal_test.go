@@ -161,6 +161,43 @@ func TestTerminalServiceCreatesShellWithXtermEnvironment(t *testing.T) {
 	t.Fatalf("snapshot data = %q, want xterm terminal environment", snapshot.Data)
 }
 
+func TestTerminalServiceEnsuresUTF8LocaleWhenLangUnset(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows terminal support needs ConPTY-specific implementation")
+	}
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("LANG", "")
+
+	service := &TerminalService{}
+	initialInput := "printf 'lang-env:%s\\n' \"$LANG\"\r"
+
+	session, err := service.Create(context.Background(), "ws-1", CreateTerminalInput{
+		InitialInput: &initialInput,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = service.Terminate(context.Background(), "ws-1", session.ID)
+	})
+
+	var snapshot TerminalSnapshot
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, err = service.Snapshot(context.Background(), "ws-1", session.ID)
+		if err != nil {
+			t.Fatalf("Snapshot() error = %v", err)
+		}
+		if strings.Contains(snapshot.Data, "lang-env:en_US.UTF-8") {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("snapshot data = %q, want LANG=en_US.UTF-8 in terminal environment", snapshot.Data)
+}
+
 func TestTerminalServiceCloseGuardRequiresConfirmationForForegroundProcess(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows terminal support needs ConPTY-specific implementation")
