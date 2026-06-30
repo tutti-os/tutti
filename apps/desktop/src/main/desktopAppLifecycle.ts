@@ -109,6 +109,11 @@ export function createDesktopAppLifecycleHandlers(
     },
 
     beforeQuit(event) {
+      if (deps.updateService.isQuitAndInstallPending()) {
+        deps.logger.info("desktop app before quit for update install");
+        return;
+      }
+
       if (isStoppingDaemon) {
         return;
       }

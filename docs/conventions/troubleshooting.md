@@ -1023,6 +1023,32 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   [appUpdateService.ts](../../apps/desktop/src/main/update/appUpdateService.ts)
   [appUpdateService.ts](../../apps/desktop/src/renderer/src/features/app-update/services/internal/appUpdateService.ts)
 
+### macOS in-app update closes Tutti but does not install the new version
+
+- Symptom:
+  After downloading a desktop update on macOS, clicking **Install** closes Tutti.
+  Reopening the app still shows the old version.
+- Quick checks:
+  Confirm the packaged build is signed (unsigned or ad-hoc builds disable in-app
+  updates). Inspect desktop logs for `desktop app before quit` immediately after
+  `application update install requested` without a relaunch.
+- Root cause:
+  `electron-updater` calls `quitAndInstall()` during Squirrel.Mac install.
+  Desktop's async `before-quit` gate called `event.preventDefault()` to stop
+  `tuttid` gracefully, which cancelled the updater's first quit and prevented
+  the install/relaunch sequence from completing.
+- Fix:
+  Stop managed `tuttid` inside `installUpdate()` before calling
+  `quitAndInstall()`, mark the update install as pending, and bypass the async
+  `before-quit` gate while that flag is set.
+- Validation:
+  Run `src/main/desktopAppLifecycle.test.ts` and install a downloaded update in
+  a packaged macOS build; the app should relaunch on the new version.
+- References:
+  [appUpdateService.ts](../../apps/desktop/src/main/update/appUpdateService.ts)
+  [desktopAppLifecycle.ts](../../apps/desktop/src/main/desktopAppLifecycle.ts)
+  [desktopAppServices.ts](../../apps/desktop/src/main/desktopAppServices.ts)
+
 ### Desktop Performance trace export runs out of memory
 
 - Symptom:

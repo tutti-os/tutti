@@ -272,6 +272,55 @@ test("createElectronUpdaterLogger defers no published versions errors during pre
   ]);
 });
 
+test("createAppUpdateService prepares managed tuttid stop before quitAndInstall", async () => {
+  const events: string[] = [];
+  const listeners: {
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const driver = createFakeDriver({
+    async downloadUpdate() {
+      listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  let quitAndInstallCalls = 0;
+  driver.quitAndInstall = () => {
+    quitAndInstallCalls += 1;
+  };
+  const service = createAppUpdateService(driver, {
+    prepareQuitAndInstall: async () => {
+      events.push("tuttid:stop");
+    },
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.available?.(createUpdateInfoFixture("1.1.0"));
+    await service.downloadUpdate();
+    assert.equal(service.getState().status, "downloaded");
+
+    await service.installUpdate();
+
+    assert.deepEqual(events, ["tuttid:stop"]);
+    assert.equal(quitAndInstallCalls, 1);
+    assert.equal(service.isQuitAndInstallPending(), true);
+  } finally {
+    service.dispose();
+  }
+});
+
 test("createAppUpdateService skips identical consecutive download progress states", async () => {
   const progressListeners = new Set<(progress: ProgressInfo) => void>();
   let stateChangeCount = 0;

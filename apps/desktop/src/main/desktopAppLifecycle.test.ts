@@ -34,7 +34,10 @@ function createWorkspaceLaunch(): WorkspaceLaunch {
   };
 }
 
-function createUpdateService(events: string[]): AppUpdateService {
+function createUpdateService(
+  events: string[],
+  options: { quitAndInstallPending?: boolean } = {}
+): AppUpdateService {
   return {
     async checkForUpdates() {
       throw new Error("not used");
@@ -53,6 +56,9 @@ function createUpdateService(events: string[]): AppUpdateService {
     },
     async installUpdate() {
       throw new Error("not used");
+    },
+    isQuitAndInstallPending() {
+      return options.quitAndInstallPending ?? false;
     },
     onStateChanged() {
       return () => undefined;
@@ -151,6 +157,37 @@ test("before quit waits for managed tuttid stop before quitting the app", async 
   assert.equal(events.includes("tuttid:stop:done"), true);
   assert.equal(events.includes("windows:destroy-all"), true);
   assert.equal(events.at(-1), "app:quit");
+});
+
+test("before quit bypasses managed tuttid stop when update install is pending", () => {
+  const events: string[] = [];
+  const handlers = createDesktopAppLifecycleHandlers(
+    {
+      logger: createLogger(events),
+      tuttid: createTuttidManager(async () => {
+        events.push("tuttid:stop");
+      }),
+      updateService: createUpdateService(events, {
+        quitAndInstallPending: true
+      }),
+      workspaceLaunch: createWorkspaceLaunch()
+    },
+    createRuntime(events)
+  );
+
+  let prevented = false;
+  handlers.beforeQuit({
+    preventDefault() {
+      prevented = true;
+      events.push("quit:prevented");
+    }
+  });
+
+  assert.equal(prevented, false);
+  assert.equal(
+    events.join("|"),
+    "info:desktop app before quit for update install"
+  );
 });
 
 test("before quit does not trigger a second stop while shutdown is already in progress", async () => {
