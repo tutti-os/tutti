@@ -63,11 +63,13 @@ export function resolveAgentGuiWorkbenchSessionTitle({
   const session = snapshot.sessions.find(
     (item) => item.agentSessionId === normalizedAgentSessionId
   );
+  const sessionMessages =
+    snapshot.sessionMessagesById[normalizedAgentSessionId] ?? [];
   const normalizedProvider = normalizeAgentGUIProviderIdentity(
     session?.provider ?? provider
   );
   const snapshotTitle = resolveDisplayableSnapshotSessionTitle({
-    messages: snapshot.sessionMessagesById[normalizedAgentSessionId] ?? [],
+    messages: sessionMessages,
     provider: normalizedProvider,
     sessionTitle: session?.title ?? "",
     language
@@ -77,6 +79,14 @@ export function resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: normalizedAgentSessionId,
       source: "snapshot",
       title: snapshotTitle
+    };
+  }
+
+  if (session || sessionMessages.length > 0) {
+    return {
+      agentSessionId: normalizedAgentSessionId,
+      source: "none",
+      title: null
     };
   }
 

@@ -123,6 +123,24 @@ describe("agent GUI workbench session titles", () => {
     });
   });
 
+  it("does not reuse the persisted fallback after live snapshot data exists", () => {
+    const title = resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId: "session-1",
+      fallbackTitle: "Stale session title",
+      provider: "codex",
+      snapshot: snapshotWithSession({
+        agentSessionId: "session-1",
+        title: "Codex"
+      })
+    });
+
+    expect(title).toEqual({
+      agentSessionId: "session-1",
+      source: "none",
+      title: null
+    });
+  });
+
   it("formats plain titles for message center and toast surfaces", () => {
     expect(
       formatAgentGuiSessionPlainTitle(
