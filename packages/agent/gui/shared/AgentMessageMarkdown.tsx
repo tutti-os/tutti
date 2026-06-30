@@ -1554,10 +1554,10 @@ function normalizePlainIssueMentionTitleContent(content: string): string {
   return content;
 }
 
-function normalizeMentionMarkdownLinks(content: string): string {
+export function normalizeMentionMarkdownLinks(content: string): string {
   return content
     .replace(/\]([\t ]*\r?\n[\t ]*)+\((mention:\/\/)/g, "]($2")
-    .replace(/\]\((mention:\/\/[A-Za-z0-9.-]+)\)\?([^\s)]+)/g, "]($1?$2)");
+    .replace(/\]\((mention:\/\/[^\s)]+)\)\?([^\s)]+)/g, "]($1?$2)");
 }
 
 function isMentionOnlyMarkdownContent(content: string): boolean {

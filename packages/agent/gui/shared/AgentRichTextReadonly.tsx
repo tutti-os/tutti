@@ -4,6 +4,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { cn } from "../app/renderer/lib/utils";
 import { plainTextToAgentRichTextDoc } from "../agent-gui/agentGuiNode/agentRichText/agentRichTextDocument";
 import { createAgentRichTextReadonlyExtensions } from "../agent-gui/agentGuiNode/agentRichText/agentRichTextExtensions";
+import { normalizeMentionMarkdownLinks } from "./AgentMessageMarkdown";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "./AgentMessageMarkdown";
 import type { AgentGUIProviderSkillOption } from "../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 
@@ -132,7 +133,10 @@ function plainTextToAgentRichTextDocWithWorkspaceAppIcons(
   availableSkills: readonly AgentGUIProviderSkillOption[],
   workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[]
 ): JSONContent {
-  const doc = plainTextToAgentRichTextDoc(value, { skills: availableSkills });
+  const normalized = normalizeMentionMarkdownLinks(value);
+  const doc = plainTextToAgentRichTextDoc(normalized, {
+    skills: availableSkills
+  });
   if (workspaceAppIcons.length === 0) {
     return doc;
   }

@@ -1077,6 +1077,21 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.queryByText(/mention:\/\/session/)).toBeNull();
   });
 
+  it("fixes mention links with query params outside the closing parenthesis", () => {
+    const { container } = render(
+      <AgentMessageMarkdown
+        content={
+          "[@Task Management](mention://workspace-app/task-mgmt)?workspaceId=room-1"
+        }
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "workspace-app");
+    expect(mention).toHaveTextContent("Task Management");
+    expect(screen.queryByText(/mention:\/\//)).toBeNull();
+  });
+
   it("turns inline code paths into clickable links", () => {
     const onLinkClick = vi.fn();
     render(
