@@ -5,7 +5,8 @@ import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import { resolveWorkspaceAppCatalogMetadata } from "@tutti-os/workspace-app-center/core";
 import type {
   WorkbenchHostLaunchRequest,
-  WorkbenchHostLaunchResult
+  WorkbenchHostLaunchResult,
+  WorkbenchNodeSizeConstraints
 } from "@tutti-os/workbench-surface";
 import type { DesktopLocale } from "@shared/i18n";
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface";
@@ -88,6 +89,7 @@ export async function resolveWorkspaceAppCenterLaunchRequest(input: {
     dockEntryId: workspaceAppDockEntryId(app.appId),
     framePolicy: "cascade",
     instanceId: workspaceAppWebviewInstanceId(app.appId),
+    sizeConstraints: resolveWorkspaceAppSizeConstraints(app),
     title: appTitle,
     typeId: workspaceAppWebviewTypeID
   };
@@ -279,6 +281,26 @@ function isWorkspaceAppOpenPrevStatus(
     value === "stopping" ||
     value === "unavailable"
   );
+}
+
+function resolveWorkspaceAppSizeConstraints(
+  app: WorkspaceAppCenterApp
+): WorkbenchNodeSizeConstraints | null {
+  const minWidth =
+    typeof app.windowMinWidth === "number" && app.windowMinWidth > 0
+      ? app.windowMinWidth
+      : undefined;
+  const minHeight =
+    typeof app.windowMinHeight === "number" && app.windowMinHeight > 0
+      ? app.windowMinHeight
+      : undefined;
+  if (minWidth === undefined && minHeight === undefined) {
+    return null;
+  }
+  return {
+    ...(minWidth !== undefined ? { minWidth } : {}),
+    ...(minHeight !== undefined ? { minHeight } : {})
+  };
 }
 
 function reportWorkspaceAppOpened(input: {
