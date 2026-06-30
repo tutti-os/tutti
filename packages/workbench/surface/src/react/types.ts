@@ -38,7 +38,7 @@ export interface WorkbenchDockContext<TData = unknown> {
   minimizedNodes: readonly WorkbenchNode<TData>[];
   nodes: readonly WorkbenchNode<TData>[];
   controller: WorkbenchController<TData>;
-  genie?: {
+  genie: {
     launchNodeFromAnchor(
       anchorKey: string,
       nodeID: string,
@@ -48,7 +48,6 @@ export interface WorkbenchDockContext<TData = unknown> {
     registerDockAnchor(anchorKey: string, element: HTMLElement | null): void;
     shouldAnimateMinimizedDockEnter(nodeID: string): boolean;
     isPendingMinimizedDockNode(nodeID: string): boolean;
-    minimizeNodeToAnchor(nodeID: string, minimize?: () => void): void;
   };
 }
 
@@ -59,7 +58,7 @@ export type WorkbenchMinimizeAnimation = "scale" | "genie" | "off";
 export interface WorkbenchWindowActionContext<TData = unknown> {
   node: WorkbenchNode<TData>;
   controller: WorkbenchController<TData>;
-  genie?: {
+  genie: {
     minimizeNodeToAnchor(nodeID: string, minimize?: () => void): void;
   };
 }

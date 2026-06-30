@@ -37,7 +37,7 @@ export function WorkbenchHostWindowActions({
           type="button"
           variant="chrome"
           onClick={() => {
-            context.genie?.minimizeNodeToAnchor(context.node.id, () =>
+            context.genie.minimizeNodeToAnchor(context.node.id, () =>
               context.controller.commands.minimizeNode(context.node.id)
             );
           }}
