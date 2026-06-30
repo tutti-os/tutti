@@ -449,6 +449,93 @@ describe("AgentSessionChrome", () => {
       })
     ).toBeNull();
   });
+  it("renders connection-lost recovery chrome with title, description, and retry action", () => {
+    const onRetryActivation = vi.fn();
+
+    render(
+      <AgentSessionChrome
+        chrome={{
+          auth: null,
+          approval: null,
+          recovery: {
+            kind: "connection-lost",
+            message: "Runtime connection lost",
+            description:
+              "The managed runtime connection could not recover quickly. Restart the app to continue.",
+            canRetry: true
+          },
+          rawState: null
+        }}
+        isRespondingApproval={false}
+        onSubmitApprovalOption={vi.fn()}
+        onRetryActivation={onRetryActivation}
+        onContinueInNewConversation={vi.fn()}
+        labels={{
+          approvalRequired: "Approval required",
+          authRequired: "Authentication required",
+          activatingSession: "Connecting session...",
+          retryActivation: "Retry",
+          continueInNewConversation: "Continue in new session"
+        }}
+      />
+    );
+
+    // Title and description should be visible
+    expect(screen.getByText("Runtime connection lost")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The managed runtime connection could not recover quickly. Restart the app to continue."
+      )
+    ).toBeTruthy();
+
+    // Retry button should be present
+    const retryButton = screen.getByRole("button", { name: "Retry" });
+    expect(retryButton).toBeTruthy();
+
+    // The recovery section should use warning styling (not danger)
+    const recoverySection = screen.getByText("Runtime connection lost").closest("section");
+    expect(recoverySection?.className).toContain("agent-gui-chrome__card--warning");
+
+    // Should have alert role for accessibility
+    expect(recoverySection).toHaveAttribute("role", "alert");
+
+    // Clicking retry should call the handler
+    fireEvent.click(retryButton);
+    expect(onRetryActivation).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides retry action for connection-lost recovery when canRetry is false", () => {
+    render(
+      <AgentSessionChrome
+        chrome={{
+          auth: null,
+          approval: null,
+          recovery: {
+            kind: "connection-lost",
+            message: "Runtime connection lost",
+            description: "The runtime could not recover.",
+            canRetry: false
+          },
+          rawState: null
+        }}
+        isRespondingApproval={false}
+        onSubmitApprovalOption={vi.fn()}
+        onRetryActivation={vi.fn()}
+        onContinueInNewConversation={vi.fn()}
+        labels={{
+          approvalRequired: "Approval required",
+          authRequired: "Authentication required",
+          activatingSession: "Connecting session...",
+          retryActivation: "Retry",
+          continueInNewConversation: "Continue in new session"
+        }}
+      />
+    );
+
+    expect(screen.getByText("Runtime connection lost")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
 });
 
 function chromeState(): AgentGUISessionChrome {
