@@ -1232,6 +1232,44 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.getByTestId("agent-conversation-flow")).toBeInTheDocument();
   });
 
+  it("shows the transcript skeleton immediately when creating a conversation", () => {
+    // During conversation creation the user should see the loading skeleton
+    // right away — not the empty hero pane which makes the UI feel stuck.
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        isCreatingConversation: true,
+        isLoadingMessages: true
+      }
+    });
+
+    // The transcript loading skeleton should be rendered (not the hero pane).
+    expect(screen.getByTestId("agent-conversation-flow")).toBeInTheDocument();
+    // The bottom dock (composer) should also be visible during creation.
+    expect(screen.getByTestId("agent-gui-bottom-dock")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-composer")).toBeInTheDocument();
+  });
+
+  it("shows the empty hero pane when not creating a conversation", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        isCreatingConversation: false,
+        isLoadingMessages: false
+      }
+    });
+
+    // The conversation flow should NOT be rendered on the home screen.
+    expect(
+      screen.queryByTestId("agent-conversation-flow")
+    ).not.toBeInTheDocument();
+    // The composer is rendered inside the hero pane, not the bottom dock.
+    expect(
+      screen.queryByTestId("agent-gui-bottom-dock")
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("agent-composer")).toBeInTheDocument();
+  });
+
   it("prefetches older messages near the top and preserves the prepend anchor", () => {
     const activeConversation = createConversationSummary("session-1");
     const actions = createActions();

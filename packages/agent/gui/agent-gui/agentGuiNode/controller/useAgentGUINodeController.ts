@@ -5885,6 +5885,9 @@ export function useAgentGUINodeController({
       isCreatingConversationRef.current = true;
       setLocalIsCreatingConversation(true);
       setDetailError(null);
+      // Show the loading skeleton immediately so the UI does not feel stuck
+      // during the async activation round-trip.
+      setIsLoadingMessages(true);
       let pendingCreateAgentSessionId: string | null = null;
       let pendingOptimisticConversation: AgentGUIConversationSummary | null =
         null;
