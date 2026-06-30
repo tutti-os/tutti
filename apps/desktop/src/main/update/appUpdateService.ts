@@ -819,12 +819,17 @@ export function createAppUpdateService(
         try {
           await prepareQuitAndInstall();
         } catch (error) {
+          const normalizedError =
+            error instanceof Error ? error : new Error(String(error));
           getDesktopLogger().error(
             "failed to stop managed tuttid before update install",
             {
               error: formatErrorDetail(error)
             }
           );
+          applyUpdaterError(normalizedError);
+          await recoverAfterFailedQuitAndInstall(error);
+          throw error;
         }
       }
 

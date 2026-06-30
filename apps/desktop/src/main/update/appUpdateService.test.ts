@@ -386,6 +386,57 @@ test("createAppUpdateService ignores duplicate install requests while quitAndIns
   }
 });
 
+test("createAppUpdateService aborts install when managed tuttid stop fails", async () => {
+  const events: string[] = [];
+  const listeners: {
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const driver = createFakeDriver({
+    async downloadUpdate() {
+      listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  driver.quitAndInstall = () => {
+    events.push("updater:quit-and-install");
+  };
+  const service = createAppUpdateService(driver, {
+    prepareQuitAndInstall: async () => {
+      events.push("tuttid:stop");
+      throw new Error("managed tuttid stop failed");
+    },
+    recoverAfterQuitAndInstallFailure: async () => {
+      events.push("tuttid:start");
+    },
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.available?.(createUpdateInfoFixture("1.1.0"));
+    await service.downloadUpdate();
+
+    await assert.rejects(service.installUpdate(), /managed tuttid stop failed/);
+
+    assert.equal(service.isQuitAndInstallPending(), false);
+    assert.equal(service.getState().status, "error");
+    assert.deepEqual(events, ["tuttid:stop", "tuttid:start"]);
+  } finally {
+    service.dispose();
+  }
+});
+
 test("createAppUpdateService recovers managed tuttid when quitAndInstall emits an updater error", async () => {
   const events: string[] = [];
   const listeners: {
