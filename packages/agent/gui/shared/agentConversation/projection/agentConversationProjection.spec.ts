@@ -881,6 +881,56 @@ describe("projectAgentConversationVM", () => {
     expect(assistantRow?.messages[0]?.copyText).toBeUndefined();
   });
 
+  it("strips markdown formatting from assistant copy text", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          status: "completed"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Explain" },
+            userMessages: [{ id: "user-1", body: "Explain" }],
+            agentMessages: [
+              {
+                id: "assistant-1",
+                body: "Here is **bold** and *italic* and `code` text."
+              }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-1",
+                  body: "Here is **bold** and *italic* and `code` text."
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRow?.messages[0]?.copyText).toBe(
+      "Here is bold and italic and code text."
+    );
+  });
+
   it("projects user prompt images before text and keeps the session workspace id", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
