@@ -310,6 +310,9 @@ export const en = {
       scanning: "Scanning local agent history...",
       selectProvider: "Select {{label}}",
       selectImportOption: "Select {{label}}",
+      selectProject: "Select {{label}}",
+      projectSelectionDescription: "Select projects to include",
+      projectSessionCount: "{{count}} sessions · {{messages}} messages",
       settingsAction: "Import",
       settingsDescription:
         "Bring recent local Codex and Claude Code conversation history into this workspace",
