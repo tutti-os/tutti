@@ -1052,6 +1052,9 @@ func appServerThreadStartParams(session Session, cwd string) map[string]any {
 	if sandbox := codexAppServerSandboxMode(session.PermissionModeID); sandbox != "" {
 		params["sandbox"] = sandbox
 	}
+	if approvalsReviewer := codexAppServerApprovalsReviewer(session.PermissionModeID); approvalsReviewer != "" {
+		params["approvalsReviewer"] = approvalsReviewer
+	}
 	return params
 }
 
@@ -1078,6 +1081,9 @@ func appServerTurnStartParams(session Session, threadID string, content []Prompt
 	}
 	if sandboxPolicy := codexAppServerSandboxPolicy(session.PermissionModeID); sandboxPolicy != nil {
 		params["sandboxPolicy"] = sandboxPolicy
+	}
+	if approvalsReviewer := codexAppServerApprovalsReviewer(session.PermissionModeID); approvalsReviewer != "" {
+		params["approvalsReviewer"] = approvalsReviewer
 	}
 	return params
 }
@@ -1278,6 +1284,17 @@ func codexAppServerSandboxPolicy(modeID string) map[string]any {
 		return map[string]any{"type": "dangerFullAccess"}
 	default:
 		return nil
+	}
+}
+
+func codexAppServerApprovalsReviewer(modeID string) string {
+	switch codexACPModeID(modeID) {
+	case "read-only":
+		return "user"
+	case "auto":
+		return "auto_review"
+	default:
+		return ""
 	}
 }
 
