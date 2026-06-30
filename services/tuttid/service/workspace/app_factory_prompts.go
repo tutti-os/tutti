@@ -76,6 +76,9 @@ func writeAppFactoryMentionContext(workspace workspacebiz.Summary, physicalRoot 
 			"Default new apps to a Node server; use Python only for existing Python projects or explicit Python requests.",
 			"If the app needs local agent or local LLM execution, Codex, Claude, or app-owned MCP/tooling, follow the tutti-agent-workspace-app skill and use @tutti-os/agent-acp-kit instead of TUTTI_CLI agent/codex/session polling.",
 			"Agent-enabled app main flows must detect and offer available Claude Code and Codex provider options, then choose one available provider by default.",
+			"Use an SVG icon with a clean, simple design on a transparent background; prefer 64x64 viewport.",
+			"Support both light and dark themes using CSS prefers-color-scheme; do not hardcode light-only colors.",
+			"Follow Tutti visual conventions: rounded corners, subtle borders, and system font stack.",
 		},
 		Metadata: appFactoryMentionMetadata{
 			AppID:       strings.TrimSpace(job.AppID),
