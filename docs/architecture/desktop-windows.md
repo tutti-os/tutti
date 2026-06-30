@@ -114,6 +114,11 @@ contribution prompts when local agent sessions are still running or waiting for
 input. If the user keeps Tutti open, daemon shutdown is skipped and the running
 agent sessions stay connected.
 
+Update-install quits are not user-initiated workspace close decisions. When the
+desktop update service has already requested `quitAndInstall()`, the main
+process lets Electron continue the update quit without entering the workspace
+close guard.
+
 ## Relationship To Layering
 
 This window model follows the desktop layering rules:

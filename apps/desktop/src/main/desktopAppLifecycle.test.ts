@@ -34,7 +34,10 @@ function createWorkspaceLaunch(): WorkspaceLaunch {
   };
 }
 
-function createUpdateService(events: string[]): AppUpdateService {
+function createUpdateService(
+  events: string[],
+  options: { quitAndInstallPending?: boolean } = {}
+): AppUpdateService {
   return {
     async checkForUpdates() {
       throw new Error("not used");
@@ -53,6 +56,9 @@ function createUpdateService(events: string[]): AppUpdateService {
     },
     async installUpdate() {
       throw new Error("not used");
+    },
+    isQuitAndInstallPending() {
+      return options.quitAndInstallPending ?? false;
     },
     onStateChanged() {
       return () => undefined;
@@ -189,6 +195,42 @@ test("before quit requests workspace windows to close before stopping tuttid", a
     "windows:destroy-all",
     "app:quit"
   ]);
+});
+
+test("before quit bypasses workspace close guard while update install is pending", async () => {
+  const events: string[] = [];
+  const handlers = createDesktopAppLifecycleHandlers(
+    {
+      logger: createLogger(events),
+      requestWorkspaceWindowsClose: async (payload) => {
+        events.push(`workspace-windows:close:${payload.reason}`);
+        return "blocked";
+      },
+      tuttid: createTuttidManager(async () => {
+        events.push("tuttid:stop");
+      }),
+      updateService: createUpdateService(events, {
+        quitAndInstallPending: true
+      }),
+      workspaceLaunch: createWorkspaceLaunch()
+    },
+    createRuntime(events)
+  );
+
+  let prevented = false;
+  handlers.beforeQuit({
+    preventDefault() {
+      prevented = true;
+      events.push("quit:prevented");
+    }
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(prevented, false);
+  assert.deepEqual(events, ["info:desktop app before quit for update install"]);
 });
 
 test("before quit leaves tuttid running when a workspace window blocks quit", async () => {
