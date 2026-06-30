@@ -12,7 +12,11 @@ permissions:
 
 jobs:
   review-signal:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Record review event
-        run: echo "External PR review gate refresh requested."
+    uses: ./.github/workflows/reusable-external-pr-review-signal.yml
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      pr_author: ${{ github.event.pull_request.user.login }}
+      pr_head_sha: ${{ github.event.pull_request.head.sha }}
+      pr_is_draft: ${{ github.event.pull_request.draft }}
+      review_commit_id: ${{ github.event.review.commit_id }}
+      review_state: ${{ github.event.review.state }}

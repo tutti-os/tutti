@@ -1,0 +1,67 @@
+name: Reusable External PR Review Signal
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: Pull request number that received a review event.
+        required: true
+        type: number
+      pr_author:
+        description: Pull request author login.
+        required: true
+        type: string
+      pr_head_sha:
+        description: Pull request head commit SHA at review event time.
+        required: true
+        type: string
+      pr_is_draft:
+        description: Whether the pull request is currently a draft.
+        required: true
+        type: boolean
+      review_commit_id:
+        description: Commit SHA attached to the review event.
+        required: true
+        type: string
+      review_state:
+        description: Review state from the review event.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  review-signal:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record review event
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+
+            const payload = {
+              pr_number: Number('${{ inputs.pr_number }}'),
+              pr_author: '${{ inputs.pr_author }}',
+              pr_head_sha: '${{ inputs.pr_head_sha }}',
+              pr_is_draft: '${{ inputs.pr_is_draft }}' === 'true',
+              review_commit_id: '${{ inputs.review_commit_id }}',
+              review_state: '${{ inputs.review_state }}',
+            };
+
+            fs.mkdirSync('review-signal', { recursive: true });
+            fs.writeFileSync(
+              'review-signal/review-event.json',
+              `${JSON.stringify(payload, null, 2)}\n`,
+            );
+
+            core.info(`External PR review gate refresh requested for PR #${payload.pr_number} at ${payload.pr_head_sha}.`);
+
+      - name: Upload review event payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-pr-review-gate-review
+          path: review-signal/review-event.json
+          if-no-files-found: error
+          retention-days: 1

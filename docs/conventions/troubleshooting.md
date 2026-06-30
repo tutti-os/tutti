@@ -178,8 +178,10 @@ Use this shape for new entries:
   Keep the status-writing gate on trusted `pull_request_target` or
   `workflow_run` execution. If approvals must refresh the gate automatically,
   use a low-privilege `pull_request_review` signal workflow and a trusted
-  `workflow_run` refresh workflow that resolves the PR and calls the reusable
-  gate.
+  `workflow_run` refresh workflow. The signal workflow should call the reusable
+  signal workflow so it uploads the standard review artifact, and the refresh
+  workflow should call the reusable refresh workflow so PR identity resolution,
+  head-SHA validation, and the final reusable gate call stay centralized.
 - Validation:
   Confirm the old caller workflow no longer directly invokes the gate from
   `pull_request_review`. After an internal approval, expect a signal run and a

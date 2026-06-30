@@ -8,67 +8,19 @@ on:
       - completed
 
 permissions:
+  actions: read
   contents: read
   pull-requests: write
   statuses: write
 
 jobs:
-  resolve-pr:
+  external-pr-review-refresh:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
-    outputs:
-      pr_number: ${{ steps.resolve.outputs.pr_number }}
-      pr_author: ${{ steps.resolve.outputs.pr_author }}
-      pr_head_sha: ${{ steps.resolve.outputs.pr_head_sha }}
-      pr_is_draft: ${{ steps.resolve.outputs.pr_is_draft }}
-      should_refresh: ${{ steps.resolve.outputs.should_refresh }}
-    steps:
-      - name: Resolve reviewed pull request
-        id: resolve
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const run = context.payload.workflow_run;
-            let pr = run.pull_requests?.find((item) => item.base?.repo?.full_name === context.payload.repository.full_name);
-
-            if (!pr) {
-              const associated = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                commit_sha: run.head_sha,
-                per_page: 100,
-              });
-              pr = associated.find((item) => item.state === 'open');
-            }
-
-            if (!pr) {
-              core.info(`No open pull request found for review signal ${run.id} at ${run.head_sha}.`);
-              core.setOutput('should_refresh', 'false');
-              return;
-            }
-
-            const { data: pull } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: pr.number,
-            });
-
-            core.setOutput('pr_number', String(pull.number));
-            core.setOutput('pr_author', pull.user.login);
-            core.setOutput('pr_head_sha', pull.head.sha);
-            core.setOutput('pr_is_draft', String(pull.draft));
-            core.setOutput('should_refresh', 'true');
-
-  external-pr-review-gate:
-    needs: resolve-pr
-    if: ${{ needs.resolve-pr.outputs.should_refresh == 'true' }}
-    uses: ./.github/workflows/reusable-external-pr-review-gate.yml
+    uses: ./.github/workflows/reusable-external-pr-review-refresh.yml
     secrets: inherit
     with:
-      pr_number: ${{ fromJSON(needs.resolve-pr.outputs.pr_number) }}
-      pr_author: ${{ needs.resolve-pr.outputs.pr_author }}
-      pr_head_sha: ${{ needs.resolve-pr.outputs.pr_head_sha }}
-      pr_is_draft: ${{ fromJSON(needs.resolve-pr.outputs.pr_is_draft) }}
+      review_signal_run_id: ${{ github.event.workflow_run.id }}
+      review_signal_head_sha: ${{ github.event.workflow_run.head_sha }}
       review_team_slug: tutti-rd
       official_member_logins: ${{ vars.TUTTI_RD_MEMBERS }}
       status_context: external-pr-review-gate

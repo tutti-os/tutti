@@ -1,0 +1,117 @@
+name: Reusable External PR Review Refresh
+
+on:
+  workflow_call:
+    inputs:
+      review_signal_run_id:
+        description: Workflow run id that uploaded the review signal artifact.
+        required: true
+        type: number
+      review_signal_head_sha:
+        description: Head SHA from the review signal workflow run.
+        required: true
+        type: string
+      review_team_slug:
+        description: Organization team slug that owns external contribution review.
+        required: false
+        type: string
+        default: tutti-rd
+      official_member_logins:
+        description: Comma or whitespace separated logins that count as internal authors and reviewers.
+        required: false
+        type: string
+        default: ""
+      status_context:
+        description: Commit status context used by branch protection.
+        required: false
+        type: string
+        default: external-pr-review-gate
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+  statuses: write
+
+jobs:
+  resolve-pr:
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
+      pr_author: ${{ steps.resolve.outputs.pr_author }}
+      pr_head_sha: ${{ steps.resolve.outputs.pr_head_sha }}
+      pr_is_draft: ${{ steps.resolve.outputs.pr_is_draft }}
+      should_refresh: ${{ steps.resolve.outputs.should_refresh }}
+    steps:
+      - name: Download review event payload
+        uses: actions/download-artifact@v4
+        with:
+          name: external-pr-review-gate-review
+          path: ${{ runner.temp }}/review-signal
+          run-id: ${{ inputs.review_signal_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Resolve reviewed pull request
+        id: resolve
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const expectedHeadSha = '${{ inputs.review_signal_head_sha }}';
+            const payloadPath = `${process.env.RUNNER_TEMP}/review-signal/review-event.json`;
+
+            if (!fs.existsSync(payloadPath)) {
+              throw new Error(`Review signal artifact is missing ${payloadPath}.`);
+            }
+
+            const payload = JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
+            const pullNumber = Number(payload.pr_number);
+            if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
+              throw new Error(`Invalid PR number in review signal artifact: ${JSON.stringify(payload.pr_number)}`);
+            }
+
+            if (payload.pr_head_sha !== expectedHeadSha) {
+              throw new Error(
+                `Review signal head SHA ${payload.pr_head_sha} does not match triggering workflow head SHA ${expectedHeadSha}.`,
+              );
+            }
+
+            core.info(`Resolved PR #${pullNumber} from review signal artifact.`);
+
+            const { data: pull } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pullNumber,
+            });
+
+            if (pull.state !== 'open') {
+              core.info(`PR #${pull.number} is ${pull.state}; review gate refresh is skipped.`);
+              core.setOutput('should_refresh', 'false');
+              return;
+            }
+
+            if (pull.head.sha !== expectedHeadSha) {
+              throw new Error(
+                `PR #${pull.number} head SHA ${pull.head.sha} does not match triggering workflow head SHA ${expectedHeadSha}.`,
+              );
+            }
+
+            core.setOutput('pr_number', String(pull.number));
+            core.setOutput('pr_author', pull.user.login);
+            core.setOutput('pr_head_sha', pull.head.sha);
+            core.setOutput('pr_is_draft', String(pull.draft));
+            core.setOutput('should_refresh', 'true');
+
+  external-pr-review-gate:
+    needs: resolve-pr
+    if: ${{ needs.resolve-pr.outputs.should_refresh == 'true' }}
+    uses: tutti-os/tutti/.github/workflows/reusable-external-pr-review-gate.yml@main
+    secrets: inherit
+    with:
+      pr_number: ${{ fromJSON(needs.resolve-pr.outputs.pr_number) }}
+      pr_author: ${{ needs.resolve-pr.outputs.pr_author }}
+      pr_head_sha: ${{ needs.resolve-pr.outputs.pr_head_sha }}
+      pr_is_draft: ${{ fromJSON(needs.resolve-pr.outputs.pr_is_draft) }}
+      review_team_slug: ${{ inputs.review_team_slug }}
+      official_member_logins: ${{ inputs.official_member_logins }}
+      status_context: ${{ inputs.status_context }}
