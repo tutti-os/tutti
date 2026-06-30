@@ -1,11 +1,25 @@
 import {
+  type CSSProperties,
   useEffect,
   useRef,
   type HTMLAttributes,
   type JSX,
   type ReactNode
 } from "react";
-import { Button, PanelIcon, cn } from "@tutti-os/ui-system";
+import type {
+  WorkbenchDisplayMode,
+  WorkbenchHostNodeHeaderWindowActions
+} from "@tutti-os/workbench-surface";
+import {
+  Button,
+  FileCreateIcon,
+  PanelIcon,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  cn
+} from "@tutti-os/ui-system";
 import {
   ReferenceSourcePicker,
   WorkspaceFileReferencePicker
@@ -22,6 +36,8 @@ import {
   dispatchIssueManagerTopicHeaderState,
   dispatchIssueManagerTopicSelection,
   dispatchIssueManagerTopicUpdate,
+  dispatchIssueManagerIssueCreateRequest,
+  useIssueManagerIssueCreateRequestSync,
   useIssueManagerTopicHeaderCommandSync,
   useIssueManagerTopicHeaderStateSync,
   useIssueManagerNodeHeaderView,
@@ -143,6 +159,13 @@ export function IssueManagerNode({
     },
     workspaceId
   });
+  useIssueManagerIssueCreateRequestSync({
+    nodeId,
+    onCreateIssue: () => {
+      controller.setIssueEditorMode("create");
+    },
+    workspaceId
+  });
 
   return (
     <section
@@ -189,18 +212,25 @@ export interface IssueManagerNodeHeaderProps extends HTMLAttributes<HTMLElement>
   activeTopicId?: string | null;
   copy: IssueManagerI18nRuntime;
   defaultActions?: ReactNode;
+  displayMode?: WorkbenchDisplayMode;
   isSidebarAutoCollapsed: boolean;
   isSidebarCollapsed: boolean;
   nodeId: string;
   onToggleSidebar: (nextCollapsed: boolean) => void;
   title?: string;
+  windowActions?: Pick<
+    WorkbenchHostNodeHeaderWindowActions,
+    "close" | "minimize" | "toggleDisplayMode"
+  >;
   workspaceId: string;
 }
 
 const issueManagerWorkbenchDragHandleAttribute = "data-workbench-drag-handle";
 const issueManagerHeaderChromeIconButtonClassName =
-  "cursor-pointer rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
-const issueManagerHeaderChromeIconClassName = "size-3.5";
+  "size-7 min-h-7 min-w-7 cursor-pointer rounded-md p-0 text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)] hover:text-[var(--text-primary)]";
+const issueManagerHeaderChromeIconClassName = "size-[18px]";
+const issueManagerHeaderTrafficLightClassName =
+  "relative -m-1 size-5 shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 text-[var(--text-placeholder)] opacity-95 outline-none transition-[color,filter,opacity] duration-150 ease-out before:absolute before:inset-1 before:rounded-full before:bg-current before:transition-colors before:duration-150 before:ease-out before:content-[''] hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--background-panel)]";
 
 type IssueManagerNodeHeaderDragHandleAttributes = {
   [issueManagerWorkbenchDragHandleAttribute]?: "true";
@@ -210,12 +240,14 @@ export function IssueManagerNodeHeader({
   activeTopicId = null,
   className,
   copy,
-  defaultActions,
+  defaultActions: _defaultActions,
+  displayMode,
   isSidebarAutoCollapsed,
   isSidebarCollapsed,
   nodeId,
   onToggleSidebar,
   title,
+  windowActions,
   workspaceId,
   ...headerProps
 }: IssueManagerNodeHeaderProps): JSX.Element {
@@ -245,12 +277,37 @@ export function IssueManagerNodeHeader({
     nodeId,
     workspaceId
   });
+  const safeDisplayMode = displayMode ?? "floating";
+  const safeWindowActions = windowActions ?? {
+    close: () => undefined,
+    minimize: () => undefined,
+    toggleDisplayMode: () => undefined
+  };
+  const displayModeLabel =
+    safeDisplayMode === "fullscreen"
+      ? copy.t("actions.restoreWindow")
+      : copy.t("actions.maximizeWindow");
+  const sidebarHeaderStyle = {
+    width: effectiveCollapsed
+      ? "max-content"
+      : "min(var(--issue-manager-sidebar-width, 280px), 100%)"
+  } satisfies CSSProperties;
+  const rightHeaderDividerMaskStyle = {
+    left: effectiveCollapsed
+      ? "0px"
+      : "min(var(--issue-manager-sidebar-width, 280px), 100%)"
+  } satisfies CSSProperties;
+  const topicHeaderStyle = {
+    left: effectiveCollapsed
+      ? "50%"
+      : "calc(min(var(--issue-manager-sidebar-width, 280px), 100%) + ((100% - min(var(--issue-manager-sidebar-width, 280px), 100%)) / 2))"
+  } satisfies CSSProperties;
 
   return (
     <header
       {...restHeaderProps}
       className={cn(
-        "relative flex h-full min-h-0 items-center justify-between gap-3 bg-[var(--background-panel)] px-2 pl-3",
+        "relative flex h-full min-h-0 w-full items-center bg-transparent",
         className
       )}
     >
@@ -260,15 +317,49 @@ export function IssueManagerNodeHeader({
         className="absolute inset-0 cursor-grab active:cursor-grabbing"
       />
       <div
+        aria-hidden="true"
+        className="pointer-events-none absolute right-0 bottom-0 z-[11] h-px bg-[var(--background-panel)]"
+        style={rightHeaderDividerMaskStyle}
+      />
+      <div
         {...dragHandleProps}
-        className="z-10 flex min-w-0 flex-1 cursor-grab items-center gap-1 active:cursor-grabbing"
+        className={cn(
+          "relative z-10 flex h-full min-w-0 cursor-grab items-center gap-2 bg-[var(--background-panel)] pr-3 pl-4 active:cursor-grabbing",
+          !effectiveCollapsed && "border-r border-[var(--border-1)]"
+        )}
+        style={sidebarHeaderStyle}
       >
-        <span className="shrink-0 truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
+        <div
+          className="mr-3 flex shrink-0 items-center gap-2"
+          onDoubleClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <IssueManagerTrafficLightButton
+            label={copy.t("actions.closeWindow")}
+            tone="close"
+            onClick={safeWindowActions.close}
+          />
+          <IssueManagerTrafficLightButton
+            label={copy.t("actions.minimizeWindow")}
+            tone="minimize"
+            onClick={safeWindowActions.minimize}
+          />
+          <IssueManagerTrafficLightButton
+            label={displayModeLabel}
+            pressed={safeDisplayMode === "fullscreen"}
+            tone="maximize"
+            onClick={safeWindowActions.toggleDisplayMode}
+          />
+        </div>
+        <span className="min-w-0 shrink truncate text-[15px] font-semibold leading-5 text-[var(--text-primary)]">
           {title?.trim() || copy.t("title")}
         </span>
         <Button
           aria-label={toggleLabel}
-          className={issueManagerHeaderChromeIconButtonClassName}
+          className={cn(
+            !effectiveCollapsed && "ml-auto",
+            issueManagerHeaderChromeIconButtonClassName
+          )}
           data-issue-manager-sidebar-auto-collapsed={
             isSidebarAutoCollapsed ? "true" : undefined
           }
@@ -288,16 +379,48 @@ export function IssueManagerNodeHeader({
         >
           <PanelIcon className={issueManagerHeaderChromeIconClassName} />
         </Button>
+        {effectiveCollapsed ? (
+          <TooltipProvider delayDuration={250} skipDelayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label={copy.t("actions.createIssue")}
+                  className={issueManagerHeaderChromeIconButtonClassName}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    dispatchIssueManagerIssueCreateRequest({
+                      nodeId,
+                      workspaceId
+                    });
+                  }}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <FileCreateIcon aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {copy.t("actions.createIssue")}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
       </div>
-      <div className="pointer-events-none absolute top-1/2 left-1/2 z-20 flex max-w-[220px] -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+      <div
+        className="pointer-events-none absolute inset-y-0 z-10 flex min-w-0 -translate-x-1/2 items-center justify-center px-3"
+        style={topicHeaderStyle}
+      >
         <div
-          className="pointer-events-auto flex min-w-0 flex-none"
+          className="pointer-events-auto flex min-w-0 max-w-full items-center"
           onDoubleClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
         >
           <IssueManagerTopicSelector
             activeTopicId={topicState.activeTopicId}
-            className="flex-none"
+            className="max-w-[220px] text-[var(--text-primary)]"
             copy={copy}
             topics={topicState.topics}
             onCreateTopic={(input) => {
@@ -331,13 +454,49 @@ export function IssueManagerNodeHeader({
           />
         </div>
       </div>
-      <div
-        className="z-10 flex flex-none items-center gap-1"
-        onDoubleClick={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        {defaultActions}
-      </div>
     </header>
+  );
+}
+
+function IssueManagerTrafficLightButton({
+  label,
+  onClick,
+  pressed,
+  tone
+}: {
+  label: string;
+  onClick: () => void;
+  pressed?: boolean;
+  tone: "close" | "minimize" | "maximize";
+}): JSX.Element {
+  const button = (
+    <button
+      aria-label={label}
+      aria-pressed={pressed}
+      className={cn(
+        issueManagerHeaderTrafficLightClassName,
+        tone === "close" && "hover:text-[#ff5f57] focus-visible:text-[#ff5f57]",
+        tone === "minimize" &&
+          "hover:text-[#ffbd2e] focus-visible:text-[#ffbd2e]",
+        tone === "maximize" &&
+          "hover:text-[#28c840] focus-visible:text-[#28c840]"
+      )}
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    />
+  );
+
+  return (
+    <TooltipProvider delayDuration={250} skipDelayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent side="bottom">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

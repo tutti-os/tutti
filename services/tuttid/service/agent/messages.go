@@ -8,6 +8,7 @@ import (
 )
 
 type ListMessagesInput struct {
+	TurnID        string
 	AfterVersion  uint64
 	BeforeVersion uint64
 	Limit         int
@@ -85,6 +86,7 @@ func (s *Service) ListMessages(
 		page, ok := s.MessageReader.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
 			WorkspaceID:    workspaceID,
 			AgentSessionID: agentSessionID,
+			TurnID:         strings.TrimSpace(input.TurnID),
 			AfterVersion:   input.AfterVersion,
 			BeforeVersion:  input.BeforeVersion,
 			Limit:          input.Limit,

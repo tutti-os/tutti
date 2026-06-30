@@ -18,6 +18,7 @@ export default defineConfig({
     "workbench/contribution": "workbench/contribution.ts",
     "workbench/launch": "workbench/launch.ts",
     "workbench/providerCatalog": "workbench/providerCatalog.ts",
+    "workbench/sessionTitle": "workbench/sessionTitle.ts",
     "workbench/state": "workbench/state.ts",
     "workbench/types": "workbench/types.ts",
     "workspace-agent-generated-files":

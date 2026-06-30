@@ -205,7 +205,7 @@ func TestRegistryInvokeIgnoresUnknownInput(t *testing.T) {
 			t.Fatalf("decode envelope: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"kind":"json","value":{"ok":true}}`))
+		_, _ = w.Write([]byte(`{"kind":"json","value":{"ok":true,"warnings":"app-defined"}}`))
 	}))
 	defer server.Close()
 
@@ -223,6 +223,12 @@ func TestRegistryInvokeIgnoresUnknownInput(t *testing.T) {
 	}
 	if output.Kind != cliservice.OutputModeJSON {
 		t.Fatalf("output = %#v", output)
+	}
+	if output.Value["warnings"] != "app-defined" {
+		t.Fatalf("app output warnings field was clobbered: %#v", output.Value["warnings"])
+	}
+	if len(output.Warnings) != 1 || output.Warnings[0].Code != "unknown_input_ignored" {
+		t.Fatalf("output warnings = %#v", output.Warnings)
 	}
 	input, ok := envelope["input"].(map[string]any)
 	if !ok || input["name"] != "daily" {

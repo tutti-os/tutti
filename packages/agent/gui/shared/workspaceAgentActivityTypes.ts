@@ -292,6 +292,9 @@ export function selectWorkspaceAgentActivityOverlayMessages(input: {
       ) {
         return false;
       }
+      if (clientSubmitId !== null) {
+        return true;
+      }
       const signature = workspaceAgentActivityUserPromptSignature(message);
       return signature === null || !durableUserPromptSignatures.has(signature);
     }

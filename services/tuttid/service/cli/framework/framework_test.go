@@ -12,10 +12,11 @@ import (
 )
 
 type sampleInput struct {
-	TopicID      string `cli:"topic-id" validate:"required" description:"Topic id." hint:"Use issue topic list."`
-	PageSize     int    `cli:"page-size" validate:"min=1,max=100"`
-	AfterVersion int64  `cli:"after-version" validate:"min=0"`
-	Visible      bool   `cli:"visible"`
+	TopicID      string   `cli:"topic-id" validate:"required" description:"Topic id." hint:"Use issue topic list."`
+	Attachments  []string `cli:"attachment" description:"Attachment path."`
+	PageSize     int      `cli:"page-size" validate:"min=1,max=100"`
+	AfterVersion int64    `cli:"after-version" validate:"min=0"`
+	Visible      bool     `cli:"visible"`
 }
 
 type optionalInput struct {
@@ -36,6 +37,13 @@ func TestFromStructGeneratesInputSchema(t *testing.T) {
 	if properties["visible"].(map[string]any)["type"] != "boolean" {
 		t.Fatalf("visible property = %#v", properties["visible"])
 	}
+	attachment := properties["attachment"].(map[string]any)
+	if attachment["type"] != "array" {
+		t.Fatalf("attachment property = %#v", attachment)
+	}
+	if attachment["items"].(map[string]any)["type"] != "string" {
+		t.Fatalf("attachment items = %#v", attachment["items"])
+	}
 	if required := schema["required"].([]string); !reflect.DeepEqual(required, []string{"topic-id"}) {
 		t.Fatalf("required = %#v", required)
 	}
@@ -44,6 +52,7 @@ func TestFromStructGeneratesInputSchema(t *testing.T) {
 func TestBindInputParsesAndValidates(t *testing.T) {
 	input, err := BindInput[sampleInput](FromStruct[sampleInput](), map[string]any{
 		"topic-id":      " topic-1 ",
+		"attachment":    []any{" /tmp/a.png ", "/tmp/b.png"},
 		"page-size":     "25",
 		"after-version": "10",
 		"visible":       "true",
@@ -53,6 +62,9 @@ func TestBindInputParsesAndValidates(t *testing.T) {
 	}
 	if input.TopicID != "topic-1" || input.PageSize != 25 || input.AfterVersion != 10 || !input.Visible {
 		t.Fatalf("input = %#v", input)
+	}
+	if !reflect.DeepEqual(input.Attachments, []string{"/tmp/a.png", "/tmp/b.png"}) {
+		t.Fatalf("attachments = %#v", input.Attachments)
 	}
 }
 

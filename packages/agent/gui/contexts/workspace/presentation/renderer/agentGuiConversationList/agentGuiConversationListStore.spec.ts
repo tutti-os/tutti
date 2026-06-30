@@ -337,6 +337,47 @@ describe("agentGuiConversationListStore", () => {
     });
   });
 
+  it("does not mark imported completed sessions unread during projection", async () => {
+    const query: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    const snapshot: WorkspaceAgentActivitySnapshot = {
+      ...emptySnapshot(),
+      sessions: [
+        runtimeSession("imported-session-1", 2_000, {
+          status: "completed",
+          runtimeContext: {
+            imported: true
+          }
+        })
+      ]
+    };
+    setAgentActivityRuntimeForTests({
+      getSnapshot: () => snapshot,
+      load: async () => snapshot,
+      subscribe: () => () => {}
+    } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
+
+    ensureAgentGUIConversationListQuery(query);
+    scheduleAgentGUIConversationListProjection(query, "projection-sync");
+
+    await waitFor(() => {
+      expect(
+        getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+      ).toEqual(
+        expect.objectContaining({
+          id: "imported-session-1",
+          status: "completed",
+          hasUnreadCompletion: false,
+          unreadCompletionKey: "session:imported-session-1:completed"
+        })
+      );
+    });
+  });
+
   it("marks a completed assistant message unread during projection", async () => {
     const query: AgentGUIConversationListQuery = {
       workspaceId: "workspace-1",

@@ -34,7 +34,6 @@ import {
   parseRichTextMentionHref
 } from "@tutti-os/ui-rich-text/core";
 import { getActiveUiLanguage, useTranslation } from "../i18n/index";
-import { normalizeAgentTitleText } from "../shared/utils/agentTitleText";
 import { formatAgentSessionMentionText } from "../shared/utils/agentSessionMentionText";
 import { AgentInteractivePromptSurface } from "../shared/agentConversation/components/AgentInteractivePromptSurface";
 import { AgentMessageMarkdown } from "../shared/AgentMessageMarkdown";
@@ -49,6 +48,7 @@ import {
   type WorkspaceAgentMessageCenterIdentity,
   type WorkspaceAgentMessageCenterItem
 } from "./workspaceAgentMessageCenterModel";
+import { formatAgentGuiConversationPlainTitle } from "../workbench/sessionTitle";
 
 export interface WorkspaceAgentMessageCenterCardProps {
   item: WorkspaceAgentMessageCenterItem;
@@ -102,7 +102,9 @@ export const WorkspaceAgentMessageCenterCard = memo(
     "use memo";
     const { t } = useTranslation();
     const prompt = item.pendingPrompt;
-    const displayTitle = normalizeAgentTitleText(item.title);
+    const displayTitle = formatAgentGuiConversationPlainTitle(item, {
+      language: getActiveUiLanguage()
+    });
     const summary = messageCenterVisibleSummary(item);
     const displayStatus = statusClass(item);
     const statusTone = messageCenterStatusTone(item);
@@ -543,7 +545,7 @@ function messageCenterStackRawPreviewText(
   return (
     item.digest.primary.summary.trim() ||
     item.lastAgentMessageSummary.trim() ||
-    normalizeAgentTitleText(item.title)
+    item.title
   );
 }
 

@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"strings"
+
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
@@ -11,6 +13,8 @@ func GeneratedAppFromBiz(app workspacebiz.WorkspaceApp) tuttigenerated.Workspace
 		DisplayName:      app.Package.DisplayName(),
 		Version:          app.Package.Version,
 		Description:      app.Package.Description(),
+		Authors:          generatedAppAuthorsFromBiz(app.Package.Manifest),
+		Repository:       generatedAppRepositoryFromBiz(app.Package.Manifest),
 		CreatedAtUnixMs:  app.Package.CreatedAtUnixMs,
 		IconUrl:          app.ResolvedIconURL(),
 		AvailableVersion: app.AvailableVersion,
@@ -37,6 +41,41 @@ func GeneratedAppFromBiz(app workspacebiz.WorkspaceApp) tuttigenerated.Workspace
 		Cli:              generatedAppCLIState(app.CLI),
 		References:       generatedAppReferencesStateFromBiz(app),
 		InstallProgress:  generatedAppInstallProgressFromBiz(app.InstallProgress),
+	}
+}
+
+func generatedAppAuthorsFromBiz(manifest workspacebiz.AppManifest) []tuttigenerated.WorkspaceAppAuthor {
+	authors := manifest.Authors
+	if len(authors) == 0 && manifest.Author != nil {
+		authors = []workspacebiz.AppManifestAuthor{*manifest.Author}
+	}
+	result := make([]tuttigenerated.WorkspaceAppAuthor, 0, len(authors))
+	for _, author := range authors {
+		name := trimString(author.Name)
+		if name == "" {
+			continue
+		}
+		result = append(result, tuttigenerated.WorkspaceAppAuthor{
+			Name:      name,
+			AvatarUrl: nullableString(trimString(author.AvatarURL)),
+			Url:       nullableString(trimString(author.URL)),
+		})
+	}
+	return result
+}
+
+func generatedAppRepositoryFromBiz(manifest workspacebiz.AppManifest) *tuttigenerated.WorkspaceAppRepository {
+	if manifest.Source == nil {
+		return nil
+	}
+	repositoryType := trimString(manifest.Source.Type)
+	repositoryURL := trimString(manifest.Source.URL)
+	if repositoryType != "github" || repositoryURL == "" {
+		return nil
+	}
+	return &tuttigenerated.WorkspaceAppRepository{
+		Type: tuttigenerated.Github,
+		Url:  repositoryURL,
 	}
 }
 
@@ -212,6 +251,10 @@ func nullableString(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func trimString(value string) string {
+	return strings.TrimSpace(value)
 }
 
 func nullableFloat32(value *float64) *float32 {

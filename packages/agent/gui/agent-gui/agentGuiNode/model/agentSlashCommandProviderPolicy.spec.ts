@@ -178,7 +178,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     ).toEqual({ kind: "submitPrompt", prompt: "/compact" });
   });
 
-  it("fills draft for non-immediate Codex commands", () => {
+  it("activates goal mode instead of filling a raw /goal draft", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "codex",
@@ -192,7 +192,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         command: { name: "goal" },
         currentDraft: "/"
       })
-    ).toEqual({ kind: "fillDraft", draft: "/goal " });
+    ).toEqual({ kind: "activateGoalMode" });
   });
 
   it("handles Codex local status without provider prompts", () => {
@@ -239,14 +239,14 @@ describe("agentSlashCommandProviderPolicy", () => {
     ).toEqual({ kind: "submitPrompt", prompt: "/compact" });
   });
 
-  it("fills draft for Claude Code goal command so the user can enter an objective", () => {
+  it("activates goal mode for Claude Code goal command selection", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "claude-code",
         command: { name: "goal" },
         currentDraft: "/"
       })
-    ).toEqual({ kind: "fillDraft", draft: "/goal " });
+    ).toEqual({ kind: "activateGoalMode" });
   });
 
   it("parses manual Codex status and toggles plan mode on submit", () => {

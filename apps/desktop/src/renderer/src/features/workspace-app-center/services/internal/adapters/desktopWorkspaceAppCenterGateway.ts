@@ -50,6 +50,7 @@ export interface DesktopWorkspaceAppCenterLocalFileGateway {
 
 export interface WorkspaceAppLike {
   readonly appId: string;
+  readonly authors?: readonly WorkspaceApp["authors"][number][];
   readonly cli?: WorkspaceApp["cli"];
   readonly availableIconUrl?: string | null;
   readonly availableVersion?: string | null;
@@ -69,6 +70,10 @@ export interface WorkspaceAppLike {
   readonly minimizeBehavior?: "hibernate" | "keep-mounted";
   readonly port?: number | null;
   readonly references?: WorkspaceApp["references"];
+  readonly repository?:
+    | WorkspaceApp["repository"]
+    | Record<string, unknown>
+    | null;
   readonly source: WorkspaceApp["source"];
   readonly startedAtUnixMs?: number | null;
   readonly stateRevision: number;
@@ -324,6 +329,11 @@ export function normalizeWorkspaceAppCenterApp(
 ): WorkspaceAppCenterApp {
   return {
     appId: app.appId,
+    authors: (app.authors ?? []).map((author) => ({
+      avatarUrl: author.avatarUrl,
+      name: author.name,
+      url: author.url
+    })),
     availableIconUrl: app.availableIconUrl,
     availableVersion: app.availableVersion,
     createdAtUnixMs: app.createdAtUnixMs ?? 0,
@@ -347,6 +357,7 @@ export function normalizeWorkspaceAppCenterApp(
     references: {
       listSupported: app.references?.listSupported ?? false
     },
+    repository: normalizeWorkspaceAppRepository(app.repository),
     runtimeStatus: normalizeRuntimeStatus(app.status),
     runtimeId: app.runtimeId ?? null,
     source: normalizeWorkspaceAppCenterSource(app.source),
@@ -358,6 +369,17 @@ export function normalizeWorkspaceAppCenterApp(
     windowMinHeight: normalizeWorkspaceAppWindowMinimum(app.windowMinHeight),
     windowMinWidth: normalizeWorkspaceAppWindowMinimum(app.windowMinWidth)
   };
+}
+
+function normalizeWorkspaceAppRepository(
+  repository: WorkspaceAppLike["repository"]
+): WorkspaceAppCenterApp["repository"] {
+  return repository?.type === "github" && typeof repository.url === "string"
+    ? {
+        type: "github",
+        url: repository.url
+      }
+    : null;
 }
 
 function normalizeWorkspaceAppInstallProgress(

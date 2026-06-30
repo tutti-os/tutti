@@ -45,6 +45,7 @@ test("desktop host preferences follows authoritative preference events", async (
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -81,6 +82,7 @@ test("desktop host preferences follows authoritative preference events", async (
       locale: "en",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"

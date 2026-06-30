@@ -133,7 +133,7 @@ export function WorkbenchWindowFrame<TData>({
   } as const;
   const defaultActions = interactive ? (
     <div
-      className="flex flex-none items-center gap-1"
+      className="workbench-window__traffic-light-actions"
       onDoubleClick={(event) => {
         event.stopPropagation();
       }}
@@ -141,11 +141,6 @@ export function WorkbenchWindowFrame<TData>({
         event.stopPropagation();
       }}
     >
-      <WorkbenchWindowFullscreenToggle
-        controller={controller}
-        i18n={windowChromeI18n ?? defaultWindowChromeI18n}
-        node={node}
-      />
       {renderActions
         ? renderActions({
             controller,
@@ -153,6 +148,11 @@ export function WorkbenchWindowFrame<TData>({
             node
           })
         : null}
+      <WorkbenchWindowFullscreenToggle
+        controller={controller}
+        i18n={windowChromeI18n ?? defaultWindowChromeI18n}
+        node={node}
+      />
     </div>
   ) : null;
   const resolvedHeader = resolveWorkbenchWindowHeader({
@@ -279,23 +279,21 @@ export function WorkbenchWindowFrame<TData>({
               resolvedHeader.customHeader
             ) : (
               <>
-                <div className="min-w-0 truncate text-[13px] font-semibold">
-                  {node.title}
-                </div>
                 {defaultActions}
+                <div className="workbench-window__title">{node.title}</div>
               </>
             )}
           </div>
           <div className="workbench-window__body">{children}</div>
-          {node.displayMode === "floating" &&
-          !hiddenMounted &&
-          presentationMode !== "mission-control" &&
-          interactive
-            ? resizeHandles.map((handle) => (
-                <ResizeHandle key={handle} handle={handle} node={node} />
-              ))
-            : null}
         </div>
+        {node.displayMode === "floating" &&
+        !hiddenMounted &&
+        presentationMode !== "mission-control" &&
+        interactive
+          ? resizeHandles.map((handle) => (
+              <ResizeHandle key={handle} handle={handle} node={node} />
+            ))
+          : null}
       </div>
       {presentationInteraction ? (
         <button

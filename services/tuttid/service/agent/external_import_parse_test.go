@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -199,6 +200,81 @@ func TestParseCodexJSONLSkipsAgentsAndEnvironmentPreamble(t *testing.T) {
 	}
 	if len(session.Messages) != 1 || session.Messages[0].Text != "Real question here" {
 		t.Fatalf("messages = %#v, want only the real user message", session.Messages)
+	}
+}
+
+func TestParseCodexJSONLMarksDocumentsCodexScratchCwdAsNoProject(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	cwd := filepath.Join(home, "Documents", "Codex", "2026-06-26", "ge")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatalf("create codex scratch cwd error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(home); ok {
+		home = canonical
+	}
+	if canonical, ok := canonicalExistingDir(cwd); ok {
+		cwd = canonical
+	}
+	t.Setenv("HOME", home)
+
+	session, ok, err := parseCodexJSONL(
+		filepath.Join(cwd, "rollout.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"type":      "session_meta",
+				"payload":   map[string]any{"id": "codex-scratch", "cwd": cwd},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type":    "message",
+					"role":    "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "Scratch question"}},
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseCodexJSONL ok=%v err=%v", ok, err)
+	}
+	if !session.NoProject {
+		t.Fatalf("NoProject = false for Codex scratch cwd %q", session.Cwd)
+	}
+}
+
+func TestParseClaudeCodeJSONLDoesNotUseCodexScratchCwdNoProjectRule(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	cwd := filepath.Join(home, "Documents", "Codex", "2026-06-26", "ge")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatalf("create codex scratch-shaped cwd error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(home); ok {
+		home = canonical
+	}
+	if canonical, ok := canonicalExistingDir(cwd); ok {
+		cwd = canonical
+	}
+	t.Setenv("HOME", home)
+
+	session, ok, err := parseClaudeCodeJSONL(
+		filepath.Join(cwd, "claude.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"sessionId": "claude-project",
+				"cwd":       cwd,
+				"uuid":      "claude-1",
+				"message":   map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "Project question"}}},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseClaudeCodeJSONL ok=%v err=%v", ok, err)
+	}
+	if session.NoProject {
+		t.Fatalf("NoProject = true for non-Codex provider cwd %q", session.Cwd)
 	}
 }
 

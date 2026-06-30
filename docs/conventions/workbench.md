@@ -41,6 +41,12 @@ Rules:
   access, and workflow policy out of shared Workbench packages
 - keep product-specific CSS selectors and host globals out of
   `@tutti-os/workbench-surface`
+- keep window chrome hit zones unambiguous; floating-window resize handles
+  should render outside the clipped window surface so corner handles remain
+  reachable and take precedence over header drag regions; interactive controls
+  inside or near draggable chrome must opt out with the product no-drag classes
+  and `-webkit-app-region: no-drag`, but noninteractive wrappers should not
+  shrink the draggable hot zone
 - inject debug diagnostics, product callbacks, and host-specific behavior
   through explicit props or adapters
 - keep `WorkbenchHostHandle` narrow; product consumers should call public host

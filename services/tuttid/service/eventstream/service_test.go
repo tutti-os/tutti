@@ -300,17 +300,8 @@ func TestDesktopPreferencesPublisherIncludesDockIconStyle(t *testing.T) {
 	}
 }
 
-func TestClosedSessionRejectsFurtherEnqueueWithoutPanic(t *testing.T) {
-	t.Parallel()
-
-	service := NewService(DefaultCatalog(), nil)
-	session := service.OpenSession()
-	service.CloseSession(session)
-
-	if session.enqueue(PublishedEvent{Topic: TopicPreferencesDesktopUpdated}) {
-		t.Fatal("enqueue() = true, want false for a closed session")
-	}
-}
+// TestClosedSessionRejectsFurtherEnqueueWithoutPanic moved to stream-go
+// (it exercises the registry's unexported enqueue path).
 
 func TestServiceFiltersScopedSubscriptions(t *testing.T) {
 	t.Parallel()
@@ -567,7 +558,7 @@ func assertReceivedEvent(t *testing.T, session *Session, workspaceID string) {
 func receiveEvent(t *testing.T, session *Session) PublishedEvent {
 	t.Helper()
 	select {
-	case event := <-session.events:
+	case event := <-session.Events():
 		return event
 	default:
 		t.Fatal("event not received")
@@ -578,7 +569,7 @@ func receiveEvent(t *testing.T, session *Session) PublishedEvent {
 func assertNoEvent(t *testing.T, session *Session) {
 	t.Helper()
 	select {
-	case event := <-session.events:
+	case event := <-session.Events():
 		t.Fatalf("unexpected event received: %#v", event)
 	default:
 	}

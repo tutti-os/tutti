@@ -217,6 +217,7 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 		CreatedAtUnixMS:   input.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   input.UpdatedAtUnixMS,
 		Visible:           input.Visible,
+		RecreateIfMissing: input.RecreateIfMissing,
 	})
 	if err != nil {
 		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)

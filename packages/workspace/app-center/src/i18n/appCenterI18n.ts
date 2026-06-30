@@ -283,6 +283,12 @@ export const appCenterEn = {
     myAppsEmpty: "Imported and created apps will appear here.",
     recommendedAppsEmpty: "No recommended apps available."
   },
+  sources: {
+    developerCount: "{{count}} developers",
+    githubRepository: "GitHub repository",
+    official: "Official",
+    title: "Source"
+  },
   status: {
     comingSoon: "Coming soon",
     failed: "Failed",
@@ -554,6 +560,12 @@ export const appCenterZhCN = {
     empty: "还没有安装应用",
     myAppsEmpty: "导入或创建的应用会显示在这里",
     recommendedAppsEmpty: "暂无推荐应用"
+  },
+  sources: {
+    developerCount: "{{count}} 位开发者",
+    githubRepository: "GitHub 仓库",
+    official: "官方",
+    title: "来源"
   },
   status: {
     comingSoon: "敬请期待",

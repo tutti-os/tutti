@@ -7,7 +7,7 @@ description: Issue-manager for Tutti workspace issues — `mention://workspace-i
 
 Owns issue **handoff** interpretation, **mode** selection, and **run** lifecycle. Before choosing issue commands, read the materialized sibling `tutti-cli/SKILL.md` file and use its `## Commands` section as the command reference for CLI syntax and flags.
 
-Run metadata: `--agent-provider {{AGENT_PROVIDER}}`, `--agent-session-id {{AGENT_SESSION_ID}}`. Do not guess or substitute provider or session ids.
+Run metadata: use `--agent-provider {{AGENT_PROVIDER}}`. Do not pass `--agent-session-id` in normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
 
 If the user explicitly asks to open or show the Task Manager app window, use `app open --app-id issue-manager --json`. Do not use app opening as a substitute for issue inspection, breakdown, execution, or run reporting.
 
@@ -43,9 +43,9 @@ Use when the turn asks you to implement, fix, execute, process, complete, or oth
 
 **Run open:**
 
-- Handoff includes `taskId` → `issue task run create --issue-id <issue-id> --task-id <task-id> --agent-provider {{AGENT_PROVIDER}} --agent-session-id {{AGENT_SESSION_ID}} --json`
+- Handoff includes `taskId` → `issue task run create --issue-id <issue-id> --task-id <task-id> --agent-provider {{AGENT_PROVIDER}} --json`
 - Handoff omits `taskId` → inspect issue tasks before creating a run:
-  - no child tasks → `issue run create --issue-id <issue-id> --agent-provider {{AGENT_PROVIDER}} --agent-session-id {{AGENT_SESSION_ID}} --json`
+  - no child tasks → `issue run create --issue-id <issue-id> --agent-provider {{AGENT_PROVIDER}} --json`
   - child tasks present → execute each child task in issue order: one `issue task run create` → work → `issue task run complete` per task before the next
 
 **Run complete:**
@@ -67,7 +67,7 @@ A breakdown handoff is a **persist** request. Treat `mode=breakdown` or an expli
 
 1. Recover context (Entry step 2).
 2. Draft child tasks from issue context, existing tasks, references, and recent runs.
-3. **Persist by default.** Write them back with `issue task create` or `issue task update` in the same turn.
+3. **Persist by default.** Write multiple new tasks back with `issue task create-batch`, one new task with `issue task create`, or existing tasks with `issue task update` in the same turn.
 4. Report what was created or updated (ids/titles), not whether the user wants you to continue.
 
 **Persist without asking when:**

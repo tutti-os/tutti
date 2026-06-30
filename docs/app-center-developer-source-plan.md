@@ -33,9 +33,9 @@ Hover 到开发者行：
 开发者与来源
 
 开发者
-[avatar] KonjacPuppy        external link
-[avatar] Alice              external link
-[avatar] Ben                external link
+[avatar] 2042217959       external link
+[avatar] Alice            external link
+[avatar] Ben              external link
 
 源码
 competitive-product-analysis GitHub icon
@@ -115,7 +115,7 @@ Manifest update:
 {
   "authors": [
     {
-      "name": "KonjacPuppy",
+      "name": "2042217959",
       "url": "https://github.com/2042217959",
       "avatarUrl": "https://github.com/2042217959.png"
     }
@@ -155,7 +155,7 @@ Manifest update:
 {
   "authors": [
     {
-      "name": "KonjacPuppy",
+      "name": "2042217959",
       "url": "https://github.com/2042217959",
       "avatarUrl": "https://github.com/2042217959.png"
     }

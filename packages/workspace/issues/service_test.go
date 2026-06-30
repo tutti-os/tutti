@@ -58,6 +58,70 @@ func TestServiceCreateIssueAndTaskProjection(t *testing.T) {
 	}
 }
 
+func TestServiceCreateTasksAppendsInInputOrder(t *testing.T) {
+	store := newFakeStore()
+	service := testService(store)
+	ctx := context.Background()
+
+	issue, err := service.CreateIssue(ctx, CreateIssueInput{
+		WorkspaceID: "workspace-1",
+		TopicID:     DefaultTopicID,
+		ActorUserID: "user-1",
+		Title:       "AgentGUI stability",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+
+	first, err := service.CreateTask(ctx, CreateTaskInput{
+		WorkspaceID: "workspace-1",
+		IssueID:     issue.IssueID,
+		ActorUserID: "user-1",
+		Title:       "Existing baseline",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if first.SortIndex != 1 {
+		t.Fatalf("first sort index = %d, want 1", first.SortIndex)
+	}
+
+	created, err := service.CreateTasks(ctx, CreateTasksInput{
+		WorkspaceID: "workspace-1",
+		IssueID:     issue.IssueID,
+		ActorUserID: "user-1",
+		Tasks: []CreateTaskItemInput{
+			{TaskID: "task-a", Title: "2. Define metrics"},
+			{TaskID: "task-b", Title: "3. Build checks"},
+			{TaskID: "task-c", Title: "4. Document baseline"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateTasks() error = %v", err)
+	}
+	if len(created) != 3 {
+		t.Fatalf("created tasks len = %d, want 3", len(created))
+	}
+	for index, task := range created {
+		if task.SortIndex != index+2 {
+			t.Fatalf("created[%d].SortIndex = %d, want %d", index, task.SortIndex, index+2)
+		}
+	}
+
+	detail, err := service.GetIssueDetail(ctx, "workspace-1", issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	titles := make([]string, 0, len(detail.Tasks))
+	for _, task := range detail.Tasks {
+		titles = append(titles, task.Title)
+	}
+	want := []string{"Existing baseline", "2. Define metrics", "3. Build checks", "4. Document baseline"}
+	if strings.Join(titles, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("task titles = %#v, want %#v", titles, want)
+	}
+}
+
 func TestServiceUpdateIssueStatus(t *testing.T) {
 	store := newFakeStore()
 	service := testService(store)
@@ -1042,6 +1106,39 @@ func (s *fakeStore) ListTasks(_ context.Context, filter TaskListFilter) (TaskLis
 	}, nil
 }
 
+func (s *fakeStore) AppendTasks(_ context.Context, tasks []Task) ([]Task, error) {
+	if len(tasks) == 0 {
+		return []Task{}, nil
+	}
+	workspaceID := tasks[0].WorkspaceID
+	issueID := tasks[0].IssueID
+	if _, ok := s.issues[issueKey(workspaceID, issueID)]; !ok {
+		return nil, ErrIssueNotFound
+	}
+	next := 1
+	for _, task := range s.tasks {
+		if task.WorkspaceID == workspaceID && task.IssueID == issueID && task.SortIndex >= next {
+			next = task.SortIndex + 1
+		}
+	}
+	created := make([]Task, 0, len(tasks))
+	for index, task := range tasks {
+		if task.WorkspaceID != workspaceID || task.IssueID != issueID {
+			return nil, ErrInvalidArgument
+		}
+		key := taskKey(task.WorkspaceID, task.IssueID, task.TaskID)
+		if _, ok := s.tasks[key]; ok {
+			return nil, ErrTaskAlreadyExists
+		}
+		s.nextID++
+		task.ID = s.nextID
+		task.SortIndex = next + index
+		s.tasks[key] = task
+		created = append(created, task)
+	}
+	return created, nil
+}
+
 func (s *fakeStore) CreateTask(_ context.Context, task Task) (Task, error) {
 	if _, ok := s.issues[issueKey(task.WorkspaceID, task.IssueID)]; !ok {
 		return Task{}, ErrIssueNotFound
@@ -1058,16 +1155,6 @@ func (s *fakeStore) GetTask(_ context.Context, workspaceID string, issueID strin
 		return Task{}, ErrTaskNotFound
 	}
 	return task, nil
-}
-
-func (s *fakeStore) GetNextTaskSortIndex(_ context.Context, workspaceID string, issueID string) (int, error) {
-	next := 1
-	for _, task := range s.tasks {
-		if task.WorkspaceID == workspaceID && task.IssueID == issueID && task.SortIndex >= next {
-			next = task.SortIndex + 1
-		}
-	}
-	return next, nil
 }
 
 func (s *fakeStore) UpdateTask(_ context.Context, task Task) (Task, error) {

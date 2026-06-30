@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { isValidElement, type ReactElement } from "react";
+import { createElement, isValidElement, type ReactElement } from "react";
 import { agentGuiDockIconUrls } from "../dockIcons.ts";
 import {
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
@@ -494,6 +496,10 @@ describe("agent GUI workbench contribution copy", () => {
       workspaceId: "workspace-1"
     });
 
+    const close = vi.fn();
+    const minimize = vi.fn();
+    const toggleDisplayMode = vi.fn();
+
     render(
       contribution.nodes?.[0]?.renderHeader?.({
         activation: null,
@@ -502,6 +508,110 @@ describe("agent GUI workbench contribution copy", () => {
         dragHandleProps: {},
         externalNodeState: {
           conversationRailCollapsed: true,
+          lastActiveAgentSessionId: "session-1"
+        },
+        externalWorkspaceState: null,
+        instanceId: "agent-gui:codex:panel:test-1",
+        instanceKey: null,
+        isFocused: true,
+        node: {
+          data: {
+            runtimeNodeState: null
+          },
+          displayMode: "floating",
+          frame: { height: 560, width: 1040, x: 0, y: 0 },
+          id: "agent-gui-node-1",
+          title: "Codex"
+        },
+        surfaceSize: { height: 800, width: 1200 },
+        windowActions: {
+          applyQuickLayout: () => {},
+          close,
+          focus: () => {},
+          minimize,
+          resize: () => {},
+          toggleDisplayMode
+        }
+      } as never) ?? null
+    );
+
+    const newConversationButton = screen.getByRole("button", {
+      name: agentGuiWorkbenchDefaultCopy.newConversation
+    });
+    const toggleButton = screen.getByTestId(
+      "agent-gui-toggle-conversation-rail"
+    );
+    const header = document.querySelector(
+      '[data-agent-gui-workbench-header="true"]'
+    );
+    const primary = document.querySelector(
+      "[data-agent-gui-workbench-header-primary='true']"
+    );
+
+    expect(header).toHaveAttribute(
+      "data-agent-gui-workbench-header-collapsed",
+      "true"
+    );
+    expect(primary).toContainElement(screen.getByText("Codex"));
+    expect(screen.getByTestId("agent-gui-window-title-icon")).toHaveAttribute(
+      "src",
+      agentGuiDockIconUrls.codex
+    );
+    expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(toggleButton).toHaveClass("agent-gui-workbench-header__icon-button");
+    expect(toggleButton).toHaveClass("agent-gui-workbench-header__rail-toggle");
+    expect(toggleButton).toHaveAttribute("data-size", "icon-sm");
+    expect(toggleButton.querySelector("svg")).toHaveClass(
+      "agent-gui-workbench-header__icon"
+    );
+    expect(newConversationButton).toHaveClass(
+      "agent-gui-workbench-header__icon-button"
+    );
+    expect(newConversationButton).toHaveAttribute("data-size", "icon-sm");
+    expect(newConversationButton.querySelector("svg")).toHaveClass(
+      "agent-gui-workbench-header__icon"
+    );
+    const collapsedSessionTitle = screen
+      .getByText("Current session title")
+      .closest(".agent-gui-workbench-header__session-title");
+    expect(collapsedSessionTitle).not.toBeNull();
+    expect(screen.getByText("Current session title")).toHaveClass(
+      "agent-gui-workbench-header__title-text"
+    );
+    expect(screen.queryByTestId("agent-gui-window-detail-title")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("agent-gui-window-close"));
+    fireEvent.click(screen.getByTestId("agent-gui-window-minimize"));
+    fireEvent.click(screen.getByTestId("agent-gui-window-toggle-display-mode"));
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(minimize).toHaveBeenCalledTimes(1);
+    expect(toggleDisplayMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the expanded workbench header as a rail titlebar plus detail title", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      resolveDockPopupTitle: (state) =>
+        state?.lastActiveAgentSessionId === "session-1"
+          ? "Current session title"
+          : null,
+      workspaceId: "workspace-1"
+    });
+
+    render(
+      contribution.nodes?.[0]?.renderHeader?.({
+        activation: null,
+        defaultActions: createElement(
+          "button",
+          { type: "button" },
+          "window actions"
+        ),
+        displayMode: "floating",
+        dragHandleProps: {},
+        externalNodeState: {
+          conversationRailCollapsed: false,
+          conversationRailWidthPx: 360,
           lastActiveAgentSessionId: "session-1"
         },
         externalWorkspaceState: null,
@@ -529,33 +639,121 @@ describe("agent GUI workbench contribution copy", () => {
       } as never) ?? null
     );
 
-    const newConversationButton = screen.getByRole("button", {
-      name: agentGuiWorkbenchDefaultCopy.newConversation
-    });
-    const toggleButton = screen.getByTestId(
-      "agent-gui-toggle-conversation-rail"
+    const header = document.querySelector(
+      '[data-agent-gui-workbench-header="true"]'
     );
+    const primary = document.querySelector(
+      "[data-agent-gui-workbench-header-primary='true']"
+    );
+
+    expect(header).toHaveClass("agent-gui-workbench-header");
+    expect(header).toHaveAttribute(
+      "data-agent-gui-workbench-header-collapsed",
+      "false"
+    );
+    expect(header).toHaveStyle({
+      "--agent-gui-workbench-header-rail-width": "360px"
+    });
+    expect(primary).toHaveClass("agent-gui-workbench-header__primary");
     expect(screen.getByText("Codex")).toBeInTheDocument();
-    const headerIcon = screen.getByText("Codex")
-      .previousElementSibling as HTMLImageElement | null;
+    expect(
+      screen.getByTestId("agent-gui-toggle-conversation-rail")
+    ).toHaveClass("agent-gui-workbench-header__rail-toggle");
+    const headerIcon = screen.getByTestId("agent-gui-window-title-icon");
     expect(headerIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
     expect(headerIcon).toHaveAttribute(
       "data-agent-gui-workbench-header-icon",
       "true"
     );
-    expect(screen.getByText("Codex").nextElementSibling).toBe(toggleButton);
-    expect(toggleButton.nextElementSibling).toBe(newConversationButton);
-    expect(toggleButton).toHaveClass("text-[var(--text-secondary)]");
-    expect(toggleButton).toHaveClass("hover:text-[var(--text-primary)]");
-    expect(toggleButton).toHaveAttribute("data-size", "icon-sm");
-    expect(toggleButton.querySelector("svg")).toHaveClass("size-3.5");
-    expect(newConversationButton).toHaveAttribute("data-size", "icon-sm");
-    expect(newConversationButton.querySelector("svg")).toHaveClass("size-3.5");
-    expect(newConversationButton.nextElementSibling).toHaveTextContent(
-      "Current session title"
+    expect(
+      screen.getByTestId("agent-gui-window-detail-title")
+    ).toHaveTextContent("Current session title");
+    expect(
+      screen.queryByRole("button", { name: "window actions" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: agentGuiWorkbenchDefaultCopy.newConversation
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  it("caps workbench header conversation titles at 280px", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /--agent-gui-workbench-header-title-max-width:\s*280px;/
     );
-    expect(screen.getByText("Current session title")).toHaveClass(
-      "max-w-[360px]"
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__session-title\s*{[^}]*max-width:\s*min\(100%,\s*var\(--agent-gui-workbench-header-title-max-width\)\)/s
     );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__detail-title\s*{[^}]*max-width:\s*min\(100%,\s*var\(--agent-gui-workbench-header-title-max-width\)\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__title-text\s*{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
+    );
+  });
+
+  it("keeps the traffic light group aligned with the agent identity", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(/--agent-gui-workbench-header-padding-x:\s*16px;/);
+    expect(css).toMatch(
+      /--agent-gui-workbench-header-agent-icon-size:\s*20px;/
+    );
+    expect(css).toMatch(/--agent-gui-workbench-header-primary-gap:\s*12px;/);
+    expect(css).toMatch(
+      /--agent-gui-workbench-header-traffic-light-size:\s*12px;/
+    );
+    expect(css).toMatch(
+      /--agent-gui-workbench-header-traffic-light-hit-area-size:\s*20px;/
+    );
+    expect(css).toMatch(
+      /--agent-gui-workbench-header-traffic-light-gap:\s*8px;/
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__primary\s*{[^}]*padding:\s*0\s+var\(--agent-gui-workbench-header-padding-x\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__primary\s*{[^}]*gap:\s*var\(--agent-gui-workbench-header-primary-gap\);/s
+    );
+    const headerPrimaryCss = css.match(
+      /\.agent-gui-workbench-header__primary\s*{(?<body>[^}]*)}/s
+    )?.groups?.body;
+    expect(headerPrimaryCss).toBeDefined();
+    expect(headerPrimaryCss).not.toMatch(/border-right:/);
+    expect(css).toMatch(
+      /\.agent-gui-node__rail-panel\s*{[^}]*border-right:\s*0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-lights\s*{[^}]*margin-right:\s*0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-light\s*{[^}]*width:\s*var\(--agent-gui-workbench-header-traffic-light-hit-area-size\);[^}]*height:\s*var\(--agent-gui-workbench-header-traffic-light-hit-area-size\);[^}]*margin:\s*calc\(/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-light\s*{[^}]*cursor:\s*pointer;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-light\s*{[^}]*transition:\s*opacity 160ms ease;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-light::before\s*{[^}]*inset:\s*calc\([^}]*--agent-gui-workbench-header-traffic-light-size[^}]*content:\s*"";[^}]*transition:\s*background-color 160ms ease;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__agent-brand\s*{[^}]*gap:\s*8px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__agent-icon\s*{[^}]*width:\s*var\(--agent-gui-workbench-header-agent-icon-size\);[^}]*height:\s*var\(--agent-gui-workbench-header-agent-icon-size\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__rail-toggle\s*{[^}]*margin-left:\s*auto;/s
+    );
+    const agentIconCss = css.match(
+      /\.agent-gui-workbench-header__agent-icon\s*{(?<body>[^}]*)}/s
+    )?.groups?.body;
+    expect(agentIconCss).toBeDefined();
+    expect(agentIconCss).not.toMatch(/box-shadow:/);
   });
 });

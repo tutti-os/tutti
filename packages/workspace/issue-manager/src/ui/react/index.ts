@@ -1,5 +1,6 @@
 export {
   dispatchIssueManagerTaskListCollapsed,
+  dispatchIssueManagerIssueCreateRequest,
   dispatchIssueManagerTopicCreate,
   dispatchIssueManagerTopicDelete,
   dispatchIssueManagerTopicHeaderState,
@@ -8,6 +9,7 @@ export {
   resolveIssueManagerSelectedIssue,
   resolveIssueManagerSelectedTask,
   useIssueManagerNodeHeaderView,
+  useIssueManagerIssueCreateRequestSync,
   useIssueManagerTopicHeaderCommandSync,
   useIssueManagerTopicHeaderStateSync,
   useIssueManagerTaskListCollapsedSync

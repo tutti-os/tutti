@@ -2025,6 +2025,58 @@ func TestDaemonAPIGeneratedRoutesUpdateWorkspaceIssueStatus(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesCreateWorkspaceIssueTasksPreservesOrder(t *testing.T) {
+	store := openIssueRouteSQLiteStore(t)
+	ctx := context.Background()
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-issue-route-batch",
+		Name: "Issue Route Batch Workspace",
+	}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+
+	issueService := workspaceservice.IssueManagerService{Store: store}
+	issue, err := issueService.CreateIssue(ctx, "ws-issue-route-batch", workspaceservice.CreateIssueManagerIssueInput{
+		IssueID: "issue-batch",
+		TopicID: workspaceissues.DefaultTopicID,
+		Title:   "Break down work",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{IssueService: issueService}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-issue-route-batch/issues/issue-batch/tasks/batch-create",
+		map[string]any{"tasks": []map[string]any{
+			{"taskId": "task-1", "title": "1. Baseline", "content": "Capture current state"},
+			{"taskId": "task-2", "title": "2. Metrics", "priority": "high"},
+		}},
+	)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+
+	var response tuttigenerated.IssueManagerTasksResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if len(response.Tasks) != 2 || response.Tasks[0].TaskId != "task-1" || response.Tasks[0].SortIndex != 1 || response.Tasks[1].TaskId != "task-2" || response.Tasks[1].SortIndex != 2 {
+		t.Fatalf("response tasks = %#v", response.Tasks)
+	}
+
+	detail, err := issueService.GetIssueDetail(ctx, "ws-issue-route-batch", issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	if len(detail.Tasks) != 2 || detail.Tasks[0].TaskID != "task-1" || detail.Tasks[1].TaskID != "task-2" {
+		t.Fatalf("stored tasks = %#v", detail.Tasks)
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesRemoveWorkspaceIssueTaskContextRef(t *testing.T) {
 	store := openIssueRouteSQLiteStore(t)
 	ctx := context.Background()

@@ -2,7 +2,11 @@ import {
   loadAllAgentSessionMessages,
   mergeAgentActivityMessages
 } from "@tutti-os/agent-activity-core";
-import type { WorkspaceAgentActivityMessage } from "../shared/workspaceAgentActivityTypes";
+import {
+  isWorkspaceAgentActivityOptimisticMessage,
+  mergeWorkspaceAgentActivityDurableAndOverlayMessages,
+  type WorkspaceAgentActivityMessage
+} from "../shared/workspaceAgentActivityTypes";
 
 const DEFAULT_WORKSPACE_AGENT_MESSAGES_LIMIT = 20;
 
@@ -68,5 +72,28 @@ export function mergeWorkspaceAgentMessages(
   previous: readonly WorkspaceAgentActivityMessage[],
   incoming: readonly WorkspaceAgentActivityMessage[]
 ): WorkspaceAgentActivityMessage[] {
-  return mergeAgentActivityMessages(previous, incoming);
+  const previousDurableMessages = previous.filter(
+    (message) => !isWorkspaceAgentActivityOptimisticMessage(message)
+  );
+  const incomingDurableMessages = incoming.filter(
+    (message) => !isWorkspaceAgentActivityOptimisticMessage(message)
+  );
+  const durableMessages = mergeAgentActivityMessages(
+    previousDurableMessages,
+    incomingDurableMessages
+  );
+  const previousOptimisticMessages = previous.filter(
+    isWorkspaceAgentActivityOptimisticMessage
+  );
+  const incomingOptimisticMessages = incoming.filter(
+    isWorkspaceAgentActivityOptimisticMessage
+  );
+  const localMessages = mergeAgentActivityMessages(
+    previousOptimisticMessages,
+    incomingOptimisticMessages
+  );
+  return mergeWorkspaceAgentActivityDurableAndOverlayMessages({
+    durableMessages,
+    localMessages
+  });
 }

@@ -70,6 +70,18 @@ type CreateIssueManagerTaskInput struct {
 	DueAtUnixMS int64
 }
 
+type CreateIssueManagerTaskItemInput struct {
+	TaskID      string
+	Title       string
+	Content     string
+	Priority    string
+	DueAtUnixMS int64
+}
+
+type CreateIssueManagerTasksInput struct {
+	Tasks []CreateIssueManagerTaskItemInput
+}
+
 type UpdateIssueManagerTaskInput struct {
 	Title        string
 	HasTitle     bool
@@ -279,26 +291,53 @@ func (s IssueManagerService) ListTasks(ctx context.Context, workspaceID string, 
 }
 
 func (s IssueManagerService) CreateTask(ctx context.Context, workspaceID string, issueID string, input CreateIssueManagerTaskInput) (workspaceissues.Task, error) {
-	task, err := s.domainService().CreateTask(ctx, workspaceissues.CreateTaskInput{
-		TaskID:      input.TaskID,
-		IssueID:     issueID,
-		WorkspaceID: workspaceID,
-		ActorUserID: issueManagerLocalActorUserID,
-		Title:       input.Title,
-		Content:     input.Content,
-		Priority:    input.Priority,
-		DueAtUnixMS: input.DueAtUnixMS,
+	tasks, err := s.CreateTasks(ctx, workspaceID, issueID, CreateIssueManagerTasksInput{
+		Tasks: []CreateIssueManagerTaskItemInput{{
+			TaskID:      input.TaskID,
+			Title:       input.Title,
+			Content:     input.Content,
+			Priority:    input.Priority,
+			DueAtUnixMS: input.DueAtUnixMS,
+		}},
 	})
 	if err != nil {
 		return workspaceissues.Task{}, err
 	}
-	s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
-		WorkspaceID: task.WorkspaceID,
-		IssueID:     task.IssueID,
-		TaskID:      task.TaskID,
-		ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskCreated,
+	if len(tasks) != 1 {
+		return workspaceissues.Task{}, workspaceissues.ErrInvalidArgument
+	}
+	return tasks[0], nil
+}
+
+func (s IssueManagerService) CreateTasks(ctx context.Context, workspaceID string, issueID string, input CreateIssueManagerTasksInput) ([]workspaceissues.Task, error) {
+	items := make([]workspaceissues.CreateTaskItemInput, 0, len(input.Tasks))
+	for _, task := range input.Tasks {
+		items = append(items, workspaceissues.CreateTaskItemInput{
+			TaskID:      task.TaskID,
+			Title:       task.Title,
+			Content:     task.Content,
+			Priority:    task.Priority,
+			DueAtUnixMS: task.DueAtUnixMS,
+		})
+	}
+	tasks, err := s.domainService().CreateTasks(ctx, workspaceissues.CreateTasksInput{
+		IssueID:     issueID,
+		WorkspaceID: workspaceID,
+		ActorUserID: issueManagerLocalActorUserID,
+		Tasks:       items,
 	})
-	return task, nil
+	if err != nil {
+		return nil, err
+	}
+	for _, task := range tasks {
+		s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
+			WorkspaceID: task.WorkspaceID,
+			IssueID:     task.IssueID,
+			TaskID:      task.TaskID,
+			ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskCreated,
+		})
+	}
+	return tasks, nil
 }
 
 func (s IssueManagerService) GetTaskDetail(ctx context.Context, workspaceID string, issueID string, taskID string) (workspaceissues.TaskDetail, error) {

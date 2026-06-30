@@ -68,6 +68,7 @@ export interface AgentFileMentionPaletteProps {
   onSelectFilter: (filter: AgentMentionFilterId) => void;
   onExpandGroup: (groupId: AgentMentionGroupId) => void;
   onNavigateHierarchy?: (delta: 1 | -1) => void;
+  onNavigateIntoItem?: (item: AgentContextMentionItem) => void;
   /**
    * 可选:点击 issue / app 行末尾的「查看产物文件」图标时回调(打开引用 picker 并定位)。
    * 仅 workspace-issue / workspace-app 行渲染该入口。
@@ -192,11 +193,15 @@ export function AgentFileMentionPalette({
   onSelectFilter,
   onExpandGroup,
   onNavigateHierarchy,
+  onNavigateIntoItem,
   onOpenReferences
 }: AgentFileMentionPaletteProps): React.JSX.Element {
   "use memo";
   const openReferencesLabel = translate(
     "agentHost.agentGui.mentionOpenReferences"
+  );
+  const navigateIntoLabel = translate(
+    "agentHost.agentGui.fileMentionEnterFolder"
   );
   const filter = state.filter as AgentMentionFilterId;
   const highlightedBrowseCategory = highlightedKey?.startsWith("category:")
@@ -255,10 +260,16 @@ export function AgentFileMentionPalette({
       state={shellState}
       highlightedKey={highlightedKey}
       getItemKey={agentMentionItemKey}
-      renderItem={(item) =>
+      renderItem={(item, { group }) =>
         renderMentionRow(agentMentionItemToRowItem(item), {
           classNames: AGENT_MENTION_ROW_CLASS_NAMES,
           dataAttributeMode: "agent",
+          ...(onNavigateIntoItem && canNavigateIntoMentionItem(item, group)
+            ? {
+                onNavigateInto: () => onNavigateIntoItem(item),
+                navigateIntoLabel
+              }
+            : {}),
           ...(onOpenReferences && isReferenceableMentionItem(item)
             ? {
                 onOpenReferences: () => onOpenReferences(item),
@@ -517,6 +528,17 @@ function isReferenceableMentionItem(item: AgentContextMentionItem): boolean {
     return item.referencesListSupported === true;
   }
   return false;
+}
+
+function canNavigateIntoMentionItem(
+  item: AgentContextMentionItem,
+  group: AgentMentionGroup
+): boolean {
+  return (
+    group.id === "agent_generated_files" &&
+    item.kind === "file" &&
+    item.mentionNavigation === "agent-generated-folder"
+  );
 }
 
 function mentionSessionAgentProvider(

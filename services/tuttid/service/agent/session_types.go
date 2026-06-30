@@ -210,6 +210,10 @@ type RuntimeResumeInput struct {
 	CreatedAtUnixMS   int64
 	UpdatedAtUnixMS   int64
 	Visible           *bool
+	// RecreateIfMissing lets the runtime start a fresh provider session in place
+	// when the existing one can't be restored locally (imported conversations),
+	// instead of surfacing a non-recoverable restore error.
+	RecreateIfMissing bool
 }
 
 type RuntimeExecInput struct {

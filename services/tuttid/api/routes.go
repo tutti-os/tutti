@@ -532,6 +532,15 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		}
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/batch-create", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			wrapper.CreateWorkspaceIssueTasks(w, r)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

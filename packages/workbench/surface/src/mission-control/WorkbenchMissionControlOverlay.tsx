@@ -130,7 +130,7 @@ export function WorkbenchMissionControlOverlay({
 
   return (
     <div
-      className="workbench-mission-control pointer-events-none absolute inset-0 z-[1100] overflow-hidden"
+      className="workbench-mission-control pointer-events-none absolute inset-0 overflow-hidden"
       data-phase={phase}
     >
       {state.mode === "layout" ? (

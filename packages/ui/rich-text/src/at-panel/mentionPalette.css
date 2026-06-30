@@ -84,14 +84,18 @@
     var(--rich-text-at-mention-success-fg) 12%,
     transparent
   );
-  --rich-text-at-mention-warning-fg: var(--color-amber-500, #d97706);
+  --rich-text-at-mention-warning-fg: var(--state-warning, rgb(234 121 8));
   --rich-text-at-mention-warning-bg: color-mix(
     in srgb,
     var(--rich-text-at-mention-warning-fg) 12%,
     transparent
   );
-  --rich-text-at-mention-info-fg: #0369a1;
-  --rich-text-at-mention-info-bg: rgb(14 165 233 / 10%);
+  --rich-text-at-mention-info-fg: var(--status-running, rgb(65 130 245));
+  --rich-text-at-mention-info-bg: color-mix(
+    in srgb,
+    var(--rich-text-at-mention-info-fg) 12%,
+    transparent
+  );
 }
 
 .rich-text-at-mention-palette__shell {
@@ -577,6 +581,10 @@
   gap: 4px;
 }
 
+.rich-text-at-mention-row__file-text {
+  flex: 1 1 auto;
+}
+
 .rich-text-at-mention-row__app-text {
   flex: 1 1 auto;
 }
@@ -654,22 +662,30 @@
   object-fit: cover;
 }
 
-.rich-text-at-mention-row__open-references {
+.rich-text-at-mention-row__open-references,
+.rich-text-at-mention-row__navigate-into {
+  appearance: none;
   display: grid;
   place-items: center;
   width: 24px;
   height: 24px;
   margin-left: auto;
   flex: 0 0 24px;
+  padding: 0;
+  border: 0;
   border-radius: 5px;
+  background: transparent;
   color: var(--rich-text-at-mention-text-tertiary);
   cursor: pointer;
+  outline: none;
   transition:
     background-color 160ms ease,
     color 160ms ease;
 }
 
-.rich-text-at-mention-row__open-references:hover {
+.rich-text-at-mention-row__open-references:hover,
+.rich-text-at-mention-row__navigate-into:hover,
+.rich-text-at-mention-row__navigate-into:focus-visible {
   background: var(--rich-text-at-mention-active);
   color: var(--rich-text-at-mention-text-secondary);
 }

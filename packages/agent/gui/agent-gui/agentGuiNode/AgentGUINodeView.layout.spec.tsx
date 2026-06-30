@@ -262,13 +262,19 @@ describe("AgentGUINodeView layout persistence", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__rail-panel\s*\{[^}]*border-right:\s*1px\s+solid\s+var\(--agent-gui-border-subtle,\s*var\(--line-2\)\);/s
+      /\.agent-gui-node__rail-panel\s*\{[^}]*border-right:\s*0;/s
     );
     expect(css).toMatch(
       /\.room-issue-node__search-field\s*{[^}]*position:\s*relative[^}]*min-width:\s*0/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__rail-toolbar\s*\{[^}]*--agent-gui-rail-control-radius:\s*6px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__rail-toolbar\s*\{[^}]*padding:\s*0\s+16px\s+16px;/s
+    );
+    expect(css).toMatch(
+      /\.workbench-window:has\(\s*\[data-agent-gui-workbench-header="true"\]\[data-agent-gui-workbench-header-collapsed="false"\]\s*\)\s*\.agent-gui-node__rail-toolbar\s*{[^}]*padding-top:\s*var\(--agent-gui-workbench-header-height\);/s
     );
     expect(css).toMatch(
       /\.room-issue-node__search-input\s*{[^}]*width:\s*100%[^}]*height:\s*32px\s*!important;[^}]*min-height:\s*32px;[^}]*max-height:\s*32px;[^}]*border:\s*0\s*!important;[^}]*border-radius:\s*var\(--agent-gui-rail-control-radius\)\s*!important;[^}]*font-size:\s*13px\s*!important;[^}]*line-height:\s*18px;[^}]*appearance:\s*none;/s
@@ -1145,7 +1151,7 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
-  it("does not reserve bottom dock height inside the timeline scroll area", () => {
+  it("initializes the bottom dock safe area on the timeline scroll area", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -1158,8 +1164,8 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(
       screen
         .getByTestId("agent-gui-timeline")
-        .style.getPropertyValue("--agent-gui-bottom-dock-height")
-    ).toBe("");
+        .style.getPropertyValue("--agent-gui-bottom-dock-safe-area")
+    ).toBe("0px");
   });
 
   it("uses shared vertical scrollbars for the conversation list and timeline", () => {
@@ -1441,9 +1447,14 @@ describe("AgentGUINodeView provider setup notice", () => {
     expect(notice).toHaveTextContent("installRequiredPlaceholder");
     expect(notice).toHaveAttribute("role", "status");
     expect(notice).toHaveAttribute("data-slot", "toast");
-    expect(
-      screen.getByTestId("agent-gui-provider-setup-notice-action")
-    ).toHaveTextContent("installRequiredAction");
+    expect(notice).not.toHaveClass("nodrag");
+    expect(notice).not.toHaveClass("tsh-desktop-no-drag");
+    expect(notice).not.toHaveClass("[-webkit-app-region:no-drag]");
+    const action = screen.getByTestId("agent-gui-provider-setup-notice-action");
+    expect(action).toHaveTextContent("installRequiredAction");
+    expect(action).toHaveClass("nodrag");
+    expect(action).toHaveClass("tsh-desktop-no-drag");
+    expect(action).toHaveClass("[-webkit-app-region:no-drag]");
   });
 
   it("floats the setup notice above the detail content without affecting layout", () => {
@@ -1453,7 +1464,7 @@ describe("AgentGUINodeView provider setup notice", () => {
     )?.[0];
 
     expect(setupNoticeRule).toContain("position: absolute;");
-    expect(setupNoticeRule).toContain("top: 8px;");
+    expect(setupNoticeRule).toContain("top: 56px;");
     // Horizontally centered above the detail content.
     expect(setupNoticeRule).toContain("left: 50%;");
     expect(setupNoticeRule).toContain("transform: translateX(-50%);");
@@ -1466,10 +1477,15 @@ describe("AgentGUINodeView provider setup notice", () => {
     );
     expect(setupNoticeRule).toContain("margin: 0;");
     expect(setupNoticeRule).not.toContain("background:");
+    expect(setupNoticeRule).toContain("pointer-events: auto;");
     expect(css).toContain(
       ".agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice"
     );
-    expect(css).toContain("top: calc(64px + 4px);");
+    expect(css).toContain("top: calc(64px + 16px);");
+    const setupNoticeActionRule = css.match(
+      /\.agent-gui-node__provider-setup-notice-action\s*{[^}]*}/s
+    )?.[0];
+    expect(setupNoticeActionRule).toContain("-webkit-app-region: no-drag;");
   });
 
   it("hides the setup notice when the provider is ready", () => {
@@ -1570,6 +1586,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     createConversation: vi.fn(),
     selectConversation: vi.fn(),
     submitPrompt: vi.fn(),
+    submitGuidancePrompt: vi.fn(),
     loadOlderConversationMessages: vi.fn(),
     showPromptImagesUnsupported: vi.fn(),
     submitApprovalOption: vi.fn(),
@@ -1586,6 +1603,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     toggleConversationPinned: vi.fn(),
     removeProject: vi.fn(),
     confirmDeleteProjectConversations: vi.fn(),
+    confirmDeleteConversations: vi.fn(),
     requestDeleteConversation: vi.fn(),
     cancelDeleteConversation: vi.fn(),
     confirmDeleteConversation: vi.fn()
@@ -1843,6 +1861,12 @@ function createLabels(): AgentGUIViewLabels {
     batchDeleteProjectSessionsBody: (count: number, project: string) =>
       `batchDeleteProjectSessionsBody:${count}:${project}`,
     batchDeleteProjectSessionsConfirm: "batchDeleteProjectSessionsConfirm",
+    conversationsSectionMoreActions: "conversationsSectionMoreActions",
+    batchDeleteConversations: "batchDeleteConversations",
+    batchDeleteConversationsTitle: "batchDeleteConversationsTitle",
+    batchDeleteConversationsBody: (count: number) =>
+      `batchDeleteConversationsBody:${count}`,
+    batchDeleteConversationsConfirm: "batchDeleteConversationsConfirm",
     approvalRequired: "approvalRequired",
     approvalUnavailable: "approvalUnavailable",
     authRequired: "authRequired",
@@ -1901,6 +1925,24 @@ function createLabels(): AgentGUIViewLabels {
     slashPalettePluginsGroup: "slashPalettePluginsGroup",
     slashPaletteConnectorsGroup: "slashPaletteConnectorsGroup",
     slashPaletteMcpGroup: "slashPaletteMcpGroup",
+    slashCommandCompactLabel: "slashCommandCompactLabel",
+    slashCommandContextLabel: "slashCommandContextLabel",
+    slashCommandFastLabel: "slashCommandFastLabel",
+    slashCommandGoalLabel: "slashCommandGoalLabel",
+    slashCommandInitLabel: "slashCommandInitLabel",
+    slashCommandPlanLabel: "slashCommandPlanLabel",
+    slashCommandReviewLabel: "slashCommandReviewLabel",
+    slashCommandStatusLabel: "slashCommandStatusLabel",
+    slashCommandUsageLabel: "slashCommandUsageLabel",
+    slashCommandCompactDescription: "slashCommandCompactDescription",
+    slashCommandContextDescription: "slashCommandContextDescription",
+    slashCommandFastDescription: "slashCommandFastDescription",
+    slashCommandGoalDescription: "slashCommandGoalDescription",
+    slashCommandInitDescription: "slashCommandInitDescription",
+    slashCommandPlanDescription: "slashCommandPlanDescription",
+    slashCommandReviewDescription: "slashCommandReviewDescription",
+    slashCommandStatusDescription: "slashCommandStatusDescription",
+    slashCommandUsageDescription: "slashCommandUsageDescription",
     browserUseCapabilityLabel: "browserUseCapabilityLabel",
     browserUseCapabilityDescription: "browserUseCapabilityDescription",
     browserUseCapabilityDescriptionAutoConnect:

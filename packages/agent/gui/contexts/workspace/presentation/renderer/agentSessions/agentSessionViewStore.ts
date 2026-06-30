@@ -1,5 +1,4 @@
 import { useSyncExternalStore } from "react";
-import { mergeAgentActivityMessages } from "@tutti-os/agent-activity-core";
 import type {
   AgentHostAgentActivityStreamEvent,
   AgentHostAgentSessionCommand,
@@ -7,6 +6,7 @@ import type {
   AgentHostSubscribeAgentSessionEventsInput
 } from "../../../../../shared/contracts/dto";
 import type { WorkspaceAgentActivityMessage } from "../../../../../shared/workspaceAgentActivityTypes";
+import { mergeWorkspaceAgentMessages } from "../../../../../host/workspaceAgentSessionMessages";
 import { getOptionalAgentActivityRuntime } from "../../../../../agentActivityRuntime";
 
 const STREAM_LINGER_MS = 15000;
@@ -988,7 +988,7 @@ function mergeMessages(
   left: readonly WorkspaceAgentActivityMessage[],
   right: readonly WorkspaceAgentActivityMessage[]
 ): WorkspaceAgentActivityMessage[] {
-  return mergeAgentActivityMessages(left, right);
+  return mergeWorkspaceAgentMessages(left, right);
 }
 
 function sameMessages(

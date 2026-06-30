@@ -80,8 +80,8 @@ function resolveIssueManagerSubtaskBoardStatus(
   status: IssueManagerStatus
 ): IssueManagerSubtaskBoardStatus {
   return status in issueManagerBoardStatusSet
-      ? (status as IssueManagerSubtaskBoardStatus)
-      : "not_started";
+    ? (status as IssueManagerSubtaskBoardStatus)
+    : "not_started";
 }
 
 function isIssueManagerTaskBoardStatus(

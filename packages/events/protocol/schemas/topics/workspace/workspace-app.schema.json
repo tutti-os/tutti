@@ -9,6 +9,8 @@
     "displayName",
     "version",
     "description",
+    "authors",
+    "repository",
     "iconUrl",
     "installed",
     "enabled",

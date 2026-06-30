@@ -95,7 +95,7 @@ export function IssueManagerTopicSelector({
           <Button
             aria-label={topicLabel}
             className={cn(
-              "max-w-[220px] gap-1 rounded-md border-0 bg-transparent text-[13px] font-normal shadow-none hover:bg-transparent focus:bg-transparent focus-visible:border-0 focus-visible:bg-transparent focus-visible:ring-0 active:bg-transparent aria-expanded:bg-transparent [&[data-state=open]>svg]:rotate-180",
+              "max-w-[220px] gap-1 rounded-md border-0 bg-transparent text-[15px] font-normal shadow-none hover:bg-transparent focus:bg-transparent focus-visible:border-0 focus-visible:bg-transparent focus-visible:ring-0 active:bg-transparent aria-expanded:bg-transparent [&[data-state=open]>svg]:rotate-180",
               className
             )}
             size="sm"

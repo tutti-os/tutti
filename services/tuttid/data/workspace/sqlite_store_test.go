@@ -358,6 +358,19 @@ func TestSQLiteStoreReportAndListAgentActivityMessages(t *testing.T) {
 		t.Fatalf("third result = %#v", third)
 	}
 
+	turnPage, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID:    "ws-agent-activity",
+		AgentSessionID: "session-1",
+		TurnID:         "turn-2",
+		Limit:          10,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionMessages(turn) error = %v", err)
+	}
+	if !ok || len(turnPage.Messages) != 1 || turnPage.Messages[0].MessageID != "message-2" {
+		t.Fatalf("turn page = %#v ok=%v", turnPage, ok)
+	}
+
 	latest, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
 		WorkspaceID:    "ws-agent-activity",
 		AgentSessionID: "session-1",

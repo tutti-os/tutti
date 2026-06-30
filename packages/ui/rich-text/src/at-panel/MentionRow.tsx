@@ -1,5 +1,6 @@
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   Badge,
   FileCodeIcon,
   FileTextIcon,
@@ -84,6 +85,10 @@ export interface MentionRowRenderOptions {
   onOpenReferences?: () => void;
   /** 入口图标的无障碍标签 / tooltip 文案。 */
   openReferencesLabel?: string;
+  /** 当提供时,文件夹行末尾渲染一个「进入下一级」箭头按钮。 */
+  onNavigateInto?: () => void;
+  /** 「进入下一级」箭头按钮的无障碍标签 / tooltip 文案。 */
+  navigateIntoLabel?: string;
 }
 
 interface ResolvedMentionRowRenderOptions {
@@ -91,6 +96,8 @@ interface ResolvedMentionRowRenderOptions {
   dataAttributeMode: MentionRowDataAttributeMode;
   onOpenReferences?: () => void;
   openReferencesLabel?: string;
+  onNavigateInto?: () => void;
+  navigateIntoLabel?: string;
 }
 
 const DEFAULT_MENTION_ROW_CLASS_NAMES = {
@@ -122,7 +129,9 @@ function resolveMentionRowRenderOptions(
       classNames: options.classNames,
       dataAttributeMode: options.dataAttributeMode ?? "shared",
       onOpenReferences: options.onOpenReferences,
-      openReferencesLabel: options.openReferencesLabel
+      openReferencesLabel: options.openReferencesLabel,
+      onNavigateInto: options.onNavigateInto,
+      navigateIntoLabel: options.navigateIntoLabel
     };
   }
   return {
@@ -136,7 +145,10 @@ function isMentionRowRenderOptions(
 ): options is MentionRowRenderOptions {
   return (
     options !== undefined &&
-    ("classNames" in options || "dataAttributeMode" in options)
+    ("classNames" in options ||
+      "dataAttributeMode" in options ||
+      "onOpenReferences" in options ||
+      "onNavigateInto" in options)
   );
 }
 
@@ -157,7 +169,9 @@ export function renderMentionRow(
     classNames,
     dataAttributeMode,
     onOpenReferences,
-    openReferencesLabel
+    openReferencesLabel,
+    onNavigateInto,
+    navigateIntoLabel
   } = resolveMentionRowRenderOptions(options);
   const resolved = resolveMentionRowClassNames(classNames);
   const referencesButton = onOpenReferences ? (
@@ -173,6 +187,8 @@ export function renderMentionRow(
         item={item}
         classNames={resolved}
         dataAttributeMode={dataAttributeMode}
+        navigateIntoLabel={navigateIntoLabel}
+        onNavigateInto={onNavigateInto}
       />
     );
   }
@@ -307,14 +323,50 @@ function MentionOpenReferencesButton({
   );
 }
 
+function MentionNavigateIntoButton({
+  label,
+  onNavigateInto,
+  dataAttributeMode
+}: {
+  label?: string;
+  onNavigateInto: () => void;
+  dataAttributeMode: MentionRowDataAttributeMode;
+}): React.JSX.Element {
+  return (
+    <span
+      role="button"
+      tabIndex={-1}
+      aria-label={label}
+      title={label}
+      className="rich-text-at-mention-row__navigate-into"
+      {...mentionRowDataAttribute(dataAttributeMode, "navigateInto", "true")}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onNavigateInto();
+      }}
+    >
+      <ArrowRightIcon size={16} />
+    </span>
+  );
+}
+
 function MentionFileRow({
   item,
   classNames,
-  dataAttributeMode
+  dataAttributeMode,
+  navigateIntoLabel,
+  onNavigateInto
 }: {
   item: MentionRowFileItem;
   classNames: Required<MentionRowClassNames>;
   dataAttributeMode: MentionRowDataAttributeMode;
+  navigateIntoLabel?: string;
+  onNavigateInto?: () => void;
 }): React.JSX.Element {
   return (
     <span
@@ -353,6 +405,13 @@ function MentionFileRow({
           </span>
         ) : null}
       </span>
+      {onNavigateInto ? (
+        <MentionNavigateIntoButton
+          label={navigateIntoLabel}
+          onNavigateInto={onNavigateInto}
+          dataAttributeMode={dataAttributeMode}
+        />
+      ) : null}
     </span>
   );
 }

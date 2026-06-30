@@ -33,6 +33,7 @@ type fakeIssueManager struct {
 	topicUpdate workspaceservice.UpdateIssueManagerTopicInput
 	issueUpdate workspaceservice.UpdateIssueManagerIssueInput
 	updated     workspaceservice.UpdateIssueManagerTaskInput
+	tasks       workspaceservice.CreateIssueManagerTasksInput
 	created     workspaceservice.CreateIssueManagerRunInput
 	completed   workspaceservice.CompleteIssueManagerRunInput
 }
@@ -120,6 +121,23 @@ func (*fakeIssueManager) CreateTask(context.Context, string, string, workspacese
 		CreatedAtUnixMS:    1700000000000,
 		UpdatedAtUnixMS:    1700000000000,
 	}, nil
+}
+
+func (f *fakeIssueManager) CreateTasks(_ context.Context, workspaceID string, issueID string, input workspaceservice.CreateIssueManagerTasksInput) ([]workspaceissues.Task, error) {
+	f.tasks = input
+	tasks := make([]workspaceissues.Task, 0, len(input.Tasks))
+	for index, task := range input.Tasks {
+		tasks = append(tasks, workspaceissues.Task{
+			TaskID:      task.TaskID,
+			IssueID:     issueID,
+			WorkspaceID: workspaceID,
+			Title:       task.Title,
+			Content:     task.Content,
+			Priority:    workspaceissues.NormalizePriority(task.Priority),
+			SortIndex:   index + 1,
+		})
+	}
+	return tasks, nil
 }
 
 func (*fakeIssueManager) GetTaskDetail(context.Context, string, string, string) (workspaceissues.TaskDetail, error) {
@@ -308,6 +326,36 @@ func TestTaskCreateReturnsSummaryJSON(t *testing.T) {
 	assertAbsent(t, task, "workspaceId", "createdAtUnixMs", "updatedAtUnixMs", "content")
 }
 
+func TestTaskCreateBatchUsesJSONArrayOrder(t *testing.T) {
+	issues := &fakeIssueManager{}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newTaskCreateBatchCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"issue-id": "ISS-1",
+			"tasks-json": `[
+				{"taskId":"TASK-1","title":"1. Baseline","content":"Capture current state","priority":"high"},
+				{"taskId":"TASK-2","title":"2. Metrics","content":"Define indicators","priority":"low","dueAtUnix":1700000000}
+			]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if len(issues.tasks.Tasks) != 2 {
+		t.Fatalf("tasks input = %#v", issues.tasks)
+	}
+	if issues.tasks.Tasks[0].Title != "1. Baseline" || issues.tasks.Tasks[1].DueAtUnixMS != 1700000000000 {
+		t.Fatalf("tasks input = %#v", issues.tasks.Tasks)
+	}
+	tasks := output.Value["tasks"].([]any)
+	first := tasks[0].(map[string]any)
+	second := tasks[1].(map[string]any)
+	if first["taskId"] != "TASK-1" || first["sortIndex"] != 1 || second["taskId"] != "TASK-2" || second["sortIndex"] != 2 {
+		t.Fatalf("tasks = %#v", tasks)
+	}
+}
+
 func TestTaskListReturnsSummaryItems(t *testing.T) {
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}, nil).newTaskListCommand()
 
@@ -389,11 +437,13 @@ func TestIssueRunCreateDoesNotRequireTaskID(t *testing.T) {
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newIssueRunCreateCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Context: cliservice.InvokeContext{
+			AgentSessionID: "SESSION-1",
+		},
 		Input: map[string]any{
-			"issue-id":         "ISS-1",
-			"agent-provider":   "codex",
-			"agent-session-id": "SESSION-1",
-			"agent-user-id":    "local",
+			"issue-id":       "ISS-1",
+			"agent-provider": "codex",
+			"agent-user-id":  "local",
 		},
 	})
 	if err != nil {
@@ -407,6 +457,38 @@ func TestIssueRunCreateDoesNotRequireTaskID(t *testing.T) {
 		t.Fatalf("run = %#v", run)
 	}
 	assertAbsent(t, run, "requesterUserId", "agentUserId", "outputDir", "executionDirectory")
+}
+
+func TestTaskRunCreateDefaultsAgentSessionIDFromInvokeContext(t *testing.T) {
+	issues := &fakeIssueManager{}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newRunCreateCommand()
+
+	required, ok := command.Capability.InputSchema["required"].([]string)
+	if !ok {
+		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
+	}
+	for _, field := range required {
+		if field == "agent-session-id" {
+			t.Fatalf("agent-session-id should not be required: %#v", required)
+		}
+	}
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Context: cliservice.InvokeContext{
+			AgentSessionID: "SESSION-CONTEXT",
+		},
+		Input: map[string]any{
+			"issue-id":       "ISS-1",
+			"task-id":        "TASK-1",
+			"agent-provider": "codex",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if issues.created.AgentSessionID != "SESSION-CONTEXT" {
+		t.Fatalf("created = %#v, want context agent session id", issues.created)
+	}
 }
 
 func TestIssueRunCompleteDoesNotRequireTaskID(t *testing.T) {

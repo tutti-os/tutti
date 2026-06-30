@@ -39,6 +39,7 @@ export interface ReferenceNode {
   childCount?: number | null;
   /** 可选图标(data URL / 远程 URL),如应用产物源的 app 图标;有则替代默认文件夹图标。 */
   iconUrl?: string | null;
+  createdTimeMs?: number | null;
   sizeBytes?: number | null;
   mtimeMs?: number | null;
   mimeType?: string | null;

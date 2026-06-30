@@ -382,13 +382,14 @@ jobs:
             echo "TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL=https://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}.s3-accelerate.amazonaws.com/${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}" >> "$GITHUB_ENV"
           fi
 
-      - name: Publish GitHub release
+      - name: Stage GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
           target_commitish: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
           name: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+          draft: true
           prerelease: ${{ needs.resolve.outputs.release_prerelease == 'true' }}
           make_latest: ${{ needs.resolve.outputs.release_make_latest == 'true' }}
           generate_release_notes: true
@@ -443,6 +444,17 @@ jobs:
             release-assets \
             updated-release-body.md
           gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --notes-file updated-release-body.md
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TUTTI_DESKTOP_RELEASE_MAKE_LATEST: ${{ needs.resolve.outputs.release_make_latest }}
+        run: |
+          args=(gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --draft=false)
+          if [[ "${TUTTI_DESKTOP_RELEASE_MAKE_LATEST}" == "true" ]]; then
+            args+=(--latest)
+          fi
+          "${args[@]}"
 
   notify-feishu:
     name: Notify Feishu

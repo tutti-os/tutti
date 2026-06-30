@@ -157,7 +157,7 @@ test("workspace agent GUI session launches target exact session instances", () =
   });
 });
 
-test("workspace agent GUI draft launches reuse the provider dock entry without a session", () => {
+test("workspace agent GUI draft launches prefill prompts without binding sessions", () => {
   const descriptor = createWorkspaceAgentGuiLaunchDescriptor(
     createWorkspaceAgentGuiDraftLaunchRequest({
       draftPrompt: "Review this issue",

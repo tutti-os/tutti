@@ -4,6 +4,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -37,7 +38,8 @@ func newScriptedAppServerTransport() *scriptedAppServerTransport {
 
 func newScriptedAppServerConnection() *scriptedAppServerConnection {
 	return &scriptedAppServerConnection{
-		recv: make(chan ProcessFrame, 128),
+		recv:                     make(chan ProcessFrame, 128),
+		goalCompletionAfterTurns: 1,
 	}
 }
 
@@ -73,6 +75,8 @@ type scriptedAppServerConnection struct {
 	approvalResponse             map[string]any
 	goal                         map[string]any
 	goalStartsTurn               bool
+	goalTurnsStarted             int
+	goalCompletionAfterTurns     int
 	goalCleared                  bool
 	replayTokenUsageOnResume     bool // mirror real codex: emit token usage during thread/resume
 	closeOnce                    sync.Once
@@ -449,10 +453,22 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.mu.Lock()
 			previousGoal := clonePayload(c.goal)
 			goalStartsTurn := c.goalStartsTurn
+			goalTurnNumber := c.goalTurnsStarted
+			if goalStartsTurn && strings.TrimSpace(asString(message.Params["objective"])) != "" {
+				c.goalTurnsStarted++
+				goalTurnNumber = c.goalTurnsStarted
+			}
+			goalStatus := firstNonEmpty(asString(message.Params["status"]), "active")
+			if goalStartsTurn &&
+				goalTurnNumber > 0 &&
+				c.goalCompletionAfterTurns > 0 &&
+				goalTurnNumber >= c.goalCompletionAfterTurns {
+				goalStatus = "complete"
+			}
 			goal := map[string]any{
 				"threadId":        "codex-thread-1",
 				"objective":       firstNonEmpty(asString(message.Params["objective"]), asString(previousGoal["objective"])),
-				"status":          firstNonEmpty(asString(message.Params["status"]), "active"),
+				"status":          goalStatus,
 				"tokensUsed":      int64(0),
 				"timeUsedSeconds": int64(0),
 				"createdAt":       int64(1750000000),
@@ -467,21 +483,27 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"id":     message.ID,
 				"result": map[string]any{"goal": goal},
 			})
-			if goalStartsTurn && strings.TrimSpace(asString(message.Params["objective"])) != "" {
+			if goalStartsTurn && goalTurnNumber > 0 {
+				turnID := fmt.Sprintf("turn-goal-%d", goalTurnNumber)
+				itemID := fmt.Sprintf("item-goal-%d", goalTurnNumber)
+				messageText := "I'll work on the goal."
+				if goalStatus == "complete" && goalTurnNumber > 1 {
+					messageText = "Goal complete."
+				}
 				c.notify(appServerNotifyTurnStarted, map[string]any{
 					"threadId": "codex-thread-1",
-					"turn":     map[string]any{"id": "turn-goal", "status": "inProgress", "items": []any{}},
+					"turn":     map[string]any{"id": turnID, "status": "inProgress", "items": []any{}},
 				})
 				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
-					"threadId": "codex-thread-1", "turnId": "turn-goal", "itemId": "item-goal", "delta": "I'll work on the goal.",
+					"threadId": "codex-thread-1", "turnId": turnID, "itemId": itemID, "delta": messageText,
 				})
 				c.notify(appServerNotifyTurnCompleted, map[string]any{
 					"threadId": "codex-thread-1",
 					"turn": map[string]any{
-						"id":     "turn-goal",
+						"id":     turnID,
 						"status": "completed",
 						"items": []any{
-							map[string]any{"type": "agentMessage", "id": "item-goal", "text": "I'll work on the goal."},
+							map[string]any{"type": "agentMessage", "id": itemID, "text": messageText},
 						},
 					},
 				})
@@ -1806,6 +1828,45 @@ func TestCodexAppServerAdapterSlashGoalSetsObjective(t *testing.T) {
 	}
 	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
 		t.Fatalf("goal turn completed events = %d, want 1", len(completed))
+	}
+}
+
+func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.goalStartsTurn = true
+	transport.conn.goalCompletionAfterTurns = 2
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal finish the DrawingML pass",
+	}}, "", "turn-local-goal", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	goalSets := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet)
+	if len(goalSets) != 2 {
+		t.Fatalf("goal/set requests = %d, want 2", len(goalSets))
+	}
+	if asString(goalSets[1]["status"]) != "active" {
+		t.Fatalf("continuation goal/set params = %#v, want active status", goalSets[1])
+	}
+	if asString(goalSets[1]["objective"]) != "finish the DrawingML pass" {
+		t.Fatalf("continuation goal objective = %#v", goalSets[1])
+	}
+
+	assistantMessages := []string{}
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Role == activityshared.MessageRoleAssistant &&
+			event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
+			assistantMessages = append(assistantMessages, event.Payload.Content)
+		}
+	}
+	if strings.Join(assistantMessages, "\n") != "I'll work on the goal.\nGoal complete." {
+		t.Fatalf("assistant messages = %#v", assistantMessages)
+	}
+	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
+		t.Fatalf("logical goal completed events = %d, want 1", len(completed))
 	}
 }
 

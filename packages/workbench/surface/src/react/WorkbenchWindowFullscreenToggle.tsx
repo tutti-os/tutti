@@ -1,7 +1,7 @@
 import type { WorkbenchNode } from "../core/types.ts";
 import type { WorkbenchController } from "../store/types.ts";
-import { Button, MaximizeIcon, RestoreIcon } from "@tutti-os/ui-system";
 import type { WorkbenchWindowChromeI18nRuntime } from "./workbenchWindowI18n.ts";
+import { WorkbenchWindowTrafficLights } from "./WorkbenchWindowTrafficLights.tsx";
 
 export function WorkbenchWindowFullscreenToggle<TData>({
   controller,
@@ -16,36 +16,25 @@ export function WorkbenchWindowFullscreenToggle<TData>({
 }) {
   const isFullscreen = node.displayMode === "fullscreen";
   const label = i18n.t(isFullscreen ? "exitFullscreen" : "enterFullscreen");
-  const Icon = isFullscreen ? RestoreIcon : MaximizeIcon;
 
   return (
-    <Button
-      aria-label={label}
-      aria-pressed={isFullscreen}
-      className="order-2 rounded-md"
-      data-workbench-action="fullscreen"
-      disabled={disabled}
-      size="icon-sm"
-      title={label}
-      type="button"
-      variant="chrome"
-      onClick={(event) => {
-        if (disabled) {
-          return;
-        }
+    <WorkbenchWindowTrafficLights
+      maximize={{
+        disabled,
+        label,
+        onClick: (event) => {
+          controller.commands.focusNode(node.id);
 
-        controller.commands.focusNode(node.id);
+          if (isFullscreen) {
+            controller.commands.exitFullscreen(node.id);
+            return;
+          }
 
-        if (isFullscreen) {
-          controller.commands.exitFullscreen(node.id);
-          return;
-        }
-
-        event.currentTarget.blur();
-        controller.commands.enterFullscreen(node.id);
+          event.currentTarget.blur();
+          controller.commands.enterFullscreen(node.id);
+        },
+        pressed: isFullscreen
       }}
-    >
-      <Icon aria-hidden className="size-3.5" />
-    </Button>
+    />
   );
 }

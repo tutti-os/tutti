@@ -50,6 +50,22 @@ test("mention palette always keeps the package root class for css variables", ()
   );
 });
 
+test("mention palette status tones use ui-system status tokens", () => {
+  assert.match(
+    stylesheet,
+    /--rich-text-at-mention-info-fg:\s*var\(--status-running,/
+  );
+  assert.match(
+    stylesheet,
+    /--rich-text-at-mention-warning-fg:\s*var\(--state-warning,/
+  );
+  assert.doesNotMatch(stylesheet, /--rich-text-at-mention-info-fg:\s*#0369a1/);
+  assert.match(
+    stylesheet,
+    /--rich-text-at-mention-info-bg:\s*color-mix\(\s*in srgb,\s*var\(--rich-text-at-mention-info-fg\) 12%,\s*transparent\s*\)/s
+  );
+});
+
 test("mention palette scrolls highlighted options inside its own scroll body", () => {
   assert.match(source, /scrollElementIntoScrollContainerNearest/);
   assert.doesNotMatch(

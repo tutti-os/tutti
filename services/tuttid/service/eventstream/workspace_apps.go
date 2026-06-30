@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	eventprotocol "github.com/tutti-os/tutti/services/tuttid/api/events/generated"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -17,6 +18,7 @@ func (p WorkspaceAppPublisher) PublishWorkspaceAppUpdated(ctx context.Context, w
 	if p.Service == nil {
 		return nil
 	}
+	authors := generatedEventAppAuthors(app.Package.Manifest)
 	packageLocalizations := app.Package.Localizations()
 	localizations := make([]struct {
 		Locale      string   `json:"locale"`
@@ -43,6 +45,8 @@ func (p WorkspaceAppPublisher) PublishWorkspaceAppUpdated(ctx context.Context, w
 			DisplayName:      app.Package.DisplayName(),
 			Version:          app.Package.Version,
 			Description:      app.Package.Description(),
+			Authors:          authors,
+			Repository:       generatedEventAppRepository(app.Package.Manifest),
 			IconUrl:          app.ResolvedIconURL(),
 			Installed:        app.Installation != nil,
 			Enabled:          app.Installation != nil && app.Installation.Enabled,
@@ -77,6 +81,59 @@ func (p WorkspaceAppPublisher) PublishWorkspaceAppUpdated(ctx context.Context, w
 	return p.Service.PublishFromServerScoped(ctx, TopicWorkspaceAppUpdated, payload, EventScope{
 		WorkspaceID: workspaceID,
 	})
+}
+
+func generatedEventAppAuthors(manifest workspacebiz.AppManifest) []struct {
+	Name      string  `json:"name"`
+	Url       *string `json:"url,omitempty"`
+	AvatarUrl *string `json:"avatarUrl,omitempty"`
+} {
+	manifestAuthors := manifest.Authors
+	if len(manifestAuthors) == 0 && manifest.Author != nil {
+		manifestAuthors = []workspacebiz.AppManifestAuthor{*manifest.Author}
+	}
+	authors := make([]struct {
+		Name      string  `json:"name"`
+		Url       *string `json:"url,omitempty"`
+		AvatarUrl *string `json:"avatarUrl,omitempty"`
+	}, 0, len(manifestAuthors))
+	for _, author := range manifestAuthors {
+		name := strings.TrimSpace(author.Name)
+		if name == "" {
+			continue
+		}
+		authors = append(authors, struct {
+			Name      string  `json:"name"`
+			Url       *string `json:"url,omitempty"`
+			AvatarUrl *string `json:"avatarUrl,omitempty"`
+		}{
+			Name:      name,
+			Url:       stringPointer(strings.TrimSpace(author.URL)),
+			AvatarUrl: stringPointer(strings.TrimSpace(author.AvatarURL)),
+		})
+	}
+	return authors
+}
+
+func generatedEventAppRepository(manifest workspacebiz.AppManifest) *struct {
+	Type string `json:"type"`
+	Url  string `json:"url"`
+} {
+	if manifest.Source == nil {
+		return nil
+	}
+	repositoryType := strings.TrimSpace(manifest.Source.Type)
+	repositoryURL := strings.TrimSpace(manifest.Source.URL)
+	if repositoryType != "github" || repositoryURL == "" {
+		return nil
+	}
+	return &struct {
+		Type string `json:"type"`
+		Url  string `json:"url"`
+	}{
+		Type: repositoryType,
+		Url:  repositoryURL,
+	}
 }
 
 func stringPointer(value string) *string {

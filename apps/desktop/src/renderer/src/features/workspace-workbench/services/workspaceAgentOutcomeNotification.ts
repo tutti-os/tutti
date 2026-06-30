@@ -1,4 +1,5 @@
 import type { WorkspaceAgentMessageCenterItem } from "@tutti-os/agent-gui/agent-message-center";
+import { formatAgentGuiConversationPlainTitle } from "@tutti-os/agent-gui/workbench/sessionTitle";
 
 export interface WorkspaceAgentOutcomeNotification {
   agentName: string;
@@ -29,7 +30,7 @@ export function buildWorkspaceAgentOutcomeNotification(
       labels.fallbackAgentName,
     agentSessionId: item.agentSessionId,
     body: level === "success" ? labels.completedBody : labels.failedBody,
-    conversationTitle: item.title.trim(),
+    conversationTitle: formatAgentGuiConversationPlainTitle(item),
     level
   };
 }

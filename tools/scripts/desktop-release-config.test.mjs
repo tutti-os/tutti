@@ -201,6 +201,33 @@ test("desktop release workflow can mirror release assets to S3 and upsert direct
   );
 });
 
+test("desktop release workflow keeps GitHub release draft until assets are ready", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const publishJobMatch = workflow.match(
+    /publish:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  );
+
+  assert.ok(publishJobMatch, "publish job should exist");
+  const publishJob = publishJobMatch[0];
+  const stageIndex = publishJob.indexOf("name: Stage GitHub release assets");
+  const s3Index = publishJob.indexOf("name: Upload release assets to AWS S3");
+  const notesIndex = publishJob.indexOf(
+    "name: Update release notes with direct downloads"
+  );
+  const publishIndex = publishJob.indexOf("name: Publish GitHub release");
+
+  assert.notEqual(stageIndex, -1, "release assets should be staged");
+  assert.notEqual(publishIndex, -1, "release should be published explicitly");
+  assert.match(publishJob, /draft:\s*true/);
+  assert.match(
+    publishJob,
+    /gh release edit "\$\{TUTTI_DESKTOP_RELEASE_TAG\}" --draft=false/
+  );
+  assert.ok(stageIndex < s3Index);
+  assert.ok(s3Index < notesIndex);
+  assert.ok(notesIndex < publishIndex);
+});
+
 test("desktop release workflow publishes only macOS release assets for now", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const publishJobMatch = workflow.match(

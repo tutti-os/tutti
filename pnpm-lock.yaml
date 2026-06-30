@@ -429,6 +429,9 @@ importers:
       "@tutti-os/event-protocol":
         specifier: workspace:*
         version: link:../../events/protocol
+      "@tutti-os/event-stream-core":
+        specifier: workspace:*
+        version: link:../../events/stream-core
     devDependencies:
       "@types/node":
         specifier: ^24.0.1
@@ -442,6 +445,18 @@ importers:
   packages/configs/tsconfig: {}
 
   packages/events/protocol:
+    devDependencies:
+      "@tutti-os/config-tsconfig":
+        specifier: workspace:*
+        version: link:../../configs/tsconfig
+      "@types/node":
+        specifier: ^24.0.1
+        version: 24.12.4
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/events/stream-core:
     devDependencies:
       "@tutti-os/config-tsconfig":
         specifier: workspace:*

@@ -114,7 +114,10 @@ export interface MentionPaletteProps<TItem> {
   state: MentionPaletteState<TItem>;
   highlightedKey: string | null;
   getItemKey: (item: TItem, group: MentionPaletteGroup<TItem>) => string;
-  renderItem: (item: TItem, ctx: { active: boolean }) => ReactNode;
+  renderItem: (
+    item: TItem,
+    ctx: { active: boolean; group: MentionPaletteGroup<TItem> }
+  ) => ReactNode;
   labels: {
     loading: string;
     empty: string;

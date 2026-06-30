@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentHostWorkspaceAgentTimelineItem } from "../../../shared/contracts/dto";
 import {
+  formatAgentGUIConversationPlainTitle,
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIConversationDisplayTitle,
   resolveAgentGUIConversationTitle,
@@ -131,6 +132,16 @@ describe("agentGuiProviderIdentity", () => {
       title: "@aa.md 这是什么内容",
       titleFallback: null
     });
+  });
+
+  it("formats workspace issue mention conversation titles without adding a task prefix", () => {
+    expect(
+      formatAgentGUIConversationPlainTitle({
+        title:
+          "[@调研 spool 仓库 这个任务](mention://workspace-issue/issue-1?workspaceId=workspace-1)",
+        titleFallback: null
+      })
+    ).toBe("@调研 spool 仓库 这个任务");
   });
 
   it("resolves generic-agent fallback labels in the view layer", () => {

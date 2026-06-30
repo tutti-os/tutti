@@ -70,6 +70,7 @@ import {
 import {
   formatReferenceNodePathText,
   formatReferencePreviewDateTime,
+  resolveReferencePreviewTimestampMs,
   resolveReferencePreviewSizeBytes
 } from "./referenceSourcePickerPresentation.ts";
 
@@ -1030,6 +1031,7 @@ function PreviewInfoPane({
   const sizeBytes = node
     ? resolveReferencePreviewSizeBytes(node, previewState)
     : null;
+  const timestampMs = node ? resolveReferencePreviewTimestampMs(node) : null;
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-[var(--background-fronted)]">
       {node ? (
@@ -1072,9 +1074,9 @@ function PreviewInfoPane({
                 {sourceLabel}
               </Badge>
             </InfoRow>
-            {node.mtimeMs != null ? (
+            {timestampMs != null ? (
               <InfoRow label={copy.t("referencePicker.previewModified")}>
-                {formatReferencePreviewDateTime(node.mtimeMs)}
+                {formatReferencePreviewDateTime(timestampMs)}
               </InfoRow>
             ) : null}
             {sizeBytes != null ? (

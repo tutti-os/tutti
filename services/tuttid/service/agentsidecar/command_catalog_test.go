@@ -26,8 +26,22 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			ID:          "issue-manager.issue.list",
 			Path:        []string{"issue", "list"},
 			Summary:     "List issues",
-			Description: "List issue records in a specific workspace topic.",
-			InputSchema: map[string]any{"required": []any{"topic-id"}},
+			Description: "List issue records in one workspace topic. Requires --topic-id; use `issue topic list --json` first when the topic is unknown. JSON output omits issue content bodies.",
+			InputSchema: map[string]any{
+				"properties": map[string]any{
+					"topic-id": map[string]any{
+						"type":        "string",
+						"description": "Issue topic id.",
+					},
+					"status": map[string]any{
+						"type":        "string",
+						"description": "Optional issue status filter.",
+						"enum":        []any{"open", "completed"},
+						"default":     "open",
+					},
+				},
+				"required": []any{"topic-id"},
+			},
 		},
 		{
 			ID:          "issue-manager.issue.get",
@@ -58,6 +72,13 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			InputSchema: map[string]any{"required": []any{"issue-id", "title"}},
 		},
 		{
+			ID:          "issue-manager.issue.task.create-batch",
+			Path:        []string{"issue", "task", "create-batch"},
+			Summary:     "Create ordered issue tasks",
+			Description: "Create multiple breakdown child tasks in array order without creating a run.",
+			InputSchema: map[string]any{"required": []any{"issue-id", "tasks-json"}},
+		},
+		{
 			ID:          "issue-manager.issue.task.run.complete",
 			Path:        []string{"issue", "task", "run", "complete"},
 			Summary:     "Complete an issue task run",
@@ -69,7 +90,7 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			Path:        []string{"issue", "task", "run", "create"},
 			Summary:     "Create an issue task run",
 			Description: "Create a task run.",
-			InputSchema: map[string]any{"required": []any{"issue-id", "task-id", "agent-provider", "agent-session-id"}},
+			InputSchema: map[string]any{"required": []any{"issue-id", "task-id", "agent-provider"}},
 		},
 		{
 			ID:          "agent-context.agent.sessions",
@@ -123,6 +144,16 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 	if !strings.Contains(guide, "tutti issue list --topic-id <topic-id>") {
 		t.Fatalf("guide missing topic-scoped issue list: %q", guide)
 	}
+	if !strings.Contains(guide, "use `tutti issue topic list --json` first when the topic is unknown") {
+		t.Fatalf("guide missing topic discovery guidance: %q", guide)
+	}
+	if strings.Contains(guide, "use `issue topic list --json` first when the topic is unknown") {
+		t.Fatalf("guide contains unqualified topic discovery guidance: %q", guide)
+	}
+	if !strings.Contains(guide, "--topic-id <string> (required) - Issue topic id.") ||
+		!strings.Contains(guide, "--status <string> (optional; values: open|completed; default: open) - Optional issue status filter.") {
+		t.Fatalf("guide missing argument details: %q", guide)
+	}
 	if !strings.Contains(guide, "tutti issue update --issue-id <issue-id> --status completed --json") {
 		t.Fatalf("guide missing issue update: %q", guide)
 	}
@@ -133,8 +164,15 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 		!strings.Contains(guide, "without creating a run") {
 		t.Fatalf("guide missing breakdown task create guidance: %q", guide)
 	}
-	if !strings.Contains(guide, "tutti issue task run create --agent-provider <agent-provider> --agent-session-id <agent-session-id> --issue-id <issue-id> --task-id <task-id> --json") {
+	if !strings.Contains(guide, "tutti issue task create-batch --issue-id <issue-id> --tasks-json") ||
+		!strings.Contains(guide, "array order") {
+		t.Fatalf("guide missing breakdown task create-batch guidance: %q", guide)
+	}
+	if !strings.Contains(guide, "tutti issue task run create --agent-provider <agent-provider> --issue-id <issue-id> --task-id <task-id> --json") {
 		t.Fatalf("guide missing issue task run create: %q", guide)
+	}
+	if strings.Contains(guide, "run create --agent-provider <agent-provider> --agent-session-id") {
+		t.Fatalf("guide should not require explicit agent session ids for run create: %q", guide)
 	}
 	if !strings.Contains(guide, "tutti issue task run complete --issue-id <issue-id> --run-id <run-id> --status <status> --task-id <task-id> --summary <summary>") {
 		t.Fatalf("guide missing issue task run complete: %q", guide)
@@ -193,7 +231,12 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 			Path:        []string{"codex", "start"},
 			Summary:     "Start a Codex agent session",
 			Description: "Start a Codex agent session in the current workspace.",
-			InputSchema: map[string]any{"required": []string{"model", "prompt"}},
+			InputSchema: map[string]any{
+				"required": []string{"model", "prompt"},
+				"properties": map[string]any{
+					"image": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+			},
 			Source: cliservice.CapabilitySource{
 				Kind:    cliservice.CapabilitySourceApp,
 				AppID:   "agent-codex",
@@ -205,7 +248,12 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 			Path:        []string{"claude", "start"},
 			Summary:     "Start a Claude Code agent session",
 			Description: "Start a Claude Code agent session in the current workspace.",
-			InputSchema: map[string]any{"required": []string{"model", "prompt"}},
+			InputSchema: map[string]any{
+				"required": []string{"model", "prompt"},
+				"properties": map[string]any{
+					"image": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+			},
 			Source: cliservice.CapabilitySource{
 				Kind:    cliservice.CapabilitySourceApp,
 				AppID:   "agent-claude-code",
@@ -226,6 +274,9 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 	if !strings.Contains(guide, "Omit --model unless the user explicitly requested a model") {
 		t.Fatalf("guide missing default model guidance: %q", guide)
 	}
+	if !strings.Contains(guide, "Pass --image <path> multiple times") {
+		t.Fatalf("guide missing image guidance: %q", guide)
+	}
 	if !strings.Contains(guide, "App id: agent-codex.") ||
 		!strings.Contains(guide, "App id: agent-claude-code.") {
 		t.Fatalf("guide missing app ids: %q", guide)
@@ -244,15 +295,26 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 	if !strings.Contains(guide, "tutti-dev issue update --issue-id <issue-id> --status completed --json") {
 		t.Fatalf("guide = %q, want tutti-dev issue update fallback command", guide)
 	}
-	if !strings.Contains(guide, "tutti-dev issue task run create --issue-id <issue-id> --task-id <task-id> --agent-provider <provider> --agent-session-id <session-id> --json") {
+	if !strings.Contains(guide, "tutti-dev issue task run create --issue-id <issue-id> --task-id <task-id> --agent-provider <provider> --json") ||
+		!strings.Contains(guide, "binds the current AgentGUI session from runtime context") {
 		t.Fatalf("guide = %q, want tutti-dev issue task run create fallback command", guide)
+	}
+	if strings.Contains(guide, "run create --issue-id <issue-id> --task-id <task-id> --agent-provider <provider> --agent-session-id") {
+		t.Fatalf("fallback guide should not require explicit agent session ids: %q", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev issue task create --issue-id <issue-id> --title <title> --content <content> --json") ||
 		!strings.Contains(guide, "persist child tasks without creating a run") {
 		t.Fatalf("guide = %q, want tutti-dev breakdown task create fallback command", guide)
 	}
+	if !strings.Contains(guide, "tutti-dev issue task create-batch --issue-id <issue-id> --tasks-json") ||
+		!strings.Contains(guide, "Prefer this for multiple child tasks") {
+		t.Fatalf("guide = %q, want tutti-dev breakdown task create-batch fallback command", guide)
+	}
 	if !strings.Contains(guide, "tutti-dev issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed") {
 		t.Fatalf("guide = %q, want tutti-dev issue task run complete fallback command", guide)
+	}
+	if !strings.Contains(guide, "tutti-dev agent turn-resources --session-id <session-id> --turn-id <turn-id> --json") {
+		t.Fatalf("guide = %q, want tutti-dev turn resources fallback command", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev app open --app-id <app-id> --json") ||
 		!strings.Contains(guide, "Use only when the user explicitly asks to open or show an app window") {

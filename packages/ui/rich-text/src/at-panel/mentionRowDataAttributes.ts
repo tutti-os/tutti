@@ -9,6 +9,7 @@ export type MentionRowDataAttributeKey =
   | "fileThumb"
   | "fileVisualKind"
   | "navigation"
+  | "navigateInto"
   | "openReferences"
   | "statusTag"
   | "userAvatar";
@@ -24,6 +25,7 @@ const MENTION_ROW_DATA_ATTRIBUTES: Record<
     fileThumb: "data-rich-text-at-mention-file-thumb",
     fileVisualKind: "data-rich-text-at-mention-file-visual-kind",
     navigation: "data-rich-text-at-mention-navigation",
+    navigateInto: "data-rich-text-at-mention-navigate-into",
     openReferences: "data-rich-text-at-mention-open-references",
     statusTag: "data-rich-text-at-mention-status-tag",
     userAvatar: "data-rich-text-at-mention-user-avatar"
@@ -35,6 +37,7 @@ const MENTION_ROW_DATA_ATTRIBUTES: Record<
     fileThumb: "data-agent-mention-file-thumb",
     fileVisualKind: "data-agent-file-visual-kind",
     navigation: "data-agent-mention-navigation",
+    navigateInto: "data-agent-mention-navigate-into",
     openReferences: "data-agent-mention-open-references",
     statusTag: "data-agent-mention-status-tag",
     userAvatar: "data-agent-mention-user-avatar"

@@ -3515,6 +3515,21 @@ components:
         text:
           type: string
           nullable: true
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/CliCommandWarning"
+    CliCommandWarning:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
     CliInvokeResponse:
       type: object
       additionalProperties: false
@@ -3737,6 +3752,7 @@ components:
         - locale
         - minimizeAnimation
         - sleepPreventionMode
+        - showAppDeveloperSources
         - themeSource
         - updateChannel
         - updatePolicy
@@ -3747,8 +3763,6 @@ components:
           $ref: "#/components/schemas/DesktopAgentGuiConversationRailCollapsedByProvider"
         appCatalogChannel:
           $ref: "#/components/schemas/DesktopAppCatalogChannel"
-        showAppDeveloperSources:
-          type: boolean
         browserUseConnectionMode:
           $ref: "#/components/schemas/DesktopBrowserUseConnectionMode"
         defaultAgentProvider:
@@ -3765,6 +3779,8 @@ components:
           $ref: "#/components/schemas/DesktopMinimizeAnimation"
         sleepPreventionMode:
           $ref: "#/components/schemas/DesktopSleepPreventionMode"
+        showAppDeveloperSources:
+          type: boolean
         themeSource:
           $ref: "#/components/schemas/DesktopThemeSource"
         updateChannel:
@@ -4343,6 +4359,7 @@ components:
         - displayName
         - version
         - description
+        - authors
         - createdAtUnixMs
         - iconUrl
         - availableVersion
@@ -6008,6 +6025,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceAgentProvider"
+        days:
+          type: integer
+          description: >-
+            Limit the scan to conversations updated within the last N days.
+            Omit or 0 for the default 30-day window; a negative value scans all
+            available history.
     ExternalAgentImportProvider:
       type: object
       additionalProperties: false

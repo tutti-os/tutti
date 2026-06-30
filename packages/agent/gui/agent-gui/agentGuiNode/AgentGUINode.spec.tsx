@@ -23,6 +23,7 @@ import { agentGuiDockIconUrls } from "../../dockIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
+import { getAgentEnvPanelStore } from "../../shared/agentEnv/agentEnvPanelStore";
 import {
   resolveAgentGUIHeroIconUrl,
   shouldEmphasizeEmptyHeroProvider
@@ -707,6 +708,10 @@ describe("AgentGUINode", () => {
 
   beforeEach(() => {
     mockViewModel = createViewModel();
+    const agentEnvPanelStore = getAgentEnvPanelStore();
+    agentEnvPanelStore.open = false;
+    agentEnvPanelStore.provider = null;
+    agentEnvPanelStore.focus = null;
     mockCreateConversation.mockClear();
     mockSelectConversation.mockClear();
     mockSubmitPrompt.mockClear();
@@ -1087,8 +1092,16 @@ describe("AgentGUINode", () => {
     const windowTitle = container.querySelector(
       '[data-workspace-node-window-title="true"]'
     );
+    const windowRoot = container.querySelector<HTMLElement>(
+      '[data-workspace-node-window-root="true"]'
+    );
 
     expect(windowTitle).toHaveTextContent("Codex");
+    expect(windowTitle).toHaveClass("max-w-[280px]");
+    expect(windowTitle).toHaveClass("gap-2");
+    expect(windowRoot?.style.getPropertyValue("--node-header-padding-x")).toBe(
+      "16px"
+    );
   });
 
   it("shows the provider dock icon before the Agent GUI window title", () => {
@@ -1452,6 +1465,30 @@ describe("AgentGUINode", () => {
     expect(mockCreateConversation).toHaveBeenCalledTimes(1);
     expect(mockCreateConversation).toHaveBeenCalledWith({
       source: "rail_toolbar"
+    });
+  });
+
+  it("clears stale active conversation chrome state before creating a new conversation", () => {
+    const state: AgentGUINodeData = {
+      provider: "codex",
+      lastActiveAgentSessionId: "session-1",
+      lastActiveConversationTitle: "Existing session",
+      conversationRailWidthPx: null
+    };
+    const onUpdateNode =
+      vi.fn<
+        (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+      >();
+    renderAgentGUINode({ onUpdateNode, state });
+
+    fireEvent.click(getChromeNewConversationButton());
+
+    expect(mockCreateConversation).toHaveBeenCalledTimes(1);
+    expect(onUpdateNode).toHaveBeenCalledTimes(1);
+    expect(onUpdateNode.mock.calls[0]?.[0](state)).toEqual({
+      ...state,
+      lastActiveAgentSessionId: null,
+      lastActiveConversationTitle: null
     });
   });
 
@@ -2642,6 +2679,43 @@ describe("AgentGUINode", () => {
     expect(
       screen.getByTestId("agent-gui-provider-setup-notice")
     ).toHaveTextContent("agentHost.agentGui.installRequiredPlaceholder");
+  });
+
+  it("opens the provider setup panel from the setup notice action", () => {
+    mockViewModel = createViewModel({
+      data: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      activeConversationId: "session-1",
+      draftPrompt: "hello",
+      canQueueWhileBusy: true
+    });
+
+    renderAgentGUINode({
+      state: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      managedAgentsState: createManagedAgentsState({
+        readyAgentIds: ["codex"]
+      })
+    });
+
+    fireEvent.pointerDown(
+      screen.getByTestId("agent-gui-provider-setup-notice-action")
+    );
+    fireEvent.click(
+      screen.getByTestId("agent-gui-provider-setup-notice-action")
+    );
+
+    expect(getAgentEnvPanelStore()).toMatchObject({
+      open: true,
+      provider: "claude-code",
+      focus: "detect"
+    });
   });
 
   it("renders composer setting controls with permission mode UI", async () => {
@@ -6186,7 +6260,7 @@ describe("AgentGUINode", () => {
     }
   });
 
-  it("does not reserve the bottom composer height inside the timeline scroll area", () => {
+  it("reserves bottom dock overflow inside the timeline scroll area", () => {
     const originalGetBoundingClientRect =
       HTMLElement.prototype.getBoundingClientRect;
 
@@ -6205,13 +6279,31 @@ describe("AgentGUINode", () => {
             toJSON: () => undefined
           };
         }
+        if (
+          this.classList.contains(
+            "agent-gui-node__composer-queued-prompt-panel"
+          )
+        ) {
+          return {
+            x: 24,
+            y: 360,
+            width: 672,
+            height: 96,
+            top: 360,
+            right: 696,
+            bottom: 456,
+            left: 24,
+            toJSON: () => undefined
+          };
+        }
         return originalGetBoundingClientRect.call(this);
       };
 
     try {
       mockViewModel = createViewModel({
         activeConversationId: "session-1",
-        conversationDetail: detailViewModel()
+        conversationDetail: detailViewModel(),
+        queuedPrompts: [textQueuedPrompt("queued-1", "follow-up while busy")]
       });
 
       renderAgentGUINode();
@@ -6219,8 +6311,8 @@ describe("AgentGUINode", () => {
       expect(
         screen
           .getByTestId("agent-gui-timeline")
-          .style.getPropertyValue("--agent-gui-bottom-dock-height")
-      ).toBe("");
+          .style.getPropertyValue("--agent-gui-bottom-dock-safe-area")
+      ).toBe("96px");
     } finally {
       HTMLElement.prototype.getBoundingClientRect =
         originalGetBoundingClientRect;
@@ -6235,13 +6327,31 @@ describe("AgentGUINode", () => {
 
     expect(css).toMatch(/--agent-gui-detail-padding-x:\s*28px/);
     expect(css).toMatch(
+      /--agent-gui-background-1:\s*var\(--background-1,\s*rgb\(245 245 245\)\)/s
+    );
+    expect(css).toMatch(
+      /:root\[data-theme="dark"\]\s+\.agent-gui-node__shell\s*{[^}]*--agent-gui-background-1:\s*var\(--background-1,\s*rgb\(24 24 24\)\)/s
+    );
+    expect(css).toMatch(
+      /\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__detail\s*{[^}]*padding-top:\s*var\(--agent-gui-workbench-header-height\)/s
+    );
+    expect(css).toMatch(
+      /\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__timeline-with-composer\s*{[^}]*padding-top:\s*20px/s
+    );
+    expect(css).toMatch(
       /\.workspace-agents-status-panel__content--detail\s*{[^}]*padding-inline:\s*28px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__timeline\s*{[^}]*padding:\s*32px\s+var\(--agent-gui-detail-padding-x\)\s+24px/s
+      /\.agent-gui-node__timeline\s*{[^}]*padding:\s*32px\s+var\(--agent-gui-detail-padding-x\)\s+calc\(24px\s*\+\s*var\(--agent-gui-bottom-dock-safe-area,\s*0px\)\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__timeline-with-composer\s*{[^}]*padding-bottom:\s*calc\(120px\s*\+\s*var\(--agent-gui-bottom-dock-safe-area,\s*0px\)\)/s
     );
     expect(css).toMatch(
       /\.workspace-agents-status-panel__conversation-timeline\.agent-gui-node__timeline\s*{[^}]*padding-right:\s*28px[^}]*padding-left:\s*28px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__timeline-with-composer\s*{[^}]*-webkit-mask-image:\s*linear-gradient[^}]*mask-image:\s*linear-gradient/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
@@ -6250,7 +6360,16 @@ describe("AgentGUINode", () => {
       /\.agent-gui-node__bottom-dock\s*{[^}]*margin-right:\s*auto[^}]*margin-left:\s*auto/s
     );
     expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*{[^}]*pointer-events:\s*none/s
+    );
+    expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-node__composer\s*{[^}]*padding-right:\s*12px[^}]*padding-left:\s*12px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-node__composer\s*{[^}]*pointer-events:\s*none/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome,[\s\S]*?\.agent-gui-node__composer-input-shell\s*{[^}]*pointer-events:\s*auto/s
     );
   });
 

@@ -342,6 +342,23 @@ func (s *Service) ReadAttachment(ctx context.Context, workspaceID string, agentS
 	return store.ReadAttachment(workspaceID, agentSessionID, attachmentID)
 }
 
+func (s *Service) LocalAttachmentPath(ctx context.Context, workspaceID string, agentSessionID string, attachmentID string, mimeType string) (string, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	attachmentID = strings.TrimSpace(attachmentID)
+	if workspaceID == "" || agentSessionID == "" || attachmentID == "" {
+		return "", ErrInvalidArgument
+	}
+	if _, err := s.Get(ctx, workspaceID, agentSessionID); err != nil {
+		return "", err
+	}
+	store := s.PromptAttachmentStore
+	if strings.TrimSpace(store.RootDir) == "" {
+		return "", ErrSessionNotFound
+	}
+	return store.LocalPath(workspaceID, agentSessionID, attachmentID, mimeType)
+}
+
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, reconcileStaleTurn bool) (Session, error) {
 	session, ok := s.controller().Session(workspaceID, agentSessionID)
 	if ok {
@@ -766,9 +783,13 @@ func (s *Service) ensureRuntimeSessionResult(
 	if !ok || strings.TrimSpace(persisted.Provider) == "" {
 		return ensuredRuntimeSession{}, ErrSessionNotFound
 	}
-	if strings.TrimSpace(persisted.Origin) == WorkspaceAgentSessionOriginImported {
-		return ensuredRuntimeSession{}, ErrSessionNotFound
-	}
+	// Imported sessions used to be rejected here, which is what surfaced the
+	// "can't resume on this device, start a new conversation" dead-end. They now
+	// resume in place (same-device) or, when the provider session can't be
+	// restored locally, get a fresh provider session created on demand. The
+	// recreate is opt-in (RecreateIfMissing) so it stays scoped to imported
+	// conversations and doesn't change restore-error handling for normal ones.
+	imported := strings.TrimSpace(persisted.Origin) == WorkspaceAgentSessionOriginImported
 	prepared, err := s.prepareRuntimeForResume(ctx, persisted)
 	if err != nil {
 		return ensuredRuntimeSession{}, err
@@ -786,6 +807,7 @@ func (s *Service) ensureRuntimeSessionResult(
 		CreatedAtUnixMS:   persisted.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   persisted.UpdatedAtUnixMS,
 		Visible:           boolPointer(visibleFromRuntimeContext(persisted.RuntimeContext, true)),
+		RecreateIfMissing: imported,
 	})
 	if err != nil {
 		return ensuredRuntimeSession{}, normalizeRuntimeError(err)

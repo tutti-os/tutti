@@ -18,6 +18,9 @@ export function uniqueWorkspaceFileReferences(
       displayName: ref.displayName?.trim() || undefined,
       kind: ref.kind === "folder" ? "folder" : "file",
       path: normalizedPath,
+      ...(ref.createdTimeMs === undefined
+        ? {}
+        : { createdTimeMs: ref.createdTimeMs }),
       ...(ref.mtimeMs === undefined ? {} : { mtimeMs: ref.mtimeMs }),
       ...(ref.sizeBytes === undefined ? {} : { sizeBytes: ref.sizeBytes })
     });

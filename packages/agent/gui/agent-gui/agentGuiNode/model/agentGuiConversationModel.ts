@@ -20,12 +20,13 @@ import type { AgentConversationVM } from "../../../shared/agentConversation/cont
 import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentAskUserQuestionVM } from "../../../shared/agentConversation/contracts/agentAskUserQuestionItemVM";
 import {
+  firstAgentGUIUserMessageTitle,
   resolveAgentGUIConversationTitle,
   resolveAgentGUIExplicitConversationTitle,
   resolveAgentGUIProviderIdentity,
   type AgentGUIConversationTitleFallback,
   type AgentGUIResolvedProvider
-} from "./agentGuiProviderIdentity";
+} from "../../../shared/agentConversationTitleProjection.ts";
 import {
   WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN,
   isWorkspaceAgentActivityRuntimeSessionOrigin,
@@ -71,6 +72,7 @@ export interface AgentGUIConversationSummary {
   updatedAtUnixMs: number;
   hasUnreadCompletion?: boolean;
   unreadCompletionKey?: string | null;
+  isImported?: boolean;
   syncState?: WorkspaceAgentActivitySyncState;
 }
 
@@ -528,6 +530,7 @@ function conversationSummaryFromActivity(
     pinnedAtUnixMs: session?.pinnedAtUnixMs ?? null,
     sortTimeUnixMs: activity.sortTimeUnixMs,
     updatedAtUnixMs: session?.updatedAtUnixMs || activity.sortTimeUnixMs || 0,
+    ...(isImportedWorkspaceAgentSession(session) ? { isImported: true } : {}),
     syncState: session?.syncState
   };
 }
@@ -548,6 +551,12 @@ function isExternalImportNoProjectSession(
   const runtimeContext =
     session && "runtimeContext" in session ? session.runtimeContext : undefined;
   return runtimeContext?.externalImportNoProject === true;
+}
+
+function isImportedWorkspaceAgentSession(
+  session: WorkspaceAgentActivitySession | undefined
+): boolean {
+  return session?.runtimeContext?.imported === true;
 }
 
 function isSameAgentGUIConversationProject(
@@ -797,13 +806,7 @@ function firstUserMessageTitleFromTimelineItems(
 function firstUserMessageTitleFromMessages(
   messages: readonly WorkspaceAgentActivityMessage[]
 ): string {
-  const userMessage = [...messages]
-    .filter(
-      (message) =>
-        messageRole(message) === "user" && messageText(message).length > 0
-    )
-    .sort(compareMessagesAscending)[0];
-  return userMessage ? messageText(userMessage) : "";
+  return firstAgentGUIUserMessageTitle(messages);
 }
 
 function workspaceAgentMessagesFromTimelineItems(
@@ -837,64 +840,6 @@ function workspaceAgentMessagesFromTimelineItems(
       completedAtUnixMs: item.occurredAtUnixMs
     };
   });
-}
-
-function messageRole(
-  message: WorkspaceAgentActivityMessage
-): "user" | "agent" | null {
-  const role = message.role?.trim().toLowerCase();
-  if (role === "user") {
-    return "user";
-  }
-  if (role === "assistant" || role === "agent") {
-    return "agent";
-  }
-  const kind = message.kind.trim().toLowerCase();
-  if (kind === "message.user") {
-    return "user";
-  }
-  if (kind === "message.assistant" || kind === "message.agent") {
-    return "agent";
-  }
-  return null;
-}
-
-function messageText(message: WorkspaceAgentActivityMessage): string {
-  const payloadDisplayPrompt =
-    typeof message.payload?.displayPrompt === "string"
-      ? message.payload.displayPrompt
-      : "";
-  const payloadContent =
-    typeof message.payload?.content === "string" ? message.payload.content : "";
-  const payloadText =
-    typeof message.payload?.text === "string" ? message.payload.text : "";
-  return (payloadDisplayPrompt || payloadText || payloadContent)
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function compareMessagesAscending(
-  left: WorkspaceAgentActivityMessage,
-  right: WorkspaceAgentActivityMessage
-): number {
-  const leftTime =
-    left.occurredAtUnixMs ??
-    left.completedAtUnixMs ??
-    left.startedAtUnixMs ??
-    0;
-  const rightTime =
-    right.occurredAtUnixMs ??
-    right.completedAtUnixMs ??
-    right.startedAtUnixMs ??
-    0;
-  const timeDiff = leftTime - rightTime;
-  if (timeDiff !== 0) {
-    return timeDiff;
-  }
-  return (
-    (left.id ?? 0) - (right.id ?? 0) ||
-    left.messageId.localeCompare(right.messageId)
-  );
 }
 
 function timelineItemRole(

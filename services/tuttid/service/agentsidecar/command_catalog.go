@@ -36,17 +36,21 @@ func commandGuideFromCapabilities(cliName string, capabilities []cliservice.Capa
 		if strings.TrimSpace(command.Description) != "" {
 			line += " - " + strings.TrimSpace(command.Description)
 		}
+		if command.InputDetails != "" {
+			line += " Arguments: " + command.InputDetails
+		}
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")
 }
 
 type runtimeCommand struct {
-	ID          string
-	Summary     string
-	Description string
-	Example     string
-	Rank        int
+	ID           string
+	Summary      string
+	Description  string
+	Example      string
+	InputDetails string
+	Rank         int
 }
 
 func relevantRuntimeCommands(cliName string, capabilities []cliservice.Capability) []runtimeCommand {
@@ -107,12 +111,31 @@ func runtimeCommandFromCapability(cliName string, capability cliservice.Capabili
 		}
 		description += "Omit --model unless the user explicitly requested a model; tuttid uses the target provider default."
 	}
+	if agentCommandAcceptsImageInput(id, capability.InputSchema) {
+		if description != "" {
+			description += " "
+		}
+		description += "Pass --image <path> multiple times to include local PNG, JPEG, or WebP image context."
+	}
+	summary := firstNonEmptyText(capability.Summary, id)
+	if id == "issue-manager.issue.list" {
+		summary = "List issues in a topic"
+		topicDiscoveryHint := fmt.Sprintf("Requires --topic-id; use `%s issue topic list --json` first when the topic is unknown.", normalizeCLICommandName(cliName))
+		description = strings.ReplaceAll(description, "`issue topic list --json`", fmt.Sprintf("`%s issue topic list --json`", normalizeCLICommandName(cliName)))
+		if !strings.Contains(description, topicDiscoveryHint) {
+			if description != "" {
+				description += " "
+			}
+			description += topicDiscoveryHint
+		}
+	}
 	return runtimeCommand{
-		ID:          id,
-		Summary:     firstNonEmptyText(capability.Summary, id),
-		Description: description,
-		Example:     normalizeCLICommandName(cliName) + " " + path + requiredInputHintForCommand(id, capability.InputSchema) + commandExampleSuffix(id),
-		Rank:        commandRank(id),
+		ID:           id,
+		Summary:      summary,
+		Description:  description,
+		Example:      normalizeCLICommandName(cliName) + " " + path + requiredInputHintForCommand(id, capability.InputSchema) + commandExampleSuffix(id),
+		InputDetails: inputDetailsForCommand(id, capability.InputSchema),
+		Rank:         commandRank(id),
 	}, true
 }
 
@@ -173,6 +196,112 @@ func agentLauncherCommandUsesDefaultModel(id string) bool {
 	default:
 		return false
 	}
+}
+
+func inputDetailsForCommand(id string, schema map[string]any) string {
+	properties := mapSchemaValue(schema["properties"])
+	if len(properties) == 0 {
+		return ""
+	}
+	required := map[string]bool{}
+	for _, name := range stringSliceSchemaValue(schema["required"]) {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			required[name] = true
+		}
+	}
+	if agentLauncherCommandUsesDefaultModel(id) {
+		delete(required, "model")
+	}
+	names := make([]string, 0, len(properties))
+	for name := range properties {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	sort.SliceStable(names, func(left, right int) bool {
+		leftRequired := required[names[left]]
+		rightRequired := required[names[right]]
+		if leftRequired != rightRequired {
+			return leftRequired
+		}
+		return names[left] < names[right]
+	})
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		property := mapSchemaValue(properties[name])
+		detail := "--" + name
+		if typ := schemaTypeLabel(property); typ != "" {
+			detail += " <" + typ + ">"
+		}
+		var qualifiers []string
+		if required[name] {
+			qualifiers = append(qualifiers, "required")
+		} else {
+			qualifiers = append(qualifiers, "optional")
+		}
+		if enum := stringSliceSchemaValue(property["enum"]); len(enum) > 0 {
+			qualifiers = append(qualifiers, "values: "+strings.Join(enum, "|"))
+		}
+		if defaultValue, ok := property["default"]; ok {
+			if defaultText := strings.TrimSpace(fmt.Sprint(defaultValue)); defaultText != "" {
+				qualifiers = append(qualifiers, "default: "+defaultText)
+			}
+		}
+		if len(qualifiers) > 0 {
+			detail += " (" + strings.Join(qualifiers, "; ") + ")"
+		}
+		if description := strings.TrimSpace(asSchemaString(property["description"])); description != "" {
+			detail += " - " + description
+		}
+		parts = append(parts, detail)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func schemaTypeLabel(property map[string]any) string {
+	typeLabel := strings.TrimSpace(asSchemaString(property["type"]))
+	switch typeLabel {
+	case "integer", "number":
+		return "number"
+	case "boolean":
+		return "true|false"
+	case "array":
+		return "json"
+	case "object":
+		return "json"
+	default:
+		return typeLabel
+	}
+}
+
+func mapSchemaValue(value any) map[string]any {
+	if typed, ok := value.(map[string]any); ok {
+		return typed
+	}
+	return nil
+}
+
+func asSchemaString(value any) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return ""
+}
+
+func agentCommandAcceptsImageInput(id string, schema map[string]any) bool {
+	switch strings.TrimSpace(id) {
+	case "agent-context.agent.start", "agent-context.codex.start", "agent-context.claude.start", "agent-context.agent.send":
+	default:
+		return false
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = properties["image"]
+	return ok
 }
 
 func commandExampleSuffix(id string) string {
@@ -239,6 +368,8 @@ func commandRank(id string) int {
 		return 50
 	case "issue-manager.issue.task.create":
 		return 55
+	case "issue-manager.issue.task.create-batch":
+		return 56
 	case "issue-manager.issue.task.update":
 		return 60
 	case "issue-manager.issue.task.delete":
@@ -255,6 +386,8 @@ func commandRank(id string) int {
 		return 110
 	case "agent-context.agent.session-summary":
 		return 120
+	case "agent-context.agent.turn-resources":
+		return 125
 	case "agent-context.agent.active-peers":
 		return 130
 	case "workspace-apps.app.open":
@@ -268,18 +401,20 @@ func fallbackCommandGuide(cliName string) string {
 	cliName = normalizeCLICommandName(cliName)
 	return strings.Join([]string{
 		fmt.Sprintf("- List issue topics: `%s issue topic list`", cliName),
-		fmt.Sprintf("- List issues: `%s issue list --topic-id <topic-id>`", cliName),
+		fmt.Sprintf("- List issues in a topic: `%s issue list --topic-id <topic-id>` - Requires a topic id; use `%s issue topic list --json` first when the topic is unknown.", cliName, cliName),
 		fmt.Sprintf("- Get issue detail: `%s issue get --issue-id <issue-id> --json`", cliName),
 		fmt.Sprintf("- Update issue status: `%s issue update --issue-id <issue-id> --status completed --json`", cliName),
 		fmt.Sprintf("- List issue tasks: `%s issue task list --issue-id <issue-id>`", cliName),
+		fmt.Sprintf("- Create ordered issue tasks for breakdown: `%s issue task create-batch --issue-id <issue-id> --tasks-json '[{\"title\":\"<title>\",\"content\":\"<content>\"}]' --json` - Prefer this for multiple child tasks; it persists tasks in array order without creating runs.", cliName),
 		fmt.Sprintf("- Create issue task for breakdown: `%s issue task create --issue-id <issue-id> --title <title> --content <content> --json` - Use this to persist child tasks without creating a run.", cliName),
 		fmt.Sprintf("- Update issue task status: `%s issue task update --issue-id <issue-id> --task-id <task-id> --status completed --json`", cliName),
-		fmt.Sprintf("- Create an issue run: `%s issue run create --issue-id <issue-id> --agent-provider <provider> --agent-session-id <session-id> --json` - Execution mode only; do not use for breakdown-only work.", cliName),
+		fmt.Sprintf("- Create an issue run: `%s issue run create --issue-id <issue-id> --agent-provider <provider> --json` - Execution mode only; the CLI binds the current AgentGUI session from runtime context. Do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- Complete an issue run: `%s issue run complete --issue-id <issue-id> --run-id <run-id> --status completed --summary <summary> --outputs '[{\"path\":\"<artifact-path>\"}]' --json` - Execution mode only; do not use for breakdown-only work.", cliName),
-		fmt.Sprintf("- Create an issue task run: `%s issue task run create --issue-id <issue-id> --task-id <task-id> --agent-provider <provider> --agent-session-id <session-id> --json` - Execution mode only; do not use for breakdown-only work.", cliName),
+		fmt.Sprintf("- Create an issue task run: `%s issue task run create --issue-id <issue-id> --task-id <task-id> --agent-provider <provider> --json` - Execution mode only; the CLI binds the current AgentGUI session from runtime context. Do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- Complete an issue task run: `%s issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed --summary <summary> --outputs '[{\"path\":\"<artifact-path>\"}]' --json` - Execution mode only; do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- List agent sessions: `%s agent sessions`", cliName),
 		fmt.Sprintf("- Get agent session summary: `%s agent session-summary --session-id <session-id> --json`", cliName),
+		fmt.Sprintf("- Get resources from one agent turn: `%s agent turn-resources --session-id <session-id> --turn-id <turn-id> --json`", cliName),
 		fmt.Sprintf("- Show active peer agents: `%s agent active-peers --json`", cliName),
 		fmt.Sprintf("- Open an app window: `%s app open --app-id <app-id> --json` - Use only when the user explicitly asks to open or show an app window, or confirms an app window should be opened; prefer app-specific CLI commands for ordinary app work.", cliName),
 	}, "\n")

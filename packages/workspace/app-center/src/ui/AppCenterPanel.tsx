@@ -148,9 +148,11 @@ export interface AppCenterPanelProps {
     provider: string
   ) => Promise<AppCenterFactoryProviderConfiguration>;
   readonly onActiveAppTabChange?: (tab: AppCenterAppTab) => void;
+  readonly officialDeveloperIconUrl?: string | null;
   readonly providerErrorMessage?: string | null;
   readonly providerLoading?: boolean;
   readonly providerOptions?: readonly AppCenterFactoryProviderOption[];
+  readonly showDeveloperSources?: boolean;
   readonly viewModel: AppCenterViewModel;
 }
 
@@ -164,9 +166,11 @@ export function AppCenterPanel({
   errorMessage,
   loadProviderConfiguration,
   onActiveAppTabChange,
+  officialDeveloperIconUrl = null,
   providerErrorMessage = null,
   providerLoading = false,
   providerOptions = [],
+  showDeveloperSources = false,
   viewModel
 }: AppCenterPanelProps): ReactElement {
   const promptTextareaId = useId();
@@ -754,6 +758,8 @@ export function AppCenterPanel({
             apps={activeApps}
             copy={copy}
             emptyMessage={activeAppEmptyMessage}
+            officialDeveloperIconUrl={officialDeveloperIconUrl}
+            showDeveloperSources={showDeveloperSources}
             title={activeAppTabTitle}
           />
         </section>
@@ -1369,12 +1375,16 @@ function AppCardGrid({
   apps,
   copy,
   emptyMessage,
+  officialDeveloperIconUrl,
+  showDeveloperSources,
   title
 }: {
   readonly actions: AppCenterHostActions;
   readonly apps: AppCenterViewModel["apps"];
   readonly copy: AppCenterI18nRuntime;
   readonly emptyMessage: string;
+  readonly officialDeveloperIconUrl?: string | null;
+  readonly showDeveloperSources: boolean;
   readonly title: string;
 }): ReactElement {
   if (apps.length === 0) {
@@ -1397,7 +1407,14 @@ function AppCardGrid({
         role="list"
       >
         {apps.map((app) => (
-          <AppCard actions={actions} app={app} copy={copy} key={app.id} />
+          <AppCard
+            actions={actions}
+            app={app}
+            copy={copy}
+            key={app.id}
+            officialDeveloperIconUrl={officialDeveloperIconUrl}
+            showDeveloperSources={showDeveloperSources}
+          />
         ))}
       </div>
       <div aria-hidden="true" className="h-6 shrink-0" />

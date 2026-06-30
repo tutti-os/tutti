@@ -44,6 +44,7 @@ export interface ReferenceListFile {
    * 各源在「跨整源搜索拍平」时填入父级上下文;不填则副标题回退展示 nodeId。
    */
   parentLabel?: string | null;
+  createdTimeMs?: number | null;
   sizeBytes?: number | null;
   mtimeMs?: number | null;
   mimeType?: string | null;
@@ -324,6 +325,9 @@ function itemToNode(sourceId: string, item: ReferenceListItem): ReferenceNode {
     ...(reference.parentLabel?.trim()
       ? { contextLabel: reference.parentLabel.trim() }
       : {}),
+    ...(reference.createdTimeMs == null
+      ? {}
+      : { createdTimeMs: reference.createdTimeMs }),
     ...(reference.sizeBytes == null ? {} : { sizeBytes: reference.sizeBytes }),
     ...(reference.mtimeMs == null ? {} : { mtimeMs: reference.mtimeMs }),
     ...(reference.mimeType ? { mimeType: reference.mimeType } : {})

@@ -56,6 +56,36 @@ func TestMergeLiveModelsIntoComposerOptionsUpdatesRuntimeContext(t *testing.T) {
 	}
 }
 
+func TestMergeLiveModelsIntoComposerOptionsKeepsModelDescriptionInRuntimeContext(t *testing.T) {
+	// Regression: the desktop composer projection prefers the model list in
+	// RuntimeContext["configOptions"] over ModelConfig.Options, so the per-model
+	// description must survive into the runtime configOptions or the hover
+	// detail disappears.
+	merged := mergeLiveModelsIntoComposerOptions(ComposerOptions{
+		Provider:          "claude-code",
+		EffectiveSettings: ComposerSettings{Model: "default"},
+		RuntimeContext:    map[string]any{},
+	}, []ComposerConfigOptionValue{
+		{ID: "default", Label: "Default", Value: "default", Description: "Opus 4.8 with 1M context · Best for everyday, complex tasks"},
+		{ID: "sonnet", Label: "Sonnet", Value: "sonnet", Description: "Sonnet 4.6 · Efficient for routine tasks"},
+	})
+
+	configOptions, ok := merged.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 || configOptions[0]["id"] != "model" {
+		t.Fatalf("configOptions = %#v, want model option", merged.RuntimeContext["configOptions"])
+	}
+	options, ok := configOptions[0]["options"].([]map[string]string)
+	if !ok || len(options) != 2 {
+		t.Fatalf("model options = %#v, want 2 entries", configOptions[0]["options"])
+	}
+	if got := options[0]["description"]; got != "Opus 4.8 with 1M context · Best for everyday, complex tasks" {
+		t.Fatalf("default description = %q, want the Opus description", got)
+	}
+	if got := options[1]["description"]; got != "Sonnet 4.6 · Efficient for routine tasks" {
+		t.Fatalf("sonnet description = %q, want the Sonnet description", got)
+	}
+}
+
 func TestMergeLiveModelsIntoComposerOptionsDoesNotAppendUnsupportedSelectedModel(t *testing.T) {
 	merged := mergeLiveModelsIntoComposerOptions(ComposerOptions{
 		Provider: "claude-code",

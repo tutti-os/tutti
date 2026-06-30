@@ -62,6 +62,11 @@ type CommandOutput struct {
 	Text    string
 }
 
+type InputWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
 type Command struct {
 	Capability Capability
 	Manifest   ManifestCommand

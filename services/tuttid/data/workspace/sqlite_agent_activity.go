@@ -404,6 +404,13 @@ func (s *SQLiteStore) ListSessionMessages(
 	if queryLimit > 0 {
 		queryLimit++
 	}
+	turnID := strings.TrimSpace(input.TurnID)
+	where := []string{"workspace_id = ?", "agent_session_id = ?", "deleted_at_unix_ms = 0"}
+	args := []any{workspaceID, agentSessionID}
+	if turnID != "" {
+		where = append(where, "turn_id = ?")
+		args = append(args, turnID)
+	}
 	order := input.Order
 	if order == "" {
 		order = agentactivitybiz.MessageOrderAsc
@@ -413,38 +420,41 @@ func (s *SQLiteStore) ListSessionMessages(
 	switch order {
 	case agentactivitybiz.MessageOrderDesc:
 		if input.BeforeVersion > 0 {
+			whereWithCursor := append(append([]string{}, where...), "version < ?")
+			argsWithCursor := append(append([]any{}, args...), input.BeforeVersion, queryLimit)
 			rows, err = s.db.QueryContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
        payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
-WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-  AND version < ?
+WHERE `+strings.Join(whereWithCursor, " AND ")+`
 ORDER BY version DESC, id DESC
 LIMIT ?
-`, workspaceID, agentSessionID, input.BeforeVersion, queryLimit)
+`, argsWithCursor...)
 		} else {
+			argsWithLimit := append(append([]any{}, args...), queryLimit)
 			rows, err = s.db.QueryContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
        payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
-WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
+WHERE `+strings.Join(where, " AND ")+`
 ORDER BY version DESC, id DESC
 LIMIT ?
-`, workspaceID, agentSessionID, queryLimit)
+`, argsWithLimit...)
 		}
 	case agentactivitybiz.MessageOrderAsc:
+		whereWithCursor := append(append([]string{}, where...), "version > ?")
+		argsWithCursor := append(append([]any{}, args...), input.AfterVersion, queryLimit)
 		rows, err = s.db.QueryContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
        payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
-WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-  AND version > ?
+WHERE `+strings.Join(whereWithCursor, " AND ")+`
 ORDER BY version ASC, id ASC
 LIMIT ?
-`, workspaceID, agentSessionID, input.AfterVersion, queryLimit)
+`, argsWithCursor...)
 	default:
 		return agentactivitybiz.MessagePage{}, false, fmt.Errorf("unsupported workspace agent message order: %s", order)
 	}

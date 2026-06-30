@@ -8,6 +8,7 @@
   "commit": false,
   "fixed": [
     [
+      "@tutti-os/event-stream-core",
       "@tutti-os/workspace-file-manager",
       "@tutti-os/workspace-file-reference",
       "@tutti-os/workspace-issue-manager",

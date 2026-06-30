@@ -75,6 +75,9 @@ export function createWorkspaceFileReferenceSource(input: {
       kind,
       displayName: ref.displayName?.trim() || basename(ref.path),
       ...(kind === "folder" ? { hasChildren: true } : {}),
+      ...(ref.createdTimeMs == null
+        ? {}
+        : { createdTimeMs: ref.createdTimeMs }),
       ...(ref.sizeBytes == null ? {} : { sizeBytes: ref.sizeBytes }),
       ...(ref.mtimeMs == null ? {} : { mtimeMs: ref.mtimeMs })
     };

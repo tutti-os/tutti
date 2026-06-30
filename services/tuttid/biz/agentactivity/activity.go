@@ -30,6 +30,7 @@ const (
 type ListSessionMessagesInput struct {
 	WorkspaceID    string
 	AgentSessionID string
+	TurnID         string
 	AfterVersion   uint64
 	BeforeVersion  uint64
 	Limit          int

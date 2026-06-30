@@ -72,6 +72,9 @@ import type {
   CreateWorkspaceIssueTaskRunData,
   CreateWorkspaceIssueTaskRunErrors,
   CreateWorkspaceIssueTaskRunResponses,
+  CreateWorkspaceIssueTasksData,
+  CreateWorkspaceIssueTasksErrors,
+  CreateWorkspaceIssueTasksResponses,
   CreateWorkspaceIssueTopicData,
   CreateWorkspaceIssueTopicErrors,
   CreateWorkspaceIssueTopicResponses,
@@ -2515,6 +2518,26 @@ export const createWorkspaceIssueTask = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/issues/{issueID}/tasks",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Create ordered tasks for an issue-manager issue
+ */
+export const createWorkspaceIssueTasks = <ThrowOnError extends boolean = false>(
+  options: Options<CreateWorkspaceIssueTasksData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateWorkspaceIssueTasksResponses,
+    CreateWorkspaceIssueTasksErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/batch-create",
     ...options,
     headers: {
       "Content-Type": "application/json",

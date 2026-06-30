@@ -60,6 +60,9 @@ func Schema(input InputSpec) map[string]any {
 			propertyType = "string"
 		}
 		property := map[string]any{"type": propertyType}
+		if propertyType == "array" {
+			property["items"] = map[string]any{"type": "string"}
+		}
 		if field.Description != "" {
 			property["description"] = field.Description
 		}
@@ -149,6 +152,23 @@ func setFieldValue(field reflect.Value, spec FieldSpec, raw any) error {
 			return invalidInputError(spec.Name)
 		}
 		field.SetString(strings.TrimSpace(text))
+	case reflect.Slice:
+		if field.Type().Elem().Kind() != reflect.String {
+			return invalidInputError(spec.Name)
+		}
+		values, ok := stringValues(raw)
+		if !ok {
+			return invalidInputError(spec.Name)
+		}
+		slice := reflect.MakeSlice(field.Type(), 0, len(values))
+		for _, value := range values {
+			trimmed := strings.TrimSpace(value)
+			if trimmed == "" {
+				continue
+			}
+			slice = reflect.Append(slice, reflect.ValueOf(trimmed))
+		}
+		field.Set(slice)
 	case reflect.Bool:
 		value, err := parseBool(raw)
 		if err != nil {
@@ -171,6 +191,27 @@ func setFieldValue(field reflect.Value, spec FieldSpec, raw any) error {
 		return invalidInputError(spec.Name)
 	}
 	return nil
+}
+
+func stringValues(raw any) ([]string, bool) {
+	switch value := raw.(type) {
+	case string:
+		return []string{value}, true
+	case []string:
+		return value, true
+	case []any:
+		result := make([]string, 0, len(value))
+		for _, item := range value {
+			text, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			result = append(result, text)
+		}
+		return result, true
+	default:
+		return nil, false
+	}
 }
 
 func parseBool(raw any) (bool, error) {
@@ -254,6 +295,8 @@ func schemaType(typ reflect.Type) string {
 		return "boolean"
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return "integer"
+	case reflect.Slice:
+		return "array"
 	default:
 		return "string"
 	}

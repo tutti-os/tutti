@@ -20,6 +20,9 @@ func (api DaemonAPI) ScanWorkspaceExternalAgentSessionImports(ctx context.Contex
 	input := agentservice.ExternalImportScanInput{}
 	if request.Body != nil {
 		input.Providers = externalImportProvidersFromGenerated(request.Body.Providers)
+		if request.Body.Days != nil {
+			input.Days = *request.Body.Days
+		}
 	}
 	result, err := api.AgentSessionService.ScanExternalImports(ctx, input)
 	if err != nil {

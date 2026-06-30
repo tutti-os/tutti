@@ -16,10 +16,11 @@ export function projectAgentProcessingRow(
   if (hasSpecificProgressRow(rows)) {
     return null;
   }
+  const turnId = detail.turns.at(-1)?.id ?? null;
   return {
     kind: "processing",
-    id: "processing",
-    turnId: detail.turns.at(-1)?.id ?? null,
+    id: `processing:${turnId ?? "session"}`,
+    turnId,
     occurredAtUnixMs:
       detail.session.updatedAtUnixMs ?? detail.session.createdAtUnixMs ?? null
   };

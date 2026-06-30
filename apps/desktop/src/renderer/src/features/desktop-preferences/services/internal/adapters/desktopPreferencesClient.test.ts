@@ -29,6 +29,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -51,6 +52,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
           locale: "zh-CN",
           minimizeAnimation: "scale",
           sleepPreventionMode: "never",
+          showAppDeveloperSources: false,
           themeSource: "dark",
           updateChannel: "stable",
           updatePolicy: "prompt"
@@ -75,6 +77,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -94,6 +97,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
     locale: "zh-CN",
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
+    showAppDeveloperSources: false,
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -125,6 +129,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -152,6 +157,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -177,6 +183,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -198,6 +205,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
     locale: "zh-CN",
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
+    showAppDeveloperSources: false,
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -235,6 +243,7 @@ test("desktop preferences client fans out authoritative preference updates", asy
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -255,6 +264,7 @@ test("desktop preferences client fans out authoritative preference updates", asy
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -286,6 +296,7 @@ test("desktop preferences client rejects pending writes when disposed", async ()
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -314,6 +325,7 @@ test("desktop preferences client confirms writes from HTTP when the event does n
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -342,6 +354,7 @@ test("desktop preferences client confirms writes from HTTP when the event does n
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -361,6 +374,7 @@ test("desktop preferences client confirms writes from HTTP when the event does n
     locale: "zh-CN",
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
+    showAppDeveloperSources: false,
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -386,6 +400,7 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -419,6 +434,7 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -439,6 +455,7 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -464,6 +481,7 @@ test("desktop preferences client rejects writes when the authoritative state can
       locale: "en",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -492,6 +510,7 @@ test("desktop preferences client rejects writes when the authoritative state can
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -529,6 +548,7 @@ test("desktop preferences client coalesces concurrent identical writes", async (
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -548,6 +568,7 @@ test("desktop preferences client coalesces concurrent identical writes", async (
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -571,6 +592,7 @@ test("desktop preferences client coalesces concurrent identical writes", async (
       locale: "zh-CN",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -602,6 +624,7 @@ function createFakeTuttidClient(
       locale: "en",
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
+      showAppDeveloperSources: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"

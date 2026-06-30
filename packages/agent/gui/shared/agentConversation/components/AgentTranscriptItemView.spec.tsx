@@ -633,6 +633,39 @@ describe("AgentTranscriptItemView render stability", () => {
     ).toBeNull();
   });
 
+  it("renders transport fallback notices with danger chrome", () => {
+    const { getByRole, getByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-transport-fallback",
+          turnId: "turn-1",
+          body: "Falling back from WebSockets to HTTPS transport.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "transport_fallback",
+            severity: "warning",
+            title: "Falling back from WebSockets to HTTPS transport.",
+            detail:
+              "stream disconnected before completion: websocket closed by server before response.completed",
+            retryable: true
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("status");
+    expect(notice.className).toContain("var(--state-danger)_20%");
+    expect(notice.className).toContain("var(--state-danger)_8%");
+    expect(notice.className).not.toContain("var(--state-warning)_6%");
+    expect(
+      getByText("agentHost.agentGui.systemNoticeTransportFallback")
+    ).toBeTruthy();
+  });
+
   it("renders context compaction notices as an inline divider", () => {
     const { getByRole, getByText, queryByText } = render(
       <AgentMessageBlock

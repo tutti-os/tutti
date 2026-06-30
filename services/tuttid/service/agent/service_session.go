@@ -44,12 +44,16 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 const WorkspaceAgentSessionOriginImported = "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED"
 
 func persistedSessionCanResume(controller RuntimeController, session PersistedSession) bool {
-	if strings.TrimSpace(session.Origin) == WorkspaceAgentSessionOriginImported {
-		return false
-	}
 	if controller == nil {
 		return false
 	}
+	// Imported sessions used to be hard-marked non-resumable, which dead-ended
+	// the user into starting a brand new conversation. They carry the provider
+	// session id captured at import time (codex thread id / claude sessionId), so
+	// they can resume in place on the same device; when the underlying provider
+	// session is missing, the runtime recreates a fresh one on send instead of
+	// blocking (see Controller.ensureLiveAdapterSession). Either way the
+	// conversation is continuable, so defer to the adapter's CanResume.
 	return controller.CanResume(runtimeResumeInputFromPersistedSession(session))
 }
 

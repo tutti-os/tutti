@@ -4,13 +4,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
 
 func NormalizeInput(schema map[string]any, input map[string]any) (map[string]any, error) {
+	normalized, _, err := NormalizeInputWithWarnings(schema, input)
+	return normalized, err
+}
+
+func NormalizeInputWithWarnings(schema map[string]any, input map[string]any) (map[string]any, []InputWarning, error) {
 	if len(schema) == 0 {
-		return map[string]any{}, nil
+		return map[string]any{}, unknownInputWarnings(input, nil), nil
 	}
 	properties, _ := schema["properties"].(map[string]any)
 	required := map[string]bool{}
@@ -26,16 +32,37 @@ func NormalizeInput(schema map[string]any, input map[string]any) (map[string]any
 		propertyMap, _ := property.(map[string]any)
 		normalized, err := normalizeValue(schemaType(propertyMap), value)
 		if err != nil {
-			return nil, fmt.Errorf("%w: invalid input %q", ErrInvalidInput, key)
+			return nil, nil, fmt.Errorf("%w: invalid input %q", ErrInvalidInput, key)
 		}
 		result[key] = normalized
 	}
 	for name := range required {
 		if _, ok := result[name]; !ok {
-			return nil, fmt.Errorf("%w: required input %q is missing", ErrInvalidInput, name)
+			return nil, nil, fmt.Errorf("%w: required input %q is missing", ErrInvalidInput, name)
 		}
 	}
-	return result, nil
+	return result, unknownInputWarnings(input, properties), nil
+}
+
+func unknownInputWarnings(input map[string]any, properties map[string]any) []InputWarning {
+	if len(input) == 0 {
+		return nil
+	}
+	unknown := make([]string, 0)
+	for key := range input {
+		if _, ok := properties[key]; !ok {
+			unknown = append(unknown, key)
+		}
+	}
+	sort.Strings(unknown)
+	warnings := make([]InputWarning, 0, len(unknown))
+	for _, key := range unknown {
+		warnings = append(warnings, InputWarning{
+			Code:    "unknown_input_ignored",
+			Message: fmt.Sprintf("Ignoring unknown input %q; this CLI may be newer than the app handler.", key),
+		})
+	}
+	return warnings
 }
 
 func normalizeValue(typeName string, value any) (any, error) {

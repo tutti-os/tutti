@@ -143,6 +143,12 @@ export type CliCommandOutput = {
     [key: string]: unknown;
   } | null;
   text?: string | null;
+  warnings?: Array<CliCommandWarning>;
+};
+
+export type CliCommandWarning = {
+  code: string;
+  message: string;
 };
 
 export type CliInvokeResponse = {
@@ -237,7 +243,6 @@ export type DesktopPreferences = {
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   appCatalogChannel: DesktopAppCatalogChannel;
-  showAppDeveloperSources?: boolean;
   browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
   defaultAgentProvider: WorkspaceAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
@@ -246,6 +251,7 @@ export type DesktopPreferences = {
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
+  showAppDeveloperSources: boolean;
   themeSource: DesktopThemeSource;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
@@ -502,7 +508,7 @@ export type WorkspaceApp = {
   displayName: string;
   version: string;
   description: string;
-  authors?: Array<WorkspaceAppAuthor>;
+  authors: Array<WorkspaceAppAuthor>;
   repository?: WorkspaceAppRepository;
   createdAtUnixMs: number;
   installProgress?: WorkspaceAppInstallProgress;
@@ -1173,6 +1179,10 @@ export type WorkspaceAgentSessionListResponse = {
 
 export type ExternalAgentImportScanRequest = {
   providers?: Array<WorkspaceAgentProvider>;
+  /**
+   * Limit the scan to conversations updated within the last N days. Omit or 0 for the default 30-day window; a negative value scans all available history.
+   */
+  days?: number;
 };
 
 export type ExternalAgentImportProvider = {
@@ -1819,6 +1829,10 @@ export type IssueManagerTaskResponse = {
   task: IssueManagerTask;
 };
 
+export type IssueManagerTasksResponse = {
+  tasks: Array<IssueManagerTask>;
+};
+
 export type IssueManagerTaskListResponse = {
   tasks: Array<IssueManagerTask>;
   nextPageToken?: string;
@@ -1882,6 +1896,10 @@ export type CreateIssueManagerTaskRequest = {
   content?: string;
   priority?: IssueManagerPriority;
   dueAtUnix?: number;
+};
+
+export type CreateIssueManagerTasksRequest = {
+  tasks: Array<CreateIssueManagerTaskRequest>;
 };
 
 export type UpdateIssueManagerTaskRequest = {
@@ -7555,6 +7573,60 @@ export type CreateWorkspaceIssueTaskResponses = {
 
 export type CreateWorkspaceIssueTaskResponse =
   CreateWorkspaceIssueTaskResponses[keyof CreateWorkspaceIssueTaskResponses];
+
+export type CreateWorkspaceIssueTasksData = {
+  body: CreateIssueManagerTasksRequest;
+  path: {
+    workspaceID: string;
+    issueID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/batch-create";
+};
+
+export type CreateWorkspaceIssueTasksErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource already exists
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateWorkspaceIssueTasksError =
+  CreateWorkspaceIssueTasksErrors[keyof CreateWorkspaceIssueTasksErrors];
+
+export type CreateWorkspaceIssueTasksResponses = {
+  /**
+   * Workspace issue tasks created
+   */
+  201: IssueManagerTasksResponse;
+};
+
+export type CreateWorkspaceIssueTasksResponse =
+  CreateWorkspaceIssueTasksResponses[keyof CreateWorkspaceIssueTasksResponses];
 
 export type DeleteWorkspaceIssueTaskData = {
   body?: never;

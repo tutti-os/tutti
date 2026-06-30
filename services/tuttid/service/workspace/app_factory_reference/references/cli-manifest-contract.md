@@ -64,8 +64,9 @@ Rules:
 - Handler `kind` must be `http`, `method` must be `POST`, and `path` must start with `/tutti/cli/`.
 - Do not declare host, port, or full URLs; Tutti routes to the app runtime port.
 - Handler `timeoutMs`, when present, must be an integer between `1000` and `600000`.
-- Supported input schema is a small object-only subset: `type`, `properties`, `required`, and property `description`.
+- Supported input schema is a small object-only subset: `type`, `properties`, `required`, and property `description`, `enum`, and `default`.
 - Property `type` may be `string`, `boolean`, or `integer`.
+- Property `enum` and `default` values must match the declared property type. Treat `default` as manifest metadata for help and discovery; app handlers must still apply any business default they need.
 - `defaultMode` may be `json` or `table`; table output must declare static columns.
 - Successful handler responses must return the `CliCommandOutput` shape directly. Do not wrap it in an invoke response such as `{"ok":true,"output":...}`.
 

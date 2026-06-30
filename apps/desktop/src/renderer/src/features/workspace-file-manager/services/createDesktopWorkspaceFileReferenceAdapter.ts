@@ -173,6 +173,7 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
 }
 
 export function mapDesktopWorkspaceFileReferenceEntry(entry: {
+  createdTimeMs?: number | null;
   kind: string;
   mtimeMs?: number | null;
   name?: string;
@@ -201,6 +202,7 @@ function mapReferenceTreeDirectory(
 }
 
 type ReferenceTreeTransportEntry = {
+  createdTimeMs?: number | null;
   hasChildren?: boolean;
   kind: string;
   mtimeMs?: number | null;
@@ -230,12 +232,16 @@ function mapReferenceTreeEntry(
     prefetchedDirectory: entry.prefetchedDirectory
       ? mapReferenceTreeDirectory(entry.prefetchedDirectory)
       : null,
+    ...(entry.createdTimeMs === undefined
+      ? {}
+      : { createdTimeMs: entry.createdTimeMs }),
     ...(entry.mtimeMs === undefined ? {} : { mtimeMs: entry.mtimeMs }),
     ...(entry.sizeBytes === undefined ? {} : { sizeBytes: entry.sizeBytes })
   };
 }
 
 function mapFileReferenceEntry(entry: {
+  createdTimeMs?: number | null;
   kind: string;
   mtimeMs?: number | null;
   name?: string;
@@ -246,6 +252,9 @@ function mapFileReferenceEntry(entry: {
     displayName: entry.name,
     kind: entry.kind === "directory" ? "folder" : "file",
     path: entry.path,
+    ...(entry.createdTimeMs === undefined
+      ? {}
+      : { createdTimeMs: entry.createdTimeMs }),
     ...(entry.mtimeMs === undefined ? {} : { mtimeMs: entry.mtimeMs }),
     ...(entry.sizeBytes === undefined ? {} : { sizeBytes: entry.sizeBytes })
   };
@@ -255,6 +264,7 @@ function referenceToWorkspaceFileEntry(
   reference: WorkspaceFileReference
 ): WorkspaceFileEntry {
   return {
+    createdTimeMs: reference.createdTimeMs ?? null,
     hasChildren: reference.kind === "folder",
     kind: reference.kind === "folder" ? "directory" : "file",
     mtimeMs: reference.mtimeMs ?? null,

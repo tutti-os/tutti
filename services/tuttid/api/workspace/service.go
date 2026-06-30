@@ -97,6 +97,7 @@ type IssueManagerService interface {
 	AddIssueContextRefs(context.Context, string, string, workspaceservice.AddIssueManagerContextRefsInput) ([]workspaceissues.ContextRef, error)
 	ListTasks(context.Context, string, string, workspaceservice.ListIssueManagerItemsInput) (workspaceissues.TaskList, error)
 	CreateTask(context.Context, string, string, workspaceservice.CreateIssueManagerTaskInput) (workspaceissues.Task, error)
+	CreateTasks(context.Context, string, string, workspaceservice.CreateIssueManagerTasksInput) ([]workspaceissues.Task, error)
 	GetTaskDetail(context.Context, string, string, string) (workspaceissues.TaskDetail, error)
 	UpdateTask(context.Context, string, string, string, workspaceservice.UpdateIssueManagerTaskInput) (workspaceissues.Task, error)
 	DeleteTask(context.Context, string, string, string) (bool, error)

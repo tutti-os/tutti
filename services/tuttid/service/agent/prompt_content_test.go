@@ -2,6 +2,7 @@ package agent
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,5 +43,32 @@ func TestPromptAttachmentStoreUsesSessionScopedPath(t *testing.T) {
 	}
 	if strings.Contains(path, "workspace-1") {
 		t.Fatalf("attachment path leaks workspace id: %q", path)
+	}
+}
+
+func TestPromptAttachmentStoreLocalPathRequiresExistingAttachment(t *testing.T) {
+	root := t.TempDir()
+	store := PromptAttachmentStore{RootDir: root}
+	path, err := store.attachmentPath("workspace-1", "session-1", "attachment-1", "image/png")
+	if err != nil {
+		t.Fatalf("attachmentPath() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("png"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := store.LocalPath("workspace-1", "session-1", "attachment-1", "image/png")
+	if err != nil {
+		t.Fatalf("LocalPath() error = %v", err)
+	}
+	if got != path {
+		t.Fatalf("LocalPath() = %q, want %q", got, path)
+	}
+
+	if _, err := store.LocalPath("workspace-1", "session-1", "missing", "image/png"); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("LocalPath() missing error = %v, want ErrSessionNotFound", err)
 	}
 }

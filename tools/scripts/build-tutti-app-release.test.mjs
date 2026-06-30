@@ -48,6 +48,17 @@ test("buildTuttiAppRelease writes immutable release and latest metadata", async 
   assert.equal(result.release.appId, "vibe-design");
   assert.equal(result.release.version, "0.1.0+abc123");
   assert.equal(result.release.manifest.version, "0.1.0+abc123");
+  assert.deepEqual(result.release.manifest.authors, [
+    {
+      name: "Tutti Developer",
+      avatarUrl: "https://github.com/tutti-os.png",
+      url: "https://github.com/tutti-os"
+    }
+  ]);
+  assert.deepEqual(result.release.manifest.source, {
+    type: "github",
+    url: "https://github.com/tutti-os/vibe-design"
+  });
   assert.equal(
     result.release.artifactUrl,
     "https://cdn.example.test/tutti-apps/apps/vibe-design/0.1.0%2Babc123/vibe-design-0.1.0%2Babc123.zip"
@@ -339,6 +350,55 @@ test("validateManifest rejects invalid references search endpoints", () => {
 test("validateCLIManifest accepts the app CLI HTTP bridge contract", () => {
   assert.doesNotThrow(() =>
     validateCLIManifest(cliManifestForTest(), "tutti.cli.json")
+  );
+});
+
+test("validateCLIManifest accepts typed input enum values", () => {
+  const manifest = cliManifestForTest();
+  manifest.commands[0].inputSchema.properties.mode = {
+    type: "string",
+    description: "Run mode",
+    enum: ["fast", "safe"],
+    default: "safe"
+  };
+  manifest.commands[0].inputSchema.properties.priority = {
+    type: "integer",
+    enum: [1, 2],
+    default: 1
+  };
+  manifest.commands[0].inputSchema.properties.enabled = {
+    type: "boolean",
+    enum: [true],
+    default: true
+  };
+
+  assert.doesNotThrow(() => validateCLIManifest(manifest, "tutti.cli.json"));
+});
+
+test("validateCLIManifest rejects enum values that do not match property type", () => {
+  const manifest = cliManifestForTest();
+  manifest.commands[0].inputSchema.properties.mode = {
+    type: "string",
+    enum: ["fast", 1]
+  };
+
+  assert.throws(
+    () => validateCLIManifest(manifest, "tutti.cli.json"),
+    /inputSchema\.properties\.mode\.enum\[1\] must be string/
+  );
+});
+
+test("validateCLIManifest rejects defaults outside declared enum values", () => {
+  const manifest = cliManifestForTest();
+  manifest.commands[0].inputSchema.properties.mode = {
+    type: "string",
+    enum: ["fast", "safe"],
+    default: "slow"
+  };
+
+  assert.throws(
+    () => validateCLIManifest(manifest, "tutti.cli.json"),
+    /inputSchema\.properties\.mode\.default must be one of the declared enum values/
   );
 });
 
@@ -718,6 +778,17 @@ function manifestForTest(appId, version = "0.1.0") {
     runtime: {
       bootstrap: "bootstrap.sh",
       healthcheckPath: "/"
+    },
+    authors: [
+      {
+        name: "Tutti Developer",
+        avatarUrl: "https://github.com/tutti-os.png",
+        url: "https://github.com/tutti-os"
+      }
+    ],
+    source: {
+      type: "github",
+      url: `https://github.com/tutti-os/${appId}`
     }
   };
 }

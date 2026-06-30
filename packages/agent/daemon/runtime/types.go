@@ -80,6 +80,10 @@ type ResumeInput struct {
 	Settings          *SessionSettings
 	CreatedAtUnixMS   int64
 	UpdatedAtUnixMS   int64
+	// RecreateIfMissing creates a fresh provider session in place when the
+	// existing provider session can no longer be restored locally (e.g. an
+	// imported conversation), instead of returning a restore error.
+	RecreateIfMissing bool
 }
 
 type CloseInput struct {

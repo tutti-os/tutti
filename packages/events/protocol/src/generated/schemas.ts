@@ -17,6 +17,7 @@ export const preferencesDesktopPreferencesSchema = {
     "locale",
     "minimizeAnimation",
     "sleepPreventionMode",
+    "showAppDeveloperSources",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -181,6 +182,9 @@ export const preferencesDesktopPreferencesSchema = {
       type: "string",
       enum: ["never", "whileAgentRunning", "always"]
     },
+    showAppDeveloperSources: {
+      type: "boolean"
+    },
     themeSource: {
       type: "string",
       enum: ["system", "dark", "light"]
@@ -330,6 +334,8 @@ export const workspaceWorkspaceAppSchema = {
     "displayName",
     "version",
     "description",
+    "authors",
+    "repository",
     "iconUrl",
     "installed",
     "enabled",
@@ -955,6 +961,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "locale",
         "minimizeAnimation",
         "sleepPreventionMode",
+        "showAppDeveloperSources",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1125,6 +1132,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         sleepPreventionMode: {
           type: "string",
           enum: ["never", "whileAgentRunning", "always"]
+        },
+        showAppDeveloperSources: {
+          type: "boolean"
         },
         themeSource: {
           type: "string",
@@ -1199,6 +1209,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "locale",
         "minimizeAnimation",
         "sleepPreventionMode",
+        "showAppDeveloperSources",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1370,6 +1381,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
           type: "string",
           enum: ["never", "whileAgentRunning", "always"]
         },
+        showAppDeveloperSources: {
+          type: "boolean"
+        },
         themeSource: {
           type: "string",
           enum: ["system", "dark", "light"]
@@ -1434,6 +1448,8 @@ export const workspaceAppUpdatedPayloadSchema = {
         "displayName",
         "version",
         "description",
+        "authors",
+        "repository",
         "iconUrl",
         "installed",
         "enabled",

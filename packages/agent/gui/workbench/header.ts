@@ -1,42 +1,75 @@
-import { createElement, type HTMLAttributes, type ReactNode } from "react";
-import { Button, PanelIcon, cn } from "@tutti-os/ui-system";
+import {
+  createElement,
+  type CSSProperties,
+  type HTMLAttributes,
+  type ReactNode
+} from "react";
+import type {
+  WorkbenchDisplayMode,
+  WorkbenchHostNodeHeaderWindowActions
+} from "@tutti-os/workbench-surface";
+import {
+  Button,
+  PanelIcon,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  cn
+} from "@tutti-os/ui-system";
 import { CreateChatIcon } from "@tutti-os/ui-system/icons";
 
 const headerChromeIconButtonClassName =
-  "cursor-pointer rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
+  "agent-gui-workbench-header__icon-button";
 
-const headerChromeIconClassName = "size-3.5";
+const conversationRailToggleButtonClassName =
+  "agent-gui-workbench-header__icon-button agent-gui-workbench-header__rail-toggle";
+
+const headerChromeIconClassName = "agent-gui-workbench-header__icon";
 
 export interface AgentGuiWorkbenchHeaderCopy {
   collapseConversationRail: string;
+  close?: string;
   expandConversationRail: string;
   fallbackAgentLabel: string;
+  maximize?: string;
+  minimize?: string;
   newConversation: string;
+  restore?: string;
 }
 
 export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement> {
   copy: AgentGuiWorkbenchHeaderCopy;
   defaultActions?: ReactNode;
+  displayMode?: WorkbenchDisplayMode;
+  iconUrl?: string;
   isConversationRailAutoCollapsed: boolean;
   isConversationRailCollapsed: boolean;
+  conversationRailWidthPx?: number | null;
   conversationTitle?: string | null;
-  iconUrl?: string | null;
   onCreateConversation?: () => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
   title?: string;
+  windowActions?: Pick<
+    WorkbenchHostNodeHeaderWindowActions,
+    "close" | "minimize" | "toggleDisplayMode"
+  >;
 }
 
 export function AgentGuiWorkbenchHeader({
   className,
   copy,
-  defaultActions,
+  defaultActions: _defaultActions,
+  displayMode,
+  iconUrl,
   isConversationRailAutoCollapsed,
   isConversationRailCollapsed,
+  conversationRailWidthPx,
   conversationTitle,
-  iconUrl,
   onCreateConversation,
   onToggleConversationRail,
   title,
+  windowActions,
   ...headerProps
 }: AgentGuiWorkbenchHeaderProps): ReactNode {
   const toggleLabel = isConversationRailCollapsed
@@ -44,42 +77,99 @@ export function AgentGuiWorkbenchHeader({
     : copy.collapseConversationRail;
   const appTitle = title?.trim() || copy.fallbackAgentLabel;
   const sessionTitle = conversationTitle?.trim() || "";
+  const safeDisplayMode = displayMode ?? "floating";
+  const safeWindowActions = windowActions ?? {
+    close: () => undefined,
+    minimize: () => undefined,
+    toggleDisplayMode: () => undefined
+  };
+  const displayModeLabel =
+    safeDisplayMode === "fullscreen"
+      ? (copy.restore ?? "Restore")
+      : (copy.maximize ?? "Maximize");
+  const headerStyle = {
+    ...(headerProps.style ?? {}),
+    ...(typeof conversationRailWidthPx === "number" &&
+    Number.isFinite(conversationRailWidthPx)
+      ? {
+          "--agent-gui-workbench-header-rail-width": `${Math.round(conversationRailWidthPx)}px`
+        }
+      : {})
+  } as CSSProperties;
 
   return createElement(
     "header",
     {
       ...headerProps,
-      className: cn(
-        "flex h-full min-h-0 items-center justify-between gap-3 bg-[var(--background-panel)] px-2 pl-3",
-        className
-      )
+      className: cn("agent-gui-workbench-header", className),
+      "data-agent-gui-workbench-header": "true",
+      "data-agent-gui-workbench-header-collapsed": isConversationRailCollapsed
+        ? "true"
+        : "false",
+      style: headerStyle
     },
     createElement(
       "div",
-      { className: "flex min-w-0 flex-1 items-center gap-1" },
-      iconUrl
-        ? createElement("img", {
-            alt: "",
-            "aria-hidden": true,
-            className: "mr-1 size-4 shrink-0 rounded-[4px]",
-            "data-agent-gui-workbench-header-icon": "true",
-            draggable: false,
-            src: iconUrl
-          })
-        : null,
+      {
+        className: "agent-gui-workbench-header__primary",
+        "data-agent-gui-workbench-header-primary": "true"
+      },
       createElement(
-        "span",
+        "div",
         {
-          className:
-            "shrink-0 truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]"
+          className: "agent-gui-workbench-header__traffic-lights",
+          onDoubleClick: (event) => event.stopPropagation(),
+          onPointerDown: (event) => event.stopPropagation()
         },
-        appTitle
+        createTrafficLightButton({
+          label: copy.close ?? "Close",
+          onClick: safeWindowActions.close,
+          testId: "agent-gui-window-close",
+          tone: "close"
+        }),
+        createTrafficLightButton({
+          label: copy.minimize ?? "Minimize",
+          onClick: safeWindowActions.minimize,
+          testId: "agent-gui-window-minimize",
+          tone: "minimize"
+        }),
+        createTrafficLightButton({
+          label: displayModeLabel,
+          onClick: safeWindowActions.toggleDisplayMode,
+          pressed: safeDisplayMode === "fullscreen",
+          testId: "agent-gui-window-toggle-display-mode",
+          tone: "maximize"
+        })
+      ),
+      createElement(
+        "div",
+        {
+          className: "agent-gui-workbench-header__agent-brand"
+        },
+        iconUrl
+          ? createElement("img", {
+              alt: "",
+              "aria-hidden": true,
+              className: "agent-gui-workbench-header__agent-icon",
+              "data-agent-gui-workbench-header-icon": "true",
+              "data-testid": "agent-gui-window-title-icon",
+              draggable: false,
+              src: iconUrl
+            })
+          : null,
+        createElement(
+          "span",
+          {
+            className: "agent-gui-workbench-header__agent-name"
+          },
+          appTitle
+        )
       ),
       createElement(
         Button as never,
         {
           "aria-label": toggleLabel,
-          className: headerChromeIconButtonClassName,
+          className: conversationRailToggleButtonClassName,
           "data-agent-gui-conversation-rail-auto-collapsed":
             isConversationRailAutoCollapsed ? "true" : undefined,
           "data-agent-gui-conversation-rail-collapsed":
@@ -125,21 +215,67 @@ export function AgentGuiWorkbenchHeader({
         ? createElement(
             "span",
             {
-              className:
-                "min-w-0 max-w-[360px] flex-1 truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]"
+              className: "agent-gui-workbench-header__session-title"
             },
-            sessionTitle
+            createElement(
+              "span",
+              {
+                className: "agent-gui-workbench-header__title-text"
+              },
+              sessionTitle
+            )
           )
         : null
     ),
-    createElement(
-      "div",
-      {
-        className: "flex flex-none items-center gap-1",
-        onDoubleClick: (event) => event.stopPropagation(),
-        onPointerDown: (event) => event.stopPropagation()
-      },
-      defaultActions
-    )
+    !isConversationRailCollapsed && sessionTitle
+      ? createElement(
+          "div",
+          {
+            className: "agent-gui-workbench-header__detail-title",
+            "data-testid": "agent-gui-window-detail-title"
+          },
+          createElement(
+            "span",
+            {
+              className: "agent-gui-workbench-header__title-text"
+            },
+            sessionTitle
+          )
+        )
+      : null
   );
+}
+
+function createTrafficLightButton(input: {
+  label: string;
+  onClick: () => void;
+  pressed?: boolean;
+  testId: string;
+  tone: "close" | "minimize" | "maximize";
+}): ReactNode {
+  const button = createElement("button", {
+    "aria-label": input.label,
+    "aria-pressed": input.pressed,
+    className: "agent-gui-workbench-header__traffic-light",
+    "data-agent-gui-workbench-traffic-light": input.tone,
+    "data-testid": input.testId,
+    type: "button",
+    onClick: (event) => {
+      event.stopPropagation();
+      input.onClick();
+    },
+    onDoubleClick: (event) => event.stopPropagation(),
+    onPointerDown: (event) => event.stopPropagation()
+  });
+
+  return createElement(TooltipProvider, {
+    children: createElement(
+      Tooltip,
+      null,
+      createElement(TooltipTrigger, { asChild: true }, button),
+      createElement(TooltipContent, { side: "bottom" }, input.label)
+    ),
+    delayDuration: 250,
+    skipDelayDuration: 0
+  });
 }

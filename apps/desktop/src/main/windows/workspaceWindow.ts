@@ -40,6 +40,11 @@ export interface CreateWorkspaceWindowOptions {
 const workspaceWindows = new Set<BrowserWindow>();
 const workspaceWindowQuitCloseTimeoutMs = 5_000;
 let workspaceWindowQuitCloseRequestSequence = 0;
+const workspaceWindowHeaderHeightPx = 52;
+const workspaceWindowMacTrafficLightInsetPx = 16;
+const workspaceWindowMacTrafficLightSizePx = 12;
+const workspaceWindowMacTrafficLightPositionY =
+  (workspaceWindowHeaderHeightPx - workspaceWindowMacTrafficLightSizePx) / 2;
 
 export function createWorkspaceWindow(
   options: CreateWorkspaceWindowOptions
@@ -56,8 +61,8 @@ export function createWorkspaceWindow(
       ? {
           titleBarStyle: "hidden" as const,
           trafficLightPosition: {
-            x: 12,
-            y: 18
+            x: workspaceWindowMacTrafficLightInsetPx,
+            y: workspaceWindowMacTrafficLightPositionY
           }
         }
       : {}),

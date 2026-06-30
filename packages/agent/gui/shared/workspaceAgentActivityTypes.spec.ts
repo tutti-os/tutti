@@ -141,6 +141,32 @@ describe("selectWorkspaceAgentActivityOverlayMessages", () => {
       })
     ).toEqual([optimisticMessage]);
   });
+
+  it("keeps a repeated optimistic user prompt with a new client submit id", () => {
+    const previousDurablePrompt = userMessage({
+      messageId: "durable-user-1",
+      payload: {
+        text: "run tests"
+      },
+      turnId: "turn-1"
+    });
+    const repeatedOptimisticPrompt = userMessage({
+      messageId: "client-submit:user:submit-2",
+      payload: {
+        __agentGuiOptimisticPrompt: true,
+        clientSubmitId: "submit-2",
+        text: "run tests"
+      },
+      turnId: "pending:submit-2"
+    });
+
+    expect(
+      selectWorkspaceAgentActivityOverlayMessages({
+        durableMessages: [previousDurablePrompt],
+        localMessages: [repeatedOptimisticPrompt]
+      })
+    ).toEqual([repeatedOptimisticPrompt]);
+  });
 });
 
 function userMessage(

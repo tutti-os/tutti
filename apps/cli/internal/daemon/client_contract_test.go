@@ -25,7 +25,9 @@ func TestClientTransportModelTracksOpenAPIContract(t *testing.T) {
 		"agentSessionId:",
 		"CliInvokeResponse:",
 		"CliCommandOutput:",
+		"CliCommandWarning:",
 		"CliOutputMode:",
+		"warnings:",
 	}
 
 	for _, fragment := range requiredFragments {

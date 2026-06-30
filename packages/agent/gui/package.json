@@ -20,6 +20,7 @@
     "./workbench/contribution": "./workbench/contribution.ts",
     "./workbench/launch": "./workbench/launch.ts",
     "./workbench/providerCatalog": "./workbench/providerCatalog.ts",
+    "./workbench/sessionTitle": "./workbench/sessionTitle.ts",
     "./workbench/state": "./workbench/state.ts",
     "./workbench/types": "./workbench/types.ts",
     "./styles.css": "./app/renderer/agentactivity.css"
@@ -150,6 +151,10 @@
         "types": "./dist/workbench/providerCatalog.d.ts",
         "import": "./dist/workbench/providerCatalog.js"
       },
+      "./workbench/sessionTitle": {
+        "types": "./dist/workbench/sessionTitle.d.ts",
+        "import": "./dist/workbench/sessionTitle.js"
+      },
       "./workbench/state": {
         "types": "./dist/workbench/state.d.ts",
         "import": "./dist/workbench/state.js"
@@ -201,6 +206,9 @@
         ],
         "workbench/providerCatalog": [
           "./dist/workbench/providerCatalog.d.ts"
+        ],
+        "workbench/sessionTitle": [
+          "./dist/workbench/sessionTitle.d.ts"
         ],
         "workbench/state": [
           "./dist/workbench/state.d.ts"

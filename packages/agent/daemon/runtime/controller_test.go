@@ -1152,6 +1152,71 @@ func TestControllerResumeReattachesExistingProviderSession(t *testing.T) {
 	}
 }
 
+func TestControllerResumeRecreatesMissingProviderSessionWhenOptedIn(t *testing.T) {
+	t.Parallel()
+
+	restoreErr := &AppError{Code: AppErrorProviderSessionNotFound, Message: "gone"}
+
+	t.Run("without opt-in the restore error surfaces unchanged", func(t *testing.T) {
+		t.Parallel()
+		adapter := newRecreatableResumeAdapter(restoreErr)
+		controller := NewController([]Adapter{adapter}, nil)
+		_, err := controller.Resume(context.Background(), ResumeInput{
+			RoomID:            "room-1",
+			AgentSessionID:    "imported-1",
+			Provider:          ProviderClaudeCode,
+			ProviderSessionID: "stale-provider-session",
+			CWD:               "/workspace",
+			Title:             "Imported",
+		})
+		if AppErrorCode(err) != AppErrorProviderSessionNotFound {
+			t.Fatalf("err = %v, want provider session not found", err)
+		}
+		if adapter.startCalls != 0 {
+			t.Fatalf("start calls = %d, want 0 (no recreate)", adapter.startCalls)
+		}
+	})
+
+	t.Run("with opt-in a fresh provider session is created in place", func(t *testing.T) {
+		t.Parallel()
+		adapter := newRecreatableResumeAdapter(restoreErr)
+		controller := NewController([]Adapter{adapter}, nil)
+		session, err := controller.Resume(context.Background(), ResumeInput{
+			RoomID:            "room-1",
+			AgentSessionID:    "imported-1",
+			Provider:          ProviderClaudeCode,
+			ProviderSessionID: "stale-provider-session",
+			CWD:               "/workspace",
+			Title:             "Imported",
+			RecreateIfMissing: true,
+		})
+		if err != nil {
+			t.Fatalf("Resume: %v", err)
+		}
+		if adapter.startCalls != 1 {
+			t.Fatalf("start calls = %d, want 1 (recreate)", adapter.startCalls)
+		}
+		if session.AgentSessionID != "imported-1" {
+			t.Fatalf("agent session id = %q, want imported-1", session.AgentSessionID)
+		}
+		if session.ProviderSessionID != "fresh-provider-session" {
+			t.Fatalf("provider session id = %q, want fresh-provider-session", session.ProviderSessionID)
+		}
+		// The recreated session must be live so a turn can run on it.
+		result, err := controller.Exec(context.Background(), ExecInput{
+			RoomID:         "room-1",
+			AgentSessionID: "imported-1",
+			Content:        textPrompt("continue"),
+		})
+		if err != nil {
+			t.Fatalf("Exec after recreate: %v", err)
+		}
+		if !result.Accepted {
+			t.Fatalf("Exec result = %#v, want accepted", result)
+		}
+	})
+}
+
 func TestControllerCancelStopsBackgroundTurn(t *testing.T) {
 	t.Parallel()
 
@@ -1452,6 +1517,59 @@ func (a *reconnectableAdapter) HasLiveSession(session Session) bool {
 
 func (a *reconnectableAdapter) dropLiveSession(agentSessionID string) {
 	a.live[agentSessionID] = false
+}
+
+// recreatableResumeAdapter fails Resume with a configurable restore error and
+// mints a fresh provider session on Start, modelling an imported conversation
+// whose provider session cannot be restored locally.
+type recreatableResumeAdapter struct {
+	resumeErr   error
+	resumeCalls int
+	startCalls  int
+	live        map[string]bool
+}
+
+func newRecreatableResumeAdapter(resumeErr error) *recreatableResumeAdapter {
+	return &recreatableResumeAdapter{resumeErr: resumeErr, live: make(map[string]bool)}
+}
+
+func (*recreatableResumeAdapter) Provider() string { return ProviderClaudeCode }
+
+func (a *recreatableResumeAdapter) Start(_ context.Context, session Session) ([]activityshared.Event, error) {
+	a.startCalls++
+	session.ProviderSessionID = "fresh-provider-session"
+	a.live[session.AgentSessionID] = true
+	return []activityshared.Event{
+		newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil),
+	}, nil
+}
+
+func (a *recreatableResumeAdapter) Resume(_ context.Context, session Session) error {
+	a.resumeCalls++
+	if a.resumeErr != nil {
+		return a.resumeErr
+	}
+	a.live[session.AgentSessionID] = true
+	return nil
+}
+
+func (*recreatableResumeAdapter) Close(context.Context, Session) error { return nil }
+
+func (a *recreatableResumeAdapter) Exec(_ context.Context, session Session, _ []PromptContentBlock, _ string, turnID string, _ EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
+	if !a.live[session.AgentSessionID] {
+		return nil, ErrSessionDisconnected
+	}
+	return []activityshared.Event{
+		newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", nil),
+	}, nil
+}
+
+func (*recreatableResumeAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (a *recreatableResumeAdapter) HasLiveSession(session Session) bool {
+	return a.live[session.AgentSessionID]
 }
 
 type statefulInteractiveAdapter struct {

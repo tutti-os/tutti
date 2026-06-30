@@ -1,15 +1,11 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
 import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
 import { createAgentGuiWorkbenchContribution } from "@tutti-os/agent-gui/workbench/contribution";
-import {
-  normalizeAgentGuiWorkbenchProvider,
-  resolveAgentGuiWorkbenchProviderLabel
-} from "@tutti-os/agent-gui/workbench/providerCatalog";
+import { resolveAgentGuiWorkbenchSessionTitle } from "@tutti-os/agent-gui/workbench/sessionTitle";
 import type {
   AgentGuiWorkbenchProvider,
   AgentGuiWorkbenchState
 } from "@tutti-os/agent-gui/workbench/types";
-import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
@@ -213,28 +209,22 @@ function resolveWorkspaceAgentGuiDockPopupTitle(
     workspaceId: string;
   }
 ): string | null {
-  const agentSessionId = state?.lastActiveAgentSessionId?.trim();
+  const agentSessionId = state?.lastActiveAgentSessionId?.trim() ?? "";
   if (!agentSessionId) {
     return null;
   }
-  const session = input.workspaceAgentActivityService
-    .getSnapshot(input.workspaceId)
-    .sessions.find((item) => item.agentSessionId === agentSessionId);
-  return session ? resolveDisplayableAgentGuiSessionTitle(session) : null;
-}
-
-function resolveDisplayableAgentGuiSessionTitle(
-  session: Pick<AgentActivitySession, "provider" | "title">
-): string | null {
-  const title = session.title.trim();
-  if (!title) {
-    return null;
-  }
-  const provider = normalizeAgentGuiWorkbenchProvider(session.provider);
-  return title.toLowerCase() ===
-    resolveAgentGuiWorkbenchProviderLabel(provider).toLowerCase()
-    ? null
-    : title;
+  const snapshot = input.workspaceAgentActivityService.getSnapshot(
+    input.workspaceId
+  );
+  const provider =
+    snapshot.sessions.find((item) => item.agentSessionId === agentSessionId)
+      ?.provider ?? "codex";
+  return resolveAgentGuiWorkbenchSessionTitle({
+    agentSessionId,
+    fallbackTitle: state?.lastActiveConversationTitle,
+    provider,
+    snapshot
+  }).title;
 }
 
 const dockPopupPreviewViewport = {

@@ -55,6 +55,16 @@ export {
   type AgentGuiWorkbenchHeaderProps
 } from "./header.ts";
 export {
+  formatAgentGuiConversationPlainTitle,
+  formatAgentGuiSessionPlainTitle,
+  resolveAgentGuiWorkbenchSessionTitle
+} from "./sessionTitle.ts";
+export type {
+  AgentGuiSessionTitleFormatOptions,
+  AgentGuiWorkbenchSessionTitleResult,
+  ResolveAgentGuiWorkbenchSessionTitleInput
+} from "./sessionTitle.ts";
+export {
   agentGuiWorkbenchOpenSessionActivationType,
   agentGuiWorkbenchPrefillPromptActivationType,
   type AgentGuiWorkbenchComposerOverrides,

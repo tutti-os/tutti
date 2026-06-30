@@ -6,6 +6,8 @@ export interface TerminalImeKeyEvent {
   isComposing: boolean;
   key: string;
   metaKey: boolean;
+  preventDefault?: () => void;
+  stopPropagation?: () => void;
   type: string;
 }
 
@@ -64,7 +66,8 @@ export function createTerminalImeInputGuard(input: {
         compositionEndedAt = null;
         return true;
       }
-      compositionEndedAt = null;
+      event.preventDefault?.();
+      event.stopPropagation?.();
       return false;
     }
   };

@@ -48,6 +48,7 @@ const externalizeRuntimeDeps = externalizeDepsPlugin({
     "@tutti-os/client-tuttid-ts",
     "@tutti-os/browser-node",
     "@tutti-os/event-protocol",
+    "@tutti-os/event-stream-core",
     "@tutti-os/agent-gui",
     "@tutti-os/ui-i18n-runtime",
     "@tutti-os/ui-system",

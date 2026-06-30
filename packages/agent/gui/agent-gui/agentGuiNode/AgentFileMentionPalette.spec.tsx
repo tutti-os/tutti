@@ -4,6 +4,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AgentFileMentionPalette } from "./AgentFileMentionPalette";
 import type { AgentMentionSearchState } from "./AgentMentionSearchController";
+import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 
 vi.mock("../../i18n/index", async () => {
   const actual =
@@ -19,6 +20,7 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.agentGui.mentionGroupIssues": "任务",
     "agentHost.agentGui.mentionEmptyIssues": "暂无任务",
     "agentHost.agentGui.mentionFilterIssue": "任务",
+    "agentHost.agentGui.fileMentionEnterFolder": "进入文件夹",
     "agentHost.agentGui.fileMentionSwitchCategory": "切换分类",
     "agentHost.agentGui.fileMentionNavigateHierarchy": "进入/返回文件夹",
     "agentHost.agentGui.fileMentionSwitchSelection": "切换选中",
@@ -1055,6 +1057,80 @@ describe("AgentFileMentionPalette", () => {
     expect(backIcon?.querySelector("svg")).not.toBeNull();
   });
 
+  it("enters agent generated folders from the row arrow without selecting the row", () => {
+    const folderItem = {
+      kind: "file" as const,
+      href: "",
+      path: "/workspace/demo/agentGuiNode",
+      name: "agentGuiNode",
+      entryKind: "directory",
+      directoryPath: "/workspace/demo",
+      mentionNavigation: "agent-generated-folder" as const,
+      childCount: 5
+    } satisfies AgentContextMentionItem;
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "file",
+      categories: [],
+      groups: [
+        {
+          id: "agent_generated_files",
+          items: [folderItem],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+    const onNavigateIntoItem = vi.fn();
+    const onSelectItem = vi.fn();
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey="agent_generated_files:file:/workspace/demo/agentGuiNode"
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={onSelectItem}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+        onNavigateIntoItem={onNavigateIntoItem}
+      />
+    );
+
+    const folderRow = screen
+      .getByText("agentGuiNode")
+      .closest('[data-agent-file-mention="true"]');
+    const enterButton = screen.getByRole("button", { name: "进入文件夹" });
+
+    expect(folderRow).toHaveAttribute(
+      "data-agent-mention-navigation",
+      "agent-generated-folder"
+    );
+    expect(enterButton).toHaveAttribute(
+      "data-agent-mention-navigate-into",
+      "true"
+    );
+
+    fireEvent.click(enterButton);
+
+    expect(onNavigateIntoItem).toHaveBeenCalledWith(folderItem);
+    expect(onSelectItem).not.toHaveBeenCalled();
+
+    fireEvent.click(folderRow!);
+
+    expect(onSelectItem).toHaveBeenCalledWith(folderItem);
+  });
+
   it("renders image mention rows with thumbnails instead of default file icons", () => {
     const state: AgentMentionSearchState = {
       status: "ready",
@@ -1837,8 +1913,21 @@ describe("AgentFileMentionPalette", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-title\s*{[^}]*font-size:\s*28px[^}]*font-weight:\s*600/s
+      /\.agent-gui-node__empty-hero-title\s*{[^}]*font-size:\s*28px[^}]*font-weight:\s*500/s
     );
+  });
+
+  it("keeps the new-session hero icon aligned with the new-task empty icon size", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    const heroIconRule = css.match(
+      /\.agent-gui-node__empty-hero-icon-effect\s*{[^}]*}/s
+    )?.[0];
+
+    expect(css).toMatch(
+      /\.agent-gui-node__empty-hero-icon-effect\s*{[^}]*width:\s*48px[^}]*height:\s*48px/s
+    );
+    expect(heroIconRule).not.toContain("border-radius");
   });
 
   it("sets the empty hero provider name in Merriweather bold italic", () => {

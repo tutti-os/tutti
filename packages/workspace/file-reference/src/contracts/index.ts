@@ -1,6 +1,7 @@
 import type { WorkspaceFileOpenWithApplication } from "@tutti-os/workspace-file-manager/services";
 
 export interface WorkspaceFileReference {
+  createdTimeMs?: number | null;
   displayName?: string;
   hostPath?: string;
   kind: "file" | "folder" | (string & {});

@@ -167,7 +167,7 @@ interface MessageSummaryCandidate {
 function meaningfulMessageSummary(message: AgentActivityMessage): string {
   const payload = recordValue(message.payload);
   const isToolMessage = isToolLikeMessage(message, payload);
-  const candidates = messageSummaryCandidates(message, payload, isToolMessage);
+  const candidates = messageSummaryCandidates(payload, isToolMessage);
   const structuralLabelTokens = isToolMessage
     ? structuralToolLabelTokens(message, payload)
     : null;
@@ -189,7 +189,6 @@ function meaningfulMessageSummary(message: AgentActivityMessage): string {
 }
 
 function messageSummaryCandidates(
-  message: AgentActivityMessage,
   payload: Record<string, unknown>,
   isToolMessage: boolean
 ): MessageSummaryCandidate[] {

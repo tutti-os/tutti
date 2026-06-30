@@ -762,6 +762,7 @@ function createDependenciesStub(): {
       createWorkspaceIssue: fail,
       createWorkspaceIssueTopic: fail,
       createWorkspaceIssueTask: fail,
+      createWorkspaceIssueTasks: fail,
       createWorkspaceIssueTaskRun: fail,
       createWorkspaceIssueRun: fail,
       createWorkspace: fail,

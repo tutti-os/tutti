@@ -58,13 +58,7 @@ import { createDesktopAgentGeneratedFileMentionProvider } from "../services/inte
 import { composeDesktopAgentGuiContextMentionProviders } from "../services/internal/composeDesktopAgentGuiContextMentionProviders.ts";
 import { resolveDesktopWorkspaceAppIconEntries } from "../services/internal/desktopWorkspaceAppIcons.ts";
 import { wrapDesktopFileMentionProviderWithDockFiles } from "../services/internal/wrapDesktopFileMentionProviderWithDockFiles.ts";
-import {
-  desktopAgentComposerDefaultsEqual,
-  desktopAgentComposerOverridesToDefaults,
-  resolveDesktopAgentComposerDefaultsWriteIntent,
-  shouldRememberDesktopAgentComposerDefaults,
-  type DesktopAgentComposerDefaultsWriteIntent
-} from "../services/internal/desktopAgentComposerDefaultsWriteGate.ts";
+import { desktopAgentComposerDefaultsEqual } from "../services/internal/desktopAgentComposerDefaultsWriteGate.ts";
 import {
   logAgentComposerDefaultsDiagnostic,
   logAgentGUIConversationRailPreferenceDiagnostic,
@@ -457,11 +451,12 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       preferredConversationRailCollapsed
         ? { ...baseState, conversationRailCollapsed: true }
         : baseState;
-    return withDesktopAgentGUIProviderComposerDefaults(
+    const nextState = withDesktopAgentGUIProviderComposerDefaults(
       railState,
       provider,
       providerComposerDefaults
     );
+    return nextState;
   }, [
     hasExplicitConversationRailCollapsedState,
     preferredConversationRailCollapsed,
@@ -485,8 +480,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     useState(0);
   const handledOpenSessionActivationSequenceRef = useRef<number | null>(null);
   const handledPrefillPromptActivationSequenceRef = useRef<number | null>(null);
-  const pendingComposerDefaultsWriteRef =
-    useRef<DesktopAgentComposerDefaultsWriteIntent | null>(null);
   // onStateChange is recreated on every host render; pin it so the writer stays
   // referentially stable and effects don't resubscribe each render.
   const onStateChangeRef = useRef(onStateChange);
@@ -507,13 +500,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         return;
       }
       nodeStateRef.current = next;
-      const writeIntent = resolveDesktopAgentComposerDefaultsWriteIntent(
-        current,
-        next
-      );
-      if (writeIntent !== undefined) {
-        pendingComposerDefaultsWriteRef.current = writeIntent;
-      }
       const previousRailCollapsed = current.conversationRailCollapsed === true;
       const nextRailCollapsed = next.conversationRailCollapsed === true;
       if (!previewMode && previousRailCollapsed !== nextRailCollapsed) {
@@ -852,67 +838,50 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     workbenchState
   ]);
 
-  const activeComposerSettings =
-    nodeState.composerOverridesByProvider?.[nodeState.provider] ??
-    nodeState.composerOverrides ??
-    null;
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    if (!activeComposerSettings) {
-      return;
-    }
-    const defaults = desktopAgentComposerOverridesToDefaults(
-      activeComposerSettings
-    );
-    if (!defaults) {
-      return;
-    }
-    const pendingWrite = pendingComposerDefaultsWriteRef.current;
-    if (
-      !shouldRememberDesktopAgentComposerDefaults({
-        defaults,
-        pendingWrite,
-        provider: nodeState.provider
-      })
-    ) {
-      return;
-    }
-    pendingComposerDefaultsWriteRef.current = null;
-    if (desktopAgentComposerDefaultsEqual(providerComposerDefaults, defaults)) {
-      return;
-    }
-    void desktopPreferencesService
-      .rememberAgentComposerDefaults(nodeState.provider, defaults)
-      .then(() => {
-        logAgentComposerDefaultsDiagnostic({
-          defaults,
-          event: "agent.gui.composer_defaults.remembered",
-          provider: nodeState.provider,
-          runtimeApi,
-          workspaceId
+  const handleRememberComposerDefaults = useCallback<
+    NonNullable<AgentGUIProps["onRememberComposerDefaults"]>
+  >(
+    ({ provider: defaultsProvider, defaults }) => {
+      if (previewMode) {
+        return;
+      }
+      const previousDefaults =
+        desktopPreferencesState.agentComposerDefaultsByProvider[
+          defaultsProvider
+        ] ?? null;
+      if (desktopAgentComposerDefaultsEqual(previousDefaults, defaults)) {
+        return;
+      }
+      void desktopPreferencesService
+        .rememberAgentComposerDefaults(defaultsProvider, defaults)
+        .then(() => {
+          logAgentComposerDefaultsDiagnostic({
+            defaults: defaults ?? {},
+            event: "agent.gui.composer_defaults.remembered",
+            provider: defaultsProvider,
+            runtimeApi,
+            workspaceId
+          });
+        })
+        .catch((error) => {
+          logAgentComposerDefaultsDiagnostic({
+            defaults: defaults ?? {},
+            error,
+            event: "agent.gui.composer_defaults.remember_failed",
+            provider: defaultsProvider,
+            runtimeApi,
+            workspaceId
+          });
         });
-      })
-      .catch((error) => {
-        logAgentComposerDefaultsDiagnostic({
-          defaults,
-          error,
-          event: "agent.gui.composer_defaults.remember_failed",
-          provider: nodeState.provider,
-          runtimeApi,
-          workspaceId
-        });
-      });
-  }, [
-    activeComposerSettings,
-    desktopPreferencesService,
-    nodeState.provider,
-    providerComposerDefaults,
-    runtimeApi,
-    previewMode,
-    workspaceId
-  ]);
+    },
+    [
+      desktopPreferencesService,
+      desktopPreferencesState.agentComposerDefaultsByProvider,
+      previewMode,
+      runtimeApi,
+      workspaceId
+    ]
+  );
 
   const frame = context.node.frame;
   const desktopSize = useMemo(
@@ -980,6 +949,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         onResize={DESKTOP_AGENT_GUI_NOOP}
         onShowMessage={DESKTOP_AGENT_GUI_NOOP}
         onUpdateNode={handleUpdateNode}
+        onRememberComposerDefaults={handleRememberComposerDefaults}
         onOpenConversationWindow={
           previewMode || !onOpenAgentConversationWindow
             ? undefined

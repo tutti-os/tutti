@@ -37,7 +37,8 @@ import { CanvasNodePanelLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { useAgentGUINodeController } from "./controller/useAgentGUINodeController";
 import type {
   AgentGUIOpenSessionRequest,
-  AgentGUIPrefillPromptRequest
+  AgentGUIPrefillPromptRequest,
+  AgentGUIRememberComposerDefaultsInput
 } from "./controller/useAgentGUINodeController";
 import {
   AgentGUINodeView,
@@ -46,12 +47,11 @@ import {
   type AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
 import {
+  formatAgentGUIConversationPlainTitle,
   normalizeAgentGUIProviderIdentity,
-  resolveAgentGUIConversationDisplayTitle,
   resolveAgentGUIDockConversationTitle,
   resolveAgentGUIProviderDisplayLabel
 } from "./model/agentGuiProviderIdentity";
-import { formatAgentSessionMentionText } from "../../shared/utils/agentSessionMentionText";
 import {
   buildDockAgentProbeTooltipLines,
   findWorkspaceAgentProbeForDockProvider,
@@ -189,6 +189,9 @@ export interface AgentGUINodeProps {
   onUpdateNode: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
   ) => void;
+  onRememberComposerDefaults?: (
+    input: AgentGUIRememberComposerDefaultsInput
+  ) => void | Promise<void>;
   isMaximized?: boolean;
   isActive: boolean;
   composerFocusRequestSequence?: number | null;
@@ -497,6 +500,7 @@ function areAgentGUINodePropsEqual(
     previous.onClose === next.onClose &&
     previous.onResize === next.onResize &&
     previous.onUpdateNode === next.onUpdateNode &&
+    previous.onRememberComposerDefaults === next.onRememberComposerDefaults &&
     previous.onOpenConversationWindow === next.onOpenConversationWindow &&
     previous.isMaximized === next.isMaximized &&
     previous.isMuted === next.isMuted &&
@@ -553,6 +557,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   onClose,
   onResize,
   onUpdateNode,
+  onRememberComposerDefaults,
   isMaximized = false,
   isActive,
   composerFocusRequestSequence = null,
@@ -718,8 +723,34 @@ export const AgentGUINode = memo(function AgentGUINode({
     defaultProviderTargetId,
     previewMode,
     onDataChange: handleDataChange,
+    onRememberComposerDefaults,
     onShowMessage
   });
+  const handleCreateConversation = useCallback(
+    (...args: Parameters<typeof actions.createConversation>) => {
+      if (!previewMode) {
+        onUpdateNode((current) =>
+          current.lastActiveAgentSessionId === null &&
+          (current.lastActiveConversationTitle ?? null) === null
+            ? current
+            : {
+                ...current,
+                lastActiveAgentSessionId: null,
+                lastActiveConversationTitle: null
+              }
+        );
+      }
+      actions.createConversation(...args);
+    },
+    [actions, onUpdateNode, previewMode]
+  );
+  const viewActions = useMemo(
+    () => ({
+      ...actions,
+      createConversation: handleCreateConversation
+    }),
+    [actions, handleCreateConversation]
+  );
 
   const fallbackAgentTitle = t("sidebar.fallbackAgentLabel");
   const activeProvider =
@@ -738,13 +769,10 @@ export const AgentGUINode = memo(function AgentGUINode({
     ? resolveAgentGUIDockConversationTitle(viewModel.activeConversation)
     : null;
   const activeConversationWindowTitle = viewModel.activeConversation
-    ? formatAgentSessionMentionText(
-        resolveAgentGUIConversationDisplayTitle(
-          viewModel.activeConversation,
-          fallbackAgentTitle
-        ),
-        { language: locale }
-      )
+    ? formatAgentGUIConversationPlainTitle(viewModel.activeConversation, {
+        fallbackAgentLabel: fallbackAgentTitle,
+        language: locale
+      })
     : null;
   const labels = useMemo<AgentGUIViewLabels>(
     () => ({
@@ -927,6 +955,22 @@ export const AgentGUINode = memo(function AgentGUINode({
       batchDeleteProjectSessionsConfirm: t(
         "agentHost.agentGui.batchDeleteProjectSessionsConfirm"
       ),
+      conversationsSectionMoreActions: t(
+        "agentHost.agentGui.conversationsSectionMoreActions"
+      ),
+      batchDeleteConversations: t(
+        "agentHost.agentGui.batchDeleteConversations"
+      ),
+      batchDeleteConversationsTitle: t(
+        "agentHost.agentGui.batchDeleteConversationsTitle"
+      ),
+      batchDeleteConversationsBody: (count: number) =>
+        t("agentHost.agentGui.batchDeleteConversationsBody", {
+          count
+        }),
+      batchDeleteConversationsConfirm: t(
+        "agentHost.agentGui.batchDeleteConversationsConfirm"
+      ),
       approvalRequired: t("agentHost.agentGui.approvalRequired", {
         provider: displayProviderLabel
       }),
@@ -1091,6 +1135,46 @@ export const AgentGUINode = memo(function AgentGUINode({
         "agentHost.agentGui.slashPaletteConnectorsGroup"
       ),
       slashPaletteMcpGroup: t("agentHost.agentGui.slashPaletteMcpGroup"),
+      slashCommandCompactLabel: t(
+        "agentHost.agentGui.slashCommandCompactLabel"
+      ),
+      slashCommandContextLabel: t(
+        "agentHost.agentGui.slashCommandContextLabel"
+      ),
+      slashCommandFastLabel: t("agentHost.agentGui.slashCommandFastLabel"),
+      slashCommandGoalLabel: t("agentHost.agentGui.slashCommandGoalLabel"),
+      slashCommandInitLabel: t("agentHost.agentGui.slashCommandInitLabel"),
+      slashCommandPlanLabel: t("agentHost.agentGui.slashCommandPlanLabel"),
+      slashCommandReviewLabel: t("agentHost.agentGui.slashCommandReviewLabel"),
+      slashCommandStatusLabel: t("agentHost.agentGui.slashCommandStatusLabel"),
+      slashCommandUsageLabel: t("agentHost.agentGui.slashCommandUsageLabel"),
+      slashCommandCompactDescription: t(
+        "agentHost.agentGui.slashCommandCompactDescription"
+      ),
+      slashCommandContextDescription: t(
+        "agentHost.agentGui.slashCommandContextDescription"
+      ),
+      slashCommandFastDescription: t(
+        "agentHost.agentGui.slashCommandFastDescription"
+      ),
+      slashCommandGoalDescription: t(
+        "agentHost.agentGui.slashCommandGoalDescription"
+      ),
+      slashCommandInitDescription: t(
+        "agentHost.agentGui.slashCommandInitDescription"
+      ),
+      slashCommandPlanDescription: t(
+        "agentHost.agentGui.slashCommandPlanDescription"
+      ),
+      slashCommandReviewDescription: t(
+        "agentHost.agentGui.slashCommandReviewDescription"
+      ),
+      slashCommandStatusDescription: t(
+        "agentHost.agentGui.slashCommandStatusDescription"
+      ),
+      slashCommandUsageDescription: t(
+        "agentHost.agentGui.slashCommandUsageDescription"
+      ),
       browserUseCapabilityLabel: t(
         "agentHost.agentGui.browserUseCapabilityLabel"
       ),
@@ -1360,7 +1444,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         return (
           <AgentGUINodeView
             viewModel={viewModel}
-            actions={actions}
+            actions={viewActions}
             isActive={isActive}
             composerFocusRequestSequence={composerFocusRequestSequence}
             newConversationRequestSequence={newConversationRequestSequence}

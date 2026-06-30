@@ -22,6 +22,7 @@ import type {
   AgentFileMentionSuggestionState
 } from "./agentFileMentionExtension";
 import {
+  agentRichTextContentToPromptText,
   editorToPromptText,
   plainTextToAgentRichTextInlineContent,
   plainTextToAgentRichTextDoc
@@ -52,6 +53,7 @@ export interface AgentRichTextEditorProps {
   className?: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  onSubmitGuidance?: () => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   availableCapabilities?: readonly AgentCapabilityTokenOption[];
   submitOnEnter?: boolean;
@@ -194,11 +196,34 @@ function scrollEditorSelectionIntoView(editor: Editor): void {
 }
 
 function readSelectedPlainText(editor: Editor): string {
-  const { from, to } = editor.state.selection;
+  return readPromptSelection(editor).text;
+}
+
+function readPromptSelection(editor: Editor): {
+  from: number;
+  text: string;
+  to: number;
+} {
+  const selection = editor.state.selection;
+  const domSelection = selection.empty
+    ? readEditorDomSelectionRange(editor)
+    : null;
+  const from = domSelection?.from ?? selection.from;
+  const to = domSelection?.to ?? selection.to;
+  return {
+    from,
+    text: readPromptTextRange(editor, from, to),
+    to
+  };
+}
+
+function readPromptTextRange(editor: Editor, from: number, to: number): string {
   if (from === to) {
     return "";
   }
-  return editor.state.doc.textBetween(from, to, "\n", "\n");
+  return agentRichTextContentToPromptText(
+    editor.state.doc.slice(from, to).content.toJSON()
+  );
 }
 
 function readEditorDomSelectionRange(
@@ -276,6 +301,7 @@ export const AgentRichTextEditor = forwardRef<
     className,
     onChange,
     onSubmit,
+    onSubmitGuidance,
     availableCapabilities = [],
     availableSkills = [],
     submitOnEnter = true,
@@ -296,6 +322,7 @@ export const AgentRichTextEditor = forwardRef<
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
   const onSubmitRef = useRef(onSubmit);
+  const onSubmitGuidanceRef = useRef(onSubmitGuidance);
   const onKeyDownForPaletteRef = useRef(onKeyDownForPalette);
   const onFileMentionSuggestionChangeRef = useRef(
     onFileMentionSuggestionChange
@@ -340,11 +367,10 @@ export const AgentRichTextEditor = forwardRef<
     const currentEditor = editorRef.current;
     const selectedText =
       contextMenu && contextMenu.hasSelection && currentEditor
-        ? currentEditor.state.doc.textBetween(
+        ? readPromptTextRange(
+            currentEditor,
             contextMenu.selectionFrom,
-            contextMenu.selectionTo,
-            "\n",
-            "\n"
+            contextMenu.selectionTo
           )
         : currentEditor
           ? readSelectedPlainText(currentEditor)
@@ -362,11 +388,10 @@ export const AgentRichTextEditor = forwardRef<
     const selectionTo = contextMenu?.selectionTo ?? null;
     const selectedText =
       contextMenu && contextMenu.hasSelection && currentEditor
-        ? currentEditor.state.doc.textBetween(
+        ? readPromptTextRange(
+            currentEditor,
             contextMenu.selectionFrom,
-            contextMenu.selectionTo,
-            "\n",
-            "\n"
+            contextMenu.selectionTo
           )
         : currentEditor
           ? readSelectedPlainText(currentEditor)
@@ -441,6 +466,7 @@ export const AgentRichTextEditor = forwardRef<
 
   onChangeRef.current = onChange;
   onSubmitRef.current = onSubmit;
+  onSubmitGuidanceRef.current = onSubmitGuidance;
   onKeyDownForPaletteRef.current = onKeyDownForPalette;
   onFileMentionSuggestionChangeRef.current = onFileMentionSuggestionChange;
   onFileMentionSuggestionKeyDownRef.current = onFileMentionSuggestionKeyDown;
@@ -472,6 +498,8 @@ export const AgentRichTextEditor = forwardRef<
           "overflow-y-auto whitespace-pre-wrap break-words [&_p]:m-0 [&_p]:min-h-[1.45em]"
         )
       },
+      clipboardTextSerializer: (slice) =>
+        agentRichTextContentToPromptText(slice.content.toJSON()),
       handleDOMEvents: {
         click: (_view, event) => {
           if (!onLinkClickRef.current || !(event.target instanceof Element)) {
@@ -515,6 +543,45 @@ export const AgentRichTextEditor = forwardRef<
             selectionTo: to,
             x: event.clientX,
             y: event.clientY
+          });
+          return true;
+        },
+        copy: (_view, event) => {
+          const currentEditor = editorRef.current;
+          if (
+            !currentEditor ||
+            currentEditor.isDestroyed ||
+            !event.clipboardData
+          ) {
+            return false;
+          }
+          const selection = readPromptSelection(currentEditor);
+          if (!selection.text) {
+            return false;
+          }
+          event.clipboardData.setData("text/plain", selection.text);
+          event.preventDefault();
+          return true;
+        },
+        cut: (_view, event) => {
+          const currentEditor = editorRef.current;
+          if (
+            disabled ||
+            !currentEditor ||
+            currentEditor.isDestroyed ||
+            !event.clipboardData
+          ) {
+            return false;
+          }
+          const selection = readPromptSelection(currentEditor);
+          if (!selection.text) {
+            return false;
+          }
+          event.clipboardData.setData("text/plain", selection.text);
+          event.preventDefault();
+          currentEditor.commands.deleteRange({
+            from: selection.from,
+            to: selection.to
           });
           return true;
         },
@@ -567,6 +634,19 @@ export const AgentRichTextEditor = forwardRef<
             return false;
           }
           if (onKeyDownForPaletteRef.current?.(event)) {
+            return true;
+          }
+          if (
+            event.key === "Enter" &&
+            (event.metaKey || event.ctrlKey) &&
+            !event.shiftKey &&
+            !event.altKey
+          ) {
+            event.preventDefault();
+            if (!submitOnEnter) {
+              return true;
+            }
+            onSubmitGuidanceRef.current?.();
             return true;
           }
           if (
@@ -695,6 +775,20 @@ export const AgentRichTextEditor = forwardRef<
     if (onKeyDownForPaletteRef.current?.(event.nativeEvent)) {
       event.preventDefault();
       event.stopPropagation();
+      return;
+    }
+    if (
+      event.key === "Enter" &&
+      (event.metaKey || event.ctrlKey) &&
+      !event.shiftKey &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!submitOnEnter) {
+        return;
+      }
+      onSubmitGuidanceRef.current?.();
       return;
     }
     if (

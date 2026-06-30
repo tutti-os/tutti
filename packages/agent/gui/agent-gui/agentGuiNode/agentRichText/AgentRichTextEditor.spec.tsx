@@ -27,6 +27,19 @@ function clipboard(
   };
 }
 
+function writableClipboard(): {
+  getData: (type: string) => string;
+  setData: (type: string, value: string) => void;
+} {
+  const store = new Map<string, string>();
+  return {
+    getData: (type: string) => store.get(type) ?? "",
+    setData: (type: string, value: string) => {
+      store.set(type, value);
+    }
+  };
+}
+
 function createDataTransferStub(files: readonly File[] = []): DataTransfer {
   const store = new Map<string, string>();
   const dataTransfer = {
@@ -58,6 +71,19 @@ function selectEditorText(editor: HTMLElement, from: number, to: number): void {
   const range = document.createRange();
   range.setStart(textNode, from);
   range.setEnd(textNode, to);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+}
+
+function selectEditorContents(editor: HTMLElement): void {
+  const paragraph = editor.querySelector("p");
+  if (!paragraph) {
+    throw new Error("Editor paragraph not found.");
+  }
+  const range = document.createRange();
+  range.selectNodeContents(paragraph);
   const selection = window.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
@@ -111,6 +137,50 @@ describe("AgentRichTextEditor", () => {
     });
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("hello\nworld"));
+  });
+
+  it("pastes plain text after an existing reference mention", async () => {
+    const onChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        value="[@package-lock.json](/workspace/package-lock.json) "
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    fireEvent.paste(await screen.findByRole("textbox", { name: "Prompt" }), {
+      clipboardData: clipboard("继续输入")
+    });
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        "[@package-lock.json](/workspace/package-lock.json) 继续输入"
+      )
+    );
+  });
+
+  it("copies selected reference mentions as prompt markdown", async () => {
+    const clipboardData = writableClipboard();
+    render(
+      <AgentRichTextEditor
+        value="Use [@package-lock.json](/workspace/package-lock.json) now"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    selectEditorContents(editor);
+    fireEvent.copy(editor, { clipboardData });
+
+    expect(clipboardData.getData("text/plain")).toBe(
+      "Use [@package-lock.json](/workspace/package-lock.json) now"
+    );
   });
 
   it("renders known skill triggers as atomic prompt tokens", async () => {
@@ -380,8 +450,9 @@ describe("AgentRichTextEditor", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("submits on Enter and ignores Enter during IME composition", async () => {
+  it("submits on Enter, sends guidance on Cmd+Enter, and ignores Enter during IME composition", async () => {
     const onSubmit = vi.fn();
+    const onSubmitGuidance = vi.fn();
     render(
       <AgentRichTextEditor
         value="hello"
@@ -389,6 +460,7 @@ describe("AgentRichTextEditor", () => {
         placeholder="Prompt"
         onChange={vi.fn()}
         onSubmit={onSubmit}
+        onSubmitGuidance={onSubmitGuidance}
       />
     );
 
@@ -398,6 +470,11 @@ describe("AgentRichTextEditor", () => {
 
     fireEvent.keyDown(editor, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmitGuidance).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(editor, { key: "Enter", metaKey: true });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmitGuidance).toHaveBeenCalledTimes(1);
   });
 
   it("scrolls the composer to the caret after Shift+Enter inserts a new line", async () => {

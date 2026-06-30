@@ -2011,11 +2011,18 @@ type CliCapabilityVisibility string
 
 // CliCommandOutput defines model for CliCommandOutput.
 type CliCommandOutput struct {
-	Columns *[]CliTableColumn         `json:"columns,omitempty"`
-	Kind    CliOutputMode             `json:"kind"`
-	Rows    *[]map[string]interface{} `json:"rows,omitempty"`
-	Text    *string                   `json:"text,omitempty"`
-	Value   *map[string]interface{}   `json:"value,omitempty"`
+	Columns  *[]CliTableColumn         `json:"columns,omitempty"`
+	Kind     CliOutputMode             `json:"kind"`
+	Rows     *[]map[string]interface{} `json:"rows,omitempty"`
+	Text     *string                   `json:"text,omitempty"`
+	Value    *map[string]interface{}   `json:"value,omitempty"`
+	Warnings *[]CliCommandWarning      `json:"warnings,omitempty"`
+}
+
+// CliCommandWarning defines model for CliCommandWarning.
+type CliCommandWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 // CliInvokeContext Client-supplied invocation context. These fields are hints for routing and audit only; authorization and workspace validation remain daemon-owned.
@@ -2109,6 +2116,11 @@ type CreateIssueManagerTaskRequest struct {
 	Priority  *IssueManagerPriority `json:"priority,omitempty"`
 	TaskId    *string               `json:"taskId,omitempty"`
 	Title     string                `json:"title"`
+}
+
+// CreateIssueManagerTasksRequest defines model for CreateIssueManagerTasksRequest.
+type CreateIssueManagerTasksRequest struct {
+	Tasks []CreateIssueManagerTaskRequest `json:"tasks"`
 }
 
 // CreateIssueManagerTopicRequest defines model for CreateIssueManagerTopicRequest.
@@ -2295,7 +2307,7 @@ type DesktopPreferences struct {
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`
-	ShowAppDeveloperSources                     *bool                                              `json:"showAppDeveloperSources,omitempty"`
+	ShowAppDeveloperSources                     bool                                               `json:"showAppDeveloperSources"`
 	SleepPreventionMode                         DesktopSleepPreventionMode                         `json:"sleepPreventionMode"`
 	ThemeSource                                 DesktopThemeSource                                 `json:"themeSource"`
 	UpdateChannel                               DesktopUpdateChannel                               `json:"updateChannel"`
@@ -2391,6 +2403,8 @@ type ExternalAgentImportResultResponse struct {
 
 // ExternalAgentImportScanRequest defines model for ExternalAgentImportScanRequest.
 type ExternalAgentImportScanRequest struct {
+	// Days Limit the scan to conversations updated within the last N days. Omit or 0 for the default 30-day window; a negative value scans all available history.
+	Days      *int                      `json:"days,omitempty"`
 	Providers *[]WorkspaceAgentProvider `json:"providers,omitempty"`
 }
 
@@ -2691,6 +2705,11 @@ type IssueManagerTaskListResponse struct {
 // IssueManagerTaskResponse defines model for IssueManagerTaskResponse.
 type IssueManagerTaskResponse struct {
 	Task IssueManagerTask `json:"task"`
+}
+
+// IssueManagerTasksResponse defines model for IssueManagerTasksResponse.
+type IssueManagerTasksResponse struct {
+	Tasks []IssueManagerTask `json:"tasks"`
 }
 
 // IssueManagerTopic defines model for IssueManagerTopic.
@@ -3125,7 +3144,7 @@ type WorkspaceAgentSessionStatus string
 // WorkspaceApp defines model for WorkspaceApp.
 type WorkspaceApp struct {
 	AppId            string                       `json:"appId"`
-	Authors          *[]WorkspaceAppAuthor        `json:"authors,omitempty"`
+	Authors          []WorkspaceAppAuthor         `json:"authors"`
 	AvailableIconUrl *string                      `json:"availableIconUrl"`
 	AvailableVersion *string                      `json:"availableVersion"`
 	Cli              WorkspaceAppCliState         `json:"cli"`
@@ -3913,6 +3932,9 @@ type CompleteWorkspaceIssueRunJSONRequestBody = CompleteIssueManagerRunRequest
 
 // CreateWorkspaceIssueTaskJSONRequestBody defines body for CreateWorkspaceIssueTask for application/json ContentType.
 type CreateWorkspaceIssueTaskJSONRequestBody = CreateIssueManagerTaskRequest
+
+// CreateWorkspaceIssueTasksJSONRequestBody defines body for CreateWorkspaceIssueTasks for application/json ContentType.
+type CreateWorkspaceIssueTasksJSONRequestBody = CreateIssueManagerTasksRequest
 
 // UpdateWorkspaceIssueTaskJSONRequestBody defines body for UpdateWorkspaceIssueTask for application/json ContentType.
 type UpdateWorkspaceIssueTaskJSONRequestBody = UpdateIssueManagerTaskRequest

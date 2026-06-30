@@ -457,6 +457,25 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
+  async changeShowAppDeveloperSources(show: boolean): Promise<void> {
+    if (
+      this.desktopPreferences.store.showAppDeveloperSources === show ||
+      this.desktopPreferences.store.changingShowAppDeveloperSources === show
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setShowAppDeveloperSources(show);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.developer.showAppDeveloperSourcesSaveFailed"
+        )
+      });
+    }
+  }
+
   async clearDeveloperLogs(): Promise<void> {
     if (this.store.developerLogs.clearing) {
       return;
@@ -1070,6 +1089,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingLocale: null,
   changingMinimizeAnimation: null,
   changingSleepPreventionMode: null,
+  changingShowAppDeveloperSources: null,
   changingThemeSource: null,
   changingUpdateChannel: null,
   changingUpdatePolicy: null,
@@ -1081,6 +1101,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   locale: "en",
   minimizeAnimation: defaultDesktopMinimizeAnimation,
   sleepPreventionMode: "never",
+  showAppDeveloperSources: false,
   theme: createNoopTheme("dark"),
   updateChannel: "rc",
   updatePolicy: "prompt",
@@ -1122,6 +1143,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setSleepPreventionMode(mode) {
     return Promise.resolve(mode);
+  },
+  setShowAppDeveloperSources(show) {
+    return Promise.resolve(show);
   },
   setThemeSource(source) {
     return Promise.resolve(createNoopTheme(source));

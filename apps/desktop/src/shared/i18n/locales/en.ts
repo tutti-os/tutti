@@ -156,7 +156,6 @@ export const en = {
       actionRelogin: "Sign in again",
       actionLogin: "Sign in",
       actionRetry: "Retry",
-      actionClose: "Close",
       stepCli: "{{provider}} CLI",
       stepVersion: "Supported version",
       stepAuth: "Signed in",
@@ -267,8 +266,7 @@ export const en = {
     },
     externalImport: {
       back: "Back",
-      description:
-        "Import local Codex and Claude Code project history from the last 30 days",
+      description: "Import local Codex and Claude Code conversation history",
       done: "Done",
       empty: "No local Codex or Claude Code project history was found",
       errors: "Skipped items",
@@ -281,6 +279,22 @@ export const en = {
       projectOptionDescription: "Use existing project folders",
       projectOptionTitle: "Projects ({{count}})",
       providerDescription: "Choose which local apps to scan",
+      selectTitle: "Select conversations to import",
+      selectDescription:
+        "Search and check the projects and conversations to import",
+      searchPlaceholder: "Search projects and conversations",
+      selectAll: "Select all",
+      selectedCount: "{{selected}} of {{total}} selected",
+      noResults: "No conversations match your search",
+      registerProjects: "Also register project folders",
+      sessionMessages: "{{count}} messages",
+      rangeLabel: "Time range",
+      range7: "7 days",
+      range30: "30 days",
+      range90: "90 days",
+      rangeAll: "All",
+      selectSession: "Select {{title}}",
+      selectProjectGroup: "Select all in {{label}}",
       promptDescription:
         "Tutti can import recent {{provider}} project conversations",
       promptImport: "Import",
@@ -625,6 +639,11 @@ export const en = {
         openLogsDirectory: "Open logs folder",
         addFileDefaultOpener: "Add",
         removeFileDefaultOpener: "Remove .{{extension}}",
+        showAppDeveloperSourcesDescription:
+          "Show each app's authors and GitHub source inside App Center cards.",
+        showAppDeveloperSourcesLabel: "Show app authors and source",
+        showAppDeveloperSourcesSaveFailed:
+          "We couldn't update App Center source display.",
         visibilityDescription:
           "Hide this panel from settings. Tap the version number in About seven times to bring it back",
         visibilityLabel: "Show developer panel"

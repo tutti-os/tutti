@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tutti-os/tutti/apps/cli/internal/daemon"
 )
 
 func TestRunHelpUsesDefaultCommandName(t *testing.T) {
@@ -69,6 +71,38 @@ func TestCliInvokeContextFromEnvIncludesAgentSessionID(t *testing.T) {
 		context.ParentCommandID != "parent-1" ||
 		context.AgentSessionID != "session-1" {
 		t.Fatalf("context = %#v", context)
+	}
+}
+
+func TestWriteDynamicJSONKeepsCommandWarningsOutOfAppValue(t *testing.T) {
+	output := daemon.CommandOutput{
+		Kind: "json",
+		Value: map[string]any{
+			"ok":       true,
+			"warnings": "app-defined",
+		},
+		Warnings: []daemon.CommandWarning{{
+			Code:    "unknown_input_ignored",
+			Message: "Unknown input ignored.",
+		}},
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := writeCommandOutput(&stdout, &stderr, output); code != 0 {
+		t.Fatalf("code = %d stderr = %q", code, stderr.String())
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode stdout: %v\n%s", err, stdout.String())
+	}
+	value := envelope["value"].(map[string]any)
+	if value["warnings"] != "app-defined" {
+		t.Fatalf("app warnings field was clobbered: %#v", value["warnings"])
+	}
+	warnings := envelope["warnings"].([]any)
+	if len(warnings) != 1 || warnings[0].(map[string]any)["code"] != "unknown_input_ignored" {
+		t.Fatalf("warnings = %#v", envelope["warnings"])
 	}
 }
 
@@ -310,13 +344,117 @@ func TestRunDynamicCommandAggregatesRepeatedFlags(t *testing.T) {
 	}
 }
 
+func TestRunDynamicAgentSendAggregatesRepeatedImageFlags(t *testing.T) {
+	var invokedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.send","path":["agent","send"],"summary":"Send input","inputSchema":{"type":"object","required":["session-id","prompt"],"properties":{"session-id":{"type":"string"},"prompt":{"type":"string"},"image":{"type":"array","items":{"type":"string"}}}},"output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.send/invoke":
+			if err := json.NewDecoder(r.Body).Decode(&invokedBody); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "--prompt", "look", "--image", "/tmp/a.png", "--image", "/tmp/b.jpg"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	input := invokedBody["input"].(map[string]any)
+	if input["session-id"] != "SESSION-1" || input["prompt"] != "look" {
+		t.Fatalf("input = %#v", input)
+	}
+	images, ok := input["image"].([]any)
+	if !ok || len(images) != 2 || images[0] != "/tmp/a.png" || images[1] != "/tmp/b.jpg" {
+		t.Fatalf("image input = %#v", input["image"])
+	}
+}
+
+func TestRunDynamicAgentSendSplitsPositionalPromptBeforeImageFlags(t *testing.T) {
+	var invokedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.send","path":["agent","send"],"summary":"Send input","inputSchema":{"type":"object","required":["session-id","prompt"],"properties":{"session-id":{"type":"string"},"prompt":{"type":"string"},"image":{"type":"array","items":{"type":"string"}}}},"output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.send/invoke":
+			if err := json.NewDecoder(r.Body).Decode(&invokedBody); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "look", "here", "--image", "/tmp/a.png"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	input := invokedBody["input"].(map[string]any)
+	if input["session-id"] != "SESSION-1" || input["prompt"] != "look here" {
+		t.Fatalf("input = %#v", input)
+	}
+	images, ok := input["image"].([]any)
+	if !ok || len(images) != 1 || images[0] != "/tmp/a.png" {
+		t.Fatalf("image input = %#v", input["image"])
+	}
+}
+
+func TestRunDynamicAgentSendKeepsFlagLikeTokensInPositionalPrompt(t *testing.T) {
+	var invokedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.send","path":["agent","send"],"summary":"Send input","inputSchema":{"type":"object","required":["session-id","prompt"],"properties":{"session-id":{"type":"string"},"prompt":{"type":"string"},"image":{"type":"array","items":{"type":"string"}}}},"output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.send/invoke":
+			if err := json.NewDecoder(r.Body).Decode(&invokedBody); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "please", "run", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	input := invokedBody["input"].(map[string]any)
+	if input["session-id"] != "SESSION-1" || input["prompt"] != "please run --help" {
+		t.Fatalf("input = %#v", input)
+	}
+}
+
 func TestRunDynamicCommandHelpRendersInputSchema(t *testing.T) {
 	invoked := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v1/cli/capabilities":
-			_, _ = w.Write([]byte(`{"commands":[{"id":"issue-manager.issue.task.create","path":["issue","task","create"],"summary":"Create an issue task","description":"Create a task under an issue.","inputSchema":{"type":"object","properties":{"issue-id":{"type":"string","description":"Issue that owns the task."},"task-id":{"type":"string","description":"Stable task id to create; generated when omitted."},"title":{"type":"string","description":"Task title."},"content":{"type":"string","description":"Task instructions or notes."},"priority":{"type":"string","description":"Task priority: high, medium, or low."},"due-at-unix":{"type":"string","description":"Due time as a Unix timestamp in seconds."}},"required":["issue-id","title"]},"output":{"defaultMode":"json","json":true}}]}`))
+			_, _ = w.Write([]byte(`{"commands":[{"id":"issue-manager.issue.task.create","path":["issue","task","create"],"summary":"Create an issue task","description":"Create a task under an issue.","inputSchema":{"type":"object","properties":{"issue-id":{"type":"string","description":"Issue that owns the task."},"task-id":{"type":"string","description":"Stable task id to create; generated when omitted."},"title":{"type":"string","description":"Task title."},"content":{"type":"string","description":"Task instructions or notes."},"priority":{"type":"string","description":"Task priority.","enum":["high","medium","low"],"default":"medium"},"enabled":{"type":"boolean","description":"Whether the task is enabled.","default":true},"due-at-unix":{"type":"integer","description":"Due time as a Unix timestamp in seconds.","default":1893456000}},"required":["issue-id","title"]},"output":{"defaultMode":"json","json":true}}]}`))
 		case "/v1/cli/commands/issue-manager.issue.task.create/invoke":
 			invoked = true
 			http.Error(w, "unexpected invoke", http.StatusInternalServerError)
@@ -344,11 +482,16 @@ func TestRunDynamicCommandHelpRendersInputSchema(t *testing.T) {
 		"--title",
 		"--content",
 		"--due-at-unix",
+		"--enabled",
 		"--priority",
 		"--task-id",
 		"required",
 		"Task title.",
-		"Task priority: high, medium, or low.",
+		"Task priority.",
+		"Values: high, medium, low",
+		"Default: medium",
+		"Default: true",
+		"Default: 1893456000",
 	} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("stdout missing %q:\n%s", expected, output)
@@ -364,7 +507,7 @@ func TestRunDynamicScopeHelpListsCommandsAndDocumentation(t *testing.T) {
 		case "/v1/cli/capabilities":
 			_, _ = w.Write([]byte(`{"commands":[
         {"id":"app.automation.automation.list","path":["automation","list"],"summary":"List automations","output":{"defaultMode":"table","json":true},"source":{"kind":"app","appId":"automation","appName":"Automation","documentationFile":"COMMANDS.md","documentationPath":"/tmp/tutti/apps/automation/COMMANDS.md"}},
-        {"id":"app.automation.automation.run","path":["automation","run"],"summary":"Run an automation","output":{"defaultMode":"json","json":true},"source":{"kind":"app","appId":"automation","appName":"Automation","documentationFile":"COMMANDS.md","documentationPath":"/tmp/tutti/apps/automation/COMMANDS.md"}},
+        {"id":"app.automation.automation.run","path":["automation","run"],"summary":"Run an automation","inputSchema":{"type":"object","properties":{"automation-id":{"type":"string","description":"Automation id."},"name":{"type":"string","description":"Exact automation name."}},"required":["automation-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"app","appId":"automation","appName":"Automation","documentationFile":"COMMANDS.md","documentationPath":"/tmp/tutti/apps/automation/COMMANDS.md"}},
         {"id":"app.automation.automation.runs","path":["automation","runs"],"summary":"List automation runs","output":{"defaultMode":"table","json":true},"source":{"kind":"app","appId":"automation","appName":"Automation","documentationFile":"COMMANDS.md","documentationPath":"/tmp/tutti/apps/automation/COMMANDS.md"}}
       ]}`))
 		case "/v1/cli/commands/app.automation.automation.list/invoke":
@@ -391,7 +534,7 @@ func TestRunDynamicScopeHelpListsCommandsAndDocumentation(t *testing.T) {
 	for _, expected := range []string{
 		"Usage: tutti automation <command> [--json]",
 		"list  List automations",
-		"run   Run an automation",
+		"run   Run an automation  required: --automation-id <value>",
 		"runs  List automation runs",
 		`Use "tutti automation <command> --help" for command details.`,
 		"More documentation:",
@@ -400,6 +543,141 @@ func TestRunDynamicScopeHelpListsCommandsAndDocumentation(t *testing.T) {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("stdout missing %q:\n%s", expected, output)
 		}
+	}
+}
+
+func TestRunDynamicScopeHelpShowsRequiredFlagsForBuiltinCommands(t *testing.T) {
+	invoked := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[
+        {"id":"issue-manager.issue.run.create","path":["issue","run","create"],"summary":"Create issue run","inputSchema":{"type":"object","properties":{"issue-id":{"type":"string"},"agent-provider":{"type":"string"},"agent-session-id":{"type":"string"}},"required":["agent-provider","agent-session-id","issue-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.run.complete","path":["issue","run","complete"],"summary":"Complete issue run","inputSchema":{"type":"object","properties":{"issue-id":{"type":"string"},"run-id":{"type":"string"},"status":{"type":"string"}},"required":["issue-id","run-id","status"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.topic.list","path":["issue","topic","list"],"summary":"List issue topics","output":{"defaultMode":"table","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.topic.create","path":["issue","topic","create"],"summary":"Create issue topic","inputSchema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.topic.delete","path":["issue","topic","delete"],"summary":"Delete issue topic","inputSchema":{"type":"object","properties":{"topic-id":{"type":"string"}},"required":["topic-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.topic.update","path":["issue","topic","update"],"summary":"Update issue topic","inputSchema":{"type":"object","properties":{"topic-id":{"type":"string"}},"required":["topic-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.list","path":["issue","list"],"summary":"List issues","inputSchema":{"type":"object","properties":{"topic-id":{"type":"string","description":"Required topic id."},"status":{"type":"string","description":"Issue status."}},"required":["topic-id"]},"output":{"defaultMode":"table","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.get","path":["issue","get"],"summary":"Get issue detail","inputSchema":{"type":"object","properties":{"issue-id":{"type":"string","description":"Issue id."}},"required":["issue-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}
+      ]}`))
+		case "/v1/cli/commands/issue-manager.issue.list/invoke":
+			invoked = true
+			http.Error(w, "unexpected invoke", http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"issue", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	if invoked {
+		t.Fatal("command was invoked")
+	}
+	output := stdout.String()
+	for _, expected := range []string{
+		"Usage: tutti issue <command> [--json]",
+		"get    Get issue detail  required: --issue-id <value>",
+		"list   List issues  required: --topic-id <value>",
+		"run    2 commands",
+		"create    Create issue run  required: --agent-provider <value> --agent-session-id <value> --issue-id <value>",
+		"complete  Complete issue run  required: --issue-id <value> --run-id <value> --status <value>",
+		"topic  4 commands",
+		"create  Create issue topic  required: --title <value>",
+		"delete  Delete issue topic  required: --topic-id <value>",
+		"list    List issue topics",
+		"update  Update issue topic  required: --topic-id <value>",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("stdout missing %q:\n%s", expected, output)
+		}
+	}
+}
+
+func TestRunDynamicCommandGroupWithoutSubcommandShowsPrefixHelp(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/cli/capabilities" {
+			_, _ = w.Write([]byte(`{"commands":[
+        {"id":"issue-manager.issue.topic.list","path":["issue","topic","list"],"summary":"List issue topics","output":{"defaultMode":"table","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.topic.create","path":["issue","topic","create"],"summary":"Create issue topic","inputSchema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}
+      ]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"issue", "topic"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	if stderr.String() != "" {
+		t.Fatalf("stderr = %q, want empty when prefix help is shown", stderr.String())
+	}
+	output := stdout.String()
+	for _, expected := range []string{
+		"Usage: tutti issue topic <command> [--json]",
+		"create  Create issue topic  required: --title <value>",
+		"list    List issue topics",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("stdout missing %q:\n%s", expected, output)
+		}
+	}
+}
+
+func TestRunDynamicScopeHelpLimitsGroupedCommandPreview(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/cli/capabilities" {
+			_, _ = w.Write([]byte(`{"commands":[
+        {"id":"issue-manager.issue.task.a","path":["issue","task","a"],"summary":"A","output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.task.b","path":["issue","task","b"],"summary":"B","output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.task.c","path":["issue","task","c"],"summary":"C","output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.task.d","path":["issue","task","d"],"summary":"D","output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.task.e","path":["issue","task","e"],"summary":"E","output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.task.f","path":["issue","task","f"],"summary":"F","output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}
+      ]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"issue", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	output := stdout.String()
+	for _, expected := range []string{
+		"task  6 commands",
+		"a  A",
+		"e  E",
+		"...   1 more commands",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("stdout missing %q:\n%s", expected, output)
+		}
+	}
+	if strings.Contains(output, "f  F") {
+		t.Fatalf("stdout includes command beyond preview limit:\n%s", output)
 	}
 }
 

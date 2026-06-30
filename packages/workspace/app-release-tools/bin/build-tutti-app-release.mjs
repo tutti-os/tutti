@@ -296,8 +296,19 @@ function validateCLIInputSchema(schema, label) {
         `${label}.properties.${name}.type must be string, boolean, or integer`
       );
     }
+    validateCLIInputEnum(
+      property.enum,
+      property.type,
+      `${label}.properties.${name}.enum`
+    );
+    validateCLIInputDefault(
+      property.default,
+      property.type,
+      property.enum,
+      `${label}.properties.${name}.default`
+    );
     for (const key of Object.keys(property)) {
-      if (!["type", "description"].includes(key)) {
+      if (!["type", "description", "enum", "default"].includes(key)) {
         throw new Error(`${label}.properties.${name}.${key} is not supported`);
       }
     }
@@ -317,6 +328,40 @@ function validateCLIInputSchema(schema, label) {
     if (!["type", "properties", "required"].includes(key)) {
       throw new Error(`${label}.${key} is not supported`);
     }
+  }
+}
+
+function validateCLIInputDefault(value, type, enumValues, label) {
+  if (value === undefined) {
+    return;
+  }
+  validateCLIInputValue(value, type, label);
+  if (enumValues !== undefined && !enumValues.includes(value)) {
+    throw new Error(`${label} must be one of the declared enum values`);
+  }
+}
+
+function validateCLIInputEnum(values, type, label) {
+  if (values === undefined) {
+    return;
+  }
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new Error(`${label} must be a non-empty array`);
+  }
+  for (const [index, value] of values.entries()) {
+    validateCLIInputValue(value, type, `${label}[${index}]`);
+  }
+}
+
+function validateCLIInputValue(value, type, label) {
+  if (type === "integer") {
+    if (!Number.isInteger(value)) {
+      throw new Error(`${label} must be an integer`);
+    }
+    return;
+  }
+  if (typeof value !== type) {
+    throw new Error(`${label} must be ${type}`);
   }
 }
 

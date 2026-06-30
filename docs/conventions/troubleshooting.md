@@ -362,6 +362,37 @@ delimited by ---`, and the composer skill picker may show partial or
   [WorkspaceFileReferencePickerTree.tsx](../../packages/workspace/file-reference/src/ui/internal/reference/WorkspaceFileReferencePickerTree.tsx:131)
   [IssueManagerSidebarSections.tsx](../../packages/workspace/issue-manager/src/ui/internal/shell/IssueManagerSidebarSections.tsx:190)
 
+### IME composition leaks native input into xterm terminals
+
+- Symptom:
+  Chinese, Japanese, or Korean text appears in a workspace terminal, but using
+  Space or Enter to commit the candidate sends extra or strange input into the
+  PTY, leaving the shell prompt or terminal display in an unexpected state.
+- Quick checks:
+  Inspect custom `attachCustomKeyEventHandler` logic before suspecting the PTY
+  or websocket encoding. In xterm 6, the custom key handler runs before
+  `CompositionHelper.keydown`; returning `false` skips that xterm path but does
+  not automatically prevent the browser's hidden textarea from receiving native
+  input.
+- Root cause:
+  A guard that suppresses a post-composition commit key by only returning
+  `false` can still allow the browser default action to mutate xterm's textarea.
+  The later xterm `input` or delayed composition send can then forward polluted
+  textarea content as terminal input.
+- Fix:
+  During active composition, do not call `preventDefault`; the browser and IME
+  need native composition behavior. For post-composition commit-key suppression,
+  call `preventDefault` and `stopPropagation` before returning `false`, and keep
+  the short suppression window open for repeated native key events.
+- Validation:
+  Add unit coverage that active composition is not prevented, post-composition
+  commit keys are prevented, and repeated native key events within the window
+  stay suppressed. Manually verify Chinese IME candidate commit with Space and
+  Enter in the workspace terminal.
+- References:
+  [terminalImeInputGuard.ts](../../packages/workspace/terminal/src/react/terminalImeInputGuard.ts)
+  [terminalSurfaceRuntime.ts](../../packages/workspace/terminal/src/react/terminalSurfaceRuntime.ts)
+
 ### Agent GUI app mentions show unavailable workspace apps
 
 - Symptom:
@@ -409,7 +440,8 @@ delimited by ---`, and the composer skill picker may show partial or
   user-project paths. For imported sessions, inspect `runtimeContext` for the
   daemon-owned `externalImportNoProject` marker. Check both the in-memory
   `rememberNoProjectPath` path and the restart fallback that recognizes
-  `Documents/tutti/session-<uuid>`.
+  `Documents/tutti/session-<uuid>`. Codex external history can also record its
+  own scratch cwd under `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
 - Root cause:
   Conversation project grouping is a view-model join of `cwd x userProjects`.
   If a generated no-project cwd is not recognized before prefix/parent project
@@ -418,18 +450,20 @@ delimited by ---`, and the composer skill picker may show partial or
   `isNoProjectPath` callback because it has the user home-directory context;
   a package-level suffix check would misclassify real projects that contain a
   `Documents/tutti/session-<uuid>` subdirectory. External import has a similar
-  trap because provider transcripts may record `$HOME` as the cwd when no
-  project was selected; that intent must be persisted as session metadata rather
-  than inferred later from user-project prefix matching.
+  trap because provider transcripts may record `$HOME` or a provider-owned
+  scratch working directory as the cwd when no project was selected; that intent
+  must be persisted as session metadata rather than inferred later from
+  user-project prefix matching.
 - Fix:
   Treat exact user-project path matches as explicit user intent, then call the
   host no-project resolver before parent project matching. The desktop resolver
   should recognize generated `$HOME/Documents/tutti/session-<uuid>` cwd values
   while allowing explicit registered projects to override them. External import
-  should mark home-cwd sessions as no-project in `runtimeContext`, skip them
-  when registering user-project paths, and let Agent GUI preserve that no-project
-  mode during later project re-resolution. Keep the project field derived in the
-  Agent GUI view-model rather than writing it back into the conversation store.
+  should mark home-cwd sessions and known provider scratch cwd shapes as
+  no-project in `runtimeContext`, skip them when registering user-project paths,
+  and let Agent GUI preserve that no-project mode during later project
+  re-resolution. Keep the project field derived in the Agent GUI view-model
+  rather than writing it back into the conversation store.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
@@ -1111,28 +1145,35 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 - References:
   [desktopAgentGUILinkActions.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentGUILinkActions.ts)
 
-### Imported sessions inflate recently completed message-center groups
+### Imported sessions trigger fresh-completion indicators
 
 - Symptom:
-  After importing Codex or Claude Code history, Message Center's priority view
-  briefly shows many items under the recently-completed group even though those
-  sessions are historical imports, not newly finished local runs.
+  After importing Codex or Claude Code history, Agent GUI conversation rows show
+  unread-completion lamps, or Message Center's priority view briefly shows many
+  items under the recently-completed group, even though those sessions are
+  historical imports rather than newly finished local runs.
 - Quick checks:
   Inspect the session `runtimeContext`. Imported sessions should carry
-  `imported: true`, and Message Center items derived from them should preserve
-  that marker before priority grouping.
+  `imported: true`. Conversation summaries and Message Center items derived from
+  them should preserve that marker before unread-completion or priority grouping
+  is derived.
 - Root cause:
-  Message Center uses the recently-completed group as a notification-style
-  surface. Imported history is persisted as completed agent activity, so if the
-  grouping model treats imported sessions the same as live runtime completions,
-  a bulk import can look like a burst of fresh completed work.
+  Agent GUI unread-completion lamps and Message Center's recently-completed
+  group are notification-style surfaces. Imported history is persisted as
+  completed agent activity, so if projection models treat imported sessions the
+  same as live runtime completions, a bulk import can look like a burst of fresh
+  completed work.
 - Fix:
-  Keep imported sessions visible in Message Center and in the completed filter,
-  but exclude `runtimeContext.imported` items from the recently-completed group.
+  Keep imported sessions visible in Agent GUI, Message Center, and completed
+  filters, but exclude `runtimeContext.imported` items from unread-completion
+  lamps and recently-completed groups.
 - Validation:
-  Run
-  `pnpm --filter @tutti-os/agent-gui test -- agent-message-center/workspaceAgentMessageCenterModel.spec.ts agent-message-center/workspaceAgentMessageCenterViewModel.spec.ts`.
+  For Agent GUI rail read-state changes, run
+  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.spec.ts`.
+  For Message Center grouping changes, run
+  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom agent-message-center/workspaceAgentMessageCenterModel.spec.ts agent-message-center/workspaceAgentMessageCenterViewModel.spec.ts`.
 - References:
+  [agentGuiConversationListStore.ts](../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
   [workspaceAgentMessageCenterModel.ts](../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts)
   [workspaceAgentMessageCenterViewModel.ts](../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterViewModel.ts)
 

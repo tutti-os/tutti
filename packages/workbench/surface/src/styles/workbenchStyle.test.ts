@@ -12,12 +12,66 @@ test("floating window bodies do not reserve a right-side content margin", () => 
   );
 });
 
+test("traffic lights keep visual layout while expanding the pointer hit area", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    css,
+    /\.workbench-window-traffic-light\s*{[^}]*width:\s*20px;[^}]*height:\s*20px;[^}]*margin:\s*-4px;[^}]*cursor:\s*pointer;[^}]*transition:\s*opacity 160ms ease;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-window-traffic-light::before\s*{[^}]*inset:\s*4px;[^}]*content:\s*"";[^}]*transition:\s*background-color 160ms ease;/s
+  );
+});
+
+test("floating window corner resize handles do not intrude further than the edge handles", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  // Resize handles render outside `.workbench-window`, which keeps most of
+  // the corner hot zone outside the clipped window while still leaving a small
+  // diagonal resize target over the visible border.
+  assert.match(
+    css,
+    /\.workbench-window__resize-handle\[data-handle="north-east"\],\s*\.workbench-window__resize-handle\[data-handle="north-west"\],\s*\.workbench-window__resize-handle\[data-handle="south-east"\],\s*\.workbench-window__resize-handle\[data-handle="south-west"\]\s*{[^}]*width:\s*16px;[^}]*height:\s*16px;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-window__resize-handle\[data-handle="south-west"\]\s*{[^}]*bottom:\s*-12px;[^}]*left:\s*-12px;/s
+  );
+});
+
 test("mission control hidden presentation windows are invisible and inert", () => {
   const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
 
   assert.match(
     css,
     /\.workbench-window-shell\[data-presentation-visibility="hidden"\]\s*{[^}]*visibility:\s*hidden;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s
+  );
+});
+
+test("mission control overlay lets layout controls sit above dialog overlays", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+  const source = readFileSync(
+    resolve("src/mission-control/WorkbenchMissionControlOverlay.tsx"),
+    "utf8"
+  );
+
+  assert.match(
+    css,
+    /\.workbench-mission-control\s*{[^}]*z-index:\s*var\(--z-tooltip,\s*100700\);/s
+  );
+  assert.match(
+    source,
+    /className="workbench-mission-control pointer-events-none absolute inset-0 overflow-hidden"/
+  );
+  assert.match(
+    source,
+    /className="workbench-mission-control__layout-dock desktop-dock-plate pointer-events-auto"/
+  );
+  assert.match(
+    css,
+    /\.desktop-dock-plate\.workbench-mission-control__layout-dock\s*{[^}]*pointer-events:\s*auto;/s
   );
 });
 
@@ -61,6 +115,25 @@ test("dock retained entry removal animates width and icon exit", () => {
   assert.match(css, /@keyframes desktop-dock-slot-collapse-left/);
   assert.match(css, /@keyframes desktop-dock-separator-collapse/);
   assert.match(css, /@keyframes desktop-dock-separator-collapse-left/);
+});
+
+test("dock transparent hover padding lets clicks reach windows behind it", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    css,
+    /\.desktop-dock-plate\s*{[^}]*pointer-events:\s*none;[^}]*transition:\s*width 220ms/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock\s*{[^}]*pointer-events:\s*none;[^}]*transition:\s*width 600ms/s
+  );
+  assert.match(css, /\.desktop-dock__items\s*{[^}]*pointer-events:\s*none;/s);
+  assert.match(css, /\.desktop-dock__slot\s*{[^}]*pointer-events:\s*auto;/s);
+  assert.match(
+    css,
+    /\.desktop-dock__hover-panel\s*{[^}]*pointer-events:\s*auto;/s
+  );
 });
 
 test("dock badge chrome uses inverted outlines and 11px count text", () => {

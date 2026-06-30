@@ -225,7 +225,6 @@ function createAgentSessionCreator(
 
 function createRunRequest(input?: { executionDirectory?: string | null }) {
   return {
-    agentSessionId: "agent-session-1",
     ...(input?.executionDirectory
       ? { executionDirectory: input.executionDirectory }
       : {}),
