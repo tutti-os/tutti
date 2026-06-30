@@ -106,8 +106,11 @@ function sessionPresentation(attrs: Record<string, unknown>): {
     return {
       // i18n-check-ignore: Dynamic participant display names.
       label: `${initiatorName} & ${agentName}`,
-      summary:
-        dottedTitle?.summary || (title && title !== name ? title : inputPreview)
+      summary: dottedTitle
+        ? dottedTitle.summary
+        : title && title !== name
+          ? title
+          : inputPreview
     };
   }
 

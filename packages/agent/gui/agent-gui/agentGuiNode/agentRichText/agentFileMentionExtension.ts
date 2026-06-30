@@ -1055,11 +1055,11 @@ function sessionMentionVisual(
     const dottedTitle = parseDottedSessionMentionText(title);
     return {
       participant: `${initiatorName} & ${agentName}`,
-      summary:
-        dottedTitle?.summary ||
-        (title && title !== item.name.trim()
+      summary: dottedTitle
+        ? dottedTitle.summary
+        : title && title !== item.name.trim()
           ? title
-          : item.inputPreview?.trim() || "")
+          : item.inputPreview?.trim() || ""
     };
   }
 
