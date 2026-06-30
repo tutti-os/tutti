@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow } from "electron";
 import {
   initializeDesktopEnvironment,
+  resolveDesktopDevelopmentAppName,
   resolveDesktopUserDataPath
 } from "./defaults";
 import { registerDesktopAppLifecycle } from "./desktopAppLifecycle";
@@ -78,12 +79,17 @@ export async function bootstrapDesktopApp(): Promise<void> {
     appVersion: app.getVersion(),
     isPackaged: app.isPackaged
   });
+  const appName = app.getName();
   const userDataPath = resolveDesktopUserDataPath({
     appDataDir: app.getPath("appData"),
-    appName: app.getName()
+    appName
   });
   if (userDataPath) {
     app.setPath("userData", userDataPath);
+  }
+  const developmentAppName = resolveDesktopDevelopmentAppName(appName);
+  if (developmentAppName) {
+    app.setName(developmentAppName);
   }
   const logger = await setupDesktopLogger();
 

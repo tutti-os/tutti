@@ -1333,6 +1333,45 @@ export type WorkspaceAgentSessionGitBranchesResponse = {
   currentBranch?: string;
 };
 
+export type WorkspaceGitPatchTarget =
+  | "unstaged"
+  | "staged"
+  | "staged-and-unstaged";
+
+export type WorkspaceGitPatchRequest = {
+  cwd: string;
+  diff: string;
+  revert?: boolean;
+  atomic?: boolean;
+  target?: WorkspaceGitPatchTarget;
+  allowBinary?: boolean;
+};
+
+export type WorkspaceGitPatchStatus = "success" | "partial-success" | "error";
+
+export type WorkspaceGitPatchErrorCode = "not-git-repo";
+
+export type WorkspaceGitPatchSupportResponse = {
+  supported: boolean;
+  root?: string;
+  errorCode?: WorkspaceGitPatchErrorCode;
+};
+
+export type WorkspaceGitPatchExecOutput = {
+  command: string;
+  stdout: string;
+  stderr: string;
+};
+
+export type WorkspaceGitPatchResponse = {
+  status: WorkspaceGitPatchStatus;
+  appliedPaths: Array<string>;
+  skippedPaths: Array<string>;
+  conflictedPaths: Array<string>;
+  errorCode?: WorkspaceGitPatchErrorCode;
+  execOutput?: WorkspaceGitPatchExecOutput;
+};
+
 export type UserProject = {
   id: string;
   path: string;
@@ -5173,6 +5212,106 @@ export type ListWorkspaceGitBranchesResponses = {
 
 export type ListWorkspaceGitBranchesResponse =
   ListWorkspaceGitBranchesResponses[keyof ListWorkspaceGitBranchesResponses];
+
+export type ResolveWorkspaceGitPatchSupportData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query: {
+    cwd: string;
+  };
+  url: "/v1/workspaces/{workspaceID}/git-patch-support";
+};
+
+export type ResolveWorkspaceGitPatchSupportErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ResolveWorkspaceGitPatchSupportError =
+  ResolveWorkspaceGitPatchSupportErrors[keyof ResolveWorkspaceGitPatchSupportErrors];
+
+export type ResolveWorkspaceGitPatchSupportResponses = {
+  /**
+   * Git patch support status for the working directory
+   */
+  200: WorkspaceGitPatchSupportResponse;
+};
+
+export type ResolveWorkspaceGitPatchSupportResponse =
+  ResolveWorkspaceGitPatchSupportResponses[keyof ResolveWorkspaceGitPatchSupportResponses];
+
+export type ApplyWorkspaceGitPatchData = {
+  body: WorkspaceGitPatchRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/git-patch";
+};
+
+export type ApplyWorkspaceGitPatchErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ApplyWorkspaceGitPatchError =
+  ApplyWorkspaceGitPatchErrors[keyof ApplyWorkspaceGitPatchErrors];
+
+export type ApplyWorkspaceGitPatchResponses = {
+  /**
+   * Git patch apply result
+   */
+  200: WorkspaceGitPatchResponse;
+};
+
+export type ApplyWorkspaceGitPatchResponse =
+  ApplyWorkspaceGitPatchResponses[keyof ApplyWorkspaceGitPatchResponses];
 
 export type ListWorkspaceAgentSessionGitBranchesData = {
   body?: never;

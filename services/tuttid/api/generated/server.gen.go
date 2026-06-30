@@ -274,6 +274,12 @@ type ServerInterface interface {
 	// List git branches for a workspace working directory
 	// (GET /v1/workspaces/{workspaceID}/git-branches)
 	ListWorkspaceGitBranches(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceGitBranchesParams)
+	// Apply or reverse-apply a git patch in a workspace working directory
+	// (POST /v1/workspaces/{workspaceID}/git-patch)
+	ApplyWorkspaceGitPatch(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
+	// Resolve whether git patch operations are available for a workspace working directory
+	// (GET /v1/workspaces/{workspaceID}/git-patch-support)
+	ResolveWorkspaceGitPatchSupport(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ResolveWorkspaceGitPatchSupportParams)
 	// Search issue-manager output files across one workspace
 	// (POST /v1/workspaces/{workspaceID}/issue-references/search)
 	SearchWorkspaceIssueReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
@@ -3743,6 +3749,86 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceGitBranches(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// ApplyWorkspaceGitPatch operation middleware
+func (siw *ServerInterfaceWrapper) ApplyWorkspaceGitPatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyWorkspaceGitPatch(w, r, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResolveWorkspaceGitPatchSupport operation middleware
+func (siw *ServerInterfaceWrapper) ResolveWorkspaceGitPatchSupport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ResolveWorkspaceGitPatchSupportParams
+
+	// ------------- Required query parameter "cwd" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "cwd", r.URL.Query(), &params.Cwd, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cwd"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cwd", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveWorkspaceGitPatchSupport(w, r, workspaceID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SearchWorkspaceIssueReferences operation middleware
 func (siw *ServerInterfaceWrapper) SearchWorkspaceIssueReferences(w http.ResponseWriter, r *http.Request) {
 
@@ -5731,6 +5817,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/upload", wrapper.UploadWorkspaceFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/upload/preflight", wrapper.PreflightUploadWorkspaceFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/git-branches", wrapper.ListWorkspaceGitBranches)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/git-patch", wrapper.ApplyWorkspaceGitPatch)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/git-patch-support", wrapper.ResolveWorkspaceGitPatchSupport)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issue-references/search", wrapper.SearchWorkspaceIssueReferences)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issue-topics", wrapper.ListWorkspaceIssueTopics)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issue-topics", wrapper.CreateWorkspaceIssueTopic)
@@ -15239,6 +15327,240 @@ func (response ListWorkspaceGitBranches503JSONResponse) VisitListWorkspaceGitBra
 	return err
 }
 
+type ApplyWorkspaceGitPatchRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Body        *ApplyWorkspaceGitPatchJSONRequestBody
+}
+
+type ApplyWorkspaceGitPatchResponseObject interface {
+	VisitApplyWorkspaceGitPatchResponse(w http.ResponseWriter) error
+}
+
+type ApplyWorkspaceGitPatch200JSONResponse WorkspaceGitPatchResponse
+
+func (response ApplyWorkspaceGitPatch200JSONResponse) VisitApplyWorkspaceGitPatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyWorkspaceGitPatch400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ApplyWorkspaceGitPatch400JSONResponse) VisitApplyWorkspaceGitPatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyWorkspaceGitPatch401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ApplyWorkspaceGitPatch401JSONResponse) VisitApplyWorkspaceGitPatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyWorkspaceGitPatch404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response ApplyWorkspaceGitPatch404JSONResponse) VisitApplyWorkspaceGitPatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyWorkspaceGitPatch405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ApplyWorkspaceGitPatch405JSONResponse) VisitApplyWorkspaceGitPatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyWorkspaceGitPatch502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ApplyWorkspaceGitPatch502JSONResponse) VisitApplyWorkspaceGitPatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyWorkspaceGitPatch503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ApplyWorkspaceGitPatch503JSONResponse) VisitApplyWorkspaceGitPatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceGitPatchSupportRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Params      ResolveWorkspaceGitPatchSupportParams
+}
+
+type ResolveWorkspaceGitPatchSupportResponseObject interface {
+	VisitResolveWorkspaceGitPatchSupportResponse(w http.ResponseWriter) error
+}
+
+type ResolveWorkspaceGitPatchSupport200JSONResponse WorkspaceGitPatchSupportResponse
+
+func (response ResolveWorkspaceGitPatchSupport200JSONResponse) VisitResolveWorkspaceGitPatchSupportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceGitPatchSupport400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ResolveWorkspaceGitPatchSupport400JSONResponse) VisitResolveWorkspaceGitPatchSupportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceGitPatchSupport401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ResolveWorkspaceGitPatchSupport401JSONResponse) VisitResolveWorkspaceGitPatchSupportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceGitPatchSupport404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response ResolveWorkspaceGitPatchSupport404JSONResponse) VisitResolveWorkspaceGitPatchSupportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceGitPatchSupport405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ResolveWorkspaceGitPatchSupport405JSONResponse) VisitResolveWorkspaceGitPatchSupportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceGitPatchSupport502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ResolveWorkspaceGitPatchSupport502JSONResponse) VisitResolveWorkspaceGitPatchSupportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceGitPatchSupport503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ResolveWorkspaceGitPatchSupport503JSONResponse) VisitResolveWorkspaceGitPatchSupportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SearchWorkspaceIssueReferencesRequestObject struct {
 	WorkspaceID WorkspaceID `json:"workspaceID"`
 	Body        *SearchWorkspaceIssueReferencesJSONRequestBody
@@ -20222,6 +20544,12 @@ type StrictServerInterface interface {
 	// List git branches for a workspace working directory
 	// (GET /v1/workspaces/{workspaceID}/git-branches)
 	ListWorkspaceGitBranches(ctx context.Context, request ListWorkspaceGitBranchesRequestObject) (ListWorkspaceGitBranchesResponseObject, error)
+	// Apply or reverse-apply a git patch in a workspace working directory
+	// (POST /v1/workspaces/{workspaceID}/git-patch)
+	ApplyWorkspaceGitPatch(ctx context.Context, request ApplyWorkspaceGitPatchRequestObject) (ApplyWorkspaceGitPatchResponseObject, error)
+	// Resolve whether git patch operations are available for a workspace working directory
+	// (GET /v1/workspaces/{workspaceID}/git-patch-support)
+	ResolveWorkspaceGitPatchSupport(ctx context.Context, request ResolveWorkspaceGitPatchSupportRequestObject) (ResolveWorkspaceGitPatchSupportResponseObject, error)
 	// Search issue-manager output files across one workspace
 	// (POST /v1/workspaces/{workspaceID}/issue-references/search)
 	SearchWorkspaceIssueReferences(ctx context.Context, request SearchWorkspaceIssueReferencesRequestObject) (SearchWorkspaceIssueReferencesResponseObject, error)
@@ -22966,6 +23294,68 @@ func (sh *strictHandler) ListWorkspaceGitBranches(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListWorkspaceGitBranchesResponseObject); ok {
 		if err := validResponse.VisitListWorkspaceGitBranchesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApplyWorkspaceGitPatch operation middleware
+func (sh *strictHandler) ApplyWorkspaceGitPatch(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
+	var request ApplyWorkspaceGitPatchRequestObject
+
+	request.WorkspaceID = workspaceID
+
+	var body ApplyWorkspaceGitPatchJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApplyWorkspaceGitPatch(ctx, request.(ApplyWorkspaceGitPatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApplyWorkspaceGitPatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApplyWorkspaceGitPatchResponseObject); ok {
+		if err := validResponse.VisitApplyWorkspaceGitPatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResolveWorkspaceGitPatchSupport operation middleware
+func (sh *strictHandler) ResolveWorkspaceGitPatchSupport(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ResolveWorkspaceGitPatchSupportParams) {
+	var request ResolveWorkspaceGitPatchSupportRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveWorkspaceGitPatchSupport(ctx, request.(ResolveWorkspaceGitPatchSupportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveWorkspaceGitPatchSupport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveWorkspaceGitPatchSupportResponseObject); ok {
+		if err := validResponse.VisitResolveWorkspaceGitPatchSupportResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

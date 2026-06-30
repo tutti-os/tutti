@@ -1858,7 +1858,7 @@ function WorkspaceSettingsPanelPortal({
 
   const panel = (
     <div
-      className="fixed inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--backdrop)_28%,transparent)] supports-backdrop-filter:backdrop-blur-sm transition-[background] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
+      className="fixed inset-0 grid place-items-center bg-[var(--backdrop)] supports-backdrop-filter:backdrop-blur-sm transition-[background] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
       data-workspace-settings-backdrop="true"
       style={{ zIndex: "var(--z-panel)" }}
       onClick={onClose}

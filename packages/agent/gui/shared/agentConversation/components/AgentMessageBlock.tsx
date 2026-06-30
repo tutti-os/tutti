@@ -10,6 +10,7 @@ import {
 import { ChevronRight, LoaderCircle } from "lucide-react";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import { Button } from "../../../app/renderer/components/ui/button";
+import { formatAgentMessageTimestamp } from "../../../app/renderer/shell/utils/format";
 import { AgentPlanCard } from "./AgentPlanCard";
 import { translate } from "../../../i18n/index";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
@@ -215,6 +216,7 @@ export function AgentMessageBlock({
             <AgentCopyableMessageGroup
               key={message.id}
               copyText={message.copyText ?? null}
+              occurredAtUnixMs={message.occurredAtUnixMs}
               speaker={row.speaker}
               onCopyMessageText={handleCopyMessageText}
             >
@@ -230,6 +232,7 @@ export function AgentMessageBlock({
             <AgentCopyableMessageGroup
               key={message.id}
               copyText={copyText}
+              occurredAtUnixMs={message.occurredAtUnixMs}
               speaker={row.speaker}
               onCopyMessageText={handleCopyMessageText}
             >
@@ -247,24 +250,34 @@ export function AgentMessageBlock({
 function AgentCopyableMessageGroup({
   children,
   copyText,
+  occurredAtUnixMs,
   onCopyMessageText,
   speaker
 }: {
   children: ReactNode;
   copyText: string | null;
+  occurredAtUnixMs: number | null;
   onCopyMessageText: (text: string) => Promise<boolean>;
   speaker: AgentMessageRowVM["speaker"];
 }): JSX.Element {
   "use memo";
+  const timestamp = formatAgentMessageTimestamp(occurredAtUnixMs);
 
   return (
     <div className={styles.messageGroup} data-agent-message-speaker={speaker}>
       {children}
-      {copyText ? (
-        <AgentMessageCopyButton
-          copyText={copyText}
-          onCopyMessageText={onCopyMessageText}
-        />
+      {timestamp || copyText ? (
+        <div className={styles.messageFooter}>
+          {timestamp ? (
+            <span className={styles.messageTimestamp}>{timestamp}</span>
+          ) : null}
+          {copyText ? (
+            <AgentMessageCopyButton
+              copyText={copyText}
+              onCopyMessageText={onCopyMessageText}
+            />
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

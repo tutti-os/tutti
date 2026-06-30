@@ -190,6 +190,9 @@ function createWebPlatformApi(): DesktopPlatformApi {
   return {
     homeDirectory: "",
     os: inferPlatform(),
+    resolveDroppedEntries() {
+      return [];
+    },
     resolveDroppedPaths() {
       return [];
     }

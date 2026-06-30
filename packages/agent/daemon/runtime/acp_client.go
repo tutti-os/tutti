@@ -30,7 +30,14 @@ type acpClient struct {
 	stderrSink          func([]byte)
 	done                chan struct{}
 	doneErr             error
+	exitCode            *int
+	stderrTail          []byte
 	doneOnce            sync.Once
+}
+
+type acpClientDiagnostics struct {
+	ExitCode   *int
+	StderrTail string
 }
 
 type acpMessage struct {
@@ -149,6 +156,22 @@ func (c *acpClient) Done() <-chan struct{} {
 // Err reports why the connection terminated; valid after Done is closed.
 func (c *acpClient) Err() error {
 	return c.finishError()
+}
+
+func (c *acpClient) Diagnostics() acpClientDiagnostics {
+	if c == nil {
+		return acpClientDiagnostics{}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	diag := acpClientDiagnostics{
+		StderrTail: strings.TrimSpace(string(c.stderrTail)),
+	}
+	if c.exitCode != nil {
+		exitCode := *c.exitCode
+		diag.ExitCode = &exitCode
+	}
+	return diag
 }
 
 func (c *acpClient) Notify(ctx context.Context, method string, params any) error {
@@ -395,6 +418,7 @@ func (c *acpClient) readLoop() {
 			if len(stderrTail) > 8192 {
 				stderrTail = stderrTail[len(stderrTail)-8192:]
 			}
+			c.setStderrTail(stderrTail)
 			c.mu.Lock()
 			stderrSink := c.stderrSink
 			c.mu.Unlock()
@@ -413,6 +437,7 @@ func (c *acpClient) readLoop() {
 			continue
 		}
 		if frame.ExitCode != nil {
+			c.setExitCode(*frame.ExitCode)
 			message := strings.TrimSpace(frame.Message)
 			if stderr := strings.TrimSpace(string(stderrTail)); stderr != "" {
 				message = firstNonEmpty(message, "process exited") + ": " + stderr
@@ -433,6 +458,18 @@ func (c *acpClient) readLoop() {
 			c.dispatchLine(line)
 		}
 	}
+}
+
+func (c *acpClient) setStderrTail(tail []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.stderrTail = append(c.stderrTail[:0], tail...)
+}
+
+func (c *acpClient) setExitCode(exitCode int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.exitCode = &exitCode
 }
 
 func (c *acpClient) dispatchLine(line []byte) {

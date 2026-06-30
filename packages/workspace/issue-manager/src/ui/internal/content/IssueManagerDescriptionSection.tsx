@@ -142,8 +142,8 @@ function IssueManagerDescriptionContent({
 }): JSX.Element {
   return (
     <RichTextReadonlyContent
-      className="min-w-0 max-w-full [overflow-wrap:anywhere]"
-      paragraphClassName="break-words [overflow-wrap:anywhere]"
+      className="min-w-0 max-w-full [overflow-wrap:anywhere] [&>*+*]:!mt-1 [&_.tutti-rich-text-mention]:!py-0 [&_.tutti-rich-text-mention]:![line-height:20px] [&_.tutti-rich-text-mention]:align-baseline"
+      paragraphClassName="break-words leading-5 [overflow-wrap:anywhere]"
       value={content}
       onMentionAction={onMentionAction}
       onOpenWorkspaceReference={

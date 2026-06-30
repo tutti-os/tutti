@@ -27,6 +27,7 @@ export {
 } from "./pagination.ts";
 export {
   normalizeAgentActivityDisplayStatus,
+  resolveLatestAgentActivityMessageDisplayStatus,
   selectNeedsAttentionCount,
   selectNeedsAttentionItems,
   selectSessionDisplayStatuses

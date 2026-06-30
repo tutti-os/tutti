@@ -98,6 +98,32 @@ export function normalizeOptionalWorkspaceAgentStatus(
     }
     return { kind: "completed" };
   }
+  const waitKind = waitingKindFromTokens([currentPhase, turnPhase]);
+  if (waitKind) {
+    return { kind: "waiting", waitKind };
+  }
+  if (
+    [currentPhase, turnPhase].some((token) => WAITING_STATUS_TOKENS.has(token))
+  ) {
+    return { kind: "waiting" };
+  }
+  if (
+    [currentPhase, turnPhase].some((token) => WORKING_STATUS_TOKENS.has(token))
+  ) {
+    return { kind: "working" };
+  }
+  if (
+    [currentPhase, turnPhase].some((token) => CANCELED_STATUS_TOKENS.has(token))
+  ) {
+    return { kind: "canceled" };
+  }
+  if (
+    [currentPhase, turnPhase].some((token) =>
+      COMPLETED_STATUS_TOKENS.has(token)
+    )
+  ) {
+    return { kind: "completed" };
+  }
   if (
     [lifecycleStatus, effectiveStatus, sessionStatus, currentPhase].some(
       (token) => FAILED_STATUS_TOKENS.has(token)
@@ -120,14 +146,14 @@ export function normalizeOptionalWorkspaceAgentStatus(
     return { kind: "completed" };
   }
 
-  const waitKind = waitingKindFromTokens([
+  const fallbackWaitKind = waitingKindFromTokens([
     currentPhase,
     turnPhase,
     effectiveStatus,
     sessionStatus
   ]);
-  if (waitKind) {
-    return { kind: "waiting", waitKind };
+  if (fallbackWaitKind) {
+    return { kind: "waiting", waitKind: fallbackWaitKind };
   }
   if (
     [currentPhase, turnPhase, effectiveStatus, sessionStatus].some((token) =>

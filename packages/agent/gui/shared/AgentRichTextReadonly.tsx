@@ -3,6 +3,7 @@ import type { JSONContent } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { cn } from "../app/renderer/lib/utils";
 import { plainTextToAgentRichTextDoc } from "../agent-gui/agentGuiNode/agentRichText/agentRichTextDocument";
+import { AGENT_RICH_TEXT_CARET_ANCHOR } from "../agent-gui/agentGuiNode/agentRichText/agentRichTextCaretAnchor";
 import { createAgentRichTextReadonlyExtensions } from "../agent-gui/agentGuiNode/agentRichText/agentRichTextExtensions";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "./AgentMessageMarkdown";
 import type { AgentGUIProviderSkillOption } from "../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
@@ -121,7 +122,14 @@ function isMentionOnlyRichTextDoc(doc: JSONContent): boolean {
   if (paragraph?.type !== "paragraph") {
     return false;
   }
-  const inlineContent = paragraph.content ?? [];
+  const inlineContent = (paragraph.content ?? []).filter(
+    (node) =>
+      !(
+        node.type === "text" &&
+        (node.text ?? "").replaceAll(AGENT_RICH_TEXT_CARET_ANCHOR, "")
+          .length === 0
+      )
+  );
   return (
     inlineContent.length === 1 && inlineContent[0]?.type === "agentFileMention"
   );

@@ -62,7 +62,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
-    "homeDirectory" | "os" | "resolveDroppedPaths"
+    "homeDirectory" | "os" | "resolveDroppedEntries" | "resolveDroppedPaths"
   >;
   reporterService?: Pick<IReporterService, "trackEvents">;
   richTextAtService: IDesktopRichTextAtService;
@@ -120,6 +120,8 @@ export function createWorkspaceAgentGuiContribution(input: {
   ) =>
     createElement(DesktopAgentGUIWorkbenchBody, {
       agentActivityRuntime: agentGUIWorkbenchHostInput.agentActivityRuntime,
+      agentQueuedPromptRuntime:
+        agentGUIWorkbenchHostInput.agentQueuedPromptRuntime,
       agentHostApi: agentGUIWorkbenchHostInput.agentHostApi,
       appCenterService: input.appCenterService,
       agentProviderStatusService: input.agentProviderStatusService,

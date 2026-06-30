@@ -26,6 +26,11 @@ import {
   type AgentHostAgentSessionComposerSettings
 } from "./internal/desktopAgentHostProjection.ts";
 import { reportAgentSessionSettingsChanges } from "./internal/agentSessionSettingsAnalytics.ts";
+import {
+  AgentAnalyticsErrorCode,
+  createAgentNodeResultTracker,
+  safeTrackAgentNodeResult
+} from "./internal/agentNodeResultAnalytics.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 
@@ -137,6 +142,10 @@ export function createDesktopAgentActivityRuntime(
     reporterNow: options.reporterNow,
     reporterService: options.reporterService
   });
+  const nodeResultTracker = createAgentNodeResultTracker({
+    reporterNow: options.reporterNow,
+    reporterService: options.reporterService
+  });
   return {
     async activateSession(input) {
       reportAgentSubmitTraceDiagnostic({
@@ -150,8 +159,29 @@ export function createDesktopAgentActivityRuntime(
           provider: resolveDesktopAgentGUIProvider(input.provider)
         }
       });
-      const activation =
-        await workspaceAgentActivityService.activateSession(input);
+      const flow = "session_create" as const;
+      const node = "activate_session" as const;
+      const fallbackErrorCode =
+        input.mode === "existing"
+          ? AgentAnalyticsErrorCode.SessionResumeFailed
+          : AgentAnalyticsErrorCode.SessionCreateFailed;
+      let activation: Awaited<
+        ReturnType<IWorkspaceAgentActivityService["activateSession"]>
+      >;
+      try {
+        activation = await workspaceAgentActivityService.activateSession(input);
+      } catch (error) {
+        await safeTrackAgentNodeResult(nodeResultTracker, {
+          agentSessionId: input.agentSessionId,
+          error,
+          fallbackErrorCode,
+          flow,
+          node,
+          provider: resolveDesktopAgentGUIProvider(input.provider),
+          success: false
+        });
+        throw error;
+      }
       reportAgentSubmitTraceDiagnostic({
         agentSessionId: activation.session.agentSessionId,
         event: "activity_runtime.activate.resolved",
@@ -165,6 +195,19 @@ export function createDesktopAgentActivityRuntime(
         }
       });
       const activationFailed = activation.activation.status === "failed";
+      await safeTrackAgentNodeResult(nodeResultTracker, {
+        agentSessionId: activation.session.agentSessionId,
+        error: activationFailed
+          ? (activation.error?.message ??
+            activation.error?.code ??
+            "Agent session activation failed.")
+          : undefined,
+        fallbackErrorCode,
+        flow,
+        node,
+        provider: activation.session.provider,
+        success: !activationFailed
+      });
       if (input.mode === "new" && !activationFailed) {
         await sessionStartedTracker.track({
           agentSessionId: activation.session.agentSessionId,
@@ -181,6 +224,30 @@ export function createDesktopAgentActivityRuntime(
           provider: activation.session.provider,
           source: resolveAgentSessionSource({ mode: input.mode })
         });
+        await safeTrackAgentNodeResult(nodeResultTracker, {
+          agentSessionId: activation.session.agentSessionId,
+          flow,
+          node: "session_started_reported",
+          provider: activation.session.provider,
+          success: true
+        });
+        const initialPrompt = promptContentDisplayText(
+          input.initialContent ?? []
+        );
+        if (initialPrompt) {
+          await messageSentTracker.track({
+            agentSessionId: activation.session.agentSessionId,
+            prompt: initialPrompt,
+            provider: activation.session.provider
+          });
+          await safeTrackAgentNodeResult(nodeResultTracker, {
+            agentSessionId: activation.session.agentSessionId,
+            flow,
+            node: "message_sent_reported",
+            provider: activation.session.provider,
+            success: true
+          });
+        }
       }
       return activation;
     },
@@ -247,7 +314,23 @@ export function createDesktopAgentActivityRuntime(
         runtimeApi: options.runtimeApi,
         workspaceId: input.workspaceId
       });
-      const result = await workspaceAgentActivityService.sendInput(input);
+      let result: Awaited<
+        ReturnType<IWorkspaceAgentActivityService["sendInput"]>
+      >;
+      try {
+        result = await workspaceAgentActivityService.sendInput(input);
+      } catch (error) {
+        await safeTrackAgentNodeResult(nodeResultTracker, {
+          agentSessionId: input.agentSessionId,
+          error,
+          fallbackErrorCode: AgentAnalyticsErrorCode.RuntimeExecFailed,
+          flow: "message_send",
+          node: "send_input_request",
+          provider: null,
+          success: false
+        });
+        throw error;
+      }
       reportAgentSubmitTraceDiagnostic({
         agentSessionId: result.session.agentSessionId,
         event: "activity_runtime.send.resolved",
@@ -261,10 +344,24 @@ export function createDesktopAgentActivityRuntime(
           turnPhase: result.turnLifecycle?.phase ?? null
         }
       });
+      await safeTrackAgentNodeResult(nodeResultTracker, {
+        agentSessionId: result.session.agentSessionId,
+        flow: "message_send",
+        node: "send_input_request",
+        provider: result.session.provider,
+        success: true
+      });
       await messageSentTracker.track({
         agentSessionId: result.session.agentSessionId,
         prompt: promptContentDisplayText(input.content),
         provider: result.session.provider
+      });
+      await safeTrackAgentNodeResult(nodeResultTracker, {
+        agentSessionId: result.session.agentSessionId,
+        flow: "message_send",
+        node: "message_sent_reported",
+        provider: result.session.provider,
+        success: true
       });
       return result;
     },

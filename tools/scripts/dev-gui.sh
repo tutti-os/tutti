@@ -9,6 +9,8 @@ NODE_VERSION_FILE="${ROOT_DIR}/.node-version"
 GO_MOD_FILE="${TUTTID_DIR}/go.mod"
 PACKAGE_JSON_FILE="${ROOT_DIR}/package.json"
 
+export TUTTI_ENV="${DEV_GUI_TUTTI_ENV:-development}"
+
 GO_BIN=""
 DEV_GUI_CHILD_PID=""
 DEV_GUI_PID_PATH=""

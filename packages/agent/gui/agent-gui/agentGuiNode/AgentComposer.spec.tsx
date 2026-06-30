@@ -397,7 +397,7 @@ vi.mock("./AgentFileMentionPalette", () => ({
           })
         }
       >
-        查看产物文件
+        查看产物
       </button>
     ) : null,
   agentMentionItemKey: (item: {
@@ -2083,10 +2083,119 @@ describe("AgentComposer", () => {
           screen.getByTestId("agent-gui-composer-image-drafts").parentElement
         ).toHaveStyle({
           "--agent-gui-composer-attachment-height": "56px",
-          "--agent-gui-composer-input-height": "200px",
-          "--agent-gui-composer-input-max-height": "200px"
+          "--agent-gui-composer-input-height": "190px",
+          "--agent-gui-composer-input-max-height": "190px"
         })
       );
+    } finally {
+      if (scrollHeightDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollHeight",
+          scrollHeightDescriptor
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
+      }
+    }
+  });
+
+  it("keeps overflowing dock prompt text clipped to a partial line", async () => {
+    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight"
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        if (!(this instanceof HTMLElement)) {
+          return 24;
+        }
+        if (
+          this.classList.contains("agent-gui-node__composer-prompt-input-area")
+        ) {
+          return 132;
+        }
+        return this.classList.contains("agent-gui-node__composer-textarea")
+          ? 120
+          : 24;
+      }
+    });
+
+    try {
+      render(
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          draftContent={createDraft("one\ntwo\nthree\nfour\nfive")}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={vi.fn()}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+      );
+
+      await waitFor(() => {
+        const promptInputArea = screen
+          .getByPlaceholderText("placeholder")
+          .closest(".agent-gui-node__composer-prompt-input-area");
+        expect(promptInputArea).toHaveStyle({
+          "--agent-gui-composer-input-height": "110px",
+          "--agent-gui-composer-input-max-height": "110px",
+          "--agent-gui-composer-text-height": "110px",
+          "--agent-gui-composer-text-line-height": "24px",
+          "--agent-gui-composer-text-max-visible-lines": "3.5",
+          "--agent-gui-composer-text-viewport-height": "84px"
+        });
+      });
+
+      const promptInputArea = screen
+        .getByPlaceholderText("placeholder")
+        .closest(".agent-gui-node__composer-prompt-input-area");
+      if (!(promptInputArea instanceof HTMLElement)) {
+        throw new Error("Expected composer prompt input area");
+      }
+      const textLineHeight = Number.parseFloat(
+        promptInputArea.style.getPropertyValue(
+          "--agent-gui-composer-text-line-height"
+        ) || "0"
+      );
+      const maxVisibleTextLines = Number.parseFloat(
+        promptInputArea.style.getPropertyValue(
+          "--agent-gui-composer-text-max-visible-lines"
+        ) || "0"
+      );
+      const textViewportHeight = Number.parseFloat(
+        promptInputArea.style.getPropertyValue(
+          "--agent-gui-composer-text-viewport-height"
+        ) || "0"
+      );
+      const visibleTextLines = textViewportHeight / textLineHeight;
+      expect(textViewportHeight).toBe(textLineHeight * maxVisibleTextLines);
+      expect(visibleTextLines).toBe(3.5);
+      expect(Number.isInteger(visibleTextLines)).toBe(false);
     } finally {
       if (scrollHeightDescriptor) {
         Object.defineProperty(
@@ -2107,7 +2216,7 @@ describe("AgentComposer", () => {
       /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-input-shell\s*{[^}]*padding:\s*0[^}]*border:\s*0[^}]*background:\s*transparent/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s*{[^}]*display:\s*grid[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)[^}]*height:\s*var\(--agent-gui-composer-input-height,\s*56px\)[^}]*min-height:\s*56px[^}]*max-height:\s*var\(--agent-gui-composer-input-max-height,\s*120px\)[^}]*align-items:\s*center[^}]*overflow:\s*hidden[^}]*padding:\s*0 12px/s
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s*{[^}]*display:\s*grid[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)[^}]*height:\s*var\(--agent-gui-composer-input-height,\s*56px\)[^}]*min-height:\s*56px[^}]*max-height:\s*var\(--agent-gui-composer-input-max-height,\s*110px\)[^}]*align-items:\s*center[^}]*overflow:\s*hidden[^}]*padding:\s*0 12px/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s*{[^}]*transition:[^}]*height\s+160ms\s+ease[^}]*border-color\s+140ms\s+ease[^}]*box-shadow\s+140ms\s+ease/s
@@ -2131,19 +2240,16 @@ describe("AgentComposer", () => {
       /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\.agent-gui-node__composer-prompt-input-line\s*{[^}]*min-height:\s*40px[^}]*height:\s*calc\(var\(--agent-gui-composer-text-height,\s*56px\)\s*-\s*2px\)[^}]*max-height:\s*118px[^}]*padding:\s*4px 0 11px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s*{[^}]*display:\s*block[^}]*height:\s*auto[^}]*min-height:\s*24px[^}]*max-height:\s*calc\(var\(--agent-gui-composer-text-height,\s*56px\)\s*-\s*26px\)[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*auto[^}]*overflow-wrap:\s*anywhere[^}]*scrollbar-width:\s*none[^}]*white-space:\s*pre-wrap/s
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s*{[^}]*display:\s*block[^}]*height:\s*auto[^}]*min-height:\s*24px[^}]*max-height:\s*var\(--agent-gui-composer-text-viewport-height\)[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*auto[^}]*overflow-wrap:\s*anywhere[^}]*scrollbar-width:\s*none[^}]*white-space:\s*pre-wrap/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\.agent-gui-node__composer-textarea\s*{[^}]*max-height:\s*calc\([^}]*var\(--agent-gui-composer-text-height,\s*56px\)[^}]*26px/s
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\.agent-gui-node__composer-textarea\s*{[^}]*max-height:\s*var\(--agent-gui-composer-text-viewport-height\)/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:hover[\s\S]*?\.agent-gui-node__composer-textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within[\s\S]*?\.agent-gui-node__composer-textarea\s*{[^}]*scrollbar-width:\s*thin/s
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\s*\][\s\S]*?\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*display:\s*block[^}]*width:\s*0[^}]*height:\s*0/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\s*\][\s\S]*?\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*display:\s*none[^}]*width:\s*4px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:hover[\s\S]*?::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within[\s\S]*?::-webkit-scrollbar\s*{[^}]*display:\s*block/s
+      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:hover[\s\S]*?::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within[\s\S]*?::-webkit-scrollbar\s*{[^}]*width:\s*4px[^}]*height:\s*4px/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s+p\s*{[^}]*display:\s*block[^}]*width:\s*auto[^}]*min-width:\s*0[^}]*overflow:\s*visible[^}]*overflow-wrap:\s*anywhere[^}]*white-space:\s*pre-wrap/s
@@ -2390,7 +2496,9 @@ describe("AgentComposer", () => {
 
     const compactButton = screen.queryByTestId("agent-gui-compact-button");
     expect(compactButton).toBeInTheDocument();
-    expect(compactButton).toHaveClass("hover:bg-[var(--transparency-hover)]");
+    expect(compactButton).toHaveAttribute("data-variant", "secondary");
+    expect(compactButton).toHaveAttribute("data-size", "sm");
+    expect(compactButton).toHaveClass("h-7");
     fireEvent.click(compactButton!);
     expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
   });
@@ -3046,7 +3154,7 @@ describe("AgentComposer", () => {
       /\.agent-gui-node__composer-textarea\s*{[^}]*font-size:\s*13px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s*{[^}]*max-height:\s*72px;[^}]*overflow-y:\s*auto;[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-gutter:\s*stable/s
+      /\.agent-gui-node__composer-textarea\s*{[^}]*--agent-gui-composer-text-line-height:\s*24px;[^}]*--agent-gui-composer-text-max-visible-lines:\s*3\.5;[^}]*--agent-gui-composer-text-viewport-height:\s*calc\([^}]*var\(--agent-gui-composer-text-line-height\)[^}]*\*[^}]*var\(--agent-gui-composer-text-max-visible-lines\)[^}]*\);[^}]*max-height:\s*var\(--agent-gui-composer-text-viewport-height\);[^}]*overflow-y:\s*auto;[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-gutter:\s*stable/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*display:\s*block;[^}]*width:\s*4px/s
@@ -3791,8 +3899,8 @@ describe("AgentComposer", () => {
           screen.getByTestId("agent-gui-composer-image-drafts").parentElement
         ).toHaveStyle({
           "--agent-gui-composer-attachment-height": "56px",
-          "--agent-gui-composer-input-height": "200px",
-          "--agent-gui-composer-input-max-height": "200px"
+          "--agent-gui-composer-input-height": "190px",
+          "--agent-gui-composer-input-max-height": "190px"
         })
       );
 

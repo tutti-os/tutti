@@ -12,6 +12,7 @@ import (
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 type AvailabilityStatus string
@@ -223,6 +224,7 @@ type Service struct {
 	Registry                    Registry
 	ExternalAgentRegistry       externalagentregistry.Store
 	ManagedRuntime              managedruntime.Resolver
+	AnalyticsReporter           reporterservice.Reporter
 	// RunOutcomes lets a runtime auth failure override a stale "logged in" marker
 	// so the dock/wizard surface that login dropped. Shared pointer across copies.
 	RunOutcomes *RunOutcomeStore
@@ -410,7 +412,16 @@ func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunAction
 
 	switch input.ActionID {
 	case ActionInstall:
-		return s.runInstallAction(ctx, spec, result)
+		startedAt := s.now()
+		result, err := s.runInstallAction(ctx, spec, result)
+		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+			Error:     err,
+			Node:      "install_daemon_action",
+			Provider:  spec.Provider,
+			Result:    result,
+			StartedAt: startedAt,
+		})
+		return result, err
 	default:
 		return RunActionResult{}, ErrInvalidAction
 	}
@@ -452,8 +463,16 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 		return result, nil
 	}
 	if len(summary.Commands) == 0 {
+		probeStartedAt := s.now()
 		probe, err := s.Probe(ctx, ProbeInput{Provider: spec.Provider})
 		if err != nil {
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Error:     err,
+				Node:      "install_post_probe",
+				Provider:  spec.Provider,
+				StartedAt: probeStartedAt,
+				Status:    "failure",
+			})
 			return RunActionResult{}, err
 		}
 		result.Probe = &probe
@@ -461,8 +480,20 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 			result.Status = RunActionFailed
 			result.ReasonCode = "post_install_probe_failed"
 			result.Message = firstNonBlank(probe.Message, probe.ReasonCode, "Agent provider runtime probe failed")
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Node:      "install_post_probe",
+				Provider:  spec.Provider,
+				Result:    result,
+				StartedAt: probeStartedAt,
+			})
 			return result, nil
 		}
+		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+			Node:      "install_post_probe",
+			Provider:  spec.Provider,
+			Result:    RunActionResult{Status: RunActionCompleted},
+			StartedAt: probeStartedAt,
+		})
 		result.Status = RunActionCompleted
 		return result, nil
 	}
@@ -473,8 +504,16 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 		return result, nil
 	}
 
+	probeStartedAt := s.now()
 	probe, err := s.Probe(ctx, ProbeInput{Provider: spec.Provider})
 	if err != nil {
+		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+			Error:     err,
+			Node:      "install_post_probe",
+			Provider:  spec.Provider,
+			StartedAt: probeStartedAt,
+			Status:    "failure",
+		})
 		return RunActionResult{}, err
 	}
 	result.Probe = &probe
@@ -482,8 +521,20 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 		result.Status = RunActionFailed
 		result.ReasonCode = "post_install_probe_failed"
 		result.Message = firstNonBlank(probe.Message, probe.ReasonCode, "Agent provider runtime probe failed")
+		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+			Node:      "install_post_probe",
+			Provider:  spec.Provider,
+			Result:    result,
+			StartedAt: probeStartedAt,
+		})
 		return result, nil
 	}
+	s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+		Node:      "install_post_probe",
+		Provider:  spec.Provider,
+		Result:    RunActionResult{Status: RunActionCompleted},
+		StartedAt: probeStartedAt,
+	})
 	if strings.TrimSpace(updatedRuntime.AdapterPath) != "" {
 		result.Probe.BinaryPath = updatedRuntime.AdapterPath
 	}

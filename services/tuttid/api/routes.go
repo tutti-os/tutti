@@ -429,6 +429,22 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ListWorkspaceGitBranches(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/git-patch-support", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ResolveWorkspaceGitPatchSupport(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/git-patch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ApplyWorkspaceGitPatch(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

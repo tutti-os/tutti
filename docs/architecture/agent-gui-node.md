@@ -176,6 +176,91 @@ Optimistic prompt messages must stay overlay-owned even when they are used to
 scope the selected detail window. Do not promote them into durable/detail
 message bases: their local timestamp-derived versions can outrank lower
 authoritative daemon versions and suppress the durable user prompt during merge.
+Existing-session submit must record the optimistic user prompt before the
+`sendInput` acknowledgement returns, then retarget or remove that prompt by
+`clientSubmitId`; otherwise switching away during submit can leave only later
+assistant stream events visible when the user returns.
+
+### Turn Summary Undo/Reapply
+
+The changed-files turn summary follows Codex-style patch semantics, but keeps
+the implementation split across the existing Tutti ownership boundaries:
+
+```text
+agent fileChange/tool output
+  -> AgentGUI turn summary projection stores executable patchBatches
+  -> AgentTurnSummaryRow builds per-batch unified diffs
+  -> AgentHost workspace.resolveGitPatchSupport
+  -> tuttid GET /v1/workspaces/{workspaceID}/git-patch-support
+  -> AgentHost workspace.applyGitPatch with cwd + diff + revert
+  -> desktop tuttid client
+  -> tuttid POST /v1/workspaces/{workspaceID}/git-patch
+  -> services/tuttid Git patch service
+  -> git apply / git apply -R against the Git repository resolved from cwd
+```
+
+The durable activity data is the original turn summary input:
+
+- `patchBatches` with the tool call id, cwd, path, change type, and patch
+  payload needed to reconstruct per-batch diffs.
+- file-level unified diffs as a fallback for older or less structured activity.
+  This fallback also applies when recorded `patchBatches` exist but reconstruct
+  zero executable diffs; for absolute file paths with a synthetic `/` workspace
+  root, use the file's containing directory as the Git cwd.
+
+Do not persist the UI button state. A successful Undo only flips the local
+button to Reapply for the current render. If the page reloads, the source of
+truth is still the recorded diff plus the current worktree state; `git apply`
+decides whether the operation can still apply cleanly.
+
+The Undo/Reapply control uses an icon plus visible text. Before enabling the
+control, AgentGUI resolves Git patch support for every cwd in the pending
+batches. If any cwd is outside a Git repository, the control stays disabled and
+uses an explanatory tooltip instead of letting the user click into a
+`not-git-repo` failure. If the row cannot reconstruct executable patch data,
+AgentGUI still renders the control disabled with a tooltip.
+
+Patch batch cwd values may be runtime-projected paths such as `/workspace`.
+AgentGUI must use those values to construct cwd-relative unified diffs, but map
+them back to the host workspace root before calling Git support/apply APIs.
+Although the daemon transport route is under `/v1/workspaces/{workspaceID}`,
+turn-summary patch apply follows Codex App's host operation semantics: the
+request supplies `cwd`, `diff`, and `revert`, and the daemon applies the patch
+to the Git repository resolved from `cwd`. `workspaceID` is the desktop/tuttid
+context for transport, eventing, and host integration; it is not a filesystem
+boundary for this operation. The daemon Git patch service also treats a supplied
+file path or not-yet-created target path as a path inside the candidate
+repository by resolving from the nearest existing parent directory.
+
+The Git mutation belongs in `services/tuttid`, not `apps/desktop` or
+`@tutti-os/agent-gui`. The daemon creates a temporary `tutti-apply-*`
+directory, writes `patch.diff`, optionally copies the Git index into that
+directory for non-atomic unstaged `--3way` operations, executes `git apply` or
+`git apply -R`, and removes the temporary directory on every exit path.
+When reversing an added-file patch, the daemon has one narrow fallback for
+less-structured summary diffs: if Git rejects the patch, the target is still
+untracked, and the current file content only differs from the patch by trailing
+newlines, it removes the file directly. Real content drift must continue to
+fail instead of being deleted.
+
+Undo uses reverse batch order. Reapply uses original batch order. A non-success
+batch stops the remaining batches and is not automatically rolled back. This is
+intentional: summary undo is a reverse patch against the current worktree, not a
+snapshot restore.
+
+Patch failures are surfaced through the host-provided short toast capability.
+The desktop host wires that capability to the existing `Toast.Error` facade;
+AgentGUI shared components should not call the sonner `toast.error` entrypoint
+directly except as a last-resort fallback when no host toast capability exists.
+The summary card does not keep an inline failure row or durable error state
+because the source of truth remains the recorded diff plus the current worktree
+state.
+
+Codex invalidates Git query caches after this operation. Tutti currently has no
+equivalent renderer Git cache group. The AgentGUI row emits a lightweight
+`tutti-agent-git-patch-applied` browser event after a result that changed files
+so desktop surfaces can attach targeted refresh behavior later, but this event
+is not durable state and should not become the source of truth.
 
 ## User-Facing Data Flows
 
@@ -203,6 +288,11 @@ The session list is not owned by AgentGuiNode. AgentGuiNode may keep query,
 selection, pending create/delete/submit overlays, and read-state UI metadata.
 The session rows themselves come from the runtime snapshot and are refreshed
 through `load`, event reconciliation, or explicit session fetches.
+The desktop adapter should keep broad session-list loads bounded before they
+enter `AgentActivityRuntime`; large workspaces can accumulate hundreds or
+thousands of historical agent sessions, and pushing all of them through the
+runtime snapshot forces AgentGuiNode to repeatedly project and reconcile data
+the user is unlikely to inspect in the rail.
 Conversation-list read-state metadata is notification-style UI state. Historical
 imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just
@@ -372,6 +462,11 @@ The provider/runtime reports are the durable return path. AgentGUI should not
 parse provider stdout, terminal text, or runtime internals directly. It consumes
 normalized sessions, messages, state patches, and message pages through
 `AgentActivityRuntime`.
+If a provider exposes final assistant text through a side-channel such as a
+Claude SDK message rather than an ACP `agent_message_chunk`, the daemon adapter
+must normalize that text into the same persisted message projection. AgentGUI
+must not read provider transcript files or SDK-specific logs to recover missing
+final output.
 
 ### Event Reconcile And UI Refresh
 
@@ -399,6 +494,15 @@ may carry lifecycle status such as `active` while the visible state is derived
 from `currentPhase` or turn lifecycle. Projection layers that bridge into legacy
 Host DTOs must normalize the tuple together, or `active/idle` and
 `active/working` sessions will render as the wrong conversation state.
+
+When the visible symptom is a sticky error badge on a rail row, dock preview, or
+message-center trigger, also inspect the latest loaded turn messages. A
+session-level `failed` status can be historical after a later turn starts or
+completes. Outer status badges should keep authoritative non-error lifecycle
+states, but when the outer projection is `failed`, they should let the latest
+turn's message status clear or confirm that failure. Keep unrecoverable
+activation/resume failures session-scoped; keep ordinary historical turn
+failures on the transcript row that produced them.
 
 ### Message Parsing And Rendering
 
@@ -429,15 +533,16 @@ messages.
 
 ### Layer Ownership Summary
 
-| Layer                                   | Owns                                                                                                  | Must not own                                   |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `tuttid` agent service                  | provider runtime start, exec, resume/cancel, validation, persistence reports                          | AgentGUI view state                            |
-| `ActivityProjection`                    | persisted session/message projection and `agent.activity.updated` publication                         | React projection or local UI overlays          |
-| desktop `WorkspaceAgentActivityService` | runtime adapter, snapshot controller, optimistic bridge, event reconcile, desktop/tuttid client calls | transcript rendering semantics                 |
-| `AgentActivityRuntime`                  | AgentGUI-facing source of durable activity data and commands                                          | independent session/message storage            |
-| AgentGuiNode controller/stores          | selection, drafts, loading/error state, pending overlays, command sequencing                          | authoritative session/message state            |
-| shared projection/model helpers         | deterministic conversion from snapshots/messages to view models                                       | provider transport calls                       |
-| React views                             | DOM interaction and rendering from `viewModel`/`actions`                                              | fetching or mutating durable activity directly |
+| Layer                                   | Owns                                                                                                   | Must not own                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| `tuttid` agent service                  | provider runtime start, exec, resume/cancel, validation, persistence reports                           | AgentGUI view state                                          |
+| `ActivityProjection`                    | persisted session/message projection and `agent.activity.updated` publication                          | React projection or local UI overlays                        |
+| desktop `WorkspaceAgentActivityService` | runtime adapter, snapshot controller, optimistic bridge, event reconcile, desktop/tuttid client calls  | transcript rendering semantics                               |
+| `AgentActivityRuntime`                  | AgentGUI-facing source of durable activity data and commands                                           | independent session/message storage                          |
+| `AgentQueuedPromptRuntime`              | ephemeral busy-session queued prompts keyed by workspace and agent session, drain claims, retry blocks | persisted node/session/message state                         |
+| AgentGuiNode controller/stores          | selection, drafts, loading/error state, pending overlays, command sequencing                           | authoritative session/message state or queued prompt storage |
+| shared projection/model helpers         | deterministic conversion from snapshots/messages to view models                                        | provider transport calls                                     |
+| React views                             | DOM interaction and rendering from `viewModel`/`actions`                                               | fetching or mutating durable activity directly               |
 
 ## User-Visible Interaction Contracts
 
@@ -470,6 +575,10 @@ User-visible rules:
 - Working/error/attention badges should come from session status, pending
   interactive/approval projection, or explicit local pending state. Do not infer
   them from row text.
+- Error badges are current-state indicators, not session-history indicators. If
+  a session still reports `failed` but loaded messages show a newer successful
+  or running turn, list/dock/message-center projections should follow that
+  newer turn instead of keeping the whole session red forever.
 
 ### Conversation Titles Across Surfaces
 
@@ -556,6 +665,31 @@ User-visible rules:
 - Display prompt is for user-facing echo/title when content is collapsed or
   bundled. Expanded prompt blocks remain the runtime command input.
 
+### Busy Queued Prompts
+
+Busy-session queued prompts are AgentGUI-owned ephemeral interaction state. They
+live in `AgentQueuedPromptRuntime`, not in Workbench node snapshots, not in
+`AgentActivityRuntime` durable session/message snapshots, and not in
+conversation-list or session-view compatibility stores.
+
+The desktop AgentGUI workbench host creates one queued-prompt runtime per
+workspace-scoped AgentGUI host input and injects it into every AgentGUI
+workbench node. Queue identity is `(workspaceId, agentSessionId)`, so reopening a
+minimized node or opening another workbench node for the same agent session sees
+the same queue instead of forking by node id.
+
+Draining is claim-based. A controller must call
+`claimNextToDrain({ workspaceId, agentSessionId, ownerId })` and may call
+`AgentActivityRuntime.sendInput` only for the returned claim. Completion and
+release are validated by `claimId`, which prevents a stale unmounted controller
+from deleting a newer claim or sending the same queued prompt twice. Claims are
+released when the owning controller unmounts and also expire by lease timeout so
+a queued prompt cannot stay permanently stuck at the head of the queue.
+
+Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
+existing queue if injected into the same context, but they must not enqueue,
+claim, drain, promote, edit, or delete queued prompts.
+
 ### Approval And Ask-User Prompts
 
 ```text
@@ -580,20 +714,25 @@ User-visible rules:
 
 ### Loading State Taxonomy
 
-| Visible state                  | Primary owner                    | Starts when                                             | Clears when                                                                    |
-| ------------------------------ | -------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                | list load resolves or errors                                                   |
-| Selected detail skeleton       | session view store/controller    | active session messages load starts                     | `listSessionMessages` resolves or active session changes                       |
-| Home first-create busy         | controller local create state    | home `startConversation` begins                         | new-session activation succeeds, fails, or is abandoned as stale               |
-| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`            | activation succeeds, fails, or is abandoned as stale                           |
-| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                      | runtime reports ready/completed/failed or newer message projection replaces it |
-| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins               | command promise settles                                                        |
-| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing | options/settings resolve or fallback state is applied                          |
-| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                    | runtime command settles and prompt projection updates                          |
+| Visible state                  | Primary owner                    | Starts when                                                    | Clears when                                                                    |
+| ------------------------------ | -------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                       | list load resolves or errors                                                   |
+| Selected detail skeleton       | session view store/controller    | active session messages load starts                            | `listSessionMessages` resolves or active session changes                       |
+| Home first-create busy         | controller local create state    | home `startConversation` begins                                | new-session activation succeeds, fails, or is abandoned as stale               |
+| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`                   | activation succeeds, fails, or is abandoned as stale                           |
+| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                             | runtime reports ready/completed/failed or newer message projection replaces it |
+| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins                      | command promise settles                                                        |
+| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing        | options/settings resolve or fallback state is applied                          |
+| Provider setup notice          | desktop provider status adapter  | captured provider status says the active provider is not ready | captured status says provider is ready or user fixes setup                     |
+| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                           | runtime command settles and prompt projection updates                          |
 
 When a loading state is wrong, first identify which row in this table is
 visible. Then debug that owner and clearing condition. Avoid moving a spinner
 between surfaces to hide a state-source mismatch.
+Desktop restore must not project "not ready" from an uncaptured provider-status
+snapshot. Until the first captured provider status exists, pass unknown provider
+readiness into AgentGUI so startup does not flash a false "configure provider"
+notice before local Codex or other provider detection returns.
 
 ### Error, Retry, And Recovery
 

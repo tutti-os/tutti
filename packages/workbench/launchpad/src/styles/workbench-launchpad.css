@@ -320,7 +320,7 @@
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  color: inherit;
+  color: var(--white-stationary);
   font-size: 13px;
   font-weight: 400;
   line-height: 17px;

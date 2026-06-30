@@ -60,11 +60,15 @@ Use this shape for new entries:
   corepack's shim, so `corepack prepare` succeeds but the script still validates
   the wrong `pnpm`. Electron's single-instance lock also follows Electron
   userData; if development and production share userData, a running production
-  app makes the dev app quit as a secondary instance.
+  app makes the dev app quit as a secondary instance. Agent shells launched from
+  the packaged app may inherit `TUTTI_ENV=production`, so `make dev-gui` must
+  force the development environment instead of preserving that inherited value.
 - Fix:
   Prefer the corepack shim directory before checking or running `pnpm`, and set
   development Electron userData to an environment-specific path before
-  requesting the single-instance lock.
+  requesting the single-instance lock. Ensure the dev-gui script exports
+  `TUTTI_ENV=development` before resolving pid files, installing the dev CLI, or
+  launching Electron.
 - Validation:
   Run `DEV_GUI_SKIP_START=1 make dev-gui`, then run full `make dev-gui` while
   the packaged app is open and confirm the renderer dev server and development
@@ -1113,6 +1117,33 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 - References:
   [main.tsx](../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)
+
+### AgentGUI freezes when session history is large
+
+- Symptom:
+  The workspace renderer freezes, tears visually in screen recordings, or feels
+  stuck while opening AgentGUI or submitting an agent prompt in a workspace with
+  a long agent history.
+- Quick checks:
+  Inspect developer logs for `agent.gui.runtime.snapshot_changed` diagnostics.
+  If `sessionCount` is in the hundreds or thousands, check whether the desktop
+  adapter is calling `listWorkspaceAgentSessions` without a `limit`.
+- Root cause:
+  Unbounded session-list loads push every historical agent session into
+  `AgentActivityRuntime`, and each live event can make AgentGuiNode rebuild
+  conversation projections for history the visible rail does not need.
+- Fix:
+  Keep broad runtime session-list requests bounded at the desktop adapter or
+  daemon API boundary. Use targeted message/session fetches for the selected
+  detail rather than widening the runtime snapshot.
+- Validation:
+  Reproduce with a large session table and confirm runtime diagnostics report a
+  bounded `sessionCount`. Run the desktop adapter tests and `pnpm check:changed`
+  for mixed AgentGUI/desktop changes.
+- References:
+  [desktopAgentActivityAdapter.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
+  [createDesktopAgentActivityRuntime.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
+  [agent-gui-node.md](../architecture/agent-gui-node.md)
 
 ### Browser Node focus pings miss iframe-hosted editors
 

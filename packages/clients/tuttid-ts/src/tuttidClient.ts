@@ -1,6 +1,7 @@
 import {
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
+  applyWorkspaceGitPatch,
   cancelWorkspaceAgentSession,
   checkUserProjectPath,
   clearWorkspaceAgentSessions,
@@ -65,6 +66,7 @@ import {
   readWorkspaceAgentSessionAttachment,
   listWorkspaceAgentSessionGitBranches,
   listWorkspaceGitBranches,
+  resolveWorkspaceGitPatchSupport,
   removeWorkspaceIssueContextRef,
   removeWorkspaceIssueTaskContextRef,
   resizeWorkspaceTerminal,
@@ -809,6 +811,25 @@ export function createTuttidClient(
         query: { workingDirectory }
       });
       return unwrapData(response, "List workspace git branches failed.");
+    },
+    async resolveWorkspaceGitPatchSupport(workspaceID, cwd) {
+      const response = await resolveWorkspaceGitPatchSupport({
+        client,
+        path: { workspaceID },
+        query: { cwd }
+      });
+      return unwrapData(
+        response,
+        "Resolve workspace git patch support failed."
+      );
+    },
+    async applyWorkspaceGitPatch(workspaceID, request) {
+      const response = await applyWorkspaceGitPatch({
+        client,
+        body: request,
+        path: { workspaceID }
+      });
+      return unwrapData(response, "Apply workspace git patch failed.");
     },
     async updateWorkspaceAgentSessionSettings(
       workspaceID,

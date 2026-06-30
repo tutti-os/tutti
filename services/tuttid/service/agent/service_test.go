@@ -16,6 +16,7 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 func TestServiceCreatesAndListsSessions(t *testing.T) {
@@ -58,6 +59,50 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 	if got.ID != session.ID {
 		t.Fatalf("got session ID = %q, want %q", got.ID, session.ID)
+	}
+}
+
+func TestServiceCreateReportsNodeResults(t *testing.T) {
+	runtime := newFakeRuntime()
+	reporter := &recordingAgentAnalyticsReporter{}
+	service := NewService(runtime)
+	service.AnalyticsReporter = reporter
+
+	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-1",
+		Provider:       "codex",
+		InitialContent: TextPromptContent("hello"),
+	}); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	assertAgentNodeSequence(t, reporter.events, []string{
+		"content_normalized",
+		"provider_runtime_checked",
+		"model_validated",
+		"cwd_resolved",
+		"runtime_prepared",
+		"runtime_started",
+		"prompt_validated",
+		"prompt_prepared",
+		"runtime_exec",
+	})
+	for _, event := range reporter.events {
+		if event.Name != "agent.node_result" {
+			continue
+		}
+		if got := event.Params["flow"]; got != "session_create" {
+			t.Fatalf("flow = %#v, want session_create in %#v", got, event.Params)
+		}
+		if got := event.Params["status"]; got != "success" {
+			t.Fatalf("status = %#v, want success in %#v", got, event.Params)
+		}
+		if got := event.Params["error_code"]; got != "agent_error_none" {
+			t.Fatalf("error_code = %#v, want agent_error_none in %#v", got, event.Params)
+		}
+		if got := event.Params["error_message"]; got != "" {
+			t.Fatalf("error_message = %#v, want empty in %#v", got, event.Params)
+		}
 	}
 }
 
@@ -2608,6 +2653,56 @@ func TestActivityProjectionUsesRuntimeContextTitleFallback(t *testing.T) {
 	}
 }
 
+func TestActivityProjectionReportsFailedRuntimeNodeResult(t *testing.T) {
+	repo := &activityProjectionRepoStub{
+		stateResult: agentactivitybiz.StateReportResult{
+			Accepted:        true,
+			StateApplied:    true,
+			LastEventUnixMS: 200,
+		},
+	}
+	reporter := &recordingAgentAnalyticsReporter{}
+	projection := NewActivityProjection(repo)
+	projection.SetAnalyticsReporter(reporter)
+
+	_, err := projection.ReportSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		Source: agentsessionstore.EventSource{
+			Provider: "codex",
+		},
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus: "failed",
+			LastError:       "network connection disconnected",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	if len(reporter.events) != 1 {
+		t.Fatalf("analytics events = %d, want 1", len(reporter.events))
+	}
+	event := reporter.events[0]
+	if event.Name != "agent.node_result" {
+		t.Fatalf("event name = %q, want agent.node_result", event.Name)
+	}
+	for key, want := range map[string]any{
+		"agent_session_id": "session-1",
+		"flow":             "runtime_activity",
+		"node":             "runtime_exec",
+		"error_code":       "agent_runtime_network_disconnected",
+		"error_message":    "network connection disconnected",
+		"node_name":        "runtime_exec",
+		"provider":         "codex",
+		"status":           "failure",
+		"success":          false,
+	} {
+		if got := event.Params[key]; got != want {
+			t.Fatalf("params[%q] = %#v, want %#v in %#v", key, got, want, event.Params)
+		}
+	}
+}
+
 func TestActivityProjectionPublishesCanonicalSessionIDForMessageUpdates(t *testing.T) {
 	repo := &activityProjectionRepoStub{
 		messageResult: agentactivitybiz.MessageReportResult{
@@ -3206,6 +3301,108 @@ func TestServiceSendInputReturnsRuntimeExecStatusOverStalePersistedStatus(t *tes
 	}
 }
 
+func TestServiceSendInputReportsNodeResults(t *testing.T) {
+	runtime := newFakeRuntime()
+	reporter := &recordingAgentAnalyticsReporter{}
+	service := NewService(runtime)
+	service.AnalyticsReporter = reporter
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-session-1",
+				Status:            "waiting",
+				Title:             "Persisted session",
+				CreatedAtUnixMS:   1000,
+				UpdatedAtUnixMS:   2000,
+			},
+		},
+	}
+
+	if _, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")}); err != nil {
+		t.Fatalf("SendInput returned error: %v", err)
+	}
+
+	assertAgentNodeSequence(t, reporter.events, []string{
+		"runtime_session_ready",
+		"content_normalized",
+		"prompt_validated",
+		"prompt_prepared",
+		"runtime_exec",
+		"session_refreshed",
+	})
+	for _, event := range reporter.events {
+		if event.Name != "agent.node_result" {
+			continue
+		}
+		if got := event.Params["flow"]; got != "message_send" {
+			t.Fatalf("flow = %#v, want message_send in %#v", got, event.Params)
+		}
+		if got := event.Params["status"]; got != "success" {
+			t.Fatalf("status = %#v, want success in %#v", got, event.Params)
+		}
+		if got := event.Params["error_code"]; got != "agent_error_none" {
+			t.Fatalf("error_code = %#v, want agent_error_none in %#v", got, event.Params)
+		}
+		if got := event.Params["error_message"]; got != "" {
+			t.Fatalf("error_message = %#v, want empty in %#v", got, event.Params)
+		}
+		if got := event.Params["node_name"]; got != event.Params["node"] {
+			t.Fatalf("node_name = %#v, want node alias %#v", got, event.Params["node"])
+		}
+	}
+}
+
+func TestServiceSendInputReportsRuntimeExecFailure(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.execErr = errors.New("network connection disconnected")
+	reporter := &recordingAgentAnalyticsReporter{}
+	service := NewService(runtime)
+	service.AnalyticsReporter = reporter
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-session-1",
+				Status:            "waiting",
+				Title:             "Persisted session",
+				CreatedAtUnixMS:   1000,
+				UpdatedAtUnixMS:   2000,
+			},
+		},
+	}
+
+	if _, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")}); err == nil {
+		t.Fatal("SendInput returned nil error, want runtime exec error")
+	}
+
+	var failure reporterservice.Event
+	for _, event := range reporter.events {
+		if event.Name == "agent.node_result" && event.Params["node"] == "runtime_exec" {
+			failure = event
+			break
+		}
+	}
+	if failure.Name == "" {
+		t.Fatalf("runtime_exec failure event not found in %#v", reporter.events)
+	}
+	for key, want := range map[string]any{
+		"flow":          "message_send",
+		"status":        "failure",
+		"error_code":    "agent_runtime_network_disconnected",
+		"error_message": "network connection disconnected",
+		"success":       false,
+	} {
+		if got := failure.Params[key]; got != want {
+			t.Fatalf("params[%q] = %#v, want %#v in %#v", key, got, want, failure.Params)
+		}
+	}
+}
+
 func TestServiceReconcilesStalePersistedTurnBeforeSubmittingInteractive(t *testing.T) {
 	runtime := newFakeRuntime()
 	reconciled := make([]PersistedSession, 0)
@@ -3439,6 +3636,39 @@ func TestServiceReconcilesStalePersistedTurnBeforeCanceling(t *testing.T) {
 	}
 	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
 		t.Fatalf("reconciled = %#v, want stale persisted session", reconciled)
+	}
+	if len(runtime.cancelCalls) != 0 {
+		t.Fatalf("cancel calls = %#v, want skipped stale runtime cancel", runtime.cancelCalls)
+	}
+}
+
+func TestServiceReconcilesPhaseOnlyStalePersistedTurnBeforeCanceling(t *testing.T) {
+	runtime := newFakeRuntime()
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-session-1",
+				Status:            "created",
+				CurrentPhase:      "running",
+			},
+		},
+	}
+
+	result, err := service.Cancel(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Cancel returned error: %v", err)
+	}
+	if result.Canceled || result.Reason != CancelReasonStaleTurnReconciled {
+		t.Fatalf("cancel result = %#v, want phase-only stale turn reconciled without cancel", result)
+	}
+	if len(reconciled) != 1 || reconciled[0].CurrentPhase != "running" {
+		t.Fatalf("reconciled = %#v, want phase-only stale persisted session", reconciled)
 	}
 	if len(runtime.cancelCalls) != 0 {
 		t.Fatalf("cancel calls = %#v, want skipped stale runtime cancel", runtime.cancelCalls)
@@ -4047,6 +4277,34 @@ func (p *activityUpdatePublisherStub) PublishAgentActivityUpdated(_ context.Cont
 		payload:        payload,
 	})
 	return nil
+}
+
+type recordingAgentAnalyticsReporter struct {
+	events []reporterservice.Event
+}
+
+func (r *recordingAgentAnalyticsReporter) Track(_ context.Context, events ...reporterservice.Event) {
+	r.events = append(r.events, events...)
+}
+
+func (*recordingAgentAnalyticsReporter) Close() error {
+	return nil
+}
+
+func assertAgentNodeSequence(t *testing.T, events []reporterservice.Event, want []string) {
+	t.Helper()
+	got := make([]string, 0, len(events))
+	for _, event := range events {
+		if event.Name != "agent.node_result" {
+			continue
+		}
+		if node, ok := event.Params["node"].(string); ok {
+			got = append(got, node)
+		}
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("agent node sequence = %#v, want %#v; events = %#v", got, want, events)
+	}
 }
 
 func stringRef(value string) *string {

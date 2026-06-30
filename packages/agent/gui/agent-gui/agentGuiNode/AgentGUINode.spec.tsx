@@ -639,6 +639,15 @@ vi.mock("../../i18n/index", () => ({
           "Context usage unavailable",
         "agentHost.agentGui.slashStatusLimitsUnavailable":
           "Rate limits unavailable",
+        "agentHost.agentGui.slashCommandCompactLabel": "compact",
+        "agentHost.agentGui.slashCommandContextLabel": "context",
+        "agentHost.agentGui.slashCommandFastLabel": "fast",
+        "agentHost.agentGui.slashCommandGoalLabel": "goal",
+        "agentHost.agentGui.slashCommandInitLabel": "init",
+        "agentHost.agentGui.slashCommandPlanLabel": "plan",
+        "agentHost.agentGui.slashCommandReviewLabel": "review",
+        "agentHost.agentGui.slashCommandStatusLabel": "status",
+        "agentHost.agentGui.slashCommandUsageLabel": "usage",
         "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder":
           "非当前用户会话，不可直接对话",
         "agentHost.agentGui.promptTipsPrefix": "Tips：",
@@ -6328,12 +6337,27 @@ describe("AgentGUINode", () => {
       "utf8"
     );
 
-    expect(css).toMatch(/--agent-gui-detail-padding-x:\s*28px/);
+    expect(css).toMatch(/--agent-gui-detail-padding-x:\s*32px/);
     expect(css).toMatch(
-      /--agent-gui-background-1:\s*var\(--background-1,\s*rgb\(245 245 245\)\)/s
+      /--agent-gui-session-flow-background:\s*var\(\s*--background-session-flow,\s*rgb\(252 253 255\)\s*\)/s
     );
     expect(css).toMatch(
-      /:root\[data-theme="dark"\]\s+\.agent-gui-node__shell\s*{[^}]*--agent-gui-background-1:\s*var\(--background-1,\s*rgb\(24 24 24\)\)/s
+      /--agent-gui-session-sidepanel-background:\s*var\(\s*--background-session-sidepanel,\s*rgb\(244 245 247\)\s*\)/s
+    );
+    expect(css).toMatch(
+      /:root\[data-theme="dark"\]\s+\.agent-gui-node__shell\s*{[^}]*--agent-gui-session-flow-background:\s*var\(\s*--background-session-flow,\s*rgb\(24 24 24\)\s*\)[^}]*--agent-gui-session-sidepanel-background:\s*var\(\s*--background-session-sidepanel,\s*rgb\(42 42 43\)\s*\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__primary\s*{[^}]*background:\s*var\(--agent-gui-session-sidepanel-background\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__layout\s*{[^}]*background:\s*var\(--agent-gui-session-sidepanel-background\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__detail-panel\s*{[^}]*background:\s*var\(--agent-gui-session-flow-background\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__rail\s*{[^}]*background:\s*var\(--agent-gui-session-sidepanel-background\)/s
     );
     expect(css).toMatch(
       /\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__detail\s*{[^}]*padding-top:\s*var\(--agent-gui-workbench-header-height\)/s
@@ -6351,14 +6375,18 @@ describe("AgentGUINode", () => {
       /\.agent-gui-node__timeline-with-composer\s*{[^}]*padding-bottom:\s*calc\(120px\s*\+\s*var\(--agent-gui-bottom-dock-safe-area,\s*0px\)\)/s
     );
     expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s*{[^}]*border:\s*1px solid var\(--line-2\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:focus-within,\s*\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:hover\s*{[^}]*border-color:\s*var\(--line-2\)/s
+    );
+    expect(css).toMatch(
       /\.workspace-agents-status-panel__conversation-timeline\.agent-gui-node__timeline\s*{[^}]*padding-right:\s*28px[^}]*padding-left:\s*28px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__timeline-with-composer\s*{[^}]*-webkit-mask-image:\s*linear-gradient[^}]*mask-image:\s*linear-gradient/s
+      /\.agent-gui-node__timeline-with-composer\.agent-gui-node__timeline--scrolled-from-top\s*{[^}]*-webkit-mask-image:\s*linear-gradient[^}]*mask-image:\s*linear-gradient/s
     );
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
-    );
+    expect(css).toMatch(/\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*100%/s);
     expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*{[^}]*margin-right:\s*auto[^}]*margin-left:\s*auto/s
     );
@@ -6373,6 +6401,33 @@ describe("AgentGUINode", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome,[\s\S]*?\.agent-gui-node__composer-input-shell\s*{[^}]*pointer-events:\s*auto/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:hover\s+textarea,[\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within\s+\.agent-gui-node__composer-textarea\s*{[^}]*scrollbar-width:\s*thin/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*display:\s*block[^}]*width:\s*0[^}]*height:\s*0/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:hover\s+textarea::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within\s+\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*width:\s*4px[^}]*height:\s*4px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\s*{[^}]*display:\s*inline-flex[^}]*align-items:\s*center[^}]*height:\s*24px[^}]*min-height:\s*24px[^}]*line-height:\s*24px[^}]*vertical-align:\s*middle/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\[data-agent-file-mention="true"\]\.tsh-agent-object-token,[\s\S]*?\.agent-rich-text-mention-node\s+\[data-slot="mention-pill"\]\s*{[^}]*display:\s*inline-flex[^}]*align-items:\s*center[^}]*top:\s*0[^}]*height:\s*24px[^}]*min-height:\s*24px[^}]*padding-top:\s*0[^}]*padding-bottom:\s*0[^}]*line-height:\s*24px[^}]*transform:\s*none[^}]*vertical-align:\s*middle/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\s+\[data-slot="mention-pill"\]\s*{[^}]*height:\s*24px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token--file\s*{[^}]*vertical-align:\s*middle/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-placeholder-node:first-child::before\s*{[^}]*font-size:\s*13px[^}]*line-height:\s*24px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer textarea::placeholder,[\s\S]*?\.agent-gui-node__composer-textarea::placeholder\s*{[^}]*line-height:\s*24px/s
     );
   });
 

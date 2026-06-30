@@ -285,6 +285,24 @@ test("global overlay tokens keep toasts above panels and tooltips above dialogs"
   assert.ok(dialogPopoverZ < tooltipZ);
 });
 
+test("global backdrop uses the dark scrim value in every theme mode", () => {
+  const themeSource = readStyleSource("theme.css");
+
+  assert.match(
+    themeSource,
+    /:root\s*\{[\s\S]*?--backdrop:\s*rgb\(0 0 0 \/ 60%\)/
+  );
+  assert.match(
+    themeSource,
+    /:root\[data-theme="dark"\]\s*\{[\s\S]*?--backdrop:\s*rgb\(0 0 0 \/ 60%\)/
+  );
+  assert.match(
+    themeSource,
+    /:root:not\(\[data-theme="light"\]\)\s*\{[\s\S]*?--backdrop:\s*rgb\(0 0 0 \/ 60%\)/
+  );
+  assert.doesNotMatch(themeSource, /--backdrop:\s*rgb\(255 255 255 \/ 60%\)/);
+});
+
 test("card, dialog, dropdown, and toast surfaces avoid raw visual drift", () => {
   const cardSource = readComponentSource("card.tsx");
   assert.match(cardSource, /rounded-lg/);

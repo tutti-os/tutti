@@ -1,21 +1,28 @@
 import {
   cloneElement,
   isValidElement,
+  type CSSProperties,
   type ComponentPropsWithoutRef,
   type JSX,
   type MouseEvent,
   type ReactElement,
+  type WheelEvent,
   useCallback,
   useEffect,
   useState
 } from "react";
+import { createPortal } from "react-dom";
 import {
+  Button,
   ToastProvider,
   ToastRoot,
   ToastTitle,
-  ToastViewport
+  ToastViewport,
+  CopyIcon,
+  DownloadIcon,
+  RestoreIcon
 } from "@tutti-os/ui-system";
-import { CopyIcon, DownloadIcon } from "lucide-react";
+import { RotateCcwIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
 import Zoom from "react-medium-image-zoom";
 import { useTranslation } from "../../../i18n/index";
 import { cn } from "../lib/utils";
@@ -33,6 +40,10 @@ type ImageCopyStatus = {
   message: string;
   variant: "destructive" | "success";
 };
+
+const IMAGE_PREVIEW_ZOOM_MIN = 0.5;
+const IMAGE_PREVIEW_ZOOM_MAX = 3;
+const IMAGE_PREVIEW_ZOOM_STEP = 0.25;
 
 export function ZoomableImage({
   alt,
@@ -54,6 +65,11 @@ export function ZoomableImage({
     inZoomDialog: boolean;
   } | null>(null);
   const [copyStatus, setCopyStatus] = useState<ImageCopyStatus | null>(null);
+  const [imagePreviewZoom, setImagePreviewZoom] = useState(1);
+  const [isWheelZooming, setIsWheelZooming] = useState(false);
+  const imagePreviewZoomPercent = Math.round(imagePreviewZoom * 100);
+  const canZoomOut = imagePreviewZoom > IMAGE_PREVIEW_ZOOM_MIN;
+  const canZoomIn = imagePreviewZoom < IMAGE_PREVIEW_ZOOM_MAX;
 
   const closeContextMenu = useCallback(() => {
     setContextMenuPosition(null);
@@ -138,6 +154,36 @@ export function ZoomableImage({
       resolveImageDownloadName(downloadName, actionSource, alt)
     );
   }, [actionSource, alt, closeContextMenu, downloadName]);
+  const zoomOutPreviewImage = useCallback((): void => {
+    setIsWheelZooming(false);
+    setImagePreviewZoom((value) =>
+      clampSteppedImagePreviewZoom(value - IMAGE_PREVIEW_ZOOM_STEP)
+    );
+  }, []);
+  const zoomInPreviewImage = useCallback((): void => {
+    setIsWheelZooming(false);
+    setImagePreviewZoom((value) =>
+      clampSteppedImagePreviewZoom(value + IMAGE_PREVIEW_ZOOM_STEP)
+    );
+  }, []);
+  const resetPreviewImageZoom = useCallback((): void => {
+    setIsWheelZooming(false);
+    setImagePreviewZoom(1);
+  }, []);
+  const handlePreviewImageWheel = useCallback(
+    (event: WheelEvent<HTMLElement>): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.deltaY === 0) {
+        return;
+      }
+      setIsWheelZooming(true);
+      setImagePreviewZoom((value) =>
+        clampImagePreviewZoom(value * Math.pow(2, resolveWheelZoomDelta(event)))
+      );
+    },
+    []
+  );
 
   const actionButtons = hasImageActions ? (
     <ImageActionButtons
@@ -150,41 +196,72 @@ export function ZoomableImage({
 
   const renderZoomContent = ({
     buttonUnzoom,
-    img
+    img,
+    modalState
   }: {
     buttonUnzoom: ReactElement<HTMLButtonElement>;
     img: ReactElement | null;
+    modalState?: "LOADED" | "LOADING" | "UNLOADED" | "UNLOADING";
   }): JSX.Element => {
+    const typedButtonUnzoom = buttonUnzoom as unknown as ReactElement<
+      ComponentPropsWithoutRef<"button">
+    >;
+    const buttonUnzoomProps =
+      typedButtonUnzoom.props as ComponentPropsWithoutRef<"button">;
     const zoomSrc =
       isValidElement(img) &&
       typeof (img.props as { src?: unknown }).src === "string"
         ? (img.props as { src: string }).src
         : null;
+    const isUnzooming = modalState === "UNLOADING";
+    const effectiveImagePreviewZoom = isUnzooming ? 1 : imagePreviewZoom;
+    const renderedImage = img
+      ? cloneImageWithPreviewZoom(
+          img,
+          effectiveImagePreviewZoom,
+          isUnzooming ? false : isWheelZooming,
+          handlePreviewImageWheel
+        )
+      : null;
     return (
       <>
-        {actionButtons && img && zoomSrc ? (
-          cloneElement(img as ReactElement<ComponentPropsWithoutRef<"img">>, {
-            onContextMenu: handleContextMenu
-          })
-        ) : !actionButtons && img && zoomSrc ? (
+        {actionButtons && renderedImage && zoomSrc ? (
+          cloneElement(
+            renderedImage as ReactElement<ComponentPropsWithoutRef<"img">>,
+            {
+              onContextMenu: handleContextMenu
+            }
+          )
+        ) : !actionButtons && renderedImage && zoomSrc ? (
           <ConversationImageContextMenu
             src={zoomSrc}
             asChild
             contentStyle={{ zIndex: "var(--z-dialog-popover)" }}
           >
-            {img}
+            {renderedImage}
           </ConversationImageContextMenu>
         ) : (
-          img
+          renderedImage
         )}
+        <ImagePreviewZoomControls
+          canZoomIn={canZoomIn}
+          canZoomOut={canZoomOut}
+          percent={imagePreviewZoomPercent}
+          percentLabel={t("common.imageZoomPercent", {
+            percent: imagePreviewZoomPercent
+          })}
+          reportPercentStatus={!copyStatus}
+          resetLabel={t("common.resetImageZoom")}
+          zoomInLabel={t("common.zoomInImage")}
+          zoomOutLabel={t("common.zoomOutImage")}
+          onReset={resetPreviewImageZoom}
+          onZoomIn={zoomInPreviewImage}
+          onZoomOut={zoomOutPreviewImage}
+          onWheel={handlePreviewImageWheel}
+        />
         {actionButtons ? (
           <div className="tsh-zoom-dialog__image-actions nodrag tsh-desktop-no-drag">
-            <ImageActionButtons
-              copyLabel={t("common.copyImage")}
-              downloadLabel={t("common.downloadImage")}
-              onCopy={handleCopyImageAction}
-              onDownload={handleDownloadImage}
-            />
+            {actionButtons}
           </div>
         ) : null}
         {contextMenuPosition?.inZoomDialog && actionButtons ? (
@@ -206,12 +283,24 @@ export function ZoomableImage({
             />
           </div>
         ) : null}
-        {cloneElement(buttonUnzoom, {
-          className: cn(
-            buttonUnzoom.props.className,
-            "nodrag tsh-desktop-no-drag"
-          )
-        })}
+        <Button
+          asChild
+          className="tsh-zoom-dialog__icon-button nodrag tsh-desktop-no-drag"
+          size="icon"
+          variant="chrome"
+        >
+          {cloneElement(
+            typedButtonUnzoom,
+            {
+              onClick: (event: MouseEvent<HTMLButtonElement>) => {
+                setIsWheelZooming(false);
+                setImagePreviewZoom(1);
+                buttonUnzoomProps.onClick?.(event);
+              }
+            },
+            <RestoreIcon aria-hidden="true" className="size-4" />
+          )}
+        </Button>
       </>
     );
   };
@@ -255,18 +344,21 @@ export function ZoomableImage({
           />
         </div>
       ) : null}
-      {copyStatus ? (
-        <ImageCopyStatusToast
-          busy={copyStatus.busy}
-          message={copyStatus.message}
-          variant={copyStatus.variant}
-          onOpenChange={(open) => {
-            if (!open) {
-              setCopyStatus(null);
-            }
-          }}
-        />
-      ) : null}
+      {copyStatus
+        ? createPortal(
+            <ImageCopyStatusToast
+              busy={copyStatus.busy}
+              message={copyStatus.message}
+              variant={copyStatus.variant}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setCopyStatus(null);
+                }
+              }}
+            />,
+            document.body
+          )
+        : null}
     </>
   );
 }
@@ -304,6 +396,74 @@ function ImageCopyStatusToast({
   );
 }
 
+function ImagePreviewZoomControls({
+  canZoomIn,
+  canZoomOut,
+  percent,
+  percentLabel,
+  reportPercentStatus,
+  resetLabel,
+  zoomInLabel,
+  zoomOutLabel,
+  onReset,
+  onZoomIn,
+  onZoomOut,
+  onWheel
+}: {
+  canZoomIn: boolean;
+  canZoomOut: boolean;
+  percent: number;
+  percentLabel: string;
+  reportPercentStatus: boolean;
+  resetLabel: string;
+  zoomInLabel: string;
+  zoomOutLabel: string;
+  onReset: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onWheel: (event: WheelEvent<HTMLElement>) => void;
+}): JSX.Element {
+  return (
+    <div
+      className="tsh-zoom-dialog__zoom-controls nodrag tsh-desktop-no-drag"
+      onWheel={onWheel}
+    >
+      <button
+        type="button"
+        title={zoomOutLabel}
+        aria-label={zoomOutLabel}
+        disabled={!canZoomOut}
+        onClick={onZoomOut}
+      >
+        <ZoomOutIcon aria-hidden="true" className="size-4" />
+      </button>
+      <span
+        aria-label={percentLabel}
+        role={reportPercentStatus ? "status" : undefined}
+      >
+        {percent}%
+      </span>
+      <button
+        type="button"
+        title={resetLabel}
+        aria-label={resetLabel}
+        onClick={onReset}
+      >
+        <RotateCcwIcon aria-hidden="true" className="size-4" />
+      </button>
+      <button
+        type="button"
+        title={zoomInLabel}
+        aria-label={zoomInLabel}
+        disabled={!canZoomIn}
+        onClick={onZoomIn}
+      >
+        <ZoomInIcon aria-hidden="true" className="size-4" />
+      </button>
+    </div>
+  );
+}
+
 function ImageActionButtons({
   copyLabel,
   downloadLabel,
@@ -317,6 +477,41 @@ function ImageActionButtons({
   onCopy: () => void;
   onDownload: () => void;
 }): JSX.Element {
+  if (!itemRole) {
+    return (
+      <>
+        <Button
+          aria-label={copyLabel}
+          className="tsh-zoom-dialog__icon-button"
+          size="icon"
+          title={copyLabel}
+          variant="chrome"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onCopy();
+          }}
+        >
+          <CopyIcon aria-hidden="true" className="size-4" />
+        </Button>
+        <Button
+          aria-label={downloadLabel}
+          className="tsh-zoom-dialog__icon-button"
+          size="icon"
+          title={downloadLabel}
+          variant="chrome"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onDownload();
+          }}
+        >
+          <DownloadIcon aria-hidden="true" className="size-4" />
+        </Button>
+      </>
+    );
+  }
+
   return (
     <>
       <button
@@ -347,6 +542,132 @@ function ImageActionButtons({
       </button>
     </>
   );
+}
+
+function cloneImageWithPreviewZoom(
+  img: ReactElement,
+  zoom: number,
+  isWheelZooming: boolean,
+  onWheel: (event: WheelEvent<HTMLElement>) => void
+): ReactElement {
+  const props = img.props as {
+    height?: unknown;
+    onWheel?: (event: WheelEvent<HTMLElement>) => void;
+    style?: CSSProperties;
+    width?: unknown;
+  };
+  const style = props.style;
+  const mergedStyle: CSSProperties = {
+    ...style,
+    transform: resolveZoomedImageTransform(
+      style?.transform,
+      zoom,
+      resolveImagePreviewDimension(style?.width ?? props.width),
+      resolveImagePreviewDimension(style?.height ?? props.height)
+    ),
+    transition: isWheelZooming
+      ? "none"
+      : mergeImagePreviewTransition(style?.transition)
+  };
+  if (style?.transformOrigin !== undefined) {
+    mergedStyle.transformOrigin = style.transformOrigin;
+  }
+  return cloneElement(img, {
+    "data-tsh-image-zoom": formatImagePreviewZoom(zoom),
+    onWheel: (event: WheelEvent<HTMLElement>) => {
+      props.onWheel?.(event);
+      onWheel(event);
+    },
+    style: mergedStyle
+  } as Partial<typeof img.props>);
+}
+
+function resolveWheelZoomDelta(event: WheelEvent<HTMLElement>): number {
+  return (
+    -event.deltaY *
+    (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002) *
+    (event.ctrlKey ? 10 : 1)
+  );
+}
+
+function resolveZoomedImageTransform(
+  transform: CSSProperties["transform"],
+  zoom: number,
+  width: number | null,
+  height: number | null
+): CSSProperties["transform"] {
+  const baseTransform = typeof transform === "string" ? transform.trim() : "";
+  const zoomTransform = resolveImagePreviewZoomTransform(zoom, width, height);
+  if (!baseTransform) {
+    return zoomTransform || undefined;
+  }
+  if (!zoomTransform) {
+    return baseTransform;
+  }
+  return `${baseTransform} ${zoomTransform}`;
+}
+
+function resolveImagePreviewZoomTransform(
+  zoom: number,
+  width: number | null,
+  height: number | null
+): string {
+  if (zoom === 1) {
+    return "";
+  }
+
+  const scale = `scale(${formatImagePreviewZoom(zoom)})`;
+  if (width === null || height === null) {
+    return scale;
+  }
+
+  const halfWidth = formatCssNumber(width / 2);
+  const halfHeight = formatCssNumber(height / 2);
+  return `translate(${halfWidth}px,${halfHeight}px) ${scale} translate(-${halfWidth}px,-${halfHeight}px)`;
+}
+
+function resolveImagePreviewDimension(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const dimension = Number.parseFloat(value);
+  return Number.isFinite(dimension) && dimension > 0 ? dimension : null;
+}
+
+function formatCssNumber(value: number): string {
+  return Number(value.toFixed(3)).toString();
+}
+
+function mergeImagePreviewTransition(
+  transition: CSSProperties["transition"]
+): CSSProperties["transition"] {
+  const zoomTransition = "transform 120ms ease-out";
+  if (typeof transition !== "string" || !transition.trim()) {
+    return zoomTransition;
+  }
+  return transition.includes("transform")
+    ? transition
+    : `${transition}, ${zoomTransition}`;
+}
+
+function clampSteppedImagePreviewZoom(value: number): number {
+  const stepped =
+    Math.round(value / IMAGE_PREVIEW_ZOOM_STEP) * IMAGE_PREVIEW_ZOOM_STEP;
+  return clampImagePreviewZoom(stepped);
+}
+
+function clampImagePreviewZoom(value: number): number {
+  return Math.min(
+    IMAGE_PREVIEW_ZOOM_MAX,
+    Math.max(IMAGE_PREVIEW_ZOOM_MIN, value)
+  );
+}
+
+function formatImagePreviewZoom(value: number): string {
+  return Number(value.toFixed(2)).toString();
 }
 
 function downloadImage(src: string, name: string): void {

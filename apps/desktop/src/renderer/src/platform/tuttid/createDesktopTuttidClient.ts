@@ -22,6 +22,18 @@ export function createDesktopTuttidClient(
   };
 
   return {
+    async applyWorkspaceGitPatch(workspaceID, request) {
+      return (await resolveClient()).applyWorkspaceGitPatch(
+        workspaceID,
+        request
+      );
+    },
+    async resolveWorkspaceGitPatchSupport(workspaceID, cwd) {
+      return (await resolveClient()).resolveWorkspaceGitPatchSupport(
+        workspaceID,
+        cwd
+      );
+    },
     async listCliCapabilities(workspaceID, options) {
       return (await resolveClient()).listCliCapabilities(workspaceID, options);
     },

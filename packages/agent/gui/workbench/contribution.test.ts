@@ -678,11 +678,11 @@ describe("agent GUI workbench contribution copy", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("caps workbench header conversation titles at 280px", () => {
+  it("caps workbench header conversation titles with 32px right padding", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /--agent-gui-workbench-header-title-max-width:\s*280px;/
+      /--agent-gui-workbench-header-title-max-width:\s*calc\(100%\s*-\s*32px\);/
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__session-title\s*{[^}]*max-width:\s*min\(100%,\s*var\(--agent-gui-workbench-header-title-max-width\)\)/s
@@ -692,6 +692,28 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__title-text\s*{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
+    );
+  });
+
+  it("uses the dark scrim value for zoom image modal overlays", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.tsh-zoom-dialog\s+\[data-rmiz-modal-overlay="visible"\]\s*{[^}]*background:\s*rgb\(0 0 0 \/ 60%\);/s
+    );
+    expect(css).toMatch(
+      /\.tsh-zoom-dialog\s+\[data-rmiz-modal-overlay="hidden"\]\s*{[^}]*background:\s*rgb\(0 0 0 \/ 0%\);/s
+    );
+    expect(css).not.toMatch(
+      /\.tsh-zoom-dialog\s+\[data-rmiz-modal-overlay="visible"\]\s*{[^}]*background:\s*color-mix\(in srgb,\s*var\(--background-panel\)/s
+    );
+  });
+
+  it("renders zoom image modal action buttons as fully rounded controls", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.tsh-zoom-dialog__icon-button,\s*\.tsh-zoom-dialog__image-actions button\s*{[^}]*width:\s*32px;[^}]*height:\s*32px;[^}]*border-radius:\s*999px;/s
     );
   });
 
@@ -742,11 +764,29 @@ describe("agent GUI workbench contribution copy", () => {
       /\.agent-gui-workbench-header__traffic-light::before\s*{[^}]*inset:\s*calc\([^}]*--agent-gui-workbench-header-traffic-light-size[^}]*content:\s*"";[^}]*transition:\s*background-color 160ms ease;/s
     );
     expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-light-icon\s*{[^}]*inset:\s*5px;[^}]*width:\s*10px;[^}]*height:\s*10px;[^}]*opacity:\s*0;[^}]*transition:\s*opacity 120ms ease;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-lights:hover\s+\.agent-gui-workbench-header__traffic-light-icon,\s*\.agent-gui-workbench-header__traffic-lights:focus-within\s+\.agent-gui-workbench-header__traffic-light-icon\s*{[^}]*opacity:\s*1;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-lights:hover\s+\.agent-gui-workbench-header__traffic-light\[data-agent-gui-workbench-traffic-light="close"\]::before,\s*\.agent-gui-workbench-header__traffic-lights:focus-within\s+\.agent-gui-workbench-header__traffic-light\[data-agent-gui-workbench-traffic-light="close"\]::before\s*{[^}]*background-color:\s*#ff5f57;/s
+    );
+    expect(css).toMatch(
       /\.agent-gui-workbench-header__agent-brand\s*{[^}]*gap:\s*8px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__agent-brand\s*{[^}]*flex:\s*0\s+0\s+auto;/s
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__agent-icon\s*{[^}]*width:\s*var\(--agent-gui-workbench-header-agent-icon-size\);[^}]*height:\s*var\(--agent-gui-workbench-header-agent-icon-size\);/s
     );
+    const agentNameCss = css.match(
+      /\.agent-gui-workbench-header__agent-name\s*{(?<body>[^}]*)}/s
+    )?.groups?.body;
+    expect(agentNameCss).toBeDefined();
+    expect(agentNameCss).not.toMatch(/text-overflow:\s*ellipsis/);
+    expect(agentNameCss).not.toMatch(/overflow:\s*hidden/);
     expect(css).toMatch(
       /\.agent-gui-workbench-header__rail-toggle\s*{[^}]*margin-left:\s*auto;/s
     );

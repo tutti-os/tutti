@@ -20,6 +20,7 @@ const relativeTimeFormatterByLanguage = new Map<
 const dateTimeFormatterByLanguage = new Map<string, Intl.DateTimeFormat>();
 const shortDateFormatterByLanguage = new Map<string, Intl.DateTimeFormat>();
 const shortDateTimeFormatterByLanguage = new Map<string, Intl.DateTimeFormat>();
+const weekdayTimeFormatterByLanguage = new Map<string, Intl.DateTimeFormat>();
 
 function getRelativeTimeFormatter(language: string): Intl.RelativeTimeFormat {
   const cached = relativeTimeFormatterByLanguage.get(language);
@@ -78,6 +79,38 @@ function getShortDateTimeFormatter(language: string): Intl.DateTimeFormat {
   });
   shortDateTimeFormatterByLanguage.set(language, formatter);
   return formatter;
+}
+
+function getWeekdayTimeFormatter(language: string): Intl.DateTimeFormat {
+  const cached = weekdayTimeFormatterByLanguage.get(language);
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = new Intl.DateTimeFormat(language, {
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  });
+  weekdayTimeFormatterByLanguage.set(language, formatter);
+  return formatter;
+}
+
+function toLocalWeekdayTime(
+  value: Date | number,
+  language = getActiveUiLanguage()
+): string {
+  const formatter = getWeekdayTimeFormatter(language);
+  const parts = formatter.formatToParts(value);
+  const weekday = parts.find((part) => part.type === "weekday")?.value;
+  const hour = parts.find((part) => part.type === "hour")?.value;
+  const minute = parts.find((part) => part.type === "minute")?.value;
+  if (weekday && hour && minute) {
+    return `${weekday} ${hour}:${minute}`;
+  }
+
+  return formatter.format(value);
 }
 
 export function toErrorMessage(error: unknown): string {
@@ -159,6 +192,29 @@ export function formatUnixTimestampAsLocalShortDateTime(
   }
 
   const value = unix > 1_000_000_000_000 ? unix : unix * 1000;
+  return toLocalShortDateTime(value, language);
+}
+
+export function formatAgentMessageTimestamp(
+  unix?: number | null,
+  language = getActiveUiLanguage(),
+  now: Date = new Date()
+): string | null {
+  if (unix == null || !Number.isFinite(unix)) {
+    return null;
+  }
+
+  const value = unix > 1_000_000_000_000 ? unix : unix * 1000;
+  const messageDate = new Date(value);
+  const startOfWeek = new Date(now);
+  const daysSinceMonday = (startOfWeek.getDay() + 6) % 7;
+  startOfWeek.setHours(0, 0, 0, 0);
+  startOfWeek.setDate(startOfWeek.getDate() - daysSinceMonday);
+
+  if (messageDate.getTime() >= startOfWeek.getTime()) {
+    return toLocalWeekdayTime(value, language);
+  }
+
   return toLocalShortDateTime(value, language);
 }
 

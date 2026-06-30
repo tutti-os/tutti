@@ -79,6 +79,8 @@ import type {
   TrackEventsRequest,
   UpdateWorkspaceAgentSessionPinRequest,
   UpdateWorkspaceAgentSessionVisibilityRequest,
+  WorkspaceGitPatchRequest,
+  WorkspaceGitPatchResponse,
   UpdateIssueManagerIssueRequest,
   UpdateIssueManagerTaskRequest,
   UpdateIssueManagerTopicRequest,
@@ -91,6 +93,7 @@ import type {
   WorkspaceAgentSessionAttachmentResponse,
   WorkspaceAgentGeneratedFileListResponse,
   WorkspaceAgentSessionGitBranchesResponse,
+  WorkspaceGitPatchSupportResponse,
   WorkspaceAgentSessionMessagesResponse,
   WorkspaceAgentSessionListResponse,
   WorkspaceFileDirectoryResponse,
@@ -598,6 +601,14 @@ export interface TuttidClient {
     workspaceID: string,
     workingDirectory: string
   ): Promise<WorkspaceAgentSessionGitBranchesResponse>;
+  resolveWorkspaceGitPatchSupport(
+    workspaceID: string,
+    cwd: string
+  ): Promise<WorkspaceGitPatchSupportResponse>;
+  applyWorkspaceGitPatch(
+    workspaceID: string,
+    request: WorkspaceGitPatchRequest
+  ): Promise<WorkspaceGitPatchResponse>;
   updateWorkspaceAgentSessionSettings(
     workspaceID: string,
     agentSessionID: string,

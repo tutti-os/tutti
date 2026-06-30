@@ -10,6 +10,7 @@ import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
+import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 
 type AgentMentionNodeViewKind =
   | "file"
@@ -233,7 +234,11 @@ function hasPromptContentAfterMentionRemoval(
       hasContent = true;
       return false;
     }
-    if (node.isText && node.textContent.trim().length > 0) {
+    if (
+      node.isText &&
+      node.textContent.replaceAll(AGENT_RICH_TEXT_CARET_ANCHOR, "").trim()
+        .length > 0
+    ) {
       hasContent = true;
       return false;
     }
@@ -289,7 +294,7 @@ function AgentMentionLegacyFileNodeView({
     <NodeViewWrapper
       as="span"
       aria-label={mention.ariaLabel}
-      className={`group tsh-agent-object-token tsh-agent-object-token--file ${
+      className={`agent-rich-text-mention-node group tsh-agent-object-token tsh-agent-object-token--file ${
         selected ? "is-selected" : ""
       }`}
       contentEditable={false}
@@ -420,7 +425,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
       <NodeViewWrapper
         as="span"
         aria-label={mention.ariaLabel}
-        className={`inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] align-baseline ${
+        className={`agent-rich-text-mention-node inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] align-middle ${
           selected ? "is-selected" : ""
         }`}
         contentEditable={false}
@@ -430,7 +435,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
         data-agent-mention-kind={mention.kind}
       >
         <span
-          className="group relative top-[3px] inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-transparent bg-transparent px-1 py-0.5 align-baseline text-[13px] font-medium leading-5 text-[var(--accent)] no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]"
+          className="group relative top-0 inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-transparent bg-transparent px-1 py-0 align-middle text-[13px] font-medium leading-6 text-[var(--accent)] no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]"
           data-agent-mention-kind={mention.kind}
           data-slot="mention-pill"
         >
@@ -484,13 +489,14 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
   return (
     <NodeViewWrapper
       as="span"
-      className={`inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] align-baseline ${
+      className={`agent-rich-text-mention-node inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] align-middle ${
         selected ? "is-selected" : ""
       }`}
       contentEditable={false}
     >
       <MentionPill
         aria-label={mention.ariaLabel}
+        className="top-0 h-6 py-0 align-middle leading-6"
         data-agent-mention-href={mention.href}
         data-agent-mention-kind={mention.kind}
         kind={mention.kind === "session" ? "session" : "issue"}

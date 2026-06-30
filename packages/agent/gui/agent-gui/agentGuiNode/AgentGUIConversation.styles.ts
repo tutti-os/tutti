@@ -34,6 +34,8 @@ const styles = {
   userMessageFlow: "agent-gui-conversation__user-message-flow",
   assistantMessageFlow: "agent-gui-conversation__assistant-message-flow",
   messageGroup: "agent-gui-conversation__message-group",
+  messageFooter: "agent-gui-conversation__message-footer",
+  messageTimestamp: "agent-gui-conversation__message-timestamp",
   messageCopyButton: "agent-gui-conversation__message-copy-button",
   userMessageBubble: "agent-gui-conversation__user-message-bubble",
   assistantMarkdown: "agent-gui-conversation__assistant-markdown"

@@ -70,7 +70,7 @@ export interface AgentFileMentionPaletteProps {
   onNavigateHierarchy?: (delta: 1 | -1) => void;
   onNavigateIntoItem?: (item: AgentContextMentionItem) => void;
   /**
-   * 可选:点击 issue / app 行末尾的「查看产物文件」图标时回调(打开引用 picker 并定位)。
+   * 可选:点击 issue / app 行末尾的「查看产物」入口时回调(打开引用 picker 并定位)。
    * 仅 workspace-issue / workspace-app 行渲染该入口。
    */
   onOpenReferences?: (item: AgentContextMentionItem) => void;
@@ -517,7 +517,7 @@ function agentMentionItemToRowItem(
 
 /**
  * 仅 workspace-issue 行,以及声明了能够提供产物文件(reference)的 workspace-app 行,
- * 才在行末尾展示「查看产物文件」入口。应用是否能提供产物文件由其 manifest 的
+ * 才在行末尾展示「查看产物」入口。应用是否能提供产物文件由其 manifest 的
  * references 能力决定(`referencesListSupported`),而非硬编码应用名单。
  */
 function isReferenceableMentionItem(item: AgentContextMentionItem): boolean {

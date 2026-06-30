@@ -1420,6 +1420,63 @@ func (e WorkspaceFileUploadConflictKind) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceGitPatchErrorCode.
+const (
+	NotGitRepo WorkspaceGitPatchErrorCode = "not-git-repo"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceGitPatchErrorCode enum.
+func (e WorkspaceGitPatchErrorCode) Valid() bool {
+	switch e {
+	case NotGitRepo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceGitPatchStatus.
+const (
+	Error          WorkspaceGitPatchStatus = "error"
+	PartialSuccess WorkspaceGitPatchStatus = "partial-success"
+	Success        WorkspaceGitPatchStatus = "success"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceGitPatchStatus enum.
+func (e WorkspaceGitPatchStatus) Valid() bool {
+	switch e {
+	case Error:
+		return true
+	case PartialSuccess:
+		return true
+	case Success:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceGitPatchTarget.
+const (
+	Staged            WorkspaceGitPatchTarget = "staged"
+	StagedAndUnstaged WorkspaceGitPatchTarget = "staged-and-unstaged"
+	Unstaged          WorkspaceGitPatchTarget = "unstaged"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceGitPatchTarget enum.
+func (e WorkspaceGitPatchTarget) Valid() bool {
+	switch e {
+	case Staged:
+		return true
+	case StagedAndUnstaged:
+		return true
+	case Unstaged:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceTerminalCloseGuardReason.
 const (
 	WorkspaceTerminalCloseGuardReasonForegroundProcess WorkspaceTerminalCloseGuardReason = "foreground-process"
@@ -3466,6 +3523,49 @@ type WorkspaceFileUploadConflict struct {
 // WorkspaceFileUploadConflictKind defines model for WorkspaceFileUploadConflictKind.
 type WorkspaceFileUploadConflictKind string
 
+// WorkspaceGitPatchErrorCode defines model for WorkspaceGitPatchErrorCode.
+type WorkspaceGitPatchErrorCode string
+
+// WorkspaceGitPatchExecOutput defines model for WorkspaceGitPatchExecOutput.
+type WorkspaceGitPatchExecOutput struct {
+	Command string `json:"command"`
+	Stderr  string `json:"stderr"`
+	Stdout  string `json:"stdout"`
+}
+
+// WorkspaceGitPatchRequest defines model for WorkspaceGitPatchRequest.
+type WorkspaceGitPatchRequest struct {
+	AllowBinary *bool                    `json:"allowBinary,omitempty"`
+	Atomic      *bool                    `json:"atomic,omitempty"`
+	Cwd         string                   `json:"cwd"`
+	Diff        string                   `json:"diff"`
+	Revert      *bool                    `json:"revert,omitempty"`
+	Target      *WorkspaceGitPatchTarget `json:"target,omitempty"`
+}
+
+// WorkspaceGitPatchResponse defines model for WorkspaceGitPatchResponse.
+type WorkspaceGitPatchResponse struct {
+	AppliedPaths    []string                     `json:"appliedPaths"`
+	ConflictedPaths []string                     `json:"conflictedPaths"`
+	ErrorCode       *WorkspaceGitPatchErrorCode  `json:"errorCode,omitempty"`
+	ExecOutput      *WorkspaceGitPatchExecOutput `json:"execOutput,omitempty"`
+	SkippedPaths    []string                     `json:"skippedPaths"`
+	Status          WorkspaceGitPatchStatus      `json:"status"`
+}
+
+// WorkspaceGitPatchStatus defines model for WorkspaceGitPatchStatus.
+type WorkspaceGitPatchStatus string
+
+// WorkspaceGitPatchSupportResponse defines model for WorkspaceGitPatchSupportResponse.
+type WorkspaceGitPatchSupportResponse struct {
+	ErrorCode *WorkspaceGitPatchErrorCode `json:"errorCode,omitempty"`
+	Root      *string                     `json:"root,omitempty"`
+	Supported bool                        `json:"supported"`
+}
+
+// WorkspaceGitPatchTarget defines model for WorkspaceGitPatchTarget.
+type WorkspaceGitPatchTarget string
+
 // WorkspaceResponse defines model for WorkspaceResponse.
 type WorkspaceResponse struct {
 	Workspace WorkspaceSummary `json:"workspace"`
@@ -3767,6 +3867,11 @@ type ListWorkspaceGitBranchesParams struct {
 	WorkingDirectory string `form:"workingDirectory" json:"workingDirectory"`
 }
 
+// ResolveWorkspaceGitPatchSupportParams defines parameters for ResolveWorkspaceGitPatchSupport.
+type ResolveWorkspaceGitPatchSupportParams struct {
+	Cwd string `form:"cwd" json:"cwd"`
+}
+
 // ListWorkspaceIssuesParams defines parameters for ListWorkspaceIssues.
 type ListWorkspaceIssuesParams struct {
 	PageSize     *IssueManagerPageSize     `form:"pageSize,omitempty" json:"pageSize,omitempty"`
@@ -3905,6 +4010,9 @@ type UploadWorkspaceFilesJSONRequestBody = UploadWorkspaceFilesRequest
 
 // PreflightUploadWorkspaceFilesJSONRequestBody defines body for PreflightUploadWorkspaceFiles for application/json ContentType.
 type PreflightUploadWorkspaceFilesJSONRequestBody = PreflightUploadWorkspaceFilesRequest
+
+// ApplyWorkspaceGitPatchJSONRequestBody defines body for ApplyWorkspaceGitPatch for application/json ContentType.
+type ApplyWorkspaceGitPatchJSONRequestBody = WorkspaceGitPatchRequest
 
 // SearchWorkspaceIssueReferencesJSONRequestBody defines body for SearchWorkspaceIssueReferences for application/json ContentType.
 type SearchWorkspaceIssueReferencesJSONRequestBody = IssueManagerReferenceSearchRequest

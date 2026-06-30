@@ -143,7 +143,7 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
-    "homeDirectory" | "os" | "resolveDroppedPaths"
+    "homeDirectory" | "os" | "resolveDroppedEntries" | "resolveDroppedPaths"
   >;
   repository: DesktopWorkspaceWorkbenchRepository;
   reporterService?: Pick<IReporterService, "trackEvents">;
@@ -167,7 +167,7 @@ export interface WorkspaceWorkbenchHostExternalDependencies {
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
-    "homeDirectory" | "os" | "resolveDroppedPaths"
+    "homeDirectory" | "os" | "resolveDroppedEntries" | "resolveDroppedPaths"
   >;
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi: DesktopRuntimeApi;

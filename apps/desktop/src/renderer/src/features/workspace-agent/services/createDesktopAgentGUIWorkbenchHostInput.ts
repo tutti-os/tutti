@@ -1,8 +1,10 @@
 import type {
   AgentActivityRuntime,
+  AgentQueuedPromptRuntime,
   AgentGUIProps,
   AgentHostInputApi
 } from "@tutti-os/agent-gui";
+import { createAgentQueuedPromptRuntime } from "@tutti-os/agent-gui/queued-prompt-runtime";
 import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
@@ -44,6 +46,7 @@ import { translate } from "../../../i18n/appRuntime.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
+  agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
   agentHostApi: AgentHostInputApi;
   contextMentionProviders: NonNullable<
     AgentGUIProps["contextMentionProviders"]
@@ -72,7 +75,7 @@ export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
-    "homeDirectory" | "os" | "resolveDroppedPaths"
+    "homeDirectory" | "os" | "resolveDroppedEntries" | "resolveDroppedPaths"
   >;
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
@@ -137,6 +140,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       workspaceUserProjectService
     }
   );
+  const agentQueuedPromptRuntime = createAgentQueuedPromptRuntime();
   const workspaceFileReferenceTracker =
     createAgentWorkspaceFileReferenceTracker({
       reporterNow,
@@ -194,6 +198,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   );
   return {
     agentActivityRuntime,
+    agentQueuedPromptRuntime,
     agentHostApi: resolvedAgentHostApi,
     contextMentionProviders: richTextAtService
       .getProviders({

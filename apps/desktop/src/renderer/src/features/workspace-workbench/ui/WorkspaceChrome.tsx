@@ -777,7 +777,7 @@ function WorkspaceAgentMessageCenterAction({
               aria-label={t("workspace.agentMessageCenter.openAria")}
               className={cn(
                 "gap-1.5 rounded-[6px] border-transparent bg-transparent px-2.5 text-[var(--workbench-chrome-foreground)] shadow-none hover:border-transparent hover:bg-transparent focus-visible:border-transparent focus-visible:bg-transparent active:bg-transparent aria-expanded:bg-transparent",
-                open && "text-foreground"
+                open && "text-[var(--workbench-chrome-active-foreground)]"
               )}
               size="sm"
               title={triggerLabel}
@@ -1144,7 +1144,8 @@ function WorkspaceMissionControlAction({
       aria-label={label}
       className={cn(
         "text-[var(--workbench-chrome-foreground)]",
-        active && "bg-transparency-block text-foreground"
+        active &&
+          "bg-transparency-block text-[var(--workbench-chrome-active-foreground)]"
       )}
       disabled={disabled}
       size="icon-sm"
@@ -1216,7 +1217,8 @@ function WorkspaceSettingsTrigger({
               aria-label={t("workspace.settings.trigger")}
               className={cn(
                 "text-[var(--workbench-chrome-foreground)]",
-                settingsState.open && "text-foreground"
+                settingsState.open &&
+                  "text-[var(--workbench-chrome-active-foreground)]"
               )}
               size="icon-sm"
               title={t("workspace.settings.trigger")}

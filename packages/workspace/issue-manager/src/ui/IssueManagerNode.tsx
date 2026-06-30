@@ -18,6 +18,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  WindowTrafficLightIcon,
   cn
 } from "@tutti-os/ui-system";
 import {
@@ -230,7 +231,7 @@ const issueManagerHeaderChromeIconButtonClassName =
   "size-7 min-h-7 min-w-7 cursor-pointer rounded-md p-0 text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)] hover:text-[var(--text-primary)]";
 const issueManagerHeaderChromeIconClassName = "size-[18px]";
 const issueManagerHeaderTrafficLightClassName =
-  "relative -m-1 size-5 shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 text-[var(--text-placeholder)] opacity-95 outline-none transition-[color,filter,opacity] duration-150 ease-out before:absolute before:inset-1 before:rounded-full before:bg-current before:transition-colors before:duration-150 before:ease-out before:content-[''] hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--background-panel)]";
+  "relative -m-1 size-5 shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 text-[color-mix(in_srgb,var(--text-tertiary)_72%,transparent)] opacity-[0.78] outline-none transition-[color,opacity] duration-150 ease-out before:absolute before:inset-1 before:rounded-full before:bg-current before:transition-colors before:duration-150 before:ease-out before:content-[''] group-hover/traffic-lights:opacity-100 group-focus-within/traffic-lights:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--background-panel)]";
 
 type IssueManagerNodeHeaderDragHandleAttributes = {
   [issueManagerWorkbenchDragHandleAttribute]?: "true";
@@ -292,11 +293,6 @@ export function IssueManagerNodeHeader({
       ? "max-content"
       : "min(var(--issue-manager-sidebar-width, 280px), 100%)"
   } satisfies CSSProperties;
-  const rightHeaderDividerMaskStyle = {
-    left: effectiveCollapsed
-      ? "0px"
-      : "min(var(--issue-manager-sidebar-width, 280px), 100%)"
-  } satisfies CSSProperties;
   const topicHeaderStyle = {
     left: effectiveCollapsed
       ? "50%"
@@ -310,16 +306,12 @@ export function IssueManagerNodeHeader({
         "relative flex h-full min-h-0 w-full items-center bg-transparent",
         className
       )}
+      data-workbench-custom-header-border="none"
     >
       <div
         {...dragHandleProps}
         aria-hidden="true"
         className="absolute inset-0 cursor-grab active:cursor-grabbing"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute right-0 bottom-0 z-[11] h-px bg-[var(--background-panel)]"
-        style={rightHeaderDividerMaskStyle}
       />
       <div
         {...dragHandleProps}
@@ -330,7 +322,7 @@ export function IssueManagerNodeHeader({
         style={sidebarHeaderStyle}
       >
         <div
-          className="mr-3 flex shrink-0 items-center gap-2"
+          className="group/traffic-lights flex shrink-0 items-center gap-2"
           onDoubleClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
         >
@@ -469,17 +461,20 @@ function IssueManagerTrafficLightButton({
   pressed?: boolean;
   tone: "close" | "minimize" | "maximize";
 }): JSX.Element {
+  const iconName =
+    tone === "maximize" ? (pressed ? "unfullscreen" : "fullscreen") : tone;
   const button = (
     <button
       aria-label={label}
       aria-pressed={pressed}
       className={cn(
         issueManagerHeaderTrafficLightClassName,
-        tone === "close" && "hover:text-[#ff5f57] focus-visible:text-[#ff5f57]",
+        tone === "close" &&
+          "group-hover/traffic-lights:text-[#ff5f57] group-focus-within/traffic-lights:text-[#ff5f57]",
         tone === "minimize" &&
-          "hover:text-[#ffbd2e] focus-visible:text-[#ffbd2e]",
+          "group-hover/traffic-lights:text-[#ffbd2e] group-focus-within/traffic-lights:text-[#ffbd2e]",
         tone === "maximize" &&
-          "hover:text-[#28c840] focus-visible:text-[#28c840]"
+          "group-hover/traffic-lights:text-[#28c840] group-focus-within/traffic-lights:text-[#28c840]"
       )}
       type="button"
       onClick={(event) => {
@@ -488,7 +483,14 @@ function IssueManagerTrafficLightButton({
       }}
       onDoubleClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-    />
+    >
+      <WindowTrafficLightIcon
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-[5px] z-[1] size-[10px] text-[color-mix(in_srgb,#000_68%,transparent)] opacity-0 transition-opacity duration-150 group-hover/traffic-lights:opacity-100 group-focus-within/traffic-lights:opacity-100"
+        data-issue-manager-traffic-light-icon={iconName}
+        iconName={iconName}
+      />
+    </button>
   );
 
   return (

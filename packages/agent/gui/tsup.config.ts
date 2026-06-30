@@ -11,6 +11,7 @@ export default defineConfig({
     "context-mention-provider":
       "agent-gui/agentGuiNode/agentContextMentionProvider.ts",
     "agent-title-text": "shared/utils/agentTitleText.ts",
+    "queued-prompt-runtime": "agentQueuedPromptRuntimeCore.ts",
     "i18n/index": "i18n/index.ts",
     "mention-file-presentation": "agent-gui/shared/mentionFilePresentation.ts",
     "plan-decision-ops": "shared/agentConversation/planImplementation.ts",

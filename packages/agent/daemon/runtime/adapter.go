@@ -30,6 +30,13 @@ type ProcessConnection interface {
 	Close() error
 }
 
+type GracefulProcessConnection interface {
+	ProcessConnection
+	CloseInput() error
+	Terminate() error
+	Kill() error
+}
+
 type ProcessTransport interface {
 	Start(context.Context, ProcessSpec) (ProcessConnection, error)
 }

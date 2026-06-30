@@ -69,7 +69,7 @@ func hasStaleResumeOpenToolCall(messages []SessionMessage) bool {
 
 func isResumeStaleTurnStatus(status string) bool {
 	switch strings.TrimSpace(status) {
-	case "working", "waiting":
+	case "running", "streaming", "submitted", "working", "waiting":
 		return true
 	default:
 		return false

@@ -206,6 +206,7 @@ func (s Service) installMissingProviderRuntime(
 			Status: "running",
 			Step:   installTarget,
 		})
+		nodeStartedAt := s.now()
 		command, result, err := s.executeInstaller(ctx, spec.Provider, installer, &current)
 		if command != "" {
 			summary.Commands = append(summary.Commands, command)
@@ -218,6 +219,14 @@ func (s Service) installMissingProviderRuntime(
 		}
 		summary.ExitCode = intPointer(result.ExitCode)
 		if err != nil {
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Error:     err,
+				Node:      installNodeForTarget(installTarget),
+				Provider:  spec.Provider,
+				Result:    RunActionResult{ReasonCode: "install_start_failed"},
+				StartedAt: nodeStartedAt,
+				Status:    "failure",
+			})
 			slog.Warn(
 				"agent provider install step failed to run",
 				"provider", spec.Provider,
@@ -232,6 +241,16 @@ func (s Service) installMissingProviderRuntime(
 			return summary, current, err
 		}
 		if result.ExitCode != 0 {
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Node:     installNodeForTarget(installTarget),
+				Provider: spec.Provider,
+				Result: RunActionResult{
+					ReasonCode: "install_command_failed",
+					Status:     RunActionFailed,
+					Message:    firstNonBlank(result.Stderr, result.Stdout, "Install command failed"),
+				},
+				StartedAt: nodeStartedAt,
+			})
 			slog.Warn(
 				"agent provider install step failed",
 				"provider", spec.Provider,
@@ -254,6 +273,12 @@ func (s Service) installMissingProviderRuntime(
 			"stdout", trimActionOutput(result.Stdout),
 			"stderr", trimActionOutput(result.Stderr),
 		)
+		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+			Node:      installNodeForTarget(installTarget),
+			Provider:  spec.Provider,
+			Result:    RunActionResult{Status: RunActionCompleted},
+			StartedAt: nodeStartedAt,
+		})
 		selectedInstallDir := current.InstallDir
 		resolvedSpec, _ := s.resolveProviderSpec(ctx, spec, false)
 		current = s.resolveProviderRuntime(ctx, resolvedSpec)
@@ -306,6 +331,13 @@ func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntime
 		}
 	}
 	return InstallerSpec{}, false, ""
+}
+
+func installNodeForTarget(target string) string {
+	if strings.TrimSpace(target) == "adapter" {
+		return "install_adapter"
+	}
+	return "install_cli"
 }
 
 func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerRuntimeResolution) bool {

@@ -1,9 +1,9 @@
 export interface AnalyticsDebugModeInput {
-  isDev: boolean;
+  isDev?: boolean;
 }
 
-export function isAnalyticsDebugAvailable({
-  isDev
-}: AnalyticsDebugModeInput): boolean {
-  return isDev;
+export function isAnalyticsDebugAvailable(
+  _input: AnalyticsDebugModeInput = {}
+): boolean {
+  return true;
 }

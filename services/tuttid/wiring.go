@@ -163,11 +163,27 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create analytics reporter: %w", err)
 	}
-	api.AnalyticsReporter = analyticsReporter
+	attachAnalyticsReporter(&api, analyticsReporter)
 	w.analyticsReporter = analyticsReporter
 	w.api = api
 	w.appCenterService = appCenterService
 	return nil
+}
+
+func attachAnalyticsReporter(api *tuttiapi.DaemonAPI, analyticsReporter reporterservice.Reporter) {
+	if api == nil {
+		return
+	}
+	api.AnalyticsReporter = analyticsReporter
+	if service, ok := api.AgentSessionService.(*agentservice.Service); ok {
+		service.AnalyticsReporter = analyticsReporter
+		if projection, ok := service.SessionReader.(*agentservice.ActivityProjection); ok {
+			projection.SetAnalyticsReporter(analyticsReporter)
+		}
+	}
+	if service, ok := api.AgentStatusService.(*agentstatusservice.Service); ok {
+		service.AnalyticsReporter = analyticsReporter
+	}
 }
 
 func openWorkspaceStore(ctx context.Context) (*workspacedata.SQLiteStore, error) {
@@ -207,14 +223,16 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		eventstreamservice.NewPreferencesDesktopUpdateRequestedHandler(preferences),
 	)
 	agentActivityProjection := agentservice.NewActivityProjection(agentActivityRepo)
+	agentActivityProjection.SetAnalyticsReporter(analyticsReporter)
 	agentActivityProjection.SetPublisher(eventstreamservice.AgentActivityPublisher{Service: events})
 	managedRuntimeResolver := managedruntime.DefaultResolver{}
 	// Shared so a runtime auth failure (reporter side) surfaces in the status
 	// probe (List side) — see agentRunOutcomeReporter.
 	runOutcomes := agentstatusservice.NewRunOutcomeStore()
 	agentStatusService := agentstatusservice.Service{
-		ManagedRuntime: managedRuntimeResolver,
-		RunOutcomes:    runOutcomes,
+		AnalyticsReporter: analyticsReporter,
+		ManagedRuntime:    managedRuntimeResolver,
+		RunOutcomes:       runOutcomes,
 	}
 	agentRuntime, err := agentdaemon.NewRuntime(agentdaemon.Config{
 		Reporter: agentRunOutcomeReporter{
@@ -249,6 +267,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService := agentservice.NewService(
 		newAgentRuntimeAdapter(agentRuntime.Controller()),
 	)
+	agentSessionService.AnalyticsReporter = analyticsReporter
 	agentSessionService.ModelCatalog = agentservice.NewAgentModelCatalog()
 	agentSessionService.SessionReader = agentActivityProjection
 	agentSessionService.MessageReader = agentActivityProjection
@@ -261,7 +280,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	agentSessionService.RuntimePreparer = agentSidecarPreparer
 	agentSessionService.AvailabilityChecker = agentservice.AgentStatusProviderAvailabilityChecker{
-		Service: agentStatusService,
+		Service: &agentStatusService,
 	}
 
 	workspaceService := workspaceservice.CatalogService{
@@ -377,7 +396,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			Adapter: fileAdapter,
 		},
 		AgentSessionService: agentSessionService,
-		AgentStatusService:  agentStatusService,
+		AgentStatusService:  &agentStatusService,
 		TerminalService:     terminalService,
 		IssueService:        issueService,
 		CLIRegistry:         cliRegistry,

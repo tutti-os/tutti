@@ -9,10 +9,13 @@ import (
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
 	agentactivityprojection "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/projection"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
+	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"
 )
 
 type ActivityProjection struct {
 	repo                   agentactivitybiz.Repository
+	analyticsReporter      reporterservice.Reporter
 	publisher              ActivityUpdatePublisher
 	sessionMessageObserver SessionMessageObserver
 	sessionStateObserver   SessionStateObserver
@@ -45,6 +48,13 @@ func (p *ActivityProjection) SetPublisher(publisher ActivityUpdatePublisher) {
 		return
 	}
 	p.publisher = publisher
+}
+
+func (p *ActivityProjection) SetAnalyticsReporter(reporter reporterservice.Reporter) {
+	if p == nil {
+		return
+	}
+	p.analyticsReporter = reporter
 }
 
 func (p *ActivityProjection) SetSessionMessageObserver(observer SessionMessageObserver) {
@@ -153,9 +163,32 @@ func (p *ActivityProjection) ReportSessionState(
 				activitySessionUpdateEventPayload(input.WorkspaceID, input.AgentSessionID, result.LastEventUnixMS),
 			)
 		}
+		p.reportFailedRuntimeNodeResult(ctx, input)
 	}
 	p.observeSessionState(ctx, input, reply)
 	return reply, nil
+}
+
+func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, input agentsessionstore.ReportSessionStateInput) {
+	if p == nil || p.analyticsReporter == nil {
+		return
+	}
+	if !isFailedAgentLifecycleStatus(input.State.LifecycleStatus) {
+		return
+	}
+	errorMessage := strings.TrimSpace(input.State.LastError)
+	if errorMessage == "" {
+		errorMessage = "Agent runtime session failed."
+	}
+	agentnoderesult.Track(ctx, p.analyticsReporter, agentnoderesult.BuildParams(agentnoderesult.NodeResultInput{
+		AgentSessionID: input.AgentSessionID,
+		ErrorCode:      classifyRuntimeNodeErrorCode(errorMessage),
+		ErrorMessage:   errorMessage,
+		Flow:           "runtime_activity",
+		Node:           "runtime_exec",
+		Provider:       firstNonEmptyString(input.State.Provider, input.Source.Provider),
+		Status:         "failure",
+	}))
 }
 
 func activityStatePatchEventPayload(
@@ -250,6 +283,32 @@ func activitySessionDeletedEventPayload(workspaceID string, agentSessionID strin
 		"eventType":       "session_deleted",
 		"workspaceId":     strings.TrimSpace(workspaceID),
 	}
+}
+
+func isFailedAgentLifecycleStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "failed", "failure", "error", "errored":
+		return true
+	default:
+		return false
+	}
+}
+
+func classifyRuntimeNodeErrorCode(message string) string {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	if strings.Contains(normalized, "network") ||
+		strings.Contains(normalized, "connection") ||
+		strings.Contains(normalized, "disconnected") ||
+		strings.Contains(normalized, "econnreset") ||
+		strings.Contains(normalized, "socket") {
+		return agentnoderesult.ErrorCodeRuntimeNetworkDisconnected
+	}
+	if strings.Contains(normalized, "process") ||
+		strings.Contains(normalized, "exit") ||
+		strings.Contains(normalized, "exited") {
+		return agentnoderesult.ErrorCodeRuntimeProcessExited
+	}
+	return agentnoderesult.ErrorCodeRuntimeExecFailed
 }
 
 func (p *ActivityProjection) ReportSessionMessages(

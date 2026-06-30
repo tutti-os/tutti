@@ -69,7 +69,7 @@ export interface DesktopWorkbenchContributionContext {
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
-    "homeDirectory" | "os" | "resolveDroppedPaths"
+    "homeDirectory" | "os" | "resolveDroppedEntries" | "resolveDroppedPaths"
   >;
   reporterService?: Pick<IReporterService, "trackEvents">;
   renderFilesNodeBody: (

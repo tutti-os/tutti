@@ -13,6 +13,29 @@ import type { NotificationService } from "@tutti-os/ui-notifications";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
 import { DesktopAgentProviderStatusService } from "./desktopAgentProviderStatusService.ts";
 
+function legacyAgentEvents(
+  events: readonly ReporterEventInput[]
+): ReporterEventInput[] {
+  return events
+    .filter((event) => event.name !== "agent.node_result")
+    .map(stripAgentAnalyticsErrorFields);
+}
+
+function stripAgentAnalyticsErrorFields(
+  event: ReporterEventInput
+): ReporterEventInput {
+  if (!event.name.startsWith("agent.")) {
+    return event;
+  }
+  const eventParams = event.params ?? {};
+  const {
+    error_code: _errorCode,
+    error_message: _errorMessage,
+    ...params
+  } = eventParams;
+  return { ...event, params };
+}
+
 test("runAction executes terminal commands and refreshes the provider status", async () => {
   const commands: AgentProviderTerminalCommand[] = [];
   const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
@@ -161,7 +184,9 @@ test("runAction tracks provider login initiation and successful status result", 
         // These tests focus on the login/ready funnel; the always-on
         // env_detected event is verified separately.
         events.push(
-          ...nextEvents.filter((event) => event.name !== "agent.env_detected")
+          ...legacyAgentEvents(nextEvents).filter(
+            (event) => event.name !== "agent.env_detected"
+          )
         );
       }
     },
@@ -173,34 +198,38 @@ test("runAction tracks provider login initiation and successful status result", 
   await service.refresh();
   await service.runAction("codex", "login", { workspaceId: "workspace-1" });
   await flushAsyncWork();
+  await waitFor(() =>
+    events.some((event) => event.name === "agent.provider_login_result")
+  );
 
-  assert.deepEqual(events, [
-    {
-      clientTS: 1749124800000,
-      name: "agent.provider_login_initiated",
-      params: {
-        provider: "codex"
-      }
-    },
-    {
-      clientTS: 1749124800000,
-      name: "agent.provider_ready",
-      params: {
-        became_ready_via: "login",
-        previous_status: "auth_required",
-        provider: "codex"
-      }
-    },
-    {
-      clientTS: 1749124800000,
-      name: "agent.provider_login_result",
-      params: {
-        error_reason: null,
-        provider: "codex",
-        success: true
-      }
+  assert.deepEqual(
+    events.map((event) => event.name),
+    [
+      "agent.provider_login_initiated",
+      "agent.provider_ready",
+      "agent.provider_login_result"
+    ]
+  );
+  assert.deepEqual(events[0], {
+    clientTS: 1749124800000,
+    name: "agent.provider_login_initiated",
+    params: {
+      provider: "codex"
     }
-  ]);
+  });
+  assert.deepEqual(events[1], {
+    clientTS: 1749124800000,
+    name: "agent.provider_ready",
+    params: {
+      became_ready_via: "login",
+      previous_status: "auth_required",
+      provider: "codex"
+    }
+  });
+  assert.equal(events[2]?.clientTS, 1749124800000);
+  assert.equal(events[2]?.params?.error_reason, null);
+  assert.equal(events[2]?.params?.provider, "codex");
+  assert.equal(events[2]?.params?.success, true);
 });
 
 test("runAction auto-closes the login terminal once login succeeds", async () => {
@@ -304,7 +333,9 @@ test("requestStatuses reports an already-ready provider as an activation signal"
         // These tests focus on the login/ready funnel; the always-on
         // env_detected event is verified separately.
         events.push(
-          ...nextEvents.filter((event) => event.name !== "agent.env_detected")
+          ...legacyAgentEvents(nextEvents).filter(
+            (event) => event.name !== "agent.env_detected"
+          )
         );
       }
     },
@@ -348,7 +379,9 @@ test("requestStatuses does not re-report a provider that was already ready", asy
         // These tests focus on the login/ready funnel; the always-on
         // env_detected event is verified separately.
         events.push(
-          ...nextEvents.filter((event) => event.name !== "agent.env_detected")
+          ...legacyAgentEvents(nextEvents).filter(
+            (event) => event.name !== "agent.env_detected"
+          )
         );
       }
     },
@@ -391,7 +424,9 @@ test("requestStatuses fires agent.env_detected once per detection outcome", asyn
     reporterService: {
       async trackEvents(nextEvents) {
         events.push(
-          ...nextEvents.filter((event) => event.name === "agent.env_detected")
+          ...legacyAgentEvents(nextEvents).filter(
+            (event) => event.name === "agent.env_detected"
+          )
         );
       }
     },
@@ -865,7 +900,9 @@ test("runAction reports login launch failures and clears pending state", async (
       reporterService: {
         async trackEvents(nextEvents) {
           events.push(
-            ...nextEvents.filter((event) => event.name !== "agent.env_detected")
+            ...legacyAgentEvents(nextEvents).filter(
+              (event) => event.name !== "agent.env_detected"
+            )
           );
         }
       },

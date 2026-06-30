@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   normalizeAgentActivityDisplayStatus,
+  resolveLatestAgentActivityMessageDisplayStatus,
   selectNeedsAttentionCount,
   selectNeedsAttentionItems,
   selectSessionDisplayStatuses
@@ -129,6 +130,67 @@ test("session display status treats settled turn lifecycle as terminal", () => {
 
   assert.equal(statuses.get("session-completed"), "completed");
   assert.equal(statuses.get("session-failed"), "failed");
+});
+
+test("session display status follows the latest turn instead of stale session failure", () => {
+  const snapshot = snapshotWithSessionMessages(
+    [
+      session({
+        agentSessionId: "session-1",
+        status: "failed",
+        currentPhase: "failed"
+      })
+    ],
+    {
+      "session-1": [
+        message({
+          messageId: "failed-message",
+          status: "failed",
+          turnId: "turn-1",
+          version: 1
+        }),
+        message({
+          messageId: "latest-user",
+          role: "user",
+          status: null,
+          turnId: "turn-2",
+          version: 2
+        }),
+        message({
+          messageId: "latest-assistant",
+          status: "completed",
+          turnId: "turn-2",
+          version: 3
+        })
+      ]
+    }
+  );
+
+  assert.equal(
+    selectSessionDisplayStatuses(snapshot).get("session-1"),
+    "completed"
+  );
+});
+
+test("latest message display status uses only the newest turn", () => {
+  assert.equal(
+    resolveLatestAgentActivityMessageDisplayStatus([
+      message({
+        messageId: "old-failed",
+        status: "failed",
+        turnId: "turn-1",
+        version: 1
+      }),
+      message({
+        messageId: "new-user",
+        role: "user",
+        status: null,
+        turnId: "turn-2",
+        version: 2
+      })
+    ]),
+    "working"
+  );
 });
 
 test("agent activity display status normalizes raw status aliases", () => {

@@ -95,9 +95,13 @@ vi.mock("react-medium-image-zoom", () => ({
     ZoomContent?: (props: {
       buttonUnzoom: ReactElement;
       img: ReactElement | null;
+      modalState?: "LOADED" | "UNLOADING" | "UNLOADED";
     }) => ReactNode;
   }) {
-    const [isOpen, setIsOpen] = useState(false);
+    const [modalState, setModalState] = useState<
+      "LOADED" | "UNLOADING" | "UNLOADED"
+    >("UNLOADED");
+    const isOpen = modalState !== "UNLOADED";
     const labelZoom = a11yNameButtonZoom ?? "Zoom image";
     const labelUnzoom = a11yNameButtonUnzoom ?? "Minimize image";
     const childElement = isValidElement(children)
@@ -110,14 +114,15 @@ vi.mock("react-medium-image-zoom", () => ({
         ? cloneElement(childElement, {
             onClick: (event: ReactMouseEvent) => {
               childElement.props.onClick?.(event);
-              setIsOpen(true);
+              setModalState("LOADED");
             }
           })
         : children;
     const modalImage =
       childElement !== null
         ? cloneElement(childElement as ReactElement<Record<string, unknown>>, {
-            "data-rmiz-modal-img": true
+            "data-rmiz-modal-img": true,
+            onTransitionEnd: () => setModalState("UNLOADED")
           })
         : null;
     const buttonUnzoom = createElement(
@@ -125,7 +130,7 @@ vi.mock("react-medium-image-zoom", () => ({
       {
         type: "button",
         "aria-label": labelUnzoom,
-        onClick: () => setIsOpen(false)
+        onClick: () => setModalState("UNLOADING")
       },
       labelUnzoom
     );
@@ -144,7 +149,7 @@ vi.mock("react-medium-image-zoom", () => ({
             "aria-label": labelZoom,
             "aria-hidden": isOpen ? true : undefined,
             "data-rmiz-btn-zoom": "",
-            onClick: () => setIsOpen(true)
+            onClick: () => setModalState("LOADED")
           },
           labelZoom
         )
@@ -154,7 +159,7 @@ vi.mock("react-medium-image-zoom", () => ({
             "span",
             { role: "dialog", className: classDialog, "data-rmiz-modal": "" },
             ZoomContent
-              ? ZoomContent({ buttonUnzoom, img: modalImage })
+              ? ZoomContent({ buttonUnzoom, img: modalImage, modalState })
               : [modalImage, buttonUnzoom]
           )
         : null

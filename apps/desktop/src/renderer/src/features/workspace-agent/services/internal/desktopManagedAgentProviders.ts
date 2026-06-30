@@ -72,6 +72,16 @@ export function projectDesktopManagedAgentsState(
   };
 }
 
+export function projectDesktopManagedAgentsStateForAgentGUI(
+  snapshot: AgentProviderStatusSnapshot
+): AgentHostManagedAgentsState | null {
+  if (!snapshot.capturedAt) {
+    return null;
+  }
+
+  return projectDesktopManagedAgentsState(snapshot);
+}
+
 export function isDesktopManagedAgentProvider(
   value: unknown
 ): value is WorkspaceAgentProvider {

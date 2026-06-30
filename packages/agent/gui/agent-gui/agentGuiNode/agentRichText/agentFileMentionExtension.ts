@@ -15,6 +15,7 @@ import {
 } from "../../shared/mentionFilePresentation";
 import { translate } from "../../../i18n/index";
 import { AgentMentionNodeView } from "./AgentMentionNodeView";
+import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 
 export type AgentFileMentionKind = "file" | "directory" | "unknown";
 export type AgentMentionFileNavigationAction =
@@ -84,7 +85,7 @@ export interface AgentMentionWorkspaceAppItem {
   name: string;
   description?: string;
   iconUrl?: string;
-  /** 应用是否能够提供产物文件(reference),决定 @ 面板行末尾是否展示「查看产物文件」入口。 */
+  /** 应用是否能够提供产物文件(reference),决定 @ 面板行末尾是否展示「查看产物」入口。 */
   referencesListSupported?: boolean;
 }
 
@@ -390,10 +391,26 @@ export function createAgentFileMentionExtension(
             return isRichTextTriggerPrefixBoundary(previous, "whitespace");
           },
           command: ({ editor, range, props }) => {
+            const prefixCaretAnchor =
+              range.from <= 1 ||
+              editor.state.doc.textBetween(
+                Math.max(1, range.from - 1),
+                range.from,
+                "\n",
+                "\n"
+              ) === "\n";
             editor
               .chain()
               .focus()
               .insertContentAt(range, [
+                ...(prefixCaretAnchor
+                  ? ([
+                      {
+                        type: "text",
+                        text: AGENT_RICH_TEXT_CARET_ANCHOR
+                      }
+                    ] as const)
+                  : []),
                 {
                   type: this.name,
                   attrs: mentionItemToAttrs(props)

@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "@tutti-os/ui-system";
 import type {
   AgentActivityComposerOptions,
@@ -26,6 +26,10 @@ import type {
   AgentActivityRuntime,
   AgentActivityRuntimeRetainSessionEventsInput
 } from "../../../agentActivityRuntime";
+import {
+  createAgentQueuedPromptRuntime,
+  setAgentQueuedPromptRuntimeForTests
+} from "../../../agentQueuedPromptRuntime";
 import { setAgentGuiI18nTestLocale } from "../../../i18n/testUtils";
 import { useAccountStore } from "../../../host/agentHostAccountStore";
 import {
@@ -126,6 +130,11 @@ function initialPromptContent(text: string): {
 }
 
 describe("useAgentGUINodeController", () => {
+  beforeEach(() => {
+    installNoopAgentActivityRuntimeForTests();
+    installNoopAgentQueuedPromptRuntimeForTests();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -1473,6 +1482,104 @@ describe("useAgentGUINodeController", () => {
         payload: expect.objectContaining({ callId: "background-call" })
       })
     ]);
+  });
+
+  it("keeps an existing-session submitted prompt visible after switching away before send resolves", async () => {
+    let resolveExec:
+      | ((value: { sessionStatus: string; turnId: string }) => void)
+      | undefined;
+    const exec = vi.fn(
+      () =>
+        new Promise<{ sessionStatus: string; turnId: string }>((resolve) => {
+          resolveExec = resolve;
+        })
+    );
+    installAgentHostApi({
+      exec,
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", { effectiveStatus: "ready" }),
+          workspaceAgentSession("session-2", { effectiveStatus: "ready" })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("A1"));
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        content: promptBlocks("A1")
+      });
+      expect(
+        getAgentSessionView({
+          workspaceId: "room-1",
+          agentSessionId: "session-1"
+        })?.overlayMessages
+      ).toEqual([
+        expect.objectContaining({
+          role: "user",
+          payload: expect.objectContaining({ text: "A1" })
+        })
+      ]);
+    });
+
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    });
+
+    await act(async () => {
+      resolveExec?.({ sessionStatus: "working", turnId: "turn-a1" });
+    });
+    act(() => {
+      emitRuntimeSessionEventForTests?.(
+        streamMessage({
+          agentSessionId: "session-1",
+          id: 2,
+          eventId: "session-1-assistant-a2",
+          role: "assistant",
+          content: "A2",
+          turnId: "turn-a1",
+          occurredAtUnixMs: 2
+        })
+      );
+    });
+
+    act(() => {
+      result.current.actions.selectConversation("session-1");
+    });
+
+    await waitFor(() => {
+      expect(conversationBodies(result.current.viewModel)).toEqual([
+        "A1",
+        "A2"
+      ]);
+    });
   });
 
   it("keeps each window selection independent when another window creates a new session", async () => {
@@ -7720,6 +7827,33 @@ describe("useAgentGUINodeController", () => {
   });
 
   it("returns to the composer homepage when the selected session no longer exists", async () => {
+    const queuedPromptRuntime = createAgentQueuedPromptRuntime();
+    setAgentQueuedPromptRuntimeForTests(queuedPromptRuntime);
+    queuedPromptRuntime.enqueue({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      prompt: {
+        id: "queued-1",
+        content: promptBlocks("stale queued prompt"),
+        createdAtUnixMs: 1
+      }
+    });
+    queuedPromptRuntime.setRetryBlock({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      retryBlock: {
+        queuedPromptId: "queued-1",
+        sessionStateUpdatedAtUnixMs: 1,
+        conversationUpdatedAtUnixMs: 1
+      }
+    });
+    expect(
+      queuedPromptRuntime.claimNextToDrain({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        ownerId: "node-1"
+      })?.prompt.id
+    ).toBe("queued-1");
     const getState = vi.fn(async () => {
       throw {
         code: "session.not_found",
@@ -7746,6 +7880,7 @@ describe("useAgentGUINodeController", () => {
 
     const { result } = renderHook(() =>
       useAgentGUINodeController({
+        nodeId: "node-1",
         workspaceId: "room-1",
         currentUserId: "user-1",
         workspacePath: "/workspace",
@@ -7764,6 +7899,20 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.conversations).toEqual([]);
     expect(result.current.viewModel.conversationDetail).toBeNull();
     expect(result.current.viewModel.detailError).toBeNull();
+    expect(
+      queuedPromptRuntime.getSessionSnapshot({
+        workspaceId: "room-1",
+        agentSessionId: "session-1"
+      })
+    ).toEqual(
+      expect.objectContaining({
+        claim: null,
+        failedPromptId: null,
+        prompts: [],
+        retryBlock: null,
+        sendNextPromptId: null
+      })
+    );
   });
 
   it("uses the session state snapshot for approval and auth chrome", async () => {
@@ -12973,6 +13122,247 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("shares queued prompts across controllers and drains once after remount-style reuse", async () => {
+    const exec = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      turnId: "turn-2",
+      accepted: true,
+      sessionStatus: "working" as const,
+      events: []
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          effectiveStatus: "working",
+          turnPhase: "working"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      exec
+    });
+
+    const first = renderHook(() =>
+      useAgentGUINodeController({
+        nodeId: "node-1",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(first.result.current.viewModel.canQueueWhileBusy).toBe(true);
+    });
+
+    act(() => {
+      first.result.current.actions.submitPrompt(promptBlocks("shared queued"));
+    });
+
+    await waitFor(() => {
+      expect(
+        queuedPromptTexts(first.result.current.viewModel.queuedPrompts)
+      ).toEqual(["shared queued"]);
+    });
+
+    first.unmount();
+
+    const second = renderHook(() =>
+      useAgentGUINodeController({
+        nodeId: "node-2",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        queuedPromptTexts(second.result.current.viewModel.queuedPrompts)
+      ).toEqual(["shared queued"]);
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          lifecycleStatus: "active",
+          currentPhase: "idle",
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledTimes(1);
+    });
+    expect(exec).toHaveBeenCalledWith({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      ...promptContent("shared queued")
+    });
+  });
+
+  it("does not enqueue or drain queued prompts in preview mode", async () => {
+    const exec = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          effectiveStatus: "working",
+          turnPhase: "working"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        previewMode: true,
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("preview queued"));
+    });
+
+    expect(result.current.viewModel.queuedPrompts).toEqual([]);
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("does not release a real queued prompt claim when a same-node preview unmounts", async () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    setAgentQueuedPromptRuntimeForTests(runtime);
+    runtime.enqueue({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      prompt: {
+        id: "queued-1",
+        content: promptBlocks("claimed prompt"),
+        createdAtUnixMs: 1
+      }
+    });
+    const claim = runtime.claimNextToDrain({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      ownerId: "node-1"
+    });
+    expect(claim?.prompt.id).toBe("queued-1");
+
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          effectiveStatus: "working",
+          turnPhase: "working"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const preview = renderHook(() =>
+      useAgentGUINodeController({
+        nodeId: "node-1",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        previewMode: true,
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(preview.result.current.viewModel.activeConversationId).toBe(
+        "session-1"
+      );
+    });
+    preview.unmount();
+
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "room-1",
+        agentSessionId: "session-1"
+      }).claim?.claimId
+    ).toBe(claim?.claim.claimId);
+    expect(
+      runtime.claimNextToDrain({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        ownerId: "node-2"
+      })
+    ).toBeNull();
+  });
+
+  it("marks prompts claimed by another controller as draining", async () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    setAgentQueuedPromptRuntimeForTests(runtime);
+    runtime.enqueue({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      prompt: {
+        id: "queued-1",
+        content: promptBlocks("claimed prompt"),
+        createdAtUnixMs: 1
+      }
+    });
+    expect(
+      runtime.claimNextToDrain({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        ownerId: "node-1"
+      })?.prompt.id
+    ).toBe("queued-1");
+
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          effectiveStatus: "working",
+          turnPhase: "working"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        nodeId: "node-2",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    expect(result.current.viewModel.drainingQueuedPromptId).toBe("queued-1");
+  });
+
   it("preserves draft text entered while a prompt submission is in flight", async () => {
     let resolveExec:
       | ((result: {
@@ -14650,6 +15040,10 @@ function installNoopAgentActivityRuntimeForTests(): void {
       subscribe: () => () => {}
     } satisfies AgentActivityRuntime
   });
+}
+
+function installNoopAgentQueuedPromptRuntimeForTests(): void {
+  setAgentQueuedPromptRuntimeForTests(createAgentQueuedPromptRuntime());
 }
 
 function emptyAgentActivitySnapshot(

@@ -23,6 +23,42 @@ import type { IWorkspaceUserProjectService } from "../../workspace-user-project/
 
 const workspaceId = "workspace-1";
 
+function createLegacyAgentReporterService(
+  reporterCalls: ReporterEventInput[][]
+) {
+  return {
+    async trackEvents(events: ReporterEventInput[]) {
+      const legacyEvents = legacyAgentEvents(events);
+      if (legacyEvents.length > 0) {
+        reporterCalls.push(legacyEvents);
+      }
+    }
+  };
+}
+
+function legacyAgentEvents(
+  events: readonly ReporterEventInput[]
+): ReporterEventInput[] {
+  return events
+    .filter((event) => event.name !== "agent.node_result")
+    .map(stripAgentAnalyticsErrorFields);
+}
+
+function stripAgentAnalyticsErrorFields(
+  event: ReporterEventInput
+): ReporterEventInput {
+  if (!event.name.startsWith("agent.")) {
+    return event;
+  }
+  const eventParams = event.params ?? {};
+  const {
+    error_code: _errorCode,
+    error_message: _errorMessage,
+    ...params
+  } = eventParams;
+  return { ...event, params };
+}
+
 interface DesktopAgentHostApiUnderTest {
   clipboard: {
     writeImage(input: DesktopClipboardImagePayload): Promise<void>;
@@ -228,7 +264,25 @@ interface DesktopAgentHostApiUnderTest {
     }>;
   };
   workspace: {
-    getPathForFile(file: File): string;
+    applyGitPatch(input: {
+      allowBinary?: boolean;
+      atomic?: boolean;
+      cwd: string;
+      diff: string;
+      revert?: boolean;
+      target?: "unstaged" | "staged" | "staged-and-unstaged";
+    }): Promise<{
+      appliedPaths: string[];
+      conflictedPaths: string[];
+      skippedPaths: string[];
+      status: "success" | "partial-success" | "error";
+    }>;
+    resolveGitPatchSupport(input: { cwd: string }): Promise<{
+      errorCode?: string;
+      root?: string;
+      supported: boolean;
+    }>;
+    getReferenceForFile(file: File): { kind: "file" | "folder"; path: string };
     readFile(input: {
       path: string;
     }): Promise<{ content: string; path: string }>;
@@ -509,11 +563,7 @@ test("desktop agent host api returns no-active-turn cancel metadata", async () =
         };
       }
     }),
-    reporterService: {
-      async trackEvents(events) {
-        reporterCalls.push(events);
-      }
-    }
+    reporterService: createLegacyAgentReporterService(reporterCalls)
   });
 
   const result = await api.agentSessions.cancel({
@@ -585,11 +635,7 @@ test("desktop agent host api tracks agent session lifecycle events", async () =>
       }
     }),
     reporterNow: () => 1749124800000,
-    reporterService: {
-      async trackEvents(events) {
-        reporterCalls.push(events);
-      }
-    }
+    reporterService: createLegacyAgentReporterService(reporterCalls)
   });
 
   await api.agentSessions.activate({
@@ -645,6 +691,20 @@ test("desktop agent host api tracks agent session lifecycle events", async () =>
         params: {
           agent_session_id: "session-track-1",
           conversation_index: 1,
+          has_file_mention: false,
+          has_slash_command: false,
+          is_queued: false,
+          provider: "codex"
+        }
+      }
+    ],
+    [
+      {
+        clientTS: 1749124800000,
+        name: "agent.message_sent",
+        params: {
+          agent_session_id: "session-track-1",
+          conversation_index: 2,
           has_file_mention: true,
           has_slash_command: true,
           is_queued: false,
@@ -719,11 +779,7 @@ test("desktop agent host api tracks agent session settings changes", async () =>
       }
     }),
     reporterNow: () => 1749124800000,
-    reporterService: {
-      async trackEvents(events) {
-        reporterCalls.push(events);
-      }
-    }
+    reporterService: createLegacyAgentReporterService(reporterCalls)
   });
 
   await api.agentSessions.activate({
@@ -793,11 +849,7 @@ test("desktop agent host api tracks agent project setting changes", async () => 
   const reporterCalls: ReporterEventInput[][] = [];
   const api = createAgentHostApi({
     reporterNow: () => 1749124800000,
-    reporterService: {
-      async trackEvents(events) {
-        reporterCalls.push(events);
-      }
-    }
+    reporterService: createLegacyAgentReporterService(reporterCalls)
   });
 
   await api.agentSessions.trackSettingsProjectChange?.({
@@ -1491,11 +1543,7 @@ test("desktop agent host api reports failed activation from tuttid session", asy
       }
     }),
     reporterNow: () => 1749124800000,
-    reporterService: {
-      async trackEvents(events) {
-        reporterCalls.push(events);
-      }
-    }
+    reporterService: createLegacyAgentReporterService(reporterCalls)
   });
 
   const result = await api.agentSessions.activate({
@@ -1519,7 +1567,8 @@ test("desktop agent host api reports failed activation from tuttid session", asy
         name: "error.agent_session_failed",
         params: {
           agent_session_id: "44444444-4444-4444-8444-444444444444",
-          error_code: "agent_session_start_failed",
+          error_code: "agent_session_create_failed",
+          error_message: `exec: "codex": executable file not found in $PATH`,
           is_retryable: false,
           provider: "codex"
         }
@@ -2488,6 +2537,15 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     path: string;
     workspaceId: string;
   }> = [];
+  const appliedPatches: Array<{
+    diff: string;
+    revert?: boolean;
+    workspaceId: string;
+  }> = [];
+  const resolvedPatchSupport: Array<{
+    cwd: string;
+    workspaceId: string;
+  }> = [];
   const selectedUploadFileInputs: unknown[] = [];
   const api = createAgentHostApi({
     hostFilesApi: createHostFilesApi({
@@ -2554,13 +2612,39 @@ test("desktop agent host api reuses desktop host file operations", async () => {
           root: "/workspace",
           workspaceId: requestWorkspaceId
         };
+      },
+      async applyWorkspaceGitPatch(requestWorkspaceId, request) {
+        appliedPatches.push({
+          diff: request.diff,
+          revert: request.revert,
+          workspaceId: requestWorkspaceId
+        });
+        return {
+          appliedPaths: ["src/app.ts"],
+          conflictedPaths: [],
+          skippedPaths: [],
+          status: "success"
+        };
+      },
+      async resolveWorkspaceGitPatchSupport(requestWorkspaceId, cwd) {
+        resolvedPatchSupport.push({
+          cwd,
+          workspaceId: requestWorkspaceId
+        });
+        return {
+          root: cwd,
+          supported: true
+        };
       }
     }),
     platformApi: {
       homeDirectory: "/Users/local",
       os: "darwin",
-      resolveDroppedPaths(files) {
-        return files.map((file) => `/resolved/${file.name}`);
+      resolveDroppedEntries(files) {
+        return files.map((file) => ({
+          path: `/resolved/${file.name}`,
+          kind: file.name === "assets" ? "folder" : "file"
+        }));
       }
     }
   });
@@ -2596,10 +2680,14 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     content: "hello",
     path: "/workspace/file.txt"
   });
-  assert.equal(
-    api.workspace.getPathForFile(new File([], "drop.txt")),
-    "/resolved/drop.txt"
-  );
+  assert.deepEqual(api.workspace.getReferenceForFile(new File([], "drop")), {
+    path: "/resolved/drop",
+    kind: "file"
+  });
+  assert.deepEqual(api.workspace.getReferenceForFile(new File([], "assets")), {
+    path: "/resolved/assets",
+    kind: "folder"
+  });
   assert.deepEqual(
     await api.filesystem.readFileText({ uri: "file:///tmp/prompt.md" }),
     {
@@ -2612,10 +2700,43 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     content: "updated",
     path: "/workspace/file.txt"
   });
+  assert.deepEqual(
+    await api.workspace.applyGitPatch({
+      cwd: "/workspace",
+      diff: "diff --git a/src/app.ts b/src/app.ts\n",
+      revert: true
+    }),
+    {
+      appliedPaths: ["src/app.ts"],
+      conflictedPaths: [],
+      skippedPaths: [],
+      status: "success"
+    }
+  );
+  assert.deepEqual(
+    await api.workspace.resolveGitPatchSupport({ cwd: "/workspace" }),
+    {
+      root: "/workspace",
+      supported: true
+    }
+  );
   assert.deepEqual(writtenFiles, [
     {
       content: "updated",
       path: "/workspace/file.txt",
+      workspaceId
+    }
+  ]);
+  assert.deepEqual(appliedPatches, [
+    {
+      diff: "diff --git a/src/app.ts b/src/app.ts\n",
+      revert: true,
+      workspaceId
+    }
+  ]);
+  assert.deepEqual(resolvedPatchSupport, [
+    {
+      cwd: "/workspace",
       workspaceId
     }
   ]);
@@ -2828,13 +2949,13 @@ function createHostFilesApi(
 
 function createPlatformApi(
   overrides: Partial<
-    Pick<DesktopPlatformApi, "homeDirectory" | "os" | "resolveDroppedPaths">
+    Pick<DesktopPlatformApi, "homeDirectory" | "os" | "resolveDroppedEntries">
   > = {}
-): Pick<DesktopPlatformApi, "homeDirectory" | "os" | "resolveDroppedPaths"> {
+): Pick<DesktopPlatformApi, "homeDirectory" | "os" | "resolveDroppedEntries"> {
   return {
     homeDirectory: "/Users/local",
     os: "darwin",
-    resolveDroppedPaths() {
+    resolveDroppedEntries() {
       return [];
     },
     ...overrides
@@ -3058,6 +3179,12 @@ function createTuttidClient(
         },
         root: "/workspace",
         workspaceId
+      };
+    },
+    async resolveWorkspaceGitPatchSupport(_workspaceId: string, cwd: string) {
+      return {
+        root: cwd,
+        supported: true
       };
     },
     ...overrides

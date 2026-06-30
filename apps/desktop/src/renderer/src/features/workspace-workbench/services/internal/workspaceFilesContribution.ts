@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import { createElement } from "react";
 import type { WorkspaceFileManagerPersistedState } from "@tutti-os/workspace-file-manager/services";
 import type {
   WorkbenchContribution,
   WorkbenchHostExternalStateLookupInput,
+  WorkbenchHostNodeHeaderContext,
   WorkbenchHostExternalStateSource
 } from "@tutti-os/workbench-surface";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
@@ -26,6 +28,12 @@ export function createWorkspaceFilesContribution(input: {
   icon: ReactNode;
   renderFilesNodeBody: (
     context: WorkspaceWorkbenchBodyRendererContext
+  ) => ReactNode;
+  renderTrafficLights: (
+    context: Pick<
+      WorkbenchHostNodeHeaderContext,
+      "displayMode" | "windowActions"
+    >
   ) => ReactNode;
   reporterService?: Pick<IReporterService, "trackEvents">;
   workspaceFileManagerService: IWorkspaceFileManagerService;
@@ -63,6 +71,11 @@ export function createWorkspaceFilesContribution(input: {
               context.externalNodeState as WorkspaceFileManagerPersistedState | null,
             workspaceId: input.workspaceId
           }),
+        renderHeader: (context) =>
+          createElement(WorkspaceFilesWorkbenchHeader, {
+            context,
+            renderTrafficLights: input.renderTrafficLights
+          }),
         title: input.filesLabel,
         typeId: workspaceFilesNodeID,
         window: {
@@ -91,6 +104,44 @@ export function createWorkspaceFilesContribution(input: {
       };
     }
   };
+}
+
+function WorkspaceFilesWorkbenchHeader({
+  context,
+  renderTrafficLights
+}: {
+  context: WorkbenchHostNodeHeaderContext;
+  renderTrafficLights: (
+    context: Pick<
+      WorkbenchHostNodeHeaderContext,
+      "displayMode" | "windowActions"
+    >
+  ) => ReactNode;
+}): ReactNode {
+  return createElement(
+    "div",
+    {
+      className:
+        "flex h-full min-h-0 items-center gap-3 bg-[var(--background-panel)] px-3 pl-4"
+    },
+    renderTrafficLights(context),
+    createElement(
+      "div",
+      {
+        ...context.dragHandleProps,
+        className:
+          "flex h-full min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
+      },
+      createElement(
+        "div",
+        {
+          className:
+            "min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]"
+        },
+        context.node.title
+      )
+    )
+  );
 }
 
 function resolveWorkspaceFilesOpenedSource(

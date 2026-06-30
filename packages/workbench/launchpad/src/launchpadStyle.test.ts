@@ -79,3 +79,10 @@ test("launchpad search icon is vertically centered", () => {
     /\.workspace-launchpad-search__icon svg\s*{[^}]*width:\s*16px;[^}]*height:\s*16px;/s
   );
 });
+
+test("launchpad item labels use stationary white on content", () => {
+  assert.match(
+    css,
+    /\.workspace-launchpad-item__label\s*{[^}]*color:\s*var\(--white-stationary\);/s
+  );
+});

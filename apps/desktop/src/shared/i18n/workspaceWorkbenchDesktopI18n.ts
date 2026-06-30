@@ -44,6 +44,12 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     description: "windowCloseGuard.description",
     title: "windowCloseGuard.title"
   },
+  windowControls: {
+    close: "windowControls.close",
+    maximize: "windowControls.maximize",
+    minimize: "windowControls.minimize",
+    restore: "windowControls.restore"
+  },
   nodes: {
     agent: "nodes.agent",
     browser: "nodes.browser",

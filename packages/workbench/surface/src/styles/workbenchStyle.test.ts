@@ -23,6 +23,18 @@ test("traffic lights keep visual layout while expanding the pointer hit area", (
     css,
     /\.workbench-window-traffic-light::before\s*{[^}]*inset:\s*4px;[^}]*content:\s*"";[^}]*transition:\s*background-color 160ms ease;/s
   );
+  assert.match(
+    css,
+    /\.workbench-window-traffic-light__icon\s*{[^}]*inset:\s*5px;[^}]*width:\s*10px;[^}]*height:\s*10px;[^}]*opacity:\s*0;[^}]*transition:\s*opacity 120ms ease;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-window-traffic-lights:hover\s+\.workbench-window-traffic-light__icon,\s*\.workbench-window-traffic-lights:focus-within\s+\.workbench-window-traffic-light__icon\s*{[^}]*opacity:\s*1;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-window-traffic-lights:hover\s+\.workbench-window-traffic-light\[data-workbench-traffic-light="close"\]::before,\s*\.workbench-window-traffic-lights:focus-within\s+\.workbench-window-traffic-light\[data-workbench-traffic-light="close"\]::before\s*{[^}]*background-color:\s*#ff5f57;/s
+  );
 });
 
 test("floating window corner resize handles do not intrude further than the edge handles", () => {
@@ -72,6 +84,35 @@ test("mission control overlay lets layout controls sit above dialog overlays", (
   assert.match(
     css,
     /\.desktop-dock-plate\.workbench-mission-control__layout-dock\s*{[^}]*pointer-events:\s*auto;/s
+  );
+});
+
+test("mission control backdrop uses the shared dark scrim value", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    css,
+    /\.workbench-surface\s*{[^}]*--workbench-chrome-active-foreground:\s*var\(--foreground\);/s
+  );
+  assert.match(
+    css,
+    /\.workbench-surface\[data-mission-control-phase="entering"\],[\s\S]*?\.workbench-surface\[data-presentation-mode="mission-control"\]\s*{[^}]*--workbench-chrome-active-foreground:\s*var\(--white-stationary\);[^}]*--workbench-chrome-foreground:\s*var\(--white-stationary\);/s
+  );
+  assert.match(
+    css,
+    /\.workbench-mission-control-backdrop\s*{[^}]*background:\s*rgb\(0 0 0 \/ 60%\);[^}]*box-shadow:\s*none;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-mission-control-backdrop::before\s*{[^}]*background:\s*none;[^}]*opacity:\s*0;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-mission-control-backdrop::after\s*{[^}]*background:\s*none;[^}]*opacity:\s*0;/s
+  );
+  assert.doesNotMatch(
+    css,
+    /\.workbench-mission-control-backdrop\s*{[^}]*var\(--workbench-surface-background\)/s
   );
 });
 

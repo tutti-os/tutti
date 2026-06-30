@@ -642,7 +642,7 @@ func TestStartCommandRequiresProviderAndPrompt(t *testing.T) {
 	}
 }
 
-func TestStartCommandUsesComposerDefaultModel(t *testing.T) {
+func TestStartCommandUsesComposerDefaults(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := NewProviderWithLaunchPublisher(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
@@ -650,7 +650,11 @@ func TestStartCommandUsesComposerDefaultModel(t *testing.T) {
 		nil,
 		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{
 			AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
-				"codex": {Model: "gpt-5.5"},
+				"codex": {
+					Model:            "gpt-5.5",
+					PermissionModeID: "full-access",
+					ReasoningEffort:  "high",
+				},
 			},
 		}},
 	).newStartCommand()
@@ -662,6 +666,12 @@ func TestStartCommandUsesComposerDefaultModel(t *testing.T) {
 	}
 	if sessions.createInput.Model == nil || *sessions.createInput.Model != "gpt-5.5" {
 		t.Fatalf("Model = %#v, want composer default", sessions.createInput.Model)
+	}
+	if sessions.createInput.PermissionModeID == nil || *sessions.createInput.PermissionModeID != "full-access" {
+		t.Fatalf("PermissionModeID = %#v, want composer default", sessions.createInput.PermissionModeID)
+	}
+	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
+		t.Fatalf("ReasoningEffort = %#v, want composer default", sessions.createInput.ReasoningEffort)
 	}
 }
 
@@ -1374,7 +1384,7 @@ func TestProviderStartCommandRequiresPrompt(t *testing.T) {
 	}
 }
 
-func TestProviderStartCommandUsesComposerDefaultModel(t *testing.T) {
+func TestProviderStartCommandUsesComposerDefaults(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := NewProviderWithLaunchPublisher(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
@@ -1382,7 +1392,11 @@ func TestProviderStartCommandUsesComposerDefaultModel(t *testing.T) {
 		nil,
 		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{
 			AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
-				"codex": {Model: "gpt-5.5"},
+				"codex": {
+					Model:            "gpt-5.5",
+					PermissionModeID: "full-access",
+					ReasoningEffort:  "high",
+				},
 			},
 		}},
 	).newProviderStartCommand(providerStartCommandSpec{
@@ -1402,6 +1416,12 @@ func TestProviderStartCommandUsesComposerDefaultModel(t *testing.T) {
 	}
 	if sessions.createInput.Model == nil || *sessions.createInput.Model != "gpt-5.5" {
 		t.Fatalf("Model = %#v, want composer default", sessions.createInput.Model)
+	}
+	if sessions.createInput.PermissionModeID == nil || *sessions.createInput.PermissionModeID != "full-access" {
+		t.Fatalf("PermissionModeID = %#v, want composer default", sessions.createInput.PermissionModeID)
+	}
+	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
+		t.Fatalf("ReasoningEffort = %#v, want composer default", sessions.createInput.ReasoningEffort)
 	}
 }
 

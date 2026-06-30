@@ -260,9 +260,16 @@ describe("AgentGUINodeView layout persistence", () => {
 
   it("keeps the conversation search field styled from the carried TSH surface", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+    const source = readFileSync(
+      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
+      "utf8"
+    );
 
     expect(css).toMatch(
       /\.agent-gui-node__rail-panel\s*\{[^}]*border-right:\s*0;/s
+    );
+    expect(source).not.toMatch(
+      /shrink-0\s+border-t\s+border-\[var\(--border-1\)\]\s+px-2\s+py-1\.5/
     );
     expect(css).toMatch(
       /\.room-issue-node__search-field\s*{[^}]*position:\s*relative[^}]*min-width:\s*0/s
@@ -290,6 +297,18 @@ describe("AgentGUINodeView layout persistence", () => {
   it("does not animate the rail resize geometry while dragging", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
+    expect(css).toMatch(
+      /\.agent-gui-node__layout\s*{[^}]*transition:\s*grid-template-columns 180ms cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__rail-resize-handle\s*{[^}]*transition:\s*left 180ms cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\),\s*opacity 120ms ease;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__rail\s*>\s*\*\s*{[^}]*transition:[^}]*opacity 120ms ease,[^}]*filter 120ms ease;[^}]*transition-delay:\s*40ms;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header\s*{[^}]*transition:\s*grid-template-columns 180ms cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/s
+    );
     expect(css).toMatch(
       /\.agent-gui-node__layout\[data-rail-resizing="true"\]\s*{[^}]*transition:\s*none/s
     );
@@ -1221,8 +1240,49 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(timelineContent).toHaveStyle({
       minWidth: "100%",
       display: "grid",
+      gridTemplateColumns: "minmax(0, 1fr)",
       gap: "24px"
     });
+  });
+
+  it("marks the timeline as away from top only after scrolling down", () => {
+    const activeConversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversations: [activeConversation],
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversationDetail: createConversationDetail()
+      }
+    });
+
+    const timeline = screen.getByTestId("agent-gui-timeline") as HTMLElement;
+
+    expect(timeline).not.toHaveClass(
+      "agent-gui-node__timeline--scrolled-from-top"
+    );
+
+    timeline.scrollTop = 48;
+    fireEvent.scroll(timeline);
+    expect(timeline).toHaveClass("agent-gui-node__timeline--scrolled-from-top");
+
+    timeline.scrollTop = 0;
+    fireEvent.scroll(timeline);
+    expect(timeline).not.toHaveClass(
+      "agent-gui-node__timeline--scrolled-from-top"
+    );
+  });
+
+  it("applies the timeline top fade only while scrolled down", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__timeline-with-composer\.agent-gui-node__timeline--scrolled-from-top\s*{[^}]*-webkit-mask-image:\s*linear-gradient/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-node__timeline-with-composer\s*{[^}]*-webkit-mask-image:\s*linear-gradient/s
+    );
   });
 
   it("renders older-message loading above the transcript", () => {

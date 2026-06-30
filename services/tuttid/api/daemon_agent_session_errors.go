@@ -253,6 +253,42 @@ func writeListWorkspaceGitBranchesError(err error) tuttigenerated.ListWorkspaceG
 	}
 }
 
+func writeResolveWorkspaceGitPatchSupportError(err error) tuttigenerated.ResolveWorkspaceGitPatchSupportResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.ResolveWorkspaceGitPatchSupport404JSONResponse{
+			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.ResolveWorkspaceGitPatchSupport400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.ResolveWorkspaceGitPatchSupport502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
+func writeApplyWorkspaceGitPatchError(err error) tuttigenerated.ApplyWorkspaceGitPatchResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.ApplyWorkspaceGitPatch404JSONResponse{
+			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.ApplyWorkspaceGitPatch400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.ApplyWorkspaceGitPatch502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
 func writeUpdateWorkspaceAgentSessionSettingsError(err error) tuttigenerated.UpdateWorkspaceAgentSessionSettingsResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {

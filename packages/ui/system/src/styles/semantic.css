@@ -4,6 +4,8 @@
 
   --color-background: var(--background);
   --color-background-panel: var(--background-panel);
+  --color-background-session-flow: var(--background-session-flow);
+  --color-background-session-sidepanel: var(--background-session-sidepanel);
   --color-background-fronted: var(--background-fronted);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

@@ -35,6 +35,7 @@ var expectedAnalyticsEvents = []string{
 	"agent.provider_login_result",
 	"agent.provider_ready",
 	"agent.chat_ready",
+	"agent.node_result",
 	"agent.env_detected",
 	"agent.env_issue_reported",
 	"agent.conversation_pinned",

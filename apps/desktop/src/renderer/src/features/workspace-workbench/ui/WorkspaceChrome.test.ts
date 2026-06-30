@@ -38,6 +38,28 @@ test("workspace chrome keeps macOS traffic light left padding at 16px", () => {
   );
 });
 
+test("workspace chrome active buttons keep mission-control foreground override", () => {
+  assert.match(source, /--workbench-chrome-active-foreground/);
+  assert.match(
+    source,
+    /open && "text-\[var\(--workbench-chrome-active-foreground\)\]"/
+  );
+  assert.match(
+    source,
+    /settingsState\.open &&\s*"text-\[var\(--workbench-chrome-active-foreground\)\]"/
+  );
+  assert.match(
+    source,
+    /active &&\s*"bg-transparency-block text-\[var\(--workbench-chrome-active-foreground\)\]"/
+  );
+  assert.doesNotMatch(source, /open && "text-foreground"/);
+  assert.doesNotMatch(source, /settingsState\.open && "text-foreground"/);
+  assert.doesNotMatch(
+    source,
+    /active && "bg-transparency-block text-foreground"/
+  );
+});
+
 test("workspace chrome does not call updateSessionSettings or sendInput from the deck submit handler", () => {
   // Ensure the old branching logic in onSubmitPrompt is removed
   // (toast notification path at line 484 uses submitInteractive — that is expected to stay)

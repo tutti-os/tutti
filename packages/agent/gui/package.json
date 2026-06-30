@@ -13,6 +13,7 @@
     "./plan-decision-ops": "./shared/agentConversation/planImplementation.ts",
     "./context-mention-provider": "./agent-gui/agentGuiNode/agentContextMentionProvider.ts",
     "./mention-file-presentation": "./agent-gui/shared/mentionFilePresentation.ts",
+    "./queued-prompt-runtime": "./agentQueuedPromptRuntimeCore.ts",
     "./agent-title-text": "./shared/utils/agentTitleText.ts",
     "./workspace-agent-generated-files": "./shared/workspaceAgentActivityListViewModel.ts",
     "./i18n": "./i18n/index.ts",
@@ -123,6 +124,10 @@
         "types": "./dist/mention-file-presentation.d.ts",
         "import": "./dist/mention-file-presentation.js"
       },
+      "./queued-prompt-runtime": {
+        "types": "./dist/queued-prompt-runtime.d.ts",
+        "import": "./dist/queued-prompt-runtime.js"
+      },
       "./agent-title-text": {
         "types": "./dist/agent-title-text.d.ts",
         "import": "./dist/agent-title-text.js"
@@ -185,6 +190,9 @@
         ],
         "mention-file-presentation": [
           "./dist/mention-file-presentation.d.ts"
+        ],
+        "queued-prompt-runtime": [
+          "./dist/queued-prompt-runtime.d.ts"
         ],
         "agent-title-text": [
           "./dist/agent-title-text.d.ts"

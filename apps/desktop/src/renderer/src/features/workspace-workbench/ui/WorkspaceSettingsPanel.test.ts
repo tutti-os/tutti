@@ -29,6 +29,8 @@ test("workspace settings panel lists appearance below general", () => {
 
 test("workspace settings backdrop preserves titlebar dragging", () => {
   assert.match(source, /data-workspace-settings-backdrop="true"/);
+  assert.match(source, /bg-\[var\(--backdrop\)\]/);
+  assert.doesNotMatch(source, /var\(--backdrop\)_28%/);
   assert.match(source, /data-workspace-settings-window-drag-region="true"/);
   assert.match(
     source,

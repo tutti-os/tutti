@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -66,22 +67,24 @@ type stubAppCenterService struct {
 }
 
 type stubAgentSessionService struct {
-	clearFn                  func(context.Context, string) (agentservice.ClearSessionsResult, error)
-	composerOptionsFn        func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
-	createFn                 func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
-	deleteFn                 func(context.Context, string, string) (bool, error)
-	importExternalFn         func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
-	validImportPathsFn       func(context.Context, agentservice.ExternalImportInput) ([]string, error)
-	listFn                   func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
-	listGeneratedFilesFn     func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
-	listMessagesFn           func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
-	readAttachmentFn         func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
-	scanExternalFn           func(context.Context, agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error)
-	listGitBranchesFn        func(context.Context, string, string) (agentservice.GitBranches, error)
-	listGitBranchesForPathFn func(context.Context, string, string) (agentservice.GitBranches, error)
-	updatePinFn              func(context.Context, string, string, bool) (agentservice.Session, error)
-	updateVisibleFn          func(context.Context, string, string, bool) (agentservice.Session, error)
-	updateSettingsFn         func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
+	clearFn                         func(context.Context, string) (agentservice.ClearSessionsResult, error)
+	composerOptionsFn               func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
+	createFn                        func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	deleteFn                        func(context.Context, string, string) (bool, error)
+	importExternalFn                func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
+	validImportPathsFn              func(context.Context, agentservice.ExternalImportInput) ([]string, error)
+	listFn                          func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
+	listGeneratedFilesFn            func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
+	listMessagesFn                  func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
+	readAttachmentFn                func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
+	scanExternalFn                  func(context.Context, agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error)
+	listGitBranchesFn               func(context.Context, string, string) (agentservice.GitBranches, error)
+	listGitBranchesForPathFn        func(context.Context, string, string) (agentservice.GitBranches, error)
+	resolveGitPatchSupportForPathFn func(context.Context, string, string) (agentservice.GitPatchSupport, error)
+	applyGitPatchForPathFn          func(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
+	updatePinFn                     func(context.Context, string, string, bool) (agentservice.Session, error)
+	updateVisibleFn                 func(context.Context, string, string, bool) (agentservice.Session, error)
+	updateSettingsFn                func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
 }
 
 func (stubAppCenterService) Add(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
@@ -283,6 +286,20 @@ func (s stubAgentSessionService) ListGitBranchesForPath(ctx context.Context, wor
 		return s.listGitBranchesForPathFn(ctx, workspaceID, workingDirectory)
 	}
 	return agentservice.GitBranches{}, nil
+}
+
+func (s stubAgentSessionService) ResolveGitPatchSupportForPath(ctx context.Context, workspaceID string, cwd string) (agentservice.GitPatchSupport, error) {
+	if s.resolveGitPatchSupportForPathFn != nil {
+		return s.resolveGitPatchSupportForPathFn(ctx, workspaceID, cwd)
+	}
+	return agentservice.GitPatchSupport{}, nil
+}
+
+func (s stubAgentSessionService) ApplyGitPatchForPath(ctx context.Context, workspaceID string, input agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error) {
+	if s.applyGitPatchForPathFn != nil {
+		return s.applyGitPatchForPathFn(ctx, workspaceID, input)
+	}
+	return agentservice.ApplyGitPatchResult{}, nil
 }
 
 func (s stubAgentSessionService) Delete(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
@@ -724,6 +741,110 @@ func TestDaemonAPIGeneratedRoutesReadAgentSessionAttachment(t *testing.T) {
 	}
 	if response.Data != "aW1hZ2U=" {
 		t.Fatalf("data = %q, want base64 payload", response.Data)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesApplyWorkspaceGitPatch(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			applyGitPatchForPathFn: func(_ context.Context, workspaceID string, input agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if input.Cwd != "/workspace/project" {
+					t.Fatalf("cwd = %q, want /workspace/project", input.Cwd)
+				}
+				if input.Diff != "diff --git a/a.txt b/a.txt\n" {
+					t.Fatalf("diff = %q", input.Diff)
+				}
+				if !input.Revert || !input.Atomic || input.Target != agentservice.ApplyGitPatchTargetStaged || !input.AllowBinary {
+					t.Fatalf("input flags = %#v", input)
+				}
+				return agentservice.ApplyGitPatchResult{
+					Status:          agentservice.ApplyGitPatchStatusPartialSuccess,
+					AppliedPaths:    []string{"a.txt"},
+					SkippedPaths:    []string{"b.txt"},
+					ConflictedPaths: []string{"c.txt"},
+					ExecOutput: agentservice.ApplyGitPatchExecOutput{
+						Command: "git apply -R patch.diff",
+						Stderr:  "conflict",
+					},
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/git-patch",
+		map[string]any{
+			"cwd":         "/workspace/project",
+			"diff":        "diff --git a/a.txt b/a.txt\n",
+			"revert":      true,
+			"atomic":      true,
+			"target":      "staged",
+			"allowBinary": true,
+		},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceGitPatchResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Status != tuttigenerated.WorkspaceGitPatchStatus(agentservice.ApplyGitPatchStatusPartialSuccess) {
+		t.Fatalf("status = %q, want partial-success", response.Status)
+	}
+	if !slices.Equal(response.AppliedPaths, []string{"a.txt"}) ||
+		!slices.Equal(response.SkippedPaths, []string{"b.txt"}) ||
+		!slices.Equal(response.ConflictedPaths, []string{"c.txt"}) {
+		t.Fatalf("response paths = %#v", response)
+	}
+	if response.ExecOutput == nil || response.ExecOutput.Command != "git apply -R patch.diff" || response.ExecOutput.Stderr != "conflict" {
+		t.Fatalf("execOutput = %#v", response.ExecOutput)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesResolveWorkspaceGitPatchSupport(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			resolveGitPatchSupportForPathFn: func(_ context.Context, workspaceID string, cwd string) (agentservice.GitPatchSupport, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if cwd != "/workspace/project" {
+					t.Fatalf("cwd = %q, want /workspace/project", cwd)
+				}
+				return agentservice.GitPatchSupport{
+					Supported: true,
+					Root:      "/workspace/project",
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/git-patch-support?cwd=%2Fworkspace%2Fproject",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceGitPatchSupportResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if !response.Supported {
+		t.Fatalf("supported = false, want true")
+	}
+	if response.Root == nil || *response.Root != "/workspace/project" {
+		t.Fatalf("root = %#v, want /workspace/project", response.Root)
 	}
 }
 

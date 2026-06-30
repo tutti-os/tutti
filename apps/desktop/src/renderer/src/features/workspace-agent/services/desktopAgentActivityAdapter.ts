@@ -33,6 +33,7 @@ export interface CreateDesktopAgentActivityAdapterInput {
 
 const defaultAgentSessionCreateRequestTimeoutMs = 30_000;
 const defaultComposerOptionsRequestTimeoutMs = 15_000;
+const agentActivitySessionListLimit = 100;
 
 export function createDesktopAgentActivityAdapter({
   agentProviderStatusService,
@@ -245,7 +246,8 @@ export function createDesktopAgentActivityAdapter({
   return {
     async listSessions(input) {
       const response = await tuttidClient.listWorkspaceAgentSessions(
-        input.workspaceId
+        input.workspaceId,
+        { limit: agentActivitySessionListLimit }
       );
       return {
         sessions: response.sessions.map((session) =>

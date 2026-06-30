@@ -16,7 +16,9 @@ import {
   type CliCapabilitiesResponse,
   type IssueManagerReferenceSearchResponse,
   type ListWorkspacesResponse,
-  type WorkspaceFilePreviewResponse
+  type WorkspaceFilePreviewResponse,
+  type WorkspaceGitPatchSupportResponse,
+  type WorkspaceGitPatchResponse
 } from "./index.ts";
 
 test("generated tuttid client returns parsed health response", async () => {
@@ -705,6 +707,96 @@ test("shared tuttid client reads workspace file preview bytes", async () => {
   assert.equal(requestQuery, "/workspace/docs/todo.md");
   assert.equal(preview.bytesBase64, "aGVsbG8=");
   assert.equal(preview.sizeBytes, 5);
+});
+
+test("shared tuttid client applies a workspace git patch", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+  let requestBody: unknown;
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+      requestBody = await request.json();
+
+      return new Response(
+        JSON.stringify({
+          appliedPaths: ["src/app.ts"],
+          conflictedPaths: [],
+          skippedPaths: [],
+          status: "success"
+        } satisfies WorkspaceGitPatchResponse),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  const response = await client.applyWorkspaceGitPatch("ws-1", {
+    cwd: "/workspace",
+    diff: "diff --git a/src/app.ts b/src/app.ts\n",
+    revert: true
+  });
+
+  assert.equal(requestMethod, "POST");
+  assert.equal(requestPath, "/v1/workspaces/ws-1/git-patch");
+  assert.deepEqual(requestBody, {
+    cwd: "/workspace",
+    diff: "diff --git a/src/app.ts b/src/app.ts\n",
+    revert: true
+  });
+  assert.deepEqual(response, {
+    appliedPaths: ["src/app.ts"],
+    conflictedPaths: [],
+    skippedPaths: [],
+    status: "success"
+  });
+});
+
+test("shared tuttid client resolves workspace git patch support", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+  let requestQueryEntries: Record<string, string> = {};
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      requestMethod = request.method;
+      requestPath = url.pathname;
+      requestQueryEntries = Object.fromEntries(url.searchParams.entries());
+
+      return new Response(
+        JSON.stringify({
+          root: "/workspace",
+          supported: true
+        } satisfies WorkspaceGitPatchSupportResponse),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  const response = await client.resolveWorkspaceGitPatchSupport(
+    "ws-1",
+    "/workspace"
+  );
+
+  assert.equal(requestMethod, "GET");
+  assert.equal(requestPath, "/v1/workspaces/ws-1/git-patch-support");
+  assert.deepEqual(requestQueryEntries, { cwd: "/workspace" });
+  assert.deepEqual(response, {
+    root: "/workspace",
+    supported: true
+  });
 });
 
 test("shared tuttid client loads agent provider composer options", async () => {

@@ -1,4 +1,7 @@
-import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
+import {
+  selectSessionDisplayStatuses,
+  type AgentActivitySnapshot
+} from "@tutti-os/agent-activity-core";
 
 export type WorkspaceAgentStatusPetMood =
   | "failed"
@@ -14,9 +17,14 @@ export function resolveWorkspaceAgentStatusPetMood(
   if (waitingCount > 0) {
     return "waiting";
   }
-  const statuses = snapshot.sessions.map((session) =>
-    session.status.trim().toLowerCase()
-  );
+  const displayStatuses = selectSessionDisplayStatuses(snapshot);
+  const statuses = snapshot.sessions.map((session) => {
+    const rawStatus = session.status.trim().toLowerCase();
+    const displayStatus = displayStatuses.get(session.agentSessionId);
+    return displayStatus && displayStatus !== "idle"
+      ? displayStatus
+      : rawStatus;
+  });
   if (statuses.some((status) => status === "failed")) {
     return "failed";
   }

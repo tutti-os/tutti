@@ -2048,6 +2048,73 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/git-patch-support:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: resolveWorkspaceGitPatchSupport
+      tags:
+        - agent-session
+      summary: Resolve whether git patch operations are available for a workspace working directory
+      parameters:
+        - in: query
+          name: cwd
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Git patch support status for the working directory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceGitPatchSupportResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/git-patch:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: applyWorkspaceGitPatch
+      tags:
+        - agent-session
+      summary: Apply or reverse-apply a git patch in a workspace working directory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceGitPatchRequest"
+      responses:
+        "200":
+          description: Git patch apply result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceGitPatchResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -6409,6 +6476,96 @@ components:
             type: string
         currentBranch:
           type: string
+    WorkspaceGitPatchTarget:
+      type: string
+      enum:
+        - unstaged
+        - staged
+        - staged-and-unstaged
+    WorkspaceGitPatchRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - cwd
+        - diff
+      properties:
+        cwd:
+          type: string
+          minLength: 1
+        diff:
+          type: string
+          minLength: 1
+        revert:
+          type: boolean
+        atomic:
+          type: boolean
+        target:
+          $ref: "#/components/schemas/WorkspaceGitPatchTarget"
+        allowBinary:
+          type: boolean
+    WorkspaceGitPatchStatus:
+      type: string
+      enum:
+        - success
+        - partial-success
+        - error
+    WorkspaceGitPatchErrorCode:
+      type: string
+      enum:
+        - not-git-repo
+    WorkspaceGitPatchSupportResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - supported
+      properties:
+        supported:
+          type: boolean
+        root:
+          type: string
+        errorCode:
+          $ref: "#/components/schemas/WorkspaceGitPatchErrorCode"
+    WorkspaceGitPatchExecOutput:
+      type: object
+      additionalProperties: false
+      required:
+        - command
+        - stdout
+        - stderr
+      properties:
+        command:
+          type: string
+        stdout:
+          type: string
+        stderr:
+          type: string
+    WorkspaceGitPatchResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - appliedPaths
+        - skippedPaths
+        - conflictedPaths
+      properties:
+        status:
+          $ref: "#/components/schemas/WorkspaceGitPatchStatus"
+        appliedPaths:
+          type: array
+          items:
+            type: string
+        skippedPaths:
+          type: array
+          items:
+            type: string
+        conflictedPaths:
+          type: array
+          items:
+            type: string
+        errorCode:
+          $ref: "#/components/schemas/WorkspaceGitPatchErrorCode"
+        execOutput:
+          $ref: "#/components/schemas/WorkspaceGitPatchExecOutput"
     UserProject:
       type: object
       additionalProperties: false

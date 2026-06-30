@@ -798,12 +798,40 @@ func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T
 	if asString(threadStart["sandbox"]) != "read-only" {
 		t.Fatalf("thread/start sandbox = %q, want read-only", threadStart["sandbox"])
 	}
+	if asString(threadStart["approvalsReviewer"]) != "user" {
+		t.Fatalf("thread/start approvalsReviewer = %q, want user", threadStart["approvalsReviewer"])
+	}
 	config, _ := threadStart["config"].(map[string]any)
 	if asString(config["model_reasoning_effort"]) != "xhigh" {
 		t.Fatalf("thread/start config = %#v, want model_reasoning_effort=xhigh", config)
 	}
 	if asString(config["model_reasoning_summary"]) != "auto" {
 		t.Fatalf("thread/start config = %#v, want reasoning summaries enabled for inline review on spark", config)
+	}
+}
+
+func TestCodexAppServerAdapterStartAutoPermissionUsesAutoReviewer(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.PermissionModeID = "auto"
+	session.Settings = &SessionSettings{
+		PermissionModeID: "auto",
+	}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	threadStart := appServerRequestParams(t, transport.conn, appServerMethodThreadStart)
+	if asString(threadStart["approvalPolicy"]) != "on-request" {
+		t.Fatalf("thread/start approvalPolicy = %q, want on-request", threadStart["approvalPolicy"])
+	}
+	if asString(threadStart["sandbox"]) != "workspace-write" {
+		t.Fatalf("thread/start sandbox = %q, want workspace-write", threadStart["sandbox"])
+	}
+	if asString(threadStart["approvalsReviewer"]) != "auto_review" {
+		t.Fatalf("thread/start approvalsReviewer = %q, want auto_review", threadStart["approvalsReviewer"])
 	}
 }
 
@@ -1068,6 +1096,61 @@ func TestCodexAppServerAdapterExecSendsTurnOverrides(t *testing.T) {
 	sandboxPolicy, _ := turnStart["sandboxPolicy"].(map[string]any)
 	if asString(sandboxPolicy["type"]) != "dangerFullAccess" {
 		t.Fatalf("turn/start sandboxPolicy = %#v", turnStart["sandboxPolicy"])
+	}
+	if _, ok := turnStart["approvalsReviewer"]; ok {
+		t.Fatalf("turn/start approvalsReviewer = %#v, want omitted for full-access", turnStart["approvalsReviewer"])
+	}
+}
+
+func TestCodexAppServerAdapterExecReadOnlyPermissionUsesUserReviewer(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	session.PermissionModeID = "read-only"
+	session.Settings = &SessionSettings{
+		PermissionModeID: "read-only",
+	}
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "go",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	if asString(turnStart["approvalPolicy"]) != "on-request" {
+		t.Fatalf("turn/start approvalPolicy = %q, want on-request", turnStart["approvalPolicy"])
+	}
+	sandboxPolicy, _ := turnStart["sandboxPolicy"].(map[string]any)
+	if asString(sandboxPolicy["type"]) != "readOnly" {
+		t.Fatalf("turn/start sandboxPolicy = %#v", turnStart["sandboxPolicy"])
+	}
+	if asString(turnStart["approvalsReviewer"]) != "user" {
+		t.Fatalf("turn/start approvalsReviewer = %q, want user", turnStart["approvalsReviewer"])
+	}
+}
+
+func TestCodexAppServerAdapterExecAutoPermissionUsesAutoReviewer(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	session.PermissionModeID = "auto"
+	session.Settings = &SessionSettings{
+		PermissionModeID: "auto",
+	}
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "go",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	if asString(turnStart["approvalPolicy"]) != "on-request" {
+		t.Fatalf("turn/start approvalPolicy = %q, want on-request", turnStart["approvalPolicy"])
+	}
+	sandboxPolicy, _ := turnStart["sandboxPolicy"].(map[string]any)
+	if asString(sandboxPolicy["type"]) != "workspaceWrite" {
+		t.Fatalf("turn/start sandboxPolicy = %#v", turnStart["sandboxPolicy"])
+	}
+	if asString(turnStart["approvalsReviewer"]) != "auto_review" {
+		t.Fatalf("turn/start approvalsReviewer = %q, want auto_review", turnStart["approvalsReviewer"])
 	}
 }
 

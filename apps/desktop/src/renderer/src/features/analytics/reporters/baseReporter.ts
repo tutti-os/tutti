@@ -2,6 +2,7 @@ import type {
   IReporterService,
   ReporterEventParams
 } from "../services/reporterService.interface";
+import { agentAnalyticsSuccessFields } from "./agent-error-fields.ts";
 import { toAnalyticsParamName } from "./paramNames.ts";
 
 export type AnalyticsReporterParamValue =
@@ -53,9 +54,20 @@ export abstract class BaseAnalyticsReporter<
 
   private toProtocolParams(): ReporterEventParams {
     const result: ReporterEventParams = {};
+    if (isAgentAnalyticsEvent(this.eventName)) {
+      for (const [key, value] of Object.entries(agentAnalyticsSuccessFields)) {
+        result[toAnalyticsParamName(key)] = value;
+      }
+    }
     for (const [key, value] of Object.entries(this.params)) {
       result[toAnalyticsParamName(key)] = value;
     }
     return result;
   }
+}
+
+function isAgentAnalyticsEvent(eventName: string): boolean {
+  return (
+    eventName.startsWith("agent.") || eventName === "error.agent_session_failed"
+  );
 }

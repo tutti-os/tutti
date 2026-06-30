@@ -17,7 +17,8 @@ import type {
   WorkbenchContribution,
   WorkbenchHostCloseDialogRequest,
   WorkbenchHostDockPopupItemInput,
-  WorkbenchHostExternalStateSource
+  WorkbenchHostExternalStateSource,
+  WorkbenchHostNodeHeaderContext
 } from "@tutti-os/workbench-surface";
 import type {
   DesktopHostFilesApi,
@@ -58,6 +59,12 @@ export function createWorkspaceTerminalContribution(input: {
   tuttidClient: TuttidClient;
   platformApi: Pick<DesktopPlatformApi, "resolveDroppedPaths">;
   reporterService?: Pick<IReporterService, "trackEvents">;
+  renderTrafficLights: (
+    context: Pick<
+      WorkbenchHostNodeHeaderContext,
+      "displayMode" | "windowActions"
+    >
+  ) => ReactNode;
   runtimeApi: DesktopRuntimeApi;
   workspaceId: string;
 }): WorkbenchContribution {
@@ -177,6 +184,13 @@ export function createWorkspaceTerminalContribution(input: {
       node.typeId === defaultWorkspaceTerminalWorkbenchTypeId
         ? {
             ...node,
+            renderHeader: node.renderHeader
+              ? (context) =>
+                  node.renderHeader?.({
+                    ...context,
+                    defaultActions: input.renderTrafficLights(context)
+                  })
+              : node.renderHeader,
             renderBody: (context) => {
               terminalAnalytics.observeNode({
                 nodeId: context.node.id,

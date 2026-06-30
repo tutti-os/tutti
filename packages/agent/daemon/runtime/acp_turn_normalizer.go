@@ -90,6 +90,35 @@ func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	_, _ = n.assistantContent.WriteString(finalText)
 }
 
+func (n *acpTurnNormalizer) AppendAssistantSnapshot(
+	session Session,
+	turnID string,
+	text string,
+	messageID string,
+) []activityshared.Event {
+	if n == nil {
+		return nil
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	current := strings.TrimSpace(n.assistantContent.String())
+	if current == text && n.assistantMessageID != "" {
+		if n.assistantSegmentCompleted {
+			return nil
+		}
+		return n.Finish(session, turnID, messageStreamStateCompleted)
+	}
+	if n.assistantMessageID == "" || n.assistantSegmentCompleted {
+		n.assistantMessageID = firstNonEmpty(strings.TrimSpace(messageID), newID())
+		n.assistantSegmentCompleted = false
+	}
+	n.assistantContent.Reset()
+	_, _ = n.assistantContent.WriteString(text)
+	return n.Finish(session, turnID, messageStreamStateCompleted)
+}
+
 func (n *acpTurnNormalizer) mergeAssistantText(next string) {
 	if n == nil || next == "" {
 		return

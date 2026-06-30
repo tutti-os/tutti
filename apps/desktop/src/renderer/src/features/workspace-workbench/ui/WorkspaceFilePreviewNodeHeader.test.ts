@@ -10,6 +10,7 @@ const source = readFileSync(
 test("workspace file preview header keeps traffic lights on the left", () => {
   assert.match(
     source,
-    /\{context\.defaultActions\}[\s\S]*\{\.\.\.context\.dragHandleProps\}/
+    /<WorkspaceWorkbenchTrafficLights[\s\S]*displayMode=\{context\.displayMode\}[\s\S]*windowActions=\{context\.windowActions\}[\s\S]*\{\.\.\.context\.dragHandleProps\}/
   );
+  assert.doesNotMatch(source, /context\.defaultActions/);
 });

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   initializeDesktopEnvironment,
   resolveDesktopDefaultsFromEnv,
+  resolveDesktopDevelopmentAppName,
   resolveDesktopUserDataPath,
   resolveTuttiEnv
 } from "./defaults.ts";
@@ -159,6 +160,20 @@ test("resolveDesktopUserDataPath keeps production on Electron defaults", () => {
       }),
       null
     );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopDevelopmentAppName isolates development single-instance identity", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+    assert.equal(resolveDesktopDevelopmentAppName("Tutti"), "Tutti Dev");
+
+    process.env.TUTTI_ENV = "production";
+    assert.equal(resolveDesktopDevelopmentAppName("Tutti"), null);
   } finally {
     restoreEnv(previousEnv);
   }

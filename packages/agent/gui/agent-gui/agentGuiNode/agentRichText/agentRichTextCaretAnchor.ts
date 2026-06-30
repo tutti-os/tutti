@@ -1,0 +1,1 @@
+export const AGENT_RICH_TEXT_CARET_ANCHOR = "\u200B";

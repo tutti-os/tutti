@@ -1,8 +1,10 @@
 import type { AnalyticsReporterParams } from "../baseReporter.ts";
+import type { AgentAnalyticsErrorCode } from "../agent-error-fields.ts";
 
 export interface ErrorAgentSessionFailedParams extends AnalyticsReporterParams {
   agentSessionId: string;
-  errorCode: string | null;
+  errorCode: AgentAnalyticsErrorCode;
+  errorMessage: string;
   isRetryable: boolean;
   provider: string;
 }

@@ -13,6 +13,9 @@ import type {
   AddWorkspaceIssueTaskContextRefsData,
   AddWorkspaceIssueTaskContextRefsErrors,
   AddWorkspaceIssueTaskContextRefsResponses,
+  ApplyWorkspaceGitPatchData,
+  ApplyWorkspaceGitPatchErrors,
+  ApplyWorkspaceGitPatchResponses,
   AttachEventStreamData,
   AttachEventStreamErrors,
   AttachEventStreamResponses,
@@ -301,6 +304,9 @@ import type {
   ResizeWorkspaceTerminalData,
   ResizeWorkspaceTerminalErrors,
   ResizeWorkspaceTerminalResponses,
+  ResolveWorkspaceGitPatchSupportData,
+  ResolveWorkspaceGitPatchSupportErrors,
+  ResolveWorkspaceGitPatchSupportResponses,
   RetryWorkspaceAppData,
   RetryWorkspaceAppErrors,
   RetryWorkspaceAppFactoryJobValidationData,
@@ -1634,6 +1640,44 @@ export const listWorkspaceGitBranches = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/git-branches",
     ...options
+  });
+
+/**
+ * Resolve whether git patch operations are available for a workspace working directory
+ */
+export const resolveWorkspaceGitPatchSupport = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ResolveWorkspaceGitPatchSupportData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ResolveWorkspaceGitPatchSupportResponses,
+    ResolveWorkspaceGitPatchSupportErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/git-patch-support",
+    ...options
+  });
+
+/**
+ * Apply or reverse-apply a git patch in a workspace working directory
+ */
+export const applyWorkspaceGitPatch = <ThrowOnError extends boolean = false>(
+  options: Options<ApplyWorkspaceGitPatchData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ApplyWorkspaceGitPatchResponses,
+    ApplyWorkspaceGitPatchErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/git-patch",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**

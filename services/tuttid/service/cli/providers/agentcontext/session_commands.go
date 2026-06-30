@@ -155,9 +155,18 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	if err != nil {
 		return nil, err
 	}
+	defaults := p.composerDefaultsForProvider(ctx, provider)
 	model := input.Model
 	if strings.TrimSpace(model) == "" {
-		model = p.composerDefaultsForProvider(ctx, provider).Model
+		model = defaults.Model
+	}
+	permissionModeID := input.PermissionMode
+	if strings.TrimSpace(permissionModeID) == "" {
+		permissionModeID = defaults.PermissionModeID
+	}
+	reasoningEffort := input.ReasoningEffort
+	if strings.TrimSpace(reasoningEffort) == "" {
+		reasoningEffort = defaults.ReasoningEffort
 	}
 	session, err := p.sessions.Create(ctx, invoke.WorkspaceID, agentservice.CreateSessionInput{
 		Provider:             provider,
@@ -165,8 +174,8 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		InitialContent:       initialContent,
 		InitialDisplayPrompt: input.DisplayPrompt,
 		Model:                optionalStringPointer(model),
-		PermissionModeID:     optionalStringPointer(input.PermissionMode),
-		ReasoningEffort:      optionalStringPointer(input.ReasoningEffort),
+		PermissionModeID:     optionalStringPointer(permissionModeID),
+		ReasoningEffort:      optionalStringPointer(reasoningEffort),
 		Speed:                optionalStringPointer(input.Speed),
 		Title:                optionalStringPointer(input.Title),
 		Visible:              boolPointer(visible),

@@ -1492,6 +1492,12 @@ describe("AgentFileMentionPalette", () => {
     expect(css).toMatch(
       /\.agent-gui-node__mention-palette-footer\s*{[^}]*min-height:\s*36px/s
     );
+    expect(css).toMatch(
+      /\.agent-gui-node__mention-palette-hint\s*{[^}]*font-size:\s*13px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__mention-palette-hint-item\s*{[^}]*font-size:\s*13px/s
+    );
     expect(css).not.toMatch(
       /\.agent-gui-node__mention-palette-hint[^{]*{[^}]*display:\s*none/s
     );
@@ -1844,7 +1850,7 @@ describe("AgentFileMentionPalette", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*{[^}]*align-self:\s*stretch[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
+      /\.agent-gui-node__bottom-dock\s*{[^}]*align-self:\s*stretch[^}]*width:\s*100%/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
@@ -1941,6 +1947,9 @@ describe("AgentFileMentionPalette", () => {
   it("uses the product primary text token for the detail header title", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
+    expect(css).toMatch(
+      /\.agent-gui-node__detail-header-title-group\s*{[^}]*flex:\s*1 1 auto[^}]*max-width:\s*100%/s
+    );
     expect(css).toMatch(
       /\.agent-gui-node__detail-header-title\s*{[^}]*color:\s*var\(--text-primary\)[^}]*font-size:\s*15px/s
     );

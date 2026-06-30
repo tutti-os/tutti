@@ -27,6 +27,8 @@ type AgentSessionService interface {
 	ReadAttachment(context.Context, string, string, string) (agentservice.PromptAttachment, error)
 	ListGitBranches(context.Context, string, string) (agentservice.GitBranches, error)
 	ListGitBranchesForPath(context.Context, string, string) (agentservice.GitBranches, error)
+	ResolveGitPatchSupportForPath(context.Context, string, string) (agentservice.GitPatchSupport, error)
+	ApplyGitPatchForPath(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
 	Clear(context.Context, string) (agentservice.ClearSessionsResult, error)
 	Delete(context.Context, string, string) (bool, error)
 	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)

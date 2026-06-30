@@ -29,16 +29,74 @@ export function selectSessionDisplayStatuses(
     selectNeedsAttentionItems(snapshot).map((item) => item.agentSessionId)
   );
   return new Map(
-    snapshot.sessions.map((session) => [
-      session.agentSessionId,
-      normalizeAgentActivityDisplayStatus(session.status, {
-        currentPhase: session.currentPhase,
-        needsAttention: needsAttentionSessionIds.has(session.agentSessionId),
-        turnLifecycleOutcome: session.turnLifecycle?.outcome,
-        turnLifecyclePhase: session.turnLifecycle?.phase
-      })
-    ])
+    snapshot.sessions.map((session) => {
+      const needsAttention = needsAttentionSessionIds.has(
+        session.agentSessionId
+      );
+      const latestTurnStatus = needsAttention
+        ? null
+        : resolveLatestAgentActivityMessageDisplayStatus(
+            resolveSessionMessages(snapshot, session)
+          );
+      const sessionStatus = normalizeAgentActivityDisplayStatus(
+        session.status,
+        {
+          currentPhase: session.currentPhase,
+          needsAttention,
+          turnLifecycleOutcome: session.turnLifecycle?.outcome,
+          turnLifecyclePhase: session.turnLifecycle?.phase
+        }
+      );
+      return [
+        session.agentSessionId,
+        sessionStatus === "failed"
+          ? (latestTurnStatus ?? sessionStatus)
+          : sessionStatus
+      ];
+    })
   );
+}
+
+export function resolveLatestAgentActivityMessageDisplayStatus(
+  messages: readonly AgentActivityMessage[]
+): AgentActivityDisplayStatus | null {
+  const latestMessage = latestMessageWithTurn(messages);
+  const turnId = latestMessage?.turnId?.trim() ?? "";
+  if (!latestMessage || !turnId) {
+    return null;
+  }
+  const turnMessages = messages
+    .filter((message) => message.turnId?.trim() === turnId)
+    .sort(compareMessageOrder);
+  const latestStatus = normalizeStatus(turnMessages.at(-1)?.status);
+  const latestTerminalStatus = displayStatusFromTerminalStatus(latestStatus);
+  if (latestTerminalStatus) {
+    return latestTerminalStatus;
+  }
+  if (isWaitingStatus(latestStatus, "")) {
+    return "waiting";
+  }
+  if (isWorkingStatus(latestStatus)) {
+    return "working";
+  }
+  if (latestMessage.role.trim().toLowerCase() === "user") {
+    return "working";
+  }
+  if (
+    turnMessages.some((message) =>
+      isWaitingStatus(normalizeStatus(message.status), "")
+    )
+  ) {
+    return "waiting";
+  }
+  if (
+    turnMessages.some((message) =>
+      isWorkingStatus(normalizeStatus(message.status))
+    )
+  ) {
+    return "working";
+  }
+  return null;
 }
 
 export function normalizeAgentActivityDisplayStatus(
@@ -297,6 +355,72 @@ function messageSummary(message: AgentActivityMessage): string {
 
 function isTerminalMessageStatus(status: string | null | undefined): boolean {
   return terminalMessageStatuses.has(normalizeStatus(status));
+}
+
+function resolveSessionMessages(
+  snapshot: AgentActivitySnapshot,
+  session: AgentActivitySession
+): readonly AgentActivityMessage[] {
+  return (
+    snapshot.sessionMessagesById[session.agentSessionId] ??
+    (session.providerSessionId
+      ? snapshot.sessionMessagesById[session.providerSessionId]
+      : undefined) ??
+    []
+  );
+}
+
+function latestMessageWithTurn(
+  messages: readonly AgentActivityMessage[]
+): AgentActivityMessage | null {
+  return messages.reduce<AgentActivityMessage | null>((latest, message) => {
+    if (!message.turnId?.trim()) {
+      return latest;
+    }
+    if (!latest) {
+      return message;
+    }
+    return compareMessageOrder(message, latest) > 0 ? message : latest;
+  }, null);
+}
+
+function compareMessageOrder(
+  left: AgentActivityMessage,
+  right: AgentActivityMessage
+): number {
+  return (
+    (left.version ?? 0) - (right.version ?? 0) ||
+    (left.occurredAtUnixMs ?? 0) - (right.occurredAtUnixMs ?? 0) ||
+    (left.messageId ?? "").localeCompare(right.messageId ?? "")
+  );
+}
+
+function displayStatusFromTerminalStatus(
+  status: string
+): AgentActivityDisplayStatus | null {
+  switch (status) {
+    case "failed":
+    case "error":
+      return "failed";
+    case "canceled":
+    case "cancelled":
+    case "interrupted":
+      return "canceled";
+    case "completed":
+    case "done":
+    case "success":
+    case "succeeded":
+    case "answered":
+    case "rejected":
+    case "resolved":
+      return "completed";
+    default:
+      return null;
+  }
+}
+
+function isWorkingStatus(status: string): boolean {
+  return status === "running" || status === "streaming" || status === "working";
 }
 
 function normalizeStatus(status: string | null | undefined): string {

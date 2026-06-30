@@ -6,10 +6,12 @@ import (
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 type Service struct {
 	Runtime                      RuntimeController
+	AnalyticsReporter            reporterservice.Reporter
 	AvailabilityChecker          ProviderAvailabilityChecker
 	ModelCatalog                 AgentModelCatalog
 	SessionReader                SessionReader

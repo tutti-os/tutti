@@ -60,8 +60,26 @@ export type {
   AgentActivityRuntimeUpdateSessionSettingsInput,
   AgentActivityRuntimeWarmupOpenclawGatewayInput
 } from "./agentActivityRuntime";
+export {
+  AgentQueuedPromptRuntimeProvider,
+  createAgentQueuedPromptRuntime,
+  resetAgentQueuedPromptRuntimeForTests,
+  setAgentQueuedPromptRuntimeForTests,
+  useAgentQueuedPromptRuntime,
+  useAgentQueuedPromptSessionSnapshot
+} from "./agentQueuedPromptRuntime";
+export type {
+  AgentQueuedPromptClaim,
+  AgentQueuedPromptClaimResult,
+  AgentQueuedPromptQueueSnapshot,
+  AgentQueuedPromptRetryBlock,
+  AgentQueuedPromptRuntime,
+  AgentQueuedPromptRuntimeProviderProps,
+  AgentQueuedPromptSnapshot
+} from "./agentQueuedPromptRuntime";
 export type {
   AgentHostApi,
+  AgentHostApplyWorkspaceGitPatchInput,
   AgentHostInputApi,
   AgentHostSelectFilesInput,
   AgentHostRuntimeApi,

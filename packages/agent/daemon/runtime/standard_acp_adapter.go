@@ -53,6 +53,7 @@ type standardACPSession struct {
 	providerSessionID string
 	agentInfo         map[string]any
 	promptImage       bool
+	sessionClose      bool
 	acpLiveState
 	pendingApprovals map[string]*pendingACPApproval
 	recentTurnID     string
@@ -64,6 +65,7 @@ type pendingACPApproval = pendingACPRequest
 const standardACPRecentTurnTTL = 10 * time.Minute
 
 const acpMethodSetConfigOption = "session/set_config_option"
+const acpMethodCloseSession = "session/close"
 const claudeSystemPromptFileEnv = "TUTTI_CLAUDE_SYSTEM_PROMPT_FILE"
 const claudePluginDirEnv = "TUTTI_CLAUDE_PLUGIN_DIR"
 const claudeSDKMessageMethod = "_claude/sdkMessage"
@@ -77,6 +79,11 @@ var claudeCodeACPModelAliases = map[string]bool{
 	"sonnet[1m]": true,
 	"opusplan":   true,
 }
+
+const (
+	acpCloseCallTimeout  = 750 * time.Millisecond
+	acpCloseGraceTimeout = 200 * time.Millisecond
+)
 
 // claudeCodeLegacyACPModelCandidates lists live ACP model values to try when a
 // persisted alias (e.g. "opus") is not directly advertised. Order matters:
@@ -305,6 +312,16 @@ func standardACPProviderPromptImageSupported(provider string, raw json.RawMessag
 	return standardACPPromptImageSupported(raw)
 }
 
+func standardACPSessionCloseSupported(raw json.RawMessage) bool {
+	var result struct {
+		SessionCapabilities map[string]bool `json:"sessionCapabilities"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return false
+	}
+	return result.SessionCapabilities["close"]
+}
+
 func mergeACPParamsMeta(params map[string]any, meta map[string]any) {
 	if len(meta) == 0 {
 		return
@@ -483,6 +500,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		client:           client,
 		agentInfo:        acpAgentInfo(initializeResult),
 		promptImage:      standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
+		sessionClose:     standardACPSessionCloseSupported(initializeResult),
 		acpLiveState:     standardACPInitialLiveState(a.config.provider),
 		pendingApprovals: make(map[string]*pendingACPApproval),
 	}
@@ -602,6 +620,7 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 		providerSessionID: session.ProviderSessionID,
 		agentInfo:         acpAgentInfo(initializeResult),
 		promptImage:       standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
+		sessionClose:      standardACPSessionCloseSupported(initializeResult),
 		acpLiveState:      standardACPInitialLiveState(a.config.provider),
 		pendingApprovals:  make(map[string]*pendingACPApproval),
 	}
@@ -651,7 +670,7 @@ func (a *standardACPAdapter) HasLiveSession(session Session) bool {
 	return acpSession != nil && acpSession.client != nil
 }
 
-func (a *standardACPAdapter) Close(_ context.Context, session Session) error {
+func (a *standardACPAdapter) Close(ctx context.Context, session Session) error {
 	if a == nil || a.transport == nil {
 		return nil
 	}
@@ -662,9 +681,70 @@ func (a *standardACPAdapter) Close(_ context.Context, session Session) error {
 	delete(a.sessions, agentSessionID)
 	a.mu.Unlock()
 	if acpSession != nil && acpSession.client != nil {
-		return acpSession.client.Close()
+		a.closeProviderSession(ctx, session, acpSession)
+		closeErr := acpSession.client.Close()
+		if closeErr != nil {
+			a.logACPCloseDiagnostics("transport_close.failed", session, acpSession, closeErr)
+			return closeErr
+		}
+		a.logACPCloseDiagnostics("closed", session, acpSession, nil)
 	}
 	return nil
+}
+
+func (a *standardACPAdapter) closeProviderSession(ctx context.Context, session Session, acpSession *standardACPSession) {
+	if a == nil || acpSession == nil || acpSession.client == nil || !acpSession.sessionClose {
+		return
+	}
+	providerSessionID := strings.TrimSpace(firstNonEmptyString(acpSession.providerSessionID, session.ProviderSessionID))
+	if providerSessionID == "" {
+		a.logACPCloseDiagnostics("protocol_close.skipped_missing_session_id", session, acpSession, nil)
+		return
+	}
+	params := map[string]any{"sessionId": providerSessionID}
+	if _, err := acpSession.client.CallNoHandlerWithTimeout(ctx, acpCloseCallTimeout, acpMethodCloseSession, params); err != nil {
+		a.logACPCloseDiagnostics("protocol_close.failed", session, acpSession, err)
+		return
+	}
+	a.logACPCloseDiagnostics("protocol_close.succeeded", session, acpSession, nil)
+	a.waitForACPClientDone(acpSession.client, acpCloseGraceTimeout)
+}
+
+func (a *standardACPAdapter) waitForACPClientDone(client *acpClient, timeout time.Duration) {
+	if client == nil {
+		return
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-client.Done():
+	case <-timer.C:
+	}
+}
+
+func (a *standardACPAdapter) logACPCloseDiagnostics(stage string, session Session, acpSession *standardACPSession, err error) {
+	if a == nil || acpSession == nil || acpSession.client == nil {
+		return
+	}
+	diag := acpSession.client.Diagnostics()
+	args := []any{
+		"event", "agent_session.acp.close",
+		"provider", a.config.provider,
+		"stage", stage,
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"provider_session_id", firstNonEmptyString(acpSession.providerSessionID, session.ProviderSessionID),
+		"stderr_tail", truncateACPLogValue(diag.StderrTail, 1200),
+	}
+	if diag.ExitCode != nil {
+		args = append(args, "exit_code", *diag.ExitCode)
+	}
+	if err != nil {
+		args = append(args, "error", err.Error())
+		slog.Warn("agent session ACP close diagnostic", args...)
+		return
+	}
+	slog.Info("agent session ACP close diagnostic", args...)
 }
 
 func (a *standardACPAdapter) startInitializedClient(
@@ -1763,6 +1843,9 @@ func (a *standardACPAdapter) handleACPMessage(
 	)
 	switch message.Method {
 	case acpMethodUpdate:
+		if !a.standardACPUpdateMatchesProviderSession(session, message.Params) {
+			return nil, nil
+		}
 		if snapshot := a.applyACPUpdate(session.AgentSessionID, message.Params); snapshot != nil {
 			if emitCommands != nil {
 				emitCommands(*snapshot)
@@ -1818,7 +1901,32 @@ func (a *standardACPAdapter) handleACPMessage(
 		return acpPermissionResolvedEvents(session, turnID, pending, selection, nil), nil
 	case claudeSDKMessageMethod:
 		a.logClaudeSDKMessage(session, turnID, message.Params)
+		projection := claudeSDKAssistantTextProjection(message.Params)
 		events := a.mirrorClaudeSDKGoalStatus(session, message.Params)
+		textEvents := claudeSDKAssistantTextEvents(session, turnID, projection, normalizer)
+		if len(textEvents) > 0 {
+			events = append(events, textEvents...)
+		}
+		if projection.shouldLog() {
+			slog.Info("agent session Claude SDK assistant text projection",
+				"event", "agent_session.claude_sdk.assistant_text_projection",
+				"provider", a.config.provider,
+				"adapter", a.config.adapterName,
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", session.ProviderSessionID,
+				"turn_id", turnID,
+				"message_id", projection.messageID,
+				"message_type", projection.messageType,
+				"message_role", projection.role,
+				"stop_reason", projection.stopReason,
+				"content_types", projection.contentTypes,
+				"has_tool_use", projection.hasToolUse,
+				"text_len", len(projection.text),
+				"projected", len(textEvents) > 0,
+				"skip_reason", projection.skipReason,
+			)
+		}
 		if len(events) > 0 && emit == nil {
 			a.emitSessionEvents(session.AgentSessionID, events)
 		}
@@ -1840,6 +1948,45 @@ func (a *standardACPAdapter) handleACPMessage(
 		}
 		return nil, nil
 	}
+}
+
+func (a *standardACPAdapter) standardACPUpdateMatchesProviderSession(session Session, raw json.RawMessage) bool {
+	updateSessionID, ok := acpUpdateProviderSessionID(raw)
+	if !ok {
+		return true
+	}
+	liveSessionID := ""
+	if acpSession := a.getSession(session.AgentSessionID); acpSession != nil {
+		liveSessionID = strings.TrimSpace(acpSession.providerSessionID)
+	}
+	currentSessionID := firstNonEmptyString(liveSessionID, strings.TrimSpace(session.ProviderSessionID))
+	if liveSessionID == "" && currentSessionID == strings.TrimSpace(session.AgentSessionID) {
+		currentSessionID = ""
+	}
+	if currentSessionID == "" || updateSessionID == currentSessionID {
+		return true
+	}
+	slog.Debug("agent session ACP ignored update for foreign provider session",
+		"event", "agent_session.acp.update.foreign_provider_session_ignored",
+		"provider", a.config.provider,
+		"adapter", a.config.adapterName,
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"provider_session_id", currentSessionID,
+		"update_provider_session_id", updateSessionID,
+	)
+	return false
+}
+
+func acpUpdateProviderSessionID(raw json.RawMessage) (string, bool) {
+	var params struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return "", false
+	}
+	sessionID := strings.TrimSpace(params.SessionID)
+	return sessionID, sessionID != ""
 }
 
 func (a *standardACPAdapter) SetConfigOptionsUpdateSink(sink ConfigOptionsUpdateSink) {
@@ -1975,6 +2122,114 @@ func (a *standardACPAdapter) logClaudeSDKMessage(session Session, turnID string,
 			"detail", detail,
 		)
 	}
+}
+
+type claudeSDKAssistantTextProjectionResult struct {
+	messageID    string
+	messageType  string
+	role         string
+	stopReason   string
+	contentTypes []string
+	hasToolUse   bool
+	text         string
+	skipReason   string
+}
+
+func (p claudeSDKAssistantTextProjectionResult) shouldLog() bool {
+	return p.text != "" || p.role == "assistant" || p.skipReason == "decode_failed"
+}
+
+func claudeSDKAssistantTextProjection(raw json.RawMessage) claudeSDKAssistantTextProjectionResult {
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return claudeSDKAssistantTextProjectionResult{skipReason: "decode_failed"}
+	}
+	root := payloadObject(decoded)
+	if len(root) == 0 {
+		return claudeSDKAssistantTextProjectionResult{skipReason: "empty_payload"}
+	}
+	envelope := payloadObject(root["message"])
+	if len(envelope) == 0 {
+		envelope = root
+	}
+	message := envelope
+	if inner := payloadObject(envelope["message"]); strings.TrimSpace(asString(inner["role"])) == "assistant" {
+		message = inner
+	}
+	result := claudeSDKAssistantTextProjectionResult{
+		messageID:   strings.TrimSpace(asString(message["id"])),
+		messageType: firstNonEmpty(strings.TrimSpace(asString(envelope["type"])), strings.TrimSpace(asString(message["type"]))),
+		role:        strings.TrimSpace(asString(message["role"])),
+		stopReason:  firstNonEmpty(strings.TrimSpace(asString(envelope["stop_reason"])), strings.TrimSpace(asString(message["stop_reason"]))),
+	}
+	if result.role != "assistant" {
+		result.skipReason = "not_assistant"
+		return result
+	}
+	result.text, result.contentTypes, result.hasToolUse = claudeSDKAssistantTextFromContent(message["content"])
+	if result.text == "" {
+		result.skipReason = "no_text_content"
+	}
+	return result
+}
+
+func claudeSDKAssistantTextFromContent(content any) (string, []string, bool) {
+	switch typed := content.(type) {
+	case string:
+		text := strings.TrimSpace(typed)
+		if text == "" {
+			return "", nil, false
+		}
+		return text, []string{"string"}, false
+	case []any:
+		parts := make([]string, 0, len(typed))
+		contentTypes := make([]string, 0, len(typed))
+		hasToolUse := false
+		for _, item := range typed {
+			block := payloadObject(item)
+			if len(block) == 0 {
+				continue
+			}
+			blockType := strings.TrimSpace(asString(block["type"]))
+			if blockType != "" {
+				contentTypes = append(contentTypes, blockType)
+			}
+			if blockType == "tool_use" {
+				hasToolUse = true
+				continue
+			}
+			if blockType != "" && blockType != "text" {
+				continue
+			}
+			if text := strings.TrimSpace(asString(block["text"])); text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.TrimSpace(strings.Join(parts, "\n")), contentTypes, hasToolUse
+	default:
+		return "", nil, false
+	}
+}
+
+func claudeSDKAssistantTextEvents(
+	session Session,
+	turnID string,
+	projection claudeSDKAssistantTextProjectionResult,
+	normalizer *acpTurnNormalizer,
+) []activityshared.Event {
+	if strings.TrimSpace(projection.text) == "" {
+		return nil
+	}
+	if normalizer != nil {
+		return normalizer.AppendAssistantSnapshot(session, turnID, projection.text, projection.messageID)
+	}
+	messageID := firstNonEmpty(strings.TrimSpace(projection.messageID), newID())
+	return []activityshared.Event{newTurnActivityEventWithID(session, messageID, EventMessage, turnID, messageStreamStateCompleted, RoleAssistant, projection.text, map[string]any{
+		"messageId":   messageID,
+		"contentMode": messageContentModeSnapshot,
+		"streamState": messageStreamStateCompleted,
+		"source":      "claude_sdk",
+	})}
 }
 
 func (a *standardACPAdapter) mirrorClaudeSDKGoalStatus(session Session, raw json.RawMessage) []activityshared.Event {

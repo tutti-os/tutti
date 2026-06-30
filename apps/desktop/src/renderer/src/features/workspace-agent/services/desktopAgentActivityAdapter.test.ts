@@ -16,9 +16,12 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
   const diagnostics: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
-      async listWorkspaceAgentSessions(requestWorkspaceId: string) {
+      async listWorkspaceAgentSessions(
+        requestWorkspaceId: string,
+        request?: { limit?: number }
+      ) {
         calls.push({
-          args: [requestWorkspaceId],
+          args: [requestWorkspaceId, request],
           method: "listSessions"
         });
         return {
@@ -80,7 +83,7 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
 
   assert.deepEqual(calls, [
     {
-      args: [workspaceId],
+      args: [workspaceId, { limit: 100 }],
       method: "listSessions"
     },
     {

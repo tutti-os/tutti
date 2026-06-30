@@ -1068,6 +1068,53 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     });
   });
 
+  it("uses the latest turn status for activity cards instead of a stale failed session status", () => {
+    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+      presences: [],
+      sessions: [
+        {
+          id: 23,
+          agentSessionId: "session-stale-failed",
+          presenceId: 0,
+          provider: "codex",
+          providerSessionId: "provider-stale-failed",
+          cwd: "/repo",
+          status: "failed",
+          title: "Recover after a failed turn"
+        }
+      ]
+    };
+
+    const view = buildWorkspaceAgentActivityListViewModel(snapshot, {
+      sessionMessagesById: {
+        "session-stale-failed": [
+          callItem({
+            id: 1,
+            agentSessionId: "session-stale-failed",
+            messageId: "old-failed",
+            status: "failed",
+            turnId: "turn-1",
+            version: 1
+          }),
+          callItem({
+            id: 2,
+            agentSessionId: "session-stale-failed",
+            messageId: "latest-completed",
+            status: "completed",
+            turnId: "turn-2",
+            version: 2
+          })
+        ]
+      }
+    });
+
+    expect(view.activities).toHaveLength(1);
+    expect(view.activities[0]).toMatchObject({
+      sessionId: "session-stale-failed",
+      status: "completed"
+    });
+  });
+
   it("uses completed as the canonical activity status instead of end", () => {
     const snapshot: AgentHostWorkspaceAgentSnapshot = {
       presences: [],

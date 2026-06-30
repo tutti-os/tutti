@@ -33,6 +33,11 @@ test("sidebar header search and create controls use task creation chrome", () =>
     issueManagerSidebarSectionsSource,
     /issueManagerSidebarCreateButtonClassName =\s*"agent-gui-node__new-conversation-icon-button";/
   );
+  assert.match(
+    issueManagerSidebarSectionsSource,
+    /<div className="px-4 pb-4">/
+  );
+  assert.doesNotMatch(issueManagerSidebarSectionsSource, /px-4 py-4/);
   assert.match(issueManagerSidebarSectionsSource, /<Input[\s\S]*type="search"/);
   assert.match(
     issueManagerSidebarSectionsSource,
@@ -67,7 +72,11 @@ test("node header keeps task center chrome inside the sidebar header", () => {
   );
   assert.match(
     issueManagerNodeSource,
-    /const issueManagerHeaderTrafficLightClassName =[\s\S]*-m-1[\s\S]*size-5[\s\S]*cursor-pointer[\s\S]*rounded-full[\s\S]*text-\[var\(--text-placeholder\)\][\s\S]*transition-\[color,filter,opacity\]/
+    /const issueManagerHeaderTrafficLightClassName =[\s\S]*-m-1[\s\S]*size-5[\s\S]*cursor-pointer[\s\S]*rounded-full[\s\S]*text-\[color-mix\(in_srgb,var\(--text-tertiary\)_72%,transparent\)\][\s\S]*opacity-\[0\.78\][\s\S]*transition-\[color,opacity\]/
+  );
+  assert.match(
+    issueManagerNodeSource,
+    /const issueManagerHeaderTrafficLightClassName =[\s\S]*group-hover\/traffic-lights:opacity-100[\s\S]*group-focus-within\/traffic-lights:opacity-100/
   );
   assert.match(
     issueManagerNodeSource,
@@ -75,7 +84,7 @@ test("node header keeps task center chrome inside the sidebar header", () => {
   );
   assert.match(
     issueManagerNodeSource,
-    /tone === "close" && "hover:text-\[#ff5f57\] focus-visible:text-\[#ff5f57\]"[\s\S]*tone === "minimize" &&[\s\S]*"hover:text-\[#ffbd2e\] focus-visible:text-\[#ffbd2e\]"[\s\S]*tone === "maximize" &&[\s\S]*"hover:text-\[#28c840\] focus-visible:text-\[#28c840\]"/
+    /tone === "close" &&[\s\S]*"group-hover\/traffic-lights:text-\[#ff5f57\] group-focus-within\/traffic-lights:text-\[#ff5f57\]"[\s\S]*tone === "minimize" &&[\s\S]*"group-hover\/traffic-lights:text-\[#ffbd2e\] group-focus-within\/traffic-lights:text-\[#ffbd2e\]"[\s\S]*tone === "maximize" &&[\s\S]*"group-hover\/traffic-lights:text-\[#28c840\] group-focus-within\/traffic-lights:text-\[#28c840\]"/
   );
   assert.match(
     issueManagerNodeSource,
@@ -83,11 +92,19 @@ test("node header keeps task center chrome inside the sidebar header", () => {
   );
   assert.match(
     issueManagerNodeSource,
-    /width: effectiveCollapsed[\s\S]*\? "max-content"[\s\S]*var\(--issue-manager-sidebar-width, 280px\)/
+    /const iconName =[\s\S]*tone === "maximize" \? \(pressed \? "unfullscreen" : "fullscreen"\) : tone;/
   );
   assert.match(
     issueManagerNodeSource,
-    /const rightHeaderDividerMaskStyle = \{[\s\S]*left: effectiveCollapsed[\s\S]*\? "0px"[\s\S]*min\(var\(--issue-manager-sidebar-width, 280px\), 100%\)[\s\S]*\} satisfies CSSProperties;/
+    /<WindowTrafficLightIcon[\s\S]*data-issue-manager-traffic-light-icon=\{iconName\}[\s\S]*iconName=\{iconName\}/
+  );
+  assert.match(
+    issueManagerNodeSource,
+    /className="group\/traffic-lights flex shrink-0 items-center gap-2"/
+  );
+  assert.match(
+    issueManagerNodeSource,
+    /width: effectiveCollapsed[\s\S]*\? "max-content"[\s\S]*var\(--issue-manager-sidebar-width, 280px\)/
   );
   assert.match(
     issueManagerNodeSource,
@@ -103,7 +120,11 @@ test("node header keeps task center chrome inside the sidebar header", () => {
   );
   assert.match(
     issueManagerNodeSource,
-    /className="pointer-events-none absolute right-0 bottom-0 z-\[11\] h-px bg-\[var\(--background-panel\)\]"[\s\S]*style=\{rightHeaderDividerMaskStyle\}/
+    /data-workbench-custom-header-border="none"/
+  );
+  assert.doesNotMatch(
+    issueManagerNodeSource,
+    /pointer-events-none absolute (?:inset-x-0|right-0) bottom-0 z-\[11\] h-px bg-\[var\(--background-panel\)\]/
   );
   assert.match(
     issueManagerNodeSource,

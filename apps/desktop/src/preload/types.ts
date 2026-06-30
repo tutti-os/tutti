@@ -66,7 +66,13 @@ export interface DesktopDockPreviewCacheApi {
 export interface DesktopPlatformApi {
   homeDirectory: string;
   os: NodeJS.Platform;
+  resolveDroppedEntries(files: File[]): DesktopDroppedEntry[];
   resolveDroppedPaths(files: File[]): string[];
+}
+
+export interface DesktopDroppedEntry {
+  kind: "file" | "folder";
+  path: string;
 }
 
 export interface DesktopHostWorkspaceApi {

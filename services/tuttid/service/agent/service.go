@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
@@ -108,36 +109,51 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	var normalizedContent []PromptContentBlock
 	if len(input.InitialContent) > 0 {
 		var err error
+		nodeStartedAt := time.Now()
 		normalizedContent, _, err = normalizePromptContent(input.InitialContent)
 		if err != nil {
+			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt, err)
 			return Session{}, err
 		}
+		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt)
 	}
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
 	})
+	nodeStartedAt := time.Now()
 	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "provider_runtime_checked", provider, nodeStartedAt, err)
 		return Session{}, err
 	}
+	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "provider_runtime_checked", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.provider_ready", workspaceID, input.AgentSessionID, input.Metadata, nil)
 	input.Model = s.resolveCreateSessionModel(ctx, provider, input.Model)
+	nodeStartedAt = time.Now()
 	if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), value(input.Model)); err != nil {
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
 		return Session{}, err
 	}
+	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.model_validated", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"model": value(input.Model),
 	})
+	nodeStartedAt = time.Now()
 	cwd, err := s.resolveCwd(ctx, input.Cwd)
 	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
 		return Session{}, err
 	}
+	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.cwd_resolved", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"cwd": cwd,
 	})
+	nodeStartedAt = time.Now()
 	prepared, err := s.prepareRuntime(ctx, workspaceID, cwd, input)
 	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt, err)
 		return Session{}, err
 	}
+	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"cwd":       prepared.Cwd,
 		"env_count": len(prepared.Env),
@@ -150,6 +166,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		return errors.Join(cause, cleanupErr)
 	}
 	logAgentSubmitTrace("service.create.runtime_start_requested", workspaceID, input.AgentSessionID, input.Metadata, nil)
+	nodeStartedAt = time.Now()
 	session, err := s.controller().Start(ctx, RuntimeStartInput{
 		WorkspaceID:      workspaceID,
 		AgentSessionID:   strings.TrimSpace(input.AgentSessionID),
@@ -174,8 +191,11 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		Visible: input.Visible,
 	})
 	if err != nil {
-		return Session{}, cleanupPrepared(normalizeRuntimeError(err))
+		normalizedErr := normalizeRuntimeError(err)
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "runtime_started", provider, nodeStartedAt, normalizedErr)
+		return Session{}, cleanupPrepared(normalizedErr)
 	}
+	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_started", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.Metadata, map[string]any{
 		"session_status": session.Status,
 	})
@@ -186,27 +206,34 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
 		), nil
 	}
+	nodeStartedAt = time.Now()
 	if err := s.validatePromptContentForExec(ctx, workspaceID, session.ID, normalizedContent); err != nil {
+		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "prompt_validated", session.Provider, nodeStartedAt, err)
 		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
 			WorkspaceID:    workspaceID,
 			AgentSessionID: session.ID,
 		})
 		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
 	}
+	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "prompt_validated", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.prompt_validated", workspaceID, session.ID, input.Metadata, nil)
+	nodeStartedAt = time.Now()
 	content, _, err := s.prepareNormalizedPromptContentForExec(workspaceID, session.ID, normalizedContent, "")
 	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "prompt_prepared", session.Provider, nodeStartedAt, err)
 		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
 			WorkspaceID:    workspaceID,
 			AgentSessionID: session.ID,
 		})
 		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
 	}
+	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "prompt_prepared", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.prompt_prepared", workspaceID, session.ID, input.Metadata, map[string]any{
 		"content_block_count": len(content),
 	})
 	displayPrompt := strings.TrimSpace(input.InitialDisplayPrompt)
 	logAgentSubmitTrace("service.create.exec_requested", workspaceID, session.ID, input.Metadata, nil)
+	nodeStartedAt = time.Now()
 	if _, err := s.controller().Exec(ctx, RuntimeExecInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: session.ID,
@@ -214,12 +241,15 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		DisplayPrompt:  displayPrompt,
 		Metadata:       cloneMetadata(input.Metadata),
 	}); err != nil {
+		normalizedErr := normalizeRuntimeError(err)
+		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "runtime_exec", session.Provider, nodeStartedAt, normalizedErr)
 		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
 			WorkspaceID:    workspaceID,
 			AgentSessionID: session.ID,
 		})
-		return Session{}, cleanupPrepared(errors.Join(normalizeRuntimeError(err), closeErr))
+		return Session{}, cleanupPrepared(errors.Join(normalizedErr, closeErr))
 	}
+	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_exec", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.exec_resolved", workspaceID, session.ID, input.Metadata, nil)
 	if refreshed, ok := s.controller().Session(workspaceID, session.ID); ok {
 		session = refreshed
@@ -578,92 +608,6 @@ func (s *Service) Cancel(ctx context.Context, workspaceID string, agentSessionID
 		Canceled: cancelResult.Canceled,
 		Reason:   cancelReason,
 	}, nil
-}
-
-func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
-	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.Metadata, nil)
-	if _, err := s.ensureRuntimeSession(ctx, workspaceID, agentSessionID); err != nil {
-		return SendInputResult{}, err
-	}
-	logAgentSubmitTrace("service.send.runtime_session_ready", workspaceID, agentSessionID, input.Metadata, nil)
-	normalizedContent, _, err := normalizePromptContent(input.Content)
-	if err != nil {
-		return SendInputResult{}, err
-	}
-	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.Metadata, map[string]any{
-		"content_block_count": len(normalizedContent),
-	})
-	if err := s.validatePromptContentForExec(ctx, workspaceID, agentSessionID, normalizedContent); err != nil {
-		return SendInputResult{}, err
-	}
-	logAgentSubmitTrace("service.send.prompt_validated", workspaceID, agentSessionID, input.Metadata, nil)
-	content, _, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, "")
-	if err != nil {
-		return SendInputResult{}, err
-	}
-	logAgentSubmitTrace("service.send.prompt_prepared", workspaceID, agentSessionID, input.Metadata, map[string]any{
-		"content_block_count": len(content),
-	})
-	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
-	logAgentSubmitTrace("service.send.exec_requested", workspaceID, agentSessionID, input.Metadata, nil)
-	result, err := s.controller().Exec(ctx, RuntimeExecInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		Content:        content,
-		DisplayPrompt:  displayPrompt,
-		Metadata:       cloneMetadata(input.Metadata),
-	})
-	if err != nil {
-		return SendInputResult{}, normalizeRuntimeError(err)
-	}
-	logAgentSubmitTrace("service.send.exec_resolved", workspaceID, agentSessionID, input.Metadata, map[string]any{
-		"turn_id":        result.TurnID,
-		"session_status": result.SessionStatus,
-		"turn_phase":     result.TurnLifecycle.Phase,
-	})
-	session, err := s.Get(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return SendInputResult{}, err
-	}
-	if strings.TrimSpace(result.SessionStatus) != "" {
-		session.Status = serviceStatus(result.SessionStatus)
-		session.EndedAt = endedAtForStatus(result.SessionStatus, session.UpdatedAt)
-	}
-	session.TurnLifecycle = cloneTurnLifecycle(&result.TurnLifecycle)
-	session.SubmitAvailability = cloneSubmitAvailability(&result.SubmitAvailability)
-	return SendInputResult{
-		Session:            session,
-		TurnID:             strings.TrimSpace(result.TurnID),
-		TurnLifecycle:      result.TurnLifecycle,
-		SubmitAvailability: result.SubmitAvailability,
-	}, nil
-}
-
-func (s *Service) validatePromptContentForExec(ctx context.Context, workspaceID, agentSessionID string, content []PromptContentBlock) error {
-	if err := s.controller().ValidatePromptContent(ctx, RuntimeExecInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		Content:        content,
-	}); err != nil {
-		return normalizeRuntimeError(err)
-	}
-	return nil
-}
-
-func (s *Service) prepareNormalizedPromptContentForExec(workspaceID, agentSessionID string, content []PromptContentBlock, displayPrompt string) ([]PromptContentBlock, string, error) {
-	store := s.PromptAttachmentStore
-	persisted, err := store.PersistRequestContent(workspaceID, agentSessionID, content)
-	if err != nil {
-		return nil, "", err
-	}
-	hydrated, err := store.HydrateRuntimeContent(workspaceID, agentSessionID, persisted)
-	if err != nil {
-		return nil, "", err
-	}
-	if strings.TrimSpace(displayPrompt) == "" {
-		displayPrompt = promptImageOnlyDisplayText(persisted)
-	}
-	return hydrated, displayPrompt, nil
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentSessionID string, settings ComposerSettingsPatch) (Session, error) {

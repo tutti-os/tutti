@@ -596,7 +596,7 @@ export const en = {
       developer: {
         actionsLabel: "Actions",
         analyticsDebugDescription:
-          "Shows a floating panel with local analytics events in development builds",
+          "Shows a floating panel with local analytics events",
         analyticsDebugLabel: "Analytics event panel",
         clearConversationHistory: "Clear all conversations",
         clearConversationHistoryConfirm:
@@ -668,6 +668,12 @@ export const en = {
         description:
           "This window still has running work. Closing it will dismiss the room while background work may continue.",
         title: "Close this window?"
+      },
+      windowControls: {
+        close: "Close",
+        maximize: "Maximize",
+        minimize: "Minimize",
+        restore: "Restore"
       },
       nodes: {
         agent: "Agent",

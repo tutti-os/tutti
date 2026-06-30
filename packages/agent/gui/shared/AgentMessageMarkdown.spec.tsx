@@ -724,6 +724,108 @@ describe("AgentMessageMarkdown", () => {
     ).toHaveLength(2);
   });
 
+  it("resizes the image inside the zoom preview", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-markdown-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={"![generated image](/workspace/output/imagegen/dance.png)"}
+        enableImageZoom
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Zoom image/ }));
+    const dialog = await screen.findByRole("dialog");
+    const modalImage = dialog.querySelector("[data-rmiz-modal-img]");
+    expect(modalImage).toBeInstanceOf(HTMLElement);
+
+    expect(screen.getByRole("status")).toHaveTextContent("100%");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Zoom in image|common\.zoomInImage/ })
+    );
+    await waitFor(() => {
+      expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "1.25");
+    });
+    expect(modalImage).toHaveStyle({ transform: "scale(1.25)" });
+    expect((modalImage as HTMLElement).style.transformOrigin).toBe("");
+    expect(screen.getByRole("status")).toHaveTextContent("125%");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Reset image zoom|common\.resetImageZoom/
+      })
+    );
+    await waitFor(() => {
+      expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "1");
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("100%");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Zoom out image|common\.zoomOutImage/
+      })
+    );
+    await waitFor(() => {
+      expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "0.75");
+    });
+    expect(modalImage).toHaveStyle({ transform: "scale(0.75)" });
+
+    const windowWheel = vi.fn();
+    window.addEventListener("wheel", windowWheel);
+    try {
+      fireEvent.wheel(modalImage as HTMLElement, {
+        bubbles: true,
+        cancelable: true,
+        deltaY: -20
+      });
+      await waitFor(() => {
+        expect(
+          Number(modalImage?.getAttribute("data-tsh-image-zoom"))
+        ).toBeGreaterThan(0.75);
+      });
+      expect(
+        Number(modalImage?.getAttribute("data-tsh-image-zoom"))
+      ).toBeLessThan(0.8);
+      expect(modalImage).toHaveStyle({ transition: "none" });
+      expect(windowWheel).not.toHaveBeenCalled();
+
+      fireEvent.wheel(modalImage as HTMLElement, {
+        bubbles: true,
+        cancelable: true,
+        deltaY: 20
+      });
+      await waitFor(() => {
+        expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "0.75");
+      });
+      expect(windowWheel).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("wheel", windowWheel);
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /Minimize image/ }));
+    await waitFor(() => {
+      expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "1");
+    });
+  });
+
   it("copies and downloads a workspace markdown image from preview actions", async () => {
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])
@@ -786,6 +888,11 @@ describe("AgentMessageMarkdown", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Zoom image/ }));
     const dialog = await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Copy image" }));
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Copied");
+    });
+
     const modalImage = dialog.querySelector("img");
     expect(modalImage).toBeInstanceOf(HTMLElement);
     fireEvent.contextMenu(modalImage as HTMLElement, {

@@ -4,6 +4,7 @@ import {
   plainTextToAgentRichTextDoc,
   plainTextToAgentRichTextInlineContent
 } from "./agentRichTextDocument";
+import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 
 describe("agentRichTextDocument", () => {
@@ -87,6 +88,7 @@ describe("agentRichTextDocument", () => {
               }
             },
             { type: "hardBreak" },
+            { type: "text", text: AGENT_RICH_TEXT_CARET_ANCHOR },
             {
               type: "agentFileMention",
               attrs: {
@@ -121,7 +123,15 @@ describe("agentRichTextDocument", () => {
       }
     });
     const doc = plainTextToAgentRichTextDoc(`[@我的小项目](${href})`);
-    const mention = doc.content?.[0]?.content?.[0];
+    expect(agentRichTextDocToPromptText(doc)).not.toContain(
+      AGENT_RICH_TEXT_CARET_ANCHOR
+    );
+    expect(agentRichTextDocToPromptText(doc)).toContain(
+      "mention://workspace-reference/topic-1?"
+    );
+    const mention = doc.content?.[0]?.content?.find(
+      (node) => node.type === "agentFileMention"
+    );
     expect(mention?.attrs?.kind).toBe("workspace-reference");
     expect(mention?.attrs?.source).toBe("task");
     expect(mention?.attrs?.fileCount).toBe("3");
@@ -197,6 +207,7 @@ describe("agentRichTextDocument", () => {
         {
           type: "paragraph",
           content: [
+            { type: "text", text: AGENT_RICH_TEXT_CARET_ANCHOR },
             {
               type: "agentFileMention",
               attrs: {

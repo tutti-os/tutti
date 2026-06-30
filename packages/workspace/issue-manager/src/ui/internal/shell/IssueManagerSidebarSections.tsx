@@ -48,7 +48,7 @@ export function IssueManagerSidebarHeader({
   onIssueSearchQueryChange: (value: string) => void;
 }): JSX.Element {
   return (
-    <div className="px-4 py-4">
+    <div className="px-4 pb-4">
       <div className={issueManagerSidebarHeaderClassName}>
         <IssueManagerSearchField
           clearLabel={copy.t("actions.clearSearch")}

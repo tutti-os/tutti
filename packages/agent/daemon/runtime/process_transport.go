@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
 )
@@ -27,6 +29,8 @@ type localProcessConnection struct {
 
 	closeOnce sync.Once
 	sendMu    sync.Mutex
+	inputOnce sync.Once
+	closeErr  error
 }
 
 func NewLocalProcessTransport() ProcessTransport {
@@ -220,13 +224,70 @@ func (c *localProcessConnection) Close() error {
 	}
 	c.closeOnce.Do(func() {
 		close(c.closing)
-		c.cancel()
-		_ = c.stdin.Close()
-		_ = c.stdout.Close()
-		_ = c.stderr.Close()
+		_ = c.CloseInput()
+		if !c.waitDone(250 * time.Millisecond) {
+			_ = c.Terminate()
+		}
+		if !c.waitDone(750 * time.Millisecond) {
+			killErr := c.Kill()
+			if !c.waitDone(2 * time.Second) {
+				if killErr != nil {
+					c.closeErr = killErr
+					return
+				}
+				c.closeErr = errors.New("process did not exit after kill")
+				return
+			}
+		}
 	})
+	if c.closeErr != nil {
+		return c.closeErr
+	}
 	<-c.done
 	return nil
+}
+
+func (c *localProcessConnection) CloseInput() error {
+	if c == nil || c.stdin == nil {
+		return nil
+	}
+	var err error
+	c.inputOnce.Do(func() {
+		err = c.stdin.Close()
+	})
+	return err
+}
+
+func (c *localProcessConnection) Terminate() error {
+	if c == nil || c.cmd == nil || c.cmd.Process == nil {
+		return nil
+	}
+	return c.cmd.Process.Signal(syscall.SIGTERM)
+}
+
+func (c *localProcessConnection) Kill() error {
+	if c == nil {
+		return nil
+	}
+	c.cancel()
+	if c.cmd == nil || c.cmd.Process == nil {
+		return nil
+	}
+	return c.cmd.Process.Kill()
+}
+
+func (c *localProcessConnection) waitDone(timeout time.Duration) bool {
+	if c == nil {
+		return true
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-c.done:
+		return true
+	case <-timer.C:
+		return false
+	}
 }
 
 func (c *localProcessConnection) readPipe(readers *sync.WaitGroup, reader io.Reader, stdout bool) {

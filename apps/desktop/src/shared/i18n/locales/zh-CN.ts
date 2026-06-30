@@ -570,7 +570,7 @@ export const zhCN = {
       },
       developer: {
         actionsLabel: "操作",
-        analyticsDebugDescription: "在开发版本中显示本地埋点事件悬浮面板",
+        analyticsDebugDescription: "显示本地埋点事件悬浮面板",
         analyticsDebugLabel: "埋点事件面板",
         clearConversationHistory: "清除全部对话历史",
         clearConversationHistoryConfirm:
@@ -639,6 +639,12 @@ export const zhCN = {
         description:
           "这个窗口里仍有任务在运行。关闭后会退出当前房间，但后台任务可能继续运行。",
         title: "要关闭这个窗口吗？"
+      },
+      windowControls: {
+        close: "关闭",
+        maximize: "最大化",
+        minimize: "最小化",
+        restore: "还原"
       },
       nodes: {
         agent: "Agent",

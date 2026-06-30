@@ -15,9 +15,12 @@ import type {
   WorkbenchHostExternalStateLookupInput,
   WorkbenchHostExternalStateSource,
   WorkbenchHostNodeBodyContext,
+  WorkbenchHostNodeHeaderContext,
   WorkbenchHostNodeDefinition
 } from "@tutti-os/workbench-surface";
 import { WorkspaceAppCenterPane } from "../../ui/WorkspaceAppCenterPane.tsx";
+import { createWorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
+import { WorkspaceWorkbenchTrafficLights } from "@renderer/features/workspace-workbench/ui/WorkspaceWorkbenchTrafficLights";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface";
 import type {
@@ -254,6 +257,9 @@ function createAppCenterNodeDefinition(input: {
         workspaceId={input.workspaceId}
       />
     ),
+    renderHeader: (context) => (
+      <WorkspaceAppCenterWorkbenchHeader context={context} i18n={input.i18n} />
+    ),
     title: input.i18n.t("workspace.workbenchDesktop.nodes.appCenter"),
     typeId: workspaceAppCenterNodeID,
     window: {
@@ -266,6 +272,35 @@ function createAppCenterNodeDefinition(input: {
       restoreOnLoad: true
     }
   };
+}
+
+function WorkspaceAppCenterWorkbenchHeader({
+  context,
+  i18n
+}: {
+  context: WorkbenchHostNodeHeaderContext<unknown>;
+  i18n: I18nRuntime<string>;
+}): ReactNode {
+  const appCenterI18n = createWorkspaceWorkbenchDesktopI18nRuntime(i18n);
+
+  return (
+    <div className="flex h-full min-h-0 items-center gap-3 bg-[var(--background-panel)] px-3 pl-4">
+      <WorkspaceWorkbenchTrafficLights
+        className="nodrag"
+        displayMode={context.displayMode}
+        i18n={appCenterI18n}
+        windowActions={context.windowActions}
+      />
+      <div
+        {...context.dragHandleProps}
+        className="flex h-full min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
+      >
+        <div className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
+          {context.node.title}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function createWorkspaceAppWebviewNodeDefinition(input: {
@@ -290,6 +325,9 @@ function createWorkspaceAppWebviewNodeDefinition(input: {
         fallbackLabel={input.i18n.t("common.loading")}
         workspaceId={input.workspaceId}
       />
+    ),
+    renderHeader: (context) => (
+      <WorkspaceAppCenterWorkbenchHeader context={context} i18n={input.i18n} />
     ),
     title: input.i18n.t("workspace.workbenchDesktop.nodes.appWebview"),
     typeId: workspaceAppWebviewTypeID,
