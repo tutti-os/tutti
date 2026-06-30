@@ -1844,6 +1844,26 @@
       "iconVariant": "lined"
     },
     {
+      "id": "window-traffic-light-icon",
+      "layer": "base",
+      "name": "WindowTrafficLightIcon",
+      "export": "WindowTrafficLightIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon set for window traffic light controls.",
+      "useCases": [
+        "Window close controls",
+        "Window minimize controls",
+        "Window maximize controls"
+      ],
+      "migrationHints": [
+        "Use instead of app-local inline SVG for traffic light control icons."
+      ],
+      "iconVariant": "filled"
+    },
+    {
       "id": "layout-menu-lined-icon",
       "layer": "base",
       "name": "LayoutMenuIcon",

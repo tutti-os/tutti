@@ -786,6 +786,11 @@ describe("AgentMessageMarkdown", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Zoom image/ }));
     const dialog = await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Copy image" }));
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Copied");
+    });
+
     const modalImage = dialog.querySelector("img");
     expect(modalImage).toBeInstanceOf(HTMLElement);
     fireEvent.contextMenu(modalImage as HTMLElement, {

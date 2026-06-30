@@ -651,6 +651,12 @@ export const en = {
           "This window still has running work. Closing it will dismiss the room while background work may continue.",
         title: "Close this window?"
       },
+      windowControls: {
+        close: "Close",
+        maximize: "Maximize",
+        minimize: "Minimize",
+        restore: "Restore"
+      },
       nodes: {
         agent: "Agent",
         appCenter: "App Center",

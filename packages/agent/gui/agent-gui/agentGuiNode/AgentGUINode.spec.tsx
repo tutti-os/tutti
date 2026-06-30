@@ -6328,12 +6328,27 @@ describe("AgentGUINode", () => {
       "utf8"
     );
 
-    expect(css).toMatch(/--agent-gui-detail-padding-x:\s*28px/);
+    expect(css).toMatch(/--agent-gui-detail-padding-x:\s*32px/);
     expect(css).toMatch(
-      /--agent-gui-background-1:\s*var\(--background-1,\s*rgb\(245 245 245\)\)/s
+      /--agent-gui-session-flow-background:\s*var\(\s*--background-session-flow,\s*rgb\(252 253 255\)\s*\)/s
     );
     expect(css).toMatch(
-      /:root\[data-theme="dark"\]\s+\.agent-gui-node__shell\s*{[^}]*--agent-gui-background-1:\s*var\(--background-1,\s*rgb\(24 24 24\)\)/s
+      /--agent-gui-session-sidepanel-background:\s*var\(\s*--background-session-sidepanel,\s*rgb\(244 245 247\)\s*\)/s
+    );
+    expect(css).toMatch(
+      /:root\[data-theme="dark"\]\s+\.agent-gui-node__shell\s*{[^}]*--agent-gui-session-flow-background:\s*var\(\s*--background-session-flow,\s*rgb\(24 24 24\)\s*\)[^}]*--agent-gui-session-sidepanel-background:\s*var\(\s*--background-session-sidepanel,\s*rgb\(42 42 43\)\s*\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__primary\s*{[^}]*background:\s*var\(--agent-gui-session-sidepanel-background\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__layout\s*{[^}]*background:\s*var\(--agent-gui-session-sidepanel-background\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__detail-panel\s*{[^}]*background:\s*var\(--agent-gui-session-flow-background\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__rail\s*{[^}]*background:\s*var\(--agent-gui-session-sidepanel-background\)/s
     );
     expect(css).toMatch(
       /\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__detail\s*{[^}]*padding-top:\s*var\(--agent-gui-workbench-header-height\)/s
@@ -6351,14 +6366,18 @@ describe("AgentGUINode", () => {
       /\.agent-gui-node__timeline-with-composer\s*{[^}]*padding-bottom:\s*calc\(120px\s*\+\s*var\(--agent-gui-bottom-dock-safe-area,\s*0px\)\)/s
     );
     expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s*{[^}]*border:\s*1px solid var\(--line-2\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:focus-within,\s*\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:hover\s*{[^}]*border-color:\s*var\(--line-2\)/s
+    );
+    expect(css).toMatch(
       /\.workspace-agents-status-panel__conversation-timeline\.agent-gui-node__timeline\s*{[^}]*padding-right:\s*28px[^}]*padding-left:\s*28px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__timeline-with-composer\s*{[^}]*-webkit-mask-image:\s*linear-gradient[^}]*mask-image:\s*linear-gradient/s
+      /\.agent-gui-node__timeline-with-composer\.agent-gui-node__timeline--scrolled-from-top\s*{[^}]*-webkit-mask-image:\s*linear-gradient[^}]*mask-image:\s*linear-gradient/s
     );
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
-    );
+    expect(css).toMatch(/\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*100%/s);
     expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*{[^}]*margin-right:\s*auto[^}]*margin-left:\s*auto/s
     );

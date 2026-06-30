@@ -623,6 +623,12 @@ export const zhCN = {
           "这个窗口里仍有任务在运行。关闭后会退出当前房间，但后台任务可能继续运行。",
         title: "要关闭这个窗口吗？"
       },
+      windowControls: {
+        close: "关闭",
+        maximize: "最大化",
+        minimize: "最小化",
+        restore: "还原"
+      },
       nodes: {
         agent: "Agent",
         appCenter: "应用中心",

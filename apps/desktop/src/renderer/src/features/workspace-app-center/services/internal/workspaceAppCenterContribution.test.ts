@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { WorkbenchHostLaunchRequest } from "@tutti-os/workbench-surface";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
@@ -22,6 +23,23 @@ import {
   workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "./workspaceAppCenterLaunchRequest.ts";
+
+const contributionSource = readFileSync(
+  new URL("./workspaceAppCenterContribution.tsx", import.meta.url),
+  "utf8"
+);
+
+test("workspace app center windows render unified traffic lights in custom headers", () => {
+  assert.match(
+    contributionSource,
+    /renderHeader: \(context\) => \(\s*<WorkspaceAppCenterWorkbenchHeader context=\{context\} i18n=\{input\.i18n\} \/>/
+  );
+  assert.match(
+    contributionSource,
+    /<WorkspaceWorkbenchTrafficLights[\s\S]*displayMode=\{context\.displayMode\}[\s\S]*windowActions=\{context\.windowActions\}/
+  );
+  assert.doesNotMatch(contributionSource, /\{context\.defaultActions\}/);
+});
 
 test("workspace app node ids resolve app ids from dock and webview node formats", () => {
   assert.equal(

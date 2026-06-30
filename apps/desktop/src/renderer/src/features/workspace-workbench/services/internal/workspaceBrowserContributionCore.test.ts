@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { BrowserNodeRuntimeState } from "@tutti-os/browser-node";
 import {
@@ -7,6 +8,30 @@ import {
   resolveWorkspaceBrowserSearchUrl
 } from "./workspaceBrowserContributionCore.ts";
 import { workspaceBrowserNodeID } from "./workspaceWorkbenchComposition.ts";
+
+const browserFactorySource = readFileSync(
+  new URL(
+    "./contributions/browserWorkbenchContributionFactory.ts",
+    import.meta.url
+  ),
+  "utf8"
+);
+const browserContributionSource = readFileSync(
+  new URL("./workspaceBrowserContribution.ts", import.meta.url),
+  "utf8"
+);
+
+test("workspace browser window injects unified traffic lights into the package header", () => {
+  assert.match(
+    browserContributionSource,
+    /renderTrafficLights: input\.renderTrafficLights/
+  );
+  assert.match(browserFactorySource, /WorkspaceWorkbenchTrafficLights/);
+  assert.match(
+    browserFactorySource,
+    /createElement\([\s\S]*WorkspaceWorkbenchTrafficLights[\s\S]*displayMode: headerContext\.displayMode[\s\S]*windowActions: headerContext\.windowActions/
+  );
+});
 
 test("resolveWorkspaceBrowserSearchUrl encodes search queries", () => {
   assert.equal(

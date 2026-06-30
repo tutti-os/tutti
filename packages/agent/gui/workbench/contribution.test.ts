@@ -678,11 +678,11 @@ describe("agent GUI workbench contribution copy", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("caps workbench header conversation titles at 280px", () => {
+  it("caps workbench header conversation titles with 32px right padding", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /--agent-gui-workbench-header-title-max-width:\s*280px;/
+      /--agent-gui-workbench-header-title-max-width:\s*calc\(100%\s*-\s*32px\);/
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__session-title\s*{[^}]*max-width:\s*min\(100%,\s*var\(--agent-gui-workbench-header-title-max-width\)\)/s
@@ -740,6 +740,15 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__traffic-light::before\s*{[^}]*inset:\s*calc\([^}]*--agent-gui-workbench-header-traffic-light-size[^}]*content:\s*"";[^}]*transition:\s*background-color 160ms ease;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-light-icon\s*{[^}]*inset:\s*5px;[^}]*width:\s*10px;[^}]*height:\s*10px;[^}]*opacity:\s*0;[^}]*transition:\s*opacity 120ms ease;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-lights:hover\s+\.agent-gui-workbench-header__traffic-light-icon,\s*\.agent-gui-workbench-header__traffic-lights:focus-within\s+\.agent-gui-workbench-header__traffic-light-icon\s*{[^}]*opacity:\s*1;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__traffic-lights:hover\s+\.agent-gui-workbench-header__traffic-light\[data-agent-gui-workbench-traffic-light="close"\]::before,\s*\.agent-gui-workbench-header__traffic-lights:focus-within\s+\.agent-gui-workbench-header__traffic-light\[data-agent-gui-workbench-traffic-light="close"\]::before\s*{[^}]*background-color:\s*#ff5f57;/s
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__agent-brand\s*{[^}]*gap:\s*8px;/s

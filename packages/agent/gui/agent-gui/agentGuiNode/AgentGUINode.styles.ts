@@ -128,6 +128,7 @@ const styles = {
   shell: "agent-gui-node__shell",
   timeline: "agent-gui-node__timeline",
   timelineCentered: "agent-gui-node__timeline-centered",
+  timelineScrolledFromTop: "agent-gui-node__timeline--scrolled-from-top",
   transcriptSkeleton: "agent-gui-node__transcript-skeleton",
   transcriptSkeletonBubble: "agent-gui-node__transcript-skeleton-bubble",
   transcriptSkeletonLine: "agent-gui-node__transcript-skeleton-line",

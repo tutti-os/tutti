@@ -9,13 +9,17 @@ import {
   useEffect,
   useState
 } from "react";
+import { createPortal } from "react-dom";
 import {
+  Button,
   ToastProvider,
   ToastRoot,
   ToastTitle,
-  ToastViewport
+  ToastViewport,
+  CopyIcon,
+  DownloadIcon,
+  RestoreIcon
 } from "@tutti-os/ui-system";
-import { CopyIcon, DownloadIcon } from "lucide-react";
 import Zoom from "react-medium-image-zoom";
 import { useTranslation } from "../../../i18n/index";
 import { cn } from "../lib/utils";
@@ -206,12 +210,18 @@ export function ZoomableImage({
             />
           </div>
         ) : null}
-        {cloneElement(buttonUnzoom, {
-          className: cn(
-            buttonUnzoom.props.className,
-            "nodrag tsh-desktop-no-drag"
-          )
-        })}
+        <Button
+          asChild
+          className="tsh-zoom-dialog__icon-button nodrag tsh-desktop-no-drag"
+          size="icon"
+          variant="chrome"
+        >
+          {cloneElement(
+            buttonUnzoom,
+            undefined,
+            <RestoreIcon aria-hidden="true" className="size-4" />
+          )}
+        </Button>
       </>
     );
   };
@@ -255,18 +265,21 @@ export function ZoomableImage({
           />
         </div>
       ) : null}
-      {copyStatus ? (
-        <ImageCopyStatusToast
-          busy={copyStatus.busy}
-          message={copyStatus.message}
-          variant={copyStatus.variant}
-          onOpenChange={(open) => {
-            if (!open) {
-              setCopyStatus(null);
-            }
-          }}
-        />
-      ) : null}
+      {copyStatus
+        ? createPortal(
+            <ImageCopyStatusToast
+              busy={copyStatus.busy}
+              message={copyStatus.message}
+              variant={copyStatus.variant}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setCopyStatus(null);
+                }
+              }}
+            />,
+            document.body
+          )
+        : null}
     </>
   );
 }
@@ -317,6 +330,41 @@ function ImageActionButtons({
   onCopy: () => void;
   onDownload: () => void;
 }): JSX.Element {
+  if (!itemRole) {
+    return (
+      <>
+        <Button
+          aria-label={copyLabel}
+          className="tsh-zoom-dialog__icon-button"
+          size="icon"
+          title={copyLabel}
+          variant="chrome"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onCopy();
+          }}
+        >
+          <CopyIcon aria-hidden="true" className="size-4" />
+        </Button>
+        <Button
+          aria-label={downloadLabel}
+          className="tsh-zoom-dialog__icon-button"
+          size="icon"
+          title={downloadLabel}
+          variant="chrome"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onDownload();
+          }}
+        >
+          <DownloadIcon aria-hidden="true" className="size-4" />
+        </Button>
+      </>
+    );
+  }
+
   return (
     <>
       <button

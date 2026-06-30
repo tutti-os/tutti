@@ -273,24 +273,51 @@
   transition: background-color 160ms ease;
 }
 
-.workbench-window-traffic-light:hover,
-.workbench-window-traffic-light:focus-visible {
+.workbench-window-traffic-light__icon {
+  position: absolute;
+  z-index: 1;
+  inset: 5px;
+  width: 10px;
+  height: 10px;
+  color: color-mix(in srgb, #000 68%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.workbench-window-traffic-lights:hover .workbench-window-traffic-light,
+.workbench-window-traffic-lights:focus-within .workbench-window-traffic-light {
   opacity: 1;
+}
+
+.workbench-window-traffic-light:focus-visible {
   outline: none;
 }
 
-.workbench-window-traffic-light[data-workbench-traffic-light="close"]:hover::before,
-.workbench-window-traffic-light[data-workbench-traffic-light="close"]:focus-visible::before {
+.workbench-window-traffic-lights:hover .workbench-window-traffic-light__icon,
+.workbench-window-traffic-lights:focus-within
+  .workbench-window-traffic-light__icon {
+  opacity: 1;
+}
+
+.workbench-window-traffic-lights:hover
+  .workbench-window-traffic-light[data-workbench-traffic-light="close"]::before,
+.workbench-window-traffic-lights:focus-within
+  .workbench-window-traffic-light[data-workbench-traffic-light="close"]::before {
   background-color: #ff5f57;
 }
 
-.workbench-window-traffic-light[data-workbench-traffic-light="minimize"]:hover::before,
-.workbench-window-traffic-light[data-workbench-traffic-light="minimize"]:focus-visible::before {
+.workbench-window-traffic-lights:hover
+  .workbench-window-traffic-light[data-workbench-traffic-light="minimize"]::before,
+.workbench-window-traffic-lights:focus-within
+  .workbench-window-traffic-light[data-workbench-traffic-light="minimize"]::before {
   background-color: #ffbd2e;
 }
 
-.workbench-window-traffic-light[data-workbench-traffic-light="maximize"]:hover::before,
-.workbench-window-traffic-light[data-workbench-traffic-light="maximize"]:focus-visible::before {
+.workbench-window-traffic-lights:hover
+  .workbench-window-traffic-light[data-workbench-traffic-light="maximize"]::before,
+.workbench-window-traffic-lights:focus-within
+  .workbench-window-traffic-light[data-workbench-traffic-light="maximize"]::before {
   background-color: #28c840;
 }
 

@@ -67,7 +67,11 @@ test("node header keeps task center chrome inside the sidebar header", () => {
   );
   assert.match(
     issueManagerNodeSource,
-    /const issueManagerHeaderTrafficLightClassName =[\s\S]*-m-1[\s\S]*size-5[\s\S]*cursor-pointer[\s\S]*rounded-full[\s\S]*text-\[var\(--text-placeholder\)\][\s\S]*transition-\[color,filter,opacity\]/
+    /const issueManagerHeaderTrafficLightClassName =[\s\S]*-m-1[\s\S]*size-5[\s\S]*cursor-pointer[\s\S]*rounded-full[\s\S]*text-\[color-mix\(in_srgb,var\(--text-tertiary\)_72%,transparent\)\][\s\S]*opacity-\[0\.78\][\s\S]*transition-\[color,opacity\]/
+  );
+  assert.match(
+    issueManagerNodeSource,
+    /const issueManagerHeaderTrafficLightClassName =[\s\S]*group-hover\/traffic-lights:opacity-100[\s\S]*group-focus-within\/traffic-lights:opacity-100/
   );
   assert.match(
     issueManagerNodeSource,
@@ -75,11 +79,23 @@ test("node header keeps task center chrome inside the sidebar header", () => {
   );
   assert.match(
     issueManagerNodeSource,
-    /tone === "close" && "hover:text-\[#ff5f57\] focus-visible:text-\[#ff5f57\]"[\s\S]*tone === "minimize" &&[\s\S]*"hover:text-\[#ffbd2e\] focus-visible:text-\[#ffbd2e\]"[\s\S]*tone === "maximize" &&[\s\S]*"hover:text-\[#28c840\] focus-visible:text-\[#28c840\]"/
+    /tone === "close" &&[\s\S]*"group-hover\/traffic-lights:text-\[#ff5f57\] group-focus-within\/traffic-lights:text-\[#ff5f57\]"[\s\S]*tone === "minimize" &&[\s\S]*"group-hover\/traffic-lights:text-\[#ffbd2e\] group-focus-within\/traffic-lights:text-\[#ffbd2e\]"[\s\S]*tone === "maximize" &&[\s\S]*"group-hover\/traffic-lights:text-\[#28c840\] group-focus-within\/traffic-lights:text-\[#28c840\]"/
   );
   assert.match(
     issueManagerNodeSource,
     /<TooltipProvider delayDuration=\{250\} skipDelayDuration=\{0\}>[\s\S]*<TooltipTrigger asChild>\{button\}<\/TooltipTrigger>[\s\S]*<TooltipContent side="bottom">\{label\}<\/TooltipContent>/
+  );
+  assert.match(
+    issueManagerNodeSource,
+    /const iconName =[\s\S]*tone === "maximize" \? \(pressed \? "unfullscreen" : "fullscreen"\) : tone;/
+  );
+  assert.match(
+    issueManagerNodeSource,
+    /<IssueManagerTrafficLightIcon[\s\S]*data-issue-manager-traffic-light-icon=\{iconName\}[\s\S]*iconName=\{iconName\}/
+  );
+  assert.match(
+    issueManagerNodeSource,
+    /className="group\/traffic-lights flex shrink-0 items-center gap-2"/
   );
   assert.match(
     issueManagerNodeSource,

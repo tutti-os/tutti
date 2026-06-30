@@ -1,5 +1,7 @@
+import { createElement } from "react";
 import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
 import { createWorkspaceTerminalContribution } from "../workspaceTerminalContribution.ts";
+import { WorkspaceWorkbenchTrafficLights } from "../../../ui/WorkspaceWorkbenchTrafficLights.ts";
 
 export const terminalWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
   {
@@ -15,6 +17,13 @@ export const terminalWorkbenchContributionFactory: DesktopWorkbenchContributionF
         tuttidClient: context.tuttidClient,
         platformApi: context.platformApi,
         reporterService: context.reporterService,
+        renderTrafficLights: (headerContext) =>
+          createElement(WorkspaceWorkbenchTrafficLights, {
+            className: "nodrag",
+            displayMode: headerContext.displayMode,
+            i18n: context.i18n,
+            windowActions: headerContext.windowActions
+          }),
         runtimeApi: context.runtimeApi,
         workspaceId: context.workspaceId
       });

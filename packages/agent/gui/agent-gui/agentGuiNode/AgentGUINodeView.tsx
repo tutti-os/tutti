@@ -148,15 +148,14 @@ export type AgentWorkspaceReferenceInitialTargetResolver = (
 
 const AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX = 24;
 const AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX = 240;
+const AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX = 1;
 const AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE = 5;
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
   minWidth: "100%",
   display: "grid",
-  gridTemplateColumns:
-    "minmax(0, min(100%, var(--agent-gui-detail-flow-max-width)))",
-  justifyContent: "center",
+  gridTemplateColumns: "minmax(0, 1fr)",
   gap: "24px"
 };
 
@@ -1559,6 +1558,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     scrollHeight: number;
     scrollTop: number;
   } | null>(null);
+  const [isTimelineScrolledToTop, setIsTimelineScrolledToTop] = useState(true);
   const [
     bottomDockDismissedPromptRequestId,
     setBottomDockDismissedPromptRequestId
@@ -2302,6 +2302,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     const activeConversationId = viewModel.activeConversationId;
     if (!activeConversationId) {
       timelineScrollAnchorRef.current = null;
+      pendingPrependScrollAnchorRef.current = null;
+      setIsTimelineScrolledToTop(true);
       return;
     }
 
@@ -2348,6 +2350,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       scrollTop: nextScrollTop,
       clientHeight: timeline.clientHeight
     };
+    setIsTimelineScrolledToTop(
+      nextScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
+    );
   }, [
     conversation,
     showTimelineSkeleton,
@@ -2414,6 +2419,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           scrollTop: maxScrollTop,
           clientHeight: timeline.clientHeight
         };
+        setIsTimelineScrolledToTop(
+          maxScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
+        );
       });
     };
 
@@ -2452,21 +2460,25 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     }
 
     const captureScrollAnchor = (): void => {
+      const scrollTop = timeline.scrollTop;
       timelineScrollAnchorRef.current = {
         conversationId: activeConversationId,
         scrollHeight: timeline.scrollHeight,
-        scrollTop: timeline.scrollTop,
+        scrollTop,
         clientHeight: timeline.clientHeight
       };
+      setIsTimelineScrolledToTop(
+        scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
+      );
       if (
         viewModel.hasOlderMessages &&
         !viewModel.isLoadingOlderMessages &&
-        timeline.scrollTop <= AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX
+        scrollTop <= AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX
       ) {
         pendingPrependScrollAnchorRef.current = {
           conversationId: activeConversationId,
           scrollHeight: timeline.scrollHeight,
-          scrollTop: timeline.scrollTop
+          scrollTop
         };
         actions.loadOlderConversationMessages();
       }
@@ -2540,6 +2552,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           hasActiveConversation
             ? styles.timelineWithComposer
             : styles.timelineCentered
+        } ${
+          !isTimelineScrolledToTop ? styles.timelineScrolledFromTop : ""
         } ${showUnavailableChatEmpty ? styles.timelineUnavailableChatEmpty : ""}`.trim()}
         viewportContentStyle={AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE}
       >
@@ -3540,7 +3554,7 @@ const AgentGUIConversationRailPane = memo(
             })
           )}
         </ScrollArea>
-        <div className="shrink-0 border-t border-[var(--border-1)] px-2 py-1.5">
+        <div className="shrink-0 px-2 py-1.5">
           <Popover>
             <PopoverTrigger asChild>
               <Button

@@ -36,7 +36,7 @@ import { ZoomableImage } from "../../app/renderer/components/ZoomableImage";
 import type { AgentConversationPromptVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import { AgentUsageMeter, agentUsageBarColor } from "./AgentUsageMeter";
 import { cn } from "../../app/renderer/lib/utils";
-import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
+import { AddIcon, Button, Select, SelectTrigger } from "@tutti-os/ui-system";
 import { ListChecks, Target, X } from "lucide-react";
 import {
   createMentionPaletteStateAdapter,
@@ -642,15 +642,17 @@ function AgentUsageChip({
               />
             ) : null}
             {compactSupported && onCompact ? (
-              <button
+              <Button
                 type="button"
                 data-testid="agent-gui-compact-button"
                 disabled={compactDisabled}
-                className="nodrag inline-flex items-center justify-center rounded-[6px] bg-[var(--transparency-block)] px-2 py-1 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] focus-visible:bg-[var(--transparency-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[var(--transparency-block)] [-webkit-app-region:no-drag]"
+                className="nodrag w-full font-medium [-webkit-app-region:no-drag]"
+                size="sm"
+                variant="secondary"
                 onClick={onCompact}
               >
                 {labels.usageCompactAction}
-              </button>
+              </Button>
             ) : null}
           </div>
         </PopoverContent>

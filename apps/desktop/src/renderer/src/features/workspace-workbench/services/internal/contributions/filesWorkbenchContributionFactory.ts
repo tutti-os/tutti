@@ -1,6 +1,8 @@
+import { createElement } from "react";
 import { workspaceWorkbenchDesktopI18nKeys } from "@shared/i18n";
 import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
 import { createWorkspaceFilesContribution } from "../workspaceFilesContribution.ts";
+import { WorkspaceWorkbenchTrafficLights } from "../../../ui/WorkspaceWorkbenchTrafficLights.ts";
 
 export const filesWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
   {
@@ -15,6 +17,13 @@ export const filesWorkbenchContributionFactory: DesktopWorkbenchContributionFact
         filesLabel,
         icon: context.dockIcons.files,
         renderFilesNodeBody: context.renderFilesNodeBody,
+        renderTrafficLights: (headerContext) =>
+          createElement(WorkspaceWorkbenchTrafficLights, {
+            className: "nodrag",
+            displayMode: headerContext.displayMode,
+            i18n: context.i18n,
+            windowActions: headerContext.windowActions
+          }),
         reporterService: context.reporterService,
         workspaceFileManagerService: context.workspaceFileManagerService,
         workspaceId: context.workspaceId

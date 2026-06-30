@@ -839,9 +839,7 @@ describe("AgentComposer", () => {
     expect(goalBadge).toBeInTheDocument();
     // Hovering the badge reveals a cancel affordance hinting it is clickable.
     expect(goalBadge).toHaveClass("group");
-    expect(
-      goalBadge.querySelector(".group-hover\\:opacity-100")
-    ).toBeTruthy();
+    expect(goalBadge.querySelector(".group-hover\\:opacity-100")).toBeTruthy();
     expect(screen.getByRole("textbox")).toHaveValue("");
 
     fireEvent.change(screen.getByRole("textbox"), {
@@ -2392,7 +2390,9 @@ describe("AgentComposer", () => {
 
     const compactButton = screen.queryByTestId("agent-gui-compact-button");
     expect(compactButton).toBeInTheDocument();
-    expect(compactButton).toHaveClass("hover:bg-[var(--transparency-hover)]");
+    expect(compactButton).toHaveAttribute("data-variant", "secondary");
+    expect(compactButton).toHaveAttribute("data-size", "sm");
+    expect(compactButton).toHaveClass("h-7");
     fireEvent.click(compactButton!);
     expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
   });
