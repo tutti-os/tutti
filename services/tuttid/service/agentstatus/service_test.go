@@ -430,9 +430,24 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
+	// The broken install lives under <home>/lib/node_modules, so repair-in-place
+	// must install at the npm global prefix that owns it — not duplicate the
+	// package in ~/.local. Derive the expected prefix the same way production does
+	// (via EvalSymlinks, so it matches on macOS where /var -> /private/var).
+	wantPrefix, wantPrefixOK := codexRepairInstallPrefix(filepath.Join(binDir, "codex"))
+	if !wantPrefixOK {
+		t.Fatalf("expected repair prefix to be derivable for %s", filepath.Join(binDir, "codex"))
+	}
+
 	var command InstallCommandInput
+	var activeStep string
 	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
 		command = input
+		if snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}}); err == nil {
+			if status := onlyStatus(t, snapshot); status.ActiveAction != nil {
+				activeStep = status.ActiveAction.Step
+			}
+		}
 		writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
 		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
@@ -448,8 +463,12 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 		t.Fatalf("Status = %q, want %q; result=%#v", result.Status, RunActionCompleted, result)
 	}
 	if !strings.Contains(command.Command, "@openai/codex") ||
-		!strings.Contains(command.Command, "--include=optional") {
-		t.Fatalf("Command = %q, want Codex CLI install with optional dependencies", command.Command)
+		!strings.Contains(command.Command, "--include=optional") ||
+		!strings.Contains(command.Command, "--prefix "+wantPrefix+" ") {
+		t.Fatalf("Command = %q, want Codex CLI install with optional deps repaired in place at --prefix %s", command.Command, wantPrefix)
+	}
+	if activeStep != "repair" {
+		t.Fatalf("active action step = %q, want %q (repair-in-place)", activeStep, "repair")
 	}
 	if result.Probe == nil || result.Probe.Status != ProbeReady {
 		t.Fatalf("Probe = %#v, want ready probe", result.Probe)

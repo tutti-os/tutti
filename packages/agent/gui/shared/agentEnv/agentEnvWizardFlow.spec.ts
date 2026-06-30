@@ -135,6 +135,32 @@ describe("deriveAgentSetupStages", () => {
     });
   });
 
+  it("flags install pending with a platform-incomplete problem when the launcher is present but the platform subpackage is missing", () => {
+    const stages = deriveAgentSetupStages(
+      input({
+        cliInstalled: true,
+        platformPackageIncomplete: true,
+        cliVersionDetail: { kind: "text", text: "1.2.3 · /usr/bin/codex" }
+      })
+    );
+    expect(stage(stages, "install").status).toBe("pending");
+    expect(stage(stages, "install").problem).toBe(
+      "install-platform-incomplete"
+    );
+  });
+
+  it("marks install ok when ready even if the platform subpackage flag is set", () => {
+    const stages = deriveAgentSetupStages(
+      input({
+        cliInstalled: true,
+        platformPackageIncomplete: true,
+        ready: true
+      })
+    );
+    expect(stage(stages, "install").status).toBe("ok");
+    expect(stage(stages, "install").problem).toBeUndefined();
+  });
+
   it("marks adapter pending when CLI is installed but the adapter is missing", () => {
     const stages = deriveAgentSetupStages(
       input({ cliInstalled: true, adapterInstalled: false })
@@ -364,6 +390,21 @@ describe("stageRemediation", () => {
     expect(stageRemediation(mk("install", "error"))).toEqual({
       actionId: "redetect",
       problem: "install-outdated"
+    });
+  });
+
+  it("maps a platform-incomplete install to install-platform-incomplete → install (daemon repairs in place)", () => {
+    expect(
+      stageRemediation({
+        id: "install",
+        label: "install",
+        status: "pending",
+        detail: null,
+        problem: "install-platform-incomplete"
+      })
+    ).toEqual({
+      actionId: "install",
+      problem: "install-platform-incomplete"
     });
   });
 

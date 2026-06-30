@@ -621,6 +621,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 			"reasonCode", status.Availability.ReasonCode,
 			"version", status.CLI.Version,
 			"lastErrorCode", providerLastErrorCode(status.LastError),
+			"missingPlatformPath", s.codexPlatformPackageMissingPath(runtimeResolution.CLIPath),
 		)
 	}
 	return status

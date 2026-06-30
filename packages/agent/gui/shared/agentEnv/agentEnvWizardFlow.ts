@@ -35,6 +35,14 @@ export interface AgentSetupStage {
   label: string;
   status: CodexSetupStepStatus;
   detail: StageDetailToken | null;
+  /**
+   * Optional explicit problem token for a blocked stage that can't be inferred
+   * from `status` alone. Today only the install stage sets it — when the codex
+   * launcher is present but its platform subpackage is missing, the stage is
+   * `pending` (the daemon repairs it via the install action) yet needs a distinct
+   * "platform package missing" problem rather than the generic "install-missing".
+   */
+  problem?: StageProblem;
   authMethod?: string | null;
 }
 
@@ -51,6 +59,14 @@ export interface DeriveAgentSetupStagesInput {
   detected: boolean;
   cliInstalled: boolean;
   versionTooOld: boolean;
+  /**
+   * The codex CLI launcher is resolved but its platform-specific optional
+   * dependency subpackage (e.g. @openai/codex-darwin-arm64) is missing — the
+   * binary spawns ENOENT. The daemon repairs this in place via the install
+   * action, so the install stage is `pending` (not `ok`) with a distinct
+   * "platform package missing" problem token.
+   */
+  platformPackageIncomplete?: boolean;
   adapterInstalled: boolean;
   adapterVersionMismatch: boolean;
   authenticated: boolean;
@@ -117,7 +133,13 @@ export function deriveAgentSetupStages(
   // A satisfied CLI stays checked even while an install runs, so the spinner
   // lands on the stage actually being worked on (e.g. the adapter during a
   // repair) rather than flipping every install-related stage back to running.
-  const cliOk = input.ready || (input.cliInstalled && !input.versionTooOld);
+  // A present launcher with a missing platform subpackage is NOT ok — the
+  // daemon repairs it via the install action, so it reads as a pending install.
+  const cliOk =
+    input.ready ||
+    (input.cliInstalled &&
+      !input.versionTooOld &&
+      !input.platformPackageIncomplete);
   const installStatus: CodexSetupStepStatus = cliOk
     ? "ok"
     : installing
@@ -125,6 +147,10 @@ export function deriveAgentSetupStages(
       : input.versionTooOld
         ? "error"
         : "pending";
+  const installProblem: StageProblem | undefined =
+    input.platformPackageIncomplete && !cliOk
+      ? "install-platform-incomplete"
+      : undefined;
 
   const adapterOk =
     input.ready || (input.adapterInstalled && !input.adapterVersionMismatch);
@@ -161,7 +187,8 @@ export function deriveAgentSetupStages(
       id: "install",
       label: input.labels.install,
       status: installStatus,
-      detail: input.cliVersionDetail
+      detail: input.cliVersionDetail,
+      ...(installProblem ? { problem: installProblem } : {})
     },
     {
       id: "adapter",
@@ -243,6 +270,7 @@ export type StageProblem =
   | "network-unreachable"
   | "install-missing"
   | "install-outdated"
+  | "install-platform-incomplete"
   | "adapter-missing"
   | "adapter-mismatch"
   | "login-missing";
@@ -272,6 +300,12 @@ export function stageRemediation(
       // detection (which re-probes the network) is the remediation.
       return { actionId: "redetect", problem: "network-unreachable" };
     case "install":
+      // An explicit problem token (today: platform subpackage missing) takes
+      // precedence — the daemon repairs it in place via the install action, so
+      // route through install rather than the manual-upgrade error path.
+      if (stage.problem) {
+        return { actionId: "install", problem: stage.problem };
+      }
       // A genuinely missing CLI is installed for the user; a present-but-
       // outdated CLI is NOT — we don't silently reinstall a binary the user
       // manages. Instead the panel shows the manual upgrade command and

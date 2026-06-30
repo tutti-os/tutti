@@ -203,6 +203,8 @@ export const en = {
       stageProblemNetworkUnreachable: "Can't reach the network",
       stageProblemInstallMissing: "{{provider}} CLI not installed",
       stageProblemInstallOutdated: "{{provider}} CLI version unsupported",
+      stageProblemInstallPlatformIncomplete:
+        "{{provider}} platform package missing",
       stageInstallVersionRequirement: "{{current}} · requires ≥ {{required}}",
       stageAdapterVersionRequirement: "{{current}} · requires {{required}}",
       stageProblemAdapterMissing: "Adapter not installed",
@@ -210,6 +212,7 @@ export const en = {
       stageProblemLoginMissing: "Not signed in",
       stageDoInstall: "Install",
       stageDoUpgrade: "Upgrade",
+      stageDoRepair: "Repair install",
       stageDoLogin: "Sign in",
       stageDoRedetect: "Re-check",
       reportConsentTitle: "An environment problem was detected",

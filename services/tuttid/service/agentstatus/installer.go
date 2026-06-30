@@ -391,7 +391,11 @@ func (s Service) executeInstaller(
 		result, err := s.runReleaseBinaryInstaller(installCtx, spec, installDir)
 		return runResult(result, err)
 	case InstallerKindCodexCLILatest:
-		result, err := s.runCodexCLILatestInstaller(installCtx, spec, "")
+		existingCLIPath := ""
+		if runtime != nil {
+			existingCLIPath = strings.TrimSpace(runtime.CLIPath)
+		}
+		result, err := s.runCodexCLILatestInstaller(installCtx, spec, existingCLIPath)
 		return runResult(result, err)
 	case InstallerKindExternalAgentRegistryNPM:
 		result, err := s.runExternalAgentRegistryNPMInstaller(installCtx, provider, spec)

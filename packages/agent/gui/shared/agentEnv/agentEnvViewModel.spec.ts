@@ -200,8 +200,33 @@ describe("buildAgentEnvWizardViewModel", () => {
 
   it("exposes the manual install command for codex", () => {
     expect(buildAgentEnvWizardViewModel(input()).manualCommand).toBe(
-      "npm install -g @openai/codex"
+      "npm install -g @openai/codex --include=optional"
     );
+  });
+
+  it("flags the install stage pending with a platform-incomplete problem when the launcher is present but the platform subpackage is missing", () => {
+    const vm = buildAgentEnvWizardViewModel(
+      input({
+        status: status({
+          availability: {
+            status: "not_installed",
+            reasonCode: "codex_platform_pkg_incomplete"
+          },
+          // The launcher itself is resolved, so without the platform-incomplete
+          // signal the install stage would wrongly read as ok.
+          cli: {
+            installed: true,
+            version: "1.2.3",
+            minVersion: "1.0.0",
+            binaryPath: "/usr/bin/codex"
+          }
+        })
+      })
+    );
+    const install = vm.displayStages.find((s) => s.id === "install");
+    expect(install?.status).toBe("pending");
+    expect(install?.problem).toBe("install-platform-incomplete");
+    expect(vm.ready).toBe(false);
   });
 });
 
