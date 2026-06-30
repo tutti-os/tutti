@@ -1,6 +1,7 @@
 import { lazy, Suspense, type JSX } from "react";
 import { AtomIcon } from "../../../../../app/renderer/components/icons/AtomIcon";
 import { translate } from "../../../../../i18n/index";
+import { AgentPathTailLabel } from "../AgentPathTailLabel";
 
 const MonacoDiffEditor = lazy(async () => {
   const module = await import("@monaco-editor/react");
@@ -32,7 +33,11 @@ export function AgentMonacoDiffViewer({
           className="border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]"
           data-agent-diff-header="true"
         >
-          {path || "Diff"}
+          <AgentPathTailLabel
+            path={path}
+            fallback="Diff"
+            className="font-[var(--tsh-font-mono)]"
+          />
         </div>
       ) : null}
       <div className="h-[220px] bg-[var(--background-panel)]">

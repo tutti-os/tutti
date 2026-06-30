@@ -1037,7 +1037,7 @@ describe("AgentTurnSummaryRow", () => {
       />
     );
 
-    expect(screen.queryByText("src/file-4.ts")).toBeNull();
+    expect(screen.queryByTitle("src/file-4.ts")).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -1046,10 +1046,10 @@ describe("AgentTurnSummaryRow", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("src/file-4.ts")).toBeTruthy();
+      expect(screen.getByTitle("src/file-4.ts")).toBeTruthy();
     });
     expect(
-      screen.getByText("src/file-4.ts").closest(".agent-collapsible-reveal")
+      screen.getByTitle("src/file-4.ts").closest(".agent-collapsible-reveal")
     ).toHaveAttribute("data-expanded", "true");
     expect(
       screen.getByRole("button", {
@@ -1199,7 +1199,7 @@ describe("AgentTurnSummaryRow", () => {
 
     expect(screen.getAllByText("-1")).toHaveLength(2);
     expect(screen.queryByText("+1")).toBeNull();
-    expect(screen.getByText("/workspace/a.md").className).toContain(
+    expect(screen.getByTitle("/workspace/a.md").className).toContain(
       "line-through"
     );
 
@@ -1244,6 +1244,12 @@ describe("AgentTurnSummaryRow", () => {
     const pathLabel = screen.getByTitle(
       "/workspace/very/deep/path/to/a/file/with/a/really-long-name/today_news_summary_2026-05-20.txt"
     );
+    const directoryLabel = pathLabel.querySelector(
+      ".agent-turn-summary-card__path-directory"
+    );
+    const fileNameLabel = pathLabel.querySelector(
+      ".agent-turn-summary-card__path-file"
+    );
     const pathToggle = pathLabel.closest("button");
     const pathContainer = pathLabel.parentElement;
     const fileRow = pathToggle?.closest(".agent-turn-summary-card__file");
@@ -1251,9 +1257,22 @@ describe("AgentTurnSummaryRow", () => {
       .getByText("agentHost.agentGui.turnSummaryFilesChanged:1")
       .closest("section");
 
-    expect(pathLabel.className).toContain("truncate");
-    expect(pathLabel.className).toContain("block");
+    expect(pathLabel.className).toContain("flex");
     expect(pathLabel.className).toContain("min-w-0");
+    expect(pathLabel.className).toContain("overflow-hidden");
+    expect(pathLabel.className).toContain("whitespace-nowrap");
+    expect(directoryLabel?.textContent).toBe(
+      "/workspace/very/deep/path/to/a/file/with/a/really-long-name/"
+    );
+    expect(directoryLabel?.className).toContain(
+      "agent-turn-summary-card__path-directory"
+    );
+    expect(fileNameLabel?.textContent).toBe(
+      "today_news_summary_2026-05-20.txt"
+    );
+    expect(fileNameLabel?.className).toContain(
+      "agent-turn-summary-card__path-file"
+    );
     expect(pathContainer?.className).toContain("flex-1");
     expect(pathContainer?.className).toContain("overflow-hidden");
     expect(pathToggle?.className).toContain("flex-1");

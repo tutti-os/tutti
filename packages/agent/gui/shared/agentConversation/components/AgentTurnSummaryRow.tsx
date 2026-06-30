@@ -415,12 +415,19 @@ function TurnSummaryFileCard({
           >
             <div className="min-w-0 flex-1 overflow-hidden">
               <span
-                className={`agent-turn-summary-card__path block min-w-0 truncate text-[13px] font-medium leading-5 text-[var(--text-secondary)] ${
+                className={`agent-turn-summary-card__path flex min-w-0 max-w-full overflow-hidden whitespace-nowrap text-[13px] font-medium leading-5 text-[var(--text-secondary)] ${
                   file.changeType === "deleted" ? "line-through" : ""
                 }`}
                 title={file.path}
               >
-                {file.path}
+                {file.directory ? (
+                  <span className="agent-turn-summary-card__path-directory">
+                    {file.directory}/
+                  </span>
+                ) : null}
+                <span className="agent-turn-summary-card__path-file">
+                  {file.fileName}
+                </span>
               </span>
             </div>
             <span className="shrink-0 text-[var(--text-tertiary)] opacity-0 transition-opacity group-hover/file-toggle:opacity-100 group-focus-visible/file-toggle:opacity-100">

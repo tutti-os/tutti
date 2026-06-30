@@ -952,8 +952,8 @@ describe("AgentTranscriptView", () => {
       })
     );
     await flushCollapsibleRevealFrames();
-    expect(screen.getByText("src/App.tsx")).toBeTruthy();
-    expect(screen.getByText("src/routes.ts")).toBeTruthy();
+    expect(screen.getByTitle("src/App.tsx")).toBeTruthy();
+    expect(screen.getByTitle("src/routes.ts")).toBeTruthy();
   });
 
   it("renders visible agent errors as an alert with collapsible details", async () => {

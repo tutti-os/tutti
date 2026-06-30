@@ -1497,6 +1497,46 @@ aside.workspace-agents-status-panel
   color: var(--agent-turn-summary-path);
 }
 
+.agent-turn-summary-card__path-directory,
+.agent-turn-summary-card__path-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-turn-summary-card__path-directory {
+  flex: 0 1 auto;
+}
+
+.agent-turn-summary-card__path-file {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.agent-path-tail-label {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.agent-path-tail-label__directory,
+.agent-path-tail-label__file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-path-tail-label__directory {
+  flex: 0 1 auto;
+}
+
+.agent-path-tail-label__file {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
 .workspace-agents-status-panel__detail-turn-summary
   .workspace-agents-status-panel__detail-tool-diff-added {
   color: var(--state-success);

@@ -1,5 +1,6 @@
 import { useMemo, useState, type JSX } from "react";
 import { translate } from "../../../../../i18n/index";
+import { AgentPathTailLabel } from "../AgentPathTailLabel";
 
 const MAX_VISIBLE_LINES = 120;
 
@@ -102,9 +103,11 @@ export function AgentCodeBlock({
         <>
           {showHeader ? (
             <div className="flex items-center justify-between gap-3 border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]">
-              <span className="truncate font-[var(--tsh-font-mono)]">
-                {path || "Code"}
-              </span>
+              <AgentPathTailLabel
+                path={path}
+                fallback="Code"
+                className="font-[var(--tsh-font-mono)]"
+              />
               <span className="shrink-0">
                 {language ? `${language} · ` : ""}
                 {lineCount} lines

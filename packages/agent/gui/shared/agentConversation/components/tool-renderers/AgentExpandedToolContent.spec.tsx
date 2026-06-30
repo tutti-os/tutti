@@ -167,9 +167,13 @@ describe("AgentExpandedToolContent", () => {
     fireEvent.click(stepButton);
     await flushCollapsibleRevealFrames();
 
+    const pathLabel = screen.getByTitle("/workspace/src/agent.ts");
     expect(
-      screen.getAllByText("/workspace/src/agent.ts").length
-    ).toBeGreaterThan(0);
+      pathLabel.querySelector(".agent-path-tail-label__directory")?.textContent
+    ).toBe("/workspace/src/");
+    expect(
+      pathLabel.querySelector(".agent-path-tail-label__file")?.textContent
+    ).toBe("agent.ts");
     expect(
       screen.getAllByText("Loaded agent conversation contract.").length
     ).toBeGreaterThan(0);
@@ -250,9 +254,13 @@ describe("AgentExpandedToolContent", () => {
       />
     );
 
-    expect(screen.getAllByText("/workspace/src/app.ts").length).toBeGreaterThan(
-      0
-    );
+    const pathLabel = screen.getByTitle("/workspace/src/app.ts");
+    expect(
+      pathLabel.querySelector(".agent-path-tail-label__directory")?.textContent
+    ).toBe("/workspace/src/");
+    expect(
+      pathLabel.querySelector(".agent-path-tail-label__file")?.textContent
+    ).toBe("app.ts");
     expect(screen.getByText(/typescript/i)).toBeTruthy();
     expect(screen.getByText(/1 lines/i)).toBeTruthy();
     expect(screen.getByText("const app = true")).toBeTruthy();
@@ -277,7 +285,13 @@ describe("AgentExpandedToolContent", () => {
       />
     );
 
-    expect(screen.getByText("/workspace/src/app.ts")).toBeTruthy();
+    const pathLabel = screen.getByTitle("/workspace/src/app.ts");
+    expect(
+      pathLabel.querySelector(".agent-path-tail-label__directory")?.textContent
+    ).toBe("/workspace/src/");
+    expect(
+      pathLabel.querySelector(".agent-path-tail-label__file")?.textContent
+    ).toBe("app.ts");
     expect(screen.getByText(/L2-4/i)).toBeTruthy();
     expect(screen.getByText(/10 lines/i)).toBeTruthy();
     expect(screen.queryByText("const app = true")).toBeNull();

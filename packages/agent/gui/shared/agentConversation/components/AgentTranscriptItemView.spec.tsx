@@ -18,6 +18,7 @@ const mockState = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../i18n/index", () => ({
+  getActiveUiLanguage: () => "en",
   useTranslation: () => ({
     t: (key: string) => key
   }),
@@ -267,10 +268,10 @@ describe("AgentTranscriptItemView render stability", () => {
       /\.agent-gui-conversation__message-group::after\s*{[^}]*top:\s*100%[^}]*right:\s*0[^}]*left:\s*0[^}]*height:\s*26px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-copy-button\s*\)\s*{[^}]*margin-bottom:\s*26px/s
+      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-footer\s*\)\s*{[^}]*margin-bottom:\s*26px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-conversation__message-group:hover[\s\S]*?> \.agent-gui-conversation__message-copy-button,[\s\S]*?\.agent-gui-conversation__message-group:focus-within[\s\S]*?> \.agent-gui-conversation__message-copy-button\s*{[^}]*opacity:\s*1[^}]*pointer-events:\s*auto/s
+      /\.agent-gui-conversation__message-group:hover[\s\S]*?> \.agent-gui-conversation__message-footer,[\s\S]*?\.agent-gui-conversation__message-group:focus-within[\s\S]*?> \.agent-gui-conversation__message-footer\s*{[^}]*opacity:\s*1[^}]*pointer-events:\s*auto/s
     );
     expect(css).not.toMatch(
       /\.agent-gui-conversation__message-group::after\s*{[^}]*height:\s*10px/s
@@ -281,7 +282,10 @@ describe("AgentTranscriptItemView render stability", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-conversation__message-copy-button\s*{[^}]*top:\s*calc\(100% \+ 4px\)[^}]*width:\s*22px[^}]*min-width:\s*22px[^}]*height:\s*22px[^}]*min-height:\s*22px[^}]*border-radius:\s*5px/s
+      /\.agent-gui-conversation__message-footer\s*{[^}]*top:\s*calc\(100% \+ 4px\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__message-copy-button\s*{[^}]*position:\s*static[^}]*width:\s*22px[^}]*min-width:\s*22px[^}]*height:\s*22px[^}]*min-height:\s*22px[^}]*border-radius:\s*5px/s
     );
     expect(css).not.toMatch(
       /\.agent-gui-conversation__message-copy-button\s*{[^}]*width:\s*28px/s
@@ -290,7 +294,7 @@ describe("AgentTranscriptItemView render stability", () => {
       /\.agent-gui-conversation__message-copy-button\s*{[^}]*top:\s*calc\(100% \+ 8px\)/s
     );
     expect(css).not.toMatch(
-      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-copy-button\s*\)\s*{[^}]*margin-bottom:\s*36px/s
+      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-footer\s*\)\s*{[^}]*margin-bottom:\s*36px/s
     );
   });
 
@@ -516,7 +520,7 @@ describe("AgentTranscriptItemView render stability", () => {
       /\.workspace-agents-status-panel__detail-user-message\.agent-gui-conversation__user-message-bubble\s*{[^}]*font-size:\s*13px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-conversation__message-copy-button\s*{[^}]*position:\s*absolute[^}]*opacity:\s*0/s
+      /\.agent-gui-conversation__message-copy-button\s*{[^}]*position:\s*static[^}]*opacity:\s*0/s
     );
     expect(messageBlockSource).toContain("CanvasNodeGhostIconButton");
     expect(css).toMatch(
@@ -568,6 +572,21 @@ describe("AgentTranscriptItemView render stability", () => {
     );
     expect(css).toMatch(
       /\.workspace-agents-status-panel__detail-tool-diff-removed\s*{[^}]*color:\s*var\(--state-danger\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-turn-summary-card__path-directory\s*{[^}]*flex:\s*0 1 auto/s
+    );
+    expect(css).toMatch(
+      /\.agent-turn-summary-card__path-file\s*{[^}]*flex:\s*0 0 auto[^}]*max-width:\s*100%/s
+    );
+    expect(css).toMatch(
+      /\.agent-path-tail-label\s*{[^}]*display:\s*flex[^}]*overflow:\s*hidden[^}]*white-space:\s*nowrap/s
+    );
+    expect(css).toMatch(
+      /\.agent-path-tail-label__directory\s*{[^}]*flex:\s*0 1 auto/s
+    );
+    expect(css).toMatch(
+      /\.agent-path-tail-label__file\s*{[^}]*flex:\s*0 0 auto[^}]*max-width:\s*100%/s
     );
   });
 
