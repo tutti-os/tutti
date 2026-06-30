@@ -12555,6 +12555,54 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.draftContent.images).toEqual([]);
   });
 
+  it("clears the draft synchronously on submit before the server responds", async () => {
+    const exec = vi.fn(
+      () =>
+        new Promise<{
+          accepted: boolean;
+          agentSessionId: string;
+          turnId: string;
+          sessionStatus: string;
+        }>(() => {
+          // Never resolve — we want to check state before the server responds.
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.updateDraftContent({
+        prompt: "hello world",
+        images: [],
+        files: []
+      });
+      result.current.actions.submitPrompt(promptBlocks("hello world"));
+    });
+
+    // The draft should already be cleared even though exec has not resolved.
+    expect(result.current.viewModel.draftPrompt).toBe("");
+    expect(result.current.viewModel.isSubmitting).toBe(true);
+  });
+
   it("edits a local queued prompt back into the draft", async () => {
     installAgentHostApi({
       list: vi.fn(async () => snapshotWithWaitingSession("session-1")),

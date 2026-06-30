@@ -6617,6 +6617,26 @@ export function useAgentGUINodeController({
       }
       setLocalIsSubmitting(true);
       setDetailError(null);
+      // Clear the submitted draft synchronously so the composer does not
+      // briefly flash a queued-state UI while isSubmitting is true but the
+      // draft content has not yet been cleared.
+      if (!queuedPromptId) {
+        setDraftBySessionId((current) => {
+          const currentDraft = current[agentSessionId];
+          if (
+            !shouldClearSubmittedDraft({
+              currentDraft,
+              submittedContent: normalizedContent
+            })
+          ) {
+            return current;
+          }
+          return {
+            ...current,
+            [agentSessionId]: emptyAgentComposerDraft()
+          };
+        });
+      }
       patchConversation(agentSessionId, (conversation) => ({
         status: "working",
         sortTimeUnixMs: Math.max(
@@ -6721,23 +6741,6 @@ export function useAgentGUINodeController({
             patchConversation(agentSessionId, {
               status: submittedStatus,
               updatedAtUnixMs: Date.now()
-            });
-          }
-          if (!queuedPromptId) {
-            setDraftBySessionId((current) => {
-              const currentDraft = current[agentSessionId];
-              if (
-                !shouldClearSubmittedDraft({
-                  currentDraft,
-                  submittedContent: normalizedContent
-                })
-              ) {
-                return current;
-              }
-              return {
-                ...current,
-                [agentSessionId]: emptyAgentComposerDraft()
-              };
             });
           }
           if (queuedPromptId) {
