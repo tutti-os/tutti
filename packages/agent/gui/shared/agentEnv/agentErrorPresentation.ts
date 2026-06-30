@@ -154,6 +154,56 @@ const FAILED_MESSAGE_CODE_MARKERS: ReadonlyArray<
 ];
 
 /**
+ * Markers that indicate a slow-network gateway timeout. The daemon often
+ * classifies these as a generic provider_error or unknown, which causes
+ * the card to render the raw Cloudflare JSON as the headline.
+ */
+const TIMEOUT_DETAIL_MARKERS: readonly string[] = [
+  "api error: 524",
+  "api error: 504",
+  "524 ",
+  "504 ",
+  '"status":524',
+  '"status":504',
+  "gateway timeout",
+  "connection timed out",
+  "etimedout",
+  "readtimeout"
+];
+
+/**
+ * When the daemon classifies a slow-network gateway timeout (Cloudflare 524,
+ * HTTP 504) as a generic provider_error or unknown, the card renders the
+ * raw Cloudflare JSON as the headline.  This inspects the detail text of
+ * ambiguous codes and, when it clearly indicates a timeout, reclassifies it
+ * to request_timed_out so the user sees a friendly message instead.
+ *
+ * Returns null when the code is not ambiguous or the detail does not match a
+ * timeout pattern, so the caller keeps the original code.
+ */
+export function reclassifyVisibleErrorDetail(
+  code: string | null | undefined,
+  detail: string | null | undefined
+): AgentRunErrorCode | null {
+  if (
+    !code ||
+    (code !== "provider_error" &&
+      code !== "unknown" &&
+      code !== "process_exited")
+  ) {
+    return null;
+  }
+  if (!detail) {
+    return null;
+  }
+  const lower = detail.toLowerCase();
+  if (TIMEOUT_DETAIL_MARKERS.some((marker) => lower.includes(marker))) {
+    return "request_timed_out";
+  }
+  return null;
+}
+
+/**
  * Some providers (notably Claude Code) report an environment failure — e.g. a
  * dropped login (401) — as a plain failed assistant message rather than a
  * structured visibleError, so it never gets the remediation card. This recovers
@@ -172,6 +222,11 @@ export function classifyFailedAgentMessage(
     if (markers.some((marker) => lower.includes(marker))) {
       return code;
     }
+  }
+  // Recover timeout-like failures from plain text too, so they get the
+  // structured "request timed out" card rather than a dead red message.
+  if (TIMEOUT_DETAIL_MARKERS.some((marker) => lower.includes(marker))) {
+    return "request_timed_out";
   }
   return null;
 }

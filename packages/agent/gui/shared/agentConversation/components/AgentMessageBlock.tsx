@@ -26,6 +26,7 @@ import { workspaceAgentProviderLabel } from "../../workspaceAgentProviderLabel";
 import { openAgentEnvPanel } from "../../agentEnv/agentEnvPanelStore";
 import {
   classifyFailedAgentMessage,
+  reclassifyVisibleErrorDetail,
   resolveAgentErrorPresentation
 } from "../../agentEnv/agentErrorPresentation";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
@@ -655,10 +656,12 @@ function AgentVisibleErrorMessage({
   const providerLabel = workspaceAgentProviderLabel(
     error?.provider ?? "unknown"
   );
-  const presentation = resolveAgentErrorPresentation(error?.code);
+  const effectiveCode =
+    reclassifyVisibleErrorDetail(error?.code, detail) ?? error?.code;
+  const presentation = resolveAgentErrorPresentation(effectiveCode);
   const headline = presentation?.messageKey
     ? translate(presentation.messageKey, { provider: providerLabel })
-    : visibleErrorTitle(message);
+    : visibleErrorTitle(message, effectiveCode);
   const focus = presentation?.focus ?? null;
   const actionKey = presentation?.actionKey ?? null;
   const hint = visibleErrorHint(message);
@@ -748,10 +751,13 @@ function AgentMessageDetailsDisclosure({
   );
 }
 
-function visibleErrorTitle(message: AgentMessageContentVM): string {
+function visibleErrorTitle(
+  message: AgentMessageContentVM,
+  effectiveCode?: string | null
+): string {
   const error = message.visibleError;
   const provider = workspaceAgentProviderLabel(error?.provider ?? "unknown");
-  switch (error?.code) {
+  switch (effectiveCode ?? error?.code) {
     case "auth_required":
       return translate("agentHost.agentGui.visibleErrorAuthRequired", {
         provider
