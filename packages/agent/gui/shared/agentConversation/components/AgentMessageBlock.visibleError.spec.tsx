@@ -78,14 +78,12 @@ describe("AgentVisibleErrorMessage", () => {
     const { getByText, getAllByRole } = renderBlock(
       buildRow(
         {
-          // The real code a missing CLI surfaces as at run time.
           code: "cli_not_found",
           phase: "start",
           provider: "codex",
           detail: "spawn codex ENOENT",
           retryable: false
         },
-        // The raw body must NOT be surfaced as the card title.
         "codex exited: spawn codex ENOENT"
       )
     );
@@ -156,7 +154,6 @@ describe("AgentVisibleErrorMessage", () => {
     );
 
     expect(getByText("Codex request timed out")).toBeTruthy();
-    // No env-panel call-to-action — the wizard cannot fix a transient timeout.
     expect(queryByText("Set up")).toBeNull();
     expect(queryByText("Open setup")).toBeNull();
     expect(queryByText("Sign in")).toBeNull();
@@ -169,7 +166,6 @@ describe("AgentVisibleErrorMessage", () => {
       ),
       "claude-code"
     );
-    // Rendered as the structured card (not dead red text), routing to the wizard.
     expect(
       getByText("Claude Code needs authentication or configuration")
     ).toBeTruthy();
@@ -190,5 +186,21 @@ describe("AgentVisibleErrorMessage", () => {
       "codex"
     );
     expect(queryByText("Sign in")).toBeNull();
+  });
+
+  it("reclassifies a 524 Cloudflare timeout as 'request timed out'", () => {
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "provider_error",
+        phase: "turn",
+        provider: "claude-code",
+        detail:
+          'acp session/prompt failed: Internal error: API Error: 524 {"error":{"code":524}}',
+        retryable: true
+      })
+    );
+
+    expect(getByText("Claude Code request timed out")).toBeTruthy();
+    expect(queryByText(/acp session\/prompt failed/)).toBeNull();
   });
 });

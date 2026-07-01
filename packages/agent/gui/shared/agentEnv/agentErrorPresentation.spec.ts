@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyFailedAgentMessage,
+  reclassifyVisibleErrorDetail,
   resolveAgentErrorPresentation
 } from "./agentErrorPresentation";
 
@@ -30,6 +31,58 @@ describe("classifyFailedAgentMessage", () => {
     expect(classifyFailedAgentMessage("request timed out")).toBeNull();
     expect(classifyFailedAgentMessage("here is your answer")).toBeNull();
     expect(classifyFailedAgentMessage(null)).toBeNull();
+  });
+
+  it("recovers request_timed_out from Cloudflare 524 / gateway timeout text", () => {
+    expect(
+      classifyFailedAgentMessage(
+        'acp session/prompt failed: Internal error: API Error: 524 {"error":{"code":524}}'
+      )
+    ).toBe("request_timed_out");
+    expect(
+      classifyFailedAgentMessage("gateway timeout from upstream proxy")
+    ).toBe("request_timed_out");
+  });
+});
+
+describe("reclassifyVisibleErrorDetail", () => {
+  it("reclassifies provider_error with 524 detail to request_timed_out", () => {
+    expect(
+      reclassifyVisibleErrorDetail(
+        "provider_error",
+        'acp session/prompt failed: Internal error: API Error: 524 {"error":{"code":524}}'
+      )
+    ).toBe("request_timed_out");
+  });
+
+  it("reclassifies unknown with 504 detail to request_timed_out", () => {
+    expect(
+      reclassifyVisibleErrorDetail("unknown", "API Error: 504 Gateway Timeout")
+    ).toBe("request_timed_out");
+  });
+
+  it("reclassifies process_exited with connection timed out detail", () => {
+    expect(
+      reclassifyVisibleErrorDetail("process_exited", "connection timed out")
+    ).toBe("request_timed_out");
+  });
+
+  it("returns null for non-ambiguous codes", () => {
+    expect(
+      reclassifyVisibleErrorDetail("request_timed_out", "API Error: 524")
+    ).toBeNull();
+  });
+
+  it("returns null when detail has no timeout markers", () => {
+    expect(
+      reclassifyVisibleErrorDetail("provider_error", "some other error")
+    ).toBeNull();
+  });
+
+  it("returns null for null/empty inputs", () => {
+    expect(reclassifyVisibleErrorDetail(null, "524")).toBeNull();
+    expect(reclassifyVisibleErrorDetail("provider_error", null)).toBeNull();
+    expect(reclassifyVisibleErrorDetail("provider_error", "")).toBeNull();
   });
 });
 
