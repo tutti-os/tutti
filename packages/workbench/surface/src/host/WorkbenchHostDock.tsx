@@ -1481,6 +1481,7 @@ export function WorkbenchHostDock({
                 );
                 const clickResolution = resolveWorkbenchDockEntryClick({
                   entry,
+                  focusedNodeId: context.focusedNodeId,
                   instanceMode,
                   matchedNodes: resolvedEntry.matchedNodes
                 });
@@ -1571,6 +1572,26 @@ export function WorkbenchHostDock({
                             clickResolution.nodeId,
                             () => {
                               host.focusNode(clickResolution.nodeId);
+                            }
+                          );
+                          return;
+                        case "minimize-node":
+                          closePopup();
+                          void (async () => {
+                            try {
+                              await onDockEntryClick?.({
+                                entryId: entry.id,
+                                host,
+                                nodeId: clickResolution.nodeId
+                              });
+                            } catch {
+                              // Keep dock click failures contained.
+                            }
+                          })();
+                          context.genie.minimizeNodeToAnchor(
+                            clickResolution.nodeId,
+                            () => {
+                              host.minimizeNode(clickResolution.nodeId);
                             }
                           );
                           return;

@@ -659,7 +659,10 @@ export class AgentMentionSearchController {
     if (cached.entry) {
       this.applyBrowseFetchResult(cached.entry);
       this.setState({
-        status: "ready",
+        // Show "loading" (not "ready") when serving stale cache data so the
+        // UI displays a refresh indicator while the background revalidation
+        // fetch is in progress. Fresh cache hits return "ready" below.
+        status: cached.isFresh ? "ready" : "loading",
         query: "",
         mode: "browse",
         filter: this.currentFilter,
