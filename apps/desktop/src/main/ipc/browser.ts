@@ -16,6 +16,7 @@ import { getDesktopLogger } from "../logging.ts";
 import { registerDesktopIpcHandler } from "./handle.ts";
 import {
   resolveDesktopBrowserPreferredColorScheme,
+  syncPreferredColorSchemeViaDebugger,
   type BrowserPreferredColorScheme
 } from "./browserPreferredColorScheme.ts";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow.ts";
@@ -25,8 +26,6 @@ type BrowserInvokeChannel = Exclude<
   (typeof desktopIpcChannels.browser)[keyof typeof desktopIpcChannels.browser],
   typeof desktopIpcChannels.browser.event
 >;
-
-const prefersColorSchemeFeatureName = "prefers-color-scheme";
 
 function getPreferredColorScheme(
   preferences: DesktopHostPreferencesState
@@ -94,25 +93,7 @@ export function registerBrowserIpc(
     },
     async syncPreferredColorScheme(contents, scheme) {
       const guestContents = contents as Electron.WebContents;
-      const wasAttached = guestContents.debugger.isAttached();
-      if (!wasAttached) {
-        guestContents.debugger.attach();
-      }
-
-      try {
-        await guestContents.debugger.sendCommand("Emulation.setEmulatedMedia", {
-          features: [
-            {
-              name: prefersColorSchemeFeatureName,
-              value: scheme
-            }
-          ]
-        });
-      } finally {
-        if (!wasAttached && guestContents.debugger.isAttached()) {
-          guestContents.debugger.detach();
-        }
-      }
+      await syncPreferredColorSchemeViaDebugger(guestContents.debugger, scheme);
     },
     subscribePreferredColorScheme(listener) {
       let previousScheme = getPreferredColorScheme(preferences);
