@@ -539,6 +539,7 @@ export const en = {
       usageCompactAction: "Compact",
       planCardTitle: "Plan",
       planCardCopy: "Copy plan",
+      copyCode: "Copy code",
       planCardExpand: "Expand plan",
       planCardCollapse: "Collapse plan",
       planImplementationLead: "Implement this plan?",
