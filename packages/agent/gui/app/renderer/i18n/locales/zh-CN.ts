@@ -495,6 +495,7 @@ export const zhCN = {
       usageCompactAction: "压缩",
       planCardTitle: "计划",
       planCardCopy: "复制计划",
+      copyCode: "复制代码",
       planCardExpand: "展开方案",
       planCardCollapse: "收起方案",
       planImplementationLead: "是否实作此方案？",
