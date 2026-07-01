@@ -69,6 +69,7 @@ export interface AppUpdateService {
   downloadUpdate(): Promise<AppUpdateState>;
   getState(): AppUpdateState;
   installUpdate(): Promise<void>;
+  isQuitAndInstallPending(): boolean;
   onStateChanged(
     listener: (state: AppUpdateState, previousState: AppUpdateState) => void
   ): () => void;
@@ -472,6 +473,7 @@ export function createAppUpdateService(
   let activeCheckPromise: Promise<void> | null = null;
   let activeDownloadPromise: Promise<void> | null = null;
   let preserveAvailableStateDuringCheck = false;
+  let quitAndInstallPending = false;
   const stateChangedListeners = new Set<
     (state: AppUpdateState, previousState: AppUpdateState) => void
   >();
@@ -767,10 +769,19 @@ export function createAppUpdateService(
       return state;
     },
     installUpdate() {
-      if (state.status === "downloaded") {
-        resolvedDriver.quitAndInstall();
+      if (state.status === "downloaded" && !quitAndInstallPending) {
+        quitAndInstallPending = true;
+        try {
+          resolvedDriver.quitAndInstall();
+        } catch (error) {
+          quitAndInstallPending = false;
+          return Promise.reject(error);
+        }
       }
       return Promise.resolve();
+    },
+    isQuitAndInstallPending() {
+      return quitAndInstallPending;
     },
     onStateChanged(listener) {
       stateChangedListeners.add(listener);

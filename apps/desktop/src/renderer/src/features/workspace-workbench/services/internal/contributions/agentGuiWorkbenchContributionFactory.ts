@@ -11,6 +11,7 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         appCenterService: context.appCenterService,
         appI18n: context.appI18n,
         computerUseApi: context.computerUseApi,
+        confirmCloseGuard: context.confirmCloseGuard,
         dockIconUrls: context.dockIcons.agents,
         dockPreviewCache: context.dockPreviewCache,
         defaultProviderTargetId: context.defaultProviderTargetId,

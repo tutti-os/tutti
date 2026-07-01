@@ -627,6 +627,13 @@ export const zhCN = {
       trigger: "设置"
     },
     workbenchDesktop: {
+      agentQuitGuard: {
+        cancel: "保留 Tutti",
+        confirm: "退出并停止 Agent",
+        description: "仍有本地 Agent 会话在运行。退出 Tutti 会停止这些会话。",
+        detailsMore: "还有 {{count}} 个",
+        title: "要在 Agent 运行时退出吗？"
+      },
       closeGuard: {
         cancel: "取消",
         confirm: "终止终端",

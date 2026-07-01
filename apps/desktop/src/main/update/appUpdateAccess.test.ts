@@ -38,6 +38,9 @@ function createAppUpdateServiceStub(): AppUpdateService {
       return createAppUpdateState();
     },
     async installUpdate() {},
+    isQuitAndInstallPending() {
+      return false;
+    },
     onStateChanged() {
       return () => undefined;
     }

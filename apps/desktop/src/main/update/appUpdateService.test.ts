@@ -179,6 +179,74 @@ test("createAppUpdateService skips downloading state when cached update is alrea
   }
 });
 
+test("createAppUpdateService marks quit-and-install pending while installing a downloaded update", async () => {
+  const listeners: {
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  let quitAndInstallCallCount = 0;
+  const driver = createFakeDriver({
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    },
+    quitAndInstall() {
+      quitAndInstallCallCount += 1;
+    }
+  });
+  const service = createAppUpdateService(driver, {
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    assert.equal(service.isQuitAndInstallPending(), false);
+
+    listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+    await service.installUpdate();
+    await service.installUpdate();
+
+    assert.equal(service.isQuitAndInstallPending(), true);
+    assert.equal(quitAndInstallCallCount, 1);
+  } finally {
+    service.dispose();
+  }
+});
+
+test("createAppUpdateService clears quit-and-install pending when install launch fails", async () => {
+  const listeners: {
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const driver = createFakeDriver({
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    },
+    quitAndInstall() {
+      throw new Error("quit install failed");
+    }
+  });
+  const service = createAppUpdateService(driver, {
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+
+    await assert.rejects(() => service.installUpdate(), /quit install failed/);
+
+    assert.equal(service.isQuitAndInstallPending(), false);
+  } finally {
+    service.dispose();
+  }
+});
+
 test("createAppUpdateService refreshes update availability before downloading", async () => {
   const listeners: {
     checking?: () => void;

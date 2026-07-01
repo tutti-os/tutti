@@ -99,6 +99,26 @@ the workspace window shell in main. They are enabled only for development
 renderer sessions and are intercepted without entering the close-guard flow.
 Packaged builds intercept those shortcuts without reloading the product window.
 
+## App Quit Guard Behavior
+
+App quit is gated before managed daemon shutdown. When Electron emits
+`before-quit`, the main process sends a typed quit close request to every
+workspace window and waits for the renderer response. Only after every
+workspace approves the quit does the main process stop `tuttid`, destroy
+remaining windows, and resume the app quit path.
+
+The workspace renderer uses the same close-guard channel for quit as it uses
+for native window close. Contributions that own long-running local work can
+block quit from `prepareHostClose`; for example, the desktop AgentGUI
+contribution prompts when local agent sessions are still running or waiting for
+input. If the user keeps Tutti open, daemon shutdown is skipped and the running
+agent sessions stay connected.
+
+Update-install quits are not user-initiated workspace close decisions. When the
+desktop update service has already requested `quitAndInstall()`, the main
+process lets Electron continue the update quit without entering the workspace
+close guard.
+
 ## Relationship To Layering
 
 This window model follows the desktop layering rules:

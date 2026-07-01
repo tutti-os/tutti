@@ -30,6 +30,9 @@ interface DesktopElectronModule {
 export interface DesktopAppLifecycleDependencies {
   disposables?: readonly DesktopAppLifecycleDisposable[];
   logger: DesktopLogger;
+  requestWorkspaceWindowsClose?: (payload: {
+    reason: "quit";
+  }) => Promise<"approved" | "blocked">;
   tuttid: TuttidManager;
   updateService: AppUpdateService;
   workspaceLaunch: WorkspaceLaunch;
@@ -109,6 +112,11 @@ export function createDesktopAppLifecycleHandlers(
     },
 
     beforeQuit(event) {
+      if (deps.updateService.isQuitAndInstallPending()) {
+        deps.logger.info("desktop app before quit for update install");
+        return;
+      }
+
       if (isStoppingDaemon) {
         return;
       }
@@ -117,6 +125,22 @@ export function createDesktopAppLifecycleHandlers(
       event.preventDefault();
       deps.logger.info("desktop app before quit");
       void (async () => {
+        try {
+          const closeResult = await deps.requestWorkspaceWindowsClose?.({
+            reason: "quit"
+          });
+          if (closeResult === "blocked") {
+            isStoppingDaemon = false;
+            return;
+          }
+        } catch (error: unknown) {
+          deps.logger.error("failed to request workspace close during quit", {
+            error: error instanceof Error ? error.message : String(error)
+          });
+          isStoppingDaemon = false;
+          return;
+        }
+
         try {
           await deps.tuttid.stop();
         } catch (error: unknown) {

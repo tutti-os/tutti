@@ -32,6 +32,13 @@ export type WorkspaceWorkbenchDesktopI18nRuntime =
   I18nRuntime<WorkspaceWorkbenchDesktopI18nKey>;
 
 export const workspaceWorkbenchDesktopI18nKeys = {
+  agentQuitGuard: {
+    cancel: "agentQuitGuard.cancel",
+    confirm: "agentQuitGuard.confirm",
+    description: "agentQuitGuard.description",
+    detailsMore: "agentQuitGuard.detailsMore",
+    title: "agentQuitGuard.title"
+  },
   closeGuard: {
     cancel: "closeGuard.cancel",
     confirm: "closeGuard.confirm",
