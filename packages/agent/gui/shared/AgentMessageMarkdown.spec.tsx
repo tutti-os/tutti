@@ -162,6 +162,26 @@ describe("AgentMessageMarkdown", () => {
     );
   });
 
+  it("renders a copy button on fenced code blocks", () => {
+    render(<AgentMessageMarkdown content={"```ts\nconst x = 42;\n```"} />);
+
+    expect(screen.getByTestId("markdown-code-copy")).toBeInTheDocument();
+  });
+
+  it("copies code block content to clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(
+      <AgentMessageMarkdown content={"```ts\nconst greeting = 'hello';\n```"} />
+    );
+
+    screen.getByTestId("markdown-code-copy").click();
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("const greeting = 'hello';");
+    });
+  });
+
   it("allows consumers to share markdown rendering with surface-specific classes", () => {
     const { container } = render(
       <AgentMessageMarkdown
