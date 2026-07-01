@@ -1,4 +1,4 @@
-export const DEFAULT_APP_ID = "nex" + "top";
+export const DEFAULT_APP_ID = "nextop";
 export const DEFAULT_ACCOUNT_BASE_URL = "https://tutti.sh/api/account";
 export const DEFAULT_AUTH_LOGIN_URL = "https://tutti.sh/auth/login";
 export const AUTH_SERVER_HOST = "127.0.0.1";

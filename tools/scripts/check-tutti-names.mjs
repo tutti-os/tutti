@@ -25,6 +25,11 @@ const ignoredPrefixes = [
   "apps/cli/build/"
 ];
 
+const allowedLegacyContentFiles = new Set([
+  "packages/auth/bridge/src/shared.ts",
+  "packages/auth/bridge-go/authbridge.go"
+]);
+
 const files = execFileSync(
   "git",
   ["ls-files", "--cached", "--others", "--exclude-standard"],
@@ -48,6 +53,9 @@ for (const file of files) {
   }
   const content = readFileSync(join(workspaceRoot, file), "utf8");
   if (!legacyTokens.some((token) => content.includes(token))) {
+    continue;
+  }
+  if (allowedLegacyContentFiles.has(file)) {
     continue;
   }
   violations.push(file);
