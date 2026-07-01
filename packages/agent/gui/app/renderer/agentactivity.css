@@ -1241,19 +1241,18 @@ aside.workspace-agents-status-panel
 .workspace-agents-status-panel__activity-summary
   .workspace-agents-status-panel__detail-markdown
   code {
-  display: inline-block;
+  display: inline;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   padding: 0;
   border-radius: 0;
   color: var(--text-secondary);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
-  text-overflow: ellipsis;
   vertical-align: bottom;
-  white-space: nowrap;
   background: transparent;
 }
 
@@ -7753,6 +7752,65 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   .agent-gui-node__empty-hero-body,
   .agent-gui-node__empty-hero-body > .agent-gui-node__composer-hero {
     width: 100%;
+  }
+}
+
+@container agent-gui-node (max-width: 480px) {
+  .agent-gui-node__shell {
+    --agent-gui-detail-padding-x: 12px;
+  }
+
+  .agent-gui-node__detail-header {
+    height: 48px;
+    min-height: 48px;
+    padding: 0 var(--agent-gui-detail-padding-x);
+    gap: 8px;
+  }
+
+  .agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice {
+    top: calc(48px + 4px);
+  }
+
+  .agent-gui-node__empty-hero {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .agent-gui-node__composer-hero {
+    min-width: 0;
+  }
+
+  .agent-gui-node__bottom-dock > .agent-gui-node__composer {
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+
+  .agent-gui-node__composer-input-shell {
+    padding: 8px;
+  }
+
+  .agent-gui-node__composer-project-row {
+    padding: 6px 8px 2px;
+    gap: 4px;
+  }
+
+  .agent-gui-node__composer-footer {
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .agent-gui-node__composer-footer-left,
+  .agent-gui-node__composer-footer-right {
+    gap: 4px;
+  }
+
+  .agent-gui-node__composer-controls-row {
+    gap: 4px;
+  }
+
+  .agent-gui-node__composer-menu-trigger {
+    padding: 0 4px;
+    max-width: min(100%, 160px);
   }
 }
 

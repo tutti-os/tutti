@@ -3151,8 +3151,8 @@ export function AgentComposer({
               />
             </ComposerFloatingMenuSurface>
           </Popover>
-          <div className={styles.composerFooter}>
-            <div className={composerStyles.footerGroup}>
+          <div className={cn(styles.composerFooter, "min-w-0")}>
+            <div className={cn(composerStyles.footerGroup, "min-w-0")}>
               {previewMode ? (
                 <button
                   type="button"
@@ -3279,7 +3279,7 @@ export function AgentComposer({
                 </button>
               ) : null}
             </div>
-            <div className={composerStyles.footerGroupRight}>
+            <div className={cn(composerStyles.footerGroupRight, "min-w-0")}>
               {usage && usage.percentUsed !== null ? (
                 <AgentUsageChip
                   percentUsed={usage.percentUsed}
