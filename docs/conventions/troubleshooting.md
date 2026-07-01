@@ -745,30 +745,45 @@ delimited by ---`, and the composer skill picker may show partial or
 - Symptom:
   A parent Codex AgentGUI turn that spawned subagents ends with a subagent-only
   answer such as `{"n":7}`, or a failed Agent/subagent tool detail shows the
-  prompt again under Output even though the tool never returned a result.
+  prompt again under Output even though the tool never returned a result. A
+  related symptom is a completed `spawnAgent`, `wait`, or `closeAgent` row that
+  expands to only the original task prompt, despite the Codex rollout JSONL
+  containing `function_call_output` details.
 - Quick checks:
   Compare `workspace_agent_sessions.provider_session_id` with app-server
   notification `threadId` values in `tuttid.log`/run traces. Inspect
   `workspace_agent_messages.payload` for the suspect tool call: if it has
   `input.prompt`/`input.task` but no `output` or `error`, the GUI must not
-  synthesize an Output section from the summary or prompt.
+  synthesize an Output section from the summary or prompt. For Codex
+  collaboration tools, also inspect the raw app-server `collabAgentToolCall`
+  item for `receiverThreadIds`/`receiver_thread_ids` and
+  `agentsStates`/`agents_states`; successful waits and closes often report
+  child results through those fields rather than top-level `output`.
 - Root cause:
   Codex app-server streams parent and child-thread notifications over the same
   connection. Transcript, tool, and `turn/completed` notifications must be
   scoped to the active provider thread before they update the parent turn. On
   the renderer side, task-like tools use the summary/title for compact labels,
-  but missing result payloads are not tool output.
+  but missing result payloads are not tool output. App-server collaboration
+  tools also use structured thread-state fields for results: `spawnAgent`
+  returns child thread ids, `wait` returns per-agent states, and `closeAgent`
+  returns the previous child state.
 - Fix:
   Drop notifications that carry a non-empty `threadId` different from the
   session `provider_session_id`, with debug logging that records expected
   thread, event thread, turn, item id/type/status, and method. Keep notifications
   without `threadId` compatible. For Agent/task cards, render Output only from
-  actual `output`/`error` payload text, not from the prompt or summary.
+  actual `output`/`error` payload text, not from the prompt or summary. When
+  normalizing `collabAgentToolCall`, carry `receiverThreadIds` and
+  `agentsStates` into `rawInput`/`rawOutput` so `wait` and `closeAgent` preserve
+  completed child results and `spawnAgent` preserves the started child id.
 - Validation:
   Add a Codex app-server test that injects foreign-thread `agentMessage` and
   `turn/completed` notifications during a parent turn, plus AgentGUI projection
-  tests for failed Agent calls with prompt-only payloads. Run the focused Go and
-  GUI specs for those paths.
+  tests for failed Agent calls with prompt-only payloads. Add collab-agent
+  normalizer tests for failed spawn output, started child ids, wait completed
+  results, and close previous status. Run the focused Go and GUI specs for
+  those paths.
 
 ### Concurrent agent CLI installs corrupt shared npm global state
 

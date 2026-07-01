@@ -2219,6 +2219,10 @@ func acpToolName(callID string, title string, kind string, rawInput any) string 
 			return "Agent"
 		case "agent":
 			return "Agent"
+		case "closeagent":
+			return "CloseAgent"
+		case "wait":
+			return "Wait"
 		case "rg", "ripgrep":
 			return "Grep"
 		case "find", "fd":

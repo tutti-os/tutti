@@ -242,6 +242,9 @@ func (a *CodexAppServerAdapter) appServerItemEvents(
 		if !ok {
 			return nil
 		}
+		if completed && itemType == "collabAgentToolCall" {
+			a.completeAppServerCollabAgentToolOutput(session, item, update)
+		}
 		events, _ := normalizer.ToolCallEvents(session, turnID, update)
 		return events
 	}
@@ -403,22 +406,19 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 		} else {
 			update["kind"] = "execute"
 		}
-		update["rawInput"] = map[string]any{
+		rawInput := map[string]any{
 			"task":      asStringRaw(item["prompt"]),
 			"agentName": tool,
 		}
+		if targets := appServerStringList(item["receiverThreadIds"], item["receiver_thread_ids"], item["targets"]); len(targets) > 0 {
+			rawInput["targets"] = targets
+			rawInput["target"] = targets[0]
+		}
+		update["rawInput"] = rawInput
 		if completed {
-			output := appServerCollabAgentRawOutput(item)
-			if len(output) > 0 {
+			output := appServerCollabAgentRawOutput(item, tool)
+			if appServerCollabAgentHasMeaningfulOutput(output) {
 				update["rawOutput"] = output
-			} else if update["status"] == messageStreamStateFailed {
-				slog.Debug(
-					"agent session app-server collab agent failed without output",
-					"itemId", itemID,
-					"tool", tool,
-					"status", status,
-					"rawItem", appServerItemJSON(item),
-				)
 			}
 		}
 	case "imageGeneration":
@@ -457,29 +457,6 @@ func appServerAgentControlToolName(tool string) string {
 	default:
 		return ""
 	}
-}
-
-func appServerCollabAgentRawOutput(item map[string]any) map[string]any {
-	output := map[string]any{}
-	if message := firstNonEmpty(
-		appServerOutputText(item["error"]),
-		appServerOutputText(item["message"]),
-	); message != "" {
-		output["message"] = message
-	}
-	if result := item["result"]; result != nil {
-		output["result"] = clonePayloadValue(result)
-	}
-	if text := firstNonEmpty(
-		appServerOutputText(item["output"]),
-		appServerOutputText(item["stdout"]),
-	); text != "" {
-		output["output"] = text
-	}
-	if stderr := appServerOutputText(item["stderr"]); stderr != "" {
-		output["stderr"] = stderr
-	}
-	return output
 }
 
 func appServerOutputText(value any) string {
