@@ -1,4 +1,6 @@
-import { useMemo, useState, type JSX } from "react";
+import { useCallback, useMemo, useRef, useState, type JSX } from "react";
+import { Check, Copy } from "lucide-react";
+import { translate } from "../../../../../i18n/index";
 import { AgentToolScrollArea } from "../AgentToolScrollArea";
 
 const MAX_OUTPUT_LINES = 200;
@@ -18,6 +20,8 @@ export function AgentTerminalBlock({
 }): JSX.Element | null {
   "use memo";
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const outputText = useMemo(
     () => [stdout, stderr].filter(Boolean).join("\n"),
     [stdout, stderr]
@@ -32,6 +36,33 @@ export function AgentTerminalBlock({
     : outputText;
   const failed = status === "failed";
   const hasOutput = Boolean(visibleOutput);
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard?.writeText(outputText).then(() => {
+      setCopied(true);
+      if (copyResetRef.current) {
+        clearTimeout(copyResetRef.current);
+      }
+      copyResetRef.current = setTimeout(() => setCopied(false), 1500);
+    });
+  }, [outputText]);
+
+  const copyButton = hasOutput ? (
+    <button
+      type="button"
+      data-testid="agent-terminal-copy"
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded-[4px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-secondary)]"
+      aria-label={translate("agentHost.agentGui.copyCode")}
+      title={translate("agentHost.agentGui.copyCode")}
+      onClick={handleCopy}
+    >
+      {copied ? (
+        <Check size={13} strokeWidth={2} aria-hidden="true" />
+      ) : (
+        <Copy size={13} strokeWidth={2} aria-hidden="true" />
+      )}
+    </button>
+  ) : null;
   const disclosureButton =
     outputLines.length > MAX_OUTPUT_LINES ? (
       <button
@@ -40,8 +71,10 @@ export function AgentTerminalBlock({
         onClick={() => setExpanded((value) => !value)}
       >
         {expanded
-          ? "Collapse output"
-          : `Show full output (${outputLines.length} lines)`}
+          ? translate("agentHost.agentTool.details.collapseOutput")
+          : translate("agentHost.agentTool.details.showFullOutput", {
+              count: outputLines.length
+            })}
       </button>
     ) : null;
 
@@ -65,6 +98,7 @@ export function AgentTerminalBlock({
           >
             {command}
           </span>
+          {copyButton}
         </div>
       ) : null}
       {hasOutput ? (
