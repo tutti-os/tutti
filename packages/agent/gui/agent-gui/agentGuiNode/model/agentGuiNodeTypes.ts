@@ -24,8 +24,9 @@ export interface AgentGUISessionChrome {
   } | null;
   approval: AgentGUIApprovalRequest | null;
   recovery: {
-    kind: "activating" | "failed" | "warning";
+    kind: "activating" | "failed" | "warning" | "connection-lost";
     message: string;
+    description?: string;
     canRetry?: boolean;
     followupAction?: "continue-in-new-conversation";
   } | null;
