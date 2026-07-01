@@ -89,6 +89,39 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.queryByText("Allow once")).toBeNull();
   });
 
+  it("renders approval details for non-edit tool calls (e.g. bash)", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            callType: "approval",
+            toolName: "Approval",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                options: [{ id: "allow_once", label: "Allow once" }],
+                toolCall: {
+                  kind: "bash",
+                  title: "Run build script",
+                  status: "pending",
+                  rawInput: {
+                    command: "pnpm build"
+                  }
+                }
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("Run build script")).toBeTruthy();
+    expect(screen.getByText("pnpm build")).toBeTruthy();
+  });
+
   it("renders ask-user options and selected answer from the typed ask-user vm", async () => {
     setAgentGuiI18nTestLocale("en");
 

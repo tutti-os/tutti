@@ -2,6 +2,7 @@ import type { JSX } from "react";
 import type { AgentToolCallVM } from "../../contracts/agentToolCallVM";
 import { AgentEditContent } from "./AgentEditContent";
 import {
+  AgentDefaultToolContent,
   arrayValue,
   objectValue,
   stringValue,
@@ -14,12 +15,25 @@ export function AgentApprovalContent({
   onLinkClick
 }: AgentToolRendererProps): JSX.Element | null {
   "use memo";
-  const previewCall = approvalPreviewCall(call);
-  if (!previewCall && !call.summary.trim()) {
+  const editPreviewCall = approvalEditPreviewCall(call);
+  const genericPreviewCall = editPreviewCall
+    ? null
+    : approvalGenericPreviewCall(call);
+  if (!editPreviewCall && !genericPreviewCall && !call.summary.trim()) {
     return null;
   }
-  if (previewCall) {
-    return <AgentEditContent call={previewCall} onLinkClick={onLinkClick} />;
+  if (editPreviewCall) {
+    return (
+      <AgentEditContent call={editPreviewCall} onLinkClick={onLinkClick} />
+    );
+  }
+  if (genericPreviewCall) {
+    return (
+      <AgentDefaultToolContent
+        call={genericPreviewCall}
+        onLinkClick={onLinkClick}
+      />
+    );
   }
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
@@ -28,7 +42,9 @@ export function AgentApprovalContent({
   );
 }
 
-function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
+function approvalEditPreviewCall(
+  call: AgentToolCallVM
+): AgentToolCallVM | null {
   const toolCall = objectValue(call.input?.toolCall);
   if (!toolCall) {
     return null;
@@ -68,6 +84,45 @@ function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
     content,
     locations,
     rendererKind: "edit",
+    approval: null,
+    planMode: null,
+    askUserQuestion: null,
+    task: null,
+    occurredAtUnixMs: call.occurredAtUnixMs
+  };
+}
+
+function approvalGenericPreviewCall(
+  call: AgentToolCallVM
+): AgentToolCallVM | null {
+  const toolCall = objectValue(call.input?.toolCall);
+  if (!toolCall) {
+    return null;
+  }
+  const input = objectValue(toolCall.rawInput);
+  const content = arrayValue(toolCall.content);
+  const toolTitle =
+    stringValue(toolCall.title) ?? stringValue(toolCall.toolName) ?? call.name;
+  return {
+    kind: "tool-call",
+    id: `${call.id}:approval-preview`,
+    turnId: call.turnId,
+    name: toolTitle,
+    toolName: toolTitle,
+    callType: "tool",
+    status: stringValue(toolCall.status) ?? call.status,
+    statusKind: call.statusKind,
+    summary: "",
+    compactSummary: null,
+    payload: { input, content },
+    toolState: null,
+    input,
+    output: null,
+    error: null,
+    metadata: null,
+    content,
+    locations: null,
+    rendererKind: "default",
     approval: null,
     planMode: null,
     askUserQuestion: null,
