@@ -3821,6 +3821,7 @@ export function useAgentGUINodeController({
   const startingConversationIdRef = useRef<string | null>(null);
   const activatedConversationIdsRef = useRef(new Set<string>());
   const failedNewConversationIdsRef = useRef(new Set<string>());
+  const pendingHomeErrorRef = useRef<string | null>(null);
   const lastActiveModelByProviderRef = useRef<Record<string, string>>({});
   const pendingTurnIdBySessionIdRef = useRef<Record<string, string>>({});
   const submitTraceBySessionIdRef = useRef<
@@ -6398,7 +6399,11 @@ export function useAgentGUINodeController({
       return;
     }
     if (!activeConversationId) {
-      setDetailError(null);
+      // When a failed first-message create reverts to the home composer, the
+      // pending error should be surfaced there instead of being cleared.
+      const pendingHomeError = pendingHomeErrorRef.current;
+      pendingHomeErrorRef.current = null;
+      setDetailError(pendingHomeError ?? null);
       return;
     }
     if (failedNewConversationIdsRef.current.has(activeConversationId)) {
@@ -6685,6 +6690,23 @@ export function useAgentGUINodeController({
           workspaceId,
           fields: { mode: "new" }
         });
+        // Enter the conversation surface immediately so the user sees their
+        // message without waiting for the backend session-creation round-trip.
+        // The home draft is intentionally left intact so a failed activation
+        // can revert to the composer with the user's input preserved. The
+        // activation promise below still owns durable session state and the
+        // clientSubmitId reconciliation once the real turn arrives.
+        setTransientConversation(optimisticConversation);
+        setDraftBySessionId((current) => ({
+          ...current,
+          [agentSessionId]: emptyAgentComposerDraft()
+        }));
+        isComposerHomeRef.current = false;
+        setIsComposerHome(false);
+        activeConversationIdRef.current = agentSessionId;
+        setActiveConversationId(agentSessionId);
+        setIntent({ tag: "active", id: agentSessionId });
+        persistActiveConversation(agentSessionId);
         reportAgentSubmitTraceDiagnostic({
           event: "activation.requested",
           runtime: agentActivityRuntime,
@@ -6754,19 +6776,39 @@ export function useAgentGUINodeController({
             if (startingConversationIdRef.current === agentSessionId) {
               startingConversationIdRef.current = null;
             }
-            if (
+            const shouldRevertToHome =
               isMountedRef.current &&
-              activeConversationIdRef.current === null &&
-              isComposerHomeRef.current
-            ) {
+              (isCurrentConversation(agentSessionId) ||
+                (activeConversationIdRef.current === null &&
+                  isComposerHomeRef.current));
+            if (shouldRevertToHome) {
+              const homeErrorMessage =
+                result.error?.message?.trim() || "Session activation failed.";
+              if (isCurrentConversation(agentSessionId)) {
+                // Stash the error so the activeConversationId-null effect
+                // surfaces it on the home composer instead of clearing it.
+                pendingHomeErrorRef.current = homeErrorMessage;
+                // Undo the optimistic entry: send the user back to the home
+                // composer. The home draft was never cleared, so their input is
+                // preserved; only the error is surfaced there.
+                isComposerHomeRef.current = true;
+                setIsComposerHome(true);
+                activeConversationIdRef.current = null;
+                setActiveConversationId(null);
+                setIntent({ tag: "home" });
+                persistActiveConversation(null);
+                setTransientConversation(null);
+                setAgentSessionViewOverlayMessages(
+                  sessionViewRef(agentSessionId),
+                  []
+                );
+              }
               setIsLoadingMessages(false);
               setAgentSessionViewMessagesLoading(
                 sessionViewRef(agentSessionId),
                 false
               );
-              setDetailError(
-                result.error?.message?.trim() || "Session activation failed."
-              );
+              setDetailError(homeErrorMessage);
             }
             return;
           }
@@ -6804,6 +6846,22 @@ export function useAgentGUINodeController({
           ) {
             if (isPendingCreatedConversation) {
               startingConversationIdRef.current = null;
+            }
+            // The user navigated away from the optimistic create before it
+            // resolved. Drop the optimistic messages recorded for it: the
+            // optimistic user prompt keeps a pending turn id that retarget
+            // never rewrote (the session wasn't watched), so if it lingered it
+            // would reappear as a duplicate when the session is later reopened
+            // from the conversation list and reloaded from durable history.
+            resetAgentSessionViewDetailMessages(
+              sessionViewRef(conversation.id)
+            );
+            setAgentSessionViewOverlayMessages(
+              sessionViewRef(conversation.id),
+              []
+            );
+            if (transientConversationRef.current?.id === conversation.id) {
+              setTransientConversation(null);
             }
             return;
           }
@@ -6880,8 +6938,13 @@ export function useAgentGUINodeController({
               conversationId: pendingCreateAgentSessionId ?? agentSessionId
             });
           }
+          // Surface the failure only on the failed create's own surface —
+          // either the user is still on it, or they're back at the home
+          // composer where the create started. If they navigated to another
+          // conversation, the error must not leak onto that conversation; the
+          // create is cleaned up silently below.
           const shouldShowErrorOnHome =
-            startingConversationIdRef.current === agentSessionId ||
+            isCurrentConversation(agentSessionId) ||
             (activeConversationIdRef.current === null &&
               isComposerHomeRef.current);
           const submitTrace = submitTraceBySessionIdRef.current[agentSessionId];
@@ -6904,6 +6967,7 @@ export function useAgentGUINodeController({
             !shouldShowErrorOnHome &&
             !isCurrentConversation(agentSessionId)
           ) {
+            failedNewConversationIdsRef.current.add(agentSessionId);
             resetAgentSessionViewDetailMessages(sessionViewRef(agentSessionId));
             setAgentSessionViewOverlayMessages(
               sessionViewRef(agentSessionId),
@@ -6941,6 +7005,20 @@ export function useAgentGUINodeController({
           }
           if (transientConversationRef.current?.id === agentSessionId) {
             setTransientConversation(null);
+          }
+          if (isCurrentConversation(agentSessionId)) {
+            // Stash the error so the activeConversationId-null effect surfaces
+            // it on the home composer instead of clearing it.
+            pendingHomeErrorRef.current = message;
+            // Undo the optimistic entry: send the user back to the home
+            // composer. The home draft was never cleared, so their input is
+            // preserved; only the error is surfaced there.
+            isComposerHomeRef.current = true;
+            setIsComposerHome(true);
+            activeConversationIdRef.current = null;
+            setActiveConversationId(null);
+            setIntent({ tag: "home" });
+            persistActiveConversation(null);
           }
           setIsLoadingMessages(false);
           setAgentSessionViewMessagesLoading(
@@ -9861,7 +9939,11 @@ export function useAgentGUINodeController({
             : null,
       approval: pendingApproval,
       recovery:
-        activeLiveState === "activating"
+        activeLiveState === "activating" &&
+        // Suppress the "reconnecting" banner during a first-message create:
+        // the user just submitted and is already seeing their optimistic
+        // message, so an activation-in-flight state is not a recovery event.
+        startingConversationIdRef.current !== activeConversationId
           ? {
               kind: "activating",
               // i18n-check-ignore: Legacy recovery fallback copy; localized presentation should move to view labels.
@@ -9884,6 +9966,7 @@ export function useAgentGUINodeController({
     activationError,
     activationErrorCode,
     activeLiveState,
+    activeConversationId,
     activeConversationResumeUnavailable,
     activeSessionState,
     hasProviderSessionNotFoundError,
