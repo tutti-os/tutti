@@ -539,6 +539,7 @@ export const en = {
       usageCompactAction: "Compact",
       planCardTitle: "Plan",
       planCardCopy: "Copy plan",
+      copyCode: "Copy code",
       planCardExpand: "Expand plan",
       planCardCollapse: "Collapse plan",
       planImplementationLead: "Implement this plan?",
@@ -1363,7 +1364,9 @@ export const en = {
         imagePreviewAlt: "Image generation preview",
         showFullContent: "Show full content ({{count}} lines)",
         collapseContent: "Collapse content",
-        showFullDiff: "Show full diff ({{count}} lines)"
+        showFullDiff: "Show full diff ({{count}} lines)",
+        showFullOutput: "Show full output ({{count}} lines)",
+        collapseOutput: "Collapse output"
       },
       labels: {
         runCommand: "Run command",

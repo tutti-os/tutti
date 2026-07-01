@@ -495,6 +495,7 @@ export const zhCN = {
       usageCompactAction: "压缩",
       planCardTitle: "计划",
       planCardCopy: "复制计划",
+      copyCode: "复制代码",
       planCardExpand: "展开方案",
       planCardCollapse: "收起方案",
       planImplementationLead: "是否实作此方案？",
@@ -1278,7 +1279,9 @@ export const zhCN = {
         imagePreviewAlt: "图片生成预览",
         showFullContent: "展开完整内容（{{count}} 行）",
         collapseContent: "收起内容",
-        showFullDiff: "展开完整差异（{{count}} 行）"
+        showFullDiff: "展开完整差异（{{count}} 行）",
+        showFullOutput: "展开完整输出（{{count}} 行）",
+        collapseOutput: "收起输出"
       },
       labels: {
         runCommand: "执行命令",
