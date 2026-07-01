@@ -3209,10 +3209,7 @@ describe("AgentGUINode", () => {
     const queuedPromptList = within(composer as HTMLFormElement).getByTestId(
       "agent-gui-composer-queued-prompts"
     );
-    expect(
-      within(queuedPromptList).getByText("agentHost.agentGui.queuedLabel")
-    ).toBeTruthy();
-    expect(within(queuedPromptList).getByText("2")).toBeTruthy();
+    expect(within(queuedPromptList).queryByText("2")).toBeNull();
     expect(
       within(queuedPromptList).getByText("follow-up while busy")
     ).toBeTruthy();

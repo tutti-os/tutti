@@ -256,7 +256,6 @@ export interface AgentGUIViewLabels {
   planModeOnLabel: string;
   planModeOffLabel: string;
   planUnavailable: string;
-  queuedLabel: string;
   sendQueuedPromptNext: string;
   editQueuedPrompt: string;
   deleteQueuedPrompt: string;
@@ -1887,7 +1886,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       planModeOffLabel: labels.planModeOffLabel,
       planUnavailable: labels.planUnavailable,
       goalLabel: labels.goalLabel,
-      queuedLabel: labels.queuedLabel,
       sendQueuedPromptNext: labels.sendQueuedPromptNext,
       editQueuedPrompt: labels.editQueuedPrompt,
       deleteQueuedPrompt: labels.deleteQueuedPrompt,
@@ -2004,7 +2002,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.projectMissingDescription,
       labels.promptTipsPrefix,
       labels.reviewPicker,
-      labels.queuedLabel,
       labels.queuedPromptMoreActions,
       labels.referenceWorkspaceFiles,
       labels.removeMention,

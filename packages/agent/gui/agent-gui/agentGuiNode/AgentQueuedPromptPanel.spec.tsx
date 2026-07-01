@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentQueuedPromptPanel } from "./AgentQueuedPromptPanel";
 
 const labels = {
-  queuedLabel: "Queued",
   sendQueuedPromptNext: "Send next",
   editQueuedPrompt: "Edit",
   deleteQueuedPrompt: "Delete",
@@ -20,7 +19,26 @@ function textQueuedPrompt(id: string, text: string, createdAtUnixMs = 1) {
 }
 
 describe("AgentQueuedPromptPanel", () => {
-  it("shows an expand cue only when queued content can expand", () => {
+  it("omits the standalone queued header and count", () => {
+    render(
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          textQueuedPrompt("queued-1", "first prompt"),
+          textQueuedPrompt("queued-2", "second prompt", 2)
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText("Queued")).toBeNull();
+    expect(screen.queryByText("2")).toBeNull();
+  });
+
+  it("shows an expand cue in the first queued row only when queued content can expand", () => {
     const { rerender } = render(
       <AgentQueuedPromptPanel
         queuedPrompts={[textQueuedPrompt("queued-1", "short prompt")]}
@@ -56,6 +74,11 @@ describe("AgentQueuedPromptPanel", () => {
     expect(
       screen.getByTestId("agent-gui-composer-queued-prompt-expand-cue")
     ).toHaveClass("lucide-chevron-right");
+    expect(
+      screen
+        .getByTestId("agent-gui-composer-queued-prompt-expand-cue")
+        .closest('[data-testid="agent-gui-composer-queued-prompt-queued-1"]')
+    ).toBeInTheDocument();
   });
 
   it("shows an expand cue for a single queued prompt only when rendered text overflows", () => {
@@ -107,7 +130,7 @@ describe("AgentQueuedPromptPanel", () => {
       />
     );
 
-    expect(screen.getByText("Queued")).toBeInTheDocument();
+    expect(screen.queryByText("Queued")).toBeNull();
     const mention = container.querySelector('[data-agent-file-mention="true"]');
     expect(mention).toHaveAttribute("data-agent-mention-kind", "session");
     expect(mention).toHaveClass("tsh-agent-object-token");

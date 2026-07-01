@@ -6785,7 +6785,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-queued-prompt-list {
   display: grid;
   gap: 0;
-  max-height: 36px;
+  max-height: 24px;
   overflow: hidden;
   overscroll-behavior: contain;
   padding-right: 2px;
@@ -6798,7 +6798,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   position: relative;
   z-index: 1;
   margin-bottom: -1px;
-  padding: 10px 16px 12px;
+  padding: 2px 8px 3px;
   border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
@@ -6817,18 +6817,10 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   overflow-y: auto;
 }
 
-.agent-gui-node__composer-queued-prompt-header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 4px;
-  min-height: 20px;
-}
-
 .agent-gui-node__composer-queued-prompt-expand-cue {
   flex: 0 0 auto;
   color: var(--agent-gui-accent-strong);
-  opacity: 0;
+  opacity: 0.78;
   transition:
     opacity 120ms ease,
     transform 120ms ease;
@@ -6857,9 +6849,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-queued-prompt-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  padding: 2px 0;
+  padding: 0;
 }
 
 .agent-gui-node__composer-queued-prompt-row[data-draining="true"] {
@@ -6888,8 +6880,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-image {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   flex: 0 0 auto;
   border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
   border-radius: 4px;
@@ -6897,28 +6889,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   background: var(--agent-gui-surface-muted);
 }
 
-.agent-gui-node__composer-queued-prompt-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--agent-gui-accent-strong);
-  line-height: 20px;
-}
-
-.agent-gui-node__composer-queued-prompt-count {
-  margin-left: 4px;
-  color: var(--agent-gui-accent-strong);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 20px;
-  font-variant-numeric: tabular-nums;
-}
-
 .agent-gui-node__composer-queued-prompt-text {
   min-width: 0;
   margin: 0;
   color: var(--agent-gui-text-secondary, var(--text-secondary));
   font-size: 13px;
-  line-height: 28px;
+  line-height: 22px;
   overflow: hidden;
   text-overflow: ellipsis;
   word-break: break-word;
@@ -7048,6 +7024,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer-queued-prompt-actions button {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
   color: var(--text-secondary);
 }
 

@@ -465,7 +465,6 @@ export const zhCN = {
       planModeOnLabel: "开启",
       planModeOffLabel: "关闭",
       planUnavailable: "规划模式不可用",
-      queuedLabel: "排队中",
       sendQueuedPromptNext: "直接发送",
       editQueuedPrompt: "编辑",
       deleteQueuedPrompt: "删除",

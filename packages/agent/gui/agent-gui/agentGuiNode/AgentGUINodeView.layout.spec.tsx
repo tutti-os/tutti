@@ -1861,7 +1861,6 @@ function createLabels(): AgentGUIViewLabels {
     planModeOnLabel: "on",
     planModeOffLabel: "off",
     planUnavailable: "planUnavailable",
-    queuedLabel: "queuedLabel",
     sendQueuedPromptNext: "sendQueuedPromptNext",
     editQueuedPrompt: "editQueuedPrompt",
     deleteQueuedPrompt: "deleteQueuedPrompt",

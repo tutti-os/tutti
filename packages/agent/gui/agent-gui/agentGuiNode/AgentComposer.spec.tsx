@@ -4575,7 +4575,6 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
       "无法确认授权状态。按 Enter 打开设置。",
     computerUseCapabilitySettingsLabel: "电脑控制设置",
     computerUseCapabilitySettingsDescription: "安装、移除或授权电脑控制。",
-    queuedLabel: "排队",
     sendQueuedPromptNext: "下一条发送",
     editQueuedPrompt: "编辑",
     deleteQueuedPrompt: "删除",

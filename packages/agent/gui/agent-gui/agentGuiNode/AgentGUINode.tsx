@@ -865,7 +865,6 @@ export const AgentGUINode = memo(function AgentGUINode({
       planModeOnLabel: t("agentHost.agentGui.planModeOnLabel"),
       planModeOffLabel: t("agentHost.agentGui.planModeOffLabel"),
       planUnavailable: t("agentHost.agentGui.planUnavailable"),
-      queuedLabel: t("agentHost.agentGui.queuedLabel"),
       sendQueuedPromptNext: t("agentHost.agentGui.sendQueuedPromptNext"),
       editQueuedPrompt: t("agentHost.agentGui.editQueuedPrompt"),
       deleteQueuedPrompt: t("agentHost.agentGui.deleteQueuedPrompt"),

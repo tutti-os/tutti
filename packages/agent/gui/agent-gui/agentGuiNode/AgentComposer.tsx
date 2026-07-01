@@ -262,7 +262,6 @@ export interface AgentComposerProps {
     computerUseCapabilityAuthorizationUnknownDescription: string;
     computerUseCapabilitySettingsLabel: string;
     computerUseCapabilitySettingsDescription: string;
-    queuedLabel: string;
     sendQueuedPromptNext: string;
     editQueuedPrompt: string;
     deleteQueuedPrompt: string;
@@ -2856,7 +2855,6 @@ export function AgentComposer({
             queuedPrompts={queuedPrompts}
             drainingQueuedPromptId={drainingQueuedPromptId}
             labels={{
-              queuedLabel: labels.queuedLabel,
               sendQueuedPromptNext: labels.sendQueuedPromptNext,
               editQueuedPrompt: labels.editQueuedPrompt,
               deleteQueuedPrompt: labels.deleteQueuedPrompt,

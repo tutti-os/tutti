@@ -509,7 +509,6 @@ export const en = {
       planModeOnLabel: "On",
       planModeOffLabel: "Off",
       planUnavailable: "Plan unavailable",
-      queuedLabel: "Queued",
       sendQueuedPromptNext: "Send next",
       editQueuedPrompt: "Edit",
       deleteQueuedPrompt: "Delete",
