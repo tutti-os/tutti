@@ -12432,6 +12432,84 @@ describe("useAgentGUINodeController", () => {
     expect(activate).not.toHaveBeenCalled();
   });
 
+  it("hydrates a newly created conversation from messages after activation", async () => {
+    let createdAgentSessionId = "";
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => {
+        createdAgentSessionId = input.agentSessionId;
+        return {
+          session: agentSession(input.agentSessionId, {
+            status: "ready",
+            title: "Created session"
+          }),
+          activation: { mode: input.mode, status: "attached" as const }
+        };
+      }
+    );
+    const listSessionTimeline = vi.fn(
+      async (input: { agentSessionId: string }) => ({
+        timelineItems:
+          input.agentSessionId === createdAgentSessionId
+            ? [
+                timelineMessage({
+                  agentSessionId: createdAgentSessionId,
+                  id: 1,
+                  eventId: "new-user",
+                  role: "user",
+                  content: "New ask",
+                  turnId: "turn-1"
+                }),
+                timelineMessage({
+                  agentSessionId: createdAgentSessionId,
+                  id: 2,
+                  eventId: "new-assistant",
+                  role: "assistant",
+                  content: "New answer",
+                  turnId: "turn-1"
+                })
+              ]
+            : []
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline,
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("New ask"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(conversationBodies(result.current.viewModel)).toContain(
+        "New answer"
+      );
+    });
+    expect(listSessionTimeline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentSessionId: createdAgentSessionId,
+        cache: false,
+        order: "desc"
+      })
+    );
+  });
+
   it("keeps a newly submitted prompt at the tail when live events arrive before the remote timeline catches up", async () => {
     let emitEvent:
       | ((event: AgentHostAgentActivityStreamEvent) => void)

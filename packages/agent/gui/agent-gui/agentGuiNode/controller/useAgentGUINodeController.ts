@@ -6837,7 +6837,7 @@ export function useAgentGUINodeController({
           });
           persistActiveConversation(conversation.id);
           setIsLoadingMessages(true);
-          void refreshMessagesFromSnapshot(conversation.id);
+          void loadSelectedConversationMessages(conversation.id);
           void loadSessionState(conversation.id);
           void syncConversationListProjection(conversation.id);
         })
@@ -6936,6 +6936,7 @@ export function useAgentGUINodeController({
       isCreatingConversation,
       openclawGateway?.status,
       syncConversationListProjection,
+      loadSelectedConversationMessages,
       loadSessionState,
       refreshMessagesFromSnapshot,
       persistActiveConversation,
