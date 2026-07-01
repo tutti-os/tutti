@@ -5,6 +5,7 @@ import {
   resolveDesktopDefaultsFromEnv,
   resolveDesktopDevelopmentAppName,
   resolveDesktopLoginCallbackUrl,
+  resolveDesktopLoginProtocolClientRegistration,
   resolveDesktopLoginProtocolScheme,
   resolveDesktopUserDataPath,
   resolveTuttiEnv
@@ -195,6 +196,40 @@ test("resolveDesktopLoginCallbackUrl isolates development protocol scheme", () =
     process.env.TUTTI_ENV = "production";
     assert.equal(resolveDesktopLoginProtocolScheme(), "tutti");
     assert.equal(resolveDesktopLoginCallbackUrl(), "tutti://login/callback");
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopLoginProtocolClientRegistration passes app path in development", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+    assert.deepEqual(
+      resolveDesktopLoginProtocolClientRegistration({
+        appPath: "/repo/apps/desktop",
+        executablePath:
+          "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+        isPackaged: false
+      }),
+      {
+        scheme: "tutti-dev",
+        executablePath:
+          "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+        args: ["/repo/apps/desktop"]
+      }
+    );
+
+    process.env.TUTTI_ENV = "production";
+    assert.deepEqual(
+      resolveDesktopLoginProtocolClientRegistration({
+        appPath: "/Applications/Tutti.app",
+        executablePath: "/Applications/Tutti.app/Contents/MacOS/Tutti",
+        isPackaged: true
+      }),
+      { scheme: "tutti" }
+    );
   } finally {
     restoreEnv(previousEnv);
   }

@@ -743,6 +743,7 @@ func sendBridgeCORS(w http.ResponseWriter, status int) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "content-type")
 	w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Private-Network", "true")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 }

@@ -5,7 +5,7 @@ import {
   initializeDesktopEnvironment,
   resolveDesktopDevelopmentAppName,
   resolveDesktopLoginCallbackUrl,
-  resolveDesktopLoginProtocolScheme,
+  resolveDesktopLoginProtocolClientRegistration,
   resolveDesktopUserDataPath
 } from "./defaults";
 import { registerDesktopAppLifecycle } from "./desktopAppLifecycle";
@@ -82,7 +82,21 @@ export async function bootstrapDesktopApp(): Promise<void> {
   registerTuttiAssetProtocolScheme();
   registerWorkspaceFileIconProtocolScheme();
   const loginCallbackUrl = resolveDesktopLoginCallbackUrl();
-  app.setAsDefaultProtocolClient(resolveDesktopLoginProtocolScheme());
+  const protocolClientRegistration =
+    resolveDesktopLoginProtocolClientRegistration({
+      appPath: app.getAppPath(),
+      executablePath: process.execPath,
+      isPackaged: app.isPackaged
+    });
+  if (protocolClientRegistration.executablePath) {
+    app.setAsDefaultProtocolClient(
+      protocolClientRegistration.scheme,
+      protocolClientRegistration.executablePath,
+      protocolClientRegistration.args
+    );
+  } else {
+    app.setAsDefaultProtocolClient(protocolClientRegistration.scheme);
+  }
   app.on("open-url", (event, url) => {
     if (url.startsWith(loginCallbackUrl)) {
       event.preventDefault();

@@ -36,6 +36,9 @@ func TestStartLoginCompletesAndWritesAuthJSON(t *testing.T) {
 	if healthResp.StatusCode != http.StatusOK {
 		t.Fatalf("health status = %d", healthResp.StatusCode)
 	}
+	if got := healthResp.Header.Get("Access-Control-Allow-Private-Network"); got != "true" {
+		t.Fatalf("private network cors header = %q", got)
+	}
 	_ = healthResp.Body.Close()
 
 	body, _ := json.Marshal(map[string]string{
