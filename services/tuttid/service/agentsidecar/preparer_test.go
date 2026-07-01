@@ -108,6 +108,8 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(codexAgents), "Prefer `$CODEX_HOME/generated_images/`") ||
 		!strings.Contains(string(codexAgents), "never use unverified sandbox path") ||
 		!strings.Contains(string(codexAgents), "No inline base64.") ||
+		!strings.Contains(string(codexAgents), "use `[filename](/abs/path)` Markdown links") ||
+		!strings.Contains(string(codexAgents), "No relative paths, line suffixes") ||
 		!strings.Contains(string(codexAgents), "Web URLs: Markdown links") {
 		t.Fatalf("codex AGENTS.md content = %q, want host app rendering guidance", string(codexAgents))
 	}
@@ -876,6 +878,8 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Prefer `$CODEX_HOME/generated_images/`") ||
 		!strings.Contains(string(systemPrompt), "never use unverified sandbox path") ||
 		!strings.Contains(string(systemPrompt), "No inline base64.") ||
+		!strings.Contains(string(systemPrompt), "use `[filename](/abs/path)` Markdown links") ||
+		!strings.Contains(string(systemPrompt), "No relative paths, line suffixes") ||
 		!strings.Contains(string(systemPrompt), "Web URLs: Markdown links") {
 		t.Fatalf("claude system prompt content = %q, want host app rendering guidance", string(systemPrompt))
 	}
