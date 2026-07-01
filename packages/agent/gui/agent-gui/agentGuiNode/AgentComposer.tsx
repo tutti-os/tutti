@@ -843,6 +843,7 @@ export function AgentComposer({
   const [paletteDraftPrompt, setPaletteDraftPrompt] = useState(
     goalDraftObjective ?? draftPrompt
   );
+  const [displayDraftImages, setDisplayDraftImages] = useState(draftImages);
   const [fileMentionSuggestion, setFileMentionSuggestion] =
     useState<AgentFileMentionSuggestionState | null>(null);
   const [isSelectedProjectMissing, setIsSelectedProjectMissing] =
@@ -1174,6 +1175,7 @@ export function AgentComposer({
 
   useEffect(() => {
     draftImagesRef.current = draftImages;
+    setDisplayDraftImages(draftImages);
   }, [draftImages]);
 
   useEffect(() => {
@@ -1485,6 +1487,7 @@ export function AgentComposer({
       draftImagesRef.current = [];
       draftFilesRef.current = [];
       setPaletteDraftPrompt("");
+      setDisplayDraftImages([]);
       onDraftContentChange(emptyAgentComposerDraft());
     }
   );
@@ -2921,12 +2924,12 @@ export function AgentComposer({
                 }
                 style={promptInputAreaStyle}
               >
-                {draftImages.length > 0 ? (
+                {displayDraftImages.length > 0 ? (
                   <div
                     className="mb-2 flex w-full max-w-full flex-wrap items-start gap-2"
                     data-testid="agent-gui-composer-image-drafts"
                   >
-                    {draftImages.map((image) => (
+                    {displayDraftImages.map((image) => (
                       <AgentComposerDraftImagePreview
                         key={image.id}
                         image={image}
