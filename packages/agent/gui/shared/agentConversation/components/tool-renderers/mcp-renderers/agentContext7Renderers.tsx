@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import { translate } from "../../../../../i18n/index";
 import { ToolMarkdownBlock } from "../agentToolContentShared";
 import {
   itemPrimaryText,
@@ -20,7 +21,10 @@ export function renderContext7Mcp(
             className={`px-3 py-2 ${index > 0 ? "border-t border-[var(--line-2)]" : ""}`}
           >
             <div className="text-[11px] font-semibold text-[var(--text-primary)]">
-              {itemPrimaryText(item) ?? `Doc ${index + 1}`}
+              {itemPrimaryText(item) ??
+                translate("agentHost.agentTool.details.mcpDoc", {
+                  index: index + 1
+                })}
             </div>
             {itemSecondaryText(item) ? (
               <div className="text-[11px] text-[var(--text-tertiary)]">
