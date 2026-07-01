@@ -1559,6 +1559,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     scrollTop: number;
     clientHeight: number;
   } | null>(null);
+  const submittedPromptScrollConversationRef = useRef<string | null>(null);
   const pendingPrependScrollAnchorRef = useRef<{
     conversationId: string;
     scrollHeight: number;
@@ -2104,6 +2105,28 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const submitGuidancePrompt = useStableEventCallback(
     actions.submitGuidancePrompt
   );
+  const requestSubmittedPromptScrollToBottom = useCallback(() => {
+    const activeConversationId = viewModel.activeConversationId;
+    if (!activeConversationId) {
+      return;
+    }
+    submittedPromptScrollConversationRef.current = activeConversationId;
+    pendingPrependScrollAnchorRef.current = null;
+  }, [viewModel.activeConversationId]);
+  const submitPromptAndScrollToBottom = useCallback(
+    (content: AgentPromptContentBlock[], displayPrompt?: string): void => {
+      requestSubmittedPromptScrollToBottom();
+      submitPrompt(content, displayPrompt);
+    },
+    [requestSubmittedPromptScrollToBottom, submitPrompt]
+  );
+  const submitGuidancePromptAndScrollToBottom = useCallback(
+    (content: AgentPromptContentBlock[], displayPrompt?: string): void => {
+      requestSubmittedPromptScrollToBottom();
+      submitGuidancePrompt(content, displayPrompt);
+    },
+    [requestSubmittedPromptScrollToBottom, submitGuidancePrompt]
+  );
   const showPromptImagesUnsupported = useStableEventCallback(
     actions.showPromptImagesUnsupported
   );
@@ -2181,8 +2204,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
-      onSubmit: submitPrompt,
-      onSubmitGuidance: submitGuidancePrompt,
+      onSubmit: submitPromptAndScrollToBottom,
+      onSubmitGuidance: submitGuidancePromptAndScrollToBottom,
       onPromptImagesUnsupported: showPromptImagesUnsupported,
       onSendQueuedPromptNext: sendQueuedPromptNext,
       onRemoveQueuedPrompt: removeQueuedPrompt,
@@ -2223,8 +2246,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       slashStatus,
       submitDisabled,
       submitInteractivePrompt,
-      submitPrompt,
-      submitGuidancePrompt,
+      submitPromptAndScrollToBottom,
+      submitGuidancePromptAndScrollToBottom,
       uiLanguage,
       stableLinkAction,
       stableRequestGitBranches,
@@ -2311,6 +2334,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     if (!activeConversationId) {
       timelineScrollAnchorRef.current = null;
       pendingPrependScrollAnchorRef.current = null;
+      submittedPromptScrollConversationRef.current = null;
       setIsTimelineScrolledToTop(true);
       return;
     }
@@ -2321,11 +2345,21 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     );
     const anchor = timelineScrollAnchorRef.current;
     const prependAnchor = pendingPrependScrollAnchorRef.current;
+    const shouldScrollSubmittedPromptToBottom =
+      submittedPromptScrollConversationRef.current === activeConversationId;
     let nextScrollTop = timeline.scrollTop;
 
-    if (!anchor || anchor.conversationId !== activeConversationId) {
-      timeline.scrollTop = maxScrollTop;
+    if (
+      !anchor ||
+      anchor.conversationId !== activeConversationId ||
+      shouldScrollSubmittedPromptToBottom
+    ) {
+      setTimelineScrollTopInstantly(timeline, maxScrollTop);
       nextScrollTop = maxScrollTop;
+      submittedPromptScrollConversationRef.current = null;
+      if (shouldScrollSubmittedPromptToBottom) {
+        pendingPrependScrollAnchorRef.current = null;
+      }
     } else if (prependAnchor?.conversationId === activeConversationId) {
       const nextScrollHeight = timeline.scrollHeight;
       const delta = nextScrollHeight - prependAnchor.scrollHeight;

@@ -624,6 +624,11 @@ User-visible rules:
   active session is selected or a retry begins.
 - Auto-scroll, bottom anchoring, and pending-row placement are visual behaviors
   layered on top of projected rows; they must not affect message merge/dedupe.
+- A local composer submit is an explicit user navigation intent: after a normal
+  or guidance prompt submit, the detail timeline should force one bottom scroll
+  so the user's newly submitted message is visible even if the reader was
+  previously in the middle of history. Streaming updates without a local submit
+  should still respect the usual stick-to-bottom threshold.
 
 ### Composer And Send Button
 

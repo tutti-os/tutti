@@ -10,6 +10,7 @@ import {
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
+import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
 import { AgentGUINodeView, type AgentGUIViewLabels } from "./AgentGUINodeView";
 import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
@@ -27,6 +28,10 @@ const composerMock = vi.hoisted(() => ({
     composerFocusRequestSequence?: number | null;
     compactSupported?: boolean | null;
     isSendingTurn?: boolean;
+    onSubmit?: (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string
+    ) => void;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
   }>
@@ -53,6 +58,10 @@ vi.mock("./AgentComposer", () => ({
     composerFocusRequestSequence?: number | null;
     compactSupported?: boolean | null;
     isSendingTurn?: boolean;
+    onSubmit?: (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string
+    ) => void;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
   }) => {
@@ -60,6 +69,7 @@ vi.mock("./AgentComposer", () => ({
       composerFocusRequestSequence: props.composerFocusRequestSequence,
       compactSupported: props.compactSupported,
       isSendingTurn: props.isSendingTurn,
+      onSubmit: props.onSubmit,
       showStopButton: props.showStopButton,
       usage: props.usage
     });
@@ -1363,6 +1373,54 @@ describe("AgentGUINodeView layout persistence", () => {
     );
     expect(timeline.scrollTop).toBe(400);
   });
+
+  it("scrolls to the bottom after submitting a prompt from the middle of the timeline", () => {
+    const activeConversation = createConversationSummary("session-1");
+    const actions = createActions();
+    const activeViewModel = {
+      ...createViewModel(),
+      conversations: [activeConversation],
+      activeConversation,
+      activeConversationId: activeConversation.id,
+      conversationDetail: createConversationDetail()
+    };
+    const { rerender } = renderAgentGUINodeView({
+      actions,
+      viewModel: activeViewModel
+    });
+    const timeline = screen.getByTestId("agent-gui-timeline") as HTMLElement;
+    let scrollHeight = 1000;
+    Object.defineProperty(timeline, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight
+    });
+    Object.defineProperty(timeline, "clientHeight", {
+      configurable: true,
+      get: () => 400
+    });
+
+    timeline.scrollTop = 240;
+    fireEvent.scroll(timeline);
+
+    composerMock.calls.at(-1)?.onSubmit?.([{ type: "text", text: "New ask" }]);
+    expect(actions.submitPrompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "New ask" }],
+      undefined
+    );
+
+    scrollHeight = 1240;
+    rerender(
+      buildAgentGUINodeViewElement({
+        actions,
+        viewModel: {
+          ...activeViewModel,
+          conversationDetail: createConversationDetailWithUserMessage("New ask")
+        }
+      })
+    );
+
+    expect(timeline.scrollTop).toBe(840);
+  });
 });
 
 describe("AgentGUINodeView usage", () => {
@@ -1808,6 +1866,28 @@ function createConversationDetail(): WorkspaceAgentSessionDetailViewModel {
       }
     ],
     showProcessingIndicator: false
+  };
+}
+
+function createConversationDetailWithUserMessage(
+  body: string
+): WorkspaceAgentSessionDetailViewModel {
+  const detail = createConversationDetail();
+  return {
+    ...detail,
+    turns: [
+      ...detail.turns,
+      {
+        id: "turn-2",
+        userMessage: { id: "user-2", body, turnId: "turn-2" },
+        userMessages: [{ id: "user-2", body, turnId: "turn-2" }],
+        agentMessages: [],
+        toolCalls: [],
+        toolCallCount: 0,
+        hasFailedToolCall: false,
+        agentItems: []
+      }
+    ]
   };
 }
 

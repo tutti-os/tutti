@@ -49,12 +49,10 @@ describe("AgentSlashCommandPalette", () => {
       "min-h-9",
       "px-2.5",
       "py-2",
+      "hover:bg-[var(--transparency-block)]",
+      "focus-visible:bg-[var(--transparency-block)]",
       "data-[highlighted]:bg-[var(--transparency-block)]",
       "active:bg-[var(--transparency-active)]"
-    );
-    expect(option).not.toHaveClass(
-      "hover:bg-[var(--transparency-block)]",
-      "focus:bg-[var(--transparency-block)]"
     );
     expect(option).toHaveAttribute("data-highlighted", "");
     expect(screen.getByText("tutti-cli").parentElement).toHaveClass(
