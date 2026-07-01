@@ -50,7 +50,10 @@ export function selectSessionDisplayStatuses(
       return [
         session.agentSessionId,
         sessionStatus === "failed"
-          ? (latestTurnStatus ?? sessionStatus)
+          ? latestTurnStatus != null &&
+            isTerminalDisplayStatus(latestTurnStatus)
+            ? latestTurnStatus
+            : sessionStatus
           : sessionStatus
       ];
     })
@@ -421,6 +424,17 @@ function displayStatusFromTerminalStatus(
 
 function isWorkingStatus(status: string): boolean {
   return status === "running" || status === "streaming" || status === "working";
+}
+
+function isTerminalDisplayStatus(
+  status: AgentActivityDisplayStatus | null
+): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "canceled" ||
+    status === "idle"
+  );
 }
 
 function normalizeStatus(status: string | null | undefined): string {
