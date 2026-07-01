@@ -44,6 +44,7 @@ export interface WorkbenchDockContext<TData = unknown> {
       nodeID: string,
       launch: () => Promise<string | null | void> | string | null | void
     ): void;
+    minimizeNodeToAnchor(nodeID: string, minimize?: () => void): void;
     registerDockAnchor(anchorKey: string, element: HTMLElement | null): void;
     shouldAnimateMinimizedDockEnter(nodeID: string): boolean;
     isPendingMinimizedDockNode(nodeID: string): boolean;
