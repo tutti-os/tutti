@@ -45,6 +45,7 @@ type tuttiWiring struct {
 	analyticsReporter reporterservice.Reporter
 	browserService    *browsersvc.Service
 	computerService   *computersvc.Service
+	agentRuntime      *agentdaemon.Runtime
 }
 
 type analyticsDebugEventPublisher struct {
@@ -143,7 +144,7 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	if agentsidecarservice.ComputerUseDefaultEnabled() {
 		w.computerService = computersvc.NewService()
 	}
-	api, appCenterService, err := buildDaemonAPI(ctx, workspaceStore, nil, w.browserService, w.computerService)
+	api, appCenterService, agentRuntime, err := buildDaemonAPI(ctx, workspaceStore, nil, w.browserService, w.computerService)
 	if err != nil {
 		return err
 	}
@@ -167,6 +168,7 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.analyticsReporter = analyticsReporter
 	w.api = api
 	w.appCenterService = appCenterService
+	w.agentRuntime = agentRuntime
 	return nil
 }
 
@@ -199,7 +201,7 @@ func openWorkspaceStore(ctx context.Context) (*workspacedata.SQLiteStore, error)
 	return workspaceStore, nil
 }
 
-func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, error) {
+func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, error) {
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
 	issueStore, _ := store.(workspaceissues.Store)
 	preferencesStore, _ := store.(workspacedata.PreferencesStore)
@@ -261,7 +263,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		},
 	})
 	if err != nil {
-		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("create agent runtime: %w", err)
+		return tuttiapi.DaemonAPI{}, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentSidecarPreparer := agentsidecarservice.NewDefaultPreparer(tuttitypes.DefaultStateDir())
 	agentSessionService := agentservice.NewService(
@@ -319,7 +321,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	appCLIRegistry := appclicli.NewRegistry(workspaceService, appCenterService)
 	appCenterService.AppCLIRegistry = appCLIRegistry
 	if err := appCenterService.InitBuiltinPackages(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("initialize builtin workspace apps: %w", err)
+		agentRuntime.Close()
+		return tuttiapi.DaemonAPI{}, nil, nil, fmt.Errorf("initialize builtin workspace apps: %w", err)
 	}
 	appFactoryService := &workspaceservice.AppFactoryService{
 		Store:                 appFactoryStore,
@@ -338,7 +341,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentActivityProjection.SetSessionMessageObserver(appFactoryService)
 	agentActivityProjection.SetSessionStateObserver(appFactoryService)
 	if _, err := appFactoryService.ReconcileInterruptedJobs(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)
+		agentRuntime.Close()
+		return tuttiapi.DaemonAPI{}, nil, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)
 	}
 	if workspaces, err := workspaceService.List(ctx); err == nil {
 		for _, workspace := range workspaces {
@@ -369,7 +373,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	cliRegistry, err := cliservice.NewRegistryFromProviders(cliProviders...)
 	if err != nil {
-		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("create cli registry: %w", err)
+		agentRuntime.Close()
+		return tuttiapi.DaemonAPI{}, nil, nil, fmt.Errorf("create cli registry: %w", err)
 	}
 	cliRegistry.AppCommands = appCLIRegistry
 	agentSidecarPreparer.CommandCatalog = cliRegistry
@@ -401,7 +406,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		IssueService:        issueService,
 		CLIRegistry:         cliRegistry,
 		AnalyticsReporter:   analyticsReporter,
-	}, appCenterService, nil
+	}, appCenterService, agentRuntime, nil
 }
 
 func (w *tuttiWiring) Close() error {
@@ -420,6 +425,9 @@ func (w *tuttiWiring) Close() error {
 	}
 	if w.computerService != nil {
 		w.computerService.Close()
+	}
+	if w.agentRuntime != nil {
+		w.agentRuntime.Close()
 	}
 	var closeErr error
 	if w.analyticsReporter != nil {

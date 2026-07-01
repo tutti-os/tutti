@@ -1867,7 +1867,10 @@ describe("AgentFileMentionPalette", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-chrome__card--danger\s*{[^}]*border-color:\s*color-mix\(\s*in srgb,\s*var\(--status-danger,\s*var\(--state-danger\)\)\s*16%,\s*transparent\s*\)/s
+      /\.agent-gui-chrome__card--danger\s*{[^}]*border-color:\s*color-mix\(\s*in srgb,\s*var\(--status-danger,\s*var\(--state-danger\)\)\s*28%,\s*transparent\s*\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-chrome__card--danger\s*{[^}]*background:\s*color-mix\(\s*in srgb,\s*var\(--status-danger,\s*var\(--state-danger\)\)\s*10%,\s*var\(--background-fronted\)\s*\)/s
     );
     expect(css).toMatch(
       /\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__icon,[\s\S]*?\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__message,[\s\S]*?\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__expand-cue\s*{[^}]*color:\s*var\(--status-danger,\s*var\(--state-danger\)\)/s

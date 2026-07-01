@@ -896,7 +896,11 @@ function selectPendingInteractivePrompt(
         return {
           kind: "exit-plan",
           requestId: call.planMode.requestId ?? call.id.replace(/^call:/, ""),
-          title: call.planMode.title
+          title: call.planMode.title,
+          options: call.planMode.options ?? [],
+          ...(call.planMode.keepPlanningOptionId
+            ? { keepPlanningOptionId: call.planMode.keepPlanningOptionId }
+            : {})
         };
       }
     }

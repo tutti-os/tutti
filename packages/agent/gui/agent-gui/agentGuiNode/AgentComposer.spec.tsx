@@ -2370,6 +2370,9 @@ describe("AgentComposer", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
+    expect(screen.getByTestId("agent-gui-usage-popover")).toHaveTextContent(
+      "上下文用量"
+    );
     expect(
       screen.getByTestId("agent-gui-usage-context-meter")
     ).toHaveTextContent("上下文窗口");
@@ -4620,7 +4623,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     slashStatusLimitsUnavailable: "Rate limits unavailable",
     usageChipLabel: ({ percent }) => `上下文 ${percent}%`,
     usageTooltipLabel: "上下文用量",
-    usagePopoverTitle: "用量",
+    usagePopoverTitle: "上下文用量",
     usageContextWindowLabel: "上下文窗口",
     usageTokensLabel: "Token 用量",
     usageLimitsLabel: "限额",

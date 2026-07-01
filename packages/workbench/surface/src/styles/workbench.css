@@ -1107,6 +1107,8 @@
 .desktop-dock[data-dock-pointer-active="true"]
   .desktop-dock__btn[data-interactive="true"],
 .desktop-dock[data-dock-pointer-active="true"]
+  .desktop-dock__btn[data-dock-hover-panel-trigger="true"],
+.desktop-dock[data-dock-pointer-active="true"]
   .desktop-dock__scroll-button:not(:disabled) {
   pointer-events: auto;
 }

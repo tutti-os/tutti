@@ -163,7 +163,9 @@ func (p *ActivityProjection) ReportSessionState(
 				activitySessionUpdateEventPayload(input.WorkspaceID, input.AgentSessionID, result.LastEventUnixMS),
 			)
 		}
-		p.reportFailedRuntimeNodeResult(ctx, input)
+		if result.StateApplied {
+			p.reportFailedRuntimeNodeResult(ctx, input)
+		}
 	}
 	p.observeSessionState(ctx, input, reply)
 	return reply, nil

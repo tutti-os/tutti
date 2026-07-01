@@ -1839,6 +1839,10 @@ function workspaceSettingsWindowSnappingShortcutLabelKey(
   }
 }
 
+type WorkspaceSettingsWindowSnappingSelectValue =
+  | "off"
+  | DesktopWorkbenchWindowSnappingShortcutPreset;
+
 function workspaceSettingsFileDefaultOpenerLabelKey(
   opener: DesktopFileDefaultOpener
 ): DesktopI18nKey {
@@ -2382,10 +2386,10 @@ function WorkspaceAgentSettingsSection({
                 key={mode}
                 aria-checked={selected}
                 className={cn(
-                  "flex min-h-[72px] min-w-0 flex-col items-start justify-center gap-1 rounded-[8px] border px-3 py-2.5 text-left transition-colors duration-150 disabled:cursor-default disabled:opacity-70",
+                  "flex min-h-[72px] min-w-0 flex-col items-start justify-center gap-1 rounded-[8px] border-solid px-3 py-2.5 text-left transition-colors duration-150 disabled:cursor-default disabled:opacity-70",
                   selected
-                    ? "border-[var(--border-focus)] bg-[var(--transparency-active)] text-[var(--text-primary)]"
-                    : "border-[var(--border-1)] bg-[var(--transparency-block)] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]"
+                    ? "border border-[var(--tutti-purple)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
+                    : "border border-[var(--border-1)] bg-[var(--transparency-block)] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]"
                 )}
                 disabled={isUpdatingAgentConversationDetailMode}
                 role="radio"
@@ -2965,39 +2969,30 @@ function WorkspaceAppearanceSettingsSection({
             )}
           </p>
         </div>
-        <div className="flex w-[220px] min-w-[220px] flex-col gap-2 max-[560px]:w-full max-[560px]:min-w-0">
-          <div className="flex min-h-9 items-center justify-end max-[560px]:justify-start">
-            <Switch
-              aria-label={t(
-                "workspace.settings.appearance.workbenchWindowSnappingLabel"
-              )}
-              checked={pendingWorkbenchWindowSnapping.enabled}
-              disabled={isUpdatingWorkbenchWindowSnapping}
-              onCheckedChange={(enabled) =>
-                onWorkbenchWindowSnappingChange({
-                  ...pendingWorkbenchWindowSnapping,
-                  enabled
-                })
-              }
-            />
-          </div>
+        <div className="w-[220px] min-w-[220px] max-[560px]:w-full max-[560px]:min-w-0">
           <Select
-            disabled={
-              isUpdatingWorkbenchWindowSnapping ||
-              !pendingWorkbenchWindowSnapping.enabled
+            disabled={isUpdatingWorkbenchWindowSnapping}
+            value={
+              pendingWorkbenchWindowSnapping.enabled
+                ? pendingWorkbenchWindowSnapping.shortcutPreset
+                : "off"
             }
-            value={pendingWorkbenchWindowSnapping.shortcutPreset}
-            onValueChange={(value) =>
+            onValueChange={(value) => {
+              const nextValue =
+                value as WorkspaceSettingsWindowSnappingSelectValue;
               onWorkbenchWindowSnappingChange({
                 ...pendingWorkbenchWindowSnapping,
+                enabled: nextValue !== "off",
                 shortcutPreset:
-                  value as DesktopWorkbenchWindowSnappingShortcutPreset
-              })
-            }
+                  nextValue === "off"
+                    ? pendingWorkbenchWindowSnapping.shortcutPreset
+                    : nextValue
+              });
+            }}
           >
             <SelectTrigger
               aria-label={t(
-                "workspace.settings.appearance.workbenchWindowSnappingShortcutLabel"
+                "workspace.settings.appearance.workbenchWindowSnappingLabel"
               )}
               className={workspaceSettingsSelectTriggerClass}
             >
@@ -3007,6 +3002,11 @@ function WorkspaceAppearanceSettingsSection({
               className={workspaceSettingsSelectContentClass}
               style={{ zIndex: "var(--z-panel-popover)" }}
             >
+              <SelectItem value="off">
+                {t(
+                  "workspace.settings.appearance.workbenchWindowSnappingShortcutOptions.off"
+                )}
+              </SelectItem>
               {desktopWorkbenchWindowSnappingShortcutPresets.map((preset) => (
                 <SelectItem key={preset} value={preset}>
                   {t(workspaceSettingsWindowSnappingShortcutLabelKey(preset))}

@@ -1503,6 +1503,9 @@ export function WorkbenchHostDock({
                     data-interactive={
                       clickResolution.kind === "blocked" ? "false" : "true"
                     }
+                    data-dock-hover-panel-trigger={
+                      hasHoverPanel ? "true" : undefined
+                    }
                     type="button"
                     onPointerDown={(event) => {
                       if (event.button !== 0) {

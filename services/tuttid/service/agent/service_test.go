@@ -2764,6 +2764,38 @@ func TestActivityProjectionReportsFailedRuntimeNodeResult(t *testing.T) {
 	}
 }
 
+func TestActivityProjectionSkipsFailedRuntimeNodeResultWhenStateNotApplied(t *testing.T) {
+	repo := &activityProjectionRepoStub{
+		stateResult: agentactivitybiz.StateReportResult{
+			Accepted:        true,
+			StateApplied:    false,
+			LastEventUnixMS: 200,
+		},
+	}
+	reporter := &recordingAgentAnalyticsReporter{}
+	projection := NewActivityProjection(repo)
+	projection.SetAnalyticsReporter(reporter)
+
+	_, err := projection.ReportSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		Source: agentsessionstore.EventSource{
+			Provider: "codex",
+		},
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus:  "failed",
+			LastError:        "network connection disconnected",
+			OccurredAtUnixMS: 150,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	if len(reporter.events) != 0 {
+		t.Fatalf("analytics events = %d, want 0: %#v", len(reporter.events), reporter.events)
+	}
+}
+
 func TestActivityProjectionPublishesCanonicalSessionIDForMessageUpdates(t *testing.T) {
 	repo := &activityProjectionRepoStub{
 		messageResult: agentactivitybiz.MessageReportResult{

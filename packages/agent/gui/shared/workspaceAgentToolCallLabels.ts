@@ -41,7 +41,9 @@ export const TOOL_NAME_TRANSLATION_KEYS: Record<string, string> = {
   todowrite: "agentHost.agentTool.labels.updateTodos",
   task: "agentHost.agentTool.labels.delegateAgent",
   currenttask: "agentHost.agentTool.labels.currentIssue",
-  agent: "agentHost.agentTool.labels.delegateAgent"
+  agent: "agentHost.agentTool.labels.delegateAgent",
+  closeagent: "agentHost.agentTool.labels.closeAgent",
+  wait: "agentHost.agentTool.labels.waitAgent"
 };
 
 export function legacyKindToToolName(kind: ToolActivityKind): string | null {

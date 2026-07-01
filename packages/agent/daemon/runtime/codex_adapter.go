@@ -1301,6 +1301,11 @@ func (a *CodexAdapter) applyACPUpdate(agentSessionID string, raw json.RawMessage
 
 func acpModeValue(update map[string]any) string {
 	return firstNonEmpty(
+		// `currentModeId` is the ACP-canonical field on a current_mode_update
+		// notification (claude-code/codex send the mode there); the rest are
+		// tolerated fallbacks for other shapes.
+		asString(update["currentModeId"]),
+		asString(update["current_mode_id"]),
 		asString(update["mode"]),
 		asString(update["modeId"]),
 		asString(update["mode_id"]),
@@ -2226,7 +2231,11 @@ func acpToolName(callID string, title string, kind string, rawInput any) string 
 		return "Write"
 	case "execute":
 		if input != nil {
-			if strings.TrimSpace(asString(input["agentName"])) != "" {
+			agentName := asString(input["agentName"])
+			if controlToolName := appServerAgentControlToolName(agentName); controlToolName != "" {
+				return controlToolName
+			}
+			if strings.TrimSpace(agentName) != "" {
 				return "Agent"
 			}
 			if strings.TrimSpace(asString(input["task"])) != "" {
@@ -2269,6 +2278,10 @@ func acpSyntheticToolName(normalizedTitle string) string {
 		return "ToolSearch"
 	case "skill":
 		return "Skill"
+	case "closeagent":
+		return "CloseAgent"
+	case "wait":
+		return "Wait"
 	default:
 		return ""
 	}

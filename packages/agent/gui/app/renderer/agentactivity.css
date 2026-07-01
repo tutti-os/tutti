@@ -119,11 +119,11 @@
   z-index: 100301;
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 40px;
-  padding: 0 6px;
+  gap: 2px;
+  height: 32px;
+  padding: 0 2px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-panel) 78%, black 22%);
+  background: var(--background-fronted);
   box-shadow:
     0 18px 40px color-mix(in srgb, black 26%, transparent),
     0 0 0 1px color-mix(in srgb, white 12%, transparent);
@@ -168,9 +168,10 @@
 
 .tsh-zoom-dialog__zoom-controls button {
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
+  border-radius: 999px;
 }
 
 .tsh-zoom-dialog__zoom-controls button:disabled {
@@ -183,8 +184,8 @@
   padding: 0 4px;
   text-align: center;
   font-size: 12px;
-  line-height: 30px;
-  color: var(--text-secondary);
+  line-height: 28px;
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -208,9 +209,12 @@
 
 .tsh-zoom-dialog__icon-button:hover,
 .tsh-zoom-dialog__image-actions button:hover,
-.tsh-zoom-dialog__zoom-controls button:not(:disabled):hover,
 .tsh-image-context-menu button:hover {
   background: color-mix(in srgb, var(--background-panel) 82%, white 12%);
+}
+
+.tsh-zoom-dialog__zoom-controls button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--background-panel) 86%, black 8%);
 }
 
 .workspace-agents-status-panel {
@@ -2672,7 +2676,7 @@ aside.workspace-agents-status-panel
 .agent-gui-chrome__card--danger {
   border-color: color-mix(
     in srgb,
-    var(--status-danger, var(--state-danger)) 16%,
+    var(--status-danger, var(--state-danger)) 28%,
     transparent
   );
   border-bottom: 0;
@@ -2680,7 +2684,11 @@ aside.workspace-agents-status-panel
   border-top-right-radius: 8px;
   border-bottom-right-radius: 0;
   border-bottom-left-radius: 0;
-  background: var(--on-danger);
+  background: color-mix(
+    in srgb,
+    var(--status-danger, var(--state-danger)) 10%,
+    var(--background-fronted)
+  );
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-height: 36px;
@@ -5130,6 +5138,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   gap: 6px;
   align-items: center;
   min-width: 0;
+  margin-bottom: 12px;
   padding: 2px 6px 0 22px;
 }
 

@@ -52,6 +52,13 @@ test("workspace settings agent panel lists agent controls", () => {
   assert.match(source, /onAgentConversationDetailModeChange\(mode\)/);
 });
 
+test("workspace settings work mode selected state uses a tutti purple border", () => {
+  assert.match(
+    source,
+    /selected\s*\?\s*"border border-\[var\(--tutti-purple\)\] bg-\[var\(--background-fronted\)\]/
+  );
+});
+
 test("workspace settings general panel lists system controls", () => {
   assert.match(
     source,
@@ -172,6 +179,32 @@ test("workspace settings appearance panel owns visual settings", () => {
   assert.match(source, /workspace\.settings\.appearance\.themeLabel/);
   assert.match(source, /workspace\.settings\.appearance\.dockPlacementLabel/);
   assert.match(source, /workspace\.settings\.appearance\.wallpaperLabel/);
+});
+
+test("workspace settings window snapping is controlled by one dropdown", () => {
+  const appearanceSectionStart = source.indexOf(
+    "function WorkspaceAppearanceSettingsSection"
+  );
+  const wallpaperPickerStart = source.indexOf(
+    "function WorkspaceWallpaperPicker"
+  );
+  const appearanceSection = source.slice(
+    appearanceSectionStart,
+    wallpaperPickerStart
+  );
+
+  assert.ok(appearanceSectionStart >= 0);
+  assert.ok(wallpaperPickerStart > appearanceSectionStart);
+  assert.doesNotMatch(appearanceSection, /<Switch/);
+  assert.match(
+    appearanceSection,
+    /pendingWorkbenchWindowSnapping\.enabled[\s\S]*\? pendingWorkbenchWindowSnapping\.shortcutPreset[\s\S]*: "off"/
+  );
+  assert.match(appearanceSection, /enabled: nextValue !== "off"/);
+  assert.match(
+    appearanceSection,
+    /workbenchWindowSnappingShortcutOptions\.off/
+  );
 });
 
 test("workspace settings app source control lives in developer settings", () => {

@@ -389,6 +389,7 @@ export const zhCN = {
         workbenchWindowSnappingSaveFailed: "暂时无法更新窗口吸附设置。",
         workbenchWindowSnappingShortcutLabel: "窗口吸附快捷键",
         workbenchWindowSnappingShortcutOptions: {
+          off: "关闭",
           commandArrows: "Command + 方向键",
           commandShiftArrows: "Command + Shift + 方向键"
         },

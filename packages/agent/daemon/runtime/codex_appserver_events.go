@@ -58,6 +58,9 @@ func (a *CodexAppServerAdapter) appServerNotificationEvents(
 	if len(message.Params) > 0 {
 		_ = json.Unmarshal(message.Params, &params)
 	}
+	if appServerNotificationThreadMismatch(session, message.Method, params) {
+		return nil
+	}
 	switch message.Method {
 	case appServerNotifyTurnStarted:
 		// Record the provider turn id (needed for turn/interrupt and
@@ -393,11 +396,30 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 			update["status"] = messageStreamStateFailed
 		}
 	case "collabAgentToolCall":
-		update["title"] = firstNonEmpty(asString(item["tool"]), "agent")
-		update["kind"] = "execute"
+		tool := firstNonEmpty(asString(item["tool"]), "agent")
+		update["title"] = tool
+		if appServerAgentControlToolName(tool) != "" {
+			update["kind"] = "other"
+		} else {
+			update["kind"] = "execute"
+		}
 		update["rawInput"] = map[string]any{
 			"task":      asStringRaw(item["prompt"]),
-			"agentName": firstNonEmpty(asString(item["tool"]), "agent"),
+			"agentName": tool,
+		}
+		if completed {
+			output := appServerCollabAgentRawOutput(item)
+			if len(output) > 0 {
+				update["rawOutput"] = output
+			} else if update["status"] == messageStreamStateFailed {
+				slog.Debug(
+					"agent session app-server collab agent failed without output",
+					"itemId", itemID,
+					"tool", tool,
+					"status", status,
+					"rawItem", appServerItemJSON(item),
+				)
+			}
 		}
 	case "imageGeneration":
 		update["title"] = "Generate image"
@@ -424,6 +446,74 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 		return nil, false
 	}
 	return update, true
+}
+
+func appServerAgentControlToolName(tool string) string {
+	switch normalizeAgentToolToken(tool) {
+	case "closeagent":
+		return "CloseAgent"
+	case "wait":
+		return "Wait"
+	default:
+		return ""
+	}
+}
+
+func appServerCollabAgentRawOutput(item map[string]any) map[string]any {
+	output := map[string]any{}
+	if message := firstNonEmpty(
+		appServerOutputText(item["error"]),
+		appServerOutputText(item["message"]),
+	); message != "" {
+		output["message"] = message
+	}
+	if result := item["result"]; result != nil {
+		output["result"] = clonePayloadValue(result)
+	}
+	if text := firstNonEmpty(
+		appServerOutputText(item["output"]),
+		appServerOutputText(item["stdout"]),
+	); text != "" {
+		output["output"] = text
+	}
+	if stderr := appServerOutputText(item["stderr"]); stderr != "" {
+		output["stderr"] = stderr
+	}
+	return output
+}
+
+func appServerOutputText(value any) string {
+	if text := asStringRaw(value); strings.TrimSpace(text) != "" {
+		return text
+	}
+	record := payloadObject(value)
+	return firstNonEmpty(
+		asStringRaw(record["message"]),
+		asStringRaw(record["text"]),
+		asStringRaw(record["output"]),
+		asStringRaw(record["result"]),
+	)
+}
+
+func appServerNotificationThreadMismatch(session Session, method string, params map[string]any) bool {
+	expectedThreadID := strings.TrimSpace(session.ProviderSessionID)
+	eventThreadID := asString(params["threadId"])
+	if expectedThreadID == "" || eventThreadID == "" || eventThreadID == expectedThreadID {
+		return false
+	}
+	item := payloadObject(params["item"])
+	slog.Debug(
+		"agent session app-server notification ignored for foreign thread",
+		"agent_session_id", session.AgentSessionID,
+		"provider_session_id", expectedThreadID,
+		"event_thread_id", eventThreadID,
+		"event_turn_id", asString(params["turnId"]),
+		"method", method,
+		"item_id", asString(item["id"]),
+		"item_type", asString(item["type"]),
+		"item_status", asString(item["status"]),
+	)
+	return true
 }
 
 func appServerItemStatus(status string) string {

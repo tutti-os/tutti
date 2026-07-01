@@ -12,7 +12,7 @@ export function AgentEnvReportConsent({
   t: ReturnType<typeof useTranslation>["t"];
 }): JSX.Element {
   return (
-    <div className="mx-5 mb-4 shrink-0 rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-4 py-3 shadow-[0_6px_16px_var(--shadow-elevated)]">
+    <div className="mx-5 mb-4 shrink-0 rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] px-4 py-3 shadow-[0_6px_16px_var(--shadow-elevated)]">
       <p className="m-0 text-[13px] font-medium text-[var(--text-primary)]">
         {t("workspace.agentEnv.reportConsentTitle")}
       </p>

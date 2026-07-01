@@ -17,6 +17,9 @@ Current examples include:
 - `generate-defaults.mjs` for generating shared Go and desktop TypeScript defaults from `config/tutti.defaults.json`
 - `generate-openapi.mjs` for generating Go and TypeScript API contract artifacts from `services/tuttid/api/openapi/tuttid.v1.yaml`
 - `smoke-desktop-transport.mjs` for daemon transport smoke validation
+- `push-checked.mjs` for fetching the current branch, stopping before
+  `check:full` when the remote branch already has new commits, then pushing
+  with an explicit `--force-with-lease` against the fetched remote head
 - `check-i18n.mjs` for desktop locale parity, placeholder parity, i18n key references, and hardcoded user-visible copy candidates
 - `check-electron-runtime-boundaries.mjs` for Electron `main`/`preload` runtime import graph checks that catch React/TSX leaks and externalized workspace packages that resolve to raw source files
 - `check-ui-boundaries.mjs` for shared UI boundary enforcement across imports, CSS, SVG usage, and desktop Tailwind `@source` coverage for workspace packages that declare `tutti.tailwindSourceRoot`

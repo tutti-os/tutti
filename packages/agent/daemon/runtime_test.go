@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
 	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
@@ -19,8 +20,12 @@ func TestNewRuntimeCreatesDefaultController(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRuntime() error = %v", err)
 	}
+	t.Cleanup(runtime.Close)
 	if runtime.Controller() == nil {
 		t.Fatal("Controller() = nil, want controller")
+	}
+	if runtime.done == nil {
+		t.Fatal("default runtime did not start live session reaper")
 	}
 }
 
@@ -51,6 +56,7 @@ func TestNewRuntimeUsesCustomAdapters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRuntime() error = %v", err)
 	}
+	t.Cleanup(runtime.Close)
 	started, err := runtime.Controller().Start(context.Background(), agentruntime.StartInput{
 		RoomID:         "workspace-1",
 		AgentSessionID: "agent-session-1",
@@ -61,6 +67,27 @@ func TestNewRuntimeUsesCustomAdapters(t *testing.T) {
 	}
 	if started.Session.Provider != "test-agent" {
 		t.Fatalf("provider = %q, want test-agent", started.Session.Provider)
+	}
+}
+
+func TestNewRuntimeCanDisableLiveSessionReaper(t *testing.T) {
+	t.Parallel()
+
+	enabled := false
+	runtime, err := NewRuntime(Config{
+		Adapters: []agentruntime.Adapter{testAdapter{provider: "test-agent"}},
+		LiveSessionReaper: LiveSessionReaperConfig{
+			Enabled:       &enabled,
+			IdleAfter:     time.Minute,
+			SweepInterval: time.Minute,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	t.Cleanup(runtime.Close)
+	if runtime.done != nil {
+		t.Fatal("disabled live session reaper started a background loop")
 	}
 }
 

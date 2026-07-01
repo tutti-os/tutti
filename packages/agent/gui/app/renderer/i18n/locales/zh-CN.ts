@@ -488,7 +488,7 @@ export const zhCN = {
       slashStatusLimitsUnavailable: "当前 Agent 未提供额度限制",
       usageChipLabel: "上下文 {{percent}}%",
       usageTooltipLabel: "上下文用量",
-      usagePopoverTitle: "计划用量",
+      usagePopoverTitle: "上下文用量",
       usageContextWindowLabel: "上下文窗口",
       usageTokensLabel: "Token 用量",
       usageLimitsLabel: "限额",
@@ -761,6 +761,10 @@ export const zhCN = {
         allowAll: {
           label: "全部允许",
           description: "不再弹出工具确认"
+        },
+        auto: {
+          label: "自动",
+          description: "由智能体自行决定何时询问"
         }
       },
       stayInPlan: "继续规划",
@@ -1268,6 +1272,7 @@ export const zhCN = {
         waitingForAnswer: "等待用户回答…",
         questionFallback: "问题",
         delegateSession: "委托会话",
+        missingFailureDetails: "Provider 报告失败，但没有返回失败详情。",
         noMatches: "没有匹配结果",
         noMatchingTools: "没有匹配的工具",
         loadedAvailable: "已加载 {{loaded}} 个 · 共 {{available}} 个",
@@ -1298,6 +1303,8 @@ export const zhCN = {
         editNotebook: "编辑 Notebook",
         updateTodos: "更新待办",
         delegateAgent: "委托 Agent",
+        closeAgent: "结束 Agent",
+        waitAgent: "等待 Agent",
         currentIssue: "当前任务",
         thinking: "思考",
         responding: "回复",

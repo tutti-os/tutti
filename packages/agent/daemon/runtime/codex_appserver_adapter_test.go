@@ -4,6 +4,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -76,6 +77,7 @@ type scriptedAppServerConnection struct {
 	reviewInline                 bool          // stream review output as inline reasoning/command items
 	reviewInlineSummaryDelta     bool          // stream review reasoning via summaryTextDelta with empty completed summary
 	reviewHang                   bool          // respond to review/start but never complete the turn
+	foreignThreadNoise           bool          // emit subagent/foreign thread notifications during a parent turn
 	reviewStartEntered           chan struct{} // closed once review/start has responded
 	approvalResponse             map[string]any
 	goal                         map[string]any
@@ -85,6 +87,7 @@ type scriptedAppServerConnection struct {
 	goalCleared                  bool
 	replayTokenUsageOnResume     bool // mirror real codex: emit token usage during thread/resume
 	closeOnce                    sync.Once
+	closeCount                   int
 }
 
 func (c *scriptedAppServerConnection) sendJSON(value map[string]any) {
@@ -108,6 +111,9 @@ func (c *scriptedAppServerConnection) Recv() (ProcessFrame, error) {
 }
 
 func (c *scriptedAppServerConnection) Close() error {
+	c.mu.Lock()
+	c.closeCount++
+	c.mu.Unlock()
 	c.closeOnce.Do(func() { close(c.recv) })
 	return nil
 }
@@ -296,6 +302,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			approval := c.commandApproval
 			userInput := c.userInputRequest
 			emitPlan := c.emitPlanItem
+			foreignThreadNoise := c.foreignThreadNoise
 			turnStartEntered := c.turnStartEntered
 			turnStartRelease := c.turnStartRelease
 			c.mu.Unlock()
@@ -317,6 +324,28 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"threadId": "codex-thread-1",
 				"turn":     map[string]any{"id": "turn-1", "status": "inProgress", "items": []any{}},
 			})
+			if foreignThreadNoise {
+				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
+					"threadId": "foreign-thread-1", "turnId": "foreign-turn-1", "itemId": "foreign-msg",
+					"delta": `{"n":7}`,
+				})
+				c.notify(appServerNotifyItemCompleted, map[string]any{
+					"threadId": "foreign-thread-1", "turnId": "foreign-turn-1",
+					"item": map[string]any{
+						"type": "agentMessage", "id": "foreign-msg", "text": `{"n":7}`,
+					},
+				})
+				c.notify(appServerNotifyTurnCompleted, map[string]any{
+					"threadId": "foreign-thread-1",
+					"turn": map[string]any{
+						"id":     "foreign-turn-1",
+						"status": "completed",
+						"items": []any{
+							map[string]any{"type": "agentMessage", "id": "foreign-msg", "text": `{"n":7}`},
+						},
+					},
+				})
+			}
 			if approval {
 				c.sendJSON(map[string]any{
 					"id":     "approval-1",
@@ -977,6 +1006,77 @@ func TestCodexAppServerAdapterResumeRequiresProviderSession(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterReleaseLiveSessionClosesClientAndKeepsProviderSession(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	events, err := adapter.Start(context.Background(), session)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session = applySessionEvents(session, events)
+	if session.ProviderSessionID == "" {
+		t.Fatalf("provider session id was not assigned")
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatalf("HasLiveSession = false, want true before release")
+	}
+
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("ReleaseLiveSession: %v", err)
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatalf("HasLiveSession = true, want false after release")
+	}
+	if session.ProviderSessionID != "codex-thread-1" {
+		t.Fatalf("provider session id = %q, want preserved caller session", session.ProviderSessionID)
+	}
+	transport.conn.mu.Lock()
+	closeCount := transport.conn.closeCount
+	transport.conn.mu.Unlock()
+	if closeCount == 0 {
+		t.Fatalf("connection close count = 0, want client closed")
+	}
+}
+
+func TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.commandApproval = true
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "clean the build dir",
+		}}, "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") != nil
+	})
+
+	err := adapter.ReleaseLiveSession(context.Background(), session)
+	if !errors.Is(err, ErrLiveSessionBusy) {
+		t.Fatalf("ReleaseLiveSession error = %v, want ErrLiveSessionBusy", err)
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatalf("HasLiveSession = false, want pending request to keep live session")
+	}
+	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		RequestID: "approval-1",
+		OptionID:  "deny",
+	}); err != nil {
+		t.Fatalf("SubmitInteractive after busy release: %v", err)
+	}
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("exec did not finish after resolving pending approval")
+	}
+}
+
 // --- exec tests ---
 
 func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
@@ -1072,6 +1172,33 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	}
 	if total, _ := acpInt64Value(contextWindow["totalTokens"]); total != 272000 {
 		t.Fatalf("usage totalTokens = %#v", usage)
+	}
+}
+
+func TestCodexAppServerAdapterExecIgnoresForeignThreadNotifications(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.foreignThreadNoise = true
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text",
+		Text: "spawn subagents",
+	}}, "", "turn-local-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	var assistantText string
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Role == activityshared.MessageRoleAssistant {
+			assistantText = event.Payload.Content
+		}
+	}
+	if assistantText != "I'll check the repo." {
+		t.Fatalf("assistant content = %q, want parent thread message", assistantText)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", events), `{"n":7}`) {
+		t.Fatalf("foreign thread payload leaked into parent events: %#v", events)
 	}
 }
 

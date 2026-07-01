@@ -2,12 +2,16 @@ package agentstatus
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 // displayNPMRegistry returns a registry URL safe to surface in status and logs.
@@ -33,8 +37,10 @@ func (s Service) runCodexCLILatestInstaller(
 		return InstallCommandResult{ExitCode: 1, Stderr: "codex CLI latest installer config is required"}, nil
 	}
 	resolver := s.commandResolver()
-	npmPath := firstNonBlank(resolveBinaryWithResolver(resolver, []string{npmBinaryName()}, nil), npmBinaryName())
-	nodeTarget := firstNonBlank(resolveBinaryWithResolver(resolver, []string{nodeBinaryName()}, nil), nodeBinaryName())
+	npmPath, nodeTarget, baseEnv, err := s.resolveCodexInstallerNodeRuntime(ctx, resolver)
+	if err != nil {
+		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
+	}
 	// A bare `npm install -g` lands the launcher in whichever npm's global prefix
 	// runs the install. In the desktop app that npm can be the bundled app-runtime
 	// node, whose prefix (~/.tutti/app-runtimes/.../node) is NOT on the binary
@@ -68,7 +74,6 @@ func (s Service) runCodexCLILatestInstaller(
 		)
 	}
 	command := joinShellCommand([]string{npmPath, "install", "-g", "--prefix", installPrefix, "@openai/codex", "--include=optional"})
-	baseEnv := resolver.Env(nil)
 	// Pin a dedicated, tutti-owned npm cache instead of the user's global ~/.npm,
 	// which on some machines holds root-owned files that make every user-mode npm
 	// install fail with EACCES before any registry is hit.
@@ -114,6 +119,33 @@ func (s Service) runCodexCLILatestInstaller(
 		}
 	}
 	return result, err
+}
+
+func (s Service) resolveCodexInstallerNodeRuntime(
+	ctx context.Context,
+	resolver runtimecmd.Resolver,
+) (string, string, []string, error) {
+	if npmPath := strings.TrimSpace(resolveBinaryWithResolver(resolver, []string{npmBinaryName()}, nil)); npmPath != "" {
+		nodeTarget := firstNonBlank(resolveBinaryWithResolver(resolver, []string{nodeBinaryName()}, nil), nodeBinaryName())
+		return npmPath, nodeTarget, resolver.Env(nil), nil
+	}
+	appRuntime, err := s.resolveCodexManagedNodeRuntime(ctx)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("npm was not found on PATH and Tutti managed Node runtime is unavailable: %w", err)
+	}
+	npmPath := strings.TrimSpace(appRuntime.NPM)
+	if npmPath == "" {
+		return "", "", nil, fmt.Errorf("npm was not found on PATH and Tutti managed Node runtime did not provide npm")
+	}
+	return npmPath, firstNonBlank(appRuntime.Node, nodeBinaryName()), managedruntime.ProcessEnv(appRuntime.EnvOverrides...), nil
+}
+
+func (s Service) resolveCodexManagedNodeRuntime(ctx context.Context) (managedruntime.ResolvedRuntime, error) {
+	resolver := s.managedRuntimeResolver()
+	if profileResolver, ok := resolver.(managedruntime.ProfileResolver); ok {
+		return profileResolver.ResolveProfile(ctx, managedruntime.NodeStaticProfile)
+	}
+	return resolver.Resolve(ctx)
 }
 
 func nodeBinaryName() string {

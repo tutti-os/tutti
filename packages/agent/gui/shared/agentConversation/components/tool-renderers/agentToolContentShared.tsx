@@ -677,6 +677,10 @@ export function humanizeToolLabel(name: string): string {
     case "subagent":
     case "agent":
       return translate("agentHost.agentTool.labels.delegateAgent");
+    case "closeagent":
+      return translate("agentHost.agentTool.labels.closeAgent");
+    case "wait":
+      return translate("agentHost.agentTool.labels.waitAgent");
     default:
       return name;
   }

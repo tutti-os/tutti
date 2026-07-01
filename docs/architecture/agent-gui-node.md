@@ -676,19 +676,54 @@ live in `AgentQueuedPromptRuntime`, not in Workbench node snapshots, not in
 `AgentActivityRuntime` durable session/message snapshots, and not in
 conversation-list or session-view compatibility stores.
 
-The desktop AgentGUI workbench host creates one queued-prompt runtime per
-workspace-scoped AgentGUI host input and injects it into every AgentGUI
-workbench node. Queue identity is `(workspaceId, agentSessionId)`, so reopening a
-minimized node or opening another workbench node for the same agent session sees
-the same queue instead of forking by node id.
+The desktop activity-runtime-services helper reuses one queued-prompt runtime
+for each workspace activity service and workspace id, then the AgentGUI
+workbench host injects that runtime into every AgentGUI workbench node. Queue
+identity is `(workspaceId, agentSessionId)`, so reopening a minimized node or
+opening another workbench node for the same agent session sees the same queue
+instead of forking by node id.
 
-Draining is claim-based. A controller must call
+Draining is claim-based. Any drain owner must call
 `claimNextToDrain({ workspaceId, agentSessionId, ownerId })` and may call
 `AgentActivityRuntime.sendInput` only for the returned claim. Completion and
-release are validated by `claimId`, which prevents a stale unmounted controller
-from deleting a newer claim or sending the same queued prompt twice. Claims are
-released when the owning controller unmounts and also expire by lease timeout so
-a queued prompt cannot stay permanently stuck at the head of the queue.
+release are validated by `claimId`, which prevents a stale owner from deleting a
+newer claim or sending the same queued prompt twice. A panel unmount must not
+eagerly release an in-flight drain claim; the owner that already called
+`sendInput` must complete or release that exact `claimId` when the send settles.
+If the owner disappears before the send settles, the claim lease is the recovery
+path so a queued prompt cannot stay permanently stuck at the head of the queue.
+
+Queued prompts are session-scoped user intent, not active-detail UI intent. The
+desktop activity-runtime-services helper keeps a workspace-level queued prompt
+drain coordinator alive alongside the shared queued-prompt runtime, so target
+sessions can drain even when every AgentGUI panel is closed. Desktop runtime
+services are reused for the same workspace activity service and workspace id;
+repeated host-input construction must not create competing queued-prompt
+runtimes or drain owners. React controllers must not claim, drain, send, or
+interrupt sessions for queued prompts; they only enqueue, display, promote,
+edit, remove, and render claim state owned by the runtime/service. The
+workspace-level coordinator owns both sending and the "send next" interrupt:
+when the queue head is marked as send-next and the target session is still busy,
+the coordinator cancels the active turn before waiting for activity to become
+ready and then sending the queued prompt. Background drains must not clear the
+active conversation's draft, detail error, or submit spinner. Drain readiness
+must follow activity projection and retry-block timestamps instead of raw
+`controlState` fields such as
+`pendingInteractive`, because those fields are not guaranteed to be cleared by
+every activity `state_patch`. Likewise, stale `submitAvailability` values must
+not block a drain when the only blocked reason is `active_turn` and activity
+status plus turn lifecycle already show the session is idle. Other blocked
+reasons such as auth, quota, provider setup, or permission gates must still
+block queued prompt sending. An old `turnLifecycle.activeTurnId` is not busy by
+itself when `turnLifecycle.phase` has already settled to idle, completed,
+canceled, or failed. When a drain attempt hits an active-turn conflict, the
+retry block must be recorded from the ready activity version observed before
+calling `sendInput`, using the same activity-version source that the next drain
+gate compares. Do not read a mutable activity snapshot after the awaited send
+fails: the failure may arrive with a newer settled/available activity update,
+and blocking that newer version would strand the queued prompt until another
+unrelated activity event. The retry block still prevents immediately
+re-claiming against the exact same pre-send ready state.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,

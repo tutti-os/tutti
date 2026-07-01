@@ -84,6 +84,11 @@ test("dock hover labels use local non-blocking tooltips", () => {
     /handleDockPointerTravel\(event\.clientX, event\.clientY\)/
   );
   assert.match(source, /data-dock-hover-panel-entry-id=/);
+  assert.match(source, /data-dock-hover-panel-trigger=/);
+  assert.match(
+    source,
+    /data-dock-hover-panel-trigger=\{\s*hasHoverPanel \? "true" : undefined\s*\}/
+  );
   assert.match(source, /const resolveHoverPanelTargetAtPoint = useCallback/);
   assert.match(source, /slotElement\.dataset\.dockHoverPanelEntryId/);
   assert.match(

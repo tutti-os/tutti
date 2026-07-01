@@ -76,6 +76,7 @@ export interface AgentQueuedPromptRuntime {
     ownerId: string;
     workspaceId: string;
   }): boolean;
+  /** @deprecated Queue drain owners should release exact claims by claim id. */
   releaseOwner(ownerId: string): void;
   removePrompt(input: {
     agentSessionId: string;
@@ -97,6 +98,14 @@ export const EMPTY_AGENT_QUEUED_PROMPT_SNAPSHOT: AgentQueuedPromptSnapshot =
     queuesByKey: Object.freeze({}),
     version: 0
   });
+
+function logAgentQueuedPromptRuntime(
+  event: string,
+  details: Record<string, unknown>
+): void {
+  void event;
+  void details;
+}
 
 export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
   let snapshot = EMPTY_AGENT_QUEUED_PROMPT_SNAPSHOT;
@@ -240,6 +249,14 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
         claim
       }));
       expiredClaimsByKey.delete(queueKey(workspaceId, agentSessionId));
+      logAgentQueuedPromptRuntime("claim", {
+        workspaceId,
+        agentSessionId,
+        ownerId,
+        promptId: prompt.id,
+        claimId: claim.claimId,
+        queueLength: current.prompts.length
+      });
       return { claim, prompt };
     },
     cleanupSession(input) {
@@ -270,6 +287,13 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
           completed = true;
           const promptId = matchingClaim.promptId;
           expiredClaimsByKey.delete(key);
+          logAgentQueuedPromptRuntime("complete-claim", {
+            workspaceId: input.workspaceId,
+            agentSessionId: input.agentSessionId,
+            ownerId: input.ownerId,
+            promptId,
+            claimId: input.claimId
+          });
           return {
             ...queue,
             claim: null,
@@ -297,6 +321,11 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
         ...queue,
         prompts: Object.freeze([...queue.prompts, freezePrompt(input.prompt)])
       }));
+      logAgentQueuedPromptRuntime("enqueue", {
+        workspaceId: input.workspaceId,
+        agentSessionId: input.agentSessionId,
+        promptId: input.prompt.id
+      });
     },
     getSessionSnapshot(input) {
       const workspaceId = input.workspaceId.trim();
@@ -322,6 +351,11 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
         ...queue,
         failedPromptId: input.promptId.trim() || queue.failedPromptId
       }));
+      logAgentQueuedPromptRuntime("mark-failed", {
+        workspaceId: input.workspaceId,
+        agentSessionId: input.agentSessionId,
+        promptId: input.promptId
+      });
     },
     promotePrompt(input) {
       const promptId = input.promptId.trim();
@@ -363,6 +397,13 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
           return queue;
         }
         released = true;
+        logAgentQueuedPromptRuntime("release-claim", {
+          workspaceId: input.workspaceId,
+          agentSessionId: input.agentSessionId,
+          ownerId: input.ownerId,
+          claimId: input.claimId,
+          promptId: queue.claim.promptId
+        });
         return { ...queue, claim: null };
       });
       return released;
@@ -429,6 +470,11 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
           ? Object.freeze({ ...input.retryBlock })
           : null
       }));
+      logAgentQueuedPromptRuntime("set-retry-block", {
+        workspaceId: input.workspaceId,
+        agentSessionId: input.agentSessionId,
+        retryBlock: input.retryBlock
+      });
     },
     subscribe(listener) {
       listeners.add(listener);

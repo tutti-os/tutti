@@ -61,7 +61,7 @@ func (s *browserSession) start(ctx context.Context, cwd string) error {
 	resolveCommand := s.command
 	if resolveCommand == nil {
 		resolveCommand = func(ctx context.Context) []string {
-			return resolveBrowserMCPCommand(ctx, nil)
+			return resolveBrowserMCPCommand(ctx, nil, nil)
 		}
 	}
 	command := resolveCommand(ctx)

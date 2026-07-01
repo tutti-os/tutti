@@ -4,8 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 func TestDisplayNPMRegistryStripsCredentials(t *testing.T) {
@@ -137,4 +140,73 @@ func TestRunCodexCLILatestInstallerFallsBackToLocalBin(t *testing.T) {
 	if !strings.Contains(command.Command, "--prefix "+wantPrefix+" ") {
 		t.Fatalf("Command = %q, want fresh install at --prefix %s", command.Command, wantPrefix)
 	}
+}
+
+func TestRunCodexCLILatestInstallerUsesManagedRuntimeNPMWhenUserNPMMissing(t *testing.T) {
+	home := t.TempDir()
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	managedNodeBinDir := filepath.Dir(managedNode)
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=/usr/bin:/bin", agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.ManagedRuntime = staticManagedRuntimeResolver{
+		runtime: managedruntime.ResolvedRuntime{
+			Root:    runtimeRoot,
+			Node:    managedNode,
+			NPM:     managedNPM,
+			BinDirs: []string{managedNodeBinDir},
+			EnvOverrides: []string{
+				"TUTTI_APP_RUNTIME_ROOT=" + runtimeRoot,
+				"TUTTI_APP_NODE=" + managedNode,
+				"TUTTI_APP_NPM=" + managedNPM,
+				"PATH=" + managedNodeBinDir + string(os.PathListSeparator) + "/usr/bin" + string(os.PathListSeparator) + "/bin",
+			},
+		},
+	}
+	service.IsExecutableFile = isTestExecutableUnderHome(home)
+
+	var command InstallCommandInput
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		command = input
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+	}
+
+	if _, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
+		Kind:     InstallerKindCodexCLILatest,
+		CodexCLI: &CodexCLILatestInstallerSpec{},
+	}, ""); err != nil {
+		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
+	}
+	if !strings.Contains(command.Command, managedNPM) ||
+		!strings.Contains(command.Command, "install") ||
+		!strings.Contains(command.Command, "@openai/codex") ||
+		!strings.Contains(command.Command, "--include=optional") ||
+		!strings.Contains(command.Command, "--prefix") {
+		t.Fatalf("Command = %q, want managed runtime npm install", command.Command)
+	}
+	if !slices.Contains(command.Env, "TUTTI_APP_NPM="+managedNPM) {
+		t.Fatalf("Env = %#v, want managed runtime npm marker", command.Env)
+	}
+	if !slices.Contains(command.Env, "TUTTI_APP_NODE="+managedNode) {
+		t.Fatalf("Env = %#v, want managed runtime node marker", command.Env)
+	}
+	if !slices.Contains(command.Env, "npm_config_registry=https://registry.example.test") {
+		t.Fatalf("Env = %#v, want selected npm registry", command.Env)
+	}
+}
+
+type staticManagedRuntimeResolver struct {
+	runtime managedruntime.ResolvedRuntime
+}
+
+func (r staticManagedRuntimeResolver) Resolve(context.Context) (managedruntime.ResolvedRuntime, error) {
+	return r.runtime, nil
+}
+
+func (r staticManagedRuntimeResolver) ResolveProfile(context.Context, string) (managedruntime.ResolvedRuntime, error) {
+	return r.runtime, nil
 }

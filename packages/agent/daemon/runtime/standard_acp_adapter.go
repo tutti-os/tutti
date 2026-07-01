@@ -395,18 +395,10 @@ func sessionEnvValue(env []string, key string) string {
 }
 
 func claudeCodeACPModeID(mode string) string {
-	switch strings.TrimSpace(mode) {
-	case "default":
-		return "default"
-	case "acceptEdits":
-		return "acceptEdits"
-	case "dontAsk":
-		return "dontAsk"
-	case "bypassPermissions":
-		return "bypassPermissions"
-	default:
-		return ""
+	if isClaudeCodePermissionModeID(mode) {
+		return strings.TrimSpace(mode)
 	}
+	return ""
 }
 
 func claudeCodeACPCommands() []AgentSessionCommand {
@@ -2925,11 +2917,30 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 			return events
 		}
 		return nil
-	case "available_commands_update", "current_mode_update", "plan":
+	case "current_mode_update":
+		// The agent is the authoritative source of its current mode. We log
+		// every report so we can verify claude-code emits this on exit-plan
+		// before making it drive the session's persisted mode (the interactive
+		// selection already keeps exit-plan in sync; see syncClaudeCodeModeFromSelection).
+		logACPCurrentModeUpdate(config, session, params.Update)
+		return nil
+	case "available_commands_update", "plan":
 		return nil
 	default:
 		return nil
 	}
+}
+
+func logACPCurrentModeUpdate(config standardACPConfig, session Session, update map[string]any) {
+	slog.Info("agent session ACP current mode update",
+		"event", "agent_session.acp.current_mode_update",
+		"provider", config.provider,
+		"adapter", config.adapterName,
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"provider_session_id", session.ProviderSessionID,
+		"mode_id", strings.TrimSpace(acpModeValue(update)),
+	)
 }
 
 func logACPGoalUpdate(config standardACPConfig, session Session, turnID string, updateType string, update map[string]any) {

@@ -1024,6 +1024,11 @@ export const AgentGUINode = memo(function AgentGUINode({
           id: "bypassPermissions",
           label: t("agentHost.agentGui.planModes.allowAll.label"),
           description: t("agentHost.agentGui.planModes.allowAll.description")
+        },
+        {
+          id: "auto",
+          label: t("agentHost.agentGui.planModes.auto.label"),
+          description: t("agentHost.agentGui.planModes.auto.description")
         }
       ],
       stayInPlan: t("agentHost.agentGui.stayInPlan"),

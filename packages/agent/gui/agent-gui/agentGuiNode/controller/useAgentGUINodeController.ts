@@ -16,8 +16,7 @@ import {
 } from "../../../agentActivityRuntime";
 import {
   useAgentQueuedPromptRuntime,
-  useAgentQueuedPromptSessionSnapshot,
-  type AgentQueuedPromptClaim
+  useAgentQueuedPromptSessionSnapshot
 } from "../../../agentQueuedPromptRuntime";
 import { useAgentHostApi } from "../../../agentActivityHost";
 import {
@@ -218,8 +217,6 @@ const AGENT_RESUME_SESSION_NOT_LOCAL_ERROR = "agent.resume_session_not_local";
 const AGENT_SETTINGS_REQUIRE_NEW_SESSION_ERROR =
   "agent.settings_require_new_session";
 const AGENT_SESSION_NOT_FOUND_ERROR = "session.not_found";
-const AGENT_SESSION_ACTIVE_TURN_CONFLICT_MESSAGE =
-  "agent session already has an active turn";
 const AGENT_PROVIDER_SESSION_NOT_FOUND_FALLBACK_MESSAGE =
   "The previous agent session can no longer be restored.";
 const AGENT_RESUME_SESSION_NOT_LOCAL_FALLBACK_MESSAGE =
@@ -229,7 +226,6 @@ const SELECTED_SESSION_NOT_FOUND_RETRY_DELAY_MS = 150;
 
 type AgentGUIRuntimeErrorPhase =
   | "create_conversation"
-  | "drain_queued_prompt_interrupt"
   | "interrupt_current_turn"
   | "load_session_messages"
   | "load_session_state"
@@ -586,7 +582,7 @@ function reportAgentGUICancelDiagnostic(input: {
   agentSessionId: string;
   busySource?: string | null;
   currentSessionStatus?: string | null;
-  phase: "drain_queued_prompt_interrupt" | "interrupt_current_turn";
+  phase: "interrupt_current_turn";
   provider?: string | null;
   result: AgentActivityCancelSessionResult;
   runtime: AgentActivityRuntime;
@@ -1115,15 +1111,6 @@ function buildContinueInNewConversationPrompt(input: {
     return existingDraftPrompt;
   }
   return `${mention} ${existingDraftPrompt}`;
-}
-
-function isAgentSessionActiveTurnConflictError(error: unknown): boolean {
-  const message = getAgentGUIRawErrorMessage(error);
-  return (
-    message
-      ?.toLowerCase()
-      .includes(AGENT_SESSION_ACTIVE_TURN_CONFLICT_MESSAGE) ?? false
-  );
 }
 
 export function resolveConversationUpdatedAtUnixMsFromSessionState(input: {
@@ -3386,15 +3373,6 @@ export function useAgentGUINodeController({
   const pendingCreateOwnerKey = nodeId?.trim() ?? "";
   const conversationListActiveOwnerKey =
     pendingCreateOwnerKey || generatedControllerOwnerKey;
-  const queuedPromptOwnerId = conversationListActiveOwnerKey;
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    return () => {
-      agentQueuedPromptRuntime.releaseOwner(queuedPromptOwnerId);
-    };
-  }, [agentQueuedPromptRuntime, previewMode, queuedPromptOwnerId]);
   const resolvePendingCreateConversationId = useCallback(
     () =>
       conversationListQuery && pendingCreateOwnerKey
@@ -3461,12 +3439,6 @@ export function useAgentGUINodeController({
   const activeQueuedPrompts =
     activeQueuedPromptSnapshot?.prompts ?? EMPTY_QUEUED_PROMPTS;
   const activeQueuedPromptClaim = activeQueuedPromptSnapshot?.claim ?? null;
-  const activeFailedQueuedPromptId =
-    activeQueuedPromptSnapshot?.failedPromptId ?? null;
-  const activeQueuedPromptRetryBlock =
-    activeQueuedPromptSnapshot?.retryBlock ?? null;
-  const activeSendNextQueuedPromptId =
-    activeQueuedPromptSnapshot?.sendNextPromptId ?? null;
   const [interruptingSessionIds, setInterruptingSessionIds] = useState<
     Record<string, boolean>
   >({});
@@ -3882,7 +3854,7 @@ export function useAgentGUINodeController({
     (
       agentSessionId: string,
       content: AgentPromptContentBlock[],
-      queuedPromptId?: string | null
+      displayPrompt?: string
     ) => void
   >(() => {});
   const reloadSelectedConversationRef = useRef<
@@ -4082,6 +4054,9 @@ export function useAgentGUINodeController({
     if (externalId === (activeConversationIdRef.current ?? "")) return;
     if (!externalId) {
       const previous = activeConversationIdRef.current;
+      if (!previous && isComposerHomeRef.current && intent.tag === "home") {
+        return;
+      }
       reportAgentGUIActiveConversationCleared({
         details: {
           dataLastActiveAgentSessionId: data.lastActiveAgentSessionId ?? null,
@@ -6882,8 +6857,7 @@ export function useAgentGUINodeController({
           }
           const shouldShowErrorOnHome =
             startingConversationIdRef.current === agentSessionId ||
-            (activeConversationIdRef.current === null &&
-              isComposerHomeRef.current);
+            activeConversationIdRef.current === null;
           const submitTrace = submitTraceBySessionIdRef.current[agentSessionId];
           if (submitTrace) {
             const nextTraces = { ...submitTraceBySessionIdRef.current };
@@ -7225,14 +7199,14 @@ export function useAgentGUINodeController({
     (
       agentSessionId: string,
       content: AgentPromptContentBlock[],
-      queuedPromptId?: string | null,
-      displayPrompt?: string,
-      queuedPromptClaim?: AgentQueuedPromptClaim | null
+      displayPrompt?: string
     ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
         return;
       }
+      const targetIsActiveConversation =
+        activeConversationIdRef.current === agentSessionId;
       // displayPrompt(如 bundle 折叠成单 chip)优先用于回显;否则回退到 content 派生文本。
       const submittedPromptText =
         displayPrompt && displayPrompt.trim()
@@ -7243,7 +7217,7 @@ export function useAgentGUINodeController({
         agentSessionId,
         content: normalizedContent,
         prompt: submittedPromptText,
-        queued: queuedPromptId !== undefined,
+        queued: false,
         startedAtUnixMs: submittedAtUnixMs
       });
       const targetConversation = resolveConversationSummaryById(
@@ -7266,8 +7240,7 @@ export function useAgentGUINodeController({
           conversationKnown: targetConversation !== null,
           conversationStatus: previousConversationStatus,
           isComposerHome: isComposerHomeRef.current,
-          targetIsActiveConversation:
-            activeConversationIdRef.current === agentSessionId,
+          targetIsActiveConversation,
           targetMode: "existing"
         }
       });
@@ -7324,28 +7297,24 @@ export function useAgentGUINodeController({
         trace: submitTrace,
         workspaceId
       });
-      let queuedPromptClaimCompleted = false;
-      const shouldRecordPendingOptimisticPrompt = queuedPromptId === undefined;
-      if (shouldRecordPendingOptimisticPrompt) {
-        recordLocalMessages(agentSessionId, [
-          createOptimisticPromptMessage({
-            workspaceId,
-            agentSessionId,
-            turnId: pendingOptimisticTurnId,
-            clientSubmitId: submitTrace.clientSubmitId,
-            userId: currentUserId?.trim() || "user",
-            prompt: submittedPromptText,
-            content: normalizedContent,
-            occurredAtUnixMs: submittedAtUnixMs
-          })
-        ]);
-        reportAgentSubmitTraceDiagnostic({
-          event: "optimistic_user_message_recorded",
-          runtime: agentActivityRuntime,
-          trace: submitTrace,
-          workspaceId
-        });
-      }
+      recordLocalMessages(agentSessionId, [
+        createOptimisticPromptMessage({
+          workspaceId,
+          agentSessionId,
+          turnId: pendingOptimisticTurnId,
+          clientSubmitId: submitTrace.clientSubmitId,
+          userId: currentUserId?.trim() || "user",
+          prompt: submittedPromptText,
+          content: normalizedContent,
+          occurredAtUnixMs: submittedAtUnixMs
+        })
+      ]);
+      reportAgentSubmitTraceDiagnostic({
+        event: "optimistic_user_message_recorded",
+        runtime: agentActivityRuntime,
+        trace: submitTrace,
+        workspaceId
+      });
       void Promise.resolve()
         .then(() => {
           reportAgentSubmitTraceDiagnostic({
@@ -7411,66 +7380,32 @@ export function useAgentGUINodeController({
               updatedAtUnixMs: Date.now()
             });
           }
-          if (!queuedPromptId) {
-            setDraftBySessionId((current) => {
-              const currentDraft = current[agentSessionId];
-              if (
-                !shouldClearSubmittedDraft({
-                  currentDraft,
-                  submittedContent: normalizedContent
-                })
-              ) {
-                return current;
-              }
-              return {
-                ...current,
-                [agentSessionId]: emptyAgentComposerDraft()
-              };
-            });
-          }
-          if (queuedPromptId) {
-            if (queuedPromptClaim) {
-              queuedPromptClaimCompleted =
-                agentQueuedPromptRuntime.completeClaim({
-                  workspaceId,
-                  agentSessionId,
-                  ownerId: queuedPromptClaim.ownerId,
-                  claimId: queuedPromptClaim.claimId
-                });
+          setDraftBySessionId((current) => {
+            const currentDraft = current[agentSessionId];
+            if (
+              !shouldClearSubmittedDraft({
+                currentDraft,
+                submittedContent: normalizedContent
+              })
+            ) {
+              return current;
             }
-          }
+            return {
+              ...current,
+              [agentSessionId]: emptyAgentComposerDraft()
+            };
+          });
           const submittedTurnId = result.turnId.trim();
           if (submittedTurnId) {
             pendingTurnIdBySessionIdRef.current = {
               ...pendingTurnIdBySessionIdRef.current,
               [agentSessionId]: submittedTurnId
             };
-            if (shouldRecordPendingOptimisticPrompt) {
-              retargetOptimisticPromptTurn(
-                agentSessionId,
-                submitTrace.clientSubmitId,
-                submittedTurnId
-              );
-            } else {
-              recordLocalMessages(agentSessionId, [
-                createOptimisticPromptMessage({
-                  workspaceId,
-                  agentSessionId,
-                  turnId: submittedTurnId,
-                  clientSubmitId: submitTrace.clientSubmitId,
-                  userId: currentUserId?.trim() || "user",
-                  prompt: submittedPromptText,
-                  content: normalizedContent,
-                  occurredAtUnixMs: Date.now()
-                })
-              ]);
-              reportAgentSubmitTraceDiagnostic({
-                event: "optimistic_user_message_recorded",
-                runtime: agentActivityRuntime,
-                trace: submitTrace,
-                workspaceId
-              });
-            }
+            retargetOptimisticPromptTurn(
+              agentSessionId,
+              submitTrace.clientSubmitId,
+              submittedTurnId
+            );
             scheduleAgentSubmitTracePaint({
               runtime: agentActivityRuntime,
               trace: submitTrace,
@@ -7491,9 +7426,7 @@ export function useAgentGUINodeController({
           const nextTraces = { ...submitTraceBySessionIdRef.current };
           delete nextTraces[agentSessionId];
           submitTraceBySessionIdRef.current = nextTraces;
-          if (shouldRecordPendingOptimisticPrompt) {
-            removeOptimisticPrompt(agentSessionId, submitTrace.clientSubmitId);
-          }
+          removeOptimisticPrompt(agentSessionId, submitTrace.clientSubmitId);
           const nextPendingTurns = { ...pendingTurnIdBySessionIdRef.current };
           delete nextPendingTurns[agentSessionId];
           pendingTurnIdBySessionIdRef.current = nextPendingTurns;
@@ -7506,19 +7439,7 @@ export function useAgentGUINodeController({
               errorCode: getAgentGUIErrorCode(error)
             }
           });
-          const currentSessionState =
-            getAgentSessionView(sessionViewRef(agentSessionId))?.controlState ??
-            null;
-          const currentConversationSummary = resolveConversationSummaryById(
-            conversations,
-            agentSessionId,
-            transientConversationRef.current
-          );
-          const shouldRetryQueuedPromptOnNextActivity =
-            queuedPromptId !== undefined &&
-            isAgentSessionActiveTurnConflictError(error);
           if (
-            !shouldRetryQueuedPromptOnNextActivity &&
             previousConversationStatus &&
             previousConversationStatus !== "working"
           ) {
@@ -7542,17 +7463,9 @@ export function useAgentGUINodeController({
               });
             }
           }
-          if (
-            isCurrentConversation(agentSessionId) &&
-            !shouldRetryQueuedPromptOnNextActivity
-          ) {
+          if (isCurrentConversation(agentSessionId)) {
             reportAgentGUIRuntimeError({
               agentSessionId,
-              context: {
-                queuedPrompt: queuedPromptId !== undefined,
-                retryQueuedPromptOnNextActivity:
-                  shouldRetryQueuedPromptOnNextActivity
-              },
               error,
               phase: "send_prompt",
               provider: dataRef.current.provider,
@@ -7560,27 +7473,6 @@ export function useAgentGUINodeController({
               workspaceId
             });
             setDetailError(getAgentGUIErrorMessage(error));
-          }
-          if (queuedPromptId) {
-            if (shouldRetryQueuedPromptOnNextActivity) {
-              agentQueuedPromptRuntime.setRetryBlock({
-                workspaceId,
-                agentSessionId,
-                retryBlock: {
-                  queuedPromptId,
-                  sessionStateUpdatedAtUnixMs:
-                    currentSessionState?.updatedAtUnixMs ?? null,
-                  conversationUpdatedAtUnixMs:
-                    currentConversationSummary?.updatedAtUnixMs ?? null
-                }
-              });
-            } else {
-              agentQueuedPromptRuntime.markPromptFailed({
-                workspaceId,
-                agentSessionId,
-                promptId: queuedPromptId
-              });
-            }
           }
         })
         .finally(() => {
@@ -7591,22 +7483,12 @@ export function useAgentGUINodeController({
             });
           }
           setLocalIsSubmitting(false);
-          if (queuedPromptClaim && !queuedPromptClaimCompleted) {
-            agentQueuedPromptRuntime.releaseClaim({
-              workspaceId,
-              agentSessionId,
-              ownerId: queuedPromptClaim.ownerId,
-              claimId: queuedPromptClaim.claimId
-            });
-          }
         });
     },
     [
-      agentQueuedPromptRuntime,
       currentUserId,
       isCurrentConversation,
       applyStatePatch,
-      conversations,
       conversationListQuery,
       syncConversationListProjection,
       loadSessionState,
@@ -7725,12 +7607,7 @@ export function useAgentGUINodeController({
         );
         return;
       }
-      executePrompt(
-        agentSessionId,
-        normalizedContent,
-        undefined,
-        displayPromptText
-      );
+      executePrompt(agentSessionId, normalizedContent, displayPromptText);
     },
     [
       activation,
@@ -7908,7 +7785,11 @@ export function useAgentGUINodeController({
       }
       setIsRespondingApproval(true);
       setDetailError(null);
-      const submittedPrompt = activePendingPromptRef.current;
+      // Exit-plan mode changes are NOT mirrored optimistically here. The daemon
+      // owns the session mode: on this submit it switches plan/permission mode
+      // and publishes a state patch, which drives the composer reactively (see
+      // syncClaudeCodeModeFromSelection in the runtime controller). A frontend
+      // optimistic write would just race that authoritative patch.
       void Promise.resolve()
         .then(() => {
           if (!isCurrentConversation(agentSessionId)) {
@@ -7926,21 +7807,6 @@ export function useAgentGUINodeController({
         .then((result) => {
           if (!result || !isCurrentConversation(agentSessionId)) {
             return;
-          }
-          if (
-            submittedPrompt?.requestId === normalizedRequestId &&
-            submittedPrompt.kind === "exit-plan" &&
-            input.action === "allow"
-          ) {
-            // Plan approved: leave plan mode so the next turn executes
-            // instead of replanning. The approved option is the permission
-            // mode the provider switches to, so mirror it in the dropdown.
-            updateComposerSettingsRef.current({
-              planMode: false,
-              ...(normalizedOptionId
-                ? { permissionModeId: normalizedOptionId }
-                : {})
-            });
           }
           void refreshMessagesFromSnapshot(agentSessionId);
           void loadSessionState(agentSessionId);
@@ -8526,189 +8392,6 @@ export function useAgentGUINodeController({
     feedback: submitPlanFeedback,
     skip: dismissPlanImplementation
   };
-
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    if (!activeConversationId) {
-      return;
-    }
-    const queuedPrompt = activeQueuedPrompts[0] ?? null;
-    const activeSessionState =
-      getAgentSessionView(sessionViewRef(activeConversationId))?.controlState ??
-      null;
-    const activeConversationSummary = resolveConversationSummaryById(
-      conversations,
-      activeConversationId,
-      transientConversationRef.current
-    );
-    const blockedByStaleActiveTurnConflict =
-      queuedPrompt !== null &&
-      activeQueuedPromptRetryBlock?.queuedPromptId === queuedPrompt.id &&
-      activeQueuedPromptRetryBlock.sessionStateUpdatedAtUnixMs ===
-        (activeSessionState?.updatedAtUnixMs ?? null) &&
-      activeQueuedPromptRetryBlock.conversationUpdatedAtUnixMs ===
-        (activeConversationSummary?.updatedAtUnixMs ?? null);
-    const canDrainQueuedPrompt =
-      queuedPrompt !== null &&
-      queuedPrompt.id !== activeFailedQueuedPromptId &&
-      !blockedByStaleActiveTurnConflict &&
-      activeQueuedPromptClaim === null &&
-      !isSubmitting &&
-      !isRespondingApproval &&
-      !activeSessionState?.pendingInteractive &&
-      !agentActivityDisplayStatusBusy(
-        agentActivityDisplayStatuses.get(activeConversationId)
-      );
-    if (!canDrainQueuedPrompt) {
-      return;
-    }
-    const claimResult = agentQueuedPromptRuntime.claimNextToDrain({
-      workspaceId,
-      agentSessionId: activeConversationId,
-      ownerId: queuedPromptOwnerId
-    });
-    if (!claimResult) {
-      return;
-    }
-    executePrompt(
-      activeConversationId,
-      claimResult.prompt.content,
-      claimResult.prompt.id,
-      claimResult.prompt.displayPrompt,
-      claimResult.claim
-    );
-  }, [
-    activeConversationId,
-    activeFailedQueuedPromptId,
-    activeQueuedPromptClaim,
-    activeQueuedPromptRetryBlock,
-    activeQueuedPrompts,
-    agentQueuedPromptRuntime,
-    agentActivityDisplayStatuses,
-    conversations,
-    executePrompt,
-    isRespondingApproval,
-    isSubmitting,
-    previewMode,
-    queuedPromptOwnerId,
-    workspaceId
-  ]);
-
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    if (!activeConversationId) {
-      return;
-    }
-    if (
-      !activeSendNextQueuedPromptId ||
-      activeQueuedPrompts[0]?.id !== activeSendNextQueuedPromptId
-    ) {
-      return;
-    }
-    const activeSessionState =
-      getAgentSessionView(sessionViewRef(activeConversationId))?.controlState ??
-      null;
-    const activeConversationSummary = resolveConversationSummaryById(
-      conversations,
-      activeConversationId,
-      transientConversationRef.current
-    );
-    const activeActivityDisplayStatus =
-      agentActivityDisplayStatuses.get(activeConversationId) ?? null;
-    const shouldInterrupt =
-      activeQueuedPromptClaim === null &&
-      !isSubmitting &&
-      activeActivityDisplayStatus === "working";
-    if (!shouldInterrupt || interruptingSessionIds[activeConversationId]) {
-      return;
-    }
-
-    setInterruptingSessionIds((current) => ({
-      ...current,
-      [activeConversationId]: true
-    }));
-    setDetailError(null);
-    void Promise.resolve()
-      .then(() => {
-        if (!isCurrentConversation(activeConversationId)) {
-          return null;
-        }
-        return agentActivityRuntime.cancelSession({
-          workspaceId,
-          agentSessionId: activeConversationId
-        });
-      })
-      .then((result) => {
-        if (!result || !isCurrentConversation(activeConversationId)) {
-          return;
-        }
-        reportAgentGUICancelDiagnostic({
-          agentSessionId: activeConversationId,
-          busySource: cancelBusySource({
-            conversationStatus: activeConversationSummary?.status ?? null,
-            hasActivePrompt: false,
-            runtimeSessionStatus:
-              runtimeSessionsBySessionId.get(activeConversationId)?.status ??
-              null,
-            sessionStateStatus: activeSessionState?.status ?? null
-          }),
-          currentSessionStatus: activeSessionState?.status ?? null,
-          phase: "drain_queued_prompt_interrupt",
-          provider: dataRef.current.provider,
-          result,
-          runtime: agentActivityRuntime,
-          workspaceId
-        });
-        void refreshMessagesFromSnapshot(activeConversationId);
-        void loadSessionState(activeConversationId);
-        void syncConversationListProjection(activeConversationId);
-      })
-      .catch((error) => {
-        if (isCurrentConversation(activeConversationId)) {
-          reportAgentGUIRuntimeError({
-            agentSessionId: activeConversationId,
-            error,
-            phase: "drain_queued_prompt_interrupt",
-            provider: dataRef.current.provider,
-            runtime: agentActivityRuntime,
-            workspaceId
-          });
-          setDetailError(getAgentGUIErrorMessage(error));
-        }
-      })
-      .finally(() => {
-        setInterruptingSessionIds((current) => {
-          if (!current[activeConversationId]) {
-            return current;
-          }
-          const next = { ...current };
-          delete next[activeConversationId];
-          return next;
-        });
-      });
-  }, [
-    activeConversationId,
-    activeQueuedPromptClaim,
-    activeQueuedPrompts,
-    activeSendNextQueuedPromptId,
-    agentActivityDisplayStatuses,
-    conversations,
-    interruptingSessionIds,
-    isCurrentConversation,
-    isSubmitting,
-    syncConversationListProjection,
-    loadSessionState,
-    refreshMessagesFromSnapshot,
-    previewMode,
-    runtimeSessionsBySessionId,
-    workspaceId,
-    sessionViewRef,
-    agentActivityRuntime
-  ]);
 
   const requestDeleteConversation = useCallback(
     (agentSessionId: string) => {
@@ -10523,7 +10206,10 @@ function interactivePromptFromSessionState(
     return {
       kind: "exit-plan",
       requestId: prompt.requestId.trim(),
-      title: prompt.toolName?.trim() || "Exit plan mode"
+      title: prompt.toolName?.trim() || "Exit plan mode",
+      // Legacy exitplanmode session-state prompt carries no runtime mode
+      // options; the surface falls back to the curated default list.
+      options: []
     };
   }
   if (toolName !== "askuserquestion") {

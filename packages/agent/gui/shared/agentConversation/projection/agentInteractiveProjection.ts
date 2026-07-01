@@ -2,6 +2,11 @@ import type { WorkspaceAgentSessionDetailToolCall } from "../../workspaceAgentSe
 import type { AgentAskUserQuestionItemVM } from "../contracts/agentAskUserQuestionItemVM";
 import type { AgentPlanModeItemVM } from "../contracts/agentPlanModeItemVM";
 import { normalizeAskUserQuestions } from "../askUserQuestions";
+import {
+  extractExitPlanKeepPlanningOptionId,
+  extractExitPlanModeOptions,
+  isExitPlanSwitchModeInput
+} from "../exitPlanOptions";
 
 export function projectAgentAskUserQuestionItem(
   call: WorkspaceAgentSessionDetailToolCall,
@@ -38,7 +43,7 @@ export function projectAgentPlanModeItem(
   call: WorkspaceAgentSessionDetailToolCall,
   input: Record<string, unknown> | null
 ): AgentPlanModeItemVM | null {
-  if (isExitPlanApprovalInput(input)) {
+  if (isExitPlanSwitchModeInput(input)) {
     return {
       itemKind: "plan-mode",
       id: call.id,
@@ -56,6 +61,8 @@ export function projectAgentPlanModeItem(
         (call.summary.trim() || null),
       filePath:
         stringValue(input?.filePath) ?? stringValue(call.payload?.filePath),
+      options: extractExitPlanModeOptions(input),
+      ...keepPlanningOption(extractExitPlanKeepPlanningOptionId(input)),
       occurredAtUnixMs: call.occurredAtUnixMs ?? null
     };
   }
@@ -97,23 +104,6 @@ export function projectAgentPlanModeItem(
   };
 }
 
-function isExitPlanApprovalInput(
-  input: Record<string, unknown> | null
-): boolean {
-  const toolCall = objectValue(input?.toolCall);
-  const kind = normalizeToolName(stringValue(toolCall?.kind));
-  if (kind !== "switchmode") {
-    return false;
-  }
-  return (arrayValue(input?.options) ?? []).some((value) => {
-    const option = objectValue(value);
-    return (
-      stringValue(option?.optionId) === "plan" ||
-      stringValue(option?.id) === "plan"
-    );
-  });
-}
-
 function answerForQuestion(
   questionId: string,
   answersByQuestionId: Record<string, unknown>,
@@ -135,6 +125,12 @@ function answerForQuestion(
           typeof item === "string" && item.trim().length > 0
       )
     : null;
+}
+
+function keepPlanningOption(optionId: string | null): {
+  keepPlanningOptionId?: string;
+} {
+  return optionId ? { keepPlanningOptionId: optionId } : {};
 }
 
 function normalizeToolName(value: string | null | undefined): string {

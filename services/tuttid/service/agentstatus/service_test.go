@@ -378,6 +378,8 @@ func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
+	writeExecutable(t, filepath.Join(binDir, npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
 	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}

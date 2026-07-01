@@ -532,7 +532,7 @@ export const en = {
       slashStatusLimitsUnavailable: "Rate limits unavailable from this agent",
       usageChipLabel: "Context {{percent}}%",
       usageTooltipLabel: "Context usage",
-      usagePopoverTitle: "Plan usage",
+      usagePopoverTitle: "Context Usage",
       usageContextWindowLabel: "Context window",
       usageTokensLabel: "Tokens",
       usageLimitsLabel: "Limits",
@@ -826,6 +826,10 @@ export const en = {
         allowAll: {
           label: "Allow all",
           description: "Do not prompt for tools"
+        },
+        auto: {
+          label: "Auto",
+          description: "Let the agent choose when to ask"
         }
       },
       stayInPlan: "Keep planning",
@@ -1353,6 +1357,7 @@ export const en = {
         waitingForAnswer: "Waiting for answer…",
         questionFallback: "Question",
         delegateSession: "Delegate session",
+        missingFailureDetails: "The provider reported failure without details.",
         noMatches: "No matches",
         noMatchingTools: "No matching tools",
         loadedAvailable: "{{loaded}} loaded · {{available}} available",
@@ -1383,6 +1388,8 @@ export const en = {
         editNotebook: "Edit notebook",
         updateTodos: "Update todos",
         delegateAgent: "Delegate agent",
+        closeAgent: "End agent",
+        waitAgent: "Wait for agent",
         currentIssue: "Current task",
         thinking: "Thinking",
         responding: "Responding",

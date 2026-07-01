@@ -43,6 +43,20 @@ The host daemon owns:
 - provider availability and install status
 - workspace attachment, runtime VM lifecycle, and product auth
 
+## Live Session Recycling
+
+Agent sessions are durable controller records. For providers that support live
+session release, the runtime reaper may close an idle provider process without
+closing the Tutti agent session. The provider session id remains attached to the
+session, and the next `Exec` resumes the provider live session before starting a
+new turn.
+
+User-initiated `Close` is still destructive for the controller session: it
+completes the session, publishes completion activity, and removes the in-memory
+record. Idle live-session release must not emit completion activity, clear the
+provider session id, remove runtime directories, or interrupt active turns and
+pending interactive requests.
+
 ## Legacy Defaults
 
 The legacy runtime constructors still default to `TUTTI_WORKSPACE_ID`,

@@ -173,6 +173,10 @@ test("dock transparent hover padding lets clicks reach windows behind it", () =>
   assert.match(css, /\.desktop-dock__slot\s*{[^}]*pointer-events:\s*auto;/s);
   assert.match(
     css,
+    /\.desktop-dock\[data-dock-pointer-active="true"\]\s+\.desktop-dock__btn\[data-dock-hover-panel-trigger="true"\],[\s\S]*?pointer-events:\s*auto;/s
+  );
+  assert.match(
+    css,
     /\.desktop-dock__hover-panel\s*{[^}]*pointer-events:\s*auto;/s
   );
 });

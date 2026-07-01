@@ -80,6 +80,7 @@ export interface AgentTaskRenderData {
   childSessionId: string | null;
   steps: AgentTaskStepVM[];
   resultMarkdown: string | null;
+  errorMarkdown: string | null;
 }
 
 export interface AgentSkillRenderData {
@@ -399,6 +400,8 @@ export function getTaskRenderData(call: AgentToolCallVM): AgentTaskRenderData {
   const task = call.task;
   const steps: AgentTaskStepVM[] =
     task?.steps ?? normalizeTaskStepsFromCall(call);
+  const outputRawOutput = recordValue(call.output?.rawOutput);
+  const errorRawOutput = recordValue(call.error?.rawOutput);
   return {
     title: task?.title ?? call.name,
     status: task?.status ?? null,
@@ -424,9 +427,9 @@ export function getTaskRenderData(call: AgentToolCallVM): AgentTaskRenderData {
     steps,
     resultMarkdown: firstString(
       stringValue(task?.resultMarkdown),
-      firstNonEmptyStructuredText(call.output, call.error),
-      nonEmpty(call.summary)
-    )
+      firstNonEmptyStructuredText(call.output, outputRawOutput)
+    ),
+    errorMarkdown: firstNonEmptyStructuredText(call.error, errorRawOutput)
   };
 }
 

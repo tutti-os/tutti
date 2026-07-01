@@ -15,6 +15,11 @@ import {
 } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import { projectAgentSessionEventsToTimelineItems } from "../../../shared/agentConversation/projection/agentSessionEventProjection";
 import { projectAgentConversationVM } from "../../../shared/agentConversation/projection/agentConversationProjection";
+import {
+  extractExitPlanKeepPlanningOptionId,
+  extractExitPlanModeOptions,
+  isExitPlanSwitchModeInput
+} from "../../../shared/agentConversation/exitPlanOptions";
 import type { AgentApprovalItemVM } from "../../../shared/agentConversation/contracts/agentApprovalItemVM";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
@@ -966,7 +971,7 @@ function approvalRequestFromTimelineItem(
   const options = normalizeApprovalOptions(
     arrayPayload(input?.options) ?? arrayPayload(payload.options) ?? []
   );
-  if (isExitPlanApprovalInput(input, options)) {
+  if (isExitPlanSwitchModeInput(input)) {
     return null;
   }
   return {
@@ -998,10 +1003,7 @@ function interactivePromptFromTimelineItem(
     normalizeCallType(stringPayload(payload.callType));
   const input = objectPayload(payload.input);
   if (callType === "approval") {
-    const options = normalizeApprovalOptions(
-      arrayPayload(input?.options) ?? arrayPayload(payload.options) ?? []
-    );
-    if (!isExitPlanApprovalInput(input, options)) {
+    if (!isExitPlanSwitchModeInput(input)) {
       return null;
     }
     const status =
@@ -1028,7 +1030,16 @@ function interactivePromptFromTimelineItem(
         stringPayload(objectPayload(input?.toolCall)?.title) ||
         item.name?.trim() ||
         stringPayload(payload.name) ||
-        "Exit plan mode"
+        "Exit plan mode",
+      options: extractExitPlanModeOptions(input, payload),
+      ...(extractExitPlanKeepPlanningOptionId(input, payload)
+        ? {
+            keepPlanningOptionId: extractExitPlanKeepPlanningOptionId(
+              input,
+              payload
+            ) as string
+          }
+        : {})
     };
   }
   if (callType !== "interactive") {
@@ -1057,7 +1068,10 @@ function interactivePromptFromTimelineItem(
       kind: "exit-plan",
       requestId,
       title:
-        item.name?.trim() || stringPayload(payload.name) || "Exit plan mode"
+        item.name?.trim() || stringPayload(payload.name) || "Exit plan mode",
+      // Legacy exitplanmode tool carries no runtime mode options; the surface
+      // falls back to the curated default list.
+      options: []
     };
   }
   if (toolName !== "askuserquestion") {
@@ -1076,18 +1090,6 @@ function interactivePromptFromTimelineItem(
       item.name?.trim() || stringPayload(payload.name) || "Questions for you",
     questions
   };
-}
-
-function isExitPlanApprovalInput(
-  input: Record<string, unknown> | null,
-  options: readonly AgentGUIApprovalOption[]
-): boolean {
-  const toolCall = objectPayload(input?.toolCall);
-  const kind = stringPayload(toolCall?.kind)?.toLowerCase() ?? "";
-  if (kind !== "switch_mode") {
-    return false;
-  }
-  return options.some((option) => option.id === "plan");
 }
 
 function timelineRowTime(

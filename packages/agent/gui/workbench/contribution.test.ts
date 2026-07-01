@@ -717,6 +717,20 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
+  it("keeps zoom image modal zoom controls aligned with action buttons", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.tsh-zoom-dialog__zoom-controls\s*{[^}]*height:\s*32px;[^}]*padding:\s*0 2px;[^}]*border-radius:\s*999px;[^}]*background:\s*var\(--background-fronted\);/s
+    );
+    expect(css).toMatch(
+      /\.tsh-zoom-dialog__zoom-controls button\s*{[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*border-radius:\s*999px;/s
+    );
+    expect(css).toMatch(
+      /\.tsh-zoom-dialog__zoom-controls span\s*{[^}]*line-height:\s*28px;[^}]*color:\s*var\(--text-primary\);/s
+    );
+  });
+
   it("keeps the traffic light group aligned with the agent identity", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 

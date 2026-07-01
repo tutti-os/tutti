@@ -58,8 +58,8 @@ export function projectAgentTaskItem(
       stringValue(metadata?.subagent_session_id) ??
       stringValue(claudeToolResponse?.agentId),
     steps,
-    result: firstNonEmptyText(output, call.summary),
-    resultMarkdown: firstNonEmptyText(output, call.summary),
+    result: firstNonEmptyText(output),
+    resultMarkdown: firstNonEmptyText(output),
     durationMs:
       numberValue(metadata?.durationMs) ??
       numberValue(output?.durationMs) ??

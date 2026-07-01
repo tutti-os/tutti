@@ -404,6 +404,7 @@ export const en = {
           "We couldn't update window snapping right now.",
         workbenchWindowSnappingShortcutLabel: "Window snapping shortcut",
         workbenchWindowSnappingShortcutOptions: {
+          off: "Off",
           commandArrows: "Command + Arrow keys",
           commandShiftArrows: "Command + Shift + Arrow keys"
         },

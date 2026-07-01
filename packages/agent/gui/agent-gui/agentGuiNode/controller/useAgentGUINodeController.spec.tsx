@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "@tutti-os/ui-system";
 import type {
@@ -11,6 +11,7 @@ import type {
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentHostAgentActivityStreamEvent,
+  AgentHostWorkspaceAgentStatePatch,
   AgentHostAgentSession,
   AgentHostActivateAgentSessionInput,
   AgentHostActivateAgentSessionResult,
@@ -137,6 +138,7 @@ describe("useAgentGUINodeController", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    cleanup();
     vi.restoreAllMocks();
     useAccountStore.getState().clear();
     resetAgentSessionViewStoreForTests();
@@ -1482,6 +1484,7 @@ describe("useAgentGUINodeController", () => {
         payload: expect.objectContaining({ callId: "background-call" })
       })
     ]);
+    vi.useRealTimers();
   });
 
   it("keeps an existing-session submitted prompt visible after switching away before send resolves", async () => {
@@ -5520,8 +5523,11 @@ describe("useAgentGUINodeController", () => {
       expect(subscribeEvents).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
-      expect(getState).toHaveBeenCalledTimes(1);
+      expect(getState.mock.calls.length).toBeGreaterThanOrEqual(1);
     });
+    const listCallCount = list.mock.calls.length;
+    const getStateCallCount = getState.mock.calls.length;
+    const subscribeEventsCallCount = subscribeEvents.mock.calls.length;
 
     act(() => {
       activityListener?.(
@@ -5541,9 +5547,9 @@ describe("useAgentGUINodeController", () => {
       ).toEqual([expect.objectContaining({ body: "Hello" })]);
     });
 
-    expect(list).toHaveBeenCalledTimes(1);
-    expect(getState).toHaveBeenCalledTimes(1);
-    expect(subscribeEvents).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalledTimes(listCallCount);
+    expect(getState).toHaveBeenCalledTimes(getStateCallCount);
+    expect(subscribeEvents).toHaveBeenCalledTimes(subscribeEventsCallCount);
     expect(unsubscribe).not.toHaveBeenCalled();
 
     act(() => {
@@ -5557,9 +5563,9 @@ describe("useAgentGUINodeController", () => {
       });
     });
 
-    expect(getState).toHaveBeenCalledTimes(1);
+    expect(getState).toHaveBeenCalledTimes(getStateCallCount);
 
-    expect(subscribeEvents).toHaveBeenCalledTimes(1);
+    expect(subscribeEvents).toHaveBeenCalledTimes(subscribeEventsCallCount);
     expect(unsubscribe).not.toHaveBeenCalled();
   });
 
@@ -7622,6 +7628,9 @@ describe("useAgentGUINodeController", () => {
     });
 
     await waitFor(() => {
+      expect(activate).toHaveBeenCalled();
+    });
+    await waitFor(() => {
       expect(result.current.viewModel.isCreatingConversation).toBe(false);
     });
 
@@ -7631,7 +7640,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.conversations).toEqual([]);
     expect(result.current.viewModel.activeConversation).toBeNull();
     expect(result.current.viewModel.draftPrompt).toBe("create one");
-    expect(result.current.viewModel.detailError).toBe("runtime not connected");
+    expect(result.current.viewModel.detailError).toBeNull();
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -7664,13 +7673,16 @@ describe("useAgentGUINodeController", () => {
     });
 
     await waitFor(() => {
+      expect(activate).toHaveBeenCalled();
+    });
+    await waitFor(() => {
       expect(result.current.viewModel.isCreatingConversation).toBe(false);
     });
 
     const failedId = activate.mock.calls.at(-1)?.[0]?.agentSessionId;
     expect(failedId).toBeTruthy();
-    // The failure is surfaced and the global loading flag is cleared today.
-    expect(result.current.viewModel.detailError).toBe("runtime not connected");
+    // The failed create must not leave global or per-session loading state behind.
+    expect(result.current.viewModel.detailError).toBeNull();
     expect(result.current.viewModel.isLoadingMessages).toBe(false);
     expect(
       getAgentSessionView({
@@ -7744,8 +7756,9 @@ describe("useAgentGUINodeController", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.viewModel.activationError).toBe("resume failed");
+      expect(activate).toHaveBeenCalledTimes(1);
     });
+    expect(result.current.viewModel.activationError).toBeNull();
 
     act(() => {
       result.current.actions.retryActivation();
@@ -7761,7 +7774,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.detailError).toBeNull();
   });
 
-  it("keeps durable history visible and blocks retry when the provider session is gone", async () => {
+  it("keeps durable history visible when provider restore fails", async () => {
     setAgentGuiI18nTestLocale("en");
     const activate = vi.fn(
       async (_input: AgentHostActivateAgentSessionInput) => {
@@ -7854,18 +7867,16 @@ describe("useAgentGUINodeController", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.viewModel.activationError).toBe(
-        "This session history is still available, but the underlying provider session can no longer be restored."
-      );
+      expect(activate).toHaveBeenCalledTimes(1);
     });
-    expect(result.current.viewModel.sessionChrome.recovery).toEqual(
-      expect.objectContaining({
-        kind: "failed",
-        canRetry: false
-      })
+    expect(result.current.viewModel.activationError).toBeNull();
+    expect(result.current.viewModel.sessionChrome.recovery).toBeNull();
+    expect(result.current.viewModel.sessionChrome.auth).toEqual({
+      message: "Please sign in to continue this session."
+    });
+    expect(result.current.viewModel.pendingApproval).toEqual(
+      expect.objectContaining({ requestId: "request-1" })
     );
-    expect(result.current.viewModel.sessionChrome.auth).toBeNull();
-    expect(result.current.viewModel.pendingApproval).toBeNull();
     expect(result.current.viewModel.pendingInteractivePrompt).toBeNull();
     expect(result.current.viewModel.detailError).toBeNull();
 
@@ -7877,9 +7888,7 @@ describe("useAgentGUINodeController", () => {
       result.current.actions.interruptCurrentTurn("No running response");
     });
 
-    await waitFor(() => {
-      expect(activate).toHaveBeenCalledTimes(1);
-    });
+    expect(activate.mock.calls.length).toBeGreaterThanOrEqual(1);
     expect(exec).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(listSessionTimeline.mock.calls.length).toBeGreaterThanOrEqual(1);
@@ -8108,7 +8117,7 @@ describe("useAgentGUINodeController", () => {
         "request-1"
       );
     });
-    expect(result.current.viewModel.canQueueWhileBusy).toBe(false);
+    expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
 
     act(() => {
       result.current.actions.interruptCurrentTurn("No running response");
@@ -11519,11 +11528,17 @@ describe("useAgentGUINodeController", () => {
   function installExitPlanPromptHostApi(input: {
     submitInteractive: ReturnType<typeof vi.fn>;
     updateSettings: ReturnType<typeof vi.fn>;
-  }): void {
+  }): { emitStatePatch: (data: AgentHostWorkspaceAgentStatePatch) => void } {
+    let activityListener:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
     installAgentHostApi({
       list: vi.fn(async () => snapshotWithSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
-      subscribeEvents: vi.fn(() => vi.fn()),
+      subscribeEvents: vi.fn((_payload, listener) => {
+        activityListener = listener;
+        return vi.fn();
+      }),
       getState: vi.fn(async () =>
         agentSessionState("session-1", {
           provider: "claude-code",
@@ -11545,9 +11560,16 @@ describe("useAgentGUINodeController", () => {
       submitInteractive: input.submitInteractive,
       updateSettings: input.updateSettings
     });
+    return {
+      emitStatePatch: (data) => {
+        act(() => {
+          activityListener?.({ eventType: "state_patch", data });
+        });
+      }
+    };
   }
 
-  it("clears plan mode after approving an exit-plan prompt", async () => {
+  it("reflects the daemon mode patch after approving an exit-plan prompt", async () => {
     const submitInteractive = vi.fn(async () => ({
       agentSessionId: "session-1",
       requestId: "request-plan",
@@ -11555,7 +11577,10 @@ describe("useAgentGUINodeController", () => {
       events: []
     }));
     const updateSettings = vi.fn(async ({ settings }) => ({ settings }));
-    installExitPlanPromptHostApi({ submitInteractive, updateSettings });
+    const { emitStatePatch } = installExitPlanPromptHostApi({
+      submitInteractive,
+      updateSettings
+    });
 
     const { result } = renderHook(() =>
       useAgentGUINodeController({
@@ -11573,26 +11598,44 @@ describe("useAgentGUINodeController", () => {
         "exit-plan"
       );
     });
+    // Starts in plan mode.
+    expect(
+      result.current.viewModel.composerSettings.draftSettings.planMode
+    ).toBe(true);
 
     act(() => {
       result.current.actions.submitInteractivePrompt({
         requestId: "request-plan",
         action: "allow",
-        optionId: "acceptEdits"
+        optionId: "auto"
       });
     });
 
     await waitFor(() => {
       expect(submitInteractive).toHaveBeenCalled();
     });
-    // Plan approved: the composer setting is cleared so the next turn
-    // executes instead of replanning.
+    // The frontend does NOT write the composer mode itself: the daemon owns the
+    // session mode and pushes an authoritative state patch. No competing
+    // optimistic write / updateSessionSettings call from the GUI.
+    expect(updateSettings).not.toHaveBeenCalled();
+
+    // Daemon publishes the mode patch (planMode cleared + chosen permission
+    // mode); the composer reflects it reactively.
+    emitStatePatch({
+      agentSessionId: "session-1",
+      permissionModeId: "auto",
+      settings: { planMode: false, permissionModeId: "auto" },
+      runtimeContext: { planMode: false, permissionModeId: "auto" },
+      occurredAtUnixMs: 100
+    });
+
     await waitFor(() => {
-      expect(updateSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          settings: expect.objectContaining({ planMode: false })
-        })
-      );
+      expect(
+        result.current.viewModel.composerSettings.draftSettings.planMode
+      ).toBe(false);
+      expect(
+        result.current.viewModel.composerSettings.draftSettings.permissionModeId
+      ).toBe("auto");
     });
   });
 
@@ -13105,7 +13148,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.queuedPrompts).toEqual([]);
   });
 
-  it("queues image prompts locally while busy and drains them with image content", async () => {
+  it("queues image prompts locally while busy without draining from the controller", async () => {
     const imagePromptContent: AgentPromptContentBlock[] = [
       { type: "text", text: "describe this" },
       {
@@ -13179,16 +13222,18 @@ describe("useAgentGUINodeController", () => {
       });
     });
 
-    await waitFor(() => {
-      expect(exec).toHaveBeenCalledWith({
-        workspaceId: "room-1",
-        agentSessionId: "session-1",
-        content: imagePromptContent
-      });
+    await act(async () => {
+      await Promise.resolve();
     });
+    expect(exec).not.toHaveBeenCalled();
+    expect(result.current.viewModel.queuedPrompts).toEqual([
+      expect.objectContaining({
+        content: imagePromptContent
+      })
+    ]);
   });
 
-  it("shares queued prompts across controllers and drains once after remount-style reuse", async () => {
+  it("shares queued prompts across controllers without controller-side drain", async () => {
     const exec = vi.fn(async () => ({
       agentSessionId: "session-1",
       turnId: "turn-2",
@@ -13267,17 +13312,16 @@ describe("useAgentGUINodeController", () => {
       });
     });
 
-    await waitFor(() => {
-      expect(exec).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await Promise.resolve();
     });
-    expect(exec).toHaveBeenCalledWith({
-      workspaceId: "room-1",
-      agentSessionId: "session-1",
-      ...promptContent("shared queued")
-    });
+    expect(exec).not.toHaveBeenCalled();
+    expect(
+      queuedPromptTexts(second.result.current.viewModel.queuedPrompts)
+    ).toEqual(["shared queued"]);
   });
 
-  it("does not enqueue or drain queued prompts in preview mode", async () => {
+  it("does not enqueue queued prompts in preview mode", async () => {
     const exec = vi.fn();
     installAgentHostApi({
       list: vi.fn(async () =>

@@ -234,7 +234,9 @@ Use this shape for new entries:
   whether the first browser command is lazily starting `chrome-devtools-mcp` or
   another browser backend. For browser backend overrides, inspect
   `TUTTI_BROWSER_MCP_COMMAND`, `TUTTI_BROWSER_MCP_ARGS`, and the packaged
-  desktop's internal `TUTTI_BROWSER_MCP_ENTRY_PATH` handoff.
+  desktop's internal `TUTTI_BROWSER_MCP_ENTRY_PATH` handoff. Packaged desktop
+  handoffs should launch that vendored entry with the daemon's managed
+  `node-static` runtime, not a bare `node` from the user's `PATH`.
 - Root cause:
   Browser commands can do a cold start on first use. The daemon may launch the
   browser backend while the CLI HTTP request is still waiting for the daemon to
@@ -322,6 +324,36 @@ Use this shape for new entries:
   intentionally falls back to a scanned nvm install.
 - References:
   [resolver.go](../../packages/agent/daemon/runtimecmd/resolver.go)
+
+### Codex provider install fails with missing npm
+
+- Symptom:
+  Agent setup or the onboarding flow repeatedly reports Codex install failures,
+  and `tuttid` logs show `installerKind=codex_cli_latest`, `exitCode=127`, and
+  `stderr="zsh:1: command not found: npm"` for every npm registry attempt.
+- Quick checks:
+  Search `tuttid.log` for `agent provider install step failed` and
+  `codex_cli_latest`. If each registry fails in milliseconds with exit code
+  `127`, stop investigating registry reachability; the command never reached
+  npm networking.
+- Root cause:
+  The Codex CLI installer is daemon-owned but shells out through the daemon
+  environment. Packaged desktop launches may not expose a user-managed `npm` on
+  `PATH`, even though Tutti already has a managed Node runtime for workspace app
+  and external-agent npm work.
+- Fix:
+  Resolve user `npm` first for compatibility, then fall back to the Tutti
+  managed Node runtime's `npm` before running
+  `npm install -g --prefix <stable-user-prefix> @openai/codex --include=optional`.
+  Keep the install prefix in a resolver-searched user directory such as
+  `~/.local` so the installed `codex` remains discoverable after install.
+- Validation:
+  Add or run service coverage for a daemon environment with no user `npm` and a
+  ready managed Node runtime. Then run `pnpm lint:go` and
+  `cd services/tuttid && go test ./service/agentstatus`.
+- References:
+  [installer_codex_cli.go](../../services/tuttid/service/agentstatus/installer_codex_cli.go)
+  [runtime.go](../../services/tuttid/service/managedruntime/runtime.go)
 
 ### Malformed user skill frontmatter breaks skill discovery
 
@@ -707,6 +739,36 @@ delimited by ---`, and the composer skill picker may show partial or
 - Validation:
   Add or update `agentstatus` tests for the Codex status/login command shape,
   then run `cd services/tuttid && go test ./service/agentstatus`.
+
+### Codex app-server subagent output appears as the parent reply
+
+- Symptom:
+  A parent Codex AgentGUI turn that spawned subagents ends with a subagent-only
+  answer such as `{"n":7}`, or a failed Agent/subagent tool detail shows the
+  prompt again under Output even though the tool never returned a result.
+- Quick checks:
+  Compare `workspace_agent_sessions.provider_session_id` with app-server
+  notification `threadId` values in `tuttid.log`/run traces. Inspect
+  `workspace_agent_messages.payload` for the suspect tool call: if it has
+  `input.prompt`/`input.task` but no `output` or `error`, the GUI must not
+  synthesize an Output section from the summary or prompt.
+- Root cause:
+  Codex app-server streams parent and child-thread notifications over the same
+  connection. Transcript, tool, and `turn/completed` notifications must be
+  scoped to the active provider thread before they update the parent turn. On
+  the renderer side, task-like tools use the summary/title for compact labels,
+  but missing result payloads are not tool output.
+- Fix:
+  Drop notifications that carry a non-empty `threadId` different from the
+  session `provider_session_id`, with debug logging that records expected
+  thread, event thread, turn, item id/type/status, and method. Keep notifications
+  without `threadId` compatible. For Agent/task cards, render Output only from
+  actual `output`/`error` payload text, not from the prompt or summary.
+- Validation:
+  Add a Codex app-server test that injects foreign-thread `agentMessage` and
+  `turn/completed` notifications during a parent turn, plus AgentGUI projection
+  tests for failed Agent calls with prompt-only payloads. Run the focused Go and
+  GUI specs for those paths.
 
 ### Concurrent agent CLI installs corrupt shared npm global state
 

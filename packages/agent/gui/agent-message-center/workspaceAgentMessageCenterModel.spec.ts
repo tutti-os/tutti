@@ -138,6 +138,92 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     });
   });
 
+  it("prefers exit-plan prompts over raw approval options for switch-mode plan requests", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "switch-mode-plan",
+            kind: "tool_call",
+            status: "waiting_approval",
+            payload: {
+              callType: "approval",
+              toolName: "Approval",
+              title: "Approval",
+              input: {
+                requestId: "plan-request-1",
+                toolCall: {
+                  kind: "switch_mode",
+                  title: "Exit plan mode"
+                },
+                options: [
+                  {
+                    optionId: "bypassPermissions",
+                    name: "Yes, and bypass permissions",
+                    kind: "bypassPermissions"
+                  },
+                  {
+                    optionId: "auto",
+                    name: "Yes, and use auto mode",
+                    kind: "auto"
+                  },
+                  {
+                    optionId: "acceptEdits",
+                    name: "Yes, and auto-accept edits",
+                    kind: "acceptEdits"
+                  },
+                  {
+                    optionId: "default",
+                    name: "Yes, and manually approve edits",
+                    kind: "default"
+                  },
+                  {
+                    optionId: "plan",
+                    name: "No, keep planning",
+                    kind: "plan"
+                  }
+                ]
+              }
+            },
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessions: [session({ agentSessionId: "session-1", status: "working" })]
+      })
+    );
+
+    // The runtime mode options are carried through (in runtime order), with the
+    // keep-planning `plan` option filtered out — including the newer `auto` mode
+    // the hardcoded fallback list omits.
+    expect(model.items[0]?.pendingPrompt).toEqual({
+      kind: "exit-plan",
+      requestId: "plan-request-1",
+      title: "Exit plan mode",
+      options: [
+        {
+          id: "bypassPermissions",
+          label: "Yes, and bypass permissions",
+          kind: "bypassPermissions"
+        },
+        { id: "auto", label: "Yes, and use auto mode", kind: "auto" },
+        {
+          id: "acceptEdits",
+          label: "Yes, and auto-accept edits",
+          kind: "acceptEdits"
+        },
+        {
+          id: "default",
+          label: "Yes, and manually approve edits",
+          kind: "default"
+        }
+      ],
+      // "No, keep planning" is surfaced separately so declining can submit its
+      // required option id instead of a bare deny.
+      keepPlanningOptionId: "plan"
+    });
+  });
+
   it("uses the latest agent message summary instead of a newer user message", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({

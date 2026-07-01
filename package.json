@@ -44,6 +44,7 @@
     "dev:web": "node ./tools/scripts/dev-web.mjs",
     "dev:ui-storyboard": "pnpm --filter @tutti-os/ui-storyboard dev",
     "preview:desktop": "pnpm --filter @tutti-os/desktop preview",
+    "push:checked": "node ./tools/scripts/push-checked.mjs",
     "generate:api": "node ./tools/scripts/generate-openapi.mjs",
     "generate:builtin-apps": "pnpm --filter @tutti-os/builtin-tutti-onboarding package:builtin",
     "generate:defaults": "node ./tools/scripts/generate-defaults.mjs",

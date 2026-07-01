@@ -542,6 +542,21 @@ func (a *CodexAppServerAdapter) Close(_ context.Context, session Session) error 
 	}
 	agentSessionID := strings.TrimSpace(session.AgentSessionID)
 	a.rejectPendingRequests(agentSessionID, errPermissionRequestCanceled)
+	return a.closeLiveSession(agentSessionID)
+}
+
+func (a *CodexAppServerAdapter) ReleaseLiveSession(_ context.Context, session Session) error {
+	if a == nil {
+		return nil
+	}
+	agentSessionID := strings.TrimSpace(session.AgentSessionID)
+	if a.hasLiveSessionWork(agentSessionID) {
+		return ErrLiveSessionBusy
+	}
+	return a.closeLiveSession(agentSessionID)
+}
+
+func (a *CodexAppServerAdapter) closeLiveSession(agentSessionID string) error {
 	a.mu.Lock()
 	appSession := a.sessions[agentSessionID]
 	delete(a.sessions, agentSessionID)
@@ -2136,6 +2151,18 @@ func (a *CodexAppServerAdapter) getPendingRequest(agentSessionID string, request
 		return nil
 	}
 	return appSession.pendingRequests[strings.TrimSpace(requestID)]
+}
+
+func (a *CodexAppServerAdapter) hasLiveSessionWork(agentSessionID string) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	return appSession != nil && (len(appSession.pendingRequests) > 0 ||
+		appSession.activeTurn != nil ||
+		strings.TrimSpace(appSession.activeTurnID) != "")
 }
 
 func (a *CodexAppServerAdapter) deletePendingRequest(agentSessionID string, requestID string) {

@@ -134,6 +134,43 @@ describe("Agent specialized tool cards", () => {
     expect(screen.queryByRole("button", { expanded: true })).toBeNull();
   });
 
+  it("shows failed task status and fallback error when provider omits details", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentTaskCallCard
+        defaultExpanded
+        call={projectAgentToolCall(
+          toolCall({
+            name: "Agent",
+            toolName: "Agent",
+            callType: "tool",
+            status: "Failed",
+            statusKind: null,
+            summary:
+              "Generate exactly one random integer from 1 to 10 inclusive.",
+            payload: {
+              input: {
+                prompt:
+                  "Generate exactly one random integer from 1 to 10 inclusive."
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(
+      screen.getByRole("button", { name: /Agent Failed Generate exactly/i })
+    ).toBeTruthy();
+    expect(screen.getAllByText(/Failed/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("Error")).toBeTruthy();
+    expect(
+      screen.getByText("The provider reported failure without details.")
+    ).toBeTruthy();
+    expect(screen.queryByText("Output")).toBeNull();
+  });
+
   it("keeps task step output hidden until the step expands", async () => {
     setAgentGuiI18nTestLocale("en");
 

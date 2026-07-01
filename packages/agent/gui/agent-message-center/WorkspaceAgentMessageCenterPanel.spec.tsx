@@ -369,6 +369,141 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     expect(screen.queryByText(/Enter$/)).toBeNull();
   });
 
+  it("renders the runtime exit-plan modes (including newer ones) with localized copy", () => {
+    const onSubmitPrompt = vi.fn();
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={createTestCardItem({
+            status: "waiting",
+            pendingPrompt: {
+              kind: "exit-plan",
+              requestId: "plan-request-1",
+              title: "Exit plan mode",
+              // Runtime mode options (keep-planning `plan` already filtered out
+              // by extractExitPlanModeOptions). `auto` is newer than the curated
+              // fallback list and must still render via id-keyed localization.
+              options: [
+                {
+                  id: "acceptEdits",
+                  label: "Yes, and auto-accept edits",
+                  kind: "acceptEdits"
+                },
+                {
+                  id: "default",
+                  label: "Yes, and manually approve edits",
+                  kind: "default"
+                },
+                {
+                  id: "bypassPermissions",
+                  label: "Yes, and bypass permissions",
+                  kind: "bypassPermissions"
+                },
+                { id: "auto", label: "Yes, and use auto mode", kind: "auto" }
+              ],
+              keepPlanningOptionId: "plan"
+            }
+          })}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={onSubmitPrompt}
+        />
+      </TooltipProvider>
+    );
+
+    // Known ids render localized copy, not the raw runtime label.
+    expect(
+      screen.getByRole("button", {
+        name: "Accept edits Auto-approve file edits"
+      })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Allow all Do not prompt for tools"
+      })
+    ).toBeTruthy();
+    // The newer `auto` mode is surfaced (the curated fallback list omits it).
+    expect(
+      screen.getByRole("button", {
+        name: "Auto Let the agent choose when to ask"
+      })
+    ).toBeTruthy();
+    // Keep-planning stays reachable in the compact deck.
+    expect(screen.getByRole("button", { name: "Keep planning" })).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Auto Let the agent choose when to ask"
+      })
+    );
+
+    // The runtime option id passes through verbatim.
+    expect(onSubmitPrompt).toHaveBeenCalledWith({
+      requestId: "plan-request-1",
+      action: "allow",
+      optionId: "auto"
+    });
+
+    // Declining must carry the runtime's keep-planning option id (the daemon
+    // models exit-plan as an approval that requires one), not a bare deny.
+    fireEvent.click(screen.getByRole("button", { name: "Keep planning" }));
+    expect(onSubmitPrompt).toHaveBeenCalledWith({
+      requestId: "plan-request-1",
+      action: "deny",
+      optionId: "plan"
+    });
+  });
+
+  it("falls back to the curated mode list when the runtime sent no exit-plan options", () => {
+    const onSubmitPrompt = vi.fn();
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={createTestCardItem({
+            status: "waiting",
+            pendingPrompt: {
+              kind: "exit-plan",
+              requestId: "plan-request-2",
+              title: "Exit plan mode",
+              options: []
+            }
+          })}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={onSubmitPrompt}
+        />
+      </TooltipProvider>
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Accept edits Auto-approve file edits"
+      })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Ask for approval Prompt before each tool"
+      })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Allow all Do not prompt for tools"
+      })
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Accept edits Auto-approve file edits"
+      })
+    );
+
+    expect(onSubmitPrompt).toHaveBeenCalledWith({
+      requestId: "plan-request-2",
+      action: "allow",
+      optionId: "acceptEdits"
+    });
+  });
+
   it("shows waiting status when a completed session still has a pending prompt", () => {
     const { container } = render(
       <TooltipProvider>
