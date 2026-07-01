@@ -2591,7 +2591,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         viewportRef={timelineRef}
         viewportTestId="agent-gui-timeline"
         viewportClassName={`${styles.timeline} ${
-          hasActiveConversation
+          hasActiveConversation || viewModel.isCreatingConversation
             ? styles.timelineWithComposer
             : styles.timelineCentered
         } ${
@@ -2599,7 +2599,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         } ${showUnavailableChatEmpty ? styles.timelineUnavailableChatEmpty : ""}`.trim()}
         viewportContentStyle={AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE}
       >
-        {!hasActiveConversation ? (
+        {!hasActiveConversation && !viewModel.isCreatingConversation ? (
           <AgentGUIEmptyHeroPane
             provider={viewModel.data.provider}
             emptyLabel={labels.empty}
@@ -2629,7 +2629,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           />
         )}
       </ScrollArea>
-      {hasActiveConversation ? (
+      {hasActiveConversation || viewModel.isCreatingConversation ? (
         <AgentGUIBottomDockPane
           bottomDockRef={bottomDockRef}
           bottomDockLiftedPrompt={bottomDockLiftedPrompt}
