@@ -1359,6 +1359,7 @@ export const en = {
         delegateSession: "Delegate session",
         missingFailureDetails: "The provider reported failure without details.",
         noMatches: "No matches",
+        stepLabel: "Step {{index}}",
         noMatchingTools: "No matching tools",
         loadedAvailable: "{{loaded}} loaded · {{available}} available",
         contentTruncated: "Content truncated",

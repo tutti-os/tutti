@@ -1274,6 +1274,7 @@ export const zhCN = {
         delegateSession: "委托会话",
         missingFailureDetails: "Provider 报告失败，但没有返回失败详情。",
         noMatches: "没有匹配结果",
+        stepLabel: "步骤 {{index}}",
         noMatchingTools: "没有匹配的工具",
         loadedAvailable: "已加载 {{loaded}} 个 · 共 {{available}} 个",
         contentTruncated: "内容已截断",

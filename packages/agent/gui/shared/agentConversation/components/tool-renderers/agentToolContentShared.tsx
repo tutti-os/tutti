@@ -352,7 +352,11 @@ export function normalizeTaskSteps(call: AgentToolCallVM): TaskStepView[] {
       stringValue(step.tool_name) ??
       stringValue(step.name) ??
       null;
-    const name = toolName ? humanizeToolLabel(toolName) : `Step ${index + 1}`;
+    const name = toolName
+      ? humanizeToolLabel(toolName)
+      : translate("agentHost.agentTool.details.stepLabel", {
+          index: index + 1
+        });
     const status =
       stringValue(step.status) ??
       stringValue(optionRecord(step.toolResult)?.status) ??
