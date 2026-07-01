@@ -94,6 +94,11 @@ const codexAppServerAuthRequiredMessage = "Codex requires authentication. " +
 const defaultCodexAppServerCancelGraceWindow = 3 * time.Second
 const defaultCodexAppServerGoalContinuationGraceWindow = 100 * time.Millisecond
 
+// startupModelSteadyRetryCount is how many 30s-spaced model/list retries follow
+// the initial fast ramp before the background refresh gives up (~18 minutes
+// total), bounding the goroutine while covering realistic transient outages.
+const startupModelSteadyRetryCount = 36
+
 type CodexAppServerAdapter struct {
 	transport   ProcessTransport
 	host        HostMetadata
@@ -105,6 +110,11 @@ type CodexAppServerAdapter struct {
 	// cancelGraceWindow bounds the graceful-interrupt wait in Cancel before the
 	// process is force-closed. Zero falls back to the default.
 	cancelGraceWindow time.Duration
+	// startupModelRetryBackoffs is the wait schedule between background model/list
+	// refetches when the initial probe came back empty; the slice length bounds
+	// the number of retries. Nil falls back to defaultStartupModelRetryBackoffs.
+	// Overridable in tests to drive the loop without real delays.
+	startupModelRetryBackoffs []time.Duration
 }
 
 type codexAppServerSession struct {
@@ -960,32 +970,107 @@ func (a *CodexAppServerAdapter) refreshStartupMetadataAsync(
 				})
 			}
 		}()
-		appSession := a.getSession(agentSessionID)
-		if appSession == nil || appSession.client == nil {
-			return
-		}
 		ctx := context.Background()
-		updated := false
-		if fetchModels {
-			models := a.fetchModelsNoHandler(ctx, appSession.client, trace)
-			if a.applyStartupModels(agentSessionID, session, threadResult, models) {
-				updated = true
-			}
-		}
 		if fetchRateLimits {
-			rateLimits := a.fetchRateLimitsNoHandler(ctx, appSession.client, trace)
-			if a.applyRateLimits(agentSessionID, rateLimits) {
-				updated = true
+			if appSession := a.getSession(agentSessionID); appSession != nil && appSession.client != nil {
+				rateLimits := a.fetchRateLimitsNoHandler(ctx, appSession.client, trace)
+				if a.applyRateLimits(agentSessionID, rateLimits) {
+					a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+				}
 			}
 		}
-		if updated {
-			a.emitSessionEvents(agentSessionID, []activityshared.Event{
-				newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
-					"appServerMetadataRefresh": true,
-				}),
-			})
+		if fetchModels {
+			// fetchModels re-resolves the session each attempt so the loop keeps
+			// working against a live client and stops once the session is gone.
+			fetch := func(ctx context.Context) []map[string]any {
+				appSession := a.getSession(agentSessionID)
+				if appSession == nil || appSession.client == nil {
+					return nil
+				}
+				return a.fetchModelsNoHandler(ctx, appSession.client, trace)
+			}
+			sleep := func(ctx context.Context, d time.Duration) bool {
+				return sleepWithContext(ctx, d) == nil
+			}
+			if a.retryStartupModels(ctx, agentSessionID, session, threadResult, fetch, sleep) {
+				a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+			}
 		}
 	}()
+}
+
+// retryStartupModels re-fetches the codex model/list until it returns a
+// non-empty list (and the startup state resolves to "ready"), the session is
+// torn down, the context is canceled, or the bounded backoff budget is
+// exhausted. A single transient empty/slow response therefore no longer pins
+// the composer's model options at "loading" forever — the previous code fetched
+// exactly once and silently left the state stuck on failure.
+func (a *CodexAppServerAdapter) retryStartupModels(
+	ctx context.Context,
+	agentSessionID string,
+	session Session,
+	threadResult json.RawMessage,
+	fetch func(context.Context) []map[string]any,
+	sleep func(context.Context, time.Duration) bool,
+) bool {
+	if a == nil || fetch == nil {
+		return false
+	}
+	backoffs := a.startupModelRetryBackoffs
+	if backoffs == nil {
+		backoffs = defaultStartupModelRetryBackoffs()
+	}
+	for attempt := 0; attempt <= len(backoffs); attempt++ {
+		if a.getSession(agentSessionID) == nil {
+			return false
+		}
+		models := fetch(ctx)
+		if a.applyStartupModels(agentSessionID, session, threadResult, models) {
+			if attempt > 0 {
+				slog.Info("agent session app-server model list resolved after retry",
+					"agent_session_id", agentSessionID,
+					"attempts", attempt+1,
+				)
+			}
+			return true
+		}
+		if attempt == len(backoffs) {
+			break
+		}
+		if sleep != nil && !sleep(ctx, backoffs[attempt]) {
+			return false
+		}
+	}
+	slog.Warn("agent session app-server model list never resolved",
+		"agent_session_id", agentSessionID,
+		"attempts", len(backoffs)+1,
+	)
+	return false
+}
+
+func (a *CodexAppServerAdapter) emitStartupMetadataRefreshEvent(session Session, agentSessionID string) {
+	a.emitSessionEvents(agentSessionID, []activityshared.Event{
+		newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
+			"appServerMetadataRefresh": true,
+		}),
+	})
+}
+
+// defaultStartupModelRetryBackoffs ramps quickly then settles at a steady 30s
+// cadence, giving codex time to recover from transient hiccups (rate limits,
+// a still-materializing platform package, a slow first model/list) while
+// keeping the background goroutine bounded.
+func defaultStartupModelRetryBackoffs() []time.Duration {
+	backoffs := []time.Duration{
+		time.Second,
+		2 * time.Second,
+		5 * time.Second,
+		10 * time.Second,
+	}
+	for i := 0; i < startupModelSteadyRetryCount; i++ {
+		backoffs = append(backoffs, 30*time.Second)
+	}
+	return backoffs
 }
 
 func (a *CodexAppServerAdapter) applyStartupModels(
