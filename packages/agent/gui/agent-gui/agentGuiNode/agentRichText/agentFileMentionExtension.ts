@@ -1072,11 +1072,11 @@ function sessionMentionVisual(
     const dottedTitle = parseDottedSessionMentionText(title);
     return {
       participant: `${initiatorName} & ${agentName}`,
-      summary:
-        dottedTitle?.summary ||
-        (title && title !== item.name.trim()
+      summary: dottedTitle
+        ? dottedTitle.summary
+        : title && title !== item.name.trim()
           ? title
-          : item.inputPreview?.trim() || "")
+          : item.inputPreview?.trim() || ""
     };
   }
 
@@ -1104,12 +1104,18 @@ function parseDottedSessionMentionText(
     .split("·")
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length < 3) {
+  if (parts.length < 2) {
     return null;
   }
+  if (parts.length === 2) {
+    return {
+      participant: `${parts[0]} & ${parts[1]}`,
+      summary: ""
+    };
+  }
   return {
-    participant: `${parts[0]} & ${parts[1]}`,
-    summary: normalizeAgentSessionMentionTitle(parts.slice(2).join(" "))
+    participant: parts.slice(0, -1).join(" & "),
+    summary: normalizeAgentSessionMentionTitle(parts[parts.length - 1]!)
   };
 }
 
