@@ -4,7 +4,7 @@
 > snapshot-reconciled** projection (folded from live events, reconciled against the
 > Step-4 snapshot, replay-rebuilt per load). It is NOT a durable append-only event
 > log — that remains **out of scope / future direction** per ADR 0004. The t3code/
-> traycer "single event log" is the *shape* we borrow (one reconciled state for
+> traycer "single event log" is the _shape_ we borrow (one reconciled state for
 > turns+messages+approvals), not a commitment to persist an event log.
 
 - Date: 2026-07-02
@@ -38,11 +38,11 @@ adapter API:
 
 ## Sequencing (rides the EXISTING steps; no new steps; each shippable + green)
 
-| Step | Sharpened to | Risk control |
-|---|---|---|
-| **Step 4** | Reducer emits a **unified projection** (messages **+ turn state**) into one snapshot with one monotonic cursor (ADR 0004). Turn state becomes reconcilable. | Characterization corpus (Step 0) stays green; snapshot tested at the daemon boundary. Gap-free cursor is the prerequisite for making the projection a sole source of truth. |
-| **Step 5 (A+B)** | Explicit `turnPhase` enum + single `transition()` owned by the **reducer** (source of truth); `awaitTurnCompletion` rewritten as a **subscriber** ("block until phase==Terminal"). Compaction = first-class event in the machine. Terminal-error + snapshot-negative are transitions that deliver `done` + set phase. | **Shadow-compare**: run the projection's terminal classification alongside the old blocking model; assert equality against the Step-0 corpus + new golden turn tests BEFORE the projection becomes authoritative. Reducer is single-writer under `a.mu`; transitions turnID-guarded. |
-| **Step 7 (C+D)** | **Invert `Exec` via a strangler shim**: introduce the async submit/observe core; keep the blocking `Exec([]events, error)` signature as a thin wrapper over it (block until the projection reports terminal). Migrate controller/callers to the async API incrementally; remove the wrapper only when no caller needs it. Facade owns command/observe + session lifecycle (Cluster D). Projection unification (D) completes here. | **Strangler = reversible, no big-bang contract break.** Opens the controller↔adapter seam ONCE (with Cluster D). Gated on Step 4 snapshot being authoritative. |
+| Step             | Sharpened to                                                                                                                                                                                                                                                                                                                                                                                                                      | Risk control                                                                                                                                                                                                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Step 4**       | Reducer emits a **unified projection** (messages **+ turn state**) into one snapshot with one monotonic cursor (ADR 0004). Turn state becomes reconcilable.                                                                                                                                                                                                                                                                       | Characterization corpus (Step 0) stays green; snapshot tested at the daemon boundary. Gap-free cursor is the prerequisite for making the projection a sole source of truth.                                                                                                          |
+| **Step 5 (A+B)** | Explicit `turnPhase` enum + single `transition()` owned by the **reducer** (source of truth); `awaitTurnCompletion` rewritten as a **subscriber** ("block until phase==Terminal"). Compaction = first-class event in the machine. Terminal-error + snapshot-negative are transitions that deliver `done` + set phase.                                                                                                             | **Shadow-compare**: run the projection's terminal classification alongside the old blocking model; assert equality against the Step-0 corpus + new golden turn tests BEFORE the projection becomes authoritative. Reducer is single-writer under `a.mu`; transitions turnID-guarded. |
+| **Step 7 (C+D)** | **Invert `Exec` via a strangler shim**: introduce the async submit/observe core; keep the blocking `Exec([]events, error)` signature as a thin wrapper over it (block until the projection reports terminal). Migrate controller/callers to the async API incrementally; remove the wrapper only when no caller needs it. Facade owns command/observe + session lifecycle (Cluster D). Projection unification (D) completes here. | **Strangler = reversible, no big-bang contract break.** Opens the controller↔adapter seam ONCE (with Cluster D). Gated on Step 4 snapshot being authoritative.                                                                                                                       |
 
 ## Risk controls (the "controlled" in "no compromise")
 
@@ -72,6 +72,7 @@ adapter API:
   (cursor), and the Step-4 reducer — one projection the other ADRs already feed.
 
 ## Supersedes / relates
+
 - Supersedes the "minimal + explicit enum" vs "structural async" fork: **A+B = the
   enum beachhead, C+D = the structural completion; all committed, sequenced.**
 - Makes ADR 0004 (cursor) a hard prerequisite and ADR 0003 (`OwnerThreadID`) a

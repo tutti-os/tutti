@@ -31,8 +31,15 @@ export type AgentGuiWorkbenchComposerOverridesByProvider = Partial<
   Record<AgentGuiWorkbenchProvider, AgentGuiWorkbenchComposerOverrides | null>
 >;
 
+export type AgentGuiWorkbenchComposerOverridesByAgentTargetId = Record<
+  string,
+  AgentGuiWorkbenchComposerOverrides | null
+>;
+
 export interface AgentGuiWorkbenchNodeState {
+  agentTargetId?: string | null;
   composerOverrides?: AgentGuiWorkbenchComposerOverrides | null;
+  composerOverridesByAgentTargetId?: AgentGuiWorkbenchComposerOverridesByAgentTargetId | null;
   composerOverridesByProvider?: AgentGuiWorkbenchComposerOverridesByProvider | null;
   conversationCount?: number | null;
   conversationRailCollapsed?: boolean | null;
@@ -41,20 +48,17 @@ export interface AgentGuiWorkbenchNodeState {
   /** @deprecated Conversation titles are derived from the active session id. */
   lastActiveConversationTitle?: string | null;
   provider: AgentGuiWorkbenchProvider;
+  /** @deprecated Use agentTargetId for selection restore. */
   providerTargetId?: string | null;
+  /** @deprecated Provider target refs are resolved from the current target list. */
   providerTargetRef?: AgentGUIProviderTargetRef | null;
 }
 
 export interface AgentGuiWorkbenchState {
-  composerOverrides?: AgentGuiWorkbenchComposerOverrides | null;
-  composerOverridesByProvider?: AgentGuiWorkbenchComposerOverridesByProvider | null;
+  agentTargetId?: string | null;
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
-  /** @deprecated Conversation titles are derived from the active session id. */
-  lastActiveConversationTitle?: string | null;
-  providerTargetId?: string | null;
-  providerTargetRef?: AgentGUIProviderTargetRef | null;
 }
 
 export interface AgentGuiWorkbenchWorkspaceState {

@@ -6,6 +6,7 @@ type SessionSnapshot struct {
 	WorkspaceID       string
 	AgentSessionID    string
 	Origin            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Model             string
@@ -29,6 +30,7 @@ type SessionStateReport struct {
 	WorkspaceID       string
 	AgentSessionID    string
 	Origin            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Model             string
@@ -71,6 +73,7 @@ func ProjectSessionState(
 		WorkspaceID:       strings.TrimSpace(report.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(report.AgentSessionID),
 		Origin:            strings.TrimSpace(report.Origin),
+		AgentTargetID:     strings.TrimSpace(report.AgentTargetID),
 		Provider:          strings.TrimSpace(report.Provider),
 		ProviderSessionID: strings.TrimSpace(report.ProviderSessionID),
 		Model:             strings.TrimSpace(report.Model),
@@ -95,6 +98,9 @@ func ProjectSessionState(
 		}
 		if session.Origin == "" {
 			session.Origin = existing.Origin
+		}
+		if session.AgentTargetID == "" {
+			session.AgentTargetID = existing.AgentTargetID
 		}
 		if session.Provider == "" {
 			session.Provider = existing.Provider

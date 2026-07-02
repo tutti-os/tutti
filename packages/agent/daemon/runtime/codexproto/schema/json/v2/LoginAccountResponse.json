@@ -4,16 +4,12 @@
     {
       "properties": {
         "type": {
-          "enum": [
-            "apiKey"
-          ],
+          "enum": ["apiKey"],
           "title": "ApiKeyv2::LoginAccountResponseType",
           "type": "string"
         }
       },
-      "required": [
-        "type"
-      ],
+      "required": ["type"],
       "title": "ApiKeyv2::LoginAccountResponse",
       "type": "object"
     },
@@ -27,18 +23,12 @@
           "type": "string"
         },
         "type": {
-          "enum": [
-            "chatgpt"
-          ],
+          "enum": ["chatgpt"],
           "title": "Chatgptv2::LoginAccountResponseType",
           "type": "string"
         }
       },
-      "required": [
-        "authUrl",
-        "loginId",
-        "type"
-      ],
+      "required": ["authUrl", "loginId", "type"],
       "title": "Chatgptv2::LoginAccountResponse",
       "type": "object"
     },
@@ -48,9 +38,7 @@
           "type": "string"
         },
         "type": {
-          "enum": [
-            "chatgptDeviceCode"
-          ],
+          "enum": ["chatgptDeviceCode"],
           "title": "ChatgptDeviceCodev2::LoginAccountResponseType",
           "type": "string"
         },
@@ -63,28 +51,19 @@
           "type": "string"
         }
       },
-      "required": [
-        "loginId",
-        "type",
-        "userCode",
-        "verificationUrl"
-      ],
+      "required": ["loginId", "type", "userCode", "verificationUrl"],
       "title": "ChatgptDeviceCodev2::LoginAccountResponse",
       "type": "object"
     },
     {
       "properties": {
         "type": {
-          "enum": [
-            "chatgptAuthTokens"
-          ],
+          "enum": ["chatgptAuthTokens"],
           "title": "ChatgptAuthTokensv2::LoginAccountResponseType",
           "type": "string"
         }
       },
-      "required": [
-        "type"
-      ],
+      "required": ["type"],
       "title": "ChatgptAuthTokensv2::LoginAccountResponse",
       "type": "object"
     }

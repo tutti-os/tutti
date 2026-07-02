@@ -2,11 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "PluginSharePrincipalType": {
-      "enum": [
-        "user",
-        "group",
-        "workspace"
-      ],
+      "enum": ["user", "group", "workspace"],
       "type": "string"
     },
     "PluginShareTarget": {
@@ -21,25 +17,15 @@
           "$ref": "#/definitions/PluginShareTargetRole"
         }
       },
-      "required": [
-        "principalId",
-        "principalType",
-        "role"
-      ],
+      "required": ["principalId", "principalType", "role"],
       "type": "object"
     },
     "PluginShareTargetRole": {
-      "enum": [
-        "reader",
-        "editor"
-      ],
+      "enum": ["reader", "editor"],
       "type": "string"
     },
     "PluginShareUpdateDiscoverability": {
-      "enum": [
-        "UNLISTED",
-        "PRIVATE"
-      ],
+      "enum": ["UNLISTED", "PRIVATE"],
       "type": "string"
     }
   },
@@ -57,11 +43,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "discoverability",
-    "remotePluginId",
-    "shareTargets"
-  ],
+  "required": ["discoverability", "remotePluginId", "shareTargets"],
   "title": "PluginShareUpdateTargetsParams",
   "type": "object"
 }

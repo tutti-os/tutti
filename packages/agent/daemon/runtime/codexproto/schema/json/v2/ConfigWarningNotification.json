@@ -16,10 +16,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "column",
-        "line"
-      ],
+      "required": ["column", "line"],
       "type": "object"
     },
     "TextRange": {
@@ -31,27 +28,18 @@
           "$ref": "#/definitions/TextPosition"
         }
       },
-      "required": [
-        "end",
-        "start"
-      ],
+      "required": ["end", "start"],
       "type": "object"
     }
   },
   "properties": {
     "details": {
       "description": "Optional extra guidance or error details.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "path": {
       "description": "Optional path to the config file that triggered the warning.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "range": {
       "anyOf": [
@@ -69,9 +57,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "summary"
-  ],
+  "required": ["summary"],
   "title": "ConfigWarningNotification",
   "type": "object"
 }

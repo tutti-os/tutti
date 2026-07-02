@@ -21,10 +21,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "path",
-    "watchId"
-  ],
+  "required": ["path", "watchId"],
   "title": "FsWatchParams",
   "type": "object"
 }

@@ -5,9 +5,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "loginId"
-  ],
+  "required": ["loginId"],
   "title": "CancelLoginAccountParams",
   "type": "object"
 }

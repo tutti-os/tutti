@@ -17,9 +17,7 @@
       "description": "Absolute path to inspect."
     }
   },
-  "required": [
-    "path"
-  ],
+  "required": ["path"],
   "title": "FsGetMetadataParams",
   "type": "object"
 }

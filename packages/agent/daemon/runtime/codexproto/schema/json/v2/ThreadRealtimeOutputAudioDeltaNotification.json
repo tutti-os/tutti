@@ -8,10 +8,7 @@
           "type": "string"
         },
         "itemId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "numChannels": {
           "format": "uint16",
@@ -26,17 +23,10 @@
         "samplesPerChannel": {
           "format": "uint32",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         }
       },
-      "required": [
-        "data",
-        "numChannels",
-        "sampleRate"
-      ],
+      "required": ["data", "numChannels", "sampleRate"],
       "type": "object"
     }
   },
@@ -49,10 +39,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "audio",
-    "threadId"
-  ],
+  "required": ["audio", "threadId"],
   "title": "ThreadRealtimeOutputAudioDeltaNotification",
   "type": "object"
 }

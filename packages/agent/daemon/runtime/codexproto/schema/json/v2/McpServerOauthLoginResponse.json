@@ -5,9 +5,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "authorizationUrl"
-  ],
+  "required": ["authorizationUrl"],
   "title": "McpServerOauthLoginResponse",
   "type": "object"
 }

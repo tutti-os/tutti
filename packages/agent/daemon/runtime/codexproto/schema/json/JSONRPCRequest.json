@@ -15,16 +15,10 @@
     "W3cTraceContext": {
       "properties": {
         "traceparent": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "tracestate": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"
@@ -51,10 +45,7 @@
       "description": "Optional W3C Trace Context for distributed tracing."
     }
   },
-  "required": [
-    "id",
-    "method"
-  ],
+  "required": ["id", "method"],
   "title": "JSONRPCRequest",
   "type": "object"
 }

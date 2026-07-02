@@ -3,19 +3,14 @@
   "properties": {
     "details": {
       "description": "Optional extra guidance, such as migration steps or rationale.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "summary": {
       "description": "Concise summary of what is deprecated.",
       "type": "string"
     }
   },
-  "required": [
-    "summary"
-  ],
+  "required": ["summary"],
   "title": "DeprecationNoticeNotification",
   "type": "object"
 }

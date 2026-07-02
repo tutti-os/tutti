@@ -5,9 +5,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "marketplaceName"
-  ],
+  "required": ["marketplaceName"],
   "title": "MarketplaceRemoveParams",
   "type": "object"
 }

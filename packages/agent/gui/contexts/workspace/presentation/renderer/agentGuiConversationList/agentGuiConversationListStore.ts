@@ -12,6 +12,10 @@ import {
   resolveAgentGUIConversationTitleFromMessages,
   type AgentGUIConversationSummary
 } from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationModel";
+import {
+  normalizeAgentGUIConversationFilter,
+  type AgentGUIConversationFilter
+} from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationFilter";
 import { resolveAgentGUIExplicitConversationTitle } from "../../../../../agent-gui/agentGuiNode/model/agentGuiProviderIdentity";
 import {
   mergeWorkspaceAgentActivityDurableAndOverlayMessages,
@@ -42,15 +46,18 @@ const UPDATE_STORM_DIAGNOSTIC_THRESHOLD = 8;
 const MAX_DIAGNOSTIC_STACK_LENGTH = 2000;
 
 export interface AgentGUIConversationListQuery {
+  conversationFilter?: AgentGUIConversationFilter | null;
   workspaceId: string;
   userId: string;
   provider: AgentGUIProvider;
   sessionOrigin: string;
 }
 
-type NormalizedAgentGUIConversationListQuery = Required<
-  Omit<AgentGUIConversationListQuery, "workspaceId">
-> & {
+type NormalizedAgentGUIConversationListQuery = {
+  conversationFilter: AgentGUIConversationFilter | null;
+  provider: AgentGUIProvider;
+  sessionOrigin: string;
+  userId: string;
   workspaceId: string;
 };
 
@@ -129,6 +136,7 @@ function normalizeQuery(
     return null;
   }
   return {
+    conversationFilter: normalizeAgentGUIConversationListFilter(input),
     workspaceId,
     userId,
     provider,
@@ -136,18 +144,47 @@ function normalizeQuery(
   };
 }
 
+function normalizeAgentGUIConversationListFilter(
+  input: AgentGUIConversationListQuery
+): AgentGUIConversationFilter | null {
+  if (input.conversationFilter) {
+    return normalizeAgentGUIConversationFilter(input.conversationFilter);
+  }
+  return null;
+}
+
+function conversationFilterKey(
+  filter: AgentGUIConversationFilter | null,
+  provider: AgentGUIProvider
+): string {
+  if (!filter) {
+    return `legacy-provider:${provider}`;
+  }
+  const normalized = normalizeAgentGUIConversationFilter(filter);
+  if (normalized.kind === "all") {
+    return "all";
+  }
+  return `agent-target:${normalized.agentTargetId}`;
+}
+
 export function createAgentGUIConversationListQueryKey(
   input: AgentGUIConversationListQuery
 ): string | null {
   const normalized = normalizeQuery(input);
-  return normalized
-    ? [
-        normalized.workspaceId,
-        normalized.userId,
-        normalized.provider,
-        normalized.sessionOrigin
-      ].join("::")
-    : null;
+  if (!normalized) {
+    return null;
+  }
+  const providerScope = normalized.conversationFilter
+    ? "conversation-filter"
+    : normalized.provider;
+  const queryKey = [
+    normalized.workspaceId,
+    normalized.userId,
+    providerScope,
+    conversationFilterKey(normalized.conversationFilter, normalized.provider),
+    normalized.sessionOrigin
+  ].join("::");
+  return queryKey;
 }
 
 function createEmptyQueryState(
@@ -1154,6 +1191,14 @@ function getWorkspaceAgentSnapshotForConversations(input: {
   return workspaceAgentSnapshotForConversations(snapshot);
 }
 
+function shouldUseCurrentWorkspaceAgentSnapshotForRefresh(
+  reason: RefreshReason
+): boolean {
+  return (
+    reason === "workspace-agent-update" || reason === "session-overlay-update"
+  );
+}
+
 async function refreshAgentGUIConversationListQuery(
   query: AgentGUIConversationListQuery,
   reason: RefreshReason,
@@ -1186,9 +1231,16 @@ async function refreshAgentGUIConversationListQuery(
       sessionOrigin: state.query.sessionOrigin,
       userId: state.query.userId
     };
+    const currentWorkspaceAgentSnapshot =
+      getWorkspaceAgentSnapshotForConversations(workspaceAgentsInput);
+    const canProjectExplicitFilterFromCurrentSnapshot =
+      reason === "projection-sync" &&
+      state.query.conversationFilter !== null &&
+      currentWorkspaceAgentSnapshot.sessions.length > 0;
     const workspaceAgentSnapshot =
-      reason === "workspace-agent-update" || reason === "session-overlay-update"
-        ? getWorkspaceAgentSnapshotForConversations(workspaceAgentsInput)
+      shouldUseCurrentWorkspaceAgentSnapshotForRefresh(reason) ||
+      canProjectExplicitFilterFromCurrentSnapshot
+        ? currentWorkspaceAgentSnapshot
         : await loadWorkspaceAgentSnapshotForConversations(
             workspaceAgentsInput
           );
@@ -1256,6 +1308,9 @@ async function refreshAgentGUIConversationListQuery(
         })
       : workspaceAgentSnapshot.sessions;
     const baseConversations = buildAgentGUIConversationSummaries({
+      ...(state.query.conversationFilter
+        ? { conversationFilter: state.query.conversationFilter }
+        : {}),
       snapshot: canApplyDirtySessionProjection
         ? {
             ...workspaceAgentSnapshot,

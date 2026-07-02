@@ -13,11 +13,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "diff",
-        "kind",
-        "path"
-      ],
+      "required": ["diff", "kind", "path"],
       "type": "object"
     },
     "PatchChangeKind": {
@@ -25,54 +21,39 @@
         {
           "properties": {
             "type": {
-              "enum": [
-                "add"
-              ],
+              "enum": ["add"],
               "title": "AddPatchChangeKindType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "AddPatchChangeKind",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "delete"
-              ],
+              "enum": ["delete"],
               "title": "DeletePatchChangeKindType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "DeletePatchChangeKind",
           "type": "object"
         },
         {
           "properties": {
             "move_path": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "update"
-              ],
+              "enum": ["update"],
               "title": "UpdatePatchChangeKindType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "UpdatePatchChangeKind",
           "type": "object"
         }
@@ -96,12 +77,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "changes",
-    "itemId",
-    "threadId",
-    "turnId"
-  ],
+  "required": ["changes", "itemId", "threadId", "turnId"],
   "title": "FileChangePatchUpdatedNotification",
   "type": "object"
 }

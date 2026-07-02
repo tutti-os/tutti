@@ -133,6 +133,7 @@ export interface AgentActivityRuntimeGetSessionControlStateInput {
 }
 
 export interface AgentActivityRuntimeGetComposerOptionsInput {
+  agentTargetId?: string | null;
   cwd?: string | null;
   force?: boolean;
   provider?: string;
@@ -167,6 +168,7 @@ export interface AgentActivityRuntimeDiagnosticInput {
 
 export interface AgentActivityRuntimeActivateSessionInput {
   agentSessionId: string;
+  agentTargetId?: string | null;
   cwd?: string;
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */

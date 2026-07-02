@@ -11,11 +11,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "remoteMarketplaceName",
-    "remotePluginId",
-    "skillName"
-  ],
+  "required": ["remoteMarketplaceName", "remotePluginId", "skillName"],
   "title": "PluginSkillReadParams",
   "type": "object"
 }

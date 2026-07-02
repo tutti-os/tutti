@@ -13,12 +13,13 @@ rather than dropping them (rejected option 1) or flat-re-tagging them into the
 parent turn (t3code's re-tag path, rejected — see Concurrency).
 
 ### Mechanism (daemon reducer, single-owner)
+
 1. **Child→parent linkage from the parent item, not `parentThreadId`.** Seed a
    `map[childThreadID]parent` from the parent `collabAgentToolCall` item's
    **`receiverThreadIds`** (required, present already on `item/started`
    status=inProgress). Confirmed by t3code (`rememberCollabReceiverTurns`).
    `Thread.parentThreadId` exists in the schema but is NOT needed.
-2. **Suppress child lifecycle/turn noise** (thread/*, turn/started, turn/completed,
+2. **Suppress child lifecycle/turn noise** (thread/\*, turn/started, turn/completed,
    turn/plan, item/plan/delta, tokenUsage…) — cf. traycer `SUBAGENT_SUPPRESSED_EVENTS`
    and t3code `shouldSuppressChildConversationNotification`.
 3. **Re-home the remaining substantive child events** (item/started, item/completed,
@@ -33,6 +34,7 @@ parent turn (t3code's re-tag path, rejected — see Concurrency).
    ADR-0002 unknown-fallback (log + drop), same net effect as today's mismatch.
 
 ### Data-model change (seam into Step 4)
+
 - Add optional **`OwnerThreadID string`** to `activityshared.Event`
   (`packages/agent/daemon/activity/events/activity_types.go`). Empty = top-level
   main agent; non-empty = produced by that sub-agent child thread. Plain string —
@@ -40,6 +42,7 @@ parent turn (t3code's re-tag path, rejected — see Concurrency).
   stay = the PARENT session so the event belongs to the parent conversation.
 
 ### Wiring scope this refactor vs deferred
+
 - **Wired now:** the summary collab card (as today). `OwnerThreadID`-tagged child
   events are emitted-but-unrendered (additive) — same philosophy as Step 1.
 - **Deferred (Step 9 / desktop):** traycer-style named, collapsible, per-sub-agent
@@ -49,6 +52,7 @@ parent turn (t3code's re-tag path, rejected — see Concurrency).
   that promise.
 
 ## Why not the alternatives
+
 - **Option 1 (drop all child events):** minimal, but destroys child identity at the
   daemon → the deferred nested view would NOT be cheap (contradicts D10) and the
   traycer-quality UX is foreclosed.
@@ -57,6 +61,7 @@ parent turn (t3code's re-tag path, rejected — see Concurrency).
   interleaved output**. Loses child identity.
 
 ## Corrections to the design
+
 - **D8:** no per-thread reducer. A single reducer + `map[childThreadID]parent` +
   a suppress-set + an `OwnerThreadID` stamp. Lighter than "route each notification
   to its own per-thread reducer".
@@ -65,6 +70,7 @@ parent turn (t3code's re-tag path, rejected — see Concurrency).
   (`OwnerThreadID`), which this ADR guarantees.
 
 ## Concurrency semantics (verified)
+
 - **Multiple sub-agents:** N spawns → N distinct `collabAgentToolCall` items
   (distinct itemId) → N cards; or one spawn with `receiverThreadIds:[t1..tN]` +
   plural `agentsStates` → one card, N lanes. Each child thread is its own

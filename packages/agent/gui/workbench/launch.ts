@@ -65,6 +65,7 @@ export function agentGuiWorkbenchInstanceId(
 
 export function createAgentGuiWorkbenchInstanceId(input: {
   agentSessionId?: string | null;
+  agentTargetId?: string | null;
   provider: AgentGuiWorkbenchProvider;
 }): string {
   const prefix = agentGuiWorkbenchInstanceId(input.provider);
@@ -72,6 +73,12 @@ export function createAgentGuiWorkbenchInstanceId(input: {
   if (agentSessionId) {
     return `${prefix}:session:${encodeAgentGuiWorkbenchInstanceSegment(
       agentSessionId
+    )}`;
+  }
+  const agentTargetId = input.agentTargetId?.trim();
+  if (agentTargetId) {
+    return `${prefix}:target:${encodeAgentGuiWorkbenchInstanceSegment(
+      agentTargetId
     )}`;
   }
 
@@ -212,7 +219,10 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
         type: agentGuiWorkbenchPrefillPromptActivationType
       },
       dockEntryId,
-      instanceId: createAgentGuiWorkbenchInstanceId({ provider }),
+      instanceId: createAgentGuiWorkbenchInstanceId({
+        agentTargetId: agentTargetIdFromLaunchPayload(request.payload),
+        provider
+      }),
       openInNewWindow: false,
       provider,
       reuseDockEntryNode: shouldReuseAgentGuiWorkbenchDockEntryNode({
@@ -228,6 +238,9 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
   const instanceId = createAgentGuiWorkbenchInstanceId({
     agentSessionId: openInNewWindow ? null : targetAgentSessionId,
+    agentTargetId: openInNewWindow
+      ? null
+      : agentTargetIdFromLaunchPayload(request.payload),
     provider
   });
 
@@ -324,6 +337,16 @@ function agentSessionIdFromLaunchPayload(payload: unknown): string | null {
     .agentSessionId;
   return typeof agentSessionId === "string" && agentSessionId.trim()
     ? agentSessionId.trim()
+    : null;
+}
+
+function agentTargetIdFromLaunchPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const agentTargetId = (payload as { agentTargetId?: unknown }).agentTargetId;
+  return typeof agentTargetId === "string" && agentTargetId.trim()
+    ? agentTargetId.trim()
     : null;
 }
 

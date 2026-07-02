@@ -8,10 +8,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "name",
-    "threadId"
-  ],
+  "required": ["name", "threadId"],
   "title": "ThreadSetNameParams",
   "type": "object"
 }

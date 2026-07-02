@@ -13,11 +13,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "role",
-    "text",
-    "threadId"
-  ],
+  "required": ["role", "text", "threadId"],
   "title": "ThreadRealtimeTranscriptDoneNotification",
   "type": "object"
 }

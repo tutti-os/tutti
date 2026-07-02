@@ -21,9 +21,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "marketplaceName"
-  ],
+  "required": ["marketplaceName"],
   "title": "MarketplaceRemoveResponse",
   "type": "object"
 }

@@ -7,10 +7,7 @@
           "properties": {
             "_meta": true,
             "mimeType": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "text": {
               "type": "string"
@@ -20,10 +17,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "uri"
-          ],
+          "required": ["text", "uri"],
           "type": "object"
         },
         {
@@ -33,20 +27,14 @@
               "type": "string"
             },
             "mimeType": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "uri": {
               "description": "The URI of this resource.",
               "type": "string"
             }
           },
-          "required": [
-            "blob",
-            "uri"
-          ],
+          "required": ["blob", "uri"],
           "type": "object"
         }
       ],
@@ -61,9 +49,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "contents"
-  ],
+  "required": ["contents"],
   "title": "McpResourceReadResponse",
   "type": "object"
 }

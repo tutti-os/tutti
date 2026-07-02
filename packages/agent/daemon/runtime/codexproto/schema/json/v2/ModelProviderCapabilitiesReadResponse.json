@@ -11,11 +11,7 @@
       "type": "boolean"
     }
   },
-  "required": [
-    "imageGeneration",
-    "namespaceTools",
-    "webSearch"
-  ],
+  "required": ["imageGeneration", "namespaceTools", "webSearch"],
   "title": "ModelProviderCapabilitiesReadResponse",
   "type": "object"
 }

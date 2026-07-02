@@ -7,9 +7,7 @@
     },
     "params": true
   },
-  "required": [
-    "method"
-  ],
+  "required": ["method"],
   "title": "JSONRPCNotification",
   "type": "object"
 }

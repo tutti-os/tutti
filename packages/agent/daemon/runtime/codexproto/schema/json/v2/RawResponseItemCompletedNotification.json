@@ -9,17 +9,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "input_text"
-              ],
+              "enum": ["input_text"],
               "title": "InputTextAgentMessageInputContentType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "InputTextAgentMessageInputContent",
           "type": "object"
         },
@@ -29,17 +24,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "encrypted_content"
-              ],
+              "enum": ["encrypted_content"],
               "title": "EncryptedContentAgentMessageInputContentType",
               "type": "string"
             }
           },
-          "required": [
-            "encrypted_content",
-            "type"
-          ],
+          "required": ["encrypted_content", "type"],
           "title": "EncryptedContentAgentMessageInputContent",
           "type": "object"
         }
@@ -53,17 +43,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "input_text"
-              ],
+              "enum": ["input_text"],
               "title": "InputTextContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "InputTextContentItem",
           "type": "object"
         },
@@ -83,17 +68,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "input_image"
-              ],
+              "enum": ["input_image"],
               "title": "InputImageContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "image_url",
-            "type"
-          ],
+          "required": ["image_url", "type"],
           "title": "InputImageContentItem",
           "type": "object"
         },
@@ -103,17 +83,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "output_text"
-              ],
+              "enum": ["output_text"],
               "title": "OutputTextContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "OutputTextContentItem",
           "type": "object"
         }
@@ -141,17 +116,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "input_text"
-              ],
+              "enum": ["input_text"],
               "title": "InputTextFunctionCallOutputContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "InputTextFunctionCallOutputContentItem",
           "type": "object"
         },
@@ -171,17 +141,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "input_image"
-              ],
+              "enum": ["input_image"],
               "title": "InputImageFunctionCallOutputContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "image_url",
-            "type"
-          ],
+          "required": ["image_url", "type"],
           "title": "InputImageFunctionCallOutputContentItem",
           "type": "object"
         },
@@ -191,39 +156,26 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "encrypted_content"
-              ],
+              "enum": ["encrypted_content"],
               "title": "EncryptedContentFunctionCallOutputContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "encrypted_content",
-            "type"
-          ],
+          "required": ["encrypted_content", "type"],
           "title": "EncryptedContentFunctionCallOutputContentItem",
           "type": "object"
         }
       ]
     },
     "ImageDetail": {
-      "enum": [
-        "auto",
-        "low",
-        "high",
-        "original"
-      ],
+      "enum": ["auto", "low", "high", "original"],
       "type": "string"
     },
     "InternalChatMessageMetadataPassthrough": {
       "description": "Internal Responses API passthrough metadata copied into underlying chat messages.\n\nResponses API strongly types this payload. Do not modify it without first getting API approval and making the corresponding Responses API change.",
       "properties": {
         "turn_id": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"
@@ -242,54 +194,33 @@
               "additionalProperties": {
                 "type": "string"
               },
-              "type": [
-                "object",
-                "null"
-              ]
+              "type": ["object", "null"]
             },
             "timeout_ms": {
               "format": "uint64",
               "minimum": 0.0,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": ["integer", "null"]
             },
             "type": {
-              "enum": [
-                "exec"
-              ],
+              "enum": ["exec"],
               "title": "ExecLocalShellActionType",
               "type": "string"
             },
             "user": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "working_directory": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
-          "required": [
-            "command",
-            "type"
-          ],
+          "required": ["command", "type"],
           "title": "ExecLocalShellAction",
           "type": "object"
         }
       ]
     },
     "LocalShellStatus": {
-      "enum": [
-        "completed",
-        "in_progress",
-        "incomplete"
-      ],
+      "enum": ["completed", "in_progress", "incomplete"],
       "type": "string"
     },
     "MessagePhase": {
@@ -297,16 +228,12 @@
       "oneOf": [
         {
           "description": "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
-          "enum": [
-            "commentary"
-          ],
+          "enum": ["commentary"],
           "type": "string"
         },
         {
           "description": "The assistant's terminal answer text for the current turn.",
-          "enum": [
-            "final_answer"
-          ],
+          "enum": ["final_answer"],
           "type": "string"
         }
       ]
@@ -319,17 +246,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "reasoning_text"
-              ],
+              "enum": ["reasoning_text"],
               "title": "ReasoningTextReasoningItemContentType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "ReasoningTextReasoningItemContent",
           "type": "object"
         },
@@ -339,17 +261,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "text"
-              ],
+              "enum": ["text"],
               "title": "TextReasoningItemContentType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "TextReasoningItemContent",
           "type": "object"
         }
@@ -363,17 +280,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "summary_text"
-              ],
+              "enum": ["summary_text"],
               "title": "SummaryTextReasoningItemReasoningSummaryType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "SummaryTextReasoningItemReasoningSummary",
           "type": "object"
         }
@@ -390,10 +302,7 @@
               "type": "array"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -419,18 +328,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "message"
-              ],
+              "enum": ["message"],
               "title": "MessageResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "content",
-            "role",
-            "type"
-          ],
+          "required": ["content", "role", "type"],
           "title": "MessageResponseItem",
           "type": "object"
         },
@@ -446,10 +349,7 @@
               "type": "array"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -465,19 +365,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "agent_message"
-              ],
+              "enum": ["agent_message"],
               "title": "AgentMessageResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "author",
-            "content",
-            "recipient",
-            "type"
-          ],
+          "required": ["author", "content", "recipient", "type"],
           "title": "AgentMessageResponseItem",
           "type": "object"
         },
@@ -488,22 +381,13 @@
               "items": {
                 "$ref": "#/definitions/ReasoningItemContent"
               },
-              "type": [
-                "array",
-                "null"
-              ]
+              "type": ["array", "null"]
             },
             "encrypted_content": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -522,17 +406,12 @@
               "type": "array"
             },
             "type": {
-              "enum": [
-                "reasoning"
-              ],
+              "enum": ["reasoning"],
               "title": "ReasoningResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "summary",
-            "type"
-          ],
+          "required": ["summary", "type"],
           "title": "ReasoningResponseItem",
           "type": "object"
         },
@@ -543,17 +422,11 @@
             },
             "call_id": {
               "description": "Set when using the Responses API.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "id": {
               "description": "Legacy id field retained for compatibility with older payloads.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -569,18 +442,12 @@
               "$ref": "#/definitions/LocalShellStatus"
             },
             "type": {
-              "enum": [
-                "local_shell_call"
-              ],
+              "enum": ["local_shell_call"],
               "title": "LocalShellCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "action",
-            "status",
-            "type"
-          ],
+          "required": ["action", "status", "type"],
           "title": "LocalShellCallResponseItem",
           "type": "object"
         },
@@ -593,10 +460,7 @@
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -612,25 +476,15 @@
               "type": "string"
             },
             "namespace": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "function_call"
-              ],
+              "enum": ["function_call"],
               "title": "FunctionCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "arguments",
-            "call_id",
-            "name",
-            "type"
-          ],
+          "required": ["arguments", "call_id", "name", "type"],
           "title": "FunctionCallResponseItem",
           "type": "object"
         },
@@ -638,19 +492,13 @@
           "properties": {
             "arguments": true,
             "call_id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "execution": {
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -663,24 +511,15 @@
               ]
             },
             "status": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "tool_search_call"
-              ],
+              "enum": ["tool_search_call"],
               "title": "ToolSearchCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "arguments",
-            "execution",
-            "type"
-          ],
+          "required": ["arguments", "execution", "type"],
           "title": "ToolSearchCallResponseItem",
           "type": "object"
         },
@@ -690,10 +529,7 @@
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -709,18 +545,12 @@
               "$ref": "#/definitions/FunctionCallOutputBody"
             },
             "type": {
-              "enum": [
-                "function_call_output"
-              ],
+              "enum": ["function_call_output"],
               "title": "FunctionCallOutputResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "call_id",
-            "output",
-            "type"
-          ],
+          "required": ["call_id", "output", "type"],
           "title": "FunctionCallOutputResponseItem",
           "type": "object"
         },
@@ -730,10 +560,7 @@
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "input": {
               "type": "string"
@@ -752,25 +579,15 @@
               "type": "string"
             },
             "status": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "custom_tool_call"
-              ],
+              "enum": ["custom_tool_call"],
               "title": "CustomToolCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "call_id",
-            "input",
-            "name",
-            "type"
-          ],
+          "required": ["call_id", "input", "name", "type"],
           "title": "CustomToolCallResponseItem",
           "type": "object"
         },
@@ -780,10 +597,7 @@
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -796,46 +610,31 @@
               ]
             },
             "name": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "output": {
               "$ref": "#/definitions/FunctionCallOutputBody"
             },
             "type": {
-              "enum": [
-                "custom_tool_call_output"
-              ],
+              "enum": ["custom_tool_call_output"],
               "title": "CustomToolCallOutputResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "call_id",
-            "output",
-            "type"
-          ],
+          "required": ["call_id", "output", "type"],
           "title": "CustomToolCallOutputResponseItem",
           "type": "object"
         },
         {
           "properties": {
             "call_id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "execution": {
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -855,19 +654,12 @@
               "type": "array"
             },
             "type": {
-              "enum": [
-                "tool_search_output"
-              ],
+              "enum": ["tool_search_output"],
               "title": "ToolSearchOutputResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "execution",
-            "status",
-            "tools",
-            "type"
-          ],
+          "required": ["execution", "status", "tools", "type"],
           "title": "ToolSearchOutputResponseItem",
           "type": "object"
         },
@@ -884,10 +676,7 @@
               ]
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -900,32 +689,22 @@
               ]
             },
             "status": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "web_search_call"
-              ],
+              "enum": ["web_search_call"],
               "title": "WebSearchCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "WebSearchCallResponseItem",
           "type": "object"
         },
         {
           "properties": {
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -941,27 +720,18 @@
               "type": "string"
             },
             "revised_prompt": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "status": {
               "type": "string"
             },
             "type": {
-              "enum": [
-                "image_generation_call"
-              ],
+              "enum": ["image_generation_call"],
               "title": "ImageGenerationCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "result",
-            "status",
-            "type"
-          ],
+          "required": ["result", "status", "type"],
           "title": "ImageGenerationCallResponseItem",
           "type": "object"
         },
@@ -971,10 +741,7 @@
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -987,49 +754,34 @@
               ]
             },
             "type": {
-              "enum": [
-                "compaction"
-              ],
+              "enum": ["compaction"],
               "title": "CompactionResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "encrypted_content",
-            "type"
-          ],
+          "required": ["encrypted_content", "type"],
           "title": "CompactionResponseItem",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "compaction_trigger"
-              ],
+              "enum": ["compaction_trigger"],
               "title": "CompactionTriggerResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "CompactionTriggerResponseItem",
           "type": "object"
         },
         {
           "properties": {
             "encrypted_content": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -1042,32 +794,24 @@
               ]
             },
             "type": {
-              "enum": [
-                "context_compaction"
-              ],
+              "enum": ["context_compaction"],
               "title": "ContextCompactionResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "ContextCompactionResponseItem",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "other"
-              ],
+              "enum": ["other"],
               "title": "OtherResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "OtherResponseItem",
           "type": "object"
         }
@@ -1081,94 +825,63 @@
               "items": {
                 "type": "string"
               },
-              "type": [
-                "array",
-                "null"
-              ]
+              "type": ["array", "null"]
             },
             "query": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "search"
-              ],
+              "enum": ["search"],
               "title": "SearchResponsesApiWebSearchActionType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "SearchResponsesApiWebSearchAction",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "open_page"
-              ],
+              "enum": ["open_page"],
               "title": "OpenPageResponsesApiWebSearchActionType",
               "type": "string"
             },
             "url": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "OpenPageResponsesApiWebSearchAction",
           "type": "object"
         },
         {
           "properties": {
             "pattern": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "find_in_page"
-              ],
+              "enum": ["find_in_page"],
               "title": "FindInPageResponsesApiWebSearchActionType",
               "type": "string"
             },
             "url": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "FindInPageResponsesApiWebSearchAction",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "other"
-              ],
+              "enum": ["other"],
               "title": "OtherResponsesApiWebSearchActionType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "OtherResponsesApiWebSearchAction",
           "type": "object"
         }
@@ -1186,11 +899,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "item",
-    "threadId",
-    "turnId"
-  ],
+  "required": ["item", "threadId", "turnId"],
   "title": "RawResponseItemCompletedNotification",
   "type": "object"
 }

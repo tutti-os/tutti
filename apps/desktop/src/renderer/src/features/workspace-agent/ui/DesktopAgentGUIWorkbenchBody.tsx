@@ -96,6 +96,7 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
   previewMode?: boolean;
   providerTargets?: readonly AgentGUIProviderTarget[];
+  providerTargetsLoading?: boolean;
   defaultProviderTargetId?: string | null;
   contextMentionProviders: NonNullable<
     AgentGUIProps["contextMentionProviders"]
@@ -163,6 +164,7 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.onOpenAgentConversationWindow &&
     previous.previewMode === next.previewMode &&
     previous.providerTargets === next.providerTargets &&
+    previous.providerTargetsLoading === next.providerTargetsLoading &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.runtimeApi === next.runtimeApi &&
@@ -242,6 +244,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   onStateChange,
   previewMode = false,
   providerTargets,
+  providerTargetsLoading = false,
   defaultProviderTargetId = null,
   contextMentionProviders,
   runtimeApi,
@@ -986,8 +989,14 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         prefillPromptRequest={prefillPromptRequest}
         managedAgentsState={managedAgentsState}
         nodeId={context.node.id}
-        providerTargets={providerTargets}
+        providerTargets={providerTargetsLoading ? [] : providerTargets}
+        providerTargetsLoading={providerTargetsLoading}
         defaultProviderTargetId={defaultProviderTargetId}
+        conversationScope={
+          desktopPreferencesState.agentDockLayout === "unified"
+            ? "multi-provider"
+            : "single-provider"
+        }
         workspaceAgentProbes={workspaceAgentProbes}
         onAgentProbeDemandChange={
           previewMode ? undefined : handleAgentProbeDemandChange

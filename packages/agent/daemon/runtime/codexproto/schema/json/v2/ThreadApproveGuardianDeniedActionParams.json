@@ -8,10 +8,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "event",
-    "threadId"
-  ],
+  "required": ["event", "threadId"],
   "title": "ThreadApproveGuardianDeniedActionParams",
   "type": "object"
 }

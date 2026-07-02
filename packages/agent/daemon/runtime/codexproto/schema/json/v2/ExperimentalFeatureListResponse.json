@@ -5,10 +5,7 @@
       "properties": {
         "announcement": {
           "description": "Announcement copy shown to users when the feature is introduced. Null when this feature is not in beta.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "defaultEnabled": {
           "description": "Whether this feature is enabled by default.",
@@ -16,17 +13,11 @@
         },
         "description": {
           "description": "Short summary describing what the feature does. Null when this feature is not in beta.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "displayName": {
           "description": "User-facing display name shown in the experimental features UI. Null when this feature is not in beta.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "enabled": {
           "description": "Whether this feature is currently enabled in the loaded config.",
@@ -45,49 +36,34 @@
           "description": "Lifecycle stage of this feature flag."
         }
       },
-      "required": [
-        "defaultEnabled",
-        "enabled",
-        "name",
-        "stage"
-      ],
+      "required": ["defaultEnabled", "enabled", "name", "stage"],
       "type": "object"
     },
     "ExperimentalFeatureStage": {
       "oneOf": [
         {
           "description": "Feature is available for user testing and feedback.",
-          "enum": [
-            "beta"
-          ],
+          "enum": ["beta"],
           "type": "string"
         },
         {
           "description": "Feature is still being built and not ready for broad use.",
-          "enum": [
-            "underDevelopment"
-          ],
+          "enum": ["underDevelopment"],
           "type": "string"
         },
         {
           "description": "Feature is production-ready.",
-          "enum": [
-            "stable"
-          ],
+          "enum": ["stable"],
           "type": "string"
         },
         {
           "description": "Feature is deprecated and should be avoided.",
-          "enum": [
-            "deprecated"
-          ],
+          "enum": ["deprecated"],
           "type": "string"
         },
         {
           "description": "Feature flag is retained only for backwards compatibility.",
-          "enum": [
-            "removed"
-          ],
+          "enum": ["removed"],
           "type": "string"
         }
       ]
@@ -102,15 +78,10 @@
     },
     "nextCursor": {
       "description": "Opaque cursor to pass to the next call to continue after the last item. If None, there are no more items to return.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "data"
-  ],
+  "required": ["data"],
   "title": "ExperimentalFeatureListResponse",
   "type": "object"
 }

@@ -6,10 +6,7 @@
       "items": {
         "type": "string"
       },
-      "type": [
-        "array",
-        "null"
-      ]
+      "type": ["array", "null"]
     },
     "includeHome": {
       "description": "If true, include detection under the user's home directory.",

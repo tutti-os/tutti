@@ -601,9 +601,7 @@ describe("subAgentTimelinePartition", () => {
           status: "completed",
           occurredAtUnixMs: 300,
           output: {
-            agentsStates: [
-              { threadId: "child-thread-1", status: "failed" }
-            ]
+            agentsStates: [{ threadId: "child-thread-1", status: "failed" }]
           }
         }),
         childAssistantItem({

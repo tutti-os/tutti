@@ -17,10 +17,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "cols",
-        "rows"
-      ],
+      "required": ["cols", "rows"],
       "type": "object"
     }
   },
@@ -39,10 +36,7 @@
       "description": "New PTY size in character cells."
     }
   },
-  "required": [
-    "processId",
-    "size"
-  ],
+  "required": ["processId", "size"],
   "title": "CommandExecResizeParams",
   "type": "object"
 }

@@ -94,6 +94,7 @@ export function createDesktopAgentHostAgentSessionsApi({
   const agentSessions = {
     async activate(payload: {
       agentSessionId: string;
+      agentTargetId?: string | null;
       cwd?: string;
       initialContent?: AgentActivitySendInput["content"];
       metadata?: Record<string, unknown>;
@@ -119,9 +120,17 @@ export function createDesktopAgentHostAgentSessionsApi({
       let activation: Awaited<
         ReturnType<IWorkspaceAgentActivityService["activateSession"]>
       >;
+      const provider = resolveDesktopAgentGUIProvider(payload.provider);
+      const agentTargetId =
+        normalizeAgentTargetId(payload.agentTargetId) ??
+        (payload.mode === "new"
+          ? localAgentTargetIdForProvider(provider)
+          : null);
       try {
         activation = await agentActivityService.activateSession({
           ...payload,
+          ...(agentTargetId ? { agentTargetId } : {}),
+          provider,
           settings: payload.settings
             ? normalizeComposerSettings(payload.settings)
             : undefined,
@@ -134,7 +143,7 @@ export function createDesktopAgentHostAgentSessionsApi({
           fallbackErrorCode,
           flow,
           node,
-          provider: payload.provider ?? null,
+          provider,
           success: false
         });
         throw error;
@@ -356,12 +365,14 @@ export function createDesktopAgentHostAgentSessionsApi({
       return toAgentHostAgentSessionFromCore(workspaceId, session);
     },
     async getComposerOptions(payload: {
+      agentTargetId?: string | null;
       cwd?: string | null;
       provider?: string;
       settings?: AgentHostAgentSessionComposerSettings | null;
     }) {
       return agentActivityService.getComposerOptions({
         workspaceId,
+        agentTargetId: payload.agentTargetId,
         cwd: payload.cwd,
         provider: payload.provider,
         settings: payload.settings
@@ -510,4 +521,22 @@ function promptContentDisplayText(
 
 function resolveTuttidSessionId(agentSessionId: string): string {
   return agentSessionId.trim();
+}
+
+function normalizeAgentTargetId(
+  value: string | null | undefined
+): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function localAgentTargetIdForProvider(provider: string): string | null {
+  switch (provider) {
+    case "claude-code":
+      return "local:claude-code";
+    case "codex":
+      return "local:codex";
+    default:
+      return null;
+  }
 }

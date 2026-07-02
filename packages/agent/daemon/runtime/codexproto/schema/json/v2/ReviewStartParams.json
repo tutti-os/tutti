@@ -2,10 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "ReviewDelivery": {
-      "enum": [
-        "inline",
-        "detached"
-      ],
+      "enum": ["inline", "detached"],
       "type": "string"
     },
     "ReviewTarget": {
@@ -14,16 +11,12 @@
           "description": "Review the working tree: staged, unstaged, and untracked files.",
           "properties": {
             "type": {
-              "enum": [
-                "uncommittedChanges"
-              ],
+              "enum": ["uncommittedChanges"],
               "title": "UncommittedChangesReviewTargetType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "UncommittedChangesReviewTarget",
           "type": "object"
         },
@@ -34,17 +27,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "baseBranch"
-              ],
+              "enum": ["baseBranch"],
               "title": "BaseBranchReviewTargetType",
               "type": "string"
             }
           },
-          "required": [
-            "branch",
-            "type"
-          ],
+          "required": ["branch", "type"],
           "title": "BaseBranchReviewTarget",
           "type": "object"
         },
@@ -56,23 +44,15 @@
             },
             "title": {
               "description": "Optional human-readable label (e.g., commit subject) for UIs.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "commit"
-              ],
+              "enum": ["commit"],
               "title": "CommitReviewTargetType",
               "type": "string"
             }
           },
-          "required": [
-            "sha",
-            "type"
-          ],
+          "required": ["sha", "type"],
           "title": "CommitReviewTarget",
           "type": "object"
         },
@@ -83,17 +63,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "custom"
-              ],
+              "enum": ["custom"],
               "title": "CustomReviewTargetType",
               "type": "string"
             }
           },
-          "required": [
-            "instructions",
-            "type"
-          ],
+          "required": ["instructions", "type"],
           "title": "CustomReviewTarget",
           "type": "object"
         }
@@ -120,10 +95,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "target",
-    "threadId"
-  ],
+  "required": ["target", "threadId"],
   "title": "ReviewStartParams",
   "type": "object"
 }

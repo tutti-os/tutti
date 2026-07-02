@@ -101,6 +101,7 @@ export interface IWorkspaceAgentActivityService {
     agentSessionId: string
   ): Promise<AgentActivitySession>;
   getComposerOptions(input: {
+    agentTargetId?: string | null;
     cwd?: string | null;
     force?: boolean;
     provider?: string;

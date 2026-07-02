@@ -6,10 +6,7 @@
       "type": "string"
     },
     "AddCreditsNudgeCreditType": {
-      "enum": [
-        "credits",
-        "usage_limit"
-      ],
+      "enum": ["credits", "usage_limit"],
       "type": "string"
     },
     "AdditionalContextEntry": {
@@ -21,17 +18,11 @@
           "type": "string"
         }
       },
-      "required": [
-        "kind",
-        "value"
-      ],
+      "required": ["kind", "value"],
       "type": "object"
     },
     "AdditionalContextKind": {
-      "enum": [
-        "untrusted",
-        "application"
-      ],
+      "enum": ["untrusted", "application"],
       "type": "string"
     },
     "AgentMessageInputContent": {
@@ -42,17 +33,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "input_text"
-              ],
+              "enum": ["input_text"],
               "title": "InputTextAgentMessageInputContentType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "InputTextAgentMessageInputContent",
           "type": "object"
         },
@@ -62,17 +48,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "encrypted_content"
-              ],
+              "enum": ["encrypted_content"],
               "title": "EncryptedContentAgentMessageInputContentType",
               "type": "string"
             }
           },
-          "required": [
-            "encrypted_content",
-            "type"
-          ],
+          "required": ["encrypted_content", "type"],
           "title": "EncryptedContentAgentMessageInputContent",
           "type": "object"
         }
@@ -80,11 +61,7 @@
     },
     "ApprovalsReviewer": {
       "description": "Configures who approval requests are routed to for review. Examples include sandbox escapes, blocked network access, MCP approval prompts, and ARC escalations. Defaults to `user`. `auto_review` uses a carefully prompted subagent to gather relevant context and apply a risk-based decision framework before approving or denying the request. The legacy value `guardian_subagent` is accepted for compatibility.",
-      "enum": [
-        "user",
-        "auto_review",
-        "guardian_subagent"
-      ],
+      "enum": ["user", "auto_review", "guardian_subagent"],
       "type": "string"
     },
     "AppsListParams": {
@@ -92,10 +69,7 @@
       "properties": {
         "cursor": {
           "description": "Opaque pagination cursor returned by a previous call.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "forceRefetch": {
           "description": "When true, bypass app caches and fetch the latest data from sources.",
@@ -105,17 +79,11 @@
           "description": "Optional page size; defaults to a reasonable server-side value.",
           "format": "uint32",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "threadId": {
           "description": "Optional thread id used to evaluate app feature gating from that thread's config.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"
@@ -123,11 +91,7 @@
     "AskForApproval": {
       "oneOf": [
         {
-          "enum": [
-            "untrusted",
-            "on-request",
-            "never"
-          ],
+          "enum": ["untrusted", "on-request", "never"],
           "type": "string"
         },
         {
@@ -153,17 +117,11 @@
                   "type": "boolean"
                 }
               },
-              "required": [
-                "mcp_elicitations",
-                "rules",
-                "sandbox_approval"
-              ],
+              "required": ["mcp_elicitations", "rules", "sandbox_approval"],
               "type": "object"
             }
           },
-          "required": [
-            "granular"
-          ],
+          "required": ["granular"],
           "title": "GranularAskForApproval",
           "type": "object"
         }
@@ -182,10 +140,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "end",
-        "start"
-      ],
+      "required": ["end", "start"],
       "type": "object"
     },
     "CancelLoginAccountParams": {
@@ -194,9 +149,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "loginId"
-      ],
+      "required": ["loginId"],
       "type": "object"
     },
     "CapabilityRootLocation": {
@@ -213,18 +166,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "environment"
-              ],
+              "enum": ["environment"],
               "title": "EnvironmentCapabilityRootLocationType",
               "type": "string"
             }
           },
-          "required": [
-            "environmentId",
-            "path",
-            "type"
-          ],
+          "required": ["environmentId", "path", "type"],
           "title": "EnvironmentCapabilityRootLocation",
           "type": "object"
         }
@@ -236,19 +183,13 @@
           "type": "string"
         },
         "title": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "version": {
           "type": "string"
         }
       },
-      "required": [
-        "name",
-        "version"
-      ],
+      "required": ["name", "version"],
       "type": "object"
     },
     "CollaborationMode": {
@@ -261,10 +202,7 @@
           "$ref": "#/definitions/Settings"
         }
       },
-      "required": [
-        "mode",
-        "settings"
-      ],
+      "required": ["mode", "settings"],
       "type": "object"
     },
     "CommandExecParams": {
@@ -279,10 +217,7 @@
         },
         "cwd": {
           "description": "Optional working directory. Defaults to the server cwd.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "disableOutputCap": {
           "description": "Disable stdout/stderr capture truncation for this request.\n\nCannot be combined with `outputBytesCap`.",
@@ -294,32 +229,20 @@
         },
         "env": {
           "additionalProperties": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "description": "Optional environment overrides merged into the server-computed environment.\n\nMatching names override inherited values. Set a key to `null` to unset an inherited variable.",
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         },
         "outputBytesCap": {
           "description": "Optional per-stream stdout/stderr capture cap in bytes.\n\nWhen omitted, the server default applies. Cannot be combined with `disableOutputCap`.",
           "format": "uint",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "processId": {
           "description": "Optional client-supplied, connection-scoped process id.\n\nRequired for `tty`, `streamStdin`, `streamStdoutStderr`, and follow-up `command/exec/write`, `command/exec/resize`, and `command/exec/terminate` calls. When omitted, buffered execution gets an internal id that is not exposed to the client.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "sandboxPolicy": {
           "anyOf": [
@@ -354,19 +277,14 @@
         "timeoutMs": {
           "description": "Optional timeout in milliseconds.\n\nWhen omitted, the server default applies. Cannot be combined with `disableTimeout`.",
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "tty": {
           "description": "Enable PTY mode.\n\nThis implies `streamStdin` and `streamStdoutStderr`.",
           "type": "boolean"
         }
       },
-      "required": [
-        "command"
-      ],
+      "required": ["command"],
       "type": "object"
     },
     "CommandExecResizeParams": {
@@ -385,10 +303,7 @@
           "description": "New PTY size in character cells."
         }
       },
-      "required": [
-        "processId",
-        "size"
-      ],
+      "required": ["processId", "size"],
       "type": "object"
     },
     "CommandExecTerminalSize": {
@@ -407,10 +322,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "cols",
-        "rows"
-      ],
+      "required": ["cols", "rows"],
       "type": "object"
     },
     "CommandExecTerminateParams": {
@@ -421,9 +333,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "processId"
-      ],
+      "required": ["processId"],
       "type": "object"
     },
     "CommandExecWriteParams": {
@@ -435,19 +345,14 @@
         },
         "deltaBase64": {
           "description": "Optional base64-encoded stdin bytes to write.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "processId": {
           "description": "Client-supplied, connection-scoped `processId` from the original `command/exec` request.",
           "type": "string"
         }
       },
-      "required": [
-        "processId"
-      ],
+      "required": ["processId"],
       "type": "object"
     },
     "CommandMigration": {
@@ -456,9 +361,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     },
     "ConfigBatchWriteParams": {
@@ -470,26 +373,18 @@
           "type": "array"
         },
         "expectedVersion": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "filePath": {
           "description": "Path to the config file to write; defaults to the user's `config.toml` when omitted.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "reloadUserConfig": {
           "description": "When true, hot-reload the updated user config into all loaded threads after writing.",
           "type": "boolean"
         }
       },
-      "required": [
-        "edits"
-      ],
+      "required": ["edits"],
       "type": "object"
     },
     "ConfigEdit": {
@@ -502,21 +397,14 @@
         },
         "value": true
       },
-      "required": [
-        "keyPath",
-        "mergeStrategy",
-        "value"
-      ],
+      "required": ["keyPath", "mergeStrategy", "value"],
       "type": "object"
     },
     "ConfigReadParams": {
       "properties": {
         "cwd": {
           "description": "Optional working directory to resolve project config layers. If specified, return the effective config as seen from that directory (i.e., including any project layers between `cwd` and the project/repo root).",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "includeLayers": {
           "type": "boolean"
@@ -527,17 +415,11 @@
     "ConfigValueWriteParams": {
       "properties": {
         "expectedVersion": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "filePath": {
           "description": "Path to the config file to write; defaults to the user's `config.toml` when omitted.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "keyPath": {
           "type": "string"
@@ -547,11 +429,7 @@
         },
         "value": true
       },
-      "required": [
-        "keyPath",
-        "mergeStrategy",
-        "value"
-      ],
+      "required": ["keyPath", "mergeStrategy", "value"],
       "type": "object"
     },
     "ConsumeAccountRateLimitResetCreditParams": {
@@ -561,9 +439,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "idempotencyKey"
-      ],
+      "required": ["idempotencyKey"],
       "type": "object"
     },
     "ContentItem": {
@@ -574,17 +450,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "input_text"
-              ],
+              "enum": ["input_text"],
               "title": "InputTextContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "InputTextContentItem",
           "type": "object"
         },
@@ -604,17 +475,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "input_image"
-              ],
+              "enum": ["input_image"],
               "title": "InputImageContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "image_url",
-            "type"
-          ],
+          "required": ["image_url", "type"],
           "title": "InputImageContentItem",
           "type": "object"
         },
@@ -624,28 +490,19 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "output_text"
-              ],
+              "enum": ["output_text"],
               "title": "OutputTextContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "OutputTextContentItem",
           "type": "object"
         }
       ]
     },
     "ConversationTextRole": {
-      "enum": [
-        "user",
-        "developer",
-        "assistant"
-      ],
+      "enum": ["user", "developer", "assistant"],
       "type": "string"
     },
     "DynamicToolNamespaceTool": {
@@ -663,19 +520,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "function"
-              ],
+              "enum": ["function"],
               "title": "FunctionDynamicToolNamespaceToolType",
               "type": "string"
             }
           },
-          "required": [
-            "description",
-            "inputSchema",
-            "name",
-            "type"
-          ],
+          "required": ["description", "inputSchema", "name", "type"],
           "title": "FunctionDynamicToolNamespaceTool",
           "type": "object"
         }
@@ -696,19 +546,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "function"
-              ],
+              "enum": ["function"],
               "title": "FunctionDynamicToolSpecType",
               "type": "string"
             }
           },
-          "required": [
-            "description",
-            "inputSchema",
-            "name",
-            "type"
-          ],
+          "required": ["description", "inputSchema", "name", "type"],
           "title": "FunctionDynamicToolSpec",
           "type": "object"
         },
@@ -727,19 +570,12 @@
               "type": "array"
             },
             "type": {
-              "enum": [
-                "namespace"
-              ],
+              "enum": ["namespace"],
               "title": "NamespaceDynamicToolSpecType",
               "type": "string"
             }
           },
-          "required": [
-            "description",
-            "name",
-            "tools",
-            "type"
-          ],
+          "required": ["description", "name", "tools", "type"],
           "title": "NamespaceDynamicToolSpec",
           "type": "object"
         }
@@ -755,35 +591,24 @@
           "type": "object"
         }
       },
-      "required": [
-        "enablement"
-      ],
+      "required": ["enablement"],
       "type": "object"
     },
     "ExperimentalFeatureListParams": {
       "properties": {
         "cursor": {
           "description": "Opaque pagination cursor returned by a previous call.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "limit": {
           "description": "Optional page size; defaults to a reasonable server-side value.",
           "format": "uint32",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "threadId": {
           "description": "Optional loaded thread id. Pass this when showing feature state for an existing thread so enablement is computed from that thread's refreshed config, including project-local config for the thread's cwd.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"
@@ -795,10 +620,7 @@
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "includeHome": {
           "description": "If true, include detection under the user's home directory.",
@@ -817,25 +639,17 @@
         },
         "source": {
           "description": "Source product that produced the migration items. Missing means unspecified.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "migrationItems"
-      ],
+      "required": ["migrationItems"],
       "type": "object"
     },
     "ExternalAgentConfigMigrationItem": {
       "properties": {
         "cwd": {
           "description": "Null or empty means home-scoped migration; non-empty means repo-scoped migration.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "description": {
           "type": "string"
@@ -854,10 +668,7 @@
           "$ref": "#/definitions/ExternalAgentConfigMigrationItemType"
         }
       },
-      "required": [
-        "description",
-        "itemType"
-      ],
+      "required": ["description", "itemType"],
       "type": "object"
     },
     "ExternalAgentConfigMigrationItemType": {
@@ -883,39 +694,25 @@
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "includeLogs": {
           "type": "boolean"
         },
         "reason": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "tags": {
           "additionalProperties": {
             "type": "string"
           },
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         },
         "threadId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "classification"
-      ],
+      "required": ["classification"],
       "type": "object"
     },
     "FsCopyParams": {
@@ -942,10 +739,7 @@
           "description": "Absolute source path."
         }
       },
-      "required": [
-        "destinationPath",
-        "sourcePath"
-      ],
+      "required": ["destinationPath", "sourcePath"],
       "type": "object"
     },
     "FsCreateDirectoryParams": {
@@ -961,15 +755,10 @@
         },
         "recursive": {
           "description": "Whether parent directories should also be created. Defaults to `true`.",
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": ["path"],
       "type": "object"
     },
     "FsGetMetadataParams": {
@@ -984,9 +773,7 @@
           "description": "Absolute path to inspect."
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": ["path"],
       "type": "object"
     },
     "FsReadDirectoryParams": {
@@ -1001,9 +788,7 @@
           "description": "Absolute directory path to read."
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": ["path"],
       "type": "object"
     },
     "FsReadFileParams": {
@@ -1018,9 +803,7 @@
           "description": "Absolute path to read."
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": ["path"],
       "type": "object"
     },
     "FsRemoveParams": {
@@ -1028,10 +811,7 @@
       "properties": {
         "force": {
           "description": "Whether missing paths should be ignored. Defaults to `true`.",
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "path": {
           "allOf": [
@@ -1043,15 +823,10 @@
         },
         "recursive": {
           "description": "Whether directory removal should recurse. Defaults to `true`.",
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": ["path"],
       "type": "object"
     },
     "FsUnwatchParams": {
@@ -1062,9 +837,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "watchId"
-      ],
+      "required": ["watchId"],
       "type": "object"
     },
     "FsWatchParams": {
@@ -1083,10 +856,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "path",
-        "watchId"
-      ],
+      "required": ["path", "watchId"],
       "type": "object"
     },
     "FsWriteFileParams": {
@@ -1105,10 +875,7 @@
           "description": "Absolute path to write."
         }
       },
-      "required": [
-        "dataBase64",
-        "path"
-      ],
+      "required": ["dataBase64", "path"],
       "type": "object"
     },
     "FunctionCallOutputBody": {
@@ -1133,17 +900,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "input_text"
-              ],
+              "enum": ["input_text"],
               "title": "InputTextFunctionCallOutputContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "InputTextFunctionCallOutputContentItem",
           "type": "object"
         },
@@ -1163,17 +925,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "input_image"
-              ],
+              "enum": ["input_image"],
               "title": "InputImageFunctionCallOutputContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "image_url",
-            "type"
-          ],
+          "required": ["image_url", "type"],
           "title": "InputImageFunctionCallOutputContentItem",
           "type": "object"
         },
@@ -1183,17 +940,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "encrypted_content"
-              ],
+              "enum": ["encrypted_content"],
               "title": "EncryptedContentFunctionCallOutputContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "encrypted_content",
-            "type"
-          ],
+          "required": ["encrypted_content", "type"],
           "title": "EncryptedContentFunctionCallOutputContentItem",
           "type": "object"
         }
@@ -1202,10 +954,7 @@
     "FuzzyFileSearchParams": {
       "properties": {
         "cancellationToken": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "query": {
           "type": "string"
@@ -1217,10 +966,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "query",
-        "roots"
-      ],
+      "required": ["query", "roots"],
       "type": "object"
     },
     "GetAccountParams": {
@@ -1238,9 +984,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     },
     "HooksListParams": {
@@ -1256,12 +1000,7 @@
       "type": "object"
     },
     "ImageDetail": {
-      "enum": [
-        "auto",
-        "low",
-        "high",
-        "original"
-      ],
+      "enum": ["auto", "low", "high", "original"],
       "type": "string"
     },
     "InitializeCapabilities": {
@@ -1281,10 +1020,7 @@
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "requestAttestation": {
           "default": false,
@@ -1310,19 +1046,14 @@
           "$ref": "#/definitions/ClientInfo"
         }
       },
-      "required": [
-        "clientInfo"
-      ],
+      "required": ["clientInfo"],
       "type": "object"
     },
     "InternalChatMessageMetadataPassthrough": {
       "description": "Internal Responses API passthrough metadata copied into underlying chat messages.\n\nResponses API strongly types this payload. Do not modify it without first getting API approval and making the corresponding Responses API change.",
       "properties": {
         "turn_id": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"
@@ -1334,10 +1065,7 @@
       "properties": {
         "cursor": {
           "description": "Opaque pagination cursor returned by a previous call.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "detail": {
           "anyOf": [
@@ -1354,16 +1082,10 @@
           "description": "Optional page size; defaults to a server-defined value.",
           "format": "uint32",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "threadId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"
@@ -1382,54 +1104,33 @@
               "additionalProperties": {
                 "type": "string"
               },
-              "type": [
-                "object",
-                "null"
-              ]
+              "type": ["object", "null"]
             },
             "timeout_ms": {
               "format": "uint64",
               "minimum": 0.0,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": ["integer", "null"]
             },
             "type": {
-              "enum": [
-                "exec"
-              ],
+              "enum": ["exec"],
               "title": "ExecLocalShellActionType",
               "type": "string"
             },
             "user": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "working_directory": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
-          "required": [
-            "command",
-            "type"
-          ],
+          "required": ["command", "type"],
           "title": "ExecLocalShellAction",
           "type": "object"
         }
       ]
     },
     "LocalShellStatus": {
-      "enum": [
-        "completed",
-        "in_progress",
-        "incomplete"
-      ],
+      "enum": ["completed", "in_progress", "incomplete"],
       "type": "string"
     },
     "LoginAccountParams": {
@@ -1440,17 +1141,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "apiKey"
-              ],
+              "enum": ["apiKey"],
               "title": "ApiKeyLoginAccountParamsType",
               "type": "string"
             }
           },
-          "required": [
-            "apiKey",
-            "type"
-          ],
+          "required": ["apiKey", "type"],
           "title": "ApiKeyLoginAccountParams",
           "type": "object"
         },
@@ -1460,32 +1156,24 @@
               "type": "boolean"
             },
             "type": {
-              "enum": [
-                "chatgpt"
-              ],
+              "enum": ["chatgpt"],
               "title": "ChatgptLoginAccountParamsType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "ChatgptLoginAccountParams",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "chatgptDeviceCode"
-              ],
+              "enum": ["chatgptDeviceCode"],
               "title": "ChatgptDeviceCodeLoginAccountParamsType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "ChatgptDeviceCodeLoginAccountParams",
           "type": "object"
         },
@@ -1502,24 +1190,15 @@
             },
             "chatgptPlanType": {
               "description": "Optional plan type supplied by the client.\n\nWhen `null`, Codex attempts to derive the plan type from access-token claims. If unavailable, the plan defaults to `unknown`.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "chatgptAuthTokens"
-              ],
+              "enum": ["chatgptAuthTokens"],
               "title": "ChatgptAuthTokensLoginAccountParamsType",
               "type": "string"
             }
           },
-          "required": [
-            "accessToken",
-            "chatgptAccountId",
-            "type"
-          ],
+          "required": ["accessToken", "chatgptAccountId", "type"],
           "title": "ChatgptAuthTokensLoginAccountParams",
           "type": "object"
         }
@@ -1528,10 +1207,7 @@
     "MarketplaceAddParams": {
       "properties": {
         "refName": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "source": {
           "type": "string"
@@ -1540,15 +1216,10 @@
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         }
       },
-      "required": [
-        "source"
-      ],
+      "required": ["source"],
       "type": "object"
     },
     "MarketplaceRemoveParams": {
@@ -1557,18 +1228,13 @@
           "type": "string"
         }
       },
-      "required": [
-        "marketplaceName"
-      ],
+      "required": ["marketplaceName"],
       "type": "object"
     },
     "MarketplaceUpgradeParams": {
       "properties": {
         "marketplaceName": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"
@@ -1579,19 +1245,13 @@
           "type": "string"
         },
         "threadId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "uri": {
           "type": "string"
         }
       },
-      "required": [
-        "server",
-        "uri"
-      ],
+      "required": ["server", "uri"],
       "type": "object"
     },
     "McpServerMigration": {
@@ -1600,9 +1260,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     },
     "McpServerOauthLoginParams": {
@@ -1614,35 +1272,21 @@
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "threadId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "timeoutSecs": {
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     },
     "McpServerStatusDetail": {
-      "enum": [
-        "full",
-        "toolsAndAuthOnly"
-      ],
+      "enum": ["full", "toolsAndAuthOnly"],
       "type": "string"
     },
     "McpServerToolCallParams": {
@@ -1659,18 +1303,11 @@
           "type": "string"
         }
       },
-      "required": [
-        "server",
-        "threadId",
-        "tool"
-      ],
+      "required": ["server", "threadId", "tool"],
       "type": "object"
     },
     "MergeStrategy": {
-      "enum": [
-        "replace",
-        "upsert"
-      ],
+      "enum": ["replace", "upsert"],
       "type": "string"
     },
     "MessagePhase": {
@@ -1678,16 +1315,12 @@
       "oneOf": [
         {
           "description": "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
-          "enum": [
-            "commentary"
-          ],
+          "enum": ["commentary"],
           "type": "string"
         },
         {
           "description": "The assistant's terminal answer text for the current turn.",
-          "enum": [
-            "final_answer"
-          ],
+          "enum": ["final_answer"],
           "type": "string"
         }
       ]
@@ -1748,36 +1381,24 @@
     },
     "ModeKind": {
       "description": "Initial collaboration mode to use when the TUI starts.",
-      "enum": [
-        "plan",
-        "default"
-      ],
+      "enum": ["plan", "default"],
       "type": "string"
     },
     "ModelListParams": {
       "properties": {
         "cursor": {
           "description": "Opaque pagination cursor returned by a previous call.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "includeHidden": {
           "description": "When true, include models that are hidden from the default picker list.",
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "limit": {
           "description": "Optional page size; defaults to a reasonable server-side value.",
           "format": "uint32",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         }
       },
       "type": "object"
@@ -1787,54 +1408,34 @@
     },
     "MultiAgentMode": {
       "description": "Controls whether the model receives multi-agent delegation instructions and, when it does, whether it should only spawn sub-agents after an explicit user request or may delegate proactively when doing so would help. `none` leaves the multi-agent tools available without injecting delegation instructions.",
-      "enum": [
-        "none",
-        "explicitRequestOnly",
-        "proactive"
-      ],
+      "enum": ["none", "explicitRequestOnly", "proactive"],
       "type": "string"
     },
     "NetworkAccess": {
-      "enum": [
-        "restricted",
-        "enabled"
-      ],
+      "enum": ["restricted", "enabled"],
       "type": "string"
     },
     "PermissionProfileListParams": {
       "properties": {
         "cursor": {
           "description": "Opaque pagination cursor returned by a previous call.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "cwd": {
           "description": "Optional working directory to resolve project config layers.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "limit": {
           "description": "Optional page size; defaults to the full result set.",
           "format": "uint32",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         }
       },
       "type": "object"
     },
     "Personality": {
-      "enum": [
-        "none",
-        "friendly",
-        "pragmatic"
-      ],
+      "enum": ["none", "friendly", "pragmatic"],
       "type": "string"
     },
     "PluginInstallParams": {
@@ -1853,15 +1454,10 @@
           "type": "string"
         },
         "remoteMarketplaceName": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "pluginName"
-      ],
+      "required": ["pluginName"],
       "type": "object"
     },
     "PluginInstalledParams": {
@@ -1871,20 +1467,14 @@
           "items": {
             "$ref": "#/definitions/AbsolutePathBuf"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "installSuggestionPluginNames": {
           "description": "Additional uninstalled plugin names that should be returned when present locally. This is used by mention surfaces that intentionally expose install entrypoints.",
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         }
       },
       "type": "object"
@@ -1906,20 +1496,14 @@
           "items": {
             "$ref": "#/definitions/AbsolutePathBuf"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "marketplaceKinds": {
           "description": "Optional marketplace kind filter. When omitted, only local marketplaces are queried, plus the default remote catalog when enabled by feature flag.",
           "items": {
             "$ref": "#/definitions/PluginListMarketplaceKind"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         }
       },
       "type": "object"
@@ -1940,15 +1524,10 @@
           "type": "string"
         },
         "remoteMarketplaceName": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "pluginName"
-      ],
+      "required": ["pluginName"],
       "type": "object"
     },
     "PluginShareCheckoutParams": {
@@ -1957,9 +1536,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "remotePluginId"
-      ],
+      "required": ["remotePluginId"],
       "type": "object"
     },
     "PluginShareDeleteParams": {
@@ -1968,28 +1545,18 @@
           "type": "string"
         }
       },
-      "required": [
-        "remotePluginId"
-      ],
+      "required": ["remotePluginId"],
       "type": "object"
     },
     "PluginShareDiscoverability": {
-      "enum": [
-        "LISTED",
-        "UNLISTED",
-        "PRIVATE"
-      ],
+      "enum": ["LISTED", "UNLISTED", "PRIVATE"],
       "type": "string"
     },
     "PluginShareListParams": {
       "type": "object"
     },
     "PluginSharePrincipalType": {
-      "enum": [
-        "user",
-        "group",
-        "workspace"
-      ],
+      "enum": ["user", "group", "workspace"],
       "type": "string"
     },
     "PluginShareSaveParams": {
@@ -2008,24 +1575,16 @@
           "$ref": "#/definitions/AbsolutePathBuf"
         },
         "remotePluginId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "shareTargets": {
           "items": {
             "$ref": "#/definitions/PluginShareTarget"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         }
       },
-      "required": [
-        "pluginPath"
-      ],
+      "required": ["pluginPath"],
       "type": "object"
     },
     "PluginShareTarget": {
@@ -2040,25 +1599,15 @@
           "$ref": "#/definitions/PluginShareTargetRole"
         }
       },
-      "required": [
-        "principalId",
-        "principalType",
-        "role"
-      ],
+      "required": ["principalId", "principalType", "role"],
       "type": "object"
     },
     "PluginShareTargetRole": {
-      "enum": [
-        "reader",
-        "editor"
-      ],
+      "enum": ["reader", "editor"],
       "type": "string"
     },
     "PluginShareUpdateDiscoverability": {
-      "enum": [
-        "UNLISTED",
-        "PRIVATE"
-      ],
+      "enum": ["UNLISTED", "PRIVATE"],
       "type": "string"
     },
     "PluginShareUpdateTargetsParams": {
@@ -2076,11 +1625,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "discoverability",
-        "remotePluginId",
-        "shareTargets"
-      ],
+      "required": ["discoverability", "remotePluginId", "shareTargets"],
       "type": "object"
     },
     "PluginSkillReadParams": {
@@ -2095,11 +1640,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "remoteMarketplaceName",
-        "remotePluginId",
-        "skillName"
-      ],
+      "required": ["remoteMarketplaceName", "remotePluginId", "skillName"],
       "type": "object"
     },
     "PluginUninstallParams": {
@@ -2108,9 +1649,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "pluginId"
-      ],
+      "required": ["pluginId"],
       "type": "object"
     },
     "PluginsMigration": {
@@ -2125,10 +1664,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "marketplaceName",
-        "pluginNames"
-      ],
+      "required": ["marketplaceName", "pluginNames"],
       "type": "object"
     },
     "ProcessTerminalSize": {
@@ -2147,24 +1683,15 @@
           "type": "integer"
         }
       },
-      "required": [
-        "cols",
-        "rows"
-      ],
+      "required": ["cols", "rows"],
       "type": "object"
     },
     "RealtimeConversationVersion": {
-      "enum": [
-        "v1",
-        "v2"
-      ],
+      "enum": ["v1", "v2"],
       "type": "string"
     },
     "RealtimeOutputModality": {
-      "enum": [
-        "text",
-        "audio"
-      ],
+      "enum": ["text", "audio"],
       "type": "string"
     },
     "RealtimeVoice": {
@@ -2204,17 +1731,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "reasoning_text"
-              ],
+              "enum": ["reasoning_text"],
               "title": "ReasoningTextReasoningItemContentType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "ReasoningTextReasoningItemContent",
           "type": "object"
         },
@@ -2224,17 +1746,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "text"
-              ],
+              "enum": ["text"],
               "title": "TextReasoningItemContentType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "TextReasoningItemContent",
           "type": "object"
         }
@@ -2248,17 +1765,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "summary_text"
-              ],
+              "enum": ["summary_text"],
               "title": "SummaryTextReasoningItemReasoningSummaryType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "SummaryTextReasoningItemReasoningSummary",
           "type": "object"
         }
@@ -2268,18 +1780,12 @@
       "description": "A summary of the reasoning performed by the model. This can be useful for debugging and understanding the model's reasoning process. See https://platform.openai.com/docs/guides/reasoning?api-mode=responses#reasoning-summaries",
       "oneOf": [
         {
-          "enum": [
-            "auto",
-            "concise",
-            "detailed"
-          ],
+          "enum": ["auto", "concise", "detailed"],
           "type": "string"
         },
         {
           "description": "Option to disable reasoning summaries.",
-          "enum": [
-            "none"
-          ],
+          "enum": ["none"],
           "type": "string"
         }
       ]
@@ -2322,10 +1828,7 @@
               "type": "array"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2351,18 +1854,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "message"
-              ],
+              "enum": ["message"],
               "title": "MessageResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "content",
-            "role",
-            "type"
-          ],
+          "required": ["content", "role", "type"],
           "title": "MessageResponseItem",
           "type": "object"
         },
@@ -2378,10 +1875,7 @@
               "type": "array"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2397,19 +1891,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "agent_message"
-              ],
+              "enum": ["agent_message"],
               "title": "AgentMessageResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "author",
-            "content",
-            "recipient",
-            "type"
-          ],
+          "required": ["author", "content", "recipient", "type"],
           "title": "AgentMessageResponseItem",
           "type": "object"
         },
@@ -2420,22 +1907,13 @@
               "items": {
                 "$ref": "#/definitions/ReasoningItemContent"
               },
-              "type": [
-                "array",
-                "null"
-              ]
+              "type": ["array", "null"]
             },
             "encrypted_content": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2454,17 +1932,12 @@
               "type": "array"
             },
             "type": {
-              "enum": [
-                "reasoning"
-              ],
+              "enum": ["reasoning"],
               "title": "ReasoningResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "summary",
-            "type"
-          ],
+          "required": ["summary", "type"],
           "title": "ReasoningResponseItem",
           "type": "object"
         },
@@ -2475,17 +1948,11 @@
             },
             "call_id": {
               "description": "Set when using the Responses API.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "id": {
               "description": "Legacy id field retained for compatibility with older payloads.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2501,18 +1968,12 @@
               "$ref": "#/definitions/LocalShellStatus"
             },
             "type": {
-              "enum": [
-                "local_shell_call"
-              ],
+              "enum": ["local_shell_call"],
               "title": "LocalShellCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "action",
-            "status",
-            "type"
-          ],
+          "required": ["action", "status", "type"],
           "title": "LocalShellCallResponseItem",
           "type": "object"
         },
@@ -2525,10 +1986,7 @@
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2544,25 +2002,15 @@
               "type": "string"
             },
             "namespace": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "function_call"
-              ],
+              "enum": ["function_call"],
               "title": "FunctionCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "arguments",
-            "call_id",
-            "name",
-            "type"
-          ],
+          "required": ["arguments", "call_id", "name", "type"],
           "title": "FunctionCallResponseItem",
           "type": "object"
         },
@@ -2570,19 +2018,13 @@
           "properties": {
             "arguments": true,
             "call_id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "execution": {
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2595,24 +2037,15 @@
               ]
             },
             "status": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "tool_search_call"
-              ],
+              "enum": ["tool_search_call"],
               "title": "ToolSearchCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "arguments",
-            "execution",
-            "type"
-          ],
+          "required": ["arguments", "execution", "type"],
           "title": "ToolSearchCallResponseItem",
           "type": "object"
         },
@@ -2622,10 +2055,7 @@
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2641,18 +2071,12 @@
               "$ref": "#/definitions/FunctionCallOutputBody"
             },
             "type": {
-              "enum": [
-                "function_call_output"
-              ],
+              "enum": ["function_call_output"],
               "title": "FunctionCallOutputResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "call_id",
-            "output",
-            "type"
-          ],
+          "required": ["call_id", "output", "type"],
           "title": "FunctionCallOutputResponseItem",
           "type": "object"
         },
@@ -2662,10 +2086,7 @@
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "input": {
               "type": "string"
@@ -2684,25 +2105,15 @@
               "type": "string"
             },
             "status": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "custom_tool_call"
-              ],
+              "enum": ["custom_tool_call"],
               "title": "CustomToolCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "call_id",
-            "input",
-            "name",
-            "type"
-          ],
+          "required": ["call_id", "input", "name", "type"],
           "title": "CustomToolCallResponseItem",
           "type": "object"
         },
@@ -2712,10 +2123,7 @@
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2728,46 +2136,31 @@
               ]
             },
             "name": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "output": {
               "$ref": "#/definitions/FunctionCallOutputBody"
             },
             "type": {
-              "enum": [
-                "custom_tool_call_output"
-              ],
+              "enum": ["custom_tool_call_output"],
               "title": "CustomToolCallOutputResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "call_id",
-            "output",
-            "type"
-          ],
+          "required": ["call_id", "output", "type"],
           "title": "CustomToolCallOutputResponseItem",
           "type": "object"
         },
         {
           "properties": {
             "call_id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "execution": {
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2787,19 +2180,12 @@
               "type": "array"
             },
             "type": {
-              "enum": [
-                "tool_search_output"
-              ],
+              "enum": ["tool_search_output"],
               "title": "ToolSearchOutputResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "execution",
-            "status",
-            "tools",
-            "type"
-          ],
+          "required": ["execution", "status", "tools", "type"],
           "title": "ToolSearchOutputResponseItem",
           "type": "object"
         },
@@ -2816,10 +2202,7 @@
               ]
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2832,32 +2215,22 @@
               ]
             },
             "status": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "web_search_call"
-              ],
+              "enum": ["web_search_call"],
               "title": "WebSearchCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "WebSearchCallResponseItem",
           "type": "object"
         },
         {
           "properties": {
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2873,27 +2246,18 @@
               "type": "string"
             },
             "revised_prompt": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "status": {
               "type": "string"
             },
             "type": {
-              "enum": [
-                "image_generation_call"
-              ],
+              "enum": ["image_generation_call"],
               "title": "ImageGenerationCallResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "result",
-            "status",
-            "type"
-          ],
+          "required": ["result", "status", "type"],
           "title": "ImageGenerationCallResponseItem",
           "type": "object"
         },
@@ -2903,10 +2267,7 @@
               "type": "string"
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2919,49 +2280,34 @@
               ]
             },
             "type": {
-              "enum": [
-                "compaction"
-              ],
+              "enum": ["compaction"],
               "title": "CompactionResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "encrypted_content",
-            "type"
-          ],
+          "required": ["encrypted_content", "type"],
           "title": "CompactionResponseItem",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "compaction_trigger"
-              ],
+              "enum": ["compaction_trigger"],
               "title": "CompactionTriggerResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "CompactionTriggerResponseItem",
           "type": "object"
         },
         {
           "properties": {
             "encrypted_content": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "internal_chat_message_metadata_passthrough": {
               "anyOf": [
@@ -2974,32 +2320,24 @@
               ]
             },
             "type": {
-              "enum": [
-                "context_compaction"
-              ],
+              "enum": ["context_compaction"],
               "title": "ContextCompactionResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "ContextCompactionResponseItem",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "other"
-              ],
+              "enum": ["other"],
               "title": "OtherResponseItemType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "OtherResponseItem",
           "type": "object"
         }
@@ -3013,104 +2351,70 @@
               "items": {
                 "type": "string"
               },
-              "type": [
-                "array",
-                "null"
-              ]
+              "type": ["array", "null"]
             },
             "query": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "search"
-              ],
+              "enum": ["search"],
               "title": "SearchResponsesApiWebSearchActionType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "SearchResponsesApiWebSearchAction",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "open_page"
-              ],
+              "enum": ["open_page"],
               "title": "OpenPageResponsesApiWebSearchActionType",
               "type": "string"
             },
             "url": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "OpenPageResponsesApiWebSearchAction",
           "type": "object"
         },
         {
           "properties": {
             "pattern": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "find_in_page"
-              ],
+              "enum": ["find_in_page"],
               "title": "FindInPageResponsesApiWebSearchActionType",
               "type": "string"
             },
             "url": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "FindInPageResponsesApiWebSearchAction",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "other"
-              ],
+              "enum": ["other"],
               "title": "OtherResponsesApiWebSearchActionType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "OtherResponsesApiWebSearchAction",
           "type": "object"
         }
       ]
     },
     "ReviewDelivery": {
-      "enum": [
-        "inline",
-        "detached"
-      ],
+      "enum": ["inline", "detached"],
       "type": "string"
     },
     "ReviewStartParams": {
@@ -3134,10 +2438,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "target",
-        "threadId"
-      ],
+      "required": ["target", "threadId"],
       "type": "object"
     },
     "ReviewTarget": {
@@ -3146,16 +2447,12 @@
           "description": "Review the working tree: staged, unstaged, and untracked files.",
           "properties": {
             "type": {
-              "enum": [
-                "uncommittedChanges"
-              ],
+              "enum": ["uncommittedChanges"],
               "title": "UncommittedChangesReviewTargetType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "UncommittedChangesReviewTarget",
           "type": "object"
         },
@@ -3166,17 +2463,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "baseBranch"
-              ],
+              "enum": ["baseBranch"],
               "title": "BaseBranchReviewTargetType",
               "type": "string"
             }
           },
-          "required": [
-            "branch",
-            "type"
-          ],
+          "required": ["branch", "type"],
           "title": "BaseBranchReviewTarget",
           "type": "object"
         },
@@ -3188,23 +2480,15 @@
             },
             "title": {
               "description": "Optional human-readable label (e.g., commit subject) for UIs.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "commit"
-              ],
+              "enum": ["commit"],
               "title": "CommitReviewTargetType",
               "type": "string"
             }
           },
-          "required": [
-            "sha",
-            "type"
-          ],
+          "required": ["sha", "type"],
           "title": "CommitReviewTarget",
           "type": "object"
         },
@@ -3215,28 +2499,19 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "custom"
-              ],
+              "enum": ["custom"],
               "title": "CustomReviewTargetType",
               "type": "string"
             }
           },
-          "required": [
-            "instructions",
-            "type"
-          ],
+          "required": ["instructions", "type"],
           "title": "CustomReviewTarget",
           "type": "object"
         }
       ]
     },
     "SandboxMode": {
-      "enum": [
-        "read-only",
-        "workspace-write",
-        "danger-full-access"
-      ],
+      "enum": ["read-only", "workspace-write", "danger-full-access"],
       "type": "string"
     },
     "SandboxPolicy": {
@@ -3244,16 +2519,12 @@
         {
           "properties": {
             "type": {
-              "enum": [
-                "dangerFullAccess"
-              ],
+              "enum": ["dangerFullAccess"],
               "title": "DangerFullAccessSandboxPolicyType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "DangerFullAccessSandboxPolicy",
           "type": "object"
         },
@@ -3264,16 +2535,12 @@
               "type": "boolean"
             },
             "type": {
-              "enum": [
-                "readOnly"
-              ],
+              "enum": ["readOnly"],
               "title": "ReadOnlySandboxPolicyType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "ReadOnlySandboxPolicy",
           "type": "object"
         },
@@ -3288,16 +2555,12 @@
               "default": "restricted"
             },
             "type": {
-              "enum": [
-                "externalSandbox"
-              ],
+              "enum": ["externalSandbox"],
               "title": "ExternalSandboxSandboxPolicyType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "ExternalSandboxSandboxPolicy",
           "type": "object"
         },
@@ -3316,9 +2579,7 @@
               "type": "boolean"
             },
             "type": {
-              "enum": [
-                "workspaceWrite"
-              ],
+              "enum": ["workspaceWrite"],
               "title": "WorkspaceWriteSandboxPolicyType",
               "type": "string"
             },
@@ -3330,9 +2591,7 @@
               "type": "array"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "WorkspaceWriteSandboxPolicy",
           "type": "object"
         }
@@ -3354,10 +2613,7 @@
           "description": "Where the selected root can be resolved."
         }
       },
-      "required": [
-        "id",
-        "location"
-      ],
+      "required": ["id", "location"],
       "type": "object"
     },
     "SendAddCreditsNudgeEmailParams": {
@@ -3366,9 +2622,7 @@
           "$ref": "#/definitions/AddCreditsNudgeCreditType"
         }
       },
-      "required": [
-        "creditType"
-      ],
+      "required": ["creditType"],
       "type": "object"
     },
     "SessionMigration": {
@@ -3380,26 +2634,17 @@
           "type": "string"
         },
         "title": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "cwd",
-        "path"
-      ],
+      "required": ["cwd", "path"],
       "type": "object"
     },
     "Settings": {
       "description": "Settings for a collaboration mode.",
       "properties": {
         "developer_instructions": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "model": {
           "type": "string"
@@ -3415,9 +2660,7 @@
           ]
         }
       },
-      "required": [
-        "model"
-      ],
+      "required": ["model"],
       "type": "object"
     },
     "SkillMigration": {
@@ -3426,9 +2669,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     },
     "SkillsConfigWriteParams": {
@@ -3438,10 +2679,7 @@
         },
         "name": {
           "description": "Name-based selector.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "path": {
           "anyOf": [
@@ -3455,9 +2693,7 @@
           "description": "Path-based selector."
         }
       },
-      "required": [
-        "enabled"
-      ],
+      "required": ["enabled"],
       "type": "object"
     },
     "SkillsExtraRootsSetParams": {
@@ -3469,9 +2705,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "extraRoots"
-      ],
+      "required": ["extraRoots"],
       "type": "object"
     },
     "SkillsListParams": {
@@ -3491,10 +2725,7 @@
       "type": "object"
     },
     "SortDirection": {
-      "enum": [
-        "asc",
-        "desc"
-      ],
+      "enum": ["asc", "desc"],
       "type": "string"
     },
     "SubagentMigration": {
@@ -3503,9 +2734,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     },
     "TextElement": {
@@ -3520,15 +2749,10 @@
         },
         "placeholder": {
           "description": "Optional human-readable placeholder for the element, displayed in the UI.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "byteRange"
-      ],
+      "required": ["byteRange"],
       "type": "object"
     },
     "ThreadApproveGuardianDeniedActionParams": {
@@ -3540,10 +2764,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "event",
-        "threadId"
-      ],
+      "required": ["event", "threadId"],
       "type": "object"
     },
     "ThreadArchiveParams": {
@@ -3552,9 +2773,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadCompactStartParams": {
@@ -3563,9 +2782,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadDeleteParams": {
@@ -3574,9 +2791,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadForkParams": {
@@ -3604,45 +2819,27 @@
           "description": "Override where approval requests are routed for review on this thread and subsequent turns."
         },
         "baseInstructions": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "config": {
           "additionalProperties": true,
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         },
         "cwd": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "developerInstructions": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "ephemeral": {
           "type": "boolean"
         },
         "model": {
           "description": "Configuration overrides for the forked thread, if any.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "modelProvider": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "sandbox": {
           "anyOf": [
@@ -3655,10 +2852,7 @@
           ]
         },
         "serviceTier": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "threadId": {
           "type": "string"
@@ -3675,9 +2869,7 @@
           "description": "Optional client-supplied analytics source classification for this forked thread."
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadGoalClearParams": {
@@ -3686,9 +2878,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadGoalGetParams": {
@@ -3697,18 +2887,13 @@
           "type": "string"
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadGoalSetParams": {
       "properties": {
         "objective": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "status": {
           "anyOf": [
@@ -3725,15 +2910,10 @@
         },
         "tokenBudget": {
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadGoalStatus": {
@@ -3758,10 +2938,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "items",
-        "threadId"
-      ],
+      "required": ["items", "threadId"],
       "type": "object"
     },
     "ThreadListCwdFilter": {
@@ -3781,17 +2958,11 @@
       "properties": {
         "archived": {
           "description": "Optional archived filter; when set to true, only archived threads are returned. If false or null, only non-archived threads are returned.",
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "cursor": {
           "description": "Opaque pagination cursor returned by a previous call.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "cwd": {
           "anyOf": [
@@ -3808,27 +2979,18 @@
           "description": "Optional page size; defaults to a reasonable server-side value.",
           "format": "uint32",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "modelProviders": {
           "description": "Optional provider filter; when set, only sessions recorded under these providers are returned. When present but empty, includes all providers.",
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "searchTerm": {
           "description": "Optional substring filter for the extracted thread title.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "sortDirection": {
           "anyOf": [
@@ -3857,10 +3019,7 @@
           "items": {
             "$ref": "#/definitions/ThreadSourceKind"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "useStateDbOnly": {
           "description": "If true, return from the state DB without scanning JSONL rollouts to repair thread metadata. Omitted or false preserves scan-and-repair behavior.",
@@ -3873,52 +3032,34 @@
       "properties": {
         "cursor": {
           "description": "Opaque pagination cursor returned by a previous call.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "limit": {
           "description": "Optional page size; defaults to no limit.",
           "format": "uint32",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         }
       },
       "type": "object"
     },
     "ThreadMemoryMode": {
-      "enum": [
-        "enabled",
-        "disabled"
-      ],
+      "enum": ["enabled", "disabled"],
       "type": "string"
     },
     "ThreadMetadataGitInfoUpdateParams": {
       "properties": {
         "branch": {
           "description": "Omit to leave the stored branch unchanged, set to `null` to clear it, or provide a non-empty string to replace it.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "originUrl": {
           "description": "Omit to leave the stored origin URL unchanged, set to `null` to clear it, or provide a non-empty string to replace it.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "sha": {
           "description": "Omit to leave the stored commit unchanged, set to `null` to clear it, or provide a non-empty string to replace it.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"
@@ -3940,9 +3081,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadReadParams": {
@@ -3955,9 +3094,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadRealtimeAudioChunk": {
@@ -3967,10 +3104,7 @@
           "type": "string"
         },
         "itemId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "numChannels": {
           "format": "uint16",
@@ -3985,17 +3119,10 @@
         "samplesPerChannel": {
           "format": "uint32",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         }
       },
-      "required": [
-        "data",
-        "numChannels",
-        "sampleRate"
-      ],
+      "required": ["data", "numChannels", "sampleRate"],
       "type": "object"
     },
     "ThreadRealtimeStartTransport": {
@@ -4004,16 +3131,12 @@
         {
           "properties": {
             "type": {
-              "enum": [
-                "websocket"
-              ],
+              "enum": ["websocket"],
               "title": "WebsocketThreadRealtimeStartTransportType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "WebsocketThreadRealtimeStartTransport",
           "type": "object"
         },
@@ -4024,17 +3147,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "webrtc"
-              ],
+              "enum": ["webrtc"],
               "title": "WebrtcThreadRealtimeStartTransportType",
               "type": "string"
             }
           },
-          "required": [
-            "sdp",
-            "type"
-          ],
+          "required": ["sdp", "type"],
           "title": "WebrtcThreadRealtimeStartTransport",
           "type": "object"
         }
@@ -4057,10 +3175,7 @@
           "description": "Optional turn page size.",
           "format": "uint32",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "sortDirection": {
           "anyOf": [
@@ -4101,42 +3216,24 @@
           "description": "Override where approval requests are routed for review on this thread and subsequent turns."
         },
         "baseInstructions": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "config": {
           "additionalProperties": true,
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         },
         "cwd": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "developerInstructions": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "model": {
           "description": "Configuration overrides for the resumed thread, if any.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "modelProvider": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "personality": {
           "anyOf": [
@@ -4159,18 +3256,13 @@
           ]
         },
         "serviceTier": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "threadId": {
           "type": "string"
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadRollbackParams": {
@@ -4186,10 +3278,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "numTurns",
-        "threadId"
-      ],
+      "required": ["numTurns", "threadId"],
       "type": "object"
     },
     "ThreadSetNameParams": {
@@ -4201,10 +3290,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name",
-        "threadId"
-      ],
+      "required": ["name", "threadId"],
       "type": "object"
     },
     "ThreadShellCommandParams": {
@@ -4217,18 +3303,11 @@
           "type": "string"
         }
       },
-      "required": [
-        "command",
-        "threadId"
-      ],
+      "required": ["command", "threadId"],
       "type": "object"
     },
     "ThreadSortKey": {
-      "enum": [
-        "created_at",
-        "updated_at",
-        "recency_at"
-      ],
+      "enum": ["created_at", "updated_at", "recency_at"],
       "type": "string"
     },
     "ThreadSource": {
@@ -4273,47 +3352,26 @@
           "description": "Override where approval requests are routed for review on this thread and subsequent turns."
         },
         "baseInstructions": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "config": {
           "additionalProperties": true,
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         },
         "cwd": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "developerInstructions": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "ephemeral": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "model": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "modelProvider": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "personality": {
           "anyOf": [
@@ -4336,16 +3394,10 @@
           ]
         },
         "serviceName": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "serviceTier": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "sessionStartSource": {
           "anyOf": [
@@ -4372,10 +3424,7 @@
       "type": "object"
     },
     "ThreadStartSource": {
-      "enum": [
-        "startup",
-        "clear"
-      ],
+      "enum": ["startup", "clear"],
       "type": "string"
     },
     "ThreadUnarchiveParams": {
@@ -4384,9 +3433,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "ThreadUnsubscribeParams": {
@@ -4395,9 +3442,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "threadId"
-      ],
+      "required": ["threadId"],
       "type": "object"
     },
     "TurnEnvironmentParams": {
@@ -4409,10 +3454,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "cwd",
-        "environmentId"
-      ],
+      "required": ["cwd", "environmentId"],
       "type": "object"
     },
     "TurnInterruptParams": {
@@ -4424,33 +3466,24 @@
           "type": "string"
         }
       },
-      "required": [
-        "threadId",
-        "turnId"
-      ],
+      "required": ["threadId", "turnId"],
       "type": "object"
     },
     "TurnItemsView": {
       "oneOf": [
         {
           "description": "`items` was not loaded for this turn. The field is intentionally empty.",
-          "enum": [
-            "notLoaded"
-          ],
+          "enum": ["notLoaded"],
           "type": "string"
         },
         {
           "description": "`items` contains only a display summary for this turn.",
-          "enum": [
-            "summary"
-          ],
+          "enum": ["summary"],
           "type": "string"
         },
         {
           "description": "`items` contains every ThreadItem available from persisted app-server history for this turn.",
-          "enum": [
-            "full"
-          ],
+          "enum": ["full"],
           "type": "string"
         }
       ]
@@ -4480,17 +3513,11 @@
           "description": "Override where approval requests are routed for review on this turn and subsequent turns."
         },
         "clientUserMessageId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "cwd": {
           "description": "Override the working directory for this turn and subsequent turns.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "effort": {
           "anyOf": [
@@ -4511,10 +3538,7 @@
         },
         "model": {
           "description": "Override the model for this turn and subsequent turns.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "outputSchema": {
           "description": "Optional JSON Schema used to constrain the final assistant message for this turn."
@@ -4543,10 +3567,7 @@
         },
         "serviceTier": {
           "description": "Override the service tier for this turn and subsequent turns.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "summary": {
           "anyOf": [
@@ -4563,19 +3584,13 @@
           "type": "string"
         }
       },
-      "required": [
-        "input",
-        "threadId"
-      ],
+      "required": ["input", "threadId"],
       "type": "object"
     },
     "TurnSteerParams": {
       "properties": {
         "clientUserMessageId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "expectedTurnId": {
           "description": "Required active turn id precondition. The request fails when it does not match the currently active turn.",
@@ -4591,11 +3606,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "expectedTurnId",
-        "input",
-        "threadId"
-      ],
+      "required": ["expectedTurnId", "input", "threadId"],
       "type": "object"
     },
     "UserInput": {
@@ -4614,17 +3625,12 @@
               "type": "array"
             },
             "type": {
-              "enum": [
-                "text"
-              ],
+              "enum": ["text"],
               "title": "TextUserInputType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "TextUserInput",
           "type": "object"
         },
@@ -4642,9 +3648,7 @@
               "default": null
             },
             "type": {
-              "enum": [
-                "image"
-              ],
+              "enum": ["image"],
               "title": "ImageUserInputType",
               "type": "string"
             },
@@ -4652,10 +3656,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "type",
-            "url"
-          ],
+          "required": ["type", "url"],
           "title": "ImageUserInput",
           "type": "object"
         },
@@ -4676,17 +3677,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "localImage"
-              ],
+              "enum": ["localImage"],
               "title": "LocalImageUserInputType",
               "type": "string"
             }
           },
-          "required": [
-            "path",
-            "type"
-          ],
+          "required": ["path", "type"],
           "title": "LocalImageUserInput",
           "type": "object"
         },
@@ -4699,18 +3695,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "skill"
-              ],
+              "enum": ["skill"],
               "title": "SkillUserInputType",
               "type": "string"
             }
           },
-          "required": [
-            "name",
-            "path",
-            "type"
-          ],
+          "required": ["name", "path", "type"],
           "title": "SkillUserInput",
           "type": "object"
         },
@@ -4723,28 +3713,19 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "mention"
-              ],
+              "enum": ["mention"],
               "title": "MentionUserInputType",
               "type": "string"
             }
           },
-          "required": [
-            "name",
-            "path",
-            "type"
-          ],
+          "required": ["name", "path", "type"],
           "title": "MentionUserInput",
           "type": "object"
         }
       ]
     },
     "WindowsSandboxSetupMode": {
-      "enum": [
-        "elevated",
-        "unelevated"
-      ],
+      "enum": ["elevated", "unelevated"],
       "type": "string"
     },
     "WindowsSandboxSetupStartParams": {
@@ -4763,9 +3744,7 @@
           "$ref": "#/definitions/WindowsSandboxSetupMode"
         }
       },
-      "required": [
-        "mode"
-      ],
+      "required": ["mode"],
       "type": "object"
     }
   },
@@ -4777,9 +3756,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "initialize"
-          ],
+          "enum": ["initialize"],
           "title": "InitializeRequestMethod",
           "type": "string"
         },
@@ -4787,11 +3764,7 @@
           "$ref": "#/definitions/InitializeParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "InitializeRequest",
       "type": "object"
     },
@@ -4802,9 +3775,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/start"
-          ],
+          "enum": ["thread/start"],
           "title": "Thread/startRequestMethod",
           "type": "string"
         },
@@ -4812,11 +3783,7 @@
           "$ref": "#/definitions/ThreadStartParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/startRequest",
       "type": "object"
     },
@@ -4826,9 +3793,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/resume"
-          ],
+          "enum": ["thread/resume"],
           "title": "Thread/resumeRequestMethod",
           "type": "string"
         },
@@ -4836,11 +3801,7 @@
           "$ref": "#/definitions/ThreadResumeParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/resumeRequest",
       "type": "object"
     },
@@ -4850,9 +3811,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/fork"
-          ],
+          "enum": ["thread/fork"],
           "title": "Thread/forkRequestMethod",
           "type": "string"
         },
@@ -4860,11 +3819,7 @@
           "$ref": "#/definitions/ThreadForkParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/forkRequest",
       "type": "object"
     },
@@ -4874,9 +3829,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/archive"
-          ],
+          "enum": ["thread/archive"],
           "title": "Thread/archiveRequestMethod",
           "type": "string"
         },
@@ -4884,11 +3837,7 @@
           "$ref": "#/definitions/ThreadArchiveParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/archiveRequest",
       "type": "object"
     },
@@ -4898,9 +3847,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/delete"
-          ],
+          "enum": ["thread/delete"],
           "title": "Thread/deleteRequestMethod",
           "type": "string"
         },
@@ -4908,11 +3855,7 @@
           "$ref": "#/definitions/ThreadDeleteParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/deleteRequest",
       "type": "object"
     },
@@ -4922,9 +3865,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/unsubscribe"
-          ],
+          "enum": ["thread/unsubscribe"],
           "title": "Thread/unsubscribeRequestMethod",
           "type": "string"
         },
@@ -4932,11 +3873,7 @@
           "$ref": "#/definitions/ThreadUnsubscribeParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/unsubscribeRequest",
       "type": "object"
     },
@@ -4946,9 +3883,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/name/set"
-          ],
+          "enum": ["thread/name/set"],
           "title": "Thread/name/setRequestMethod",
           "type": "string"
         },
@@ -4956,11 +3891,7 @@
           "$ref": "#/definitions/ThreadSetNameParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/name/setRequest",
       "type": "object"
     },
@@ -4970,9 +3901,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/goal/set"
-          ],
+          "enum": ["thread/goal/set"],
           "title": "Thread/goal/setRequestMethod",
           "type": "string"
         },
@@ -4980,11 +3909,7 @@
           "$ref": "#/definitions/ThreadGoalSetParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/goal/setRequest",
       "type": "object"
     },
@@ -4994,9 +3919,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/goal/get"
-          ],
+          "enum": ["thread/goal/get"],
           "title": "Thread/goal/getRequestMethod",
           "type": "string"
         },
@@ -5004,11 +3927,7 @@
           "$ref": "#/definitions/ThreadGoalGetParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/goal/getRequest",
       "type": "object"
     },
@@ -5018,9 +3937,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/goal/clear"
-          ],
+          "enum": ["thread/goal/clear"],
           "title": "Thread/goal/clearRequestMethod",
           "type": "string"
         },
@@ -5028,11 +3945,7 @@
           "$ref": "#/definitions/ThreadGoalClearParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/goal/clearRequest",
       "type": "object"
     },
@@ -5042,9 +3955,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/metadata/update"
-          ],
+          "enum": ["thread/metadata/update"],
           "title": "Thread/metadata/updateRequestMethod",
           "type": "string"
         },
@@ -5052,11 +3963,7 @@
           "$ref": "#/definitions/ThreadMetadataUpdateParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/metadata/updateRequest",
       "type": "object"
     },
@@ -5066,9 +3973,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/unarchive"
-          ],
+          "enum": ["thread/unarchive"],
           "title": "Thread/unarchiveRequestMethod",
           "type": "string"
         },
@@ -5076,11 +3981,7 @@
           "$ref": "#/definitions/ThreadUnarchiveParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/unarchiveRequest",
       "type": "object"
     },
@@ -5090,9 +3991,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/compact/start"
-          ],
+          "enum": ["thread/compact/start"],
           "title": "Thread/compact/startRequestMethod",
           "type": "string"
         },
@@ -5100,11 +3999,7 @@
           "$ref": "#/definitions/ThreadCompactStartParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/compact/startRequest",
       "type": "object"
     },
@@ -5114,9 +4009,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/shellCommand"
-          ],
+          "enum": ["thread/shellCommand"],
           "title": "Thread/shellCommandRequestMethod",
           "type": "string"
         },
@@ -5124,11 +4017,7 @@
           "$ref": "#/definitions/ThreadShellCommandParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/shellCommandRequest",
       "type": "object"
     },
@@ -5138,9 +4027,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/approveGuardianDeniedAction"
-          ],
+          "enum": ["thread/approveGuardianDeniedAction"],
           "title": "Thread/approveGuardianDeniedActionRequestMethod",
           "type": "string"
         },
@@ -5148,11 +4035,7 @@
           "$ref": "#/definitions/ThreadApproveGuardianDeniedActionParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/approveGuardianDeniedActionRequest",
       "type": "object"
     },
@@ -5162,9 +4045,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/rollback"
-          ],
+          "enum": ["thread/rollback"],
           "title": "Thread/rollbackRequestMethod",
           "type": "string"
         },
@@ -5172,11 +4053,7 @@
           "$ref": "#/definitions/ThreadRollbackParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/rollbackRequest",
       "type": "object"
     },
@@ -5186,9 +4063,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/list"
-          ],
+          "enum": ["thread/list"],
           "title": "Thread/listRequestMethod",
           "type": "string"
         },
@@ -5196,11 +4071,7 @@
           "$ref": "#/definitions/ThreadListParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/listRequest",
       "type": "object"
     },
@@ -5210,9 +4081,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/loaded/list"
-          ],
+          "enum": ["thread/loaded/list"],
           "title": "Thread/loaded/listRequestMethod",
           "type": "string"
         },
@@ -5220,11 +4089,7 @@
           "$ref": "#/definitions/ThreadLoadedListParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/loaded/listRequest",
       "type": "object"
     },
@@ -5234,9 +4099,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/read"
-          ],
+          "enum": ["thread/read"],
           "title": "Thread/readRequestMethod",
           "type": "string"
         },
@@ -5244,11 +4107,7 @@
           "$ref": "#/definitions/ThreadReadParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/readRequest",
       "type": "object"
     },
@@ -5259,9 +4118,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "thread/inject_items"
-          ],
+          "enum": ["thread/inject_items"],
           "title": "Thread/injectItemsRequestMethod",
           "type": "string"
         },
@@ -5269,11 +4126,7 @@
           "$ref": "#/definitions/ThreadInjectItemsParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Thread/injectItemsRequest",
       "type": "object"
     },
@@ -5283,9 +4136,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "skills/list"
-          ],
+          "enum": ["skills/list"],
           "title": "Skills/listRequestMethod",
           "type": "string"
         },
@@ -5293,11 +4144,7 @@
           "$ref": "#/definitions/SkillsListParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Skills/listRequest",
       "type": "object"
     },
@@ -5307,9 +4154,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "skills/extraRoots/set"
-          ],
+          "enum": ["skills/extraRoots/set"],
           "title": "Skills/extraRoots/setRequestMethod",
           "type": "string"
         },
@@ -5317,11 +4162,7 @@
           "$ref": "#/definitions/SkillsExtraRootsSetParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Skills/extraRoots/setRequest",
       "type": "object"
     },
@@ -5331,9 +4172,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "hooks/list"
-          ],
+          "enum": ["hooks/list"],
           "title": "Hooks/listRequestMethod",
           "type": "string"
         },
@@ -5341,11 +4180,7 @@
           "$ref": "#/definitions/HooksListParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Hooks/listRequest",
       "type": "object"
     },
@@ -5355,9 +4190,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "marketplace/add"
-          ],
+          "enum": ["marketplace/add"],
           "title": "Marketplace/addRequestMethod",
           "type": "string"
         },
@@ -5365,11 +4198,7 @@
           "$ref": "#/definitions/MarketplaceAddParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Marketplace/addRequest",
       "type": "object"
     },
@@ -5379,9 +4208,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "marketplace/remove"
-          ],
+          "enum": ["marketplace/remove"],
           "title": "Marketplace/removeRequestMethod",
           "type": "string"
         },
@@ -5389,11 +4216,7 @@
           "$ref": "#/definitions/MarketplaceRemoveParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Marketplace/removeRequest",
       "type": "object"
     },
@@ -5403,9 +4226,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "marketplace/upgrade"
-          ],
+          "enum": ["marketplace/upgrade"],
           "title": "Marketplace/upgradeRequestMethod",
           "type": "string"
         },
@@ -5413,11 +4234,7 @@
           "$ref": "#/definitions/MarketplaceUpgradeParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Marketplace/upgradeRequest",
       "type": "object"
     },
@@ -5427,9 +4244,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/list"
-          ],
+          "enum": ["plugin/list"],
           "title": "Plugin/listRequestMethod",
           "type": "string"
         },
@@ -5437,11 +4252,7 @@
           "$ref": "#/definitions/PluginListParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/listRequest",
       "type": "object"
     },
@@ -5451,9 +4262,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/installed"
-          ],
+          "enum": ["plugin/installed"],
           "title": "Plugin/installedRequestMethod",
           "type": "string"
         },
@@ -5461,11 +4270,7 @@
           "$ref": "#/definitions/PluginInstalledParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/installedRequest",
       "type": "object"
     },
@@ -5475,9 +4280,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/read"
-          ],
+          "enum": ["plugin/read"],
           "title": "Plugin/readRequestMethod",
           "type": "string"
         },
@@ -5485,11 +4288,7 @@
           "$ref": "#/definitions/PluginReadParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/readRequest",
       "type": "object"
     },
@@ -5499,9 +4298,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/skill/read"
-          ],
+          "enum": ["plugin/skill/read"],
           "title": "Plugin/skill/readRequestMethod",
           "type": "string"
         },
@@ -5509,11 +4306,7 @@
           "$ref": "#/definitions/PluginSkillReadParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/skill/readRequest",
       "type": "object"
     },
@@ -5523,9 +4316,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/share/save"
-          ],
+          "enum": ["plugin/share/save"],
           "title": "Plugin/share/saveRequestMethod",
           "type": "string"
         },
@@ -5533,11 +4324,7 @@
           "$ref": "#/definitions/PluginShareSaveParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/share/saveRequest",
       "type": "object"
     },
@@ -5547,9 +4334,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/share/updateTargets"
-          ],
+          "enum": ["plugin/share/updateTargets"],
           "title": "Plugin/share/updateTargetsRequestMethod",
           "type": "string"
         },
@@ -5557,11 +4342,7 @@
           "$ref": "#/definitions/PluginShareUpdateTargetsParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/share/updateTargetsRequest",
       "type": "object"
     },
@@ -5571,9 +4352,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/share/list"
-          ],
+          "enum": ["plugin/share/list"],
           "title": "Plugin/share/listRequestMethod",
           "type": "string"
         },
@@ -5581,11 +4360,7 @@
           "$ref": "#/definitions/PluginShareListParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/share/listRequest",
       "type": "object"
     },
@@ -5595,9 +4370,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/share/checkout"
-          ],
+          "enum": ["plugin/share/checkout"],
           "title": "Plugin/share/checkoutRequestMethod",
           "type": "string"
         },
@@ -5605,11 +4378,7 @@
           "$ref": "#/definitions/PluginShareCheckoutParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/share/checkoutRequest",
       "type": "object"
     },
@@ -5619,9 +4388,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/share/delete"
-          ],
+          "enum": ["plugin/share/delete"],
           "title": "Plugin/share/deleteRequestMethod",
           "type": "string"
         },
@@ -5629,11 +4396,7 @@
           "$ref": "#/definitions/PluginShareDeleteParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/share/deleteRequest",
       "type": "object"
     },
@@ -5643,9 +4406,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "app/list"
-          ],
+          "enum": ["app/list"],
           "title": "App/listRequestMethod",
           "type": "string"
         },
@@ -5653,11 +4414,7 @@
           "$ref": "#/definitions/AppsListParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "App/listRequest",
       "type": "object"
     },
@@ -5667,9 +4424,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "fs/readFile"
-          ],
+          "enum": ["fs/readFile"],
           "title": "Fs/readFileRequestMethod",
           "type": "string"
         },
@@ -5677,11 +4432,7 @@
           "$ref": "#/definitions/FsReadFileParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Fs/readFileRequest",
       "type": "object"
     },
@@ -5691,9 +4442,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "fs/writeFile"
-          ],
+          "enum": ["fs/writeFile"],
           "title": "Fs/writeFileRequestMethod",
           "type": "string"
         },
@@ -5701,11 +4450,7 @@
           "$ref": "#/definitions/FsWriteFileParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Fs/writeFileRequest",
       "type": "object"
     },
@@ -5715,9 +4460,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "fs/createDirectory"
-          ],
+          "enum": ["fs/createDirectory"],
           "title": "Fs/createDirectoryRequestMethod",
           "type": "string"
         },
@@ -5725,11 +4468,7 @@
           "$ref": "#/definitions/FsCreateDirectoryParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Fs/createDirectoryRequest",
       "type": "object"
     },
@@ -5739,9 +4478,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "fs/getMetadata"
-          ],
+          "enum": ["fs/getMetadata"],
           "title": "Fs/getMetadataRequestMethod",
           "type": "string"
         },
@@ -5749,11 +4486,7 @@
           "$ref": "#/definitions/FsGetMetadataParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Fs/getMetadataRequest",
       "type": "object"
     },
@@ -5763,9 +4496,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "fs/readDirectory"
-          ],
+          "enum": ["fs/readDirectory"],
           "title": "Fs/readDirectoryRequestMethod",
           "type": "string"
         },
@@ -5773,11 +4504,7 @@
           "$ref": "#/definitions/FsReadDirectoryParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Fs/readDirectoryRequest",
       "type": "object"
     },
@@ -5787,9 +4514,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "fs/remove"
-          ],
+          "enum": ["fs/remove"],
           "title": "Fs/removeRequestMethod",
           "type": "string"
         },
@@ -5797,11 +4522,7 @@
           "$ref": "#/definitions/FsRemoveParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Fs/removeRequest",
       "type": "object"
     },
@@ -5811,9 +4532,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "fs/copy"
-          ],
+          "enum": ["fs/copy"],
           "title": "Fs/copyRequestMethod",
           "type": "string"
         },
@@ -5821,11 +4540,7 @@
           "$ref": "#/definitions/FsCopyParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Fs/copyRequest",
       "type": "object"
     },
@@ -5835,9 +4550,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "fs/watch"
-          ],
+          "enum": ["fs/watch"],
           "title": "Fs/watchRequestMethod",
           "type": "string"
         },
@@ -5845,11 +4558,7 @@
           "$ref": "#/definitions/FsWatchParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Fs/watchRequest",
       "type": "object"
     },
@@ -5859,9 +4568,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "fs/unwatch"
-          ],
+          "enum": ["fs/unwatch"],
           "title": "Fs/unwatchRequestMethod",
           "type": "string"
         },
@@ -5869,11 +4576,7 @@
           "$ref": "#/definitions/FsUnwatchParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Fs/unwatchRequest",
       "type": "object"
     },
@@ -5883,9 +4586,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "skills/config/write"
-          ],
+          "enum": ["skills/config/write"],
           "title": "Skills/config/writeRequestMethod",
           "type": "string"
         },
@@ -5893,11 +4594,7 @@
           "$ref": "#/definitions/SkillsConfigWriteParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Skills/config/writeRequest",
       "type": "object"
     },
@@ -5907,9 +4604,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/install"
-          ],
+          "enum": ["plugin/install"],
           "title": "Plugin/installRequestMethod",
           "type": "string"
         },
@@ -5917,11 +4612,7 @@
           "$ref": "#/definitions/PluginInstallParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/installRequest",
       "type": "object"
     },
@@ -5931,9 +4622,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "plugin/uninstall"
-          ],
+          "enum": ["plugin/uninstall"],
           "title": "Plugin/uninstallRequestMethod",
           "type": "string"
         },
@@ -5941,11 +4630,7 @@
           "$ref": "#/definitions/PluginUninstallParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Plugin/uninstallRequest",
       "type": "object"
     },
@@ -5955,9 +4640,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "turn/start"
-          ],
+          "enum": ["turn/start"],
           "title": "Turn/startRequestMethod",
           "type": "string"
         },
@@ -5965,11 +4648,7 @@
           "$ref": "#/definitions/TurnStartParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Turn/startRequest",
       "type": "object"
     },
@@ -5979,9 +4658,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "turn/steer"
-          ],
+          "enum": ["turn/steer"],
           "title": "Turn/steerRequestMethod",
           "type": "string"
         },
@@ -5989,11 +4666,7 @@
           "$ref": "#/definitions/TurnSteerParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Turn/steerRequest",
       "type": "object"
     },
@@ -6003,9 +4676,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "turn/interrupt"
-          ],
+          "enum": ["turn/interrupt"],
           "title": "Turn/interruptRequestMethod",
           "type": "string"
         },
@@ -6013,11 +4684,7 @@
           "$ref": "#/definitions/TurnInterruptParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Turn/interruptRequest",
       "type": "object"
     },
@@ -6027,9 +4694,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "review/start"
-          ],
+          "enum": ["review/start"],
           "title": "Review/startRequestMethod",
           "type": "string"
         },
@@ -6037,11 +4702,7 @@
           "$ref": "#/definitions/ReviewStartParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Review/startRequest",
       "type": "object"
     },
@@ -6051,9 +4712,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "model/list"
-          ],
+          "enum": ["model/list"],
           "title": "Model/listRequestMethod",
           "type": "string"
         },
@@ -6061,11 +4720,7 @@
           "$ref": "#/definitions/ModelListParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Model/listRequest",
       "type": "object"
     },
@@ -6075,9 +4730,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "modelProvider/capabilities/read"
-          ],
+          "enum": ["modelProvider/capabilities/read"],
           "title": "ModelProvider/capabilities/readRequestMethod",
           "type": "string"
         },
@@ -6085,11 +4738,7 @@
           "$ref": "#/definitions/ModelProviderCapabilitiesReadParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "ModelProvider/capabilities/readRequest",
       "type": "object"
     },
@@ -6099,9 +4748,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "experimentalFeature/list"
-          ],
+          "enum": ["experimentalFeature/list"],
           "title": "ExperimentalFeature/listRequestMethod",
           "type": "string"
         },
@@ -6109,11 +4756,7 @@
           "$ref": "#/definitions/ExperimentalFeatureListParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "ExperimentalFeature/listRequest",
       "type": "object"
     },
@@ -6123,9 +4766,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "permissionProfile/list"
-          ],
+          "enum": ["permissionProfile/list"],
           "title": "PermissionProfile/listRequestMethod",
           "type": "string"
         },
@@ -6133,11 +4774,7 @@
           "$ref": "#/definitions/PermissionProfileListParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "PermissionProfile/listRequest",
       "type": "object"
     },
@@ -6147,9 +4784,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "experimentalFeature/enablement/set"
-          ],
+          "enum": ["experimentalFeature/enablement/set"],
           "title": "ExperimentalFeature/enablement/setRequestMethod",
           "type": "string"
         },
@@ -6157,11 +4792,7 @@
           "$ref": "#/definitions/ExperimentalFeatureEnablementSetParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "ExperimentalFeature/enablement/setRequest",
       "type": "object"
     },
@@ -6171,9 +4802,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "mcpServer/oauth/login"
-          ],
+          "enum": ["mcpServer/oauth/login"],
           "title": "McpServer/oauth/loginRequestMethod",
           "type": "string"
         },
@@ -6181,11 +4810,7 @@
           "$ref": "#/definitions/McpServerOauthLoginParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "McpServer/oauth/loginRequest",
       "type": "object"
     },
@@ -6195,9 +4820,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "config/mcpServer/reload"
-          ],
+          "enum": ["config/mcpServer/reload"],
           "title": "Config/mcpServer/reloadRequestMethod",
           "type": "string"
         },
@@ -6205,10 +4828,7 @@
           "type": "null"
         }
       },
-      "required": [
-        "id",
-        "method"
-      ],
+      "required": ["id", "method"],
       "title": "Config/mcpServer/reloadRequest",
       "type": "object"
     },
@@ -6218,9 +4838,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "mcpServerStatus/list"
-          ],
+          "enum": ["mcpServerStatus/list"],
           "title": "McpServerStatus/listRequestMethod",
           "type": "string"
         },
@@ -6228,11 +4846,7 @@
           "$ref": "#/definitions/ListMcpServerStatusParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "McpServerStatus/listRequest",
       "type": "object"
     },
@@ -6242,9 +4856,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "mcpServer/resource/read"
-          ],
+          "enum": ["mcpServer/resource/read"],
           "title": "McpServer/resource/readRequestMethod",
           "type": "string"
         },
@@ -6252,11 +4864,7 @@
           "$ref": "#/definitions/McpResourceReadParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "McpServer/resource/readRequest",
       "type": "object"
     },
@@ -6266,9 +4874,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "mcpServer/tool/call"
-          ],
+          "enum": ["mcpServer/tool/call"],
           "title": "McpServer/tool/callRequestMethod",
           "type": "string"
         },
@@ -6276,11 +4882,7 @@
           "$ref": "#/definitions/McpServerToolCallParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "McpServer/tool/callRequest",
       "type": "object"
     },
@@ -6290,9 +4892,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "windowsSandbox/setupStart"
-          ],
+          "enum": ["windowsSandbox/setupStart"],
           "title": "WindowsSandbox/setupStartRequestMethod",
           "type": "string"
         },
@@ -6300,11 +4900,7 @@
           "$ref": "#/definitions/WindowsSandboxSetupStartParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "WindowsSandbox/setupStartRequest",
       "type": "object"
     },
@@ -6314,9 +4910,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "windowsSandbox/readiness"
-          ],
+          "enum": ["windowsSandbox/readiness"],
           "title": "WindowsSandbox/readinessRequestMethod",
           "type": "string"
         },
@@ -6324,10 +4918,7 @@
           "type": "null"
         }
       },
-      "required": [
-        "id",
-        "method"
-      ],
+      "required": ["id", "method"],
       "title": "WindowsSandbox/readinessRequest",
       "type": "object"
     },
@@ -6337,9 +4928,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "account/login/start"
-          ],
+          "enum": ["account/login/start"],
           "title": "Account/login/startRequestMethod",
           "type": "string"
         },
@@ -6347,11 +4936,7 @@
           "$ref": "#/definitions/LoginAccountParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Account/login/startRequest",
       "type": "object"
     },
@@ -6361,9 +4946,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "account/login/cancel"
-          ],
+          "enum": ["account/login/cancel"],
           "title": "Account/login/cancelRequestMethod",
           "type": "string"
         },
@@ -6371,11 +4954,7 @@
           "$ref": "#/definitions/CancelLoginAccountParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Account/login/cancelRequest",
       "type": "object"
     },
@@ -6385,9 +4964,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "account/logout"
-          ],
+          "enum": ["account/logout"],
           "title": "Account/logoutRequestMethod",
           "type": "string"
         },
@@ -6395,10 +4972,7 @@
           "type": "null"
         }
       },
-      "required": [
-        "id",
-        "method"
-      ],
+      "required": ["id", "method"],
       "title": "Account/logoutRequest",
       "type": "object"
     },
@@ -6408,9 +4982,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "account/rateLimits/read"
-          ],
+          "enum": ["account/rateLimits/read"],
           "title": "Account/rateLimits/readRequestMethod",
           "type": "string"
         },
@@ -6418,10 +4990,7 @@
           "type": "null"
         }
       },
-      "required": [
-        "id",
-        "method"
-      ],
+      "required": ["id", "method"],
       "title": "Account/rateLimits/readRequest",
       "type": "object"
     },
@@ -6431,9 +5000,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "account/rateLimitResetCredit/consume"
-          ],
+          "enum": ["account/rateLimitResetCredit/consume"],
           "title": "Account/rateLimitResetCredit/consumeRequestMethod",
           "type": "string"
         },
@@ -6441,11 +5008,7 @@
           "$ref": "#/definitions/ConsumeAccountRateLimitResetCreditParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Account/rateLimitResetCredit/consumeRequest",
       "type": "object"
     },
@@ -6455,9 +5018,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "account/usage/read"
-          ],
+          "enum": ["account/usage/read"],
           "title": "Account/usage/readRequestMethod",
           "type": "string"
         },
@@ -6465,10 +5026,7 @@
           "type": "null"
         }
       },
-      "required": [
-        "id",
-        "method"
-      ],
+      "required": ["id", "method"],
       "title": "Account/usage/readRequest",
       "type": "object"
     },
@@ -6478,9 +5036,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "account/workspaceMessages/read"
-          ],
+          "enum": ["account/workspaceMessages/read"],
           "title": "Account/workspaceMessages/readRequestMethod",
           "type": "string"
         },
@@ -6488,10 +5044,7 @@
           "type": "null"
         }
       },
-      "required": [
-        "id",
-        "method"
-      ],
+      "required": ["id", "method"],
       "title": "Account/workspaceMessages/readRequest",
       "type": "object"
     },
@@ -6501,9 +5054,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "account/sendAddCreditsNudgeEmail"
-          ],
+          "enum": ["account/sendAddCreditsNudgeEmail"],
           "title": "Account/sendAddCreditsNudgeEmailRequestMethod",
           "type": "string"
         },
@@ -6511,11 +5062,7 @@
           "$ref": "#/definitions/SendAddCreditsNudgeEmailParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Account/sendAddCreditsNudgeEmailRequest",
       "type": "object"
     },
@@ -6525,9 +5072,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "feedback/upload"
-          ],
+          "enum": ["feedback/upload"],
           "title": "Feedback/uploadRequestMethod",
           "type": "string"
         },
@@ -6535,11 +5080,7 @@
           "$ref": "#/definitions/FeedbackUploadParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Feedback/uploadRequest",
       "type": "object"
     },
@@ -6550,9 +5091,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "command/exec"
-          ],
+          "enum": ["command/exec"],
           "title": "Command/execRequestMethod",
           "type": "string"
         },
@@ -6560,11 +5099,7 @@
           "$ref": "#/definitions/CommandExecParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Command/execRequest",
       "type": "object"
     },
@@ -6575,9 +5110,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "command/exec/write"
-          ],
+          "enum": ["command/exec/write"],
           "title": "Command/exec/writeRequestMethod",
           "type": "string"
         },
@@ -6585,11 +5118,7 @@
           "$ref": "#/definitions/CommandExecWriteParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Command/exec/writeRequest",
       "type": "object"
     },
@@ -6600,9 +5129,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "command/exec/terminate"
-          ],
+          "enum": ["command/exec/terminate"],
           "title": "Command/exec/terminateRequestMethod",
           "type": "string"
         },
@@ -6610,11 +5137,7 @@
           "$ref": "#/definitions/CommandExecTerminateParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Command/exec/terminateRequest",
       "type": "object"
     },
@@ -6625,9 +5148,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "command/exec/resize"
-          ],
+          "enum": ["command/exec/resize"],
           "title": "Command/exec/resizeRequestMethod",
           "type": "string"
         },
@@ -6635,11 +5156,7 @@
           "$ref": "#/definitions/CommandExecResizeParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Command/exec/resizeRequest",
       "type": "object"
     },
@@ -6649,9 +5166,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "config/read"
-          ],
+          "enum": ["config/read"],
           "title": "Config/readRequestMethod",
           "type": "string"
         },
@@ -6659,11 +5174,7 @@
           "$ref": "#/definitions/ConfigReadParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Config/readRequest",
       "type": "object"
     },
@@ -6673,9 +5184,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "externalAgentConfig/detect"
-          ],
+          "enum": ["externalAgentConfig/detect"],
           "title": "ExternalAgentConfig/detectRequestMethod",
           "type": "string"
         },
@@ -6683,11 +5192,7 @@
           "$ref": "#/definitions/ExternalAgentConfigDetectParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "ExternalAgentConfig/detectRequest",
       "type": "object"
     },
@@ -6697,9 +5202,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "externalAgentConfig/import"
-          ],
+          "enum": ["externalAgentConfig/import"],
           "title": "ExternalAgentConfig/importRequestMethod",
           "type": "string"
         },
@@ -6707,11 +5210,7 @@
           "$ref": "#/definitions/ExternalAgentConfigImportParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "ExternalAgentConfig/importRequest",
       "type": "object"
     },
@@ -6721,9 +5220,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "externalAgentConfig/import/readHistories"
-          ],
+          "enum": ["externalAgentConfig/import/readHistories"],
           "title": "ExternalAgentConfig/import/readHistoriesRequestMethod",
           "type": "string"
         },
@@ -6731,10 +5228,7 @@
           "type": "null"
         }
       },
-      "required": [
-        "id",
-        "method"
-      ],
+      "required": ["id", "method"],
       "title": "ExternalAgentConfig/import/readHistoriesRequest",
       "type": "object"
     },
@@ -6744,9 +5238,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "config/value/write"
-          ],
+          "enum": ["config/value/write"],
           "title": "Config/value/writeRequestMethod",
           "type": "string"
         },
@@ -6754,11 +5246,7 @@
           "$ref": "#/definitions/ConfigValueWriteParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Config/value/writeRequest",
       "type": "object"
     },
@@ -6768,9 +5256,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "config/batchWrite"
-          ],
+          "enum": ["config/batchWrite"],
           "title": "Config/batchWriteRequestMethod",
           "type": "string"
         },
@@ -6778,11 +5264,7 @@
           "$ref": "#/definitions/ConfigBatchWriteParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Config/batchWriteRequest",
       "type": "object"
     },
@@ -6792,9 +5274,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "configRequirements/read"
-          ],
+          "enum": ["configRequirements/read"],
           "title": "ConfigRequirements/readRequestMethod",
           "type": "string"
         },
@@ -6802,10 +5282,7 @@
           "type": "null"
         }
       },
-      "required": [
-        "id",
-        "method"
-      ],
+      "required": ["id", "method"],
       "title": "ConfigRequirements/readRequest",
       "type": "object"
     },
@@ -6815,9 +5292,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "account/read"
-          ],
+          "enum": ["account/read"],
           "title": "Account/readRequestMethod",
           "type": "string"
         },
@@ -6825,11 +5300,7 @@
           "$ref": "#/definitions/GetAccountParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "Account/readRequest",
       "type": "object"
     },
@@ -6839,9 +5310,7 @@
           "$ref": "#/definitions/RequestId"
         },
         "method": {
-          "enum": [
-            "fuzzyFileSearch"
-          ],
+          "enum": ["fuzzyFileSearch"],
           "title": "FuzzyFileSearchRequestMethod",
           "type": "string"
         },
@@ -6849,11 +5318,7 @@
           "$ref": "#/definitions/FuzzyFileSearchParams"
         }
       },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["id", "method", "params"],
       "title": "FuzzyFileSearchRequest",
       "type": "object"
     }

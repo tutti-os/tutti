@@ -2,9 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "ModelRerouteReason": {
-      "enum": [
-        "highRiskCyberActivity"
-      ],
+      "enum": ["highRiskCyberActivity"],
       "type": "string"
     }
   },
@@ -25,13 +23,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "fromModel",
-    "reason",
-    "threadId",
-    "toModel",
-    "turnId"
-  ],
+  "required": ["fromModel", "reason", "threadId", "toModel", "turnId"],
   "title": "ModelReroutedNotification",
   "type": "object"
 }

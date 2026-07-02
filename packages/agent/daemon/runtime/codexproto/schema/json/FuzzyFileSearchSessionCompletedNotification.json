@@ -5,9 +5,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "sessionId"
-  ],
+  "required": ["sessionId"],
   "title": "FuzzyFileSearchSessionCompletedNotification",
   "type": "object"
 }

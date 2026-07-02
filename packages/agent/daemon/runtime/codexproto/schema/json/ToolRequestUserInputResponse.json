@@ -11,9 +11,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "answers"
-      ],
+      "required": ["answers"],
       "type": "object"
     }
   },
@@ -26,9 +24,7 @@
       "type": "object"
     }
   },
-  "required": [
-    "answers"
-  ],
+  "required": ["answers"],
   "title": "ToolRequestUserInputResponse",
   "type": "object"
 }

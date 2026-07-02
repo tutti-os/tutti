@@ -5,9 +5,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "pluginId"
-  ],
+  "required": ["pluginId"],
   "title": "PluginUninstallParams",
   "type": "object"
 }

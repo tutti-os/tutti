@@ -7,21 +7,13 @@
     },
     "ApprovalsReviewer": {
       "description": "Configures who approval requests are routed to for review. Examples include sandbox escapes, blocked network access, MCP approval prompts, and ARC escalations. Defaults to `user`. `auto_review` uses a carefully prompted subagent to gather relevant context and apply a risk-based decision framework before approving or denying the request. The legacy value `guardian_subagent` is accepted for compatibility.",
-      "enum": [
-        "user",
-        "auto_review",
-        "guardian_subagent"
-      ],
+      "enum": ["user", "auto_review", "guardian_subagent"],
       "type": "string"
     },
     "AskForApproval": {
       "oneOf": [
         {
-          "enum": [
-            "untrusted",
-            "on-request",
-            "never"
-          ],
+          "enum": ["untrusted", "on-request", "never"],
           "type": "string"
         },
         {
@@ -47,28 +39,18 @@
                   "type": "boolean"
                 }
               },
-              "required": [
-                "mcp_elicitations",
-                "rules",
-                "sandbox_approval"
-              ],
+              "required": ["mcp_elicitations", "rules", "sandbox_approval"],
               "type": "object"
             }
           },
-          "required": [
-            "granular"
-          ],
+          "required": ["granular"],
           "title": "GranularAskForApproval",
           "type": "object"
         }
       ]
     },
     "SandboxMode": {
-      "enum": [
-        "read-only",
-        "workspace-write",
-        "danger-full-access"
-      ],
+      "enum": ["read-only", "workspace-write", "danger-full-access"],
       "type": "string"
     },
     "ThreadSource": {
@@ -99,45 +81,27 @@
       "description": "Override where approval requests are routed for review on this thread and subsequent turns."
     },
     "baseInstructions": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "config": {
       "additionalProperties": true,
-      "type": [
-        "object",
-        "null"
-      ]
+      "type": ["object", "null"]
     },
     "cwd": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "developerInstructions": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "ephemeral": {
       "type": "boolean"
     },
     "model": {
       "description": "Configuration overrides for the forked thread, if any.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "modelProvider": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "sandbox": {
       "anyOf": [
@@ -150,10 +114,7 @@
       ]
     },
     "serviceTier": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "threadId": {
       "type": "string"
@@ -170,9 +131,7 @@
       "description": "Optional client-supplied analytics source classification for this forked thread."
     }
   },
-  "required": [
-    "threadId"
-  ],
+  "required": ["threadId"],
   "title": "ThreadForkParams",
   "type": "object"
 }

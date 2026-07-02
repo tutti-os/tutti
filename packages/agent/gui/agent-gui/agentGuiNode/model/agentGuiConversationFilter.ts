@@ -1,25 +1,13 @@
-import type { AgentGUIProvider } from "../../../types.ts";
-import { normalizeAgentGUIProviderIdentity } from "../../../shared/agentConversationTitleProjection.ts";
 import type { WorkspaceAgentActivitySession } from "../../../shared/workspaceAgentActivityTypes.ts";
 import type { AgentGUIConversationSummary } from "./agentGuiConversationModel.ts";
-
-export type AgentGUIConversationFilterProvider = Extract<
-  AgentGUIProvider,
-  "codex" | "claude-code"
->;
-
-export const agentGUIConversationFilterDefaultProviders = [
-  "codex",
-  "claude-code"
-] as const satisfies readonly AgentGUIConversationFilterProvider[];
 
 export type AgentGUIConversationFilter =
   | {
       kind: "all";
     }
   | {
-      kind: "provider";
-      provider: AgentGUIConversationFilterProvider;
+      kind: "agentTarget";
+      agentTargetId: string;
     };
 
 export interface AgentGUIConversationFilterState {
@@ -37,77 +25,47 @@ export function createAgentGUIConversationFilterState(
 export function normalizeAgentGUIConversationFilter(
   filter: AgentGUIConversationFilter | null | undefined
 ): AgentGUIConversationFilter {
-  if (filter?.kind === "provider") {
-    const provider = normalizeAgentGUIProviderIdentity(filter.provider);
-    return !isAgentGUIConversationFilterProvider(provider)
-      ? { kind: "all" }
-      : { kind: "provider", provider };
+  if (filter?.kind === "agentTarget") {
+    const agentTargetId = filter.agentTargetId?.trim() ?? "";
+    return agentTargetId
+      ? { kind: "agentTarget", agentTargetId }
+      : { kind: "all" };
   }
   return { kind: "all" };
 }
 
 export function filterAgentGUIConversationSummaries(
   conversations: readonly AgentGUIConversationSummary[],
-  filter: AgentGUIConversationFilter,
-  options: {
-    allProviders?: readonly AgentGUIConversationFilterProvider[];
-  } = {}
+  filter: AgentGUIConversationFilter
 ): AgentGUIConversationSummary[] {
   const normalizedFilter = normalizeAgentGUIConversationFilter(filter);
-  const allProviderSet = createProviderSet(
-    options.allProviders ?? agentGUIConversationFilterDefaultProviders
-  );
   return conversations.filter((conversation) =>
-    matchesAgentGUIConversationFilterProvider(
-      conversation.provider,
-      normalizedFilter,
-      allProviderSet
+    matchesAgentGUIConversationFilterAgentTarget(
+      conversation.agentTargetId,
+      normalizedFilter
     )
   );
 }
 
 export function filterWorkspaceAgentActivitySessionsForConversations(
   sessions: readonly WorkspaceAgentActivitySession[],
-  filter: AgentGUIConversationFilter,
-  options: {
-    allProviders?: readonly AgentGUIConversationFilterProvider[];
-  } = {}
+  filter: AgentGUIConversationFilter
 ): WorkspaceAgentActivitySession[] {
   const normalizedFilter = normalizeAgentGUIConversationFilter(filter);
-  const allProviderSet = createProviderSet(
-    options.allProviders ?? agentGUIConversationFilterDefaultProviders
-  );
   return sessions.filter((session) =>
-    matchesAgentGUIConversationFilterProvider(
-      session.provider,
-      normalizedFilter,
-      allProviderSet
+    matchesAgentGUIConversationFilterAgentTarget(
+      session.agentTargetId,
+      normalizedFilter
     )
   );
 }
 
-function matchesAgentGUIConversationFilterProvider(
-  provider: string | null | undefined,
-  filter: AgentGUIConversationFilter,
-  allProviderSet: ReadonlySet<AgentGUIConversationFilterProvider>
+function matchesAgentGUIConversationFilterAgentTarget(
+  agentTargetId: string | null | undefined,
+  filter: AgentGUIConversationFilter
 ): boolean {
-  const normalizedProvider = normalizeAgentGUIProviderIdentity(provider);
-  if (!isAgentGUIConversationFilterProvider(normalizedProvider)) {
-    return false;
+  if (filter.kind === "all") {
+    return true;
   }
-  return filter.kind === "all"
-    ? allProviderSet.has(normalizedProvider)
-    : normalizedProvider === filter.provider;
-}
-
-function createProviderSet(
-  providers: readonly AgentGUIConversationFilterProvider[]
-): ReadonlySet<AgentGUIConversationFilterProvider> {
-  return new Set(providers);
-}
-
-function isAgentGUIConversationFilterProvider(
-  provider: string
-): provider is AgentGUIConversationFilterProvider {
-  return provider === "codex" || provider === "claude-code";
+  return (agentTargetId?.trim() ?? "") === filter.agentTargetId;
 }

@@ -16,11 +16,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "extraCount",
-    "failedScan",
-    "samplePaths"
-  ],
+  "required": ["extraCount", "failedScan", "samplePaths"],
   "title": "WindowsWorldWritableWarningNotification",
   "type": "object"
 }

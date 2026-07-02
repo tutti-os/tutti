@@ -22,10 +22,7 @@
         },
         "tokenBudget": {
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "tokensUsed": {
           "format": "int64",
@@ -64,9 +61,7 @@
       "$ref": "#/definitions/ThreadGoal"
     }
   },
-  "required": [
-    "goal"
-  ],
+  "required": ["goal"],
   "title": "ThreadGoalSetResponse",
   "type": "object"
 }

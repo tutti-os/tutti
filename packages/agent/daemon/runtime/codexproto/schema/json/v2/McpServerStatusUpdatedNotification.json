@@ -2,27 +2,17 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "McpServerStartupFailureReason": {
-      "enum": [
-        "reauthenticationRequired"
-      ],
+      "enum": ["reauthenticationRequired"],
       "type": "string"
     },
     "McpServerStartupState": {
-      "enum": [
-        "starting",
-        "ready",
-        "failed",
-        "cancelled"
-      ],
+      "enum": ["starting", "ready", "failed", "cancelled"],
       "type": "string"
     }
   },
   "properties": {
     "error": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "failureReason": {
       "anyOf": [
@@ -41,16 +31,10 @@
       "$ref": "#/definitions/McpServerStartupState"
     },
     "threadId": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "name",
-    "status"
-  ],
+  "required": ["name", "status"],
   "title": "McpServerStatusUpdatedNotification",
   "type": "object"
 }

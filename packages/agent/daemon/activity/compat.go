@@ -184,6 +184,7 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		currentPhase = deriveCurrentPhaseFromEntityPatches(patch.Entities)
 	}
 	out := WorkspaceAgentSessionStateUpdate{
+		AgentTargetID:      strings.TrimSpace(patch.AgentTargetID),
 		Provider:           strings.TrimSpace(patch.Provider),
 		ProviderSessionID:  strings.TrimSpace(patch.ProviderSessionID),
 		Model:              strings.TrimSpace(patch.Model),

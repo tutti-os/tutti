@@ -1519,6 +1519,7 @@ test("desktop agent GUI workbench host input wires runtime composer options thro
   assert.deepEqual(
     await hostInput.agentActivityRuntime.getComposerOptions({
       workspaceId,
+      agentTargetId: "local:codex",
       provider: "codex",
       settings: { model: "gpt-5" }
     }),
@@ -1527,7 +1528,7 @@ test("desktop agent GUI workbench host input wires runtime composer options thro
       effectiveSettings: { model: "gpt-5" }
     }
   );
-  assert.deepEqual(calls, ["getComposerOptions:workspace-1:codex"]);
+  assert.deepEqual(calls, ["getComposerOptions:workspace-1:codex:local:codex"]);
 });
 
 test("desktop agent GUI workbench host input wires runtime activation through the workspace activity service", async () => {
@@ -2050,7 +2051,7 @@ function createWorkspaceAgentActivityService(
     },
     async getComposerOptions(input) {
       calls.push(
-        `getComposerOptions:${input.workspaceId}:${input.provider ?? ""}`
+        `getComposerOptions:${input.workspaceId}:${input.provider ?? ""}:${input.agentTargetId ?? ""}`
       );
       return {
         effectiveSettings: input.settings ?? {},

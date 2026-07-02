@@ -21,15 +21,10 @@
       "type": "string"
     },
     "remoteMarketplaceName": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "pluginName"
-  ],
+  "required": ["pluginName"],
   "title": "PluginInstallParams",
   "type": "object"
 }

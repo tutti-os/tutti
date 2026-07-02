@@ -25,10 +25,7 @@
           "$ref": "#/definitions/RequestId"
         }
       },
-      "required": [
-        "error",
-        "id"
-      ],
+      "required": ["error", "id"],
       "type": "object"
     },
     "JSONRPCErrorError": {
@@ -42,10 +39,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "code",
-        "message"
-      ],
+      "required": ["code", "message"],
       "type": "object"
     },
     "JSONRPCNotification": {
@@ -56,9 +50,7 @@
         },
         "params": true
       },
-      "required": [
-        "method"
-      ],
+      "required": ["method"],
       "type": "object"
     },
     "JSONRPCRequest": {
@@ -83,10 +75,7 @@
           "description": "Optional W3C Trace Context for distributed tracing."
         }
       },
-      "required": [
-        "id",
-        "method"
-      ],
+      "required": ["id", "method"],
       "type": "object"
     },
     "JSONRPCResponse": {
@@ -97,10 +86,7 @@
         },
         "result": true
       },
-      "required": [
-        "id",
-        "result"
-      ],
+      "required": ["id", "result"],
       "type": "object"
     },
     "RequestId": {
@@ -117,16 +103,10 @@
     "W3cTraceContext": {
       "properties": {
         "traceparent": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "tracestate": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"

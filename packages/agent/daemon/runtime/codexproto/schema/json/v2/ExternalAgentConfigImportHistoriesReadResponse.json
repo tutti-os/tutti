@@ -23,27 +23,16 @@
           "type": "array"
         }
       },
-      "required": [
-        "completedAtMs",
-        "failures",
-        "importId",
-        "successes"
-      ],
+      "required": ["completedAtMs", "failures", "importId", "successes"],
       "type": "object"
     },
     "ExternalAgentConfigImportItemTypeFailure": {
       "properties": {
         "cwd": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "errorType": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "failureStage": {
           "type": "string"
@@ -55,46 +44,28 @@
           "type": "string"
         },
         "source": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "failureStage",
-        "itemType",
-        "message"
-      ],
+      "required": ["failureStage", "itemType", "message"],
       "type": "object"
     },
     "ExternalAgentConfigImportItemTypeSuccess": {
       "properties": {
         "cwd": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "itemType": {
           "$ref": "#/definitions/ExternalAgentConfigMigrationItemType"
         },
         "source": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "target": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "itemType"
-      ],
+      "required": ["itemType"],
       "type": "object"
     },
     "ExternalAgentConfigMigrationItemType": {
@@ -120,9 +91,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "data"
-  ],
+  "required": ["data"],
   "title": "ExternalAgentConfigImportHistoriesReadResponse",
   "type": "object"
 }

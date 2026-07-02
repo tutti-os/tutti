@@ -2502,10 +2502,7 @@ describe("AgentGUINode", () => {
     );
     fireEvent.click(sendButton);
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("hello world"),
-      undefined
-    );
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("hello world"));
   });
 
   it("disables direct replies for another user's conversation", () => {
@@ -3486,10 +3483,7 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(editor, { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("hello"),
-      undefined
-    );
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("hello"));
 
     mockSubmitPrompt.mockClear();
     fireEvent.keyDown(editor, { key: "Enter", shiftKey: true });
@@ -3773,10 +3767,7 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("/init"),
-      undefined
-    );
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/init"));
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
     await waitFor(() =>
       expect(getComposerEditor()).not.toHaveTextContent("/init")
@@ -3799,10 +3790,7 @@ describe("AgentGUINode", () => {
     fireEvent.keyDown(editor, { key: "ArrowDown" });
     fireEvent.keyDown(editor, { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("/compact"),
-      undefined
-    );
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/compact"));
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
@@ -3822,10 +3810,7 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("/compact"),
-      undefined
-    );
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/compact"));
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
@@ -4074,10 +4059,7 @@ describe("AgentGUINode", () => {
       key: "Enter"
     });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("/web query"),
-      undefined
-    );
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/web query"));
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
@@ -4113,7 +4095,7 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(editor, { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/"), undefined);
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/"));
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
@@ -4208,8 +4190,7 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(editor, { key: "Enter" });
     expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("$architecture-review"),
-      undefined
+      promptBlocks("$architecture-review")
     );
   });
 
@@ -4336,10 +4317,7 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("/init"),
-      undefined
-    );
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/init"));
   });
 
   it("inserts Claude Code plugin skill triggers from the slash picker", () => {
@@ -4417,8 +4395,7 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(editor, { key: "Enter" });
     expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("/product-design:frontend-design"),
-      undefined
+      promptBlocks("/product-design:frontend-design")
     );
   });
 
@@ -4519,10 +4496,7 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode();
 
-    const addReferenceTrigger = screen.getByRole("combobox", {
-      name: "agentHost.issue.referenceWorkspaceFiles"
-    });
-    fireEvent.click(addReferenceTrigger);
+    await openSharedWorkspaceReferencePicker();
 
     expect(
       await screen.findByRole("dialog", {
@@ -4542,11 +4516,7 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode({ onWorkspaceFileReferencesAdded });
 
-    fireEvent.click(
-      screen.getByRole("combobox", {
-        name: "agentHost.issue.referenceWorkspaceFiles"
-      })
-    );
+    await openSharedWorkspaceReferencePicker();
     await screen.findByRole("dialog", {
       name: "agentHost.agentGui.referencePicker.title"
     });
@@ -4610,11 +4580,7 @@ describe("AgentGUINode", () => {
       } as unknown as AgentActivityRuntime
     });
 
-    fireEvent.click(
-      screen.getByRole("combobox", {
-        name: "agentHost.issue.referenceWorkspaceFiles"
-      })
-    );
+    await openSharedWorkspaceReferencePicker();
     await screen.findByRole("dialog", {
       name: "agentHost.agentGui.referencePicker.title"
     });
@@ -4845,11 +4811,7 @@ describe("AgentGUINode", () => {
       workspaceFileReferenceAdapter: { listDirectory, loadReferenceTree }
     });
 
-    fireEvent.click(
-      screen.getByRole("combobox", {
-        name: "agentHost.issue.referenceWorkspaceFiles"
-      })
-    );
+    await openSharedWorkspaceReferencePicker();
 
     await waitFor(() =>
       expect(loadReferenceTree).toHaveBeenCalledWith(
@@ -5808,8 +5770,7 @@ describe("AgentGUINode", () => {
     );
 
     expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("[@README.md](/workspace/docs/README.md)"),
-      undefined
+      promptBlocks("[@README.md](/workspace/docs/README.md)")
     );
   });
 
@@ -7006,6 +6967,26 @@ describe("AgentGUINode", () => {
   });
 });
 
+async function openSharedWorkspaceReferencePicker(): Promise<void> {
+  const legacyReferenceTrigger = screen.queryByRole("combobox", {
+    name: "agentHost.issue.referenceWorkspaceFiles"
+  });
+  if (legacyReferenceTrigger) {
+    fireEvent.click(legacyReferenceTrigger);
+    return;
+  }
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "agentHost.agentGui.addReference"
+    })
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", {
+      name: "agentHost.issue.referenceWorkspaceFiles"
+    })
+  );
+}
+
 function renderAgentGUINode({
   onLinkAction,
   onAgentProviderLogin,
@@ -7410,6 +7391,8 @@ function createViewModel(
       conversationRailWidthPx: null
     },
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+    providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    providerTargetsLoading: false,
     conversations: [],
     userProjects: [],
     activeConversation: null,
@@ -7481,6 +7464,8 @@ function createViewModel(
     },
     inlineNotice: null,
     ...overrides,
+    conversationScope: overrides.conversationScope ?? "single-provider",
+    conversationFilter: overrides.conversationFilter ?? { kind: "all" },
     listError: overrides.listError ?? null
   };
 }

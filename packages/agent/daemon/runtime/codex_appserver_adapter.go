@@ -280,11 +280,11 @@ func codexClientInfoParamsForVersion(host HostMetadata, version string) map[stri
 	}
 }
 
-func (a *CodexAppServerAdapter) Provider() string {
+func (*CodexAppServerAdapter) Provider() string {
 	return ProviderCodex
 }
 
-func (a *CodexAppServerAdapter) sessionCWD(session Session) string {
+func (*CodexAppServerAdapter) sessionCWD(session Session) string {
 	return projectCodexWorkspaceCWD(strings.TrimSpace(session.CWD), session.RoomID)
 }
 
@@ -320,7 +320,7 @@ func (*CodexAppServerAdapter) ValidatePromptContent(Session, []PromptContentBloc
 	return nil
 }
 
-func (a *CodexAppServerAdapter) commandString() string {
+func (*CodexAppServerAdapter) commandString() string {
 	return codexAppServerCommand + " " + codexAppServerSubcmd
 }
 
@@ -801,7 +801,7 @@ func (a *CodexAppServerAdapter) fetchModels(
 	return payload.Data
 }
 
-func (a *CodexAppServerAdapter) fetchModelsNoHandler(
+func (*CodexAppServerAdapter) fetchModelsNoHandler(
 	ctx context.Context,
 	client *codexAppServerClient,
 	trace *codexAppServerStartupTrace,
@@ -824,36 +824,7 @@ func (a *CodexAppServerAdapter) fetchModelsNoHandler(
 	return payload.Data
 }
 
-func (a *CodexAppServerAdapter) fetchRateLimits(
-	ctx context.Context,
-	client *codexAppServerClient,
-	session Session,
-	trace *codexAppServerStartupTrace,
-) map[string]any {
-	result, err := trace.TypedCall(acpStartCallTimeout, appServerMethodRateLimitsRead, func() (json.RawMessage, error) {
-		return client.AccountRateLimitsRead(ctx, acpStartCallTimeout,
-			func(ctx context.Context, message acpMessage) error {
-				trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
-				_, err := a.handleAppServerMessage(ctx, client, session, "", message, nil, nil, nil)
-				return err
-			})
-	})
-	if err != nil {
-		return nil
-	}
-	var payload struct {
-		RateLimits map[string]any `json:"rateLimits"`
-	}
-	if err := json.Unmarshal(result, &payload); err != nil {
-		return nil
-	}
-	trace.Log("rate_limits.parsed", map[string]any{
-		"has_rate_limits": payload.RateLimits != nil,
-	})
-	return payload.RateLimits
-}
-
-func (a *CodexAppServerAdapter) fetchRateLimitsNoHandler(
+func (*CodexAppServerAdapter) fetchRateLimitsNoHandler(
 	ctx context.Context,
 	client *codexAppServerClient,
 	trace *codexAppServerStartupTrace,
@@ -1177,7 +1148,7 @@ func (appTurn *codexAppServerActiveTurn) markTerminated() {
 // markTurnSettleEmits flips the turn to settle-path terminal emission just
 // before the provider turn is submitted, under the adapter mutex so the
 // notification loop observes it consistently.
-func (a *CodexAppServerAdapter) markTurnSettleEmits(agentSessionID string, appTurn *codexAppServerActiveTurn) {
+func (a *CodexAppServerAdapter) markTurnSettleEmits(appTurn *codexAppServerActiveTurn) {
 	if a == nil || appTurn == nil {
 		return
 	}
@@ -1374,7 +1345,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 
 	// From here on the settle path (notification loop) owns terminal event
 	// production; the blocking shell below only waits and returns.
-	a.markTurnSettleEmits(session.AgentSessionID, appTurn)
+	a.markTurnSettleEmits(appTurn)
 
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
 	turnParams := appServerTurnStartParams(session, appSession.threadID, content, appSession.planModeMask, appSession.defaultModeMask, appSession.defaultModel)
@@ -1526,7 +1497,7 @@ func appServerTurnStatusTerminal(turn map[string]any) bool {
 	}
 }
 
-func (a *CodexAppServerAdapter) steerActiveTurn(
+func (*CodexAppServerAdapter) steerActiveTurn(
 	ctx context.Context,
 	appSession *codexAppServerSession,
 	session Session,
@@ -1966,7 +1937,7 @@ func (a *CodexAppServerAdapter) fetchChildThreadNickname(client *codexAppServerC
 	}
 }
 
-func (a *CodexAppServerAdapter) sendThreadInterrupt(
+func (*CodexAppServerAdapter) sendThreadInterrupt(
 	client *codexAppServerClient,
 	session Session,
 	threadID string,

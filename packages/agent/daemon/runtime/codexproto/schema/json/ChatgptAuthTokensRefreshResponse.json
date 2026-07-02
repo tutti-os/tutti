@@ -8,16 +8,10 @@
       "type": "string"
     },
     "chatgptPlanType": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "accessToken",
-    "chatgptAccountId"
-  ],
+  "required": ["accessToken", "chatgptAccountId"],
   "title": "ChatgptAuthTokensRefreshResponse",
   "type": "object"
 }

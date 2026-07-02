@@ -14,6 +14,7 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
@@ -22,10 +23,11 @@ import (
 
 func TestServiceCreatesAndListsSessions(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		Title:          stringRef("Migration smoke"),
 		InitialContent: TextPromptContent("hello"),
@@ -63,6 +65,151 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 }
 
+func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{
+		targets: map[string]agenttargetbiz.Target{
+			agenttargetbiz.IDLocalClaudeCode: {
+				ID:            agenttargetbiz.IDLocalClaudeCode,
+				Provider:      "claude-code",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("claude-code"),
+				Name:          "Claude Code",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	}
+
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "target-session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
+		InitialContent: TextPromptContent("hello target"),
+		ProviderTargetRef: map[string]any{
+			"kind":     "local_cli",
+			"provider": "codex",
+			"targetId": "wrong-target",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if session.Provider != "claude-code" || session.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("session provider/target = %q/%q, want claude-code/%s", session.Provider, session.AgentTargetID, agenttargetbiz.IDLocalClaudeCode)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	}
+	if got := runtime.startCalls[0].Provider; got != "claude-code" {
+		t.Fatalf("runtime provider = %q, want claude-code", got)
+	}
+	if got := runtime.startCalls[0].AgentTargetID; got != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("runtime agent target id = %q, want %s", got, agenttargetbiz.IDLocalClaudeCode)
+	}
+	ref := runtime.startCalls[0].ProviderTargetRef
+	if ref["kind"] != agenttargetbiz.LaunchRefTypeLocalCLI ||
+		ref["provider"] != "claude-code" ||
+		ref["targetId"] != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("runtime provider target ref = %#v, want daemon-derived local_cli claude target", ref)
+	}
+}
+
+func TestServiceCreateRejectsInvalidAgentTargetInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		input       CreateSessionInput
+		targets     map[string]agenttargetbiz.Target
+		errContains string
+	}{
+		{
+			name: "missing target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-missing",
+				AgentTargetID:  "missing-target",
+				Provider:       "codex",
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: "agent target not found",
+		},
+		{
+			name: "disabled target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-disabled",
+				AgentTargetID:  "disabled-codex",
+				Provider:       "codex",
+				InitialContent: TextPromptContent("hello"),
+			},
+			targets: map[string]agenttargetbiz.Target{
+				"disabled-codex": {
+					ID:            "disabled-codex",
+					Provider:      "codex",
+					LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+					Name:          "Disabled Codex",
+					Enabled:       false,
+					Source:        agenttargetbiz.SourceUser,
+				},
+			},
+			errContains: "agent target is disabled",
+		},
+		{
+			name: "provider mismatch",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-mismatch",
+				AgentTargetID:  agenttargetbiz.IDLocalCodex,
+				Provider:       "claude-code",
+				InitialContent: TextPromptContent("hello"),
+			},
+			targets: map[string]agenttargetbiz.Target{
+				agenttargetbiz.IDLocalCodex: {
+					ID:            agenttargetbiz.IDLocalCodex,
+					Provider:      "codex",
+					LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+					Name:          "Codex",
+					Enabled:       true,
+					Source:        agenttargetbiz.SourceSystem,
+				},
+			},
+			errContains: "provider does not match agent target",
+		},
+		{
+			name: "missing launch authority",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-no-authority",
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: ErrInvalidArgument.Error(),
+		},
+		{
+			name: "provider target ref without agent target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-provider-ref",
+				Provider:       "codex",
+				ProviderTargetRef: map[string]any{
+					"kind":     "shared-agent",
+					"provider": "codex",
+					"targetId": "shared-agent:codex-1",
+				},
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: "agent target id is required",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := newFakeRuntime()
+			service := NewService(runtime)
+			service.AgentTargetStore = fakeAgentTargetStore{targets: tc.targets}
+
+			_, err := service.Create(context.Background(), "ws-1", tc.input)
+			if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), tc.errContains) {
+				t.Fatalf("Create error = %v, want ErrInvalidArgument containing %q", err, tc.errContains)
+			}
+			if len(runtime.startCalls) != 0 {
+				t.Fatalf("start calls = %d, want 0", len(runtime.startCalls))
+			}
+		})
+	}
+}
+
 func TestServiceCreatePassesNormalizedConversationDetailModeToRuntime(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -75,10 +222,11 @@ func TestServiceCreatePassesNormalizedConversationDetailModeToRuntime(t *testing
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			runtime := newFakeRuntime()
-			service := NewService(runtime)
+			service := newTestService(runtime)
 
 			_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 				AgentSessionID:         "session-" + strings.ReplaceAll(tc.name, " ", "-"),
+				AgentTargetID:          agenttargetbiz.IDLocalCodex,
 				Provider:               "codex",
 				ConversationDetailMode: tc.mode,
 				InitialContent:         TextPromptContent("hello"),
@@ -96,14 +244,124 @@ func TestServiceCreatePassesNormalizedConversationDetailModeToRuntime(t *testing
 	}
 }
 
+func TestServiceCreateResolvesAgentTargetID(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetLookup{
+		targets: map[string]agenttargetbiz.Target{
+			"local-codex": {
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "target-session-1",
+		AgentTargetID:  "local-codex",
+		Provider:       "codex",
+		ProviderTargetRef: map[string]any{
+			"kind":     "client-supplied",
+			"provider": "codex",
+			"targetId": "ignored-client-ref",
+		},
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if got := runtime.startCalls[0].Provider; got != "codex" {
+		t.Fatalf("runtime provider = %q, want codex", got)
+	}
+	if got := runtime.startCalls[0].ProviderTargetRef["kind"]; got != "local_cli" {
+		t.Fatalf("provider target ref kind = %#v, want local_cli", got)
+	}
+	if got := runtime.startCalls[0].ProviderTargetRef["targetId"]; got != "local-codex" {
+		t.Fatalf("provider target ref targetId = %#v, want local-codex", got)
+	}
+}
+
+func TestServiceCreateRejectsInvalidAgentTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		agentTargetID   string
+		requestProvider string
+		target          agenttargetbiz.Target
+	}{
+		{
+			name:            "disabled target",
+			agentTargetID:   "local-codex",
+			requestProvider: "codex",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       false,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+		{
+			name:            "request provider mismatch",
+			agentTargetID:   "local-codex",
+			requestProvider: "claude-code",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+		{
+			name:            "target not found",
+			agentTargetID:   "missing-target",
+			requestProvider: "codex",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := NewService(newFakeRuntime())
+			service.AgentTargetStore = fakeAgentTargetLookup{
+				targets: map[string]agenttargetbiz.Target{
+					tc.target.ID: tc.target,
+				},
+			}
+
+			_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+				AgentSessionID: "target-session-invalid",
+				AgentTargetID:  tc.agentTargetID,
+				Provider:       tc.requestProvider,
+				InitialContent: TextPromptContent("hello"),
+			})
+			if !errors.Is(err, ErrInvalidArgument) {
+				t.Fatalf("Create error = %v, want ErrInvalidArgument", err)
+			}
+		})
+	}
+}
+
 func TestServiceCreateReportsNodeResults(t *testing.T) {
 	runtime := newFakeRuntime()
 	reporter := &recordingAgentAnalyticsReporter{}
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.AnalyticsReporter = reporter
 
 	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	}); err != nil {
@@ -760,7 +1018,7 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 
 func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	var prepareInput agentsidecarservice.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result: agentsidecarservice.PreparedRuntime{
@@ -773,6 +1031,7 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID:         "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:          agenttargetbiz.IDLocalCodex,
 		Cwd:                    &cwd,
 		Provider:               "codex",
 		ConversationDetailMode: "general",
@@ -801,7 +1060,7 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 
 func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.ModelCatalog = fakeModelCatalog{
 		result: AgentModelCatalogResult{
 			Provider: "codex",
@@ -818,9 +1077,10 @@ func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testin
 	}
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		Provider: "codex",
-		Model:    stringRef("gpt-6"),
-		Cwd:      stringRef("/repo"),
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+		Provider:      "codex",
+		Model:         stringRef("gpt-6"),
+		Cwd:           stringRef("/repo"),
 	})
 	if err == nil {
 		t.Fatal("Create returned nil error, want invalid model error")
@@ -842,7 +1102,7 @@ func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testin
 
 func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.setLiveComposerModelOptions("claude-code", "ws-1", "/repo", time.Now().UTC(), []ComposerConfigOptionValue{
 		{Value: "default", Label: "Default"},
 		{Value: "sonnet", Label: "Sonnet"},
@@ -853,9 +1113,10 @@ func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *t
 	}
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		Provider: "claude-code",
-		Model:    stringRef("not-a-claude-model"),
-		Cwd:      stringRef("/repo"),
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Provider:      "claude-code",
+		Model:         stringRef("not-a-claude-model"),
+		Cwd:           stringRef("/repo"),
 	})
 	if err == nil {
 		t.Fatal("Create returned nil error, want invalid model error")
@@ -898,7 +1159,7 @@ func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing
 		}
 		return session
 	}
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	var prepareInput agentsidecarservice.PrepareInput
 	var cleanupCalls []agentsidecarservice.CleanupInput
 	service.RuntimePreparer = fakeRuntimePreparer{
@@ -907,9 +1168,10 @@ func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing
 	}
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		Provider: "claude-code",
-		Model:    stringRef("MiniMax-M2.7"),
-		Cwd:      stringRef("/repo"),
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Provider:      "claude-code",
+		Model:         stringRef("MiniMax-M2.7"),
+		Cwd:           stringRef("/repo"),
 	})
 	if err == nil {
 		t.Fatal("Create returned nil error, want invalid model error")
@@ -936,7 +1198,7 @@ func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing
 
 func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.ModelCatalog = fakeModelCatalog{
 		result: AgentModelCatalogResult{
 			Provider: "codex",
@@ -954,6 +1216,7 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "33333333-3333-4333-8333-333333333333",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	})
@@ -977,11 +1240,12 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	planMode := true
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		InitialContent: TextPromptContent("hello"),
 		PlanMode:       &planMode,
 		Provider:       "claude-code",
@@ -1002,26 +1266,20 @@ func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 
 func TestServiceCreateClampsPlanModeForProvidersWithoutCapability(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	planMode := true
 
-	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "22222222-2222-4222-8222-222222222222",
 		InitialContent: TextPromptContent("hello"),
 		PlanMode:       &planMode,
 		Provider:       "gemini",
 	})
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
+	if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), "agent target id is required") {
+		t.Fatalf("Create error = %v, want missing agent target ErrInvalidArgument", err)
 	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
-	}
-	if runtime.startCalls[0].PlanMode {
-		t.Fatal("runtime start plan mode = true, want clamped to false for gemini")
-	}
-	if session.Settings == nil || session.Settings.PlanMode {
-		t.Fatalf("session settings = %#v, want plan mode clamped to false", session.Settings)
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want 0", len(runtime.startCalls))
 	}
 }
 
@@ -1029,7 +1287,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 	startErr := errors.New("start failed")
 	runtime := newFakeRuntime()
 	runtime.startErr = startErr
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -1038,6 +1296,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		InitialContent: TextPromptContent("hello"),
 		Provider:       "codex",
 	})
@@ -1053,7 +1312,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 
 func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	prepareInput := (*agentsidecarservice.PrepareInput)(nil)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: prepareInput,
@@ -1061,6 +1320,7 @@ func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) 
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		InitialContent: []PromptContentBlock{{
 			Type:     "image",
 			MimeType: "image/png",
@@ -1078,7 +1338,7 @@ func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) 
 
 func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	var prepareInput agentsidecarservice.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
@@ -1105,6 +1365,7 @@ func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) 
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		InitialContent: TextPromptContent("hello"),
 		Provider:       "claude-code",
 	})
@@ -1136,7 +1397,7 @@ func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) 
 func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	checker := &fakeProviderAvailabilityChecker{
 		result: []ProviderAvailability{{
 			Provider: "claude-code",
@@ -1156,6 +1417,7 @@ func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		InitialContent: TextPromptContent("hello"),
 		Provider:       "claude-code",
 	})
@@ -1169,7 +1431,7 @@ func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 
 func TestServiceCreateCachesProviderAvailabilityCheck(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	checker := &fakeProviderAvailabilityChecker{
 		result: []ProviderAvailability{{
 			Provider: "codex",
@@ -1181,6 +1443,7 @@ func TestServiceCreateCachesProviderAvailabilityCheck(t *testing.T) {
 	for _, sessionID := range []string{"session-1", "session-2"} {
 		_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 			AgentSessionID: sessionID,
+			AgentTargetID:  agenttargetbiz.IDLocalCodex,
 			InitialContent: TextPromptContent("hello"),
 			Provider:       "codex",
 		})
@@ -1267,7 +1530,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 	execErr := errors.New("exec failed")
 	runtime := newFakeRuntime()
 	runtime.execErr = execErr
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -1276,6 +1539,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	})
@@ -1297,10 +1561,11 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 
 func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID:       "session-1",
+		AgentTargetID:        agenttargetbiz.IDLocalCodex,
 		Provider:             "codex",
 		InitialContent:       TextPromptContent("real automation prompt"),
 		InitialDisplayPrompt: "Run Automation",
@@ -1335,11 +1600,12 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	visible := false
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		Provider:       "claude-code",
 		Visible:        &visible,
 	})
@@ -1365,10 +1631,11 @@ func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
 
 func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("ordinary prompt"),
 	})
@@ -1386,10 +1653,11 @@ func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 func TestServiceUpdateVisibleUpdatesRuntimeSession(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	visible := false
 	created, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		Provider:       "claude-code",
 		Visible:        &visible,
 	})
@@ -1460,7 +1728,7 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	var prepareInput agentsidecarservice.PrepareInput
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 		result: agentsidecarservice.PreparedRuntime{
@@ -1470,6 +1738,7 @@ func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 	cwd := "/user/workdir"
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Cwd:            &cwd,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
@@ -1494,7 +1763,7 @@ func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 	runtime := newFakeRuntime()
 	var prepareInput agentsidecarservice.PrepareInput
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 		result: agentsidecarservice.PreparedRuntime{
@@ -1504,6 +1773,7 @@ func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 	cwd := "/user/workdir"
 
 	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Cwd:            &cwd,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
@@ -1587,7 +1857,7 @@ func TestServiceGetSkillBundleRequiresRenderer(t *testing.T) {
 
 func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -1596,6 +1866,7 @@ func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	cwd := "/user/workdir"
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Cwd:            &cwd,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
@@ -3392,8 +3663,9 @@ func TestServiceDeletesPersistedSession(t *testing.T) {
 
 func TestServiceDeleteClosesRuntimeSession(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	})
@@ -4113,6 +4385,22 @@ type fakeRuntime struct {
 	validateCalls          []RuntimeExecInput
 }
 
+type fakeAgentTargetStore struct {
+	err     error
+	targets map[string]agenttargetbiz.Target
+}
+
+func (f fakeAgentTargetStore) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	if f.err != nil {
+		return agenttargetbiz.Target{}, f.err
+	}
+	target, ok := f.targets[strings.TrimSpace(id)]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
+}
+
 type fakeRuntimePreparer struct {
 	result       agentsidecarservice.PreparedRuntime
 	err          error
@@ -4186,6 +4474,20 @@ func writeAgentServiceJSONL(t *testing.T, path string, items ...map[string]any) 
 	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		t.Fatalf("write jsonl error = %v", err)
 	}
+}
+
+func newTestService(runtime RuntimeController) *Service {
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	return service
+}
+
+func defaultTestAgentTargets() map[string]agenttargetbiz.Target {
+	targets := make(map[string]agenttargetbiz.Target)
+	for _, target := range agenttargetbiz.DefaultSystemTargets(0) {
+		targets[target.ID] = target
+	}
+	return targets
 }
 
 type fakeMessageReader struct {
@@ -4324,6 +4626,7 @@ func (f *fakeRuntime) Resume(_ context.Context, input RuntimeResumeInput) (Runti
 	f.resumeCalls = append(f.resumeCalls, input)
 	session := RuntimeSession{
 		ID:                input.AgentSessionID,
+		AgentTargetID:     input.AgentTargetID,
 		Provider:          input.Provider,
 		ProviderSessionID: input.ProviderSessionID,
 		Cwd:               input.Cwd,
@@ -4428,9 +4731,10 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Runtime
 		id = "session-" + string(rune('0'+f.nextID))
 	}
 	session := RuntimeSession{
-		ID:       id,
-		Provider: input.Provider,
-		Cwd:      input.Cwd,
+		ID:            id,
+		AgentTargetID: input.AgentTargetID,
+		Provider:      input.Provider,
+		Cwd:           input.Cwd,
 		Settings: &ComposerSettings{
 			Model:                  input.Model,
 			PermissionModeID:       input.PermissionModeID,
@@ -4456,6 +4760,18 @@ func (*fakeRuntime) Subscribe(string, string) (<-chan RuntimeStreamEvent, func()
 	events := make(chan RuntimeStreamEvent)
 	close(events)
 	return events, func() {}, true
+}
+
+type fakeAgentTargetLookup struct {
+	targets map[string]agenttargetbiz.Target
+}
+
+func (f fakeAgentTargetLookup) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	target, ok := f.targets[strings.TrimSpace(id)]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
 }
 
 type activityProjectionRepoStub struct {

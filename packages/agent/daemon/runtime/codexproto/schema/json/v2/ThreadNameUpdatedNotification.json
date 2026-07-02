@@ -5,15 +5,10 @@
       "type": "string"
     },
     "threadName": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "threadId"
-  ],
+  "required": ["threadId"],
   "title": "ThreadNameUpdatedNotification",
   "type": "object"
 }

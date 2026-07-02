@@ -5,9 +5,7 @@
       "type": "boolean"
     }
   },
-  "required": [
-    "cleared"
-  ],
+  "required": ["cleared"],
   "title": "ThreadGoalClearResponse",
   "type": "object"
 }

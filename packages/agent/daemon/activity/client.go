@@ -322,7 +322,7 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, requestBod
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 2<<20))
 	if err != nil {

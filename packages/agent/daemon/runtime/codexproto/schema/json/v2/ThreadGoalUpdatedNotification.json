@@ -22,10 +22,7 @@
         },
         "tokenBudget": {
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "tokensUsed": {
           "format": "int64",
@@ -67,16 +64,10 @@
       "type": "string"
     },
     "turnId": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "goal",
-    "threadId"
-  ],
+  "required": ["goal", "threadId"],
   "title": "ThreadGoalUpdatedNotification",
   "type": "object"
 }

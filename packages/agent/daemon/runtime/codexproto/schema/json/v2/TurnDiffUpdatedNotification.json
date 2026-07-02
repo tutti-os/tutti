@@ -12,11 +12,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "diff",
-    "threadId",
-    "turnId"
-  ],
+  "required": ["diff", "threadId", "turnId"],
   "title": "TurnDiffUpdatedNotification",
   "type": "object"
 }

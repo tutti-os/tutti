@@ -4,16 +4,12 @@
     {
       "properties": {
         "method": {
-          "enum": [
-            "initialized"
-          ],
+          "enum": ["initialized"],
           "title": "InitializedNotificationMethod",
           "type": "string"
         }
       },
-      "required": [
-        "method"
-      ],
+      "required": ["method"],
       "title": "InitializedNotification",
       "type": "object"
     }

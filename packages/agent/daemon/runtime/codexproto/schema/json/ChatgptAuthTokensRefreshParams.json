@@ -5,9 +5,7 @@
       "oneOf": [
         {
           "description": "Codex attempted a backend request and received `401 Unauthorized`.",
-          "enum": [
-            "unauthorized"
-          ],
+          "enum": ["unauthorized"],
           "type": "string"
         }
       ]
@@ -16,18 +14,13 @@
   "properties": {
     "previousAccountId": {
       "description": "Workspace/account identifier that Codex was previously using.\n\nClients that manage multiple accounts/workspaces can use this as a hint to refresh the token for the correct workspace.\n\nThis may be `null` when the prior auth state did not include a workspace identifier (`chatgpt_account_id`).",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "reason": {
       "$ref": "#/definitions/ChatgptAuthTokensRefreshReason"
     }
   },
-  "required": [
-    "reason"
-  ],
+  "required": ["reason"],
   "title": "ChatgptAuthTokensRefreshParams",
   "type": "object"
 }

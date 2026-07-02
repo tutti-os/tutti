@@ -91,10 +91,6 @@ func (e *acpCallError) AuthRequired() bool {
 	return strings.Contains(haystack, "auth")
 }
 
-func newACPClient(conn ProcessConnection) *acpClient {
-	return newACPClientWithStderrMessageMapper(conn, nil)
-}
-
 func newACPClientWithStderrMessageMapper(conn ProcessConnection, mapper acpStderrMessageMapper) *acpClient {
 	c := &acpClient{
 		conn:                conn,

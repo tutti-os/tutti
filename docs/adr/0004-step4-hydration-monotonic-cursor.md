@@ -74,6 +74,7 @@ the split, minimally:
   a separate effort.
 
 ## Corrections to the design
+
 - "daemon holds user row at version=1 / defect is desktop-rooted" → **version is a
   ms timestamp; same-ms collision is a daemon-side contributor** to Cluster A.
 - Step 4 "gap-free contract" is an ASPIRATION today; this ADR makes it real via the

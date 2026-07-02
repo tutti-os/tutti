@@ -299,8 +299,7 @@ func (s *liveAppServer) kill() {
 }
 
 func compactJSON(value any) string {
-	switch typed := value.(type) {
-	case json.RawMessage:
+	if typed, ok := value.(json.RawMessage); ok {
 		return string(typed)
 	}
 	encoded, err := json.Marshal(value)

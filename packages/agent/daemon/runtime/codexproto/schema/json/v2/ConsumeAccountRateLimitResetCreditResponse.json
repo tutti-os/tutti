@@ -5,30 +5,22 @@
       "oneOf": [
         {
           "description": "A reset credit was consumed and the eligible rate-limit windows were reset.",
-          "enum": [
-            "reset"
-          ],
+          "enum": ["reset"],
           "type": "string"
         },
         {
           "description": "No current rate-limit window is eligible for a reset.",
-          "enum": [
-            "nothingToReset"
-          ],
+          "enum": ["nothingToReset"],
           "type": "string"
         },
         {
           "description": "The account has no earned reset credits available.",
-          "enum": [
-            "noCredit"
-          ],
+          "enum": ["noCredit"],
           "type": "string"
         },
         {
           "description": "The same idempotency key already completed a reset successfully.",
-          "enum": [
-            "alreadyRedeemed"
-          ],
+          "enum": ["alreadyRedeemed"],
           "type": "string"
         }
       ]
@@ -39,9 +31,7 @@
       "$ref": "#/definitions/ConsumeAccountRateLimitResetCreditOutcome"
     }
   },
-  "required": [
-    "outcome"
-  ],
+  "required": ["outcome"],
   "title": "ConsumeAccountRateLimitResetCreditResponse",
   "type": "object"
 }

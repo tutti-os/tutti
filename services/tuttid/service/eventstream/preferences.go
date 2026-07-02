@@ -32,6 +32,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 				preferences.AgentGUIConversationRailCollapsedByProvider,
 			),
 			AgentConversationDetailMode: preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode),
+			AgentDockLayout:             preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout),
 			AppCatalogChannel:           preferences.AppCatalogChannel,
 			BrowserUseConnectionMode:    preferences.BrowserUseConnectionMode,
 			DefaultAgentProvider:        preferences.DefaultAgentProvider,
@@ -74,6 +75,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			AgentComposerDefaultsByProvider:             decoded.AgentComposerDefaultsByProvider,
 			AgentGUIConversationRailCollapsedByProvider: decoded.AgentGUIConversationRailCollapsedByProvider,
 			AgentConversationDetailMode:                 decoded.AgentConversationDetailMode,
+			AgentDockLayout:                             decoded.AgentDockLayout,
 			AppCatalogChannel:                           decoded.AppCatalogChannel,
 			BrowserUseConnectionMode:                    decoded.BrowserUseConnectionMode,
 			DefaultAgentProvider:                        decoded.DefaultAgentProvider,
@@ -100,6 +102,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	AgentComposerDefaultsByProvider             map[string]preferencesbiz.AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
 	AgentConversationDetailMode                 string
+	AgentDockLayout                             string
 	AppCatalogChannel                           string
 	BrowserUseConnectionMode                    string
 	DefaultAgentProvider                        string
@@ -137,6 +140,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 			decoded.Preferences.AgentGUIConversationRailCollapsedByProvider,
 		),
 		AgentConversationDetailMode: decoded.Preferences.AgentConversationDetailMode,
+		AgentDockLayout:             decoded.Preferences.AgentDockLayout,
 		AppCatalogChannel:           decoded.Preferences.AppCatalogChannel,
 		BrowserUseConnectionMode:    decoded.Preferences.BrowserUseConnectionMode,
 		DefaultAgentProvider:        decoded.Preferences.DefaultAgentProvider,

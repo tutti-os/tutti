@@ -14,36 +14,22 @@
           "type": "string"
         }
       },
-      "required": [
-        "kind",
-        "value"
-      ],
+      "required": ["kind", "value"],
       "type": "object"
     },
     "AdditionalContextKind": {
-      "enum": [
-        "untrusted",
-        "application"
-      ],
+      "enum": ["untrusted", "application"],
       "type": "string"
     },
     "ApprovalsReviewer": {
       "description": "Configures who approval requests are routed to for review. Examples include sandbox escapes, blocked network access, MCP approval prompts, and ARC escalations. Defaults to `user`. `auto_review` uses a carefully prompted subagent to gather relevant context and apply a risk-based decision framework before approving or denying the request. The legacy value `guardian_subagent` is accepted for compatibility.",
-      "enum": [
-        "user",
-        "auto_review",
-        "guardian_subagent"
-      ],
+      "enum": ["user", "auto_review", "guardian_subagent"],
       "type": "string"
     },
     "AskForApproval": {
       "oneOf": [
         {
-          "enum": [
-            "untrusted",
-            "on-request",
-            "never"
-          ],
+          "enum": ["untrusted", "on-request", "never"],
           "type": "string"
         },
         {
@@ -69,17 +55,11 @@
                   "type": "boolean"
                 }
               },
-              "required": [
-                "mcp_elicitations",
-                "rules",
-                "sandbox_approval"
-              ],
+              "required": ["mcp_elicitations", "rules", "sandbox_approval"],
               "type": "object"
             }
           },
-          "required": [
-            "granular"
-          ],
+          "required": ["granular"],
           "title": "GranularAskForApproval",
           "type": "object"
         }
@@ -98,10 +78,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "end",
-        "start"
-      ],
+      "required": ["end", "start"],
       "type": "object"
     },
     "CollaborationMode": {
@@ -114,19 +91,11 @@
           "$ref": "#/definitions/Settings"
         }
       },
-      "required": [
-        "mode",
-        "settings"
-      ],
+      "required": ["mode", "settings"],
       "type": "object"
     },
     "ImageDetail": {
-      "enum": [
-        "auto",
-        "low",
-        "high",
-        "original"
-      ],
+      "enum": ["auto", "low", "high", "original"],
       "type": "string"
     },
     "LegacyAppPathString": {
@@ -134,34 +103,20 @@
     },
     "ModeKind": {
       "description": "Initial collaboration mode to use when the TUI starts.",
-      "enum": [
-        "plan",
-        "default"
-      ],
+      "enum": ["plan", "default"],
       "type": "string"
     },
     "MultiAgentMode": {
       "description": "Controls whether the model receives multi-agent delegation instructions and, when it does, whether it should only spawn sub-agents after an explicit user request or may delegate proactively when doing so would help. `none` leaves the multi-agent tools available without injecting delegation instructions.",
-      "enum": [
-        "none",
-        "explicitRequestOnly",
-        "proactive"
-      ],
+      "enum": ["none", "explicitRequestOnly", "proactive"],
       "type": "string"
     },
     "NetworkAccess": {
-      "enum": [
-        "restricted",
-        "enabled"
-      ],
+      "enum": ["restricted", "enabled"],
       "type": "string"
     },
     "Personality": {
-      "enum": [
-        "none",
-        "friendly",
-        "pragmatic"
-      ],
+      "enum": ["none", "friendly", "pragmatic"],
       "type": "string"
     },
     "ReasoningEffort": {
@@ -173,18 +128,12 @@
       "description": "A summary of the reasoning performed by the model. This can be useful for debugging and understanding the model's reasoning process. See https://platform.openai.com/docs/guides/reasoning?api-mode=responses#reasoning-summaries",
       "oneOf": [
         {
-          "enum": [
-            "auto",
-            "concise",
-            "detailed"
-          ],
+          "enum": ["auto", "concise", "detailed"],
           "type": "string"
         },
         {
           "description": "Option to disable reasoning summaries.",
-          "enum": [
-            "none"
-          ],
+          "enum": ["none"],
           "type": "string"
         }
       ]
@@ -194,16 +143,12 @@
         {
           "properties": {
             "type": {
-              "enum": [
-                "dangerFullAccess"
-              ],
+              "enum": ["dangerFullAccess"],
               "title": "DangerFullAccessSandboxPolicyType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "DangerFullAccessSandboxPolicy",
           "type": "object"
         },
@@ -214,16 +159,12 @@
               "type": "boolean"
             },
             "type": {
-              "enum": [
-                "readOnly"
-              ],
+              "enum": ["readOnly"],
               "title": "ReadOnlySandboxPolicyType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "ReadOnlySandboxPolicy",
           "type": "object"
         },
@@ -238,16 +179,12 @@
               "default": "restricted"
             },
             "type": {
-              "enum": [
-                "externalSandbox"
-              ],
+              "enum": ["externalSandbox"],
               "title": "ExternalSandboxSandboxPolicyType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "ExternalSandboxSandboxPolicy",
           "type": "object"
         },
@@ -266,9 +203,7 @@
               "type": "boolean"
             },
             "type": {
-              "enum": [
-                "workspaceWrite"
-              ],
+              "enum": ["workspaceWrite"],
               "title": "WorkspaceWriteSandboxPolicyType",
               "type": "string"
             },
@@ -280,9 +215,7 @@
               "type": "array"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "WorkspaceWriteSandboxPolicy",
           "type": "object"
         }
@@ -292,10 +225,7 @@
       "description": "Settings for a collaboration mode.",
       "properties": {
         "developer_instructions": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "model": {
           "type": "string"
@@ -311,9 +241,7 @@
           ]
         }
       },
-      "required": [
-        "model"
-      ],
+      "required": ["model"],
       "type": "object"
     },
     "TextElement": {
@@ -328,15 +256,10 @@
         },
         "placeholder": {
           "description": "Optional human-readable placeholder for the element, displayed in the UI.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "byteRange"
-      ],
+      "required": ["byteRange"],
       "type": "object"
     },
     "TurnEnvironmentParams": {
@@ -348,10 +271,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "cwd",
-        "environmentId"
-      ],
+      "required": ["cwd", "environmentId"],
       "type": "object"
     },
     "UserInput": {
@@ -370,17 +290,12 @@
               "type": "array"
             },
             "type": {
-              "enum": [
-                "text"
-              ],
+              "enum": ["text"],
               "title": "TextUserInputType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "TextUserInput",
           "type": "object"
         },
@@ -398,9 +313,7 @@
               "default": null
             },
             "type": {
-              "enum": [
-                "image"
-              ],
+              "enum": ["image"],
               "title": "ImageUserInputType",
               "type": "string"
             },
@@ -408,10 +321,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "type",
-            "url"
-          ],
+          "required": ["type", "url"],
           "title": "ImageUserInput",
           "type": "object"
         },
@@ -432,17 +342,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "localImage"
-              ],
+              "enum": ["localImage"],
               "title": "LocalImageUserInputType",
               "type": "string"
             }
           },
-          "required": [
-            "path",
-            "type"
-          ],
+          "required": ["path", "type"],
           "title": "LocalImageUserInput",
           "type": "object"
         },
@@ -455,18 +360,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "skill"
-              ],
+              "enum": ["skill"],
               "title": "SkillUserInputType",
               "type": "string"
             }
           },
-          "required": [
-            "name",
-            "path",
-            "type"
-          ],
+          "required": ["name", "path", "type"],
           "title": "SkillUserInput",
           "type": "object"
         },
@@ -479,18 +378,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "mention"
-              ],
+              "enum": ["mention"],
               "title": "MentionUserInputType",
               "type": "string"
             }
           },
-          "required": [
-            "name",
-            "path",
-            "type"
-          ],
+          "required": ["name", "path", "type"],
           "title": "MentionUserInput",
           "type": "object"
         }
@@ -521,17 +414,11 @@
       "description": "Override where approval requests are routed for review on this turn and subsequent turns."
     },
     "clientUserMessageId": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "cwd": {
       "description": "Override the working directory for this turn and subsequent turns.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "effort": {
       "anyOf": [
@@ -552,10 +439,7 @@
     },
     "model": {
       "description": "Override the model for this turn and subsequent turns.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "outputSchema": {
       "description": "Optional JSON Schema used to constrain the final assistant message for this turn."
@@ -584,10 +468,7 @@
     },
     "serviceTier": {
       "description": "Override the service tier for this turn and subsequent turns.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "summary": {
       "anyOf": [
@@ -604,10 +485,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "input",
-    "threadId"
-  ],
+  "required": ["input", "threadId"],
   "title": "TurnStartParams",
   "type": "object"
 }

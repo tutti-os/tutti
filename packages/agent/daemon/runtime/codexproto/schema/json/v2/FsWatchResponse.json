@@ -17,9 +17,7 @@
       "description": "Canonicalized path associated with the watch."
     }
   },
-  "required": [
-    "path"
-  ],
+  "required": ["path"],
   "title": "FsWatchResponse",
   "type": "object"
 }

@@ -190,6 +190,9 @@ import type {
   LaunchWorkspaceAppData,
   LaunchWorkspaceAppErrors,
   LaunchWorkspaceAppResponses,
+  ListAgentTargetsData,
+  ListAgentTargetsErrors,
+  ListAgentTargetsResponses,
   ListCliCapabilitiesData,
   ListCliCapabilitiesErrors,
   ListCliCapabilitiesResponses,
@@ -705,6 +708,24 @@ export const attachEventStream = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/events/ws",
+    ...options
+  });
+
+/**
+ * List daemon-owned Agent Targets
+ *
+ * Returns durable Agent Target records. The launch ref is a controlled union and not a free-form configuration blob.
+ */
+export const listAgentTargets = <ThrowOnError extends boolean = false>(
+  options?: Options<ListAgentTargetsData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    ListAgentTargetsResponses,
+    ListAgentTargetsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-targets",
     ...options
   });
 

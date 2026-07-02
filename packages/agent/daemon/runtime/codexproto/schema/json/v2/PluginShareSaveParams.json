@@ -6,19 +6,11 @@
       "type": "string"
     },
     "PluginShareDiscoverability": {
-      "enum": [
-        "LISTED",
-        "UNLISTED",
-        "PRIVATE"
-      ],
+      "enum": ["LISTED", "UNLISTED", "PRIVATE"],
       "type": "string"
     },
     "PluginSharePrincipalType": {
-      "enum": [
-        "user",
-        "group",
-        "workspace"
-      ],
+      "enum": ["user", "group", "workspace"],
       "type": "string"
     },
     "PluginShareTarget": {
@@ -33,18 +25,11 @@
           "$ref": "#/definitions/PluginShareTargetRole"
         }
       },
-      "required": [
-        "principalId",
-        "principalType",
-        "role"
-      ],
+      "required": ["principalId", "principalType", "role"],
       "type": "object"
     },
     "PluginShareTargetRole": {
-      "enum": [
-        "reader",
-        "editor"
-      ],
+      "enum": ["reader", "editor"],
       "type": "string"
     }
   },
@@ -63,24 +48,16 @@
       "$ref": "#/definitions/AbsolutePathBuf"
     },
     "remotePluginId": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "shareTargets": {
       "items": {
         "$ref": "#/definitions/PluginShareTarget"
       },
-      "type": [
-        "array",
-        "null"
-      ]
+      "type": ["array", "null"]
     }
   },
-  "required": [
-    "pluginPath"
-  ],
+  "required": ["pluginPath"],
   "title": "PluginShareSaveParams",
   "type": "object"
 }

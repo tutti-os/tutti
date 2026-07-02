@@ -104,7 +104,9 @@ export function buildSubAgentLanesByCallId(
     const sortedItems = [...items].sort(compareTimelineItemsAscending);
     const startedAtUnixMs = timelineItemTime(sortedItems[0]);
     const card =
-      cards.find((candidate) => candidate.receiverThreadIds.has(ownerThreadId)) ??
+      cards.find((candidate) =>
+        candidate.receiverThreadIds.has(ownerThreadId)
+      ) ??
       cards.find((candidate) => candidate.outputStrings.has(ownerThreadId)) ??
       matchCardByTimeAffinity(cards, startedAtUnixMs);
     if (!card) {
@@ -247,7 +249,8 @@ function subAgentLane(
     // rare in practice) > a short name derived from the task's opening
     // self-address ("你是 X。…" / "You are X. …") > the view's localized
     // numbered fallback. Never the collab tool name.
-    name: latestNameMarker(sortedItems) ?? deriveSubAgentNameFromTask(card.task),
+    name:
+      latestNameMarker(sortedItems) ?? deriveSubAgentNameFromTask(card.task),
     task: card.task,
     laneIndex: 1,
     laneCount: 1,
@@ -504,7 +507,9 @@ function partitionCardInput(
     if (!isWorkspaceAgentToolCallItem(item) || !isCollabCardItem(item)) {
       continue;
     }
-    if (firstString(item.callId, stringValue(item.payload?.callId)) === callId) {
+    if (
+      firstString(item.callId, stringValue(item.payload?.callId)) === callId
+    ) {
       return item;
     }
   }

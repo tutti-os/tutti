@@ -14,9 +14,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "extraRoots"
-  ],
+  "required": ["extraRoots"],
   "title": "SkillsExtraRootsSetParams",
   "type": "object"
 }

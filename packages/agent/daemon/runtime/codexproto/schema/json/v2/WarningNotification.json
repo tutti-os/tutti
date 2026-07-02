@@ -7,15 +7,10 @@
     },
     "threadId": {
       "description": "Optional thread target when the warning applies to a specific thread.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "message"
-  ],
+  "required": ["message"],
   "title": "WarningNotification",
   "type": "object"
 }

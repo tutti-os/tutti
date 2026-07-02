@@ -17,11 +17,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "alreadyAdded",
-    "installedRoot",
-    "marketplaceName"
-  ],
+  "required": ["alreadyAdded", "installedRoot", "marketplaceName"],
   "title": "MarketplaceAddResponse",
   "type": "object"
 }

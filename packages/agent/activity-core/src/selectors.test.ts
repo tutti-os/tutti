@@ -172,6 +172,33 @@ test("session display status follows the latest turn instead of stale session fa
   );
 });
 
+test("session display status keeps failed sessions failed while latest turn is only working", () => {
+  const snapshot = snapshotWithSessionMessages(
+    [
+      session({
+        agentSessionId: "session-1",
+        status: "error"
+      })
+    ],
+    {
+      "session-1": [
+        message({
+          messageId: "latest-user",
+          role: "user",
+          status: null,
+          turnId: "turn-1",
+          version: 1
+        })
+      ]
+    }
+  );
+
+  assert.equal(
+    selectSessionDisplayStatuses(snapshot).get("session-1"),
+    "failed"
+  );
+});
+
 test("latest message display status uses only the newest turn", () => {
   assert.equal(
     resolveLatestAgentActivityMessageDisplayStatus([

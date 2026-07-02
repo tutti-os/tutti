@@ -9,9 +9,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "threadId"
-  ],
+  "required": ["threadId"],
   "title": "ThreadReadParams",
   "type": "object"
 }

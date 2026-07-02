@@ -5,42 +5,25 @@
       "description": "EXPERIMENTAL - app metadata returned by app-list APIs.",
       "properties": {
         "category": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "developer": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "isDiscoverableApp": {
           "type": "boolean"
         },
         "privacyPolicy": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "termsOfService": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "website": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "isDiscoverableApp"
-      ],
+      "required": ["isDiscoverableApp"],
       "type": "object"
     },
     "AppInfo": {
@@ -67,43 +50,28 @@
           ]
         },
         "description": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "distributionChannel": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "iconAssets": {
           "additionalProperties": {
             "type": "string"
           },
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         },
         "iconDarkAssets": {
           "additionalProperties": {
             "type": "string"
           },
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         },
         "id": {
           "type": "string"
         },
         "installUrl": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "isAccessible": {
           "default": false,
@@ -118,22 +86,13 @@
           "additionalProperties": {
             "type": "string"
           },
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         },
         "logoUrl": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "logoUrlDark": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "name": {
           "type": "string"
@@ -146,10 +105,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "id",
-        "name"
-      ],
+      "required": ["id", "name"],
       "type": "object"
     },
     "AppMetadata": {
@@ -158,28 +114,16 @@
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "developer": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "firstPartyRequiresInstall": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "firstPartyType": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "review": {
           "anyOf": [
@@ -195,49 +139,28 @@
           "items": {
             "$ref": "#/definitions/AppScreenshot"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "seoDescription": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "showInComposerWhenUnlinked": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "subCategories": {
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "version": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "versionId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "versionNotes": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"
@@ -248,32 +171,22 @@
           "type": "string"
         }
       },
-      "required": [
-        "status"
-      ],
+      "required": ["status"],
       "type": "object"
     },
     "AppScreenshot": {
       "properties": {
         "fileId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "url": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "userPrompt": {
           "type": "string"
         }
       },
-      "required": [
-        "userPrompt"
-      ],
+      "required": ["userPrompt"],
       "type": "object"
     }
   },
@@ -286,9 +199,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "data"
-  ],
+  "required": ["data"],
   "title": "AppListUpdatedNotification",
   "type": "object"
 }

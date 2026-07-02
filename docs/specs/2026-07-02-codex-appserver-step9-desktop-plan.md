@@ -1,8 +1,8 @@
 # Step 9 — Desktop optimistic/reconcile rewrite (plan)
 
 Phase 2 of the codex app-server refactor finish. Closes the Cluster A
-desktop-half: *"user sends a message, their own message disappears, only the
-agent reply shows"* (historical sessions `7633ebb9` / `2d73bad7` / `08920807`;
+desktop-half: _"user sends a message, their own message disappears, only the
+agent reply shows"_ (historical sessions `7633ebb9` / `2d73bad7` / `08920807`;
 related #608, #585). The daemon-half contract is already live (ADR 0004:
 `Version` is a per-session monotonic counter assigned by the store,
 `service.go:2083-2084`, preserved on merge; paging by version, display order by
@@ -34,7 +34,7 @@ a disappear/desync vector:
   paging — the "unpainted optimistic row desyncs `after_version`" case from
   the design doc.
 - **V3 — untargeted backfill.** The initial-load missing-user backfill stops as
-  soon as *any* user text message is in the window
+  soon as _any_ user text message is in the window
   (`hasUserTextMessage`, `useAgentGUINodeController.ts:5285`), not the specific
   row the pending submit is waiting for.
 - **V4 — silent drop on failure.** Submit failure removes the echo
@@ -49,8 +49,8 @@ a disappear/desync vector:
 - **traycer chat-queue-reconciler**: pending sends tracked in id-keyed slices
   with a pure reconcile core; server log authoritative, echoes are a
   render-time overlay pruned only on confirmed identity; on reconnect snapshot
-  a pending send is *promoted if present, else converted to a composer
-  restore* — never silently dropped; failure → restore slot.
+  a pending send is _promoted if present, else converted to a composer
+  restore_ — never silently dropped; failure → restore slot.
 - **t3code sequence contract**: client-minted message id echoed verbatim by
   the server so optimistic rows reconcile by pure id equality; monotonic
   server sequence is the only cursor; idempotent id-keyed reducer makes
@@ -65,7 +65,7 @@ them.
 
 - **D1 — version-domain hygiene.** Optimistic echoes carry **no daemon-domain
   version**: `version: 0`, `id: 0`. Ordering: durable rows sort by version as
-  today; echoes are appended *after* durable rows, ordered among themselves by
+  today; echoes are appended _after_ durable rows, ordered among themselves by
   `occurredAtUnixMs` (`mergeWorkspaceAgentActivityDurableAndOverlayMessages`
   stops version-sorting across the domain boundary). This preserves today's
   rendered order (fake ms versions also always sorted echoes last). With
@@ -83,12 +83,12 @@ them.
   clientSubmitId) — unchanged in semantics, now provably reachable because V1
   no longer swallows the durable twin first.
 - **D4 — targeted backfill.** The initial-load backfill and the post-submit
-  refresh target the *expected* pending messageIds (derived from live submit
+  refresh target the _expected_ pending messageIds (derived from live submit
   traces) rather than "any user text message". If backfill exhausts without
   finding the twin, the echo stays visible — non-confirmation never deletes
   the user's message.
 - **D5 — failure restores the composer.** On submit failure the echo is
-  removed *and* the prompt content is offered back to the composer
+  removed _and_ the prompt content is offered back to the composer
   (traycer's restore slot, one per session). The user's text is never
   destroyed.
 - **D6 — one factory.** The duplicate `createOptimisticPromptMessage` is
@@ -104,7 +104,7 @@ its own pinning tests, which must stay green).
 
 The three historical sessions have no per-session forensics (they are cited in
 the corpus as the empirical basis of the class, not individually analyzed);
-they are reproduced as the three failure *shapes* of the class, each pinned by
+they are reproduced as the three failure _shapes_ of the class, each pinned by
 an integration test in `useAgentGUINodeController.spec.tsx`:
 
 - **T1 (shape of `7633ebb9` — page misses the user row).** Initial hydration
@@ -141,9 +141,9 @@ helpers.
 
 ## Risks
 
-| Risk | Mitigation |
-|---|---|
-| Ordering regression from the durable++overlay concatenation | D1 mirrors today's effective order (echoes last); projection specs + T2 pin it. |
-| Legacy sessions without clientSubmitId | Signature fallback retained (D3); corpus tests for #585/#608 stay green. |
-| `version: 0` leaking into a daemon call | Helpers skip optimistic rows (D2); T3 pins the cursor value. |
-| 15k-line controller churn | Changes concentrate in pure helpers + the two factories; store setters enforce the invariant so call sites need no sweep. |
+| Risk                                                        | Mitigation                                                                                                                |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Ordering regression from the durable++overlay concatenation | D1 mirrors today's effective order (echoes last); projection specs + T2 pin it.                                           |
+| Legacy sessions without clientSubmitId                      | Signature fallback retained (D3); corpus tests for #585/#608 stay green.                                                  |
+| `version: 0` leaking into a daemon call                     | Helpers skip optimistic rows (D2); T3 pins the cursor value.                                                              |
+| 15k-line controller churn                                   | Changes concentrate in pure helpers + the two factories; store setters enforce the invariant so call sites need no sweep. |

@@ -10,27 +10,17 @@
           "type": "string"
         }
       },
-      "required": [
-        "status",
-        "step"
-      ],
+      "required": ["status", "step"],
       "type": "object"
     },
     "TurnPlanStepStatus": {
-      "enum": [
-        "pending",
-        "inProgress",
-        "completed"
-      ],
+      "enum": ["pending", "inProgress", "completed"],
       "type": "string"
     }
   },
   "properties": {
     "explanation": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "plan": {
       "items": {
@@ -45,11 +35,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "plan",
-    "threadId",
-    "turnId"
-  ],
+  "required": ["plan", "threadId", "turnId"],
   "title": "TurnPlanUpdatedNotification",
   "type": "object"
 }

@@ -10,17 +10,11 @@
           "type": "string"
         }
       },
-      "required": [
-        "action",
-        "host"
-      ],
+      "required": ["action", "host"],
       "type": "object"
     },
     "NetworkPolicyRuleAction": {
-      "enum": [
-        "allow",
-        "deny"
-      ],
+      "enum": ["allow", "deny"],
       "type": "string"
     },
     "ReviewDecision": {
@@ -28,9 +22,7 @@
       "oneOf": [
         {
           "description": "User has approved this command and the agent should execute it.",
-          "enum": [
-            "approved"
-          ],
+          "enum": ["approved"],
           "type": "string"
         },
         {
@@ -46,23 +38,17 @@
                   "type": "array"
                 }
               },
-              "required": [
-                "proposed_execpolicy_amendment"
-              ],
+              "required": ["proposed_execpolicy_amendment"],
               "type": "object"
             }
           },
-          "required": [
-            "approved_execpolicy_amendment"
-          ],
+          "required": ["approved_execpolicy_amendment"],
           "title": "ApprovedExecpolicyAmendmentReviewDecision",
           "type": "object"
         },
         {
           "description": "User has approved this request and wants future prompts in the same session-scoped approval cache to be automatically approved for the remainder of the session.",
-          "enum": [
-            "approved_for_session"
-          ],
+          "enum": ["approved_for_session"],
           "type": "string"
         },
         {
@@ -75,37 +61,27 @@
                   "$ref": "#/definitions/NetworkPolicyAmendment"
                 }
               },
-              "required": [
-                "network_policy_amendment"
-              ],
+              "required": ["network_policy_amendment"],
               "type": "object"
             }
           },
-          "required": [
-            "network_policy_amendment"
-          ],
+          "required": ["network_policy_amendment"],
           "title": "NetworkPolicyAmendmentReviewDecision",
           "type": "object"
         },
         {
           "description": "User has denied this command and the agent should not execute it, but it should continue the session and try something else.",
-          "enum": [
-            "denied"
-          ],
+          "enum": ["denied"],
           "type": "string"
         },
         {
           "description": "Automatic approval review timed out before reaching a decision.",
-          "enum": [
-            "timed_out"
-          ],
+          "enum": ["timed_out"],
           "type": "string"
         },
         {
           "description": "User has denied this command and the agent should not do anything until the user's next command.",
-          "enum": [
-            "abort"
-          ],
+          "enum": ["abort"],
           "type": "string"
         }
       ]
@@ -116,9 +92,7 @@
       "$ref": "#/definitions/ReviewDecision"
     }
   },
-  "required": [
-    "decision"
-  ],
+  "required": ["decision"],
   "title": "ExecCommandApprovalResponse",
   "type": "object"
 }

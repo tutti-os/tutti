@@ -6,9 +6,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "token"
-  ],
+  "required": ["token"],
   "title": "AttestationGenerateResponse",
   "type": "object"
 }

@@ -12,10 +12,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "code",
-        "message"
-      ],
+      "required": ["code", "message"],
       "type": "object"
     },
     "RequestId": {
@@ -39,10 +36,7 @@
       "$ref": "#/definitions/RequestId"
     }
   },
-  "required": [
-    "error",
-    "id"
-  ],
+  "required": ["error", "id"],
   "title": "JSONRPCError",
   "type": "object"
 }

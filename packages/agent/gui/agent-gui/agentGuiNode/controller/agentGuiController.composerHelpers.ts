@@ -396,7 +396,11 @@ export function buildNodeDefaultComposerSettings(
 export function nodeComposerOverridesForProvider(
   data: AgentGUINodeData
 ): AgentSessionComposerSettings | null {
+  const agentTargetId = normalizeOptionalText(data.agentTargetId);
   return (
+    (agentTargetId
+      ? data.composerOverridesByAgentTargetId?.[agentTargetId]
+      : null) ??
     data.composerOverridesByProvider?.[data.provider] ??
     data.composerOverrides ??
     null
@@ -464,6 +468,16 @@ export function nodeDataFromComposerSettings(
     computerUse: settings.computerUse,
     permissionModeId: normalizePermissionModeId(settings.permissionModeId)
   };
+  const agentTargetId = normalizeOptionalText(current.agentTargetId);
+  if (agentTargetId) {
+    return {
+      ...current,
+      composerOverridesByAgentTargetId: {
+        ...(current.composerOverridesByAgentTargetId ?? {}),
+        [agentTargetId]: composerOverrides
+      }
+    };
+  }
   return {
     ...current,
     composerOverrides,
@@ -526,15 +540,21 @@ export function removeQueuedPromptById(
 export const NODE_DEFAULT_DRAFT_KEY = "__agent_gui_node_defaults__";
 
 export function nodeDefaultDraftKey(
-  agentProvider: AgentGUINodeData["provider"]
+  agentProvider: AgentGUINodeData["provider"],
+  agentTargetId?: string | null
 ): string {
+  const normalizedAgentTargetId = normalizeOptionalText(agentTargetId);
+  if (normalizedAgentTargetId) {
+    return `${NODE_DEFAULT_DRAFT_KEY}:target:${normalizedAgentTargetId}`;
+  }
   return `${NODE_DEFAULT_DRAFT_KEY}:${agentProvider}`;
 }
 
 export function nodeDefaultDraftPromptKey(
-  agentProvider: AgentGUINodeData["provider"]
+  agentProvider: AgentGUINodeData["provider"],
+  agentTargetId?: string | null
 ): string {
-  return nodeDefaultDraftKey(agentProvider);
+  return nodeDefaultDraftKey(agentProvider, agentTargetId);
 }
 
 export function normalizeProjectDraftPath(
@@ -549,6 +569,9 @@ export function readNodeDefaultDraftPrompt(input: {
   drafts: Record<string, string>;
 }): string {
   return (
+    input.drafts[
+      nodeDefaultDraftPromptKey(input.data.provider, input.data.agentTargetId)
+    ] ??
     input.drafts[nodeDefaultDraftPromptKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
     ""
@@ -562,6 +585,9 @@ export function readNodeDefaultDraftSettings(input: {
   drafts: Record<string, AgentSessionComposerSettings>;
 }): AgentSessionComposerSettings {
   return (
+    input.drafts[
+      nodeDefaultDraftKey(input.data.provider, input.data.agentTargetId)
+    ] ??
     input.drafts[nodeDefaultDraftKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
     buildNodeDefaultComposerSettings(input.data, {

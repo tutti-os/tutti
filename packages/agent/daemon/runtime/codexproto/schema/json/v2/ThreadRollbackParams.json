@@ -12,10 +12,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "numTurns",
-    "threadId"
-  ],
+  "required": ["numTurns", "threadId"],
   "title": "ThreadRollbackParams",
   "type": "object"
 }

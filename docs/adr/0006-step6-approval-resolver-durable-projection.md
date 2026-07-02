@@ -51,10 +51,11 @@ responder" inversion as ADR 0005. Unify it into the SAME per-session projection:
 Whether a pending approval can resolve the ORIGINAL RPC after reconnect depends on
 **whether codex re-issues the server-request on `thread/resume`** (tutti does not
 replay it; not yet confirmed codex re-issues). If codex does NOT re-issue, the
-original RPC is dead on reconnect → the durable model can only **display interrupted
-+ re-drive**, not resolve the dead RPC. So the reconnect policy (item 4) must not
-assume RPC revival. `serverRequest/resolved` is the reconcile signal that keeps the
-durable state honest regardless.
+original RPC is dead on reconnect → the durable model can only \*\*display interrupted
+
+- re-drive\*\*, not resolve the dead RPC. So the reconnect policy (item 4) must not
+  assume RPC revival. `serverRequest/resolved` is the reconcile signal that keeps the
+  durable state honest regardless.
 
 ## Sequencing (gate + independence)
 
@@ -78,6 +79,7 @@ durable state honest regardless.
   requestUserInput, unknown-request reject) gate the step; Step-0 corpus stays green.
 
 ## Relations
+
 - **Unifies with ADR 0005** — approvals become items in the same projection that
   carries turn state + messages; `SubmitInteractive` is a responder like the turn
   command; both reconcile against the Step-4 snapshot.

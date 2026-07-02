@@ -40,6 +40,7 @@ func TestServiceGetReturnsStoredDesktopPreferences(t *testing.T) {
 			getResult: preferencesbiz.DesktopPreferences{
 				DefaultAgentProvider: "claude-code",
 
+				AgentDockLayout:          "unified",
 				BrowserUseConnectionMode: "autoConnect",
 				DockIconStyle:            "default",
 				DockPlacement:            "left",
@@ -69,6 +70,9 @@ func TestServiceGetReturnsStoredDesktopPreferences(t *testing.T) {
 	}
 	if preferences.DefaultAgentProvider != "claude-code" {
 		t.Fatalf("Get() defaultAgentProvider = %q, want claude-code", preferences.DefaultAgentProvider)
+	}
+	if preferences.AgentDockLayout != "unified" {
+		t.Fatalf("Get() agentDockLayout = %q, want unified", preferences.AgentDockLayout)
 	}
 	if preferences.ThemeSource != "dark" {
 		t.Fatalf("Get() themeSource = %q, want dark", preferences.ThemeSource)
@@ -112,6 +116,7 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 			"unknown": true,
 		},
 		AgentConversationDetailMode: " general ",
+		AgentDockLayout:             " unified ",
 		DefaultAgentProvider:        " claude ",
 
 		BrowserUseConnectionMode: " autoConnect ",
@@ -148,6 +153,9 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	}
 	if store.putInput.AgentConversationDetailMode != "general" {
 		t.Fatalf("stored agentConversationDetailMode = %q, want general", store.putInput.AgentConversationDetailMode)
+	}
+	if store.putInput.AgentDockLayout != "unified" {
+		t.Fatalf("stored agentDockLayout = %q, want unified", store.putInput.AgentDockLayout)
 	}
 	if store.putInput.ThemeSource != "dark" {
 		t.Fatalf("stored themeSource = %q, want dark", store.putInput.ThemeSource)
@@ -194,12 +202,58 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 		publisher.published[0].Locale != "zh-CN" ||
 		publisher.published[0].DefaultAgentProvider != "claude-code" ||
 		publisher.published[0].AgentConversationDetailMode != "general" ||
+		publisher.published[0].AgentDockLayout != "unified" ||
 		publisher.published[0].ThemeSource != "dark" ||
 		publisher.published[0].SleepPreventionMode != "whileAgentRunning" ||
 		publisher.published[0].BrowserUseConnectionMode != "autoConnect" ||
 		publisher.published[0].UpdateChannel != "rc" ||
 		publisher.published[0].UpdatePolicy != "auto" {
 		t.Fatalf("published preferences = %#v, want left/zh-CN/dark/prevent-sleep/autoConnect/rc/auto", publisher.published[0])
+	}
+}
+
+func TestServicePutNormalizesAgentDockLayout(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "empty", input: "", want: "legacySplit"},
+		{name: "invalid", input: "stacked", want: "legacySplit"},
+		{name: "legacy", input: "legacySplit", want: "legacySplit"},
+		{name: "unified", input: "unified", want: "unified"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := &preferencesStoreStub{}
+			service := Service{Store: store}
+			preferences, err := service.Put(context.Background(), PutInput{
+				AgentConversationDetailMode: "coding",
+				AgentDockLayout:             tc.input,
+				AppCatalogChannel:           "production",
+				DefaultAgentProvider:        "codex",
+				DockIconStyle:               "default",
+				DockPlacement:               "bottom",
+				Locale:                      "en",
+				MinimizeAnimation:           "scale",
+				SleepPreventionMode:         "never",
+				ThemeSource:                 "dark",
+				UpdateChannel:               "rc",
+				UpdatePolicy:                "prompt",
+			})
+			if err != nil {
+				t.Fatalf("Put() error = %v", err)
+			}
+			if preferences.AgentDockLayout != tc.want {
+				t.Fatalf("Put() agentDockLayout = %q, want %q", preferences.AgentDockLayout, tc.want)
+			}
+			if store.putInput.AgentDockLayout != tc.want {
+				t.Fatalf("stored agentDockLayout = %q, want %q", store.putInput.AgentDockLayout, tc.want)
+			}
+		})
 	}
 }
 

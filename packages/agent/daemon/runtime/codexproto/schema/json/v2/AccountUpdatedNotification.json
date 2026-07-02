@@ -6,44 +6,32 @@
       "oneOf": [
         {
           "description": "OpenAI API key provided by the caller and stored by Codex.",
-          "enum": [
-            "apikey"
-          ],
+          "enum": ["apikey"],
           "type": "string"
         },
         {
           "description": "ChatGPT OAuth managed by Codex (tokens persisted and refreshed by Codex).",
-          "enum": [
-            "chatgpt"
-          ],
+          "enum": ["chatgpt"],
           "type": "string"
         },
         {
           "description": "[UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE.\n\nChatGPT auth tokens are supplied by an external host app and are only stored in memory. Token refresh must be handled by the external host app.",
-          "enum": [
-            "chatgptAuthTokens"
-          ],
+          "enum": ["chatgptAuthTokens"],
           "type": "string"
         },
         {
           "description": "Programmatic Codex auth backed by a registered Agent Identity.",
-          "enum": [
-            "agentIdentity"
-          ],
+          "enum": ["agentIdentity"],
           "type": "string"
         },
         {
           "description": "Programmatic Codex auth backed by a personal access token.",
-          "enum": [
-            "personalAccessToken"
-          ],
+          "enum": ["personalAccessToken"],
           "type": "string"
         },
         {
           "description": "Amazon Bedrock bearer token managed by Codex.",
-          "enum": [
-            "bedrockApiKey"
-          ],
+          "enum": ["bedrockApiKey"],
           "type": "string"
         }
       ]

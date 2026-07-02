@@ -5,9 +5,7 @@
       "type": "boolean"
     }
   },
-  "required": [
-    "started"
-  ],
+  "required": ["started"],
   "title": "WindowsSandboxSetupStartResponse",
   "type": "object"
 }

@@ -7,38 +7,26 @@
           "items": {
             "$ref": "#/definitions/FileSystemSandboxEntry"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "globScanMaxDepth": {
           "format": "uint",
           "minimum": 1.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "read": {
           "description": "This will be removed in favor of `entries`.",
           "items": {
             "$ref": "#/definitions/LegacyAppPathString"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "write": {
           "description": "This will be removed in favor of `entries`.",
           "items": {
             "$ref": "#/definitions/LegacyAppPathString"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         }
       },
       "type": "object"
@@ -46,20 +34,13 @@
     "AdditionalNetworkPermissions": {
       "properties": {
         "enabled": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         }
       },
       "type": "object"
     },
     "FileSystemAccessMode": {
-      "enum": [
-        "read",
-        "write",
-        "deny"
-      ],
+      "enum": ["read", "write", "deny"],
       "type": "string"
     },
     "FileSystemPath": {
@@ -70,17 +51,12 @@
               "$ref": "#/definitions/LegacyAppPathString"
             },
             "type": {
-              "enum": [
-                "path"
-              ],
+              "enum": ["path"],
               "title": "PathFileSystemPathType",
               "type": "string"
             }
           },
-          "required": [
-            "path",
-            "type"
-          ],
+          "required": ["path", "type"],
           "title": "PathFileSystemPath",
           "type": "object"
         },
@@ -90,26 +66,19 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "glob_pattern"
-              ],
+              "enum": ["glob_pattern"],
               "title": "GlobPatternFileSystemPathType",
               "type": "string"
             }
           },
-          "required": [
-            "pattern",
-            "type"
-          ],
+          "required": ["pattern", "type"],
           "title": "GlobPatternFileSystemPath",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "special"
-              ],
+              "enum": ["special"],
               "title": "SpecialFileSystemPathType",
               "type": "string"
             },
@@ -117,10 +86,7 @@
               "$ref": "#/definitions/FileSystemSpecialPath"
             }
           },
-          "required": [
-            "type",
-            "value"
-          ],
+          "required": ["type", "value"],
           "title": "SpecialFileSystemPath",
           "type": "object"
         }
@@ -135,10 +101,7 @@
           "$ref": "#/definitions/FileSystemPath"
         }
       },
-      "required": [
-        "access",
-        "path"
-      ],
+      "required": ["access", "path"],
       "type": "object"
     },
     "FileSystemSpecialPath": {
@@ -146,106 +109,75 @@
         {
           "properties": {
             "kind": {
-              "enum": [
-                "root"
-              ],
+              "enum": ["root"],
               "type": "string"
             }
           },
-          "required": [
-            "kind"
-          ],
+          "required": ["kind"],
           "title": "RootFileSystemSpecialPath",
           "type": "object"
         },
         {
           "properties": {
             "kind": {
-              "enum": [
-                "minimal"
-              ],
+              "enum": ["minimal"],
               "type": "string"
             }
           },
-          "required": [
-            "kind"
-          ],
+          "required": ["kind"],
           "title": "MinimalFileSystemSpecialPath",
           "type": "object"
         },
         {
           "properties": {
             "kind": {
-              "enum": [
-                "project_roots"
-              ],
+              "enum": ["project_roots"],
               "type": "string"
             },
             "subpath": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
-          "required": [
-            "kind"
-          ],
+          "required": ["kind"],
           "title": "KindFileSystemSpecialPath",
           "type": "object"
         },
         {
           "properties": {
             "kind": {
-              "enum": [
-                "tmpdir"
-              ],
+              "enum": ["tmpdir"],
               "type": "string"
             }
           },
-          "required": [
-            "kind"
-          ],
+          "required": ["kind"],
           "title": "TmpdirFileSystemSpecialPath",
           "type": "object"
         },
         {
           "properties": {
             "kind": {
-              "enum": [
-                "slash_tmp"
-              ],
+              "enum": ["slash_tmp"],
               "type": "string"
             }
           },
-          "required": [
-            "kind"
-          ],
+          "required": ["kind"],
           "title": "SlashTmpFileSystemSpecialPath",
           "type": "object"
         },
         {
           "properties": {
             "kind": {
-              "enum": [
-                "unknown"
-              ],
+              "enum": ["unknown"],
               "type": "string"
             },
             "path": {
               "type": "string"
             },
             "subpath": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
-          "required": [
-            "kind",
-            "path"
-          ],
+          "required": ["kind", "path"],
           "type": "object"
         }
       ]
@@ -279,10 +211,7 @@
       "type": "string"
     },
     "PermissionGrantScope": {
-      "enum": [
-        "turn",
-        "session"
-      ],
+      "enum": ["turn", "session"],
       "type": "string"
     }
   },
@@ -300,15 +229,10 @@
     },
     "strictAutoReview": {
       "description": "Review every subsequent command in this turn before normal sandboxed execution.",
-      "type": [
-        "boolean",
-        "null"
-      ]
+      "type": ["boolean", "null"]
     }
   },
-  "required": [
-    "permissions"
-  ],
+  "required": ["permissions"],
   "title": "PermissionsRequestApprovalResponse",
   "type": "object"
 }

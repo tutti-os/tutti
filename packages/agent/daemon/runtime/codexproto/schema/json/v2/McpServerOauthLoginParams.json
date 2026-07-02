@@ -8,28 +8,17 @@
       "items": {
         "type": "string"
       },
-      "type": [
-        "array",
-        "null"
-      ]
+      "type": ["array", "null"]
     },
     "threadId": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "timeoutSecs": {
       "format": "int64",
-      "type": [
-        "integer",
-        "null"
-      ]
+      "type": ["integer", "null"]
     }
   },
-  "required": [
-    "name"
-  ],
+  "required": ["name"],
   "title": "McpServerOauthLoginParams",
   "type": "object"
 }

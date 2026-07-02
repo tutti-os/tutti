@@ -70,6 +70,7 @@ func mergeRuntimeAgentSession(
 	if shouldKeepLocalCompletedTurn(upstream, local) {
 		merged := local
 		merged.AgentSessionID = preferredMergedAgentSessionID(upstream, local)
+		merged.AgentTargetID = firstNonEmptyString(local.AgentTargetID, upstream.AgentTargetID)
 		merged.Provider = firstNonEmptyString(local.Provider, upstream.Provider)
 		merged.ProviderSessionID = firstNonEmptyString(local.ProviderSessionID, upstream.ProviderSessionID)
 		merged.SessionOrigin = firstNonEmptyString(upstream.SessionOrigin, local.SessionOrigin)
@@ -95,6 +96,7 @@ func mergeRuntimeAgentSession(
 	if shouldKeepLocalBusyState(upstream, local) {
 		merged := local
 		merged.AgentSessionID = preferredMergedAgentSessionID(upstream, local)
+		merged.AgentTargetID = firstNonEmptyString(local.AgentTargetID, upstream.AgentTargetID)
 		merged.Provider = firstNonEmptyString(local.Provider, upstream.Provider)
 		merged.ProviderSessionID = firstNonEmptyString(local.ProviderSessionID, upstream.ProviderSessionID)
 		merged.SessionOrigin = firstNonEmptyString(upstream.SessionOrigin, local.SessionOrigin)
@@ -126,6 +128,7 @@ func mergeRuntimeAgentSession(
 	}
 	merged := upstream
 	merged.AgentSessionID = preferredMergedAgentSessionID(upstream, local)
+	merged.AgentTargetID = firstNonEmptyString(local.AgentTargetID, upstream.AgentTargetID)
 	merged.Provider = firstNonEmptyString(local.Provider, upstream.Provider)
 	merged.ProviderSessionID = firstNonEmptyString(local.ProviderSessionID, upstream.ProviderSessionID)
 	merged.SessionOrigin = firstNonEmptyString(upstream.SessionOrigin, local.SessionOrigin)

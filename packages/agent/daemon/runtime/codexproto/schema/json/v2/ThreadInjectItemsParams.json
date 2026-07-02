@@ -10,10 +10,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "items",
-    "threadId"
-  ],
+  "required": ["items", "threadId"],
   "title": "ThreadInjectItemsParams",
   "type": "object"
 }

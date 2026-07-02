@@ -7,19 +7,14 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     },
     "ExternalAgentConfigMigrationItem": {
       "properties": {
         "cwd": {
           "description": "Null or empty means home-scoped migration; non-empty means repo-scoped migration.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "description": {
           "type": "string"
@@ -38,10 +33,7 @@
           "$ref": "#/definitions/ExternalAgentConfigMigrationItemType"
         }
       },
-      "required": [
-        "description",
-        "itemType"
-      ],
+      "required": ["description", "itemType"],
       "type": "object"
     },
     "ExternalAgentConfigMigrationItemType": {
@@ -64,9 +56,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     },
     "McpServerMigration": {
@@ -75,9 +65,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     },
     "MigrationDetails": {
@@ -146,10 +134,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "marketplaceName",
-        "pluginNames"
-      ],
+      "required": ["marketplaceName", "pluginNames"],
       "type": "object"
     },
     "SessionMigration": {
@@ -161,16 +146,10 @@
           "type": "string"
         },
         "title": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "cwd",
-        "path"
-      ],
+      "required": ["cwd", "path"],
       "type": "object"
     },
     "SkillMigration": {
@@ -179,9 +158,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     },
     "SubagentMigration": {
@@ -190,9 +167,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     }
   },
@@ -205,15 +180,10 @@
     },
     "source": {
       "description": "Source product that produced the migration items. Missing means unspecified.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "migrationItems"
-  ],
+  "required": ["migrationItems"],
   "title": "ExternalAgentConfigImportParams",
   "type": "object"
 }

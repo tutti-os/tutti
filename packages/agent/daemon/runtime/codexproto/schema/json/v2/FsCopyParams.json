@@ -29,10 +29,7 @@
       "description": "Absolute source path."
     }
   },
-  "required": [
-    "destinationPath",
-    "sourcePath"
-  ],
+  "required": ["destinationPath", "sourcePath"],
   "title": "FsCopyParams",
   "type": "object"
 }

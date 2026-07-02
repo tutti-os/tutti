@@ -8,39 +8,25 @@
       "items": {
         "type": "string"
       },
-      "type": [
-        "array",
-        "null"
-      ]
+      "type": ["array", "null"]
     },
     "includeLogs": {
       "type": "boolean"
     },
     "reason": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "tags": {
       "additionalProperties": {
         "type": "string"
       },
-      "type": [
-        "object",
-        "null"
-      ]
+      "type": ["object", "null"]
     },
     "threadId": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "classification"
-  ],
+  "required": ["classification"],
   "title": "FeedbackUploadParams",
   "type": "object"
 }

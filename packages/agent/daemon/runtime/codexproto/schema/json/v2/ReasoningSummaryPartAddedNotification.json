@@ -15,12 +15,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "itemId",
-    "summaryIndex",
-    "threadId",
-    "turnId"
-  ],
+  "required": ["itemId", "summaryIndex", "threadId", "turnId"],
   "title": "ReasoningSummaryPartAddedNotification",
   "type": "object"
 }

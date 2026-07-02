@@ -2,10 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "FuzzyFileSearchMatchType": {
-      "enum": [
-        "file",
-        "directory"
-      ],
+      "enum": ["file", "directory"],
       "type": "string"
     },
     "FuzzyFileSearchResult": {
@@ -20,10 +17,7 @@
             "minimum": 0.0,
             "type": "integer"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "match_type": {
           "$ref": "#/definitions/FuzzyFileSearchMatchType"
@@ -40,13 +34,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "file_name",
-        "match_type",
-        "path",
-        "root",
-        "score"
-      ],
+      "required": ["file_name", "match_type", "path", "root", "score"],
       "type": "object"
     }
   },
@@ -64,11 +52,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "files",
-    "query",
-    "sessionId"
-  ],
+  "required": ["files", "query", "sessionId"],
   "title": "FuzzyFileSearchSessionUpdatedNotification",
   "type": "object"
 }

@@ -21,10 +21,7 @@
       "description": "Absolute path to write."
     }
   },
-  "required": [
-    "dataBase64",
-    "path"
-  ],
+  "required": ["dataBase64", "path"],
   "title": "FsWriteFileParams",
   "type": "object"
 }

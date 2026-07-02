@@ -16,19 +16,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "read"
-              ],
+              "enum": ["read"],
               "title": "ReadParsedCommandType",
               "type": "string"
             }
           },
-          "required": [
-            "cmd",
-            "name",
-            "path",
-            "type"
-          ],
+          "required": ["cmd", "name", "path", "type"],
           "title": "ReadParsedCommand",
           "type": "object"
         },
@@ -38,23 +31,15 @@
               "type": "string"
             },
             "path": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "list_files"
-              ],
+              "enum": ["list_files"],
               "title": "ListFilesParsedCommandType",
               "type": "string"
             }
           },
-          "required": [
-            "cmd",
-            "type"
-          ],
+          "required": ["cmd", "type"],
           "title": "ListFilesParsedCommand",
           "type": "object"
         },
@@ -64,29 +49,18 @@
               "type": "string"
             },
             "path": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "query": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "search"
-              ],
+              "enum": ["search"],
               "title": "SearchParsedCommandType",
               "type": "string"
             }
           },
-          "required": [
-            "cmd",
-            "type"
-          ],
+          "required": ["cmd", "type"],
           "title": "SearchParsedCommand",
           "type": "object"
         },
@@ -96,17 +70,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "unknown"
-              ],
+              "enum": ["unknown"],
               "title": "UnknownParsedCommandType",
               "type": "string"
             }
           },
-          "required": [
-            "cmd",
-            "type"
-          ],
+          "required": ["cmd", "type"],
           "title": "UnknownParsedCommand",
           "type": "object"
         }
@@ -119,10 +88,7 @@
   "properties": {
     "approvalId": {
       "description": "Identifier for this specific approval callback.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "callId": {
       "description": "Use to correlate this with [codex_protocol::protocol::ExecCommandBeginEvent] and [codex_protocol::protocol::ExecCommandEndEvent].",
@@ -147,19 +113,10 @@
       "type": "array"
     },
     "reason": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "callId",
-    "command",
-    "conversationId",
-    "cwd",
-    "parsedCmd"
-  ],
+  "required": ["callId", "command", "conversationId", "cwd", "parsedCmd"],
   "title": "ExecCommandApprovalParams",
   "type": "object"
 }

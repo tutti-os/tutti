@@ -18,6 +18,7 @@ type SkillBundleRenderer interface {
 type PrepareInput struct {
 	WorkspaceID            string
 	AgentSessionID         string
+	AgentTargetID          string
 	Provider               string
 	Cwd                    string
 	CLICommand             string

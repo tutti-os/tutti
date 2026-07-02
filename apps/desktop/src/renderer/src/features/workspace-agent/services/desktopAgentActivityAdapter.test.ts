@@ -324,6 +324,7 @@ test("desktop agent activity adapter refreshes provider status and localizes ada
   await assert.rejects(
     adapter.createSession({
       agentSessionId: "agent-session-1",
+      agentTargetId: "local:claude-code",
       provider: "claude-code",
       workspaceId
     }),
@@ -357,6 +358,7 @@ test("desktop agent activity adapter does not refresh provider status for unrela
   await assert.rejects(
     adapter.createSession({
       agentSessionId: "agent-session-1",
+      agentTargetId: "local:claude-code",
       provider: "claude-code",
       workspaceId
     }),
@@ -625,6 +627,7 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
 
   const session = await adapter.createSession({
     agentSessionId: "22222222-2222-4222-8222-222222222222",
+    agentTargetId: "local:codex",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
     metadata: {
@@ -653,6 +656,7 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
       workspaceId,
       {
         agentSessionId: "22222222-2222-4222-8222-222222222222",
+        agentTargetId: "local:codex",
         cwd: "/workspace",
         initialContent: [{ type: "text", text: "hello" }],
         initialDisplayPrompt: null,
@@ -665,11 +669,6 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
         permissionModeId: "read-only",
         planMode: true,
         provider: "codex",
-        providerTargetRef: {
-          kind: "sharedAgent",
-          provider: "codex",
-          sharedAgentId: "agent-1"
-        },
         reasoningEffort: "high",
         speed: null,
         title: "Plan",
@@ -699,6 +698,7 @@ test("desktop agent activity adapter times out create session requests", async (
   await assert.rejects(
     adapter.createSession({
       agentSessionId: "22222222-2222-4222-8222-222222222222",
+      agentTargetId: "local:claude-code",
       initialContent: [],
       model: "claude-sonnet-4-20250514",
       provider: "claude-code",
@@ -1027,6 +1027,7 @@ test("desktop agent activity adapter promotes Claude draft on first prompt", asy
     runtimeApi: createRuntimeApi()
   });
   const options = await adapter.loadComposerOptions({
+    agentTargetId: "local:claude-code",
     provider: "claude-code",
     workspaceId
   });
@@ -1036,6 +1037,7 @@ test("desktop agent activity adapter promotes Claude draft on first prompt", asy
 
   const session = await adapter.createSession({
     agentSessionId: draftAgentSessionId,
+    agentTargetId: "local:claude-code",
     initialContent: [{ type: "text", text: "hello" }],
     provider: "claude-code",
     workspaceId
@@ -1051,14 +1053,9 @@ test("desktop agent activity adapter promotes Claude draft on first prompt", asy
   assert.equal(session.visible, true);
 });
 
-test("desktop agent activity adapter forwards provider target ref when creating Claude drafts", async () => {
+test("desktop agent activity adapter forwards agent target id when creating Claude drafts", async () => {
   const createRequests: unknown[] = [];
   const calls: string[] = [];
-  const providerTargetRef = {
-    kind: "sharedAgent",
-    provider: "claude-code",
-    sharedAgentId: "claude-1"
-  };
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(_workspaceId, request) {
@@ -1105,22 +1102,22 @@ test("desktop agent activity adapter forwards provider target ref when creating 
 
   const session = await adapter.createSession({
     agentSessionId: "22222222-2222-4222-8222-222222222222",
+    agentTargetId: "shared-agent:claude-1",
     initialContent: [{ type: "text", text: "hello" }],
     provider: "claude-code",
-    providerTargetRef,
     workspaceId
   });
 
   assert.deepEqual(createRequests, [
     {
       agentSessionId: "22222222-2222-4222-8222-222222222222",
+      agentTargetId: "shared-agent:claude-1",
       cwd: null,
       initialContent: [],
       model: null,
       permissionModeId: null,
       planMode: null,
       provider: "claude-code",
-      providerTargetRef,
       reasoningEffort: null,
       speed: null,
       title: null,
@@ -1139,16 +1136,8 @@ test("desktop agent activity adapter uses a fresh Claude draft id after target s
   const fixedAgentSessionId = "22222222-2222-4222-8222-222222222222";
   const createRequests: unknown[] = [];
   const calls: string[] = [];
-  const firstTargetRef = {
-    kind: "sharedAgent",
-    provider: "claude-code",
-    sharedAgentId: "claude-1"
-  };
-  const secondTargetRef = {
-    kind: "sharedAgent",
-    provider: "claude-code",
-    sharedAgentId: "claude-2"
-  };
+  const firstAgentTargetId = "shared-agent:claude-1";
+  const secondAgentTargetId = "shared-agent:claude-2";
   let resolveFirstDraft: ((session: WorkspaceAgentSession) => void) | undefined;
   const firstDraft = new Promise<WorkspaceAgentSession>((resolve) => {
     resolveFirstDraft = resolve;
@@ -1203,9 +1192,9 @@ test("desktop agent activity adapter uses a fresh Claude draft id after target s
 
   const firstSubmission = adapter.createSession({
     agentSessionId: fixedAgentSessionId,
+    agentTargetId: firstAgentTargetId,
     initialContent: [{ type: "text", text: "first" }],
     provider: "claude-code",
-    providerTargetRef: firstTargetRef,
     workspaceId
   });
   await waitForCondition(
@@ -1215,9 +1204,9 @@ test("desktop agent activity adapter uses a fresh Claude draft id after target s
 
   const session = await adapter.createSession({
     agentSessionId: fixedAgentSessionId,
+    agentTargetId: secondAgentTargetId,
     initialContent: [{ type: "text", text: "second" }],
     provider: "claude-code",
-    providerTargetRef: secondTargetRef,
     workspaceId
   });
 
@@ -1231,8 +1220,8 @@ test("desktop agent activity adapter uses a fresh Claude draft id after target s
   ).agentSessionId;
   assert.notEqual(replacementAgentSessionId, fixedAgentSessionId);
   assert.deepEqual(
-    (createRequests[1] as { providerTargetRef?: unknown }).providerTargetRef,
-    secondTargetRef
+    (createRequests[1] as { agentTargetId?: unknown }).agentTargetId,
+    secondAgentTargetId
   );
   assert.deepEqual(calls, [
     `visibility:${replacementAgentSessionId}:true`,
@@ -1248,6 +1237,10 @@ test("desktop agent activity adapter uses a fresh Claude draft id after target s
     })
   );
   await firstSubmission;
+  await waitForCondition(
+    () => calls.includes(`delete:${fixedAgentSessionId}`),
+    "expected the stale Claude draft from the previous target to be deleted"
+  );
 });
 
 test("desktop agent activity adapter loads Claude options without mutating draft sessions", async () => {

@@ -7,9 +7,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "dataBase64"
-  ],
+  "required": ["dataBase64"],
   "title": "FsReadFileResponse",
   "type": "object"
 }

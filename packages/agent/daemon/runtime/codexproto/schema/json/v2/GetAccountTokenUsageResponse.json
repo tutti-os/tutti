@@ -11,48 +11,30 @@
           "type": "integer"
         }
       },
-      "required": [
-        "startDate",
-        "tokens"
-      ],
+      "required": ["startDate", "tokens"],
       "type": "object"
     },
     "AccountTokenUsageSummary": {
       "properties": {
         "currentStreakDays": {
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "lifetimeTokens": {
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "longestRunningTurnSec": {
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "longestStreakDays": {
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "peakDailyTokens": {
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         }
       },
       "type": "object"
@@ -63,18 +45,13 @@
       "items": {
         "$ref": "#/definitions/AccountTokenUsageDailyBucket"
       },
-      "type": [
-        "array",
-        "null"
-      ]
+      "type": ["array", "null"]
     },
     "summary": {
       "$ref": "#/definitions/AccountTokenUsageSummary"
     }
   },
-  "required": [
-    "summary"
-  ],
+  "required": ["summary"],
   "title": "GetAccountTokenUsageResponse",
   "type": "object"
 }

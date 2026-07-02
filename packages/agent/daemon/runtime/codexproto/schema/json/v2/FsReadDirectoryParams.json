@@ -17,9 +17,7 @@
       "description": "Absolute directory path to read."
     }
   },
-  "required": [
-    "path"
-  ],
+  "required": ["path"],
   "title": "FsReadDirectoryParams",
   "type": "object"
 }

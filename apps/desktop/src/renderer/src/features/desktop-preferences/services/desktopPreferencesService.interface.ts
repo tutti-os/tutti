@@ -2,8 +2,9 @@ import { createDecorator } from "@tutti-os/infra/di";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentComposerDefaults,
-  DesktopAgentProvider,
   DesktopAgentConversationDetailMode,
+  DesktopAgentDockLayout,
+  DesktopAgentProvider,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
@@ -28,6 +29,9 @@ export interface IDesktopPreferencesService {
   setAgentConversationDetailMode(
     mode: DesktopAgentConversationDetailMode
   ): Promise<DesktopAgentConversationDetailMode>;
+  setAgentDockLayout(
+    layout: DesktopAgentDockLayout
+  ): Promise<DesktopAgentDockLayout>;
   setAppCatalogChannel(
     channel: DesktopAppCatalogChannel
   ): Promise<DesktopAppCatalogChannel>;

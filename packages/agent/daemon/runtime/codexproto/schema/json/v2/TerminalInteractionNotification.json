@@ -17,13 +17,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "itemId",
-    "processId",
-    "stdin",
-    "threadId",
-    "turnId"
-  ],
+  "required": ["itemId", "processId", "stdin", "threadId", "turnId"],
   "title": "TerminalInteractionNotification",
   "type": "object"
 }

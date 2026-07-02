@@ -6,6 +6,7 @@ import (
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -79,22 +80,24 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newComposerOptionsCommand(),
 		p.newSkillBundleCommand(),
 		p.newProviderStartCommand(providerStartCommandSpec{
-			AppID:       codexAgentAppID,
-			AppName:     "Codex",
-			CommandID:   appID + ".codex.start",
-			Description: "Start a Codex agent session in the current workspace. Use --show to request AgentGUI activation.",
-			Path:        []string{"codex", "start"},
-			Provider:    agentproviderbiz.Codex,
-			Summary:     "Start a Codex agent session",
+			AppID:         codexAgentAppID,
+			AppName:       "Codex",
+			CommandID:     appID + ".codex.start",
+			Description:   "Start a Codex agent session in the current workspace. Use --show to request AgentGUI activation.",
+			Path:          []string{"codex", "start"},
+			Provider:      agentproviderbiz.Codex,
+			AgentTargetID: agenttargetbiz.IDLocalCodex,
+			Summary:       "Start a Codex agent session",
 		}),
 		p.newProviderStartCommand(providerStartCommandSpec{
-			AppID:       claudeCodeAgentAppID,
-			AppName:     "Claude Code",
-			CommandID:   appID + ".claude.start",
-			Description: "Start a Claude Code agent session in the current workspace. Use --show to request AgentGUI activation.",
-			Path:        []string{"claude", "start"},
-			Provider:    agentproviderbiz.ClaudeCode,
-			Summary:     "Start a Claude Code agent session",
+			AppID:         claudeCodeAgentAppID,
+			AppName:       "Claude Code",
+			CommandID:     appID + ".claude.start",
+			Description:   "Start a Claude Code agent session in the current workspace. Use --show to request AgentGUI activation.",
+			Path:          []string{"claude", "start"},
+			Provider:      agentproviderbiz.ClaudeCode,
+			AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+			Summary:       "Start a Claude Code agent session",
 		}),
 		p.newStartCommand(),
 		p.newGetCommand(),

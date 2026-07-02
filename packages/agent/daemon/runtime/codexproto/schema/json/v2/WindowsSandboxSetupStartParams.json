@@ -6,10 +6,7 @@
       "type": "string"
     },
     "WindowsSandboxSetupMode": {
-      "enum": [
-        "elevated",
-        "unelevated"
-      ],
+      "enum": ["elevated", "unelevated"],
       "type": "string"
     }
   },
@@ -28,9 +25,7 @@
       "$ref": "#/definitions/WindowsSandboxSetupMode"
     }
   },
-  "required": [
-    "mode"
-  ],
+  "required": ["mode"],
   "title": "WindowsSandboxSetupStartParams",
   "type": "object"
 }

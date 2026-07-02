@@ -2,11 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "ThreadUnsubscribeStatus": {
-      "enum": [
-        "notLoaded",
-        "notSubscribed",
-        "unsubscribed"
-      ],
+      "enum": ["notLoaded", "notSubscribed", "unsubscribed"],
       "type": "string"
     }
   },
@@ -15,9 +11,7 @@
       "$ref": "#/definitions/ThreadUnsubscribeStatus"
     }
   },
-  "required": [
-    "status"
-  ],
+  "required": ["status"],
   "title": "ThreadUnsubscribeResponse",
   "type": "object"
 }

@@ -5,9 +5,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "turnId"
-  ],
+  "required": ["turnId"],
   "title": "TurnSteerResponse",
   "type": "object"
 }

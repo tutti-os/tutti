@@ -7628,6 +7628,11 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   max-width: min(42%, 180px);
 }
 
+.agent-gui-node__composer-provider-select {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .agent-gui-node__composer-prompt-tips {
   display: flex;
   flex: 1 1 0;
@@ -8025,6 +8030,130 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
     :disabled
   ) {
   background: rgb(9 9 11);
+}
+
+.agent-gui-node__provider-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 8px;
+  padding: 10px 14px 12px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.agent-gui-node__provider-rail-tile {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 36px 16px;
+  gap: 4px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
+.agent-gui-node__provider-rail-tile:hover:not(:disabled) {
+  color: var(--text-secondary);
+}
+
+.agent-gui-node__provider-rail-tile:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.agent-gui-node__provider-rail-tile[data-loading="true"] {
+  cursor: progress;
+}
+
+.agent-gui-node__provider-rail-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--fill-tertiary);
+  color: var(--text-tertiary);
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.agent-gui-node__provider-rail-tile:hover:not(:disabled)
+  .agent-gui-node__provider-rail-avatar {
+  background: var(--fill-secondary);
+  color: var(--text-secondary);
+}
+
+.agent-gui-node__provider-rail-tile[data-selected="true"] {
+  color: var(--text-primary);
+}
+
+.agent-gui-node__provider-rail-tile[data-selected="true"]
+  .agent-gui-node__provider-rail-avatar {
+  border-color: var(--brand-primary, var(--tutti-purple));
+  background: color-mix(
+    in srgb,
+    var(--brand-primary, var(--tutti-purple)) 14%,
+    var(--fill-primary)
+  );
+  color: var(--brand-primary, var(--tutti-purple));
+}
+
+.agent-gui-node__provider-rail-avatar-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.agent-gui-node__provider-rail-avatar-image {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.agent-gui-node__provider-rail-tile-label {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-gui-node__provider-rail-tile[data-loading="true"]
+  .agent-gui-node__provider-rail-avatar,
+.agent-gui-node__provider-rail-tile[data-loading="true"]
+  .agent-gui-node__provider-rail-tile-label {
+  background: linear-gradient(
+    90deg,
+    var(--fill-tertiary),
+    var(--fill-secondary),
+    var(--fill-tertiary)
+  );
+  background-size: 200% 100%;
+  animation: agent-gui-provider-target-loading 1.2s ease-in-out infinite;
+}
+
+.agent-gui-node__provider-rail-tile[data-loading="true"]
+  .agent-gui-node__provider-rail-tile-label {
+  height: 10px;
+  border-radius: 999px;
+}
+
+@keyframes agent-gui-provider-target-loading {
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 .agent-gui-node__empty-hero {

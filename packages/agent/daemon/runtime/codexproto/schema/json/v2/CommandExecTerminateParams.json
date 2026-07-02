@@ -7,9 +7,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "processId"
-  ],
+  "required": ["processId"],
   "title": "CommandExecTerminateParams",
   "type": "object"
 }

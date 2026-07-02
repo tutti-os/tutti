@@ -26,10 +26,7 @@
       "type": "string"
     },
     "remoteVersion": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
   "required": [

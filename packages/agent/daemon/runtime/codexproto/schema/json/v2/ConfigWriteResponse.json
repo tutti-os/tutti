@@ -14,10 +14,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name",
-        "version"
-      ],
+      "required": ["name", "version"],
       "type": "object"
     },
     "ConfigLayerSource": {
@@ -32,18 +29,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "mdm"
-              ],
+              "enum": ["mdm"],
               "title": "MdmConfigLayerSourceType",
               "type": "string"
             }
           },
-          "required": [
-            "domain",
-            "key",
-            "type"
-          ],
+          "required": ["domain", "key", "type"],
           "title": "MdmConfigLayerSource",
           "type": "object"
         },
@@ -59,17 +50,12 @@
               "description": "This is the path to the system config.toml file, though it is not guaranteed to exist."
             },
             "type": {
-              "enum": [
-                "system"
-              ],
+              "enum": ["system"],
               "title": "SystemConfigLayerSourceType",
               "type": "string"
             }
           },
-          "required": [
-            "file",
-            "type"
-          ],
+          "required": ["file", "type"],
           "title": "SystemConfigLayerSource",
           "type": "object"
         },
@@ -85,18 +71,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "enterpriseManaged"
-              ],
+              "enum": ["enterpriseManaged"],
               "title": "EnterpriseManagedConfigLayerSourceType",
               "type": "string"
             }
           },
-          "required": [
-            "id",
-            "name",
-            "type"
-          ],
+          "required": ["id", "name", "type"],
           "title": "EnterpriseManagedConfigLayerSource",
           "type": "object"
         },
@@ -113,23 +93,15 @@
             },
             "profile": {
               "description": "Name of the selected profile-v2 config layered on top of the base user config, when this layer represents one.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "user"
-              ],
+              "enum": ["user"],
               "title": "UserConfigLayerSourceType",
               "type": "string"
             }
           },
-          "required": [
-            "file",
-            "type"
-          ],
+          "required": ["file", "type"],
           "title": "UserConfigLayerSource",
           "type": "object"
         },
@@ -140,17 +112,12 @@
               "$ref": "#/definitions/AbsolutePathBuf"
             },
             "type": {
-              "enum": [
-                "project"
-              ],
+              "enum": ["project"],
               "title": "ProjectConfigLayerSourceType",
               "type": "string"
             }
           },
-          "required": [
-            "dotCodexFolder",
-            "type"
-          ],
+          "required": ["dotCodexFolder", "type"],
           "title": "ProjectConfigLayerSource",
           "type": "object"
         },
@@ -158,16 +125,12 @@
           "description": "Session-layer overrides supplied via `-c`/`--config`.",
           "properties": {
             "type": {
-              "enum": [
-                "sessionFlags"
-              ],
+              "enum": ["sessionFlags"],
               "title": "SessionFlagsConfigLayerSourceType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "SessionFlagsConfigLayerSource",
           "type": "object"
         },
@@ -178,33 +141,24 @@
               "$ref": "#/definitions/AbsolutePathBuf"
             },
             "type": {
-              "enum": [
-                "legacyManagedConfigTomlFromFile"
-              ],
+              "enum": ["legacyManagedConfigTomlFromFile"],
               "title": "LegacyManagedConfigTomlFromFileConfigLayerSourceType",
               "type": "string"
             }
           },
-          "required": [
-            "file",
-            "type"
-          ],
+          "required": ["file", "type"],
           "title": "LegacyManagedConfigTomlFromFileConfigLayerSource",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "legacyManagedConfigTomlFromMdm"
-              ],
+              "enum": ["legacyManagedConfigTomlFromMdm"],
               "title": "LegacyManagedConfigTomlFromMdmConfigLayerSourceType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "LegacyManagedConfigTomlFromMdmConfigLayerSource",
           "type": "object"
         }
@@ -220,18 +174,11 @@
           "$ref": "#/definitions/ConfigLayerMetadata"
         }
       },
-      "required": [
-        "effectiveValue",
-        "message",
-        "overridingLayer"
-      ],
+      "required": ["effectiveValue", "message", "overridingLayer"],
       "type": "object"
     },
     "WriteStatus": {
-      "enum": [
-        "ok",
-        "okOverridden"
-      ],
+      "enum": ["ok", "okOverridden"],
       "type": "string"
     }
   },
@@ -261,11 +208,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "filePath",
-    "status",
-    "version"
-  ],
+  "required": ["filePath", "status", "version"],
   "title": "ConfigWriteResponse",
   "type": "object"
 }

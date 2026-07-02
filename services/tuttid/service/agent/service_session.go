@@ -11,6 +11,7 @@ func runtimeResumeInputFromRuntimeSession(session RuntimeSession) RuntimeResumeI
 	return RuntimeResumeInput{
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(session.ID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		Cwd:               strings.TrimSpace(session.Cwd),
@@ -28,6 +29,7 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 	return RuntimeResumeInput{
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(session.ID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		Cwd:               strings.TrimSpace(session.Cwd),
@@ -74,6 +76,7 @@ func serviceSession(session RuntimeSession, resumable bool) Session {
 	)
 	return Session{
 		ID:                 strings.TrimSpace(session.ID),
+		AgentTargetID:      strings.TrimSpace(session.AgentTargetID),
 		Provider:           normalizedProvider,
 		ProviderSessionID:  strings.TrimSpace(session.ProviderSessionID),
 		Cwd:                strings.TrimSpace(session.Cwd),
@@ -117,6 +120,7 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 	return serviceSession(RuntimeSession{
 		ID:                strings.TrimSpace(session.ID),
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		Cwd:               strings.TrimSpace(session.Cwd),
@@ -146,6 +150,9 @@ func importedSessionDisplayUpdatedAtUnixMS(session PersistedSession) int64 {
 }
 
 func mergePersistedSessionState(session Session, persisted PersistedSession) Session {
+	if strings.TrimSpace(session.AgentTargetID) == "" {
+		session.AgentTargetID = strings.TrimSpace(persisted.AgentTargetID)
+	}
 	if session.Settings == nil {
 		session.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, &persisted.Settings)
 	}

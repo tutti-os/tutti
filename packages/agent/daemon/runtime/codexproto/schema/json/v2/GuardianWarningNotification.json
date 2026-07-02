@@ -10,10 +10,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "message",
-    "threadId"
-  ],
+  "required": ["message", "threadId"],
   "title": "GuardianWarningNotification",
   "type": "object"
 }

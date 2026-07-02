@@ -36,7 +36,15 @@ import { ZoomableImage } from "../../app/renderer/components/ZoomableImage";
 import type { AgentConversationPromptVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import { AgentUsageMeter, agentUsageBarColor } from "./AgentUsageMeter";
 import { cn } from "../../app/renderer/lib/utils";
-import { AddIcon, Button, Select, SelectTrigger } from "@tutti-os/ui-system";
+import {
+  AddIcon,
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@tutti-os/ui-system";
 import { ListChecks, Target, X } from "lucide-react";
 import {
   createMentionPaletteStateAdapter,
@@ -147,6 +155,12 @@ import {
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import { useOptionalAgentHostApi } from "../../agentActivityHost";
 import type { AgentDroppedFileReferenceResolver } from "./model/agentDroppedFileReferences";
+import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../types";
+import {
+  MANAGED_AGENT_ICON_FALLBACK_URL,
+  MANAGED_AGENT_ICON_URLS
+} from "../../shared/managedAgentIcons";
+import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
 
 export { formatSlashStatusTokenCount };
 
@@ -177,6 +191,9 @@ export interface AgentComposerProps {
   workspacePath?: string | null;
   currentUserId?: string | null;
   provider: string;
+  selectedProviderTarget?: AgentGUIProviderTarget | null;
+  providerTargets?: readonly AgentGUIProviderTarget[];
+  providerSelectReadonly?: boolean;
   slashStatus?: AgentComposerSlashStatus | null;
   usage?: AgentComposerUsage | null;
   draftContent: AgentComposerDraft;
@@ -339,6 +356,7 @@ export interface AgentComposerProps {
     removeMention: string;
     addReference: string;
     referenceWorkspaceFiles: string;
+    providerSwitchLabel: string;
     projectLocked: string;
     projectMissingDescription: string;
     promptTipsPrefix: string;
@@ -375,6 +393,10 @@ export interface AgentComposerProps {
     browserUse?: boolean;
     computerUse?: boolean;
     permissionModeId?: string | null;
+  }) => void;
+  onProviderSelect?: (input: {
+    provider: AgentGUIProvider;
+    providerTargetId?: string | null;
   }) => void;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   onCapabilitySettingsRequest?: (
@@ -756,11 +778,22 @@ function hasInlineOverflow(element: HTMLElement | null): boolean {
   return element.scrollWidth > element.clientWidth + 1;
 }
 
+function resolveComposerProviderIconUrl(provider: string): string {
+  const normalizedProvider = normalizeManagedAgentProvider(provider);
+  return (
+    MANAGED_AGENT_ICON_URLS[normalizedProvider] ??
+    MANAGED_AGENT_ICON_FALLBACK_URL
+  );
+}
+
 export function AgentComposer({
   workspaceId,
   workspacePath,
   currentUserId,
   provider,
+  selectedProviderTarget = null,
+  providerTargets = [],
+  providerSelectReadonly = false,
   slashStatus = null,
   usage = null,
   draftContent,
@@ -795,6 +828,7 @@ export function AgentComposer({
   onDraftContentChange,
   onProjectPathChange = () => {},
   onSettingsChange,
+  onProviderSelect,
   capabilityMenuState,
   onSubmit,
   onSubmitGuidance,
@@ -2120,6 +2154,23 @@ export function AgentComposer({
     }
     await applyReferencePickResult(await onRequestWorkspaceReferences());
   }, [applyReferencePickResult, onRequestWorkspaceReferences]);
+  const providerSwitchTargets = useMemo(
+    () => providerTargets.filter((target) => target.disabled !== true),
+    [providerTargets]
+  );
+  const showProviderSelect = providerSwitchTargets.length > 1;
+  const selectedProviderTargetId =
+    selectedProviderTarget?.targetId ?? `local:${provider}`;
+  const selectedProviderSwitchTarget =
+    providerSwitchTargets.find(
+      (target) => target.targetId === selectedProviderTargetId
+    ) ??
+    selectedProviderTarget ??
+    providerSwitchTargets.find((target) => target.provider === provider) ??
+    null;
+  const selectedProviderLabel = selectedProviderSwitchTarget?.label ?? provider;
+  const providerSelectDisabled =
+    previewMode || providerSelectReadonly || !onProviderSelect;
 
   const applyDroppedFileReferences = useCallback(
     async (files: readonly File[]) => {
@@ -3207,6 +3258,65 @@ export function AgentComposer({
                   </SelectTrigger>
                 </Select>
               )}
+              {showProviderSelect && selectedProviderSwitchTarget ? (
+                <Select
+                  value={selectedProviderTargetId}
+                  disabled={providerSelectDisabled}
+                  onValueChange={(nextTargetId) => {
+                    const target = providerSwitchTargets.find(
+                      (candidate) => candidate.targetId === nextTargetId
+                    );
+                    if (!target) {
+                      return;
+                    }
+                    onProviderSelect?.({
+                      provider: target.provider,
+                      providerTargetId: target.targetId
+                    });
+                  }}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    aria-label={labels.providerSwitchLabel}
+                    title={labels.providerSwitchLabel}
+                    className={cn(
+                      styles.composerMenuTrigger,
+                      styles.composerProviderSelect,
+                      "max-w-[160px] text-[var(--agent-gui-text-secondary)]"
+                    )}
+                  >
+                    <span className="min-w-0 truncate">
+                      <SelectValue placeholder={selectedProviderLabel} />
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent
+                    align="start"
+                    className={cn(styles.composerMenuContent, "min-w-[190px]")}
+                  >
+                    {providerSwitchTargets.map((target) => (
+                      <SelectItem
+                        key={`${target.provider}:${target.targetId}`}
+                        value={target.targetId}
+                        className={cn(styles.composerMenuItem, "gap-2")}
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <img
+                            alt=""
+                            aria-hidden="true"
+                            className="size-4 shrink-0 rounded-[4px]"
+                            src={resolveComposerProviderIconUrl(
+                              target.provider
+                            )}
+                          />
+                          <span className="min-w-0 truncate">
+                            {target.label}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
               {composerSettings.supportsPlanMode &&
               composerSettings.draftSettings.planMode ? (
                 <button

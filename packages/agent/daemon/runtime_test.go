@@ -111,19 +111,19 @@ func (a testAdapter) Provider() string {
 	return a.provider
 }
 
-func (a testAdapter) Start(context.Context, agentruntime.Session) ([]activityshared.Event, error) {
+func (testAdapter) Start(context.Context, agentruntime.Session) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
-func (a testAdapter) Resume(context.Context, agentruntime.Session) error {
+func (testAdapter) Resume(context.Context, agentruntime.Session) error {
 	return nil
 }
 
-func (a testAdapter) Close(context.Context, agentruntime.Session) error {
+func (testAdapter) Close(context.Context, agentruntime.Session) error {
 	return nil
 }
 
-func (a testAdapter) Exec(
+func (testAdapter) Exec(
 	context.Context,
 	agentruntime.Session,
 	[]agentruntime.PromptContentBlock,
@@ -135,7 +135,7 @@ func (a testAdapter) Exec(
 	return nil, nil
 }
 
-func (a testAdapter) Cancel(
+func (testAdapter) Cancel(
 	context.Context,
 	agentruntime.Session,
 	string,

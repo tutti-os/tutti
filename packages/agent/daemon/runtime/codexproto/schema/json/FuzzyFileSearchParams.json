@@ -2,10 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "properties": {
     "cancellationToken": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "query": {
       "type": "string"
@@ -17,10 +14,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "query",
-    "roots"
-  ],
+  "required": ["query", "roots"],
   "title": "FuzzyFileSearchParams",
   "type": "object"
 }

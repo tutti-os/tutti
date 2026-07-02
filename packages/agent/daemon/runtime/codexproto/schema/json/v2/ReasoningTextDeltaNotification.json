@@ -18,13 +18,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "contentIndex",
-    "delta",
-    "itemId",
-    "threadId",
-    "turnId"
-  ],
+  "required": ["contentIndex", "delta", "itemId", "threadId", "turnId"],
   "title": "ReasoningTextDeltaNotification",
   "type": "object"
 }

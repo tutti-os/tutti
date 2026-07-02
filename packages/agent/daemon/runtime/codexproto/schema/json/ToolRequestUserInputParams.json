@@ -11,10 +11,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "description",
-        "label"
-      ],
+      "required": ["description", "label"],
       "type": "object"
     },
     "ToolRequestUserInputQuestion": {
@@ -38,20 +35,13 @@
           "items": {
             "$ref": "#/definitions/ToolRequestUserInputOption"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "question": {
           "type": "string"
         }
       },
-      "required": [
-        "header",
-        "id",
-        "question"
-      ],
+      "required": ["header", "id", "question"],
       "type": "object"
     }
   },
@@ -61,10 +51,7 @@
       "default": null,
       "format": "uint64",
       "minimum": 0.0,
-      "type": [
-        "integer",
-        "null"
-      ]
+      "type": ["integer", "null"]
     },
     "itemId": {
       "type": "string"
@@ -82,12 +69,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "itemId",
-    "questions",
-    "threadId",
-    "turnId"
-  ],
+  "required": ["itemId", "questions", "threadId", "turnId"],
   "title": "ToolRequestUserInputParams",
   "type": "object"
 }

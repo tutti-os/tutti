@@ -3,12 +3,15 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 )
 
@@ -35,11 +38,17 @@ func NewService(runtime RuntimeController) *Service {
 
 func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSessionInput) (Session, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
-	provider := strings.TrimSpace(input.Provider)
+	input.AgentTargetID = strings.TrimSpace(input.AgentTargetID)
+	launch, err := s.resolveCreateSessionLaunch(ctx, input)
+	if err != nil {
+		return Session{}, err
+	}
+	provider := launch.Provider
 	if workspaceID == "" || provider == "" {
 		return Session{}, ErrInvalidArgument
 	}
 	input.Provider = provider
+	input.ProviderTargetRef = launch.ProviderTargetRef
 	input.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.ConversationDetailMode)
 	if normalizedPermissionModeID := normalizePermissionModeIDForProvider(
 		provider,
@@ -117,6 +126,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	session, err := s.controller().Start(ctx, RuntimeStartInput{
 		WorkspaceID:      workspaceID,
 		AgentSessionID:   strings.TrimSpace(input.AgentSessionID),
+		AgentTargetID:    input.AgentTargetID,
 		Provider:         provider,
 		Cwd:              prepared.Cwd,
 		Env:              prepared.Env,
@@ -209,6 +219,49 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	), nil
 }
 
+type resolvedCreateSessionLaunch struct {
+	Provider          string
+	ProviderTargetRef map[string]any
+}
+
+func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSessionInput) (resolvedCreateSessionLaunch, error) {
+	requestProvider := strings.TrimSpace(input.Provider)
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	if agentTargetID == "" {
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target id is required for agent session launch", ErrInvalidArgument)
+	}
+	if s.AgentTargetStore == nil {
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target store is unavailable", ErrInvalidArgument)
+	}
+	target, err := s.AgentTargetStore.GetAgentTarget(ctx, agentTargetID)
+	if err != nil {
+		if errors.Is(err, workspacedata.ErrAgentTargetNotFound) {
+			return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target not found", ErrInvalidArgument)
+		}
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("get agent target: %w", err)
+	}
+	normalized, err := agenttargetbiz.NormalizeTarget(target)
+	if err != nil {
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: %v", ErrInvalidArgument, err)
+	}
+	if !normalized.Enabled {
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target is disabled", ErrInvalidArgument)
+	}
+	derivedRef, err := agenttargetbiz.RuntimeProviderTargetRef(normalized)
+	if err != nil {
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: invalid agent target launch ref", ErrInvalidArgument)
+	}
+	derivedProvider, _ := derivedRef["provider"].(string)
+	derivedProvider = strings.TrimSpace(derivedProvider)
+	if requestProvider != "" && requestProvider != derivedProvider {
+		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: provider does not match agent target", ErrInvalidArgument)
+	}
+	return resolvedCreateSessionLaunch{
+		Provider:          derivedProvider,
+		ProviderTargetRef: derivedRef,
+	}, nil
+}
+
 func (s *Service) resolveCreateSessionModel(ctx context.Context, provider string, model *string) *string {
 	resolved := normalizeComposerModelForProvider(
 		provider,
@@ -244,6 +297,7 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 	prepared, err := s.RuntimePreparer.Prepare(ctx, agentsidecarservice.PrepareInput{
 		WorkspaceID:       workspaceID,
 		AgentSessionID:    strings.TrimSpace(input.AgentSessionID),
+		AgentTargetID:     strings.TrimSpace(input.AgentTargetID),
 		Provider:          provider,
 		Cwd:               cwd,
 		Title:             value(input.Title),

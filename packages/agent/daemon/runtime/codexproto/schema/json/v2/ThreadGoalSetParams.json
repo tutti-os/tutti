@@ -15,10 +15,7 @@
   },
   "properties": {
     "objective": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "status": {
       "anyOf": [
@@ -35,15 +32,10 @@
     },
     "tokenBudget": {
       "format": "int64",
-      "type": [
-        "integer",
-        "null"
-      ]
+      "type": ["integer", "null"]
     }
   },
-  "required": [
-    "threadId"
-  ],
+  "required": ["threadId"],
   "title": "ThreadGoalSetParams",
   "type": "object"
 }

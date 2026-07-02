@@ -9,10 +9,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "threadId",
-    "turnId"
-  ],
+  "required": ["threadId", "turnId"],
   "title": "ContextCompactedNotification",
   "type": "object"
 }

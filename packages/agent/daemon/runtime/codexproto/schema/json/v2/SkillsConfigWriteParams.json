@@ -12,10 +12,7 @@
     },
     "name": {
       "description": "Name-based selector.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "path": {
       "anyOf": [
@@ -29,9 +26,7 @@
       "description": "Path-based selector."
     }
   },
-  "required": [
-    "enabled"
-  ],
+  "required": ["enabled"],
   "title": "SkillsConfigWriteParams",
   "type": "object"
 }

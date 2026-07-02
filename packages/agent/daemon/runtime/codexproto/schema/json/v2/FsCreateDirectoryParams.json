@@ -18,15 +18,10 @@
     },
     "recursive": {
       "description": "Whether parent directories should also be created. Defaults to `true`.",
-      "type": [
-        "boolean",
-        "null"
-      ]
+      "type": ["boolean", "null"]
     }
   },
-  "required": [
-    "path"
-  ],
+  "required": ["path"],
   "title": "FsCreateDirectoryParams",
   "type": "object"
 }

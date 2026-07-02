@@ -5,19 +5,13 @@
       "type": "string"
     },
     "threadId": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "uri": {
       "type": "string"
     }
   },
-  "required": [
-    "server",
-    "uri"
-  ],
+  "required": ["server", "uri"],
   "title": "McpResourceReadParams",
   "type": "object"
 }

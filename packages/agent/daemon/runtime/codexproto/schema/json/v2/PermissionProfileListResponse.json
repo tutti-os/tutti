@@ -9,20 +9,14 @@
         },
         "description": {
           "description": "Optional user-facing description for display in clients.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "id": {
           "description": "Available permission profile identifier.",
           "type": "string"
         }
       },
-      "required": [
-        "allowed",
-        "id"
-      ],
+      "required": ["allowed", "id"],
       "type": "object"
     }
   },
@@ -35,15 +29,10 @@
     },
     "nextCursor": {
       "description": "Opaque cursor to pass to the next call to continue after the last item. If None, there are no more items to return.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "data"
-  ],
+  "required": ["data"],
   "title": "PermissionProfileListResponse",
   "type": "object"
 }

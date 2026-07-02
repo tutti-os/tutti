@@ -13,11 +13,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "delta",
-    "role",
-    "threadId"
-  ],
+  "required": ["delta", "role", "threadId"],
   "title": "ThreadRealtimeTranscriptDeltaNotification",
   "type": "object"
 }

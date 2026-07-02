@@ -16,11 +16,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "exitCode",
-    "stderr",
-    "stdout"
-  ],
+  "required": ["exitCode", "stderr", "stdout"],
   "title": "CommandExecResponse",
   "type": "object"
 }

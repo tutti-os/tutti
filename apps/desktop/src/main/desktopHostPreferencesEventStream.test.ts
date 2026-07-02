@@ -36,6 +36,7 @@ test("desktop host preferences follows authoritative preference events", async (
       agentComposerDefaultsByProvider: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
+      agentDockLayout: "legacySplit",
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
@@ -74,6 +75,7 @@ test("desktop host preferences follows authoritative preference events", async (
         codex: true
       },
       agentConversationDetailMode: "coding",
+      agentDockLayout: "legacySplit",
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
@@ -111,6 +113,8 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     {};
   let agentConversationDetailMode: DesktopPreferencesStateResponse["preferences"]["agentConversationDetailMode"] =
     "coding";
+  let agentDockLayout: DesktopPreferencesStateResponse["preferences"]["agentDockLayout"] =
+    "legacySplit";
   let appCatalogChannel: DesktopPreferencesStateResponse["preferences"]["appCatalogChannel"] =
     "production";
   let defaultAgentProvider: DesktopPreferencesStateResponse["preferences"]["defaultAgentProvider"] =
@@ -148,6 +152,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     },
     getAgentConversationDetailMode() {
       return agentConversationDetailMode;
+    },
+    getAgentDockLayout() {
+      return agentDockLayout;
     },
     getAppCatalogChannel() {
       return appCatalogChannel;
@@ -198,6 +205,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       }
       if (input.agentConversationDetailMode) {
         agentConversationDetailMode = input.agentConversationDetailMode;
+      }
+      if (input.agentDockLayout) {
+        agentDockLayout = input.agentDockLayout;
       }
       if (input.appCatalogChannel) {
         appCatalogChannel = input.appCatalogChannel;

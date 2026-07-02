@@ -34,6 +34,9 @@ func TestSQLiteStoreGetDesktopPreferencesDefaultsWhenUnset(t *testing.T) {
 	if preferences.AgentConversationDetailMode != "coding" {
 		t.Fatalf("GetDesktopPreferences() agentConversationDetailMode = %q, want coding", preferences.AgentConversationDetailMode)
 	}
+	if preferences.AgentDockLayout != "legacySplit" {
+		t.Fatalf("GetDesktopPreferences() agentDockLayout = %q, want legacySplit", preferences.AgentDockLayout)
+	}
 	if preferences.ThemeSource != "dark" {
 		t.Fatalf("GetDesktopPreferences() themeSource = %q, want dark", preferences.ThemeSource)
 	}
@@ -79,6 +82,7 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 			"claude-code": false,
 		},
 		AgentConversationDetailMode: "general",
+		AgentDockLayout:             "unified",
 		DefaultAgentProvider:        "claude-code",
 
 		BrowserUseConnectionMode: "autoConnect",
@@ -122,6 +126,9 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 	}
 	if reloaded.AgentConversationDetailMode != "general" {
 		t.Fatalf("GetDesktopPreferences() agentConversationDetailMode = %q, want general", reloaded.AgentConversationDetailMode)
+	}
+	if reloaded.AgentDockLayout != "unified" {
+		t.Fatalf("GetDesktopPreferences() agentDockLayout = %q, want unified", reloaded.AgentDockLayout)
 	}
 	if reloaded.ThemeSource != "dark" {
 		t.Fatalf("GetDesktopPreferences() themeSource = %q, want dark", reloaded.ThemeSource)
@@ -177,6 +184,7 @@ INSERT INTO desktop_preferences (
   id,
   default_agent_provider,
   agent_conversation_detail_mode,
+  agent_dock_layout,
   dock_icon_style,
   dock_placement,
   locale,
@@ -198,6 +206,7 @@ INSERT INTO desktop_preferences (
   'desktop',
   'codex',
   'daily',
+  'sideBySide',
   'default',
   'bottom',
   'en',
@@ -226,5 +235,8 @@ INSERT INTO desktop_preferences (
 	}
 	if preferences.AgentConversationDetailMode != "coding" {
 		t.Fatalf("GetDesktopPreferences() agentConversationDetailMode = %q, want coding", preferences.AgentConversationDetailMode)
+	}
+	if preferences.AgentDockLayout != "legacySplit" {
+		t.Fatalf("GetDesktopPreferences() agentDockLayout = %q, want legacySplit", preferences.AgentDockLayout)
 	}
 }

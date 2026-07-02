@@ -7,19 +7,13 @@
           "type": "string"
         },
         "title": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "version": {
           "type": "string"
         }
       },
-      "required": [
-        "name",
-        "version"
-      ],
+      "required": ["name", "version"],
       "type": "object"
     },
     "InitializeCapabilities": {
@@ -39,10 +33,7 @@
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "requestAttestation": {
           "default": false,
@@ -68,9 +59,7 @@
       "$ref": "#/definitions/ClientInfo"
     }
   },
-  "required": [
-    "clientInfo"
-  ],
+  "required": ["clientInfo"],
   "title": "InitializeParams",
   "type": "object"
 }

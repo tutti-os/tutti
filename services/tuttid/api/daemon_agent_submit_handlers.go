@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -28,10 +29,20 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		}, nil
 	}
 	agentSessionID := request.Body.AgentSessionId.String()
+	agentTargetID := strings.TrimSpace(request.Body.AgentTargetId)
+	if agentTargetID == "" {
+		return tuttigenerated.CreateWorkspaceAgentSession400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.MalformedRequest(apierrors.WithDeveloperMessage("agentTargetId is required")),
+			),
+		}, nil
+	}
 	metadata := mapValue(request.Body.Metadata)
-	logCreateAgentSubmitTrace("api.create.received", string(request.WorkspaceID), agentSessionID, metadata, string(request.Body.Provider), "", nil)
+	provider := workspaceAgentProviderString(request.Body.Provider)
+	logCreateAgentSubmitTrace("api.create.received", string(request.WorkspaceID), agentSessionID, metadata, provider, "", nil)
 	session, err := api.AgentSessionService.Create(ctx, string(request.WorkspaceID), agentservice.CreateSessionInput{
 		AgentSessionID:         agentSessionID,
+		AgentTargetID:          agentTargetID,
 		Cwd:                    request.Body.Cwd,
 		InitialContent:         agentPromptContentFromGenerated(request.Body.InitialContent),
 		InitialDisplayPrompt:   stringPtrValue(request.Body.InitialDisplayPrompt),
@@ -40,8 +51,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		PermissionModeID:       request.Body.PermissionModeId,
 		PlanMode:               request.Body.PlanMode,
 		BrowserUse:             request.Body.BrowserUse,
-		ProviderTargetRef:      mapValue(request.Body.ProviderTargetRef),
-		Provider:               string(request.Body.Provider),
+		Provider:               provider,
 		ReasoningEffort:        request.Body.ReasoningEffort,
 		Speed:                  request.Body.Speed,
 		Title:                  request.Body.Title,
@@ -56,6 +66,13 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	return tuttigenerated.CreateWorkspaceAgentSession201JSONResponse{
 		Session: generatedAgentSession(session),
 	}, nil
+}
+
+func workspaceAgentProviderString(provider *tuttigenerated.WorkspaceAgentProvider) string {
+	if provider == nil {
+		return ""
+	}
+	return string(*provider)
 }
 
 func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request tuttigenerated.SendWorkspaceAgentSessionInputRequestObject) (tuttigenerated.SendWorkspaceAgentSessionInputResponseObject, error) {

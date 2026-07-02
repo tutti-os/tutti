@@ -10,10 +10,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "code",
-    "message"
-  ],
+  "required": ["code", "message"],
   "title": "JSONRPCErrorError",
   "type": "object"
 }

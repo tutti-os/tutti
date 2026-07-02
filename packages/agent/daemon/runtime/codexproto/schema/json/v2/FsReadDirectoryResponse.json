@@ -17,11 +17,7 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "fileName",
-        "isDirectory",
-        "isFile"
-      ],
+      "required": ["fileName", "isDirectory", "isFile"],
       "type": "object"
     }
   },
@@ -35,9 +31,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "entries"
-  ],
+  "required": ["entries"],
   "title": "FsReadDirectoryResponse",
   "type": "object"
 }

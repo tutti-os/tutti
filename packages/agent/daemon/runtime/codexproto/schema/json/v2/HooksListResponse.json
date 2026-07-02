@@ -14,10 +14,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "message",
-        "path"
-      ],
+      "required": ["message", "path"],
       "type": "object"
     },
     "HookEventName": {
@@ -36,20 +33,13 @@
       "type": "string"
     },
     "HookHandlerType": {
-      "enum": [
-        "command",
-        "prompt",
-        "agent"
-      ],
+      "enum": ["command", "prompt", "agent"],
       "type": "string"
     },
     "HookMetadata": {
       "properties": {
         "command": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "currentHash": {
           "type": "string"
@@ -74,16 +64,10 @@
           "type": "string"
         },
         "matcher": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "pluginId": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "source": {
           "$ref": "#/definitions/HookSource"
@@ -92,10 +76,7 @@
           "$ref": "#/definitions/AbsolutePathBuf"
         },
         "statusMessage": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "timeoutSec": {
           "format": "uint64",
@@ -138,12 +119,7 @@
       "type": "string"
     },
     "HookTrustStatus": {
-      "enum": [
-        "managed",
-        "untrusted",
-        "trusted",
-        "modified"
-      ],
+      "enum": ["managed", "untrusted", "trusted", "modified"],
       "type": "string"
     },
     "HooksListEntry": {
@@ -170,12 +146,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "cwd",
-        "errors",
-        "hooks",
-        "warnings"
-      ],
+      "required": ["cwd", "errors", "hooks", "warnings"],
       "type": "object"
     }
   },
@@ -187,9 +158,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "data"
-  ],
+  "required": ["data"],
   "title": "HooksListResponse",
   "type": "object"
 }

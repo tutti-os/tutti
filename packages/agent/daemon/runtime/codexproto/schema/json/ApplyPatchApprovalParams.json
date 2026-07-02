@@ -9,17 +9,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "add"
-              ],
+              "enum": ["add"],
               "title": "AddFileChangeType",
               "type": "string"
             }
           },
-          "required": [
-            "content",
-            "type"
-          ],
+          "required": ["content", "type"],
           "title": "AddFileChange",
           "type": "object"
         },
@@ -29,32 +24,22 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "delete"
-              ],
+              "enum": ["delete"],
               "title": "DeleteFileChangeType",
               "type": "string"
             }
           },
-          "required": [
-            "content",
-            "type"
-          ],
+          "required": ["content", "type"],
           "title": "DeleteFileChange",
           "type": "object"
         },
         {
           "properties": {
             "move_path": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "type": {
-              "enum": [
-                "update"
-              ],
+              "enum": ["update"],
               "title": "UpdateFileChangeType",
               "type": "string"
             },
@@ -62,10 +47,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "type",
-            "unified_diff"
-          ],
+          "required": ["type", "unified_diff"],
           "title": "UpdateFileChange",
           "type": "object"
         }
@@ -91,24 +73,14 @@
     },
     "grantRoot": {
       "description": "When set, the agent is asking the user to allow writes under this root for the remainder of the session (unclear if this is honored today).",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "reason": {
       "description": "Optional explanatory reason (e.g. request for extra write access).",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
-  "required": [
-    "callId",
-    "conversationId",
-    "fileChanges"
-  ],
+  "required": ["callId", "conversationId", "fileChanges"],
   "title": "ApplyPatchApprovalParams",
   "type": "object"
 }

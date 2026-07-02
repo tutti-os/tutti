@@ -5,9 +5,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "threadId"
-  ],
+  "required": ["threadId"],
   "title": "ThreadClosedNotification",
   "type": "object"
 }

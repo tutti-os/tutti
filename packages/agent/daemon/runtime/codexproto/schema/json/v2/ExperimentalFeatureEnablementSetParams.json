@@ -9,9 +9,7 @@
       "type": "object"
     }
   },
-  "required": [
-    "enablement"
-  ],
+  "required": ["enablement"],
   "title": "ExperimentalFeatureEnablementSetParams",
   "type": "object"
 }

@@ -9,11 +9,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "metadata",
-    "threadId",
-    "turnId"
-  ],
+  "required": ["metadata", "threadId", "turnId"],
   "title": "TurnModerationMetadataNotification",
   "type": "object"
 }

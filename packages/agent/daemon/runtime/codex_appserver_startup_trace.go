@@ -94,7 +94,7 @@ func (t *codexAppServerStartupTrace) Log(event string, fields map[string]any) {
 	if err != nil {
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	_, _ = file.Write(append(line, '\n'))
 }
 

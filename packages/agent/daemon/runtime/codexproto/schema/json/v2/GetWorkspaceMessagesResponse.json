@@ -6,18 +6,12 @@
         "archivedAt": {
           "description": "Unix timestamp (in seconds) when the message was archived.",
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "createdAt": {
           "description": "Unix timestamp (in seconds) when the message was created.",
           "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "messageBody": {
           "type": "string"
@@ -29,19 +23,11 @@
           "$ref": "#/definitions/WorkspaceMessageType"
         }
       },
-      "required": [
-        "messageBody",
-        "messageId",
-        "messageType"
-      ],
+      "required": ["messageBody", "messageId", "messageType"],
       "type": "object"
     },
     "WorkspaceMessageType": {
-      "enum": [
-        "headline",
-        "announcement",
-        "unknown"
-      ],
+      "enum": ["headline", "announcement", "unknown"],
       "type": "string"
     }
   },
@@ -58,10 +44,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "featureEnabled",
-    "messages"
-  ],
+  "required": ["featureEnabled", "messages"],
   "title": "GetWorkspaceMessagesResponse",
   "type": "object"
 }

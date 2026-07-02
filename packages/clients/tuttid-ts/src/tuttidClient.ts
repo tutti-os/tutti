@@ -30,6 +30,7 @@ import {
   getAccountUserInfo,
   getHealth,
   getStartupWorkspace,
+  listAgentTargets,
   getWorkspaceFileTreeSnapshot,
   getWorkspace,
   getWorkspaceAgentSession,
@@ -122,6 +123,12 @@ export function createTuttidClient(
   });
 
   return {
+    async listAgentTargets() {
+      return unwrapData(
+        await listAgentTargets({ client }),
+        "Agent targets request failed."
+      );
+    },
     async startAccountLogin() {
       const response = await startAccountLogin({ client });
       return unwrapData(response, "Start account login request failed.");

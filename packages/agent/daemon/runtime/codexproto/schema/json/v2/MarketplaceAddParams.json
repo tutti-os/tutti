@@ -2,10 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "properties": {
     "refName": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "source": {
       "type": "string"
@@ -14,15 +11,10 @@
       "items": {
         "type": "string"
       },
-      "type": [
-        "array",
-        "null"
-      ]
+      "type": ["array", "null"]
     }
   },
-  "required": [
-    "source"
-  ],
+  "required": ["source"],
   "title": "MarketplaceAddParams",
   "type": "object"
 }

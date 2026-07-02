@@ -5,30 +5,22 @@
       "oneOf": [
         {
           "description": "User approved the file changes.",
-          "enum": [
-            "accept"
-          ],
+          "enum": ["accept"],
           "type": "string"
         },
         {
           "description": "User approved the file changes and future changes to the same files should run without prompting.",
-          "enum": [
-            "acceptForSession"
-          ],
+          "enum": ["acceptForSession"],
           "type": "string"
         },
         {
           "description": "User denied the file changes. The agent will continue the turn.",
-          "enum": [
-            "decline"
-          ],
+          "enum": ["decline"],
           "type": "string"
         },
         {
           "description": "User denied the file changes. The turn will also be immediately interrupted.",
-          "enum": [
-            "cancel"
-          ],
+          "enum": ["cancel"],
           "type": "string"
         }
       ]
@@ -39,9 +31,7 @@
       "$ref": "#/definitions/FileChangeApprovalDecision"
     }
   },
-  "required": [
-    "decision"
-  ],
+  "required": ["decision"],
   "title": "FileChangeRequestApprovalResponse",
   "type": "object"
 }

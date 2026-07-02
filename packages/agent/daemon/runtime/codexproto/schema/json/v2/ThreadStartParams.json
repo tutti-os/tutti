@@ -7,21 +7,13 @@
     },
     "ApprovalsReviewer": {
       "description": "Configures who approval requests are routed to for review. Examples include sandbox escapes, blocked network access, MCP approval prompts, and ARC escalations. Defaults to `user`. `auto_review` uses a carefully prompted subagent to gather relevant context and apply a risk-based decision framework before approving or denying the request. The legacy value `guardian_subagent` is accepted for compatibility.",
-      "enum": [
-        "user",
-        "auto_review",
-        "guardian_subagent"
-      ],
+      "enum": ["user", "auto_review", "guardian_subagent"],
       "type": "string"
     },
     "AskForApproval": {
       "oneOf": [
         {
-          "enum": [
-            "untrusted",
-            "on-request",
-            "never"
-          ],
+          "enum": ["untrusted", "on-request", "never"],
           "type": "string"
         },
         {
@@ -47,17 +39,11 @@
                   "type": "boolean"
                 }
               },
-              "required": [
-                "mcp_elicitations",
-                "rules",
-                "sandbox_approval"
-              ],
+              "required": ["mcp_elicitations", "rules", "sandbox_approval"],
               "type": "object"
             }
           },
-          "required": [
-            "granular"
-          ],
+          "required": ["granular"],
           "title": "GranularAskForApproval",
           "type": "object"
         }
@@ -77,18 +63,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "environment"
-              ],
+              "enum": ["environment"],
               "title": "EnvironmentCapabilityRootLocationType",
               "type": "string"
             }
           },
-          "required": [
-            "environmentId",
-            "path",
-            "type"
-          ],
+          "required": ["environmentId", "path", "type"],
           "title": "EnvironmentCapabilityRootLocation",
           "type": "object"
         }
@@ -109,19 +89,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "function"
-              ],
+              "enum": ["function"],
               "title": "FunctionDynamicToolNamespaceToolType",
               "type": "string"
             }
           },
-          "required": [
-            "description",
-            "inputSchema",
-            "name",
-            "type"
-          ],
+          "required": ["description", "inputSchema", "name", "type"],
           "title": "FunctionDynamicToolNamespaceTool",
           "type": "object"
         }
@@ -142,19 +115,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "function"
-              ],
+              "enum": ["function"],
               "title": "FunctionDynamicToolSpecType",
               "type": "string"
             }
           },
-          "required": [
-            "description",
-            "inputSchema",
-            "name",
-            "type"
-          ],
+          "required": ["description", "inputSchema", "name", "type"],
           "title": "FunctionDynamicToolSpec",
           "type": "object"
         },
@@ -173,19 +139,12 @@
               "type": "array"
             },
             "type": {
-              "enum": [
-                "namespace"
-              ],
+              "enum": ["namespace"],
               "title": "NamespaceDynamicToolSpecType",
               "type": "string"
             }
           },
-          "required": [
-            "description",
-            "name",
-            "tools",
-            "type"
-          ],
+          "required": ["description", "name", "tools", "type"],
           "title": "NamespaceDynamicToolSpec",
           "type": "object"
         }
@@ -196,27 +155,15 @@
     },
     "MultiAgentMode": {
       "description": "Controls whether the model receives multi-agent delegation instructions and, when it does, whether it should only spawn sub-agents after an explicit user request or may delegate proactively when doing so would help. `none` leaves the multi-agent tools available without injecting delegation instructions.",
-      "enum": [
-        "none",
-        "explicitRequestOnly",
-        "proactive"
-      ],
+      "enum": ["none", "explicitRequestOnly", "proactive"],
       "type": "string"
     },
     "Personality": {
-      "enum": [
-        "none",
-        "friendly",
-        "pragmatic"
-      ],
+      "enum": ["none", "friendly", "pragmatic"],
       "type": "string"
     },
     "SandboxMode": {
-      "enum": [
-        "read-only",
-        "workspace-write",
-        "danger-full-access"
-      ],
+      "enum": ["read-only", "workspace-write", "danger-full-access"],
       "type": "string"
     },
     "SelectedCapabilityRoot": {
@@ -235,20 +182,14 @@
           "description": "Where the selected root can be resolved."
         }
       },
-      "required": [
-        "id",
-        "location"
-      ],
+      "required": ["id", "location"],
       "type": "object"
     },
     "ThreadSource": {
       "type": "string"
     },
     "ThreadStartSource": {
-      "enum": [
-        "startup",
-        "clear"
-      ],
+      "enum": ["startup", "clear"],
       "type": "string"
     },
     "TurnEnvironmentParams": {
@@ -260,10 +201,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "cwd",
-        "environmentId"
-      ],
+      "required": ["cwd", "environmentId"],
       "type": "object"
     }
   },
@@ -290,47 +228,26 @@
       "description": "Override where approval requests are routed for review on this thread and subsequent turns."
     },
     "baseInstructions": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "config": {
       "additionalProperties": true,
-      "type": [
-        "object",
-        "null"
-      ]
+      "type": ["object", "null"]
     },
     "cwd": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "developerInstructions": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "ephemeral": {
-      "type": [
-        "boolean",
-        "null"
-      ]
+      "type": ["boolean", "null"]
     },
     "model": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "modelProvider": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "personality": {
       "anyOf": [
@@ -353,16 +270,10 @@
       ]
     },
     "serviceName": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "serviceTier": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "sessionStartSource": {
       "anyOf": [

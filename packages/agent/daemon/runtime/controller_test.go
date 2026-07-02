@@ -177,6 +177,90 @@ func TestControllerStartDoesNotReuseSessionWithDifferentProviderTargetRef(t *tes
 	}
 }
 
+func TestControllerStartDoesNotReuseTargetSessionWithDifferentProviderTargetRef(t *testing.T) {
+	t.Parallel()
+
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, nil)
+
+	first, err := controller.Start(context.Background(), StartInput{
+		RoomID:        "room-1",
+		Provider:      ProviderCodex,
+		AgentTargetID: "local:codex",
+		CWD:           "/workspace",
+		ProviderTargetRef: map[string]any{
+			"kind":     "local_cli",
+			"provider": ProviderCodex,
+			"targetId": "local:codex",
+		},
+	})
+	if err != nil {
+		t.Fatalf("first Start: %v", err)
+	}
+	second, err := controller.Start(context.Background(), StartInput{
+		RoomID:        "room-1",
+		Provider:      ProviderCodex,
+		AgentTargetID: "local:codex",
+		CWD:           "/workspace",
+		ProviderTargetRef: map[string]any{
+			"kind":     "local_cli",
+			"provider": ProviderCodex,
+			"targetId": "alternate-codex",
+		},
+	})
+	if err != nil {
+		t.Fatalf("second Start: %v", err)
+	}
+
+	if second.Session.AgentSessionID == first.Session.AgentSessionID {
+		t.Fatalf("second start reused session %q for a different provider target ref", second.Session.AgentSessionID)
+	}
+	if adapter.started.ProviderTargetRef["targetId"] != "alternate-codex" {
+		t.Fatalf("adapter provider target ref = %#v, want alternate-codex", adapter.started.ProviderTargetRef)
+	}
+}
+
+func TestControllerStartReusesTargetSessionWithSameProviderTargetRef(t *testing.T) {
+	t.Parallel()
+
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, nil)
+	ref := map[string]any{
+		"kind":     "local_cli",
+		"provider": ProviderCodex,
+		"targetId": "local:codex",
+	}
+
+	first, err := controller.Start(context.Background(), StartInput{
+		RoomID:            "room-1",
+		Provider:          ProviderCodex,
+		AgentTargetID:     "local:codex",
+		CWD:               "/workspace",
+		ProviderTargetRef: ref,
+	})
+	if err != nil {
+		t.Fatalf("first Start: %v", err)
+	}
+	second, err := controller.Start(context.Background(), StartInput{
+		RoomID:        "room-1",
+		Provider:      ProviderCodex,
+		AgentTargetID: "local:codex",
+		CWD:           "/workspace",
+		ProviderTargetRef: map[string]any{
+			"kind":     "local_cli",
+			"provider": ProviderCodex,
+			"targetId": "local:codex",
+		},
+	})
+	if err != nil {
+		t.Fatalf("second Start: %v", err)
+	}
+
+	if second.Session.AgentSessionID != first.Session.AgentSessionID {
+		t.Fatalf("second start session = %q, want reused %q", second.Session.AgentSessionID, first.Session.AgentSessionID)
+	}
+}
+
 func TestControllerExecResumesExistingSessionWhenAdapterLiveSessionMissing(t *testing.T) {
 	t.Parallel()
 
@@ -1760,7 +1844,7 @@ func (a *releasableAdapter) Resume(_ context.Context, session Session) error {
 	return nil
 }
 
-func (a *releasableAdapter) Close(context.Context, Session) error { return nil }
+func (*releasableAdapter) Close(context.Context, Session) error { return nil }
 
 func (a *releasableAdapter) ValidatePromptContent(Session, []PromptContentBlock) error {
 	if a.validateEntered != nil {

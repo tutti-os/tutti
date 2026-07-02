@@ -7,10 +7,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "item",
-    "threadId"
-  ],
+  "required": ["item", "threadId"],
   "title": "ThreadRealtimeItemAddedNotification",
   "type": "object"
 }

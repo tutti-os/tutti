@@ -70,15 +70,15 @@ func (p Provider) newStartCommand() cliservice.Command {
 	return framework.Register(framework.CommandSpec[startInput]{
 		ID:          appID + ".agent.start",
 		Path:        []string{"agent", "start"},
-		Summary:     "Start an agent session",
-		Description: "Start an agent session in the current workspace. Use --show to request AgentGUI activation.",
+		Summary:     "Start an agent session with a provider shortcut",
+		Description: "Generic provider start is target-aware and no longer creates sessions directly. Use `tutti codex start` or `tutti claude start`.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[startInput](),
 		Output:      sessionActionOutputSpec(),
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input startInput) (any, error) {
-			return p.runStart(ctx, invoke, input.Provider, startFields{
+			return p.runStart(ctx, invoke, input.Provider, "", startFields{
 				Cwd:             input.Cwd,
 				DisplayPrompt:   input.DisplayPrompt,
 				Images:          input.Images,
@@ -96,13 +96,14 @@ func (p Provider) newStartCommand() cliservice.Command {
 }
 
 type providerStartCommandSpec struct {
-	AppID       string
-	AppName     string
-	CommandID   string
-	Description string
-	Path        []string
-	Provider    string
-	Summary     string
+	AppID         string
+	AppName       string
+	CommandID     string
+	Description   string
+	Path          []string
+	Provider      string
+	AgentTargetID string
+	Summary       string
 }
 
 func (p Provider) newProviderStartCommand(spec providerStartCommandSpec) cliservice.Command {
@@ -123,7 +124,7 @@ func (p Provider) newProviderStartCommand(spec providerStartCommandSpec) cliserv
 			CLIDescription: spec.Description,
 		},
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input providerStartInput) (any, error) {
-			return p.runStart(ctx, invoke, spec.Provider, startFields(input))
+			return p.runStart(ctx, invoke, spec.Provider, spec.AgentTargetID, startFields(input))
 		},
 	})
 }
@@ -142,9 +143,13 @@ type startFields struct {
 	Visible         bool
 }
 
-func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, provider string, input startFields) (any, error) {
+func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, provider string, agentTargetID string, input startFields) (any, error) {
 	if err := p.requireSessions(); err != nil {
 		return nil, err
+	}
+	agentTargetID = strings.TrimSpace(agentTargetID)
+	if agentTargetID == "" {
+		return nil, fmt.Errorf("%w: generic agent start cannot create a provider-only session; use `tutti codex start --prompt ...` or `tutti claude start --prompt ...` instead, or run `tutti agent start --help` to inspect the legacy command shape", cliservice.ErrInvalidInput)
 	}
 	visible := input.Visible || input.Show
 	cwd, err := p.resolveStartCwd(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
@@ -170,6 +175,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	}
 	session, err := p.sessions.Create(ctx, invoke.WorkspaceID, agentservice.CreateSessionInput{
 		Provider:               provider,
+		AgentTargetID:          agentTargetID,
 		Cwd:                    optionalStringPointer(cwd),
 		InitialContent:         initialContent,
 		InitialDisplayPrompt:   input.DisplayPrompt,

@@ -25,6 +25,11 @@ import {
   extractExitPlanModeOptions,
   isExitPlanSwitchModeInput
 } from "../../../shared/agentConversation/exitPlanOptions";
+import {
+  filterAgentGUIConversationSummaries,
+  normalizeAgentGUIConversationFilter,
+  type AgentGUIConversationFilter
+} from "./agentGuiConversationFilter";
 import type { AgentApprovalItemVM } from "../../../shared/agentConversation/contracts/agentApprovalItemVM";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
@@ -69,6 +74,7 @@ export {
 export interface AgentGUIConversationSummary {
   id: string;
   userId?: string;
+  agentTargetId?: string | null;
   provider: AgentGUIResolvedProvider;
   resumable?: boolean;
   title: string;
@@ -90,6 +96,7 @@ export type AgentGUIConversationProjectionSource = Pick<
   AgentGUIConversationSummary,
   | "id"
   | "userId"
+  | "agentTargetId"
   | "provider"
   | "title"
   | "titleFallback"
@@ -166,6 +173,7 @@ export type AgentGUIInteractivePrompt =
   | Extract<AgentConversationPromptVM, { kind: "plan-implementation" }>;
 
 export interface BuildAgentGUIConversationsInput {
+  conversationFilter?: AgentGUIConversationFilter;
   isNoProjectPath?: AgentGUIConversationNoProjectPathResolver;
   snapshot: WorkspaceAgentActivitySnapshot;
   provider: AgentGUIProvider;
@@ -174,6 +182,7 @@ export interface BuildAgentGUIConversationsInput {
 }
 
 export function buildAgentGUIConversationSummaries({
+  conversationFilter,
   isNoProjectPath,
   snapshot,
   provider,
@@ -188,21 +197,28 @@ export function buildAgentGUIConversationSummaries({
     userProjects,
     { isNoProjectPath }
   );
-  return buildWorkspaceAgentActivityListViewModel(runtimeSnapshot, {
-    sessionMessagesById
-  })
-    .activities.map((activity) =>
-      conversationSummaryFromActivity(
-        activity,
-        sessionsById.get(activity.sessionId),
-        { projectResolver }
-      )
+  const conversations = buildWorkspaceAgentActivityListViewModel(
+    runtimeSnapshot,
+    {
+      sessionMessagesById
+    }
+  ).activities.map((activity) =>
+    conversationSummaryFromActivity(
+      activity,
+      sessionsById.get(activity.sessionId),
+      { projectResolver }
     )
-    .filter(
-      (conversation) =>
-        conversation.provider === provider ||
-        conversation.provider === "unknown"
+  );
+  if (conversationFilter) {
+    return filterAgentGUIConversationSummaries(
+      conversations,
+      normalizeAgentGUIConversationFilter(conversationFilter)
     );
+  }
+  return conversations.filter(
+    (conversation) =>
+      conversation.provider === provider || conversation.provider === "unknown"
+  );
 }
 
 export function selectAgentGUIConversationId(
@@ -398,6 +414,7 @@ export function conversationSummaryFromAgentSession(
   return {
     id: session.agentSessionId.trim(),
     userId: "",
+    agentTargetId: session.agentTargetId ?? null,
     provider,
     resumable: session.resumable,
     title,
@@ -536,6 +553,7 @@ function conversationSummaryFromActivity(
   return {
     id: activity.sessionId,
     userId: session?.userId?.trim() ?? "",
+    agentTargetId: session?.agentTargetId ?? null,
     provider,
     resumable: session?.resumable,
     title,

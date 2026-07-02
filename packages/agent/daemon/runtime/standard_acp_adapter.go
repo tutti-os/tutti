@@ -861,7 +861,7 @@ func (a *standardACPAdapter) closeProviderSession(ctx context.Context, session S
 	a.waitForACPClientDone(acpSession.client, acpCloseGraceTimeout)
 }
 
-func (a *standardACPAdapter) waitForACPClientDone(client *acpClient, timeout time.Duration) {
+func (*standardACPAdapter) waitForACPClientDone(client *acpClient, timeout time.Duration) {
 	if client == nil {
 		return
 	}

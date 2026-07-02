@@ -3,21 +3,13 @@
   "definitions": {
     "ApprovalsReviewer": {
       "description": "Configures who approval requests are routed to for review. Examples include sandbox escapes, blocked network access, MCP approval prompts, and ARC escalations. Defaults to `user`. `auto_review` uses a carefully prompted subagent to gather relevant context and apply a risk-based decision framework before approving or denying the request. The legacy value `guardian_subagent` is accepted for compatibility.",
-      "enum": [
-        "user",
-        "auto_review",
-        "guardian_subagent"
-      ],
+      "enum": ["user", "auto_review", "guardian_subagent"],
       "type": "string"
     },
     "AskForApproval": {
       "oneOf": [
         {
-          "enum": [
-            "untrusted",
-            "on-request",
-            "never"
-          ],
+          "enum": ["untrusted", "on-request", "never"],
           "type": "string"
         },
         {
@@ -43,17 +35,11 @@
                   "type": "boolean"
                 }
               },
-              "required": [
-                "mcp_elicitations",
-                "rules",
-                "sandbox_approval"
-              ],
+              "required": ["mcp_elicitations", "rules", "sandbox_approval"],
               "type": "object"
             }
           },
-          "required": [
-            "granular"
-          ],
+          "required": ["granular"],
           "title": "GranularAskForApproval",
           "type": "object"
         }
@@ -62,10 +48,7 @@
     "ComputerUseRequirements": {
       "properties": {
         "allowLockedComputerUse": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         }
       },
       "type": "object"
@@ -73,67 +56,43 @@
     "ConfigRequirements": {
       "properties": {
         "allowAppshots": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "allowManagedHooksOnly": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "allowRemoteControl": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "allowedApprovalPolicies": {
           "items": {
             "$ref": "#/definitions/AskForApproval"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "allowedPermissionProfiles": {
           "additionalProperties": {
             "type": "boolean"
           },
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         },
         "allowedSandboxModes": {
           "items": {
             "$ref": "#/definitions/SandboxMode"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "allowedWebSearchModes": {
           "items": {
             "$ref": "#/definitions/WebSearchMode"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "allowedWindowsSandboxImplementations": {
           "items": {
             "$ref": "#/definitions/WindowsSandboxSetupMode"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "computerUse": {
           "anyOf": [
@@ -146,10 +105,7 @@
           ]
         },
         "defaultPermissions": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "enforceResidency": {
           "anyOf": [
@@ -165,10 +121,7 @@
           "additionalProperties": {
             "type": "boolean"
           },
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         }
       },
       "type": "object"
@@ -184,70 +137,47 @@
               "type": "string"
             },
             "commandWindows": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "statusMessage": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "timeoutSec": {
               "format": "uint64",
               "minimum": 0.0,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": ["integer", "null"]
             },
             "type": {
-              "enum": [
-                "command"
-              ],
+              "enum": ["command"],
               "title": "CommandConfiguredHookHandlerType",
               "type": "string"
             }
           },
-          "required": [
-            "async",
-            "command",
-            "type"
-          ],
+          "required": ["async", "command", "type"],
           "title": "CommandConfiguredHookHandler",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "prompt"
-              ],
+              "enum": ["prompt"],
               "title": "PromptConfiguredHookHandlerType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "PromptConfiguredHookHandler",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "agent"
-              ],
+              "enum": ["agent"],
               "title": "AgentConfiguredHookHandlerType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "AgentConfiguredHookHandler",
           "type": "object"
         }
@@ -262,15 +192,10 @@
           "type": "array"
         },
         "matcher": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "hooks"
-      ],
+      "required": ["hooks"],
       "type": "object"
     },
     "ManagedHooksRequirements": {
@@ -336,16 +261,10 @@
           "type": "array"
         },
         "managedDir": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "windowsManagedDir": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": [
@@ -363,155 +282,96 @@
       "type": "object"
     },
     "NetworkDomainPermission": {
-      "enum": [
-        "allow",
-        "deny"
-      ],
+      "enum": ["allow", "deny"],
       "type": "string"
     },
     "NetworkRequirements": {
       "properties": {
         "allowLocalBinding": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "allowUnixSockets": {
           "description": "Legacy compatibility view derived from `unix_sockets`.",
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "allowUpstreamProxy": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "allowedDomains": {
           "description": "Legacy compatibility view derived from `domains`.",
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "dangerouslyAllowAllUnixSockets": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "dangerouslyAllowNonLoopbackProxy": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "deniedDomains": {
           "description": "Legacy compatibility view derived from `domains`.",
           "items": {
             "type": "string"
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "type": ["array", "null"]
         },
         "domains": {
           "additionalProperties": {
             "$ref": "#/definitions/NetworkDomainPermission"
           },
           "description": "Canonical network permission map for `experimental_network`.",
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         },
         "enabled": {
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "httpPort": {
           "format": "uint16",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "managedAllowedDomainsOnly": {
           "description": "When true, only managed allowlist entries are respected while managed network enforcement is active.",
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": ["boolean", "null"]
         },
         "socksPort": {
           "format": "uint16",
           "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": ["integer", "null"]
         },
         "unixSockets": {
           "additionalProperties": {
             "$ref": "#/definitions/NetworkUnixSocketPermission"
           },
           "description": "Canonical unix socket permission map for `experimental_network`.",
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": ["object", "null"]
         }
       },
       "type": "object"
     },
     "NetworkUnixSocketPermission": {
-      "enum": [
-        "allow",
-        "deny"
-      ],
+      "enum": ["allow", "deny"],
       "type": "string"
     },
     "ResidencyRequirement": {
-      "enum": [
-        "us"
-      ],
+      "enum": ["us"],
       "type": "string"
     },
     "SandboxMode": {
-      "enum": [
-        "read-only",
-        "workspace-write",
-        "danger-full-access"
-      ],
+      "enum": ["read-only", "workspace-write", "danger-full-access"],
       "type": "string"
     },
     "WebSearchMode": {
-      "enum": [
-        "disabled",
-        "cached",
-        "indexed",
-        "live"
-      ],
+      "enum": ["disabled", "cached", "indexed", "live"],
       "type": "string"
     },
     "WindowsSandboxSetupMode": {
-      "enum": [
-        "elevated",
-        "unelevated"
-      ],
+      "enum": ["elevated", "unelevated"],
       "type": "string"
     }
   },

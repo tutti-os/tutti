@@ -12,20 +12,14 @@
       "items": {
         "$ref": "#/definitions/AbsolutePathBuf"
       },
-      "type": [
-        "array",
-        "null"
-      ]
+      "type": ["array", "null"]
     },
     "installSuggestionPluginNames": {
       "description": "Additional uninstalled plugin names that should be returned when present locally. This is used by mention surfaces that intentionally expose install entrypoints.",
       "items": {
         "type": "string"
       },
-      "type": [
-        "array",
-        "null"
-      ]
+      "type": ["array", "null"]
     }
   },
   "title": "PluginInstalledParams",

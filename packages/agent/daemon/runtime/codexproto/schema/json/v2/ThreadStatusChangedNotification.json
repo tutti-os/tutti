@@ -2,10 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "ThreadActiveFlag": {
-      "enum": [
-        "waitingOnApproval",
-        "waitingOnUserInput"
-      ],
+      "enum": ["waitingOnApproval", "waitingOnUserInput"],
       "type": "string"
     },
     "ThreadStatus": {
@@ -13,48 +10,36 @@
         {
           "properties": {
             "type": {
-              "enum": [
-                "notLoaded"
-              ],
+              "enum": ["notLoaded"],
               "title": "NotLoadedThreadStatusType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "NotLoadedThreadStatus",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "idle"
-              ],
+              "enum": ["idle"],
               "title": "IdleThreadStatusType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "IdleThreadStatus",
           "type": "object"
         },
         {
           "properties": {
             "type": {
-              "enum": [
-                "systemError"
-              ],
+              "enum": ["systemError"],
               "title": "SystemErrorThreadStatusType",
               "type": "string"
             }
           },
-          "required": [
-            "type"
-          ],
+          "required": ["type"],
           "title": "SystemErrorThreadStatus",
           "type": "object"
         },
@@ -67,17 +52,12 @@
               "type": "array"
             },
             "type": {
-              "enum": [
-                "active"
-              ],
+              "enum": ["active"],
               "title": "ActiveThreadStatusType",
               "type": "string"
             }
           },
-          "required": [
-            "activeFlags",
-            "type"
-          ],
+          "required": ["activeFlags", "type"],
           "title": "ActiveThreadStatus",
           "type": "object"
         }
@@ -92,10 +72,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "status",
-    "threadId"
-  ],
+  "required": ["status", "threadId"],
   "title": "ThreadStatusChangedNotification",
   "type": "object"
 }

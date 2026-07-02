@@ -3,18 +3,13 @@
   "description": "EXPERIMENTAL - emitted when thread realtime transport closes.",
   "properties": {
     "reason": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "threadId": {
       "type": "string"
     }
   },
-  "required": [
-    "threadId"
-  ],
+  "required": ["threadId"],
   "title": "ThreadRealtimeClosedNotification",
   "type": "object"
 }

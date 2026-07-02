@@ -5,9 +5,7 @@
       "type": "boolean"
     }
   },
-  "required": [
-    "effectiveEnabled"
-  ],
+  "required": ["effectiveEnabled"],
   "title": "SkillsConfigWriteResponse",
   "type": "object"
 }

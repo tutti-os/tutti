@@ -9,17 +9,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "inputText"
-              ],
+              "enum": ["inputText"],
               "title": "InputTextDynamicToolCallOutputContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "text",
-            "type"
-          ],
+          "required": ["text", "type"],
           "title": "InputTextDynamicToolCallOutputContentItem",
           "type": "object"
         },
@@ -29,17 +24,12 @@
               "type": "string"
             },
             "type": {
-              "enum": [
-                "inputImage"
-              ],
+              "enum": ["inputImage"],
               "title": "InputImageDynamicToolCallOutputContentItemType",
               "type": "string"
             }
           },
-          "required": [
-            "imageUrl",
-            "type"
-          ],
+          "required": ["imageUrl", "type"],
           "title": "InputImageDynamicToolCallOutputContentItem",
           "type": "object"
         }
@@ -57,10 +47,7 @@
       "type": "boolean"
     }
   },
-  "required": [
-    "contentItems",
-    "success"
-  ],
+  "required": ["contentItems", "success"],
   "title": "DynamicToolCallResponse",
   "type": "object"
 }

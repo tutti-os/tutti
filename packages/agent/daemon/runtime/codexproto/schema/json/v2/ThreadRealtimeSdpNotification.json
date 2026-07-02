@@ -9,10 +9,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "sdp",
-    "threadId"
-  ],
+  "required": ["sdp", "threadId"],
   "title": "ThreadRealtimeSdpNotification",
   "type": "object"
 }

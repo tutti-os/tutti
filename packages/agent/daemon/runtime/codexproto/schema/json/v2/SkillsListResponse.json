@@ -14,9 +14,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "tools"
-      ],
+      "required": ["tools"],
       "type": "object"
     },
     "SkillErrorInfo": {
@@ -28,31 +26,19 @@
           "type": "string"
         }
       },
-      "required": [
-        "message",
-        "path"
-      ],
+      "required": ["message", "path"],
       "type": "object"
     },
     "SkillInterface": {
       "properties": {
         "brandColor": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "defaultPrompt": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "displayName": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "iconLarge": {
           "anyOf": [
@@ -75,10 +61,7 @@
           ]
         },
         "shortDescription": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
       "type": "object"
@@ -122,67 +105,38 @@
         },
         "shortDescription": {
           "description": "Legacy short_description from SKILL.md. Prefer SKILL.json interface.short_description.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "description",
-        "enabled",
-        "name",
-        "path",
-        "scope"
-      ],
+      "required": ["description", "enabled", "name", "path", "scope"],
       "type": "object"
     },
     "SkillScope": {
-      "enum": [
-        "user",
-        "repo",
-        "system",
-        "admin"
-      ],
+      "enum": ["user", "repo", "system", "admin"],
       "type": "string"
     },
     "SkillToolDependency": {
       "properties": {
         "command": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "description": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "transport": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "type": {
           "type": "string"
         },
         "url": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "value": {
           "type": "string"
         }
       },
-      "required": [
-        "type",
-        "value"
-      ],
+      "required": ["type", "value"],
       "type": "object"
     },
     "SkillsListEntry": {
@@ -203,11 +157,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "cwd",
-        "errors",
-        "skills"
-      ],
+      "required": ["cwd", "errors", "skills"],
       "type": "object"
     }
   },
@@ -219,9 +169,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "data"
-  ],
+  "required": ["data"],
   "title": "SkillsListResponse",
   "type": "object"
 }

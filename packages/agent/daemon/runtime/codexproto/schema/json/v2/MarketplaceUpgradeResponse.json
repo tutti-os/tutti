@@ -14,10 +14,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "marketplaceName",
-        "message"
-      ],
+      "required": ["marketplaceName", "message"],
       "type": "object"
     }
   },
@@ -41,11 +38,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "errors",
-    "selectedMarketplaces",
-    "upgradedRoots"
-  ],
+  "required": ["errors", "selectedMarketplaces", "upgradedRoots"],
   "title": "MarketplaceUpgradeResponse",
   "type": "object"
 }

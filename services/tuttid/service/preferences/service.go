@@ -23,6 +23,7 @@ type PutInput struct {
 	AgentComposerDefaultsByProvider             map[string]preferencesbiz.AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
 	AgentConversationDetailMode                 string
+	AgentDockLayout                             string
 	AppCatalogChannel                           string
 	BrowserUseConnectionMode                    string
 	DefaultAgentProvider                        string
@@ -66,6 +67,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		AgentComposerDefaultsByProvider:             normalizeAgentComposerDefaultsByProvider(input.AgentComposerDefaultsByProvider),
 		AgentGUIConversationRailCollapsedByProvider: normalizeAgentGUIConversationRailCollapsedByProvider(input.AgentGUIConversationRailCollapsedByProvider),
 		AgentConversationDetailMode:                 preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.AgentConversationDetailMode),
+		AgentDockLayout:                             normalizeAgentDockLayout(input.AgentDockLayout),
 		AppCatalogChannel:                           normalizeAppCatalogChannel(input.AppCatalogChannel),
 		BrowserUseConnectionMode:                    normalizeBrowserUseConnectionMode(input.BrowserUseConnectionMode),
 		DefaultAgentProvider:                        agentproviderbiz.Normalize(input.DefaultAgentProvider),
@@ -108,6 +110,14 @@ func (s Service) resolveWindowSnapping(ctx context.Context, input *DesktopWindow
 		Enabled:        preferences.WindowSnappingEnabled,
 		ShortcutPreset: normalizeWindowSnappingShortcutPreset(preferences.WindowSnappingShortcutPreset),
 	}, nil
+}
+
+func normalizeAgentDockLayout(value string) string {
+	normalized := strings.TrimSpace(value)
+	if preferencesbiz.IsDesktopAgentDockLayout(normalized) {
+		return normalized
+	}
+	return preferencesbiz.DefaultDesktopAgentDockLayout
 }
 
 func normalizeAppCatalogChannel(value string) string {

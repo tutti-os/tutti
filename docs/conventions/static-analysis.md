@@ -44,9 +44,12 @@ Generated TypeScript is not linted by the human-authored TypeScript rule set. Ge
 Generated Codex app-server protocol artifacts under
 `packages/agent/daemon/runtime/codexproto` are checked by
 `pnpm check:codexproto-generated`. The check fetches the pinned Codex source
-commit, compares the committed upstream schema snapshot, reruns the local Go
-generator, and fails when generated files drift. Do not hand-edit generated
-`*_gen.go` files; update the vendored schema or generator, then regenerate.
+commit, compares the committed upstream schema snapshot as canonical JSON,
+reruns the local Go generator, and fails when generated files drift. The schema
+comparison intentionally ignores JSON formatting differences so vendored
+upstream artifacts can coexist with repository Prettier formatting. Do not
+hand-edit generated `*_gen.go` files; update the vendored schema or generator,
+then regenerate.
 
 Historical or ported-source snapshots that are intentionally kept outside a
 package's active `tsconfig.json` during migration should also stay out of the

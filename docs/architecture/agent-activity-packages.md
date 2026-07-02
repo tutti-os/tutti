@@ -197,13 +197,32 @@ export interface AgentActivityAdapter {
 }
 ```
 
+`AgentActivityCreateSessionInput.agentTargetId` is the preferred authority for
+new target-backed launches. Shared UI passes it through unchanged; trusted host
+or daemon code resolves it against `agent_targets`, validates enabled state and
+launch ref shape, and derives the execution `provider` and runtime
+`providerTargetRef` from the resolved target. Target-backed create requests may
+omit `provider`; if both fields are present, the daemon rejects provider
+mismatches. Client-provided `providerTargetRef` is not allowed to override the
+daemon-derived runtime ref when `agentTargetId` is present. The resulting
+`AgentActivitySession` and session events should preserve `agentTargetId` when
+present. State patch reducers must update the session when an event includes
+`agentTargetId`, but a patch that omits the field must not clear an existing
+target id because older runtimes and historical imports are provider-only.
+
+Composer options are cached by `agentTargetId` when a target-backed request
+includes one. Provider-keyed composer options remain a legacy/provider-only
+cache and may be used by UI as a fallback while target-specific options load,
+but target-backed loads must not reuse or overwrite the provider cache.
+
 `AgentActivityCreateSessionInput.providerTargetRef` is an optional opaque
-host-owned reference for selecting which target under the real provider should
-launch the session. It is not authority, a credential, or an invocation plan.
-Adapters and trusted launchers must re-authenticate and resolve it before using
-any concrete provider invocation. UI packages must keep `provider` as the real
-provider identity and must not synthesize providers for shared or remote
-targets.
+host-owned legacy reference for selecting which target under the real provider
+should launch the session. It is not authority, a credential, or an invocation
+plan. It remains a provider-only compatibility hint; target-backed launches use
+the daemon-derived ref shape from `agent_targets` instead. Adapters and trusted
+launchers must re-authenticate and resolve it before using any concrete
+provider invocation. UI packages must keep `provider` as the real provider
+identity and must not synthesize providers for shared or remote targets.
 
 The adapter decides how to connect. The controller decides when to connect,
 when to disconnect, and how to merge the resulting events.

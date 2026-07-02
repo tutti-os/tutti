@@ -25,8 +25,11 @@ export const agentGUIDefaultTargetProviders = [
 export function createLocalAgentGUIProviderTarget(
   provider: AgentGUIProvider
 ): AgentGUIProviderTarget {
+  const targetId = localAgentGUIProviderTargetId(provider);
+  const agentTargetId = localAgentGUIAgentTargetId(provider);
   return {
-    targetId: localAgentGUIProviderTargetId(provider),
+    targetId,
+    ...(agentTargetId ? { agentTargetId } : {}),
     provider,
     ref: {
       kind: "local",
@@ -48,6 +51,19 @@ export function localAgentGUIProviderTargetId(
   provider: AgentGUIProvider
 ): string {
   return `local:${provider}`;
+}
+
+export function localAgentGUIAgentTargetId(
+  provider: AgentGUIProvider
+): string | null {
+  switch (provider) {
+    case "codex":
+      return "local:codex";
+    case "claude-code":
+      return "local:claude-code";
+    default:
+      return null;
+  }
 }
 
 export function normalizeAgentGUIProviderTargets(
@@ -76,11 +92,24 @@ export function normalizeAgentGUIProviderTargets(
 }
 
 export function resolveAgentGUIProviderTarget(input: {
+  agentTargetId?: string | null;
   defaultProviderTargetId?: string | null;
+  fallbackToLocal?: boolean;
   provider: AgentGUIProvider;
   providerTargetId?: string | null;
   providerTargets: readonly AgentGUIProviderTarget[];
-}): AgentGUIProviderTarget {
+}): AgentGUIProviderTarget | null {
+  const targetByAgentTargetId = new Map(
+    input.providerTargets.flatMap((target) =>
+      target.agentTargetId ? [[target.agentTargetId, target] as const] : []
+    )
+  );
+  const agentTarget = targetByAgentTargetId.get(
+    input.agentTargetId?.trim() ?? ""
+  );
+  if (agentTarget) {
+    return agentTarget;
+  }
   const providerTargets = input.providerTargets.filter(
     (target) => target.provider === input.provider
   );
@@ -93,7 +122,9 @@ export function resolveAgentGUIProviderTarget(input: {
     targetById.get(localAgentGUIProviderTargetId(input.provider)) ??
     providerTargets.find((target) => target.disabled !== true) ??
     providerTargets[0] ??
-    createLocalAgentGUIProviderTarget(input.provider)
+    (input.fallbackToLocal === false
+      ? null
+      : createLocalAgentGUIProviderTarget(input.provider))
   );
 }
 
@@ -117,6 +148,7 @@ function normalizeAgentGUIProviderTarget(
   target: AgentGUIProviderTarget
 ): AgentGUIProviderTarget | null {
   const targetId = target.targetId.trim();
+  const agentTargetId = target.agentTargetId?.trim();
   const label = target.label.trim();
   const kind =
     typeof target.ref.kind === "string" ? target.ref.kind.trim() : "";
@@ -126,6 +158,7 @@ function normalizeAgentGUIProviderTarget(
   return {
     ...target,
     targetId,
+    ...(agentTargetId ? { agentTargetId } : {}),
     provider: target.provider,
     ref: {
       ...target.ref,

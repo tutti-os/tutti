@@ -6,9 +6,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "idempotencyKey"
-  ],
+  "required": ["idempotencyKey"],
   "title": "ConsumeAccountRateLimitResetCreditParams",
   "type": "object"
 }

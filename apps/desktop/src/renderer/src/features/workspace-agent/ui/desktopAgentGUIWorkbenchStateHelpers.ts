@@ -4,17 +4,20 @@ import {
   type DesktopAgentGUIComposerOverrides,
   type DesktopAgentGUINodeState,
   type DesktopAgentGUIProvider
-} from "../desktopAgentGUINodeState";
+} from "../desktopAgentGUINodeState.ts";
 
 export function withDesktopAgentGUIProviderComposerDefaults(
   state: DesktopAgentGUINodeState,
   provider: DesktopAgentGUIProvider,
   defaults: DesktopAgentComposerDefaults | null
 ): DesktopAgentGUINodeState {
+  const agentTargetId = state.agentTargetId?.trim() || null;
   if (
     !defaults ||
     state.lastActiveAgentSessionId ||
     state.composerOverrides ||
+    (agentTargetId &&
+      state.composerOverridesByAgentTargetId?.[agentTargetId]) ||
     state.composerOverridesByProvider?.[provider]
   ) {
     return state;
@@ -27,14 +30,22 @@ export function withDesktopAgentGUIProviderComposerDefaults(
   }
 
   return normalizeDesktopAgentGUINodeState(
-    {
-      ...state,
-      composerOverrides,
-      composerOverridesByProvider: {
-        ...(state.composerOverridesByProvider ?? {}),
-        [provider]: composerOverrides
-      }
-    },
+    agentTargetId
+      ? {
+          ...state,
+          composerOverridesByAgentTargetId: {
+            ...(state.composerOverridesByAgentTargetId ?? {}),
+            [agentTargetId]: composerOverrides
+          }
+        }
+      : {
+          ...state,
+          composerOverrides,
+          composerOverridesByProvider: {
+            ...(state.composerOverridesByProvider ?? {}),
+            [provider]: composerOverrides
+          }
+        },
     provider
   );
 }

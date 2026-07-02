@@ -9,10 +9,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "command",
-    "threadId"
-  ],
+  "required": ["command", "threadId"],
   "title": "ThreadShellCommandParams",
   "type": "object"
 }

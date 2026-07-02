@@ -430,6 +430,14 @@ export const zhCN = {
           generalDescription: "同样强大，技术细节更少。"
         },
         agentConversationDetailModeSaveFailed: "暂时无法更新工作模式。",
+        agentDockLayoutDescription:
+          "选择 Codex 和 Claude Code 在 Dock 中显示为两个独立图标，还是合并为一个 Agent 图标。",
+        agentDockLayoutLabel: "Agent Dock",
+        agentDockLayoutOptions: {
+          legacySplit: "独立图标",
+          unified: "一个 Agent 图标"
+        },
+        agentDockLayoutSaveFailed: "暂时无法更新 Agent Dock。",
         computerUseLabel: "电脑控制",
         computerUseDescription:
           "让 Agent 控制你的 Mac 桌面——截图、点击、键盘输入等",

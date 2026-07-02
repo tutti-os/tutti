@@ -13,11 +13,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "server",
-    "threadId",
-    "tool"
-  ],
+  "required": ["server", "threadId", "tool"],
   "title": "McpServerToolCallParams",
   "type": "object"
 }

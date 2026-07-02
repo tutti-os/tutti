@@ -8,6 +8,7 @@
     "agentComposerDefaultsByProvider",
     "agentGuiConversationRailCollapsedByProvider",
     "agentConversationDetailMode",
+    "agentDockLayout",
     "appCatalogChannel",
     "defaultAgentProvider",
     "dockIconStyle",
@@ -49,6 +50,10 @@
     "agentConversationDetailMode": {
       "type": "string",
       "enum": ["coding", "general"]
+    },
+    "agentDockLayout": {
+      "type": "string",
+      "enum": ["legacySplit", "unified"]
     },
     "appCatalogChannel": {
       "type": "string",

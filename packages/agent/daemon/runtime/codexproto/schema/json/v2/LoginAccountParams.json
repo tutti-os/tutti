@@ -7,17 +7,12 @@
           "type": "string"
         },
         "type": {
-          "enum": [
-            "apiKey"
-          ],
+          "enum": ["apiKey"],
           "title": "ApiKeyv2::LoginAccountParamsType",
           "type": "string"
         }
       },
-      "required": [
-        "apiKey",
-        "type"
-      ],
+      "required": ["apiKey", "type"],
       "title": "ApiKeyv2::LoginAccountParams",
       "type": "object"
     },
@@ -27,32 +22,24 @@
           "type": "boolean"
         },
         "type": {
-          "enum": [
-            "chatgpt"
-          ],
+          "enum": ["chatgpt"],
           "title": "Chatgptv2::LoginAccountParamsType",
           "type": "string"
         }
       },
-      "required": [
-        "type"
-      ],
+      "required": ["type"],
       "title": "Chatgptv2::LoginAccountParams",
       "type": "object"
     },
     {
       "properties": {
         "type": {
-          "enum": [
-            "chatgptDeviceCode"
-          ],
+          "enum": ["chatgptDeviceCode"],
           "title": "ChatgptDeviceCodev2::LoginAccountParamsType",
           "type": "string"
         }
       },
-      "required": [
-        "type"
-      ],
+      "required": ["type"],
       "title": "ChatgptDeviceCodev2::LoginAccountParams",
       "type": "object"
     },
@@ -69,24 +56,15 @@
         },
         "chatgptPlanType": {
           "description": "Optional plan type supplied by the client.\n\nWhen `null`, Codex attempts to derive the plan type from access-token claims. If unavailable, the plan defaults to `unknown`.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "type": {
-          "enum": [
-            "chatgptAuthTokens"
-          ],
+          "enum": ["chatgptAuthTokens"],
           "title": "ChatgptAuthTokensv2::LoginAccountParamsType",
           "type": "string"
         }
       },
-      "required": [
-        "accessToken",
-        "chatgptAccountId",
-        "type"
-      ],
+      "required": ["accessToken", "chatgptAccountId", "type"],
       "title": "ChatgptAuthTokensv2::LoginAccountParams",
       "type": "object"
     }

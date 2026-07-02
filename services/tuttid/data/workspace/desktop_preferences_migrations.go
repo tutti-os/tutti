@@ -19,6 +19,7 @@ func (s *SQLiteStore) applyDesktopPreferencesV1(ctx context.Context) error {
 	_, err = s.db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS desktop_preferences (
   id TEXT PRIMARY KEY,
+  agent_dock_layout TEXT NOT NULL DEFAULT 'legacySplit',
   dock_icon_style TEXT NOT NULL DEFAULT 'flat',
   dock_placement TEXT NOT NULL DEFAULT 'bottom',
   default_agent_provider TEXT NOT NULL DEFAULT 'codex',
@@ -44,6 +45,38 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 `, schemaMigrationDesktopPreferencesV1, now)
 	if err != nil {
 		return fmt.Errorf("migrate workspace database for desktop preferences: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesAgentDockLayoutV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesAgentDockLayoutV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	hasAgentDockLayout, err := s.hasColumn(ctx, "desktop_preferences", "agent_dock_layout")
+	if err != nil {
+		return err
+	}
+	if !hasAgentDockLayout {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN agent_dock_layout TEXT NOT NULL DEFAULT 'legacySplit';`); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop agent dock layout: %w", err)
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesAgentDockLayoutV1, now)
+	if err != nil {
+		return fmt.Errorf("record desktop agent dock layout migration: %w", err)
 	}
 
 	return nil

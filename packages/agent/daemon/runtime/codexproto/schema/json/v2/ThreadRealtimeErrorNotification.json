@@ -9,10 +9,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "message",
-    "threadId"
-  ],
+  "required": ["message", "threadId"],
   "title": "ThreadRealtimeErrorNotification",
   "type": "object"
 }

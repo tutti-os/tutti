@@ -375,6 +375,12 @@ func validateDesktopPreferencesUpdateRequestedPayload(payload []byte) error {
 	if !preferencesbiz.IsDesktopDockPlacement(decoded.DockPlacement) {
 		return fmt.Errorf("preferences.dockPlacement is unsupported")
 	}
+	if strings.TrimSpace(decoded.AgentDockLayout) == "" {
+		return fmt.Errorf("preferences.agentDockLayout is required")
+	}
+	if !preferencesbiz.IsDesktopAgentDockLayout(strings.TrimSpace(decoded.AgentDockLayout)) {
+		return fmt.Errorf("preferences.agentDockLayout is unsupported")
+	}
 	if decoded.AppCatalogChannel == "" {
 		return fmt.Errorf("preferences.appCatalogChannel is required")
 	}
@@ -460,6 +466,12 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopAgentConversationDetailMode(decoded.Preferences.AgentConversationDetailMode) {
 		return fmt.Errorf("preferences.agentConversationDetailMode is unsupported")
+	}
+	if strings.TrimSpace(decoded.Preferences.AgentDockLayout) == "" {
+		return fmt.Errorf("preferences.agentDockLayout is required")
+	}
+	if !preferencesbiz.IsDesktopAgentDockLayout(strings.TrimSpace(decoded.Preferences.AgentDockLayout)) {
+		return fmt.Errorf("preferences.agentDockLayout is unsupported")
 	}
 	if decoded.Preferences.AppCatalogChannel == "" {
 		return fmt.Errorf("preferences.appCatalogChannel is required")

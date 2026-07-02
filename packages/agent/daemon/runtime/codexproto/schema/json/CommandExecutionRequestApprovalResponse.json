@@ -5,16 +5,12 @@
       "oneOf": [
         {
           "description": "User approved the command.",
-          "enum": [
-            "accept"
-          ],
+          "enum": ["accept"],
           "type": "string"
         },
         {
           "description": "User approved the command and future prompts in the same session-scoped approval cache should run without prompting.",
-          "enum": [
-            "acceptForSession"
-          ],
+          "enum": ["acceptForSession"],
           "type": "string"
         },
         {
@@ -30,15 +26,11 @@
                   "type": "array"
                 }
               },
-              "required": [
-                "execpolicy_amendment"
-              ],
+              "required": ["execpolicy_amendment"],
               "type": "object"
             }
           },
-          "required": [
-            "acceptWithExecpolicyAmendment"
-          ],
+          "required": ["acceptWithExecpolicyAmendment"],
           "title": "AcceptWithExecpolicyAmendmentCommandExecutionApprovalDecision",
           "type": "object"
         },
@@ -52,30 +44,22 @@
                   "$ref": "#/definitions/NetworkPolicyAmendment"
                 }
               },
-              "required": [
-                "network_policy_amendment"
-              ],
+              "required": ["network_policy_amendment"],
               "type": "object"
             }
           },
-          "required": [
-            "applyNetworkPolicyAmendment"
-          ],
+          "required": ["applyNetworkPolicyAmendment"],
           "title": "ApplyNetworkPolicyAmendmentCommandExecutionApprovalDecision",
           "type": "object"
         },
         {
           "description": "User denied the command. The agent will continue the turn.",
-          "enum": [
-            "decline"
-          ],
+          "enum": ["decline"],
           "type": "string"
         },
         {
           "description": "User denied the command. The turn will also be immediately interrupted.",
-          "enum": [
-            "cancel"
-          ],
+          "enum": ["cancel"],
           "type": "string"
         }
       ]
@@ -89,17 +73,11 @@
           "type": "string"
         }
       },
-      "required": [
-        "action",
-        "host"
-      ],
+      "required": ["action", "host"],
       "type": "object"
     },
     "NetworkPolicyRuleAction": {
-      "enum": [
-        "allow",
-        "deny"
-      ],
+      "enum": ["allow", "deny"],
       "type": "string"
     }
   },
@@ -108,9 +86,7 @@
       "$ref": "#/definitions/CommandExecutionApprovalDecision"
     }
   },
-  "required": [
-    "decision"
-  ],
+  "required": ["decision"],
   "title": "CommandExecutionRequestApprovalResponse",
   "type": "object"
 }

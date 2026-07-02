@@ -8,19 +8,14 @@
     },
     "deltaBase64": {
       "description": "Optional base64-encoded stdin bytes to write.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "processId": {
       "description": "Client-supplied, connection-scoped `processId` from the original `command/exec` request.",
       "type": "string"
     }
   },
-  "required": [
-    "processId"
-  ],
+  "required": ["processId"],
   "title": "CommandExecWriteParams",
   "type": "object"
 }

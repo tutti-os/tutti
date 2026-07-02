@@ -10,10 +10,7 @@
   "properties": {
     "force": {
       "description": "Whether missing paths should be ignored. Defaults to `true`.",
-      "type": [
-        "boolean",
-        "null"
-      ]
+      "type": ["boolean", "null"]
     },
     "path": {
       "allOf": [
@@ -25,15 +22,10 @@
     },
     "recursive": {
       "description": "Whether directory removal should recurse. Defaults to `true`.",
-      "type": [
-        "boolean",
-        "null"
-      ]
+      "type": ["boolean", "null"]
     }
   },
-  "required": [
-    "path"
-  ],
+  "required": ["path"],
   "title": "FsRemoveParams",
   "type": "object"
 }

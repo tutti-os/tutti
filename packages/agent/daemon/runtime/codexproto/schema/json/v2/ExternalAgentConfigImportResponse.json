@@ -5,9 +5,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "importId"
-  ],
+  "required": ["importId"],
   "title": "ExternalAgentConfigImportResponse",
   "type": "object"
 }

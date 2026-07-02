@@ -1,4 +1,3 @@
-//nolint:unused // Retain migrated helpers until the next agent-daemon decomposition pass.
 package agentruntime
 
 import (
@@ -61,6 +60,7 @@ func eventSourceFromSession(session Session) agentsessionstore.EventSource {
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		AgentID:           strings.TrimSpace(session.AgentSessionID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		CWD:               strings.TrimSpace(session.CWD),
 		SessionOrigin:     agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 	}

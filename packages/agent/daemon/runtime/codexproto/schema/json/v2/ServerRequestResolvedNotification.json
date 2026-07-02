@@ -21,10 +21,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "requestId",
-    "threadId"
-  ],
+  "required": ["requestId", "threadId"],
   "title": "ServerRequestResolvedNotification",
   "type": "object"
 }

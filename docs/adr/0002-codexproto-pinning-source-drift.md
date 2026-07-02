@@ -8,6 +8,7 @@
 ## Decisions
 
 ### Pinning (Q3-A)
+
 - codexproto is generated against an explicit **codex git commit SHA**, stamped
   into `metadata_gen.go` (cf. codex-sdk-go `Source codex commit:` and t3code
   `meta.gen.ts` `Upstream protocol ref:`).
@@ -17,7 +18,8 @@
   actually spawns.
 
 ### Source acquisition (Q4 → option 1)
-- **Vendor the upstream *already-committed* `schema/json/*.json` at the pinned
+
+- **Vendor the upstream _already-committed_ `schema/json/*.json` at the pinned
   SHA. Do NOT run the Rust `export` bin.** The schema artifacts are tracked in
   the codex repo (`git ls-files codex-rs/app-server-protocol/schema/json`), so
   no Rust toolchain or local codex checkout is required.
@@ -28,6 +30,7 @@
   its `exportSchemas` (run-Rust) step **replaced** by "read vendored JSON".
 
 ### Drift tolerance (Q3-B)
+
 - The runtime codex binary floats (auto-updates) relative to the pinned source.
   The CI drift check only catches codexproto-vs-pinned-source drift, NOT
   codexproto-vs-running-binary drift.
@@ -39,6 +42,7 @@
   down into the decode layer.
 
 ### Manual type supplement
+
 - A hand-maintained supplement is unavoidable and universal across consumers
   (codex-sdk-go `manual_types.go` 214 lines; t3code `ManualSchemas`).
 - **`collaborationMode/list` is "used-but-unexported":** tutti calls it live
@@ -48,6 +52,7 @@
   deleted, NOT expected from the generator.
 
 ## Evidence
+
 - `git ls-files` lists `ClientRequest.json`, `codex_app_server_protocol.schemas.json`,
   `…v2.schemas.json` → schema is committed upstream.
 - t3code `generate.ts`: `UPSTREAM_REF` SHA + GitHub API `?ref=` fetch of committed

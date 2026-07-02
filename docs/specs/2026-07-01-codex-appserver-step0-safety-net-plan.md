@@ -4,13 +4,13 @@
 
 **Goal:** Establish the characterization safety net — an explicit, runnable bug-corpus contract that every later refactor step (1–9) must keep green — without changing any production code.
 
-**Architecture:** The `codex_appserver_*.go` runtime already has a rich test suite that implicitly pins most bug clusters (B/C/D/E). Step 0 makes that net *explicit* (a cluster→test manifest + a single `go test -run` recipe + a recorded codex version baseline) and *gap-fills* two thin pure-function spots that the later steps will disturb. This is a **characterization** step: tests capture existing behavior and pass on first run.
+**Architecture:** The `codex_appserver_*.go` runtime already has a rich test suite that implicitly pins most bug clusters (B/C/D/E). Step 0 makes that net _explicit_ (a cluster→test manifest + a single `go test -run` recipe + a recorded codex version baseline) and _gap-fills_ two thin pure-function spots that the later steps will disturb. This is a **characterization** step: tests capture existing behavior and pass on first run.
 
 **Tech Stack:** Go (`packages/agent/daemon`), package `agentruntime`, standard `testing` (table-driven, `t.Parallel()`).
 
 ## Global Constraints
 
-- **No production code changes in Step 0.** Only add test files and one docs file. If a characterization test does not pass against current code, the test's *expectation* is wrong — fix the test to match observed behavior; never change `*.go` production files here.
+- **No production code changes in Step 0.** Only add test files and one docs file. If a characterization test does not pass against current code, the test's _expectation_ is wrong — fix the test to match observed behavior; never change `*.go` production files here.
 - Test package name is `agentruntime` (same as the files under test; these are white-box tests using unexported symbols).
 - Every new test uses `t.Parallel()` and the table-driven style already used in `codex_appserver_events_test.go`.
 - Work area for build/test: `packages/agent/daemon`. Full corpus command: `go test ./runtime/ -run '<pattern>' -count=1`.
@@ -30,18 +30,22 @@ No production files are modified.
 ### Task 1: Bug-corpus contract manifest + codex version baseline
 
 **Files:**
+
 - Create: `docs/specs/2026-07-01-codex-appserver-bug-corpus.md`
 
 **Interfaces:**
+
 - Consumes: existing test names (verified present in `codex_appserver_adapter_test.go`, `codex_appserver_collab_test.go`, `codex_appserver_events_test.go`).
 - Produces: `<CORPUS_RUN_PATTERN>` — the canonical `go test -run` regex that runs the whole daemon-side corpus; later steps and CI reference it.
 
 - [ ] **Step 1: Capture the codex binary baseline version**
 
 Run (work area `packages/agent/daemon`):
+
 ```bash
 codex --version 2>/dev/null || codex-cli --version
 ```
+
 Expected: a line like `codex-cli 0.142.1`. Record the exact version string; it goes into the manifest below as `Baseline codex version`.
 
 - [ ] **Step 2: Write the manifest**
@@ -54,7 +58,7 @@ Create `docs/specs/2026-07-01-codex-appserver-bug-corpus.md` with this content (
 This is the behavioral safety net for the app-server layer refactor. Every step
 (1–9) in `2026-07-01-codex-appserver-refactor-design.md` MUST keep this corpus
 green. Where a step replaces a patch with a by-construction fix, the "Will change
-in" column names the step allowed to change the test's expectation — any *other*
+in" column names the step allowed to change the test's expectation — any _other_
 diff to these tests is a regression.
 
 - Baseline codex version (captured at Step 0): `<VERSION>`
@@ -65,23 +69,25 @@ diff to these tests is a regression.
     'TestAppServerCollabAgentFailedCarriesErrorOutput|TestAppServerCollabAgentCompletedCarriesResultOutput|TestAppServerCloseAgentIsControlTool|TestAppServerWaitIsControlTool|TestAppServerForeignThreadMismatch|TestCodexAppServerAdapterExecIgnoresForeignThreadNotifications|TestCodexAppServerAdapterExecStreamsTurn|TestCodexAppServerAdapterSlashCompact|TestCodexAppServerAdapterResumeRetainsReplayedContextUsage|TestCodexAppServerAdapterReleaseLiveSessionClosesClientAndKeepsProviderSession|TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests|TestCodexAppServerAdapterCommandApprovalApprove|TestCodexAppServerAdapterCommandApprovalDecisionMapping|TestCodexAppServerAdapterRequestUserInput|TestAppServerUserInputAnswers'
   ```
 
-| Cluster (state machine) | Pinning test(s) | Origin | Will change in |
-|---|---|---|---|
-| **B — thread / sub-agent identity** | `TestCodexAppServerAdapterExecIgnoresForeignThreadNotifications`, `TestAppServerForeignThreadMismatch` (added Step 0) | #602 | **Step 3** (drop → route) |
-| **B — sub-agent collab card** | `TestAppServerCollabAgentFailedCarriesErrorOutput`, `TestAppServerCollabAgentCompletedCarriesResultOutput` (added Step 0), `TestAppServerCloseAgentIsControlTool`, `TestAppServerWaitIsControlTool` | #602 | Step 3 (card populated via routing; assertions on card outcome stay) |
-| **C — turn / compaction lifecycle** | `TestCodexAppServerAdapterExecStreamsTurn`, `TestCodexAppServerAdapterSlashCompact`, `TestCodexAppServerAdapterResumeRetainsReplayedContextUsage` | log session `67009835`; `4118312f`; `2412b08d` | Step 5 (explicit state machine; outcomes stay) |
-| **D — session / live-session lifecycle** | `TestCodexAppServerAdapterReleaseLiveSessionClosesClientAndKeepsProviderSession`, `TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests` | #604 | Step 7 (facade owns lifecycle; outcomes stay) |
-| **E — approval / interactive** | `TestCodexAppServerAdapterCommandApprovalApprove`, `TestCodexAppServerAdapterCommandApprovalDecisionMapping`, `TestCodexAppServerAdapterRequestUserInput`, `TestAppServerUserInputAnswers` | #418 | Step 6 (resolver extraction; outcomes stay) |
-| **A — daemon↔desktop hydration** (desktop-half; out of daemon scope) | GUI: `useAgentGUINodeController.spec.tsx` (#608) | sessions `7633ebb9`/`2d73bad7`/`08920807`; #608; #585 | **Step 9** (deferred desktop rewrite). Daemon-half contract is authored in **Step 4**. |
+| Cluster (state machine)                                              | Pinning test(s)                                                                                                                                                                                     | Origin                                                | Will change in                                                                         |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **B — thread / sub-agent identity**                                  | `TestCodexAppServerAdapterExecIgnoresForeignThreadNotifications`, `TestAppServerForeignThreadMismatch` (added Step 0)                                                                               | #602                                                  | **Step 3** (drop → route)                                                              |
+| **B — sub-agent collab card**                                        | `TestAppServerCollabAgentFailedCarriesErrorOutput`, `TestAppServerCollabAgentCompletedCarriesResultOutput` (added Step 0), `TestAppServerCloseAgentIsControlTool`, `TestAppServerWaitIsControlTool` | #602                                                  | Step 3 (card populated via routing; assertions on card outcome stay)                   |
+| **C — turn / compaction lifecycle**                                  | `TestCodexAppServerAdapterExecStreamsTurn`, `TestCodexAppServerAdapterSlashCompact`, `TestCodexAppServerAdapterResumeRetainsReplayedContextUsage`                                                   | log session `67009835`; `4118312f`; `2412b08d`        | Step 5 (explicit state machine; outcomes stay)                                         |
+| **D — session / live-session lifecycle**                             | `TestCodexAppServerAdapterReleaseLiveSessionClosesClientAndKeepsProviderSession`, `TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests`                                                 | #604                                                  | Step 7 (facade owns lifecycle; outcomes stay)                                          |
+| **E — approval / interactive**                                       | `TestCodexAppServerAdapterCommandApprovalApprove`, `TestCodexAppServerAdapterCommandApprovalDecisionMapping`, `TestCodexAppServerAdapterRequestUserInput`, `TestAppServerUserInputAnswers`          | #418                                                  | Step 6 (resolver extraction; outcomes stay)                                            |
+| **A — daemon↔desktop hydration** (desktop-half; out of daemon scope) | GUI: `useAgentGUINodeController.spec.tsx` (#608)                                                                                                                                                    | sessions `7633ebb9`/`2d73bad7`/`08920807`; #608; #585 | **Step 9** (deferred desktop rewrite). Daemon-half contract is authored in **Step 4**. |
 ````
 
 - [ ] **Step 3: Verify every currently-existing corpus test is green (baseline capture)**
 
-Run (work area `packages/agent/daemon`) — this is the subset that exists *before* Task 2/3 add their two tests:
+Run (work area `packages/agent/daemon`) — this is the subset that exists _before_ Task 2/3 add their two tests:
+
 ```bash
 go test ./runtime/ -count=1 -run \
   'TestAppServerCollabAgentFailedCarriesErrorOutput|TestAppServerCloseAgentIsControlTool|TestAppServerWaitIsControlTool|TestCodexAppServerAdapterExecIgnoresForeignThreadNotifications|TestCodexAppServerAdapterExecStreamsTurn|TestCodexAppServerAdapterSlashCompact|TestCodexAppServerAdapterResumeRetainsReplayedContextUsage|TestCodexAppServerAdapterReleaseLiveSessionClosesClientAndKeepsProviderSession|TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests|TestCodexAppServerAdapterCommandApprovalApprove|TestCodexAppServerAdapterCommandApprovalDecisionMapping|TestCodexAppServerAdapterRequestUserInput|TestAppServerUserInputAnswers'
 ```
+
 Expected: `ok  github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime` (all listed tests PASS). If any test name does not match, correct the manifest to the real name and re-run.
 
 - [ ] **Step 4: Commit**
@@ -93,15 +99,17 @@ git commit -m "docs(codex): step0 bug-corpus contract manifest + codex baseline"
 
 ---
 
-### Task 2: Characterize the collab-agent *completed*-output path (Cluster B gap-fill)
+### Task 2: Characterize the collab-agent _completed_-output path (Cluster B gap-fill)
 
-`codex_appserver_collab_test.go` pins the *failed* collab path (`...FailedCarriesErrorOutput`) but not the *completed-with-result* path, which `appServerCollabAgentRawOutput` also handles (`result` / `output` / `stdout` / `stderr` keys). Step 3's routing must keep this card-population behavior; pin it now.
+`codex_appserver_collab_test.go` pins the _failed_ collab path (`...FailedCarriesErrorOutput`) but not the _completed-with-result_ path, which `appServerCollabAgentRawOutput` also handles (`result` / `output` / `stdout` / `stderr` keys). Step 3's routing must keep this card-population behavior; pin it now.
 
 **Files:**
+
 - Create: `packages/agent/daemon/runtime/codex_appserver_corpus_test.go`
 - Test: same file.
 
 **Interfaces:**
+
 - Consumes: `appServerItemToolCallUpdate(item map[string]any, completed bool) (map[string]any, bool)` and `asString(any) string` (both existing, unexported in package `agentruntime`); `messageStreamStateCompleted` / status handling as exercised in `codex_appserver_collab_test.go`.
 - Produces: `TestAppServerCollabAgentCompletedCarriesResultOutput` (referenced by the manifest run pattern).
 
@@ -169,12 +177,14 @@ git commit -m "test(codex): step0 pin collab-agent completed rawOutput (cluster 
 
 ### Task 3: Characterize the foreign-thread drop semantics (Cluster B — the will-change-in-Step-3 pin)
 
-`appServerNotificationThreadMismatch` is #602's drop-filter. Step 3 replaces *dropping* with *routing*, so this is the single most important behavior to pin explicitly now — the diff in Step 3 must be intentional and visible, not an accidental test edit.
+`appServerNotificationThreadMismatch` is #602's drop-filter. Step 3 replaces _dropping_ with _routing_, so this is the single most important behavior to pin explicitly now — the diff in Step 3 must be intentional and visible, not an accidental test edit.
 
 **Files:**
+
 - Modify: `packages/agent/daemon/runtime/codex_appserver_corpus_test.go` (append)
 
 **Interfaces:**
+
 - Consumes: `appServerNotificationThreadMismatch(session Session, method string, params map[string]any) bool` (existing, unexported); `Session` struct with field `ProviderSessionID string` and `AgentSessionID string` (existing); `appServerNotifyItemStarted` — the method-name constant used in existing tests. If the exact constant name differs, mirror the constant used by `TestCodexAppServerAdapterExecIgnoresForeignThreadNotifications` in `codex_appserver_adapter_test.go`.
 - Produces: `TestAppServerForeignThreadMismatch` (referenced by the manifest run pattern).
 
@@ -236,10 +246,12 @@ Expected: PASS (all three subcases). If the method-name constant `appServerNotif
 - [ ] **Step 3: Run the full corpus pattern — expect all green**
 
 Run (work area `packages/agent/daemon`):
+
 ```bash
 go test ./runtime/ -count=1 -run \
   'TestAppServerCollabAgentFailedCarriesErrorOutput|TestAppServerCollabAgentCompletedCarriesResultOutput|TestAppServerCloseAgentIsControlTool|TestAppServerWaitIsControlTool|TestAppServerForeignThreadMismatch|TestCodexAppServerAdapterExecIgnoresForeignThreadNotifications|TestCodexAppServerAdapterExecStreamsTurn|TestCodexAppServerAdapterSlashCompact|TestCodexAppServerAdapterResumeRetainsReplayedContextUsage|TestCodexAppServerAdapterReleaseLiveSessionClosesClientAndKeepsProviderSession|TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests|TestCodexAppServerAdapterCommandApprovalApprove|TestCodexAppServerAdapterCommandApprovalDecisionMapping|TestCodexAppServerAdapterRequestUserInput|TestAppServerUserInputAnswers'
 ```
+
 Expected: `ok` — all corpus tests PASS. This is the green baseline every later step must preserve.
 
 - [ ] **Step 4: Commit**
@@ -254,6 +266,7 @@ git commit -m "test(codex): step0 pin foreign-thread drop semantics (cluster B, 
 ## Self-Review
 
 **Spec coverage (Step 0 exit = "a test set, including the bug corpus, that every subsequent step must keep green"):**
+
 - Explicit corpus contract → Task 1 manifest. ✓
 - Bug clusters pinned → manifest table maps B/C/D/E to existing tests; A noted as GUI-side/deferred. ✓
 - Golden/characterization where thin → Task 2 (collab completed), Task 3 (foreign-thread). ✓ (The whole-turn golden already exists as `...ExecStreamsTurn`, referenced, not duplicated.)
@@ -264,4 +277,4 @@ git commit -m "test(codex): step0 pin foreign-thread drop semantics (cluster B, 
 
 **Type consistency:** `appServerItemToolCallUpdate(map[string]any, bool) (map[string]any, bool)`, `appServerNotificationThreadMismatch(Session, string, map[string]any) bool`, `asString(any) string`, `acpInt64Value(any) (int64, bool)`, `Session{AgentSessionID, ProviderSessionID string}` — all used consistently with their verified signatures; `<CORPUS_RUN_PATTERN>` is identical in the manifest and Task 3 Step 3.
 
-**Scope note:** Cluster A daemon-half contract is intentionally *not* authored here (it is Step 4); Step 0 only records that its regression coverage is GUI-side and deferred to Step 9. Steps 1 (codegen) and 2+ each get their own plan.
+**Scope note:** Cluster A daemon-half contract is intentionally _not_ authored here (it is Step 4); Step 0 only records that its regression coverage is GUI-side and deferred to Step 9. Steps 1 (codegen) and 2+ each get their own plan.

@@ -7,16 +7,11 @@
       "type": "array"
     },
     "isError": {
-      "type": [
-        "boolean",
-        "null"
-      ]
+      "type": ["boolean", "null"]
     },
     "structuredContent": true
   },
-  "required": [
-    "content"
-  ],
+  "required": ["content"],
   "title": "McpServerToolCallResponse",
   "type": "object"
 }

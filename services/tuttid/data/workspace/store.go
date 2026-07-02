@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
@@ -15,6 +16,7 @@ var ErrWorkspaceNotFound = errors.New("workspace not found")
 var ErrWorkbenchSnapshotNotFound = errors.New("workspace workbench snapshot not found")
 var ErrWorkspaceAppNotFound = errors.New("workspace app not found")
 var ErrWorkspaceAppFactoryJobNotFound = errors.New("workspace app factory job not found")
+var ErrAgentTargetNotFound = errors.New("agent target not found")
 
 type CatalogStore interface {
 	Create(context.Context, workspacebiz.Summary) error
@@ -33,6 +35,13 @@ type WorkbenchStore interface {
 
 type AgentActivityStore interface {
 	agentactivitybiz.Repository
+}
+
+type AgentTargetStore interface {
+	DeleteAgentTarget(context.Context, string) error
+	GetAgentTarget(context.Context, string) (agenttargetbiz.Target, error)
+	ListAgentTargets(context.Context) ([]agenttargetbiz.Target, error)
+	PutAgentTarget(context.Context, agenttargetbiz.Target) (agenttargetbiz.Target, error)
 }
 
 type PreferencesStore interface {
