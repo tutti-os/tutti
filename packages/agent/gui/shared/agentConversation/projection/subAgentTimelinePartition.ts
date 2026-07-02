@@ -83,6 +83,9 @@ interface SubAgentCollabCard {
   startedAtUnixMs: number;
   task: string | null;
   agentName: string | null;
+  // The spawn CALL's own status - only used for receiver-less spawns (e.g.
+  // tool-rejected), where no child lifecycle exists to drive the lane.
+  callStatus: AgentTaskSubAgentStatus;
   receiverThreadIds: ReadonlySet<string>;
   outputStrings: ReadonlySet<string>;
   childStatuses: ReadonlyMap<string, AgentTaskSubAgentStatus>;
@@ -129,6 +132,17 @@ export function buildSubAgentLanesByCallId(
       const lanes = lanesByCallId.get(card.callId) ?? [];
       lanes.push(subAgentLane(receiverThreadId, [], card));
       lanesByCallId.set(card.callId, lanes);
+    }
+    // A spawn that produced no child threads (e.g. the tool rejected the
+    // request) still renders as a sub-agent card - the failed/pending lane is
+    // the signal; a bare '委托 agent' tool row never appears for spawns.
+    if (!lanesByCallId.has(card.callId)) {
+      lanesByCallId.set(card.callId, [
+        {
+          ...subAgentLane(`spawn-pending:${card.callId}`, [], card),
+          status: card.callStatus
+        }
+      ]);
     }
   }
   for (const lanes of lanesByCallId.values()) {
@@ -410,6 +424,7 @@ function collectCollabCards(
       callId: string;
       startedAtUnixMs: number;
       latestAtUnixMs: number;
+      latestCallStatus: string | null;
       receiverThreadIds: Set<string>;
       outputStrings: Set<string>;
       childStatuses: Map<string, AgentTaskSubAgentStatus>;
@@ -432,6 +447,10 @@ function collectCollabCards(
         callId,
         startedAtUnixMs: time,
         latestAtUnixMs: time,
+        latestCallStatus: firstString(
+          item.status,
+          stringValue(item.payload?.status)
+        ),
         receiverThreadIds: collectReceiverThreadIds(input),
         outputStrings: collectStringValues(output),
         childStatuses: collectChildStatuses(output)
@@ -441,6 +460,9 @@ function collectCollabCards(
     existing.startedAtUnixMs = Math.min(existing.startedAtUnixMs, time);
     if (time >= existing.latestAtUnixMs) {
       existing.latestAtUnixMs = time;
+      existing.latestCallStatus =
+        firstString(item.status, stringValue(item.payload?.status)) ??
+        existing.latestCallStatus;
     }
     for (const value of collectReceiverThreadIds(input)) {
       existing.receiverThreadIds.add(value);
@@ -462,6 +484,7 @@ function collectCollabCards(
         startedAtUnixMs: card.startedAtUnixMs,
         task: stringValue(input?.task),
         agentName: stringValue(input?.agentName),
+        callStatus: subAgentStatusFromCallStatus(card.latestCallStatus),
         receiverThreadIds: card.receiverThreadIds,
         outputStrings: card.outputStrings,
         childStatuses: card.childStatuses
@@ -513,6 +536,27 @@ function matchCardByTimeAffinity(
   return pool.reduce((earliest, card) =>
     card.startedAtUnixMs < earliest.startedAtUnixMs ? card : earliest
   );
+}
+
+function subAgentStatusFromCallStatus(
+  status: string | null
+): AgentTaskSubAgentStatus {
+  switch ((status ?? "").trim().toLowerCase()) {
+    case "completed":
+    case "done":
+    case "success":
+    case "succeeded":
+      return "completed";
+    case "failed":
+    case "error":
+    case "errored":
+      return "failed";
+    case "canceled":
+    case "cancelled":
+      return "canceled";
+    default:
+      return "running";
+  }
 }
 
 function subAgentStatusFromLifecycle(status: unknown): AgentTaskSubAgentStatus {

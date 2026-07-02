@@ -237,7 +237,12 @@ describe("subAgentTimelinePartition", () => {
 
       // Time affinity alone would pick spawn-2 (latest card started before the
       // lane); the completed output's agent_id pins the lane to spawn-1.
-      expect(lanes.get("spawn-2")).toBeUndefined();
+      // spawn-2 (receiver-less) only carries its synthesized pending lane.
+      expect(
+        lanes
+          .get("spawn-2")
+          ?.some((lane) => lane.ownerThreadId === "child-thread-1")
+      ).toBe(false);
       expect(lanes.get("spawn-1")).toEqual([
         expect.objectContaining({
           ownerThreadId: "child-thread-1",
@@ -394,6 +399,25 @@ describe("subAgentTimelinePartition", () => {
       expect(lanes?.[0]?.name).toBe("repo smell reviewer");
       expect(lanes?.[0]?.latestActivity).toBeNull();
       expect(lanes?.[0]?.startedAtUnixMs).toBe(100);
+    });
+
+    it("renders a receiver-less spawn (e.g. tool-rejected) as a lane carrying the call status", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "spawn-1-started",
+          callId: "spawn-1",
+          status: "failed",
+          occurredAtUnixMs: 100,
+          task: "你是只讀 explorer。請分析 apps/desktop。"
+        })
+      ]);
+
+      const lanes = buildSubAgentLanesByCallId(partition).get("spawn-1");
+
+      expect(lanes).toHaveLength(1);
+      expect(lanes?.[0]?.status).toBe("failed");
+      expect(lanes?.[0]?.name).toBe("只讀 explorer");
     });
 
     it("does not seed lanes from wait/close control cards", () => {
