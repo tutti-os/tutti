@@ -985,6 +985,37 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     window.localStorage.clear();
   });
 
+  it("reopens the view options menu after the trigger closes it", async () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "working-session",
+            title: "Running task",
+            status: "working"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: "View options" });
+
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    expect(screen.getByRole("menu")).toBeTruthy();
+
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).toBeNull();
+    });
+
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    expect(screen.getByRole("menu")).toBeTruthy();
+  });
+
   it("groups visible message center items by status when selected", () => {
     render(
       <WorkspaceAgentMessageCenterPanel

@@ -64,6 +64,12 @@ export function MessageCenterViewMenu({
               ? "border-[var(--border-focus)] text-[var(--accent)]"
               : "border-[var(--line-2)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           )}
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
         >
           <ListFilter className="size-4" strokeWidth={2.1} aria-hidden="true" />
           {filtersActive ? (
@@ -81,6 +87,18 @@ export function MessageCenterViewMenu({
         sideOffset={8}
         className="min-w-[240px] p-1.5"
         style={{ zIndex: "var(--z-dialog-popover)" }}
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+        }}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+        }}
       >
         <DropdownMenuLabel>
           {t("agentHost.workspaceAgentMessageCenterGroupBy")}
