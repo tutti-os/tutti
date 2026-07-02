@@ -35,6 +35,7 @@ import {
 } from "@tutti-os/ui-rich-text/core";
 import { getActiveUiLanguage, useTranslation } from "../i18n/index";
 import { formatAgentSessionMentionText } from "../shared/utils/agentSessionMentionText";
+import { normalizeAgentTitleText } from "../shared/utils/agentTitleText";
 import { AgentInteractivePromptSurface } from "../shared/agentConversation/components/AgentInteractivePromptSurface";
 import { AgentMessageMarkdown } from "../shared/AgentMessageMarkdown";
 import { AgentVerticalScrollArea } from "../shared/AgentVerticalScrollArea";
@@ -545,7 +546,7 @@ function messageCenterStackRawPreviewText(
   return (
     item.digest.primary.summary.trim() ||
     item.lastAgentMessageSummary.trim() ||
-    item.title
+    normalizeAgentTitleText(item.title)
   );
 }
 
@@ -560,6 +561,18 @@ export function messageCenterStackPreviewText(
 const MESSAGE_CENTER_PREVIEW_MARKDOWN_LINK_PATTERN =
   /\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)/g;
 const MESSAGE_CENTER_PREVIEW_LABEL_ESCAPE_PATTERN = /\\([\\[\]()])/g;
+const PREVIEW_BOLD_ASTERISK_PATTERN = /\*\*(.+?)\*\*/g;
+const PREVIEW_BOLD_UNDERSCORE_PATTERN = /__(.+?)__/g;
+const PREVIEW_ITALIC_ASTERISK_PATTERN = /\*([^\s*][^*]*?)\*/g;
+const PREVIEW_ITALIC_UNDERSCORE_PATTERN = /_([^\s_][^_]*?)_/g;
+
+function stripPreviewTextEmphasis(text: string): string {
+  return text
+    .replace(PREVIEW_BOLD_ASTERISK_PATTERN, "$1")
+    .replace(PREVIEW_BOLD_UNDERSCORE_PATTERN, "$1")
+    .replace(PREVIEW_ITALIC_ASTERISK_PATTERN, "$1")
+    .replace(PREVIEW_ITALIC_UNDERSCORE_PATTERN, "$1");
+}
 
 type MessageCenterPreviewMentionKind =
   | "session"
@@ -586,7 +599,7 @@ export function messageCenterStackPreviewNodes(
     const [fullMatch, rawLabel = "", href = ""] = match;
     const matchStart = match.index ?? 0;
     if (matchStart > lastIndex) {
-      nodes.push(text.slice(lastIndex, matchStart));
+      nodes.push(stripPreviewTextEmphasis(text.slice(lastIndex, matchStart)));
     }
 
     const label = rawLabel.replace(
@@ -595,7 +608,11 @@ export function messageCenterStackPreviewNodes(
     );
     const mention = parseRichTextMentionHref(href, label);
     if (!mention) {
-      nodes.push(isRichTextMentionHref(href) ? label : fullMatch);
+      nodes.push(
+        isRichTextMentionHref(href)
+          ? stripPreviewTextEmphasis(label)
+          : stripPreviewTextEmphasis(fullMatch)
+      );
     } else {
       const kind = messageCenterPreviewMentionKind(mention.providerId);
       const displayLabel = label || mention.label;
@@ -617,7 +634,7 @@ export function messageCenterStackPreviewNodes(
   }
 
   if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex));
+    nodes.push(stripPreviewTextEmphasis(text.slice(lastIndex)));
   }
 
   return nodes;
@@ -868,7 +885,7 @@ function MessageCenterSummary({
         />
       ) : summary ? (
         <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-          {summary}
+          {normalizeAgentTitleText(summary)}
         </div>
       ) : (
         emptyLabel

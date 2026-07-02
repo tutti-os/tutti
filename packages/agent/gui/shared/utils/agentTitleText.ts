@@ -1,5 +1,9 @@
 const markdownLinkPattern = /\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)/g;
 const markdownLabelEscapePattern = /\\([\\[\]()])/g;
+const markdownBoldAsteriskPattern = /\*\*(.+?)\*\*/g;
+const markdownBoldUnderscorePattern = /__(.+?)__/g;
+const markdownItalicAsteriskPattern = /\*([^\s*][^*]*?)\*/g;
+const markdownItalicUnderscorePattern = /_([^\s_][^_]*?)_/g;
 
 export function normalizeAgentTitleText(
   value: string | null | undefined
@@ -8,10 +12,16 @@ export function normalizeAgentTitleText(
   if (!trimmed) {
     return "";
   }
-  const normalized = trimmed.replace(markdownLinkPattern, (_, label: string) =>
-    unescapeMarkdownLabel(label)
+  const withoutLinks = trimmed.replace(
+    markdownLinkPattern,
+    (_, label: string) => unescapeMarkdownLabel(label)
   );
-  return normalized.replace(/\s+/g, " ").trim();
+  const withoutEmphasis = withoutLinks
+    .replace(markdownBoldAsteriskPattern, "$1")
+    .replace(markdownBoldUnderscorePattern, "$1")
+    .replace(markdownItalicAsteriskPattern, "$1")
+    .replace(markdownItalicUnderscorePattern, "$1");
+  return withoutEmphasis.replace(/\s+/g, " ").trim();
 }
 
 function unescapeMarkdownLabel(label: string): string {
