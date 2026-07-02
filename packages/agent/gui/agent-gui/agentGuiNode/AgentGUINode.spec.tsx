@@ -907,6 +907,40 @@ describe("AgentGUINode", () => {
     );
   });
 
+  it("requests a fresh agent probe when the title info entry opens", () => {
+    const onAgentProbeRefreshRequest = vi.fn();
+
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "codex",
+              availability: { status: "available", detailsVisible: false },
+              usage: {
+                capturedAtUnixMs: 1,
+                quotas: [{ quotaType: "session", percentRemaining: 79 }]
+              }
+            }
+          ]
+        }
+      },
+      agentActivityRuntime: {} as AgentActivityRuntime,
+      onAgentProbeRefreshRequest
+    });
+
+    fireEvent.mouseEnter(screen.getByTestId("agent-gui-window-agent-info"));
+
+    expect(onAgentProbeRefreshRequest).toHaveBeenCalledWith(
+      "codex",
+      "agent-gui:agent-gui-1"
+    );
+  });
+
   it("updates slash status limits when the selected Codex model changes", () => {
     const workspaceAgentProbes: React.ComponentProps<
       typeof AgentGUINode
@@ -7402,6 +7436,7 @@ function renderAgentGUINode({
   onToggleMaximize,
   workspaceAgentProbes = null,
   onAgentProbeDemandChange,
+  onAgentProbeRefreshRequest,
   managedAgentsState = createManagedAgentsState(),
   workspaceAppIcons,
   strictMode = false,
@@ -7443,6 +7478,9 @@ function renderAgentGUINode({
   onAgentProbeDemandChange?: React.ComponentProps<
     typeof AgentGUINode
   >["onAgentProbeDemandChange"];
+  onAgentProbeRefreshRequest?: React.ComponentProps<
+    typeof AgentGUINode
+  >["onAgentProbeRefreshRequest"];
   managedAgentsState?: React.ComponentProps<
     typeof AgentGUINode
   >["managedAgentsState"];
@@ -7486,6 +7524,7 @@ function renderAgentGUINode({
       onShowMessage={onShowMessage}
       workspaceAgentProbes={workspaceAgentProbes}
       onAgentProbeDemandChange={onAgentProbeDemandChange}
+      onAgentProbeRefreshRequest={onAgentProbeRefreshRequest}
       managedAgentsState={managedAgentsState}
       workspaceAppIcons={workspaceAppIcons}
       contextMentionProviders={createAgentGUITestContextMentionProviders()}

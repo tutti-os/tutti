@@ -137,6 +137,7 @@ const DESKTOP_AGENT_GUI_AGENT_SETTINGS = {
   avoidGroupingEdits: false
 } satisfies NonNullable<AgentGUIProps["agentSettings"]>;
 const DESKTOP_AGENT_GUI_NOOP = (): void => {};
+const AGENT_PROBE_REFRESH_DEBOUNCE_MS = 300;
 const DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS =
   [] satisfies NonNullable<AgentGUIProps["contextMentionProviders"]>;
 const DESKTOP_AGENT_GUI_POSITION = { x: 0, y: 0 };
@@ -483,6 +484,10 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   const [agentProbeDemandBySource, setAgentProbeDemandBySource] = useState<
     Record<string, string>
   >({});
+  const agentProbeRefreshTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const [agentProbeRefreshSequence, setAgentProbeRefreshSequence] = useState(0);
   const [workspaceAgentProbes, setWorkspaceAgentProbes] =
     useState<DesktopAgentProbeState | null>(null);
   const [openSessionRequest, setOpenSessionRequest] = useState<NonNullable<
@@ -578,6 +583,30 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       };
     });
   }, []);
+  const handleAgentProbeRefreshRequest: NonNullable<
+    AgentGUIProps["onAgentProbeRefreshRequest"]
+  > = useCallback((probeProvider, sourceId = "default") => {
+    setAgentProbeDemandBySource((current) =>
+      current[sourceId] === probeProvider
+        ? current
+        : { ...current, [sourceId]: probeProvider }
+    );
+    if (agentProbeRefreshTimerRef.current) {
+      clearTimeout(agentProbeRefreshTimerRef.current);
+    }
+    agentProbeRefreshTimerRef.current = setTimeout(() => {
+      agentProbeRefreshTimerRef.current = null;
+      setAgentProbeRefreshSequence((current) => current + 1);
+    }, AGENT_PROBE_REFRESH_DEBOUNCE_MS);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (agentProbeRefreshTimerRef.current) {
+        clearTimeout(agentProbeRefreshTimerRef.current);
+        agentProbeRefreshTimerRef.current = null;
+      }
+    };
+  }, []);
   const handleOpenSessionActivationError = useCallback(
     (input: { agentSessionId: string; error: unknown }) => {
       Toast.Error(
@@ -656,6 +685,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     };
   }, [
     agentHostApi.workspaceAgentProbes,
+    agentProbeRefreshSequence,
     agentProbeProviders,
     agentProbeProvidersKey,
     runtimeApi,
@@ -961,6 +991,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         workspaceAgentProbes={workspaceAgentProbes}
         onAgentProbeDemandChange={
           previewMode ? undefined : handleAgentProbeDemandChange
+        }
+        onAgentProbeRefreshRequest={
+          previewMode ? undefined : handleAgentProbeRefreshRequest
         }
         onAgentProviderLogin={
           !previewMode && agentProviderStatusService

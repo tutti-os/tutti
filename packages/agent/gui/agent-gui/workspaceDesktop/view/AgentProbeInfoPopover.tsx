@@ -54,17 +54,25 @@ function getDockAgentProbeLineLabel(line: DockAgentProbeTooltipLine): string {
 export function AgentProbeInfoPopover({
   lines,
   testId = "agent-probe-info",
-  className
+  className,
+  onOpen
 }: {
   lines: DockAgentProbeTooltipLine[];
   testId?: string;
   className?: string;
+  onOpen?: () => void;
 }): React.JSX.Element | null {
   "use memo";
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties | null>(null);
+  const openPopover = useCallback((): void => {
+    if (!isOpen) {
+      onOpen?.();
+    }
+    setIsOpen(true);
+  }, [isOpen, onOpen]);
   const closeIfPointerLeavesPopover = useCallback((event: MouseEvent): void => {
     const nextTarget = event.relatedTarget;
     if (
@@ -137,7 +145,7 @@ export function AgentProbeInfoPopover({
       className="desktop-dock-popup__agent-info-popover desktop-dock-popup__agent-info-popover--portal"
       role="status"
       style={popoverStyle ?? undefined}
-      onMouseEnter={() => setIsOpen(true)}
+      onMouseEnter={openPopover}
       onMouseLeave={closeIfPointerLeavesPopover}
     >
       <ul className="desktop-dock-popup__agent-info-list">
@@ -178,12 +186,12 @@ export function AgentProbeInfoPopover({
       data-testid={testId}
       onMouseEnter={() => {
         updatePopoverPosition();
-        setIsOpen(true);
+        openPopover();
       }}
       onMouseLeave={closeIfPointerLeavesPopover}
       onFocus={() => {
         updatePopoverPosition();
-        setIsOpen(true);
+        openPopover();
       }}
       onBlur={() => setIsOpen(false)}
     >

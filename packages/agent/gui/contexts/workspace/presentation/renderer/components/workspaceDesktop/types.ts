@@ -173,6 +173,11 @@ export type WorkspaceDesktopAgentProbeDemandChange = (
   sourceId?: string
 ) => void;
 
+export type WorkspaceDesktopAgentProbeRefreshRequest = (
+  provider: AgentProvider,
+  sourceId?: string
+) => void;
+
 export interface WorkspaceDesktopProps {
   workspaceId: string;
   currentUserId?: string | null;
@@ -202,6 +207,8 @@ export interface WorkspaceDesktopProps {
   workspaceAgentProbes?: WorkspaceDesktopAgentProbesState | null;
   /** Registers which Agent GUI providers currently need workspace agent probe data. */
   onAgentProbeDemandChange?: WorkspaceDesktopAgentProbeDemandChange;
+  /** Requests a fresh provider probe for an already visible Agent GUI surface. */
+  onAgentProbeRefreshRequest?: WorkspaceDesktopAgentProbeRefreshRequest;
   onRefreshWorkspaceShellRuntime?: () => void | Promise<void>;
   canvasUserWallpaperUrl?: string | null;
   pendingWorkspaceIssueNavigation?: {
