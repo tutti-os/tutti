@@ -151,6 +151,9 @@ type DelegatedTaskState = {
   subject?: string;
   description?: string;
   status: DelegatedTaskStatus;
+  // Tool use id of the delegated task that launched this one, set when a
+  // nested agent launch is observed inside a child stream.
+  parentTaskToolUseId?: string;
 };
 
 type AssistantSegmentKind = "assistant" | "thinking";
@@ -813,7 +816,11 @@ export class SessionRuntime {
   ): Promise<InteractiveSubmission> {
     const requestId = crypto.randomUUID();
     const toolUseID = callbackOptions.toolUseID || requestId;
-    const turnId = this.resolveInteractiveTurnId(callbackOptions);
+    // Never emit a turnless interactive request: the daemon rejects it and
+    // the requesting agent would wait forever on an invisible approval.
+    const turnId =
+      this.resolveInteractiveTurnId(callbackOptions) ||
+      this.activateSyntheticTurn().turnId;
     const request = new Promise<InteractiveSubmission>((resolve, reject) => {
       this.pendingInteractions.set(requestId, {
         requestId,
@@ -888,7 +895,17 @@ export class SessionRuntime {
         return turn.turnId;
       }
     }
-    return "";
+    // A settled delegated task is still a better anchor than an empty turn
+    // id: turnless interactive events are rejected by the daemon activity
+    // store, which silently drops the approval card and deadlocks the
+    // requesting nested agent.
+    let latestTaskTurnId = "";
+    for (const task of this.delegatedTasksByParentToolUseID.values()) {
+      if (task.turnId) {
+        latestTaskTurnId = task.turnId;
+      }
+    }
+    return latestTaskTurnId;
   }
 
   private emitInteractiveResolved(
@@ -1115,7 +1132,24 @@ export class SessionRuntime {
 
     if (message.type === "assistant") {
       if (parentToolUseID) {
-        if (this.isNestedDelegatedTaskTerminalAssistant(message)) {
+        // Nested agent launches (grandchild Task calls) only surface as
+        // tool_use blocks inside child-stream assistant messages. Register
+        // them so their launch results can create delegated task state and
+        // later events (approvals, notifications) can resolve a turn id.
+        for (const block of contentBlocksFromMessage(message)) {
+          if (isToolUseBlock(block)) {
+            this.upsertToolUse(
+              block,
+              undefined,
+              "tool_updated",
+              parentToolUseID
+            );
+          }
+        }
+        if (
+          this.isNestedDelegatedTaskTerminalAssistant(message) &&
+          !this.hasRunningChildDelegatedTasks(parentToolUseID)
+        ) {
           this.completeDelegatedTaskFromParentMessage(parentToolUseID, {
             status: "completed",
             summary:
@@ -1127,7 +1161,8 @@ export class SessionRuntime {
         // the child is still running, so they are not a completion signal.
         // Delegated tasks settle through the child result message, the
         // task_notification system message, the TaskCompleted hook, or a
-        // terminal assistant message tagged with end_turn.
+        // terminal assistant message tagged with end_turn once no launched
+        // child tasks remain running.
         return;
       }
       if (!this.ensureActiveTurn("assistant")) {
@@ -2392,7 +2427,12 @@ export class SessionRuntime {
     status: "streaming" | "completed" | "failed",
     result?: Record<string, unknown>
   ): void {
-    const payload = toolPayload(this.activeTurnId, tool, status, result);
+    const payload = toolPayload(
+      this.resolveToolEventTurnId(tool),
+      tool,
+      status,
+      result
+    );
     if (type === "tool_completed" || type === "tool_failed") {
       this.appendParentTaskStep(tool, payload);
       this.rememberDelegatedTaskFromToolPayload(tool, payload);
@@ -2403,15 +2443,30 @@ export class SessionRuntime {
     });
   }
 
+  private resolveToolEventTurnId(tool: ToolState): string {
+    if (this.activeTurnId) {
+      return this.activeTurnId;
+    }
+    // Child-stream tool events can arrive after the launching turn settled;
+    // attribute them to the turn of the delegated task they belong to.
+    const parentToolUseID = stringValue(tool.parentToolUseId);
+    if (parentToolUseID) {
+      const task = this.delegatedTasksByParentToolUseID.get(parentToolUseID);
+      if (task?.turnId) {
+        return task.turnId;
+      }
+    }
+    return "";
+  }
+
   private rememberDelegatedTaskFromToolPayload(
     tool: ToolState,
     payload: Record<string, unknown>
   ): void {
     const metadata = recordValue(payload.metadata);
-    if (
-      stringValue(payload.callType) !== "subagent" ||
-      metadata?.subagentAsync !== true
-    ) {
+    // The launch result text sets subagentAsync; nested launches may stream
+    // without a locally known tool name, so callType alone cannot gate here.
+    if (metadata?.subagentAsync !== true) {
       return;
     }
     const parentToolUseId = stringValue(payload.toolCallId) || tool.id;
@@ -2423,13 +2478,23 @@ export class SessionRuntime {
     const outputFile =
       stringValue(metadata.subagentOutputFile) ||
       stringValue(metadata.outputFile);
+    const launchingTask = this.delegatedTasksByParentToolUseID.get(
+      stringValue(tool.parentToolUseId)
+    );
     const task: DelegatedTaskState = {
       parentToolUseId,
-      turnId: stringValue(payload.turnId) || this.activeTurnId,
+      turnId:
+        stringValue(payload.turnId) ||
+        this.activeTurnId ||
+        launchingTask?.turnId ||
+        "",
       input: recordValue(payload.input) ?? { ...tool.input },
       ...(agentId ? { agentId } : {}),
       ...(outputFile ? { outputFile } : {}),
-      status: "running"
+      status: "running",
+      ...(launchingTask
+        ? { parentTaskToolUseId: launchingTask.parentToolUseId }
+        : {})
     };
     this.delegatedTasksByParentToolUseID.set(parentToolUseId, task);
     if (agentId) {
@@ -2503,6 +2568,18 @@ export class SessionRuntime {
   private hasDelegatedTaskAliases(): boolean {
     for (const task of this.delegatedTasksByParentToolUseID.values()) {
       if (task.agentId || task.taskId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private hasRunningChildDelegatedTasks(parentToolUseId: string): boolean {
+    for (const task of this.delegatedTasksByParentToolUseID.values()) {
+      if (
+        task.parentTaskToolUseId === parentToolUseId &&
+        task.status === "running"
+      ) {
         return true;
       }
     }

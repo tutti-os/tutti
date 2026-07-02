@@ -659,6 +659,8 @@ func TestServiceListReportsInstallActionWhenCodexAdapterCommandFails(t *testing.
 }
 
 func TestServiceListIgnoresStaleGlobalClaudeACPAdapter(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -722,6 +724,8 @@ func TestServiceListIgnoresStaleGlobalClaudeACPAdapter(t *testing.T) {
 }
 
 func TestServiceListReportsInstallActionWhenExternalAdapterCommandFails(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".local", "bin")
 	claudePath := filepath.Join(binDir, "claude")
@@ -786,6 +790,8 @@ func TestServiceListReportsInstallActionWhenExternalAdapterCommandFails(t *testi
 }
 
 func TestServiceListExternalAdapterCommandUsesRankedRegistry(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".local", "bin")
 	claudePath := filepath.Join(binDir, "claude")
@@ -847,6 +853,8 @@ func TestServiceListExternalAdapterCommandUsesRankedRegistry(t *testing.T) {
 }
 
 func TestServiceListReportsInstallActionWhenExternalAdapterCommandFailsAfterReadyWindow(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".local", "bin")
 	claudePath := filepath.Join(binDir, "claude")
@@ -1378,11 +1386,21 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 func TestServiceRunActionReportsActiveActionForClaudeInstall(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
-	service := probeTestService(home)
-	service.Environ = func() []string {
-		return []string{"PATH=" + binDir}
+	entry := filepath.Join(home, "claude-sdk-sidecar", "src", "main.ts")
+	if err := os.MkdirAll(filepath.Dir(entry), 0o755); err != nil {
+		t.Fatalf("mkdir sidecar entry dir: %v", err)
 	}
-	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	if err := os.WriteFile(entry, []byte("export {};"), 0o644); err != nil {
+		t.Fatalf("write sidecar entry: %v", err)
+	}
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := probeTestService(home)
+	service.FileExists = fileExistsForTest
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir, claudeSDKSidecarEntryPathEnv + "=" + entry}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
 	service.Registry = Registry{Specs: []ProviderSpec{{
 		Provider:       "claude-code",
 		BinaryNames:    []string{"claude-test"},
@@ -1574,6 +1592,8 @@ func TestServiceRunActionReportsInstallTimeouts(t *testing.T) {
 }
 
 func TestServiceRunActionUpgradesStaleClaudeACPAdapter(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -1634,6 +1654,7 @@ func TestServiceRunActionUpgradesStaleClaudeACPAdapter(t *testing.T) {
 }
 
 func TestServiceRunActionSerializesConcurrentExternalRegistryNPMInstalls(t *testing.T) {
+	forceClaudeACPRuntime(t)
 	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
 
 	home := t.TempDir()
@@ -1741,6 +1762,8 @@ func TestServiceRunActionSerializesConcurrentExternalRegistryNPMInstalls(t *test
 }
 
 func TestServiceResolveProviderCommandCreatesExternalRegistryNPMPrefix(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
@@ -1768,6 +1791,8 @@ func TestServiceResolveProviderCommandCreatesExternalRegistryNPMPrefix(t *testin
 }
 
 func TestServiceResolveProviderCommandUsesInstalledExternalRegistryNPMBin(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
@@ -1800,6 +1825,132 @@ func TestServiceResolveProviderCommandUsesInstalledExternalRegistryNPMBin(t *tes
 	}
 	if slices.Contains(result.Command, "exec") {
 		t.Fatalf("Command = %#v, want installed bin without npm exec", result.Command)
+	}
+}
+
+func TestServiceResolveProviderCommandDefaultsClaudeCodeToSDKSidecar(t *testing.T) {
+	t.Setenv(claudeCodeRuntimeEnv, "")
+
+	home := t.TempDir()
+	entry := filepath.Join(home, "claude-sdk-sidecar", "src", "main.ts")
+	if err := os.MkdirAll(filepath.Dir(entry), 0o755); err != nil {
+		t.Fatalf("mkdir sidecar entry dir: %v", err)
+	}
+	if err := os.WriteFile(entry, []byte("export {};"), 0o644); err != nil {
+		t.Fatalf("write sidecar entry: %v", err)
+	}
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := probeTestService(home)
+	service.FileExists = fileExistsForTest
+	service.Environ = func() []string {
+		return []string{"PATH=/usr/bin:/bin", claudeSDKSidecarEntryPathEnv + "=" + entry}
+	}
+	service.ExternalAgentRegistry = externalagentregistry.Store{
+		SourceURL: filepath.Join(home, "missing-registry.json"),
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+
+	result, err := service.ResolveProviderCommand(context.Background(), "claude-code")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	if !slices.Equal(result.Command, []string{managedNode, claudeSDKSidecarDefaultNodeArg, entry}) {
+		t.Fatalf("Command = %#v, want SDK sidecar command", result.Command)
+	}
+	if slices.Contains(result.Command, "exec") || slices.Contains(result.Command, "@agentclientprotocol/claude-agent-acp") {
+		t.Fatalf("Command = %#v, must not use ACP registry package in SDK mode", result.Command)
+	}
+}
+
+func TestServiceListClaudeCodeSDKDoesNotRequireACPAdapter(t *testing.T) {
+	t.Setenv(claudeCodeRuntimeEnv, "")
+
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	claudePath := filepath.Join(binDir, "claude")
+	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
+	entry := filepath.Join(home, "claude-sdk-sidecar", "src", "main.ts")
+	if err := os.MkdirAll(filepath.Dir(entry), 0o755); err != nil {
+		t.Fatalf("mkdir sidecar entry dir: %v", err)
+	}
+	if err := os.WriteFile(entry, []byte("export {};"), 0o644); err != nil {
+		t.Fatalf("write sidecar entry: %v", err)
+	}
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := probeTestService(home)
+	service.FileExists = fileExistsForTest
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir, claudeSDKSidecarEntryPathEnv + "=" + entry}
+	}
+	service.LookPath = func(name string) (string, error) {
+		if name == "claude" {
+			return claudePath, nil
+		}
+		return "", errors.New("not found")
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+	service.ExternalAgentRegistry = externalagentregistry.Store{
+		SourceURL: filepath.Join(home, "missing-registry.json"),
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("Availability.Status = %q, want ready; reason=%q", status.Availability.Status, status.Availability.ReasonCode)
+	}
+	if strings.HasPrefix(status.Availability.ReasonCode, "acp_adapter") {
+		t.Fatalf("ReasonCode = %q, must not report ACP adapter in SDK mode", status.Availability.ReasonCode)
+	}
+	if !status.Adapter.Installed {
+		t.Fatalf("Adapter.Installed = false, want SDK sidecar runtime installed; status=%#v", status)
+	}
+	if strings.Contains(strings.Join(status.Adapter.Command, " "), "claude-agent-acp") {
+		t.Fatalf("Adapter.Command = %#v, must not use ACP adapter", status.Adapter.Command)
+	}
+}
+
+func TestServiceListClaudeCodeSDKReportsMissingSidecarEntry(t *testing.T) {
+	t.Setenv(claudeCodeRuntimeEnv, "")
+
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	claudePath := filepath.Join(binDir, "claude")
+	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir, claudeSDKSidecarEntryPathEnv + "=" + filepath.Join(home, "missing-main.ts")}
+	}
+	service.LookPath = func(name string) (string, error) {
+		if name == "claude" {
+			return claudePath, nil
+		}
+		return "", errors.New("not found")
+	}
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityNotInstalled {
+		t.Fatalf("Availability.Status = %q, want not_installed", status.Availability.Status)
+	}
+	if status.Availability.ReasonCode != ReasonClaudeSDKSidecarUnavailable {
+		t.Fatalf("ReasonCode = %q, want %q", status.Availability.ReasonCode, ReasonClaudeSDKSidecarUnavailable)
+	}
+	if status.Adapter.Installed {
+		t.Fatal("Adapter.Installed = true, want false when SDK sidecar entry is missing")
 	}
 }
 
@@ -2864,6 +3015,11 @@ func firstAction(t *testing.T, actions []Action) Action {
 	return actions[0]
 }
 
+func forceClaudeACPRuntime(t *testing.T) {
+	t.Helper()
+	t.Setenv(claudeCodeRuntimeEnv, claudeCodeRuntimeACP)
+}
+
 func assertProviderCheck(t *testing.T, checks []ProviderCheck, name string, passed bool) {
 	t.Helper()
 	for _, check := range checks {
@@ -2880,6 +3036,11 @@ func assertProviderCheck(t *testing.T, checks []ProviderCheck, name string, pass
 func isTestExecutable(path string) bool {
 	stat, err := os.Stat(path)
 	return err == nil && !stat.IsDir() && stat.Mode().Perm()&0111 != 0
+}
+
+func fileExistsForTest(path string) bool {
+	stat, err := os.Stat(path)
+	return err == nil && !stat.IsDir()
 }
 
 func isTestExecutableUnderHome(home string) func(string) bool {

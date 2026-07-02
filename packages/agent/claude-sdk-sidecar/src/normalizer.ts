@@ -399,9 +399,9 @@ function subagentLaunchMetadata(
   tool: ToolState,
   result?: Record<string, unknown>
 ): Record<string, unknown> | undefined {
-  if (toolCallType(tool.name) !== "subagent") {
-    return undefined;
-  }
+  // Nested agent launches stream through the parent query without a locally
+  // observed tool_use block, so the tool name may be unknown here. The launch
+  // result text is the authoritative signal, not the tool call type.
   const text = toolResultText(result);
   if (!/Async agent launched successfully/i.test(text)) {
     return undefined;

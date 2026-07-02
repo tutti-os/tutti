@@ -94,6 +94,11 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTI_MOCK_AGENT_UNBOUND`             | This document                                   | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.                   |
 | `TUTTI_WORKSPACE_ID`                   | This document                                   | Supplies a workspace id to migrated agent context readers when no input id is provided.          |
 
+Claude Code provider availability follows `TUTTI_CLAUDE_CODE_RUNTIME`: the
+default `sdk` runtime checks the `claude` CLI plus the Claude SDK sidecar entry
+and Node runtime, while `acp` keeps using the legacy `claude-acp` package from
+the ACP External Agent Registry.
+
 ## Desktop Renderer Diagnostics
 
 | Variable                               | Owner document                          | Purpose                                                                                       |

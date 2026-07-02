@@ -111,7 +111,7 @@ func NewClaudeCodeSDKAdapter(transport ProcessTransport) *ClaudeCodeSDKAdapter {
 	}
 }
 
-func (_ *ClaudeCodeSDKAdapter) Provider() string {
+func (*ClaudeCodeSDKAdapter) Provider() string {
 	return ProviderClaudeCode
 }
 
@@ -471,7 +471,7 @@ func (a *ClaudeCodeSDKAdapter) SessionCommandSnapshot(session Session) (AgentSes
 	return adapterSession.commandSnapshot(session.AgentSessionID)
 }
 
-func (_ *ClaudeCodeSDKAdapter) applySidecarSessionEvent(adapterSession *claudeSDKAdapterSession, session Session, event claudeSDKSidecarEvent) []activityshared.Event {
+func (*ClaudeCodeSDKAdapter) applySidecarSessionEvent(adapterSession *claudeSDKAdapterSession, session Session, event claudeSDKSidecarEvent) []activityshared.Event {
 	if event.Type == "usage_updated" {
 		adapterSession.applyUsageUpdated(event.Payload)
 		return nil

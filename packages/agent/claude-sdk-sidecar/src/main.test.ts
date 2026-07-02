@@ -1964,6 +1964,472 @@ function fakeUserTaskNotificationQuery({
   } as AsyncIterable<SDKMessage>;
 }
 
+test("nested agent launch registers grandchild task with inherited turn id", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      fakeNestedDelegatedLaunchQuery
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+
+    const childCompleted = events.find(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-child"
+    );
+    assert.equal(childCompleted?.payload?.turnId, "turn-1");
+    assert.equal(childCompleted?.payload?.agentId, "agent-child");
+
+    const childToolCompleted = events.find(
+      (event) =>
+        event.type === "tool_completed" &&
+        event.payload?.toolCallId === "toolu-child" &&
+        event.payload?.status === "completed"
+    );
+    assert.equal(childToolCompleted?.payload?.turnId, "turn-1");
+  } finally {
+    restoreSink();
+  }
+});
+
+test("nested launch without observed tool_use block still registers task", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      fakeNestedLaunchWithoutToolUseQuery
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+
+    const childCompleted = events.find(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-child"
+    );
+    assert.equal(childCompleted?.payload?.turnId, "turn-1");
+
+    const launchToolCompleted = events.find(
+      (event) =>
+        event.type === "tool_completed" &&
+        event.payload?.toolCallId === "toolu-child" &&
+        (event.payload?.metadata as Record<string, unknown> | undefined)
+          ?.subagentAsync === true
+    );
+    assert.equal(launchToolCompleted?.payload?.turnId, "turn-1");
+  } finally {
+    restoreSink();
+  }
+});
+
+test("nested approval after parent task completed still carries a turn id", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let permissionResult: unknown;
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt, options }) =>
+        fakeNestedApprovalQuery(prompt, options, (result) => {
+          permissionResult = result;
+        })
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "approval_requested");
+
+    const request = events.find((event) => event.type === "approval_requested");
+    assert.equal(request?.payload?.turnId, "turn-1");
+
+    session.submitInteractive(
+      String(request?.payload?.requestId ?? ""),
+      "submit",
+      "allow",
+      {}
+    );
+    await waitForEvent(events, "approval_resolved");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.deepEqual(permissionResult, {
+      behavior: "allow",
+      updatedInput: { command: "ls" }
+    });
+  } finally {
+    restoreSink();
+  }
+});
+
+test("nested end_turn assistant defers parent completion while grandchild runs", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      fakeNestedDeferredParentCompletionQuery
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+    // Let the fake stream drain the remaining nested messages.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const parentCompletions = events.filter(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-parent"
+    );
+    assert.equal(parentCompletions.length, 1);
+    assert.equal(parentCompletions[0]?.payload?.summary, "Parent finished.");
+
+    const childCompletedIndex = events.findIndex(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-child"
+    );
+    const parentCompletedIndex = events.findIndex(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-parent"
+    );
+    assert.ok(childCompletedIndex >= 0);
+    assert.ok(parentCompletedIndex > childCompletedIndex);
+  } finally {
+    restoreSink();
+  }
+});
+
+function fakeNestedDelegatedLaunchQuery({
+  prompt
+}: {
+  prompt: AsyncIterable<SDKUserMessage>;
+}): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-parent", "Parent task");
+      yield delegatedAgentToolResult("toolu-parent", "agent-parent");
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+      // Child stream: the child agent launches a grandchild Task after the
+      // launching turn already settled.
+      yield nestedAssistantToolUse(
+        "toolu-parent",
+        "toolu-child",
+        "Grandchild task"
+      );
+      yield nestedAgentLaunchResult(
+        "toolu-parent",
+        "toolu-child",
+        "agent-child"
+      );
+      yield userTaskNotification("agent-child", "toolu-child");
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
+function fakeNestedLaunchWithoutToolUseQuery({
+  prompt
+}: {
+  prompt: AsyncIterable<SDKUserMessage>;
+}): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-parent", "Parent task");
+      yield delegatedAgentToolResult("toolu-parent", "agent-parent");
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+      // Only the launch result streams through; the grandchild tool_use block
+      // was never observed, so the local tool name is unknown.
+      yield nestedAgentLaunchResult(
+        "toolu-parent",
+        "toolu-child",
+        "agent-child"
+      );
+      yield userTaskNotification("agent-child", "toolu-child");
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
+function fakeNestedApprovalQuery(
+  prompt: AsyncIterable<SDKUserMessage>,
+  options: ClaudeQueryOptions,
+  onPermissionResult: (result: unknown) => void
+): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-parent", "Parent task");
+      yield delegatedAgentToolResult("toolu-parent", "agent-parent");
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "task_notification",
+        task_id: "agent-parent",
+        status: "completed",
+        summary: "Parent done"
+      } as unknown as SDKMessage;
+      // A grandchild tool runs after the parent task completed; its approval
+      // must still resolve a turn id or the approval card never surfaces.
+      const result = await options.canUseTool?.(
+        "Bash",
+        { command: "ls" },
+        {
+          signal: new AbortController().signal,
+          toolUseID: "toolu-nested-bash"
+        }
+      );
+      onPermissionResult(result);
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
+function fakeNestedDeferredParentCompletionQuery({
+  prompt
+}: {
+  prompt: AsyncIterable<SDKUserMessage>;
+}): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-parent", "Parent task");
+      yield delegatedAgentToolResult("toolu-parent", "agent-parent");
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+      yield nestedAssistantToolUse(
+        "toolu-parent",
+        "toolu-child",
+        "Grandchild task"
+      );
+      yield nestedAgentLaunchResult(
+        "toolu-parent",
+        "toolu-child",
+        "agent-child"
+      );
+      // The child ends its own turn while the grandchild is still running;
+      // this must not settle the child's delegated task yet.
+      yield nestedEndTurnAssistant(
+        "toolu-parent",
+        "assistant-premature-end",
+        "All grandchildren launched."
+      );
+      yield userTaskNotification("agent-child", "toolu-child");
+      yield nestedEndTurnAssistant(
+        "toolu-parent",
+        "assistant-final-end",
+        "Parent finished."
+      );
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
+function nestedAssistantToolUse(
+  parentToolUseId: string,
+  id: string,
+  description: string
+): SDKMessage {
+  return {
+    type: "assistant",
+    uuid: `${id}-nested-assistant`,
+    parent_tool_use_id: parentToolUseId,
+    session_id: "provider-session-1",
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id,
+          name: "Task",
+          input: {
+            description,
+            prompt: description
+          }
+        }
+      ]
+    }
+  } as unknown as SDKMessage;
+}
+
+function nestedAgentLaunchResult(
+  parentToolUseId: string,
+  toolUseId: string,
+  agentId: string
+): SDKMessage {
+  return {
+    type: "user",
+    parent_tool_use_id: parentToolUseId,
+    session_id: "provider-session-1",
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: toolUseId,
+          content: `Async agent launched successfully\nagentId: ${agentId}\noutput_file: /tmp/${agentId}.output`
+        }
+      ]
+    }
+  } as unknown as SDKMessage;
+}
+
+function nestedEndTurnAssistant(
+  parentToolUseId: string,
+  uuid: string,
+  text: string
+): SDKMessage {
+  return {
+    type: "assistant",
+    uuid,
+    parent_tool_use_id: parentToolUseId,
+    session_id: "provider-session-1",
+    message: {
+      role: "assistant",
+      stop_reason: "end_turn",
+      content: [{ type: "text", text }]
+    }
+  } as unknown as SDKMessage;
+}
+
+function userTaskNotification(taskId: string, toolUseId: string): SDKMessage {
+  return {
+    type: "user",
+    parent_tool_use_id: null,
+    session_id: "provider-session-1",
+    message: {
+      role: "user",
+      content: `<task-notification>
+<task-id>${taskId}</task-id>
+<tool-use-id>${toolUseId}</tool-use-id>
+<status>completed</status>
+<summary>done</summary>
+</task-notification>`
+    }
+  } as unknown as SDKMessage;
+}
+
 async function waitForEvent(
   events: Array<{ type: string }>,
   type: string

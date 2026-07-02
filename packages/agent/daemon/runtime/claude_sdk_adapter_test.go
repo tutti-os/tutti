@@ -2415,11 +2415,11 @@ func (c *recordingClaudeSDKConnection) Send(data []byte) error {
 	return nil
 }
 
-func (_ *recordingClaudeSDKConnection) Recv() (ProcessFrame, error) {
+func (*recordingClaudeSDKConnection) Recv() (ProcessFrame, error) {
 	return ProcessFrame{}, errors.New("recording claude sdk connection does not receive")
 }
 
-func (_ *recordingClaudeSDKConnection) Close() error {
+func (*recordingClaudeSDKConnection) Close() error {
 	return nil
 }
 
@@ -2462,7 +2462,7 @@ func (c *ackClaudeSDKConnection) Recv() (ProcessFrame, error) {
 	return frame, nil
 }
 
-func (_ *ackClaudeSDKConnection) Close() error {
+func (*ackClaudeSDKConnection) Close() error {
 	return nil
 }
 
@@ -2500,7 +2500,7 @@ func (c *scriptedClaudeSDKConnection) Recv() (ProcessFrame, error) {
 	return frame, nil
 }
 
-func (c *scriptedClaudeSDKConnection) Close() error {
+func (*scriptedClaudeSDKConnection) Close() error {
 	return nil
 }
 

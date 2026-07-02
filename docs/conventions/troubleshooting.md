@@ -982,7 +982,14 @@ delimited by ---`, and the composer skill picker may show partial or
   was still live, leaving ghost durable approvals. Text-only subagent completions
   that finish with a nested `end_turn` assistant message never emitted
   `task_completed`, so background-agent counts stayed stale and submit paths
-  kept blocking.
+  kept blocking. For nested launches (a subagent launching its own async
+  agents), the grandchild `Task` tool_use blocks only appear inside
+  child-stream assistant messages that the sidecar previously dropped, so the
+  grandchild task state was never registered: its approvals resolved no turn
+  id (the daemon rejects turnless `message_update`s, silently dropping the
+  approval card and deadlocking the grandchild), and a child `end_turn`
+  assistant could settle the child task while grandchildren were still
+  running.
 - Fix:
   Store the originating turn id on pending interactive requests in the sidecar and
   Go adapter, and reuse it when emitting `approval_resolved` if the event omits
@@ -991,18 +998,31 @@ delimited by ---`, and the composer skill picker may show partial or
   `SubmitInteractive` returns a stale no-longer-live error, reconcile the
   persisted approval instead of surfacing the raw failure. Treat nested assistant
   messages with non-empty `parent_tool_use_id` and `stop_reason=end_turn` as
-  delegated-task completion when no child `result` arrives. In the Claude SDK
-  sidecar, also parse fold-in `queued_command` attachments and user-string
-  `<task-notification>` payloads (not only `system/task_notification`), binding
-  completion by `tool-use-id`/`tool_use_id` so concurrent async agents settle
-  independently.
+  delegated-task completion when no child `result` arrives, but only once no
+  delegated child task launched by that subagent is still running. In the
+  Claude SDK sidecar, also parse fold-in `queued_command` attachments and
+  user-string `<task-notification>` payloads (not only
+  `system/task_notification`), binding completion by
+  `tool-use-id`/`tool_use_id` so concurrent async agents settle independently.
+  For nested launches: register tool_use blocks from child-stream assistant
+  messages, treat the `Async agent launched successfully` result text as the
+  authoritative subagent-launch signal even when the tool name is unknown,
+  inherit the delegated-task turn id along the parent tool-use chain, let
+  interactive requests fall back to any delegated task's turn id (settled
+  ones included) and open a synthetic turn as last resort rather than emit a
+  turnless event.
 - Validation:
   Add adapter coverage that stored pending turn ids survive missing
   `approval_resolved.turnId`. Add service coverage for ghost approval reconcile
   with live background agents and stale submit reconciliation. Add sidecar
   coverage that nested `end_turn` assistant text completes the delegated task,
   fold-in `queued_command` notifications complete running agents, and dequeued
-  user-string task notifications complete by parent tool use id.
+  user-string task notifications complete by parent tool use id. For nested
+  launches, keep sidecar coverage that a grandchild launch registers with the
+  inherited turn id (with and without an observed tool_use block), that a
+  nested approval after the parent task completed still carries a turn id, and
+  that a child `end_turn` assistant defers completion while a grandchild task
+  is running.
 
 ### Claude SDK parent waits forever for background agents that already finished
 
@@ -1131,16 +1151,20 @@ delimited by ---`, and the composer skill picker may show partial or
   `pnpm check:api-generated`. Trigger a Claude Code install and confirm status
   responses include `activeAction` while the CLI or adapter step is in flight.
 
-### ACP adapter appears stale after external registry migration
+### Legacy Claude ACP adapter appears stale after external registry migration
 
 - Symptom:
-  Claude Agent provider status is not ready, or live ACP options do not match
-  the package version advertised by the ACP External Agent Registry. Another
-  form is Claude Code context usage briefly showing `0%` during a running
-  session or around compaction, then returning to the prior nonzero value on
-  the next usage update. A third form is new Claude Code sessions failing
-  during startup with `Invalid value for config option fast: standard`.
+  With `TUTTI_CLAUDE_CODE_RUNTIME=acp`, Claude Agent provider status is not
+  ready, or live ACP options do not match the package version advertised by the
+  ACP External Agent Registry. Another form is Claude Code context usage briefly
+  showing `0%` during a running session or around compaction, then returning to
+  the prior nonzero value on the next usage update. A third form is new Claude
+  Code sessions failing during startup with
+  `Invalid value for config option fast: standard`.
 - Quick checks:
+  First confirm the runtime is legacy ACP. The default Claude Code runtime is
+  SDK; SDK provider availability checks the `claude` CLI plus the Claude SDK
+  sidecar entry and must not require `claude-acp`.
   Inspect `<state-dir>/agent-providers/external-agent-registry/cache/registry.json`
   and the package manifest under
   `<state-dir>/agent-providers/external-agent-registry/packages/claude-acp/node_modules/@agentclientprotocol/claude-agent-acp/package.json`.
