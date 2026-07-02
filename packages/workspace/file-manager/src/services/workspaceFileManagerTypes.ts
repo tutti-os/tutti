@@ -9,7 +9,7 @@ export type WorkspaceFileEntryKind = "file" | "directory" | "unknown";
 export type WorkspaceFileSearchMatchTarget = "basename" | "path";
 export type WorkspaceFileImportConflictKind = "replaceable" | "type_mismatch";
 export type WorkspaceFilePreviewKind = "image" | "text" | "video";
-export type WorkspaceFileLocationKind = "directory" | "recent";
+export type WorkspaceFileLocationKind = "directory" | "external" | "recent";
 export type WorkspaceFileManagerFileDefaultOpener =
   | "appBrowser"
   | "defaultBrowser"
@@ -88,6 +88,7 @@ export interface WorkspaceFileLocationSection {
 
 export type WorkspaceFileLocation =
   | WorkspaceFileDirectoryLocation
+  | WorkspaceFileExternalLocation
   | WorkspaceFileRecentLocation;
 
 export interface WorkspaceFileDirectoryLocation {
@@ -97,6 +98,16 @@ export interface WorkspaceFileDirectoryLocation {
   label: string;
   path: string;
   referenceNodeId: string;
+}
+
+export interface WorkspaceFileExternalLocation {
+  contextLabel?: string | null;
+  externalType: string;
+  iconUrl?: string | null;
+  id: string;
+  kind: "external";
+  label: string;
+  metadata: Record<string, string>;
 }
 
 export interface WorkspaceFileRecentLocation {

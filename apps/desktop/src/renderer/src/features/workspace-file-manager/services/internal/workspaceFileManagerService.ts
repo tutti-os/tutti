@@ -1,6 +1,7 @@
 import {
   createWorkspaceFileManagerService,
   resolveWorkspaceFileExtension,
+  type WorkspaceFileExternalLocation,
   type WorkspaceFileEntry,
   type WorkspaceFileLocationSection,
   type WorkspaceFileManagerFileDefaultOpener,
@@ -8,6 +9,16 @@ import {
   type WorkspaceFileManagerMutationErrorMessage,
   type WorkspaceFileManagerPersistedState
 } from "@tutti-os/workspace-file-manager/services";
+import {
+  createReferenceSourceAggregator,
+  createStaticReferenceSourceRegistry,
+  SOURCE_ROOT_NODE_ID,
+  type ReferenceSourceAggregator
+} from "@tutti-os/workspace-file-reference/core";
+import type {
+  NodeRef,
+  ReferenceNode
+} from "@tutti-os/workspace-file-reference/contracts";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import { createDesktopWorkspaceFileManagerAdapter } from "./desktopWorkspaceFileManagerAdapter.ts";
 import type {
@@ -16,6 +27,7 @@ import type {
   WorkspaceFileManagerSession
 } from "../workspaceFileManagerService.interface";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type { DesktopLocale } from "@shared/i18n";
 import {
   INotificationService,
   type NotificationService
@@ -33,6 +45,13 @@ import {
   loadDesktopWorkspaceFileLocationSections,
   resolveDesktopWorkspaceFileDefaultLocationId
 } from "../desktopWorkspaceFileLocations.ts";
+import { createDesktopWorkspaceFileReferenceAdapter } from "../createDesktopWorkspaceFileReferenceAdapter.ts";
+import {
+  APP_ARTIFACT_SOURCE_ID,
+  createAppArtifactReferenceSource,
+  createIssueReferenceSource,
+  ISSUE_SOURCE_ID
+} from "../../../agent-reference-sources/index.ts";
 
 export interface WorkspaceFileManagerServiceDependencies {
   hostFilesApi: DesktopHostFilesApi;
@@ -54,11 +73,19 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
   >();
   private readonly dependencies: WorkspaceFileManagerServiceDependencies;
   private readonly listeners = new Map<string, Set<() => void>>();
+  private readonly i18nRuntimeByWorkspace = new Map<
+    string,
+    WorkspaceFileManagerI18nRuntime
+  >();
   private readonly locationRefreshSnapshotByWorkspace = new Map<
     string,
     string
   >();
   private readonly notifications: NotificationService;
+  private readonly referenceSourceAggregators = new Map<
+    string,
+    ReferenceSourceAggregator
+  >();
   private readonly sharedService = createWorkspaceFileManagerService();
   private readonly sessions = new Map<string, WorkspaceFileManagerSession>();
 
@@ -75,6 +102,44 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
 
   get hostOs(): NodeJS.Platform {
     return this.dependencies.platformApi.os;
+  }
+
+  getReferenceSourceAggregator(
+    workspaceID: string,
+    locale: DesktopLocale = getActiveLocale()
+  ): ReferenceSourceAggregator {
+    const cacheKey = referenceSourceAggregatorCacheKey(workspaceID, locale);
+    const existing = this.referenceSourceAggregators.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+    const appI18n = getAppI18nRuntime(locale);
+    const workspaceFileReferenceAdapter =
+      createDesktopWorkspaceFileReferenceAdapter({
+        hostFilesApi: this.dependencies.hostFilesApi,
+        openCanvasFilePreview: (target, workspaceId) =>
+          this.openCanvasFilePreview(workspaceId, target),
+        tuttidClient: this.dependencies.tuttidClient,
+        workspaceId: workspaceID
+      });
+    const aggregator = createReferenceSourceAggregator(
+      createStaticReferenceSourceRegistry([
+        createAppArtifactReferenceSource({
+          tuttidClient: this.dependencies.tuttidClient,
+          adapter: workspaceFileReferenceAdapter,
+          label: appI18n.t("workspace.referenceSources.appSourceLabel"),
+          order: 1
+        }),
+        createIssueReferenceSource({
+          tuttidClient: this.dependencies.tuttidClient,
+          adapter: workspaceFileReferenceAdapter,
+          label: appI18n.t("workspace.referenceSources.issueSourceLabel"),
+          order: 2
+        })
+      ])
+    );
+    this.referenceSourceAggregators.set(cacheKey, aggregator);
+    return aggregator;
   }
 
   async entryExists(input: {
@@ -118,7 +183,12 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
   ): WorkspaceFileManagerSession {
     const existing = this.sessions.get(workspaceID);
     if (existing) {
+      const previousI18n = this.i18nRuntimeByWorkspace.get(workspaceID);
       existing.setI18nRuntime(i18n);
+      if (previousI18n !== i18n) {
+        this.i18nRuntimeByWorkspace.set(workspaceID, i18n);
+        void this.refreshSessionLocations(workspaceID, existing);
+      }
       return existing;
     }
     const locationSections = getCurrentDesktopWorkspaceFileLocationSections({
@@ -184,6 +254,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
       workspaceID
     });
     this.sessions.set(workspaceID, session);
+    this.i18nRuntimeByWorkspace.set(workspaceID, i18n);
     void this.refreshSessionLocations(workspaceID, session);
     return session;
   }
@@ -260,10 +331,13 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
   ): Promise<void> {
     const workspaceUserProjectService =
       this.dependencies.workspaceUserProjectService;
-    const locationSections = await loadDesktopWorkspaceFileLocationSections({
-      homeDirectory: this.dependencies.platformApi.homeDirectory,
-      workspaceUserProjectService
-    });
+    const locationSections = [
+      ...(await loadDesktopWorkspaceFileLocationSections({
+        homeDirectory: this.dependencies.platformApi.homeDirectory,
+        workspaceUserProjectService
+      })),
+      ...(await this.loadReferenceLocationSections(workspaceID))
+    ];
     const defaultLocationId = resolveDesktopWorkspaceFileDefaultLocationId({
       projects: workspaceUserProjectService?.getSnapshot().projects ?? []
     });
@@ -289,6 +363,40 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     target: Parameters<WorkspaceFileManagerCanvasPreviewLauncher>[0]
   ): Promise<boolean> {
     return this.openCanvasFilePreview(workspaceID, target);
+  }
+
+  private async loadReferenceLocationSections(
+    workspaceID: string
+  ): Promise<WorkspaceFileLocationSection[]> {
+    try {
+      const aggregator = this.getReferenceSourceAggregator(workspaceID);
+      const scope = { workspaceId: workspaceID };
+      const tabs = await aggregator.listSources(scope);
+      const sections = await Promise.all(
+        tabs
+          .filter(
+            (tab) =>
+              tab.sourceId === APP_ARTIFACT_SOURCE_ID ||
+              tab.sourceId === ISSUE_SOURCE_ID
+          )
+          .map(async (tab): Promise<WorkspaceFileLocationSection> => {
+            const result = await aggregator.listChildren(
+              scope,
+              sourceRootRef(tab.sourceId)
+            );
+            return {
+              id: `reference:${tab.sourceId}`,
+              label: tab.label,
+              locations: result.entries
+                .filter((node) => node.kind === "folder")
+                .map((node) => referenceNodeToLocation(tab.sourceId, node))
+            };
+          })
+      );
+      return sections.filter((section) => section.locations.length > 0);
+    } catch {
+      return [];
+    }
   }
 
   private notifyHandledMutationError(
@@ -388,14 +496,53 @@ function serializeWorkspaceFileLocationRefreshSnapshot(input: {
               path: location.path,
               referenceNodeId: location.referenceNodeId
             }
-          : {
-              id: location.id,
-              kind: location.kind,
-              label: location.label
-            }
+          : location.kind === "external"
+            ? {
+                contextLabel: location.contextLabel,
+                externalType: location.externalType,
+                iconUrl: location.iconUrl,
+                id: location.id,
+                kind: location.kind,
+                label: location.label,
+                metadata: location.metadata
+              }
+            : {
+                id: location.id,
+                kind: location.kind,
+                label: location.label
+              }
       )
     }))
   });
+}
+
+function sourceRootRef(sourceId: string): NodeRef {
+  return { sourceId, nodeId: SOURCE_ROOT_NODE_ID };
+}
+
+function referenceSourceAggregatorCacheKey(
+  workspaceID: string,
+  locale: DesktopLocale
+): string {
+  return `${workspaceID}:${locale}`;
+}
+
+function referenceNodeToLocation(
+  sourceId: string,
+  node: ReferenceNode
+): WorkspaceFileExternalLocation {
+  return {
+    contextLabel: node.contextLabel,
+    externalType: "workspace-reference",
+    iconUrl: node.iconUrl,
+    id: `reference:${sourceId}:${node.ref.nodeId}`,
+    kind: "external",
+    label: node.displayName,
+    metadata: {
+      sourceId,
+      nodeId: node.ref.nodeId
+    }
+  };
 }
 
 // Avoid decorator syntax so the renderer Babel pass can parse this file.

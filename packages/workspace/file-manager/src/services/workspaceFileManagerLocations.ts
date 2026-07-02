@@ -57,3 +57,9 @@ export function isWorkspaceFileRecentLocation(
 ): boolean {
   return location?.kind === "recent";
 }
+
+export function isWorkspaceFileExternalLocation(
+  location: WorkspaceFileLocation | null | undefined
+): boolean {
+  return location?.kind === "external";
+}

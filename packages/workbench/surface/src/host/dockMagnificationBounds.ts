@@ -29,10 +29,12 @@ function resolveDockMagnificationViewportBounds(
 export function resolveDockMagnificationVisibleHitBounds({
   dockPlacement,
   hitBounds,
+  mainAxisEdgePadding = 0,
   viewportRect
 }: {
   dockPlacement: "bottom" | "left";
   hitBounds: DockMagnificationHitBounds | null;
+  mainAxisEdgePadding?: number;
   viewportRect: DockMagnificationSlotRect | null;
 }): DockMagnificationHitBounds | null {
   if (!hitBounds || !viewportRect) {
@@ -46,8 +48,14 @@ export function resolveDockMagnificationVisibleHitBounds({
   const visibleBounds = {
     crossEnd: Math.min(hitBounds.crossEnd, viewportBounds.crossEnd),
     crossStart: Math.max(hitBounds.crossStart, viewportBounds.crossStart),
-    mainEnd: Math.min(hitBounds.mainEnd, viewportBounds.mainEnd),
-    mainStart: Math.max(hitBounds.mainStart, viewportBounds.mainStart)
+    mainEnd: Math.min(
+      hitBounds.mainEnd + mainAxisEdgePadding,
+      viewportBounds.mainEnd + mainAxisEdgePadding
+    ),
+    mainStart: Math.max(
+      hitBounds.mainStart - mainAxisEdgePadding,
+      viewportBounds.mainStart - mainAxisEdgePadding
+    )
   };
 
   if (
@@ -58,6 +66,37 @@ export function resolveDockMagnificationVisibleHitBounds({
   }
 
   return visibleBounds;
+}
+
+export function resolveDockMagnificationVisibleSlotRects({
+  slotRects,
+  viewportRect
+}: {
+  slotRects: readonly DockMagnificationSlotRect[];
+  viewportRect: DockMagnificationSlotRect | null;
+}): DockMagnificationSlotRect[] {
+  if (!viewportRect) {
+    return [...slotRects];
+  }
+
+  const visibleSlotRects: DockMagnificationSlotRect[] = [];
+  for (const rect of slotRects) {
+    const visibleRect = {
+      bottom: Math.min(rect.bottom, viewportRect.bottom),
+      left: Math.max(rect.left, viewportRect.left),
+      right: Math.min(rect.right, viewportRect.right),
+      top: Math.max(rect.top, viewportRect.top)
+    };
+
+    if (
+      visibleRect.left <= visibleRect.right &&
+      visibleRect.top <= visibleRect.bottom
+    ) {
+      visibleSlotRects.push(visibleRect);
+    }
+  }
+
+  return visibleSlotRects;
 }
 
 export function isDockMagnificationPointInsideHitBounds({
@@ -82,5 +121,22 @@ export function isDockMagnificationPointInsideHitBounds({
     mainAxis <= hitBounds.mainEnd &&
     crossAxis >= hitBounds.crossStart &&
     crossAxis <= hitBounds.crossEnd
+  );
+}
+
+export function isDockMagnificationPointInsideSlotRect({
+  clientX,
+  clientY,
+  rect
+}: {
+  clientX: number;
+  clientY: number;
+  rect: DockMagnificationSlotRect;
+}): boolean {
+  return (
+    clientX >= rect.left &&
+    clientX <= rect.right &&
+    clientY >= rect.top &&
+    clientY <= rect.bottom
   );
 }

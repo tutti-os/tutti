@@ -5,6 +5,7 @@ import {
 } from "../workspaceFileManagerModel.ts";
 import {
   findWorkspaceFileLocationById,
+  isWorkspaceFileExternalLocation,
   isWorkspaceFileRecentLocation
 } from "../workspaceFileManagerLocations.ts";
 import type { WorkspaceFileManagerI18nRuntime } from "../../i18n/workspaceFileManagerI18n.ts";
@@ -116,11 +117,18 @@ export function resolveWorkspaceFileManagerRootViewState(input: {
       state.selectedLocationId
     )
   );
+  const isExternalLocation = isWorkspaceFileExternalLocation(
+    findWorkspaceFileLocationById(
+      state.locationSections,
+      state.selectedLocationId
+    )
+  );
   const isSearchMode = state.searchQuery.trim().length > 0;
   return {
     canImportFromDrop:
       state.capabilities.canImportFromDrop &&
       !isRecentLocation &&
+      !isExternalLocation &&
       !isSearchMode,
     currentDirectoryPath: state.currentDirectoryPath,
     isBusy: state.busyAction !== null,
@@ -170,8 +178,15 @@ export function resolveWorkspaceFileManagerPanelsViewState(input: {
       state.selectedLocationId
     )
   );
+  const isExternalLocation = isWorkspaceFileExternalLocation(
+    findWorkspaceFileLocationById(
+      state.locationSections,
+      state.selectedLocationId
+    )
+  );
   return {
-    canMove: state.capabilities.canMove && !isRecentLocation,
+    canMove:
+      state.capabilities.canMove && !isRecentLocation && !isExternalLocation,
     contextMenuEntryPath: state.contextMenuEntryPath,
     entries: state.entries,
     error: state.error,
@@ -190,6 +205,7 @@ export function resolveWorkspaceFileManagerPanelsViewState(input: {
     selectedPath: state.selectedPath,
     showDropOverlay:
       state.capabilities.canImportFromDrop &&
+      !isExternalLocation &&
       state.dragDepth > 0 &&
       state.busyAction === null
   };
@@ -236,6 +252,12 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
       state.selectedLocationId
     )
   );
+  const isExternalLocation = isWorkspaceFileExternalLocation(
+    findWorkspaceFileLocationById(
+      state.locationSections,
+      state.selectedLocationId
+    )
+  );
   const isSearchMode = state.searchQuery.trim().length > 0;
   const contextMenuEntry = state.contextMenu?.entryPath
     ? findEntry(state, state.contextMenu.entryPath)
@@ -255,22 +277,32 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
     isLoading: state.isLoading,
     isMutating: state.isMutating,
     showCreateAction:
+      !isExternalLocation &&
       !isRecentLocation &&
       !isSearchMode &&
       (state.capabilities.canCreateDirectory ||
         state.capabilities.canCreateFile),
     showCopyAction: state.capabilities.canCopy,
     showDeleteAction:
-      state.capabilities.canDelete && !isRecentLocation && !isSearchMode,
-    showExportAction: state.capabilities.canExport,
+      state.capabilities.canDelete &&
+      !isExternalLocation &&
+      !isRecentLocation &&
+      !isSearchMode,
+    showExportAction: state.capabilities.canExport && !isExternalLocation,
     showImportAction:
       state.capabilities.canImportFromPicker &&
+      !isExternalLocation &&
       !isRecentLocation &&
       !isSearchMode,
     showMoveAction:
-      state.capabilities.canMove && !isRecentLocation && !isSearchMode,
-    showOpenInAppBrowserAction: state.capabilities.canOpenInAppBrowser,
-    showOpenInDefaultBrowserAction: state.capabilities.canOpenInDefaultBrowser,
+      state.capabilities.canMove &&
+      !isExternalLocation &&
+      !isRecentLocation &&
+      !isSearchMode,
+    showOpenInAppBrowserAction:
+      state.capabilities.canOpenInAppBrowser && !isExternalLocation,
+    showOpenInDefaultBrowserAction:
+      state.capabilities.canOpenInDefaultBrowser && !isExternalLocation,
     showOpenInFileViewerAction:
       contextMenuEntry !== null &&
       isContextMenuFile &&
@@ -278,9 +310,13 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
     showOpenWithAction: state.capabilities.canOpenWith && isContextMenuFile,
     showOpenWithOtherAction:
       state.capabilities.canPickOtherOpenWithApplication && isContextMenuFile,
-    showRevealInFolderAction: state.capabilities.canRevealInFolder,
+    showRevealInFolderAction:
+      state.capabilities.canRevealInFolder && !isExternalLocation,
     showRenameAction:
-      state.capabilities.canRename && !isRecentLocation && !isSearchMode
+      state.capabilities.canRename &&
+      !isExternalLocation &&
+      !isRecentLocation &&
+      !isSearchMode
   };
 }
 

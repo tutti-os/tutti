@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import {
   isDockMagnificationPointInsideHitBounds,
+  isDockMagnificationPointInsideSlotRect,
   resolveDockMagnificationVisibleHitBounds,
+  resolveDockMagnificationVisibleSlotRects,
   type DockMagnificationHitBounds
 } from "./dockMagnificationBounds.ts";
 
 export {
   isDockMagnificationPointInsideHitBounds,
+  isDockMagnificationPointInsideSlotRect,
   resolveDockMagnificationVisibleHitBounds,
+  resolveDockMagnificationVisibleSlotRects,
   type DockMagnificationHitBounds
 } from "./dockMagnificationBounds.ts";
 
@@ -24,6 +28,9 @@ const MAX_MAGNIFICATION_STEP_SECONDS = 1 / 30;
 const MAGNIFICATION_INFLUENCE_PADDING = 8;
 const DOCK_MAGNIFICATION_ENTRY_RAMP_MS = 90;
 const DOCK_MAGNIFICATION_CROSS_AXIS_PADDING = 8;
+const DOCK_MAGNIFICATION_MAIN_AXIS_EDGE_PADDING = DOCK_ICON_BASE_SIZE / 2;
+const DOCK_MAGNIFICATION_AMBIENT_EDGE_RANGE = 180;
+const DOCK_MAGNIFICATION_AMBIENT_VIEWPORT_PADDING = 8;
 
 interface DockMagnificationSpring {
   value: number;
@@ -347,6 +354,52 @@ function clearDockSlotMagnification(
   shell?.style.removeProperty("transform");
 }
 
+function isPointNearDockScreenEdge({
+  clientX,
+  clientY,
+  dockPlacement
+}: {
+  clientX: number;
+  clientY: number;
+  dockPlacement: "bottom" | "left";
+}): boolean {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  return dockPlacement === "left"
+    ? clientX <= DOCK_MAGNIFICATION_AMBIENT_EDGE_RANGE
+    : window.innerHeight - clientY <= DOCK_MAGNIFICATION_AMBIENT_EDGE_RANGE;
+}
+
+function isPointNearDockViewport({
+  clientX,
+  clientY,
+  dockPlacement,
+  viewportRect
+}: {
+  clientX: number;
+  clientY: number;
+  dockPlacement: "bottom" | "left";
+  viewportRect: DockMagnificationSlotRect;
+}): boolean {
+  const horizontalPadding =
+    dockPlacement === "bottom"
+      ? DOCK_MAGNIFICATION_MAIN_AXIS_EDGE_PADDING
+      : DOCK_MAGNIFICATION_AMBIENT_VIEWPORT_PADDING;
+  const verticalPadding =
+    dockPlacement === "left"
+      ? DOCK_MAGNIFICATION_MAIN_AXIS_EDGE_PADDING
+      : DOCK_MAGNIFICATION_AMBIENT_VIEWPORT_PADDING;
+
+  return (
+    clientX >= viewportRect.left - horizontalPadding &&
+    clientX <= viewportRect.right + horizontalPadding &&
+    clientY >= viewportRect.top - verticalPadding &&
+    clientY <= viewportRect.bottom + verticalPadding
+  );
+}
+
 export function useDockMagnification({
   dockPlacement,
   dockRootRef,
@@ -369,6 +422,7 @@ export function useDockMagnification({
   const entryRampStartedAtRef = useRef<number | null>(null);
   const restCentersRef = useRef<Map<string, number> | null>(null);
   const hitBoundsRef = useRef<DockMagnificationHitBounds | null>(null);
+  const visibleSlotRectsRef = useRef<DockMagnificationSlotRect[] | null>(null);
   const slotOrderRef = useRef<string[]>([]);
   const magnifyActiveRef = useRef(false);
   const globalPointerTrackerRef =
@@ -424,20 +478,65 @@ export function useDockMagnification({
       centers.set(anchorKey, center);
     }
     slotOrderRef.current = order;
+    const visibleViewportRect = viewportRect
+      ? {
+          bottom: viewportRect.bottom,
+          left: viewportRect.left,
+          right: viewportRect.right,
+          top: viewportRect.top
+        }
+      : null;
     hitBoundsRef.current = resolveDockMagnificationVisibleHitBounds({
       dockPlacement,
       hitBounds: resolveDockMagnificationHitBounds(slotRects, dockPlacement),
-      viewportRect: viewportRect
-        ? {
-            bottom: viewportRect.bottom,
-            left: viewportRect.left,
-            right: viewportRect.right,
-            top: viewportRect.top
-          }
-        : null
+      mainAxisEdgePadding: DOCK_MAGNIFICATION_MAIN_AXIS_EDGE_PADDING,
+      viewportRect: visibleViewportRect
+    });
+    visibleSlotRectsRef.current = resolveDockMagnificationVisibleSlotRects({
+      slotRects,
+      viewportRect: visibleViewportRect
     });
     restCentersRef.current = centers;
   }, [dockPlacement, dockViewportRef, slotRefs]);
+
+  const isPointerInsideAnyVisibleDockSlot = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      for (const rect of visibleSlotRectsRef.current ?? []) {
+        if (
+          isDockMagnificationPointInsideSlotRect({
+            clientX,
+            clientY,
+            rect
+          })
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    []
+  );
+
+  const ensureDockMagnificationGeometry = useCallback(() => {
+    if (
+      restCentersRef.current === null ||
+      hitBoundsRef.current === null ||
+      visibleSlotRectsRef.current === null
+    ) {
+      captureRestCenters();
+    }
+  }, [captureRestCenters]);
+
+  const isPointerInsideDockMagnificationTarget = useCallback(
+    (clientX: number, clientY: number): boolean =>
+      isDockMagnificationPointInsideHitBounds({
+        clientX,
+        clientY,
+        dockPlacement,
+        hitBounds: hitBoundsRef.current
+      }) || isPointerInsideAnyVisibleDockSlot(clientX, clientY),
+    [dockPlacement, isPointerInsideAnyVisibleDockSlot]
+  );
 
   const runAnimationFrame = useCallback(
     (frameTime: number) => {
@@ -576,6 +675,7 @@ export function useDockMagnification({
         entryRampStartedAtRef.current = null;
         restCentersRef.current = null;
         hitBoundsRef.current = null;
+        visibleSlotRectsRef.current = null;
         slotOrderRef.current = [];
         setMagnifyActive(false);
       }
@@ -635,18 +735,9 @@ export function useDockMagnification({
 
   const handlePointerMove = useCallback(
     (clientX: number, clientY: number) => {
-      if (restCentersRef.current === null) {
-        captureRestCenters();
-      }
+      ensureDockMagnificationGeometry();
 
-      if (
-        !isDockMagnificationPointInsideHitBounds({
-          clientX,
-          clientY,
-          dockPlacement,
-          hitBounds: hitBoundsRef.current
-        })
-      ) {
+      if (!isPointerInsideDockMagnificationTarget(clientX, clientY)) {
         stopGlobalPointerTracking();
         clearTrackedPointer();
         return;
@@ -661,9 +752,10 @@ export function useDockMagnification({
       scheduleAnimation();
     },
     [
-      captureRestCenters,
       clearTrackedPointer,
       dockPlacement,
+      ensureDockMagnificationGeometry,
+      isPointerInsideDockMagnificationTarget,
       scheduleAnimation,
       setMagnifyActive,
       startGlobalPointerTracking,
@@ -672,6 +764,101 @@ export function useDockMagnification({
   );
   handleGlobalPointerMoveRef.current = handlePointerMove;
   handleGlobalPointerCancelRef.current = handleGlobalPointerCancel;
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    let animationFrame: number | null = null;
+    let latestPoint: { clientX: number; clientY: number } | null = null;
+
+    const clearAmbientPointerSample = () => {
+      latestPoint = null;
+      if (animationFrame !== null) {
+        cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+      }
+    };
+
+    const runAmbientPointerMove = () => {
+      animationFrame = null;
+      const point = latestPoint;
+      latestPoint = null;
+      if (!point || magnifyActiveRef.current) {
+        return;
+      }
+
+      const viewportRect = dockViewportRef.current?.getBoundingClientRect();
+      if (!viewportRect) {
+        return;
+      }
+      const visibleViewportRect = {
+        bottom: viewportRect.bottom,
+        left: viewportRect.left,
+        right: viewportRect.right,
+        top: viewportRect.top
+      };
+      if (
+        !isPointNearDockViewport({
+          clientX: point.clientX,
+          clientY: point.clientY,
+          dockPlacement,
+          viewportRect: visibleViewportRect
+        })
+      ) {
+        return;
+      }
+
+      ensureDockMagnificationGeometry();
+      if (
+        isPointerInsideDockMagnificationTarget(point.clientX, point.clientY)
+      ) {
+        handlePointerMove(point.clientX, point.clientY);
+      }
+    };
+
+    const handleAmbientPointerMove = (event: PointerEvent) => {
+      if (magnifyActiveRef.current) {
+        clearAmbientPointerSample();
+        return;
+      }
+      if (
+        !isPointNearDockScreenEdge({
+          clientX: event.clientX,
+          clientY: event.clientY,
+          dockPlacement
+        })
+      ) {
+        clearAmbientPointerSample();
+        return;
+      }
+      latestPoint = { clientX: event.clientX, clientY: event.clientY };
+      if (animationFrame === null) {
+        animationFrame = requestAnimationFrame(runAmbientPointerMove);
+      }
+    };
+
+    document.addEventListener(
+      "pointermove",
+      handleAmbientPointerMove,
+      globalPointerListenerOptions
+    );
+    return () => {
+      document.removeEventListener(
+        "pointermove",
+        handleAmbientPointerMove,
+        globalPointerListenerOptions
+      );
+      clearAmbientPointerSample();
+    };
+  }, [
+    dockPlacement,
+    dockViewportRef,
+    ensureDockMagnificationGeometry,
+    handlePointerMove,
+    isPointerInsideDockMagnificationTarget
+  ]);
 
   const handlePointerLeave = useCallback(() => {
     pendingPointerAxisRef.current = null;
@@ -685,6 +872,7 @@ export function useDockMagnification({
       restCentersRef.current?.delete(anchorKey);
       appliedStylesRef.current.delete(anchorKey);
       hitBoundsRef.current = null;
+      visibleSlotRectsRef.current = null;
       slotOrderRef.current = slotOrderRef.current.filter(
         (key) => key !== anchorKey
       );
@@ -715,6 +903,7 @@ export function useDockMagnification({
     appliedStylesRef.current.clear();
     restCentersRef.current = null;
     hitBoundsRef.current = null;
+    visibleSlotRectsRef.current = null;
     slotOrderRef.current = [];
     pointerAxisRef.current = null;
     pendingPointerAxisRef.current = null;

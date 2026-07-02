@@ -10,13 +10,15 @@ import {
   DOCK_MAGNIFICATION_HALF_RANGE,
   createDockMagnificationGlobalPointerTracker,
   isDockMagnificationPointInsideHitBounds,
+  isDockMagnificationPointInsideSlotRect,
   isDockMagnificationSlotLayoutLocked,
   isDockMagnificationSpringSettled,
   mapDistanceToTargetSize,
   resolveDockMagnificationHitBounds,
   resolveDockMagnificationSlotLayoutSize,
   resolveDockMagnificationSlotCenter,
-  resolveDockMagnificationVisibleHitBounds
+  resolveDockMagnificationVisibleHitBounds,
+  resolveDockMagnificationVisibleSlotRects
 } from "./dockMagnification.ts";
 
 const source = readFileSync(resolve("src/host/dockMagnification.ts"), "utf8");
@@ -204,6 +206,38 @@ test("dock magnification visible hit bounds clip overflow slots to the viewport"
   );
 });
 
+test("dock magnification visible hit bounds preserve edge hover room near the viewport", () => {
+  const slotHitBounds = resolveDockMagnificationHitBounds(
+    [
+      { bottom: 80, left: 100, right: 143.2, top: 36.8 },
+      { bottom: 80, left: 160, right: 203.2, top: 36.8 }
+    ],
+    "bottom"
+  );
+  const visibleHitBounds = resolveDockMagnificationVisibleHitBounds({
+    dockPlacement: "bottom",
+    hitBounds: slotHitBounds,
+    mainAxisEdgePadding: DOCK_ICON_BASE_SIZE / 2,
+    viewportRect: { bottom: 88, left: 90, right: 210, top: 0 }
+  });
+
+  assertBoundsEqual(visibleHitBounds, {
+    crossEnd: 88,
+    crossStart: 28.8,
+    mainEnd: 224.8,
+    mainStart: 78.4
+  });
+  assert.equal(
+    isDockMagnificationPointInsideHitBounds({
+      clientX: 80,
+      clientY: 60,
+      dockPlacement: "bottom",
+      hitBounds: visibleHitBounds
+    }),
+    true
+  );
+});
+
 test("left dock magnification hit bounds use the vertical slot range", () => {
   const hitBounds = resolveDockMagnificationHitBounds(
     [
@@ -244,6 +278,65 @@ test("dock magnification expands both slot axes so neighbors keep spacing", () =
       height: DOCK_ICON_PEAK_SIZE,
       width: DOCK_ICON_PEAK_SIZE
     }
+  );
+});
+
+test("dock magnification keeps slot edge points eligible", () => {
+  const rect = { bottom: 80, left: 100, right: 143.2, top: 36.8 };
+
+  assert.equal(
+    isDockMagnificationPointInsideSlotRect({
+      clientX: 100,
+      clientY: 60,
+      rect
+    }),
+    true
+  );
+  assert.equal(
+    isDockMagnificationPointInsideSlotRect({
+      clientX: 143.2,
+      clientY: 60,
+      rect
+    }),
+    true
+  );
+  assert.equal(
+    isDockMagnificationPointInsideSlotRect({
+      clientX: 99.9,
+      clientY: 60,
+      rect
+    }),
+    false
+  );
+});
+
+test("dock magnification clips slot edge eligibility to the viewport", () => {
+  const visibleRects = resolveDockMagnificationVisibleSlotRects({
+    slotRects: [
+      { bottom: 80, left: 100, right: 143.2, top: 36.8 },
+      { bottom: 80, left: 720, right: 763.2, top: 36.8 }
+    ],
+    viewportRect: { bottom: 88, left: 64, right: 120, top: 0 }
+  });
+
+  assert.deepEqual(visibleRects, [
+    { bottom: 80, left: 100, right: 120, top: 36.8 }
+  ]);
+  assert.equal(
+    isDockMagnificationPointInsideSlotRect({
+      clientX: 120,
+      clientY: 60,
+      rect: visibleRects[0]!
+    }),
+    true
+  );
+  assert.equal(
+    isDockMagnificationPointInsideSlotRect({
+      clientX: 130,
+      clientY: 60,
+      rect: visibleRects[0]!
+    }),
+    false
   );
 });
 
@@ -358,7 +451,11 @@ test("dock magnification starts global tracking on active pointers and stops on 
   );
   assert.match(
     source,
-    /if \([\s\S]*?!isDockMagnificationPointInsideHitBounds\([\s\S]*?\) \{[\s\S]*?stopGlobalPointerTracking\(\);[\s\S]*?clearTrackedPointer\(\);/
+    /const isPointerInsideDockMagnificationTarget = useCallback\([\s\S]*?isDockMagnificationPointInsideHitBounds\([\s\S]*?\) \|\| isPointerInsideAnyVisibleDockSlot\(clientX, clientY\)/
+  );
+  assert.match(
+    source,
+    /if \(!isPointerInsideDockMagnificationTarget\(clientX, clientY\)\) \{[\s\S]*?stopGlobalPointerTracking\(\);[\s\S]*?clearTrackedPointer\(\);/
   );
   assert.match(
     source,
@@ -367,6 +464,31 @@ test("dock magnification starts global tracking on active pointers and stops on 
   assert.match(
     source,
     /useEffect\(\s*\(\) => \(\) => \{[\s\S]*?resetMagnification\(\);/
+  );
+});
+
+test("dock magnification samples ambient pointer moves without taking dock pointer events", () => {
+  assert.match(
+    source,
+    /document\.addEventListener\(\s*"pointermove",\s*handleAmbientPointerMove/
+  );
+  assert.match(source, /isPointNearDockScreenEdge\(/);
+  assert.match(source, /isPointNearDockViewport\(/);
+  assert.match(
+    source,
+    /const handleAmbientPointerMove = \(event: PointerEvent\) => \{[\s\S]*?!isPointNearDockScreenEdge\([\s\S]*?return;[\s\S]*?latestPoint =/
+  );
+  assert.match(
+    source,
+    /const clearAmbientPointerSample = \(\) => \{[\s\S]*?latestPoint = null;[\s\S]*?cancelAnimationFrame\(animationFrame\);/
+  );
+  assert.match(
+    source,
+    /!isPointNearDockScreenEdge\([\s\S]*?\) \{[\s\S]*?clearAmbientPointerSample\(\);[\s\S]*?return;/
+  );
+  assert.match(
+    source,
+    /isPointerInsideDockMagnificationTarget\(point\.clientX, point\.clientY\)[\s\S]*?handlePointerMove\(point\.clientX, point\.clientY\);/
   );
 });
 
@@ -421,6 +543,6 @@ test("dock magnification refreshes slot centers while the pointer is active", ()
   );
   assert.match(
     source,
-    /if \(restCentersRef\.current === null\) \{[\s\S]*?captureRestCenters\(\);/
+    /const ensureDockMagnificationGeometry = useCallback\([\s\S]*?restCentersRef\.current === null[\s\S]*?hitBoundsRef\.current === null[\s\S]*?visibleSlotRectsRef\.current === null[\s\S]*?captureRestCenters\(\);/
   );
 });

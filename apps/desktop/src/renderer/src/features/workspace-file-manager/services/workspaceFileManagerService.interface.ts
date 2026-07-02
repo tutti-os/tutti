@@ -1,4 +1,6 @@
 import { createDecorator } from "@tutti-os/infra/di";
+import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
+import type { DesktopLocale } from "@shared/i18n";
 import type {
   WorkspaceFileActivationTarget,
   WorkspaceFileEntry,
@@ -22,6 +24,10 @@ export interface IWorkspaceFileManagerService {
     i18n: WorkspaceFileManagerI18nRuntime,
     restoredState?: WorkspaceFileManagerPersistedState | null
   ): WorkspaceFileManagerSession;
+  getReferenceSourceAggregator(
+    workspaceID: string,
+    locale?: DesktopLocale
+  ): ReferenceSourceAggregator;
   getSnapshotState(
     workspaceID: string
   ): WorkspaceFileManagerPersistedState | null;

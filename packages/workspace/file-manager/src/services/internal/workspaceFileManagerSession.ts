@@ -7,6 +7,7 @@ import {
 import { getWorkspaceFileManagerPersistedState } from "./workspaceFileManagerStore.ts";
 import {
   findWorkspaceFileLocationById,
+  isWorkspaceFileExternalLocation,
   isWorkspaceFileRecentLocation,
   resolveWorkspaceFileLocationDefaultId
 } from "../workspaceFileManagerLocations.ts";
@@ -234,7 +235,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   async confirmCreateDialog(): Promise<void> {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return;
     }
     const createDialog = this.store.createDialog;
@@ -327,21 +328,21 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   async createDirectory(path: string): Promise<void> {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return;
     }
     await this.mutationController.createDirectory(path);
   }
 
   async createFile(path: string): Promise<void> {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return;
     }
     await this.mutationController.createFile(path);
   }
 
   async deleteSelected(): Promise<void> {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return;
     }
     await this.mutationController.deleteSelected();
@@ -468,7 +469,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   openCreateDirectoryDialog(): void {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return;
     }
     this.store.contextMenu = null;
@@ -481,7 +482,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   openCreateFileDialog(): void {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return;
     }
     this.store.contextMenu = null;
@@ -494,7 +495,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   openDeleteDialog(entry: WorkspaceFileEntry): void {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return;
     }
     this.store.contextMenu = null;
@@ -505,7 +506,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   startInlineRename(entry: WorkspaceFileEntry): void {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return;
     }
     this.store.contextMenu = null;
@@ -520,6 +521,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   async copyToClipboard(entry: WorkspaceFileEntry): Promise<void> {
+    if (this.isExternalLocationSelected()) {
+      return;
+    }
     if (!this.host.copyEntriesToClipboard) {
       return;
     }
@@ -646,7 +650,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     entry: WorkspaceFileEntry,
     targetDirectoryPath: string
   ): Promise<void> {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return;
     }
     this.store.busyAction = "move";
@@ -659,6 +663,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
 
   async refresh(): Promise<void> {
     const selectedLocation = this.selectedLocation();
+    if (isWorkspaceFileExternalLocation(selectedLocation)) {
+      return;
+    }
     if (selectedLocation?.kind === "recent") {
       await this.loadRecentLocation(selectedLocation);
       return;
@@ -739,6 +746,11 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     this.store.inlineRenameEntryPath = null;
     this.store.inlineRenameValidation = null;
     this.clearSearchState();
+    if (location.kind === "external") {
+      this.store.selectedPath = null;
+      this.store.previewState = { status: "empty" };
+      return;
+    }
     if (location.kind === "recent") {
       await this.loadRecentLocation(location);
       return;
@@ -795,7 +807,13 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
       previousLocation?.kind !== nextLocation?.kind ||
       (previousLocation?.kind === "directory" &&
         nextLocation?.kind === "directory" &&
-        !areWorkspaceFilePathsEqual(previousLocation.path, nextLocation.path));
+        !areWorkspaceFilePathsEqual(
+          previousLocation.path,
+          nextLocation.path
+        )) ||
+      (previousLocation?.kind === "external" &&
+        nextLocation?.kind === "external" &&
+        previousLocation.externalType !== nextLocation.externalType);
     if (selectedLocationChanged) {
       await this.selectLocation(nextLocationId);
     }
@@ -820,7 +838,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     dataTransfer: Pick<DataTransfer, "files" | "items">,
     targetDirectoryPath: string
   ): Promise<WorkspaceFileManagerHostActionResult> {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return { supported: false } as const;
     }
     return this.importController.importDroppedFiles(
@@ -832,7 +850,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   async importFiles(
     targetDirectoryPath: string
   ): Promise<WorkspaceFileManagerHostActionResult> {
-    if (this.isRecentLocationSelected()) {
+    if (this.isReadOnlyLocationSelected()) {
       return { supported: false } as const;
     }
     return this.importController.importFiles(targetDirectoryPath);
@@ -879,6 +897,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
 
   private async loadSelectedLocationOrDirectory(): Promise<void> {
     const selectedLocation = this.selectedLocation();
+    if (isWorkspaceFileExternalLocation(selectedLocation)) {
+      return;
+    }
     if (selectedLocation?.kind === "recent") {
       await this.loadRecentLocation(selectedLocation);
       return;
@@ -925,6 +946,18 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
 
   private isRecentLocationSelected(): boolean {
     return isWorkspaceFileRecentLocation(this.selectedLocation());
+  }
+
+  private isExternalLocationSelected(): boolean {
+    return isWorkspaceFileExternalLocation(this.selectedLocation());
+  }
+
+  private isReadOnlyLocationSelected(): boolean {
+    const selectedLocation = this.selectedLocation();
+    return (
+      isWorkspaceFileRecentLocation(selectedLocation) ||
+      isWorkspaceFileExternalLocation(selectedLocation)
+    );
   }
 
   private resolveInitialDirectoryPath(
