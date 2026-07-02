@@ -148,16 +148,6 @@ Unified workbench chrome should keep the generic Agent title and use generic
 Agent artwork instead of provider-branded icons even when the underlying
 launch/session provider is Codex or Claude Code.
 
-Desktop hosts must pass the dock layout into AgentGUI as a conversation scope.
-`unified` maps to multi-provider scope, where the All/Codex/Claude Code filter
-is serialized into the conversation-list query and affects only list
-projection. `legacySplit` maps to single-provider scope, where the controller
-does not serialize a provider filter into the query; the conversation list
-store's legacy provider key keeps Codex and Claude Code dock panels scoped to
-their node provider. If a provider filter action fires in single-provider
-scope, the controller must reset it to All rather than mutating the composer or
-showing another provider's sessions in a provider-specific dock panel.
-
 AgentGuiNode may expose provider target selection in multiple UI-local entry
 points, including the conversation rail target grid and the provider select next
 to the composer add/reference control.

@@ -149,10 +149,6 @@ export function createWorkspaceAgentGuiContribution(input: {
       providerTargets: input.providerTargets,
       providerTargetsLoading: input.providerTargetsLoading,
       defaultProviderTargetId: input.defaultProviderTargetId,
-      conversationScope:
-        input.agentDockLayout === "unified"
-          ? "multi-provider"
-          : "single-provider",
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
       runtimeApi: input.runtimeApi,

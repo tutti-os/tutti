@@ -316,7 +316,6 @@ describe("useAgentGUINodeController", () => {
         currentUserId: "user-1",
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
-        conversationScope: "multi-provider",
         data: agentGuiData(null, "codex", {
           providerTargetId: "local:codex",
           providerTargetRef: { kind: "local-provider", provider: "codex" }
@@ -375,65 +374,6 @@ describe("useAgentGUINodeController", () => {
       });
     }
     expect(onRememberComposerDefaults).not.toHaveBeenCalled();
-  });
-
-  it("keeps single-provider scope pinned to the node provider when filter actions fire", async () => {
-    installAgentHostApi({
-      list: vi.fn(async () => ({
-        presences: [],
-        sessions: [
-          workspaceAgentSession("codex-session", {
-            provider: "codex",
-            title: "Codex session",
-            updatedAtUnixMs: 3
-          }),
-          workspaceAgentSession("claude-session", {
-            provider: "claude-code",
-            title: "Claude session",
-            updatedAtUnixMs: 2
-          })
-        ]
-      })),
-      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
-      subscribeEvents: vi.fn(() => vi.fn())
-    });
-
-    const { result } = renderHook(() =>
-      useAgentGUINodeController({
-        workspaceId: "room-1",
-        currentUserId: "user-1",
-        workspacePath: "/workspace",
-        avoidGroupingEdits: false,
-        conversationScope: "single-provider",
-        data: agentGuiData(null, "codex"),
-        onDataChange: vi.fn()
-      })
-    );
-
-    await waitFor(() => {
-      expect(
-        result.current.viewModel.conversations.map((item) => item.id)
-      ).toEqual(["codex-session"]);
-    });
-    expect(result.current.viewModel.conversationFilter).toEqual({
-      kind: "all"
-    });
-
-    act(() => {
-      result.current.actions.updateConversationFilter({
-        kind: "provider",
-        provider: "claude-code"
-      });
-    });
-
-    await waitFor(() => {
-      expect(
-        result.current.viewModel.conversations.map((item) => item.id)
-      ).toEqual(["codex-session"]);
-    });
-    expect(result.current.viewModel.conversationFilter).toEqual({
-      kind: "all"
-    });
   });
 
   it("keeps the visible conversation list reference for equal project reloads", async () => {
