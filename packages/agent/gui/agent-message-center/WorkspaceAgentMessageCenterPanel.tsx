@@ -704,7 +704,7 @@ const MessageCenterRenderedCard = memo(function MessageCenterRenderedCard({
   );
 });
 
-function MessageCenterGroupHeading({
+export function MessageCenterGroupHeading({
   group
 }: {
   group: ReturnType<typeof groupMessageCenterItems>[number];

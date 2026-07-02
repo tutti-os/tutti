@@ -53,10 +53,14 @@ import { formatAgentGuiConversationPlainTitle } from "../workbench/sessionTitle"
 export interface WorkspaceAgentMessageCenterCardProps {
   item: WorkspaceAgentMessageCenterItem;
   cardRef?: (node: HTMLElement | null) => void;
+  actionsAccessory?: ReactNode;
+  footerAccessory?: ReactNode;
+  headerAccessory?: ReactNode;
   highlighted?: boolean;
   interactive?: boolean;
   isSubmitting: boolean;
   lazySummary?: boolean;
+  summaryAccessory?: ReactNode;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
   onSubmitPrompt: (input: {
@@ -90,11 +94,15 @@ function stopMessageCenterTextPointerPropagation(
 export const WorkspaceAgentMessageCenterCard = memo(
   function WorkspaceAgentMessageCenterCard({
     cardRef,
+    actionsAccessory,
+    footerAccessory,
+    headerAccessory,
     highlighted = false,
     interactive = true,
     item,
     isSubmitting,
     lazySummary = false,
+    summaryAccessory,
     onLinkAction,
     onOpenChat,
     onSubmitPrompt
@@ -143,23 +151,26 @@ export const WorkspaceAgentMessageCenterCard = memo(
             </LazyMessageCenterTooltip>
             {item.cwd ? <ProjectPathInfo path={item.cwd} /> : null}
           </div>
-          <span
-            className={cn(
-              "workspace-agent-message-center__status inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold leading-4",
-              messageCenterStatusToneClass(statusTone)
-            )}
-            data-status={displayStatus}
-            title={statusLabel}
-          >
-            <StatusDot
-              tone={statusTone}
-              pulse={
-                isWaitingMessageCenterItem(item) || item.status === "working"
-              }
-              size="sm"
+          <span className="flex shrink-0 items-center gap-2">
+            {headerAccessory}
+            <span
+              className={cn(
+                "workspace-agent-message-center__status inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold leading-4",
+                messageCenterStatusToneClass(statusTone)
+              )}
+              data-status={displayStatus}
               title={statusLabel}
-            />
-            <span>{statusLabel}</span>
+            >
+              <StatusDot
+                tone={statusTone}
+                pulse={
+                  isWaitingMessageCenterItem(item) || item.status === "working"
+                }
+                size="sm"
+                title={statusLabel}
+              />
+              <span>{statusLabel}</span>
+            </span>
           </span>
         </div>
 
@@ -172,6 +183,8 @@ export const WorkspaceAgentMessageCenterCard = memo(
             emptyLabel={t("agentHost.workspaceAgentMessageCenterNoSummary")}
           />
         ) : null}
+
+        {summaryAccessory}
 
         {prompt && interactive ? (
           <div className="min-w-0">
@@ -190,7 +203,10 @@ export const WorkspaceAgentMessageCenterCard = memo(
           </div>
         ) : null}
 
+        {footerAccessory}
+
         <MessageCenterOpenChatButton
+          actionsAccessory={actionsAccessory}
           provider={item.provider}
           item={item}
           label={t("agentHost.workspaceAgentMessageCenterOpenChat")}
@@ -781,7 +797,7 @@ function isGenericApprovalSummary(summary: string): boolean {
   return normalized === "approval";
 }
 
-function MessageCenterSummary({
+export function MessageCenterSummary({
   emptyLabel,
   item,
   lazy,
@@ -967,13 +983,15 @@ function useDeferredMessageCenterSummaryMeasureReady(
   return ready;
 }
 
-function MessageCenterOpenChatButton({
+export function MessageCenterOpenChatButton({
+  actionsAccessory,
   alwaysVisible = false,
   item,
   label,
   onOpenChat,
   provider
 }: {
+  actionsAccessory?: ReactNode;
   alwaysVisible?: boolean;
   item: WorkspaceAgentMessageCenterItem;
   label: string;
@@ -988,29 +1006,32 @@ function MessageCenterOpenChatButton({
         identity={item.identity}
         provider={provider}
       />
-      <Button
-        type="button"
-        variant="ghost"
-        size="default"
-        className={cn(
-          "workspace-agent-message-center__open-chat-button h-auto gap-1.5 border-0 bg-transparent p-0 text-[var(--accent-codex)] shadow-none transition-[color,opacity,visibility] hover:bg-transparent hover:text-[var(--accent-codex)] focus-visible:bg-transparent focus-visible:text-[var(--accent-codex)] active:bg-transparent",
-          !alwaysVisible &&
-            "invisible opacity-0 group-hover/message-card:visible group-hover/message-card:opacity-100 group-focus-within/message-card:visible group-focus-within/message-card:opacity-100"
-        )}
-        onClick={() =>
-          onOpenChat({
-            agentSessionId: item.agentSessionId,
-            provider: item.provider
-          })
-        }
-      >
-        <ExternalLink
-          className="size-[15px]"
-          strokeWidth={2.2}
-          aria-hidden="true"
-        />
-        {label}
-      </Button>
+      <span className="inline-flex shrink-0 items-center gap-2">
+        {actionsAccessory}
+        <Button
+          type="button"
+          variant="ghost"
+          size="default"
+          className={cn(
+            "workspace-agent-message-center__open-chat-button h-auto gap-1.5 border-0 bg-transparent p-0 text-[var(--accent-codex)] shadow-none transition-[color,opacity,visibility] hover:bg-transparent hover:text-[var(--accent-codex)] focus-visible:bg-transparent focus-visible:text-[var(--accent-codex)] active:bg-transparent",
+            !alwaysVisible &&
+              "invisible opacity-0 group-hover/message-card:visible group-hover/message-card:opacity-100 group-focus-within/message-card:visible group-focus-within/message-card:opacity-100"
+          )}
+          onClick={() =>
+            onOpenChat({
+              agentSessionId: item.agentSessionId,
+              provider: item.provider
+            })
+          }
+        >
+          <ExternalLink
+            className="size-[15px]"
+            strokeWidth={2.2}
+            aria-hidden="true"
+          />
+          {label}
+        </Button>
+      </span>
     </div>
   );
 }
@@ -1267,7 +1288,7 @@ export type MessageCenterStatusTone =
   | "neutral"
   | "red";
 
-function messageCenterStatusTone(
+export function messageCenterStatusTone(
   item: WorkspaceAgentMessageCenterItem
 ): MessageCenterStatusTone {
   if (isWaitingMessageCenterItem(item)) {
