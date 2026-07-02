@@ -84,7 +84,7 @@ export function dispatchWorkspaceAppOpenUrl({
   }
 
   const payload: BrowserNodeOpenUrlEvent = {
-    reuseIfOpen: false,
+    reuseIfOpen: true,
     sourceNodeId: `workspace-app:${contents.id}`,
     type: "open-url",
     url: resolved.url
