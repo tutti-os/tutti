@@ -466,6 +466,100 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
       false
     );
   });
+
+  it("keeps processing after an interim assistant message while the turn lifecycle reports an active turn", () => {
+    const interimReplyTimelineItems: AgentHostWorkspaceAgentTimelineItem[] = [
+      timelineItems()[0]!,
+      {
+        id: 99,
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        seq: 99,
+        eventId: "event-99",
+        actorType: "agent",
+        actorId: "codex",
+        itemType: "message.assistant",
+        role: "assistant",
+        status: "completed",
+        content: "I will now dispatch the sub-agents.",
+        occurredAtUnixMs: 99,
+        createdAtUnixMs: 99
+      }
+    ];
+    const workingSession = {
+      ...session({
+        status: "working",
+        effectiveStatus: "working",
+        turnPhase: "working"
+      }),
+      turnLifecycle: {
+        activeTurnId: "turn-1",
+        phase: "running"
+      }
+    };
+
+    const detail = buildCanonicalWorkspaceAgentDetailView({
+      activity: activity(),
+      session: workingSession,
+      workspaceRoot: "/workspace/demo",
+      timelineItems: interimReplyTimelineItems
+    });
+    const conversation = projectWorkspaceAgentTimelineToConversationVM({
+      activity: activity(),
+      session: workingSession,
+      workspaceRoot: "/workspace/demo",
+      timelineItems: interimReplyTimelineItems
+    });
+
+    expect(detail.showProcessingIndicator).toBe(true);
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      true
+    );
+  });
+
+  it("does not append processing after a terminal assistant message once the turn lifecycle is settling", () => {
+    const settlingReplyTimelineItems: AgentHostWorkspaceAgentTimelineItem[] = [
+      timelineItems()[0]!,
+      {
+        id: 99,
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        seq: 99,
+        eventId: "event-99",
+        actorType: "agent",
+        actorId: "codex",
+        itemType: "message.assistant",
+        role: "assistant",
+        status: "completed",
+        content: "Done.",
+        occurredAtUnixMs: 99,
+        createdAtUnixMs: 99
+      }
+    ];
+    const settlingSession = {
+      ...session({
+        status: "working",
+        effectiveStatus: "working",
+        turnPhase: "working"
+      }),
+      turnLifecycle: {
+        activeTurnId: "turn-1",
+        phase: "running",
+        settling: true
+      }
+    };
+
+    const detail = buildCanonicalWorkspaceAgentDetailView({
+      activity: activity(),
+      session: settlingSession,
+      workspaceRoot: "/workspace/demo",
+      timelineItems: settlingReplyTimelineItems
+    });
+
+    expect(detail.showProcessingIndicator).toBe(false);
+  });
 });
 
 function activity(

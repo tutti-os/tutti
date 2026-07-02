@@ -1017,13 +1017,30 @@ function shouldShowProcessingIndicator(
   const lastAgentItem = lastTurn.agentItems.at(-1);
   if (
     lastAgentItem?.kind === "message" &&
-    isTerminalAgentMessageStatus(lastAgentItem.message.statusKind)
+    isTerminalAgentMessageStatus(lastAgentItem.message.statusKind) &&
+    !hasActiveRunningTurnLifecycle(session)
   ) {
     return false;
   }
   return !lastTurn.toolCalls.some(
     (call) => call.statusKind === "working" || call.statusKind === "waiting"
   );
+}
+
+// A completed assistant message usually means the turn is about to settle, so
+// the indicator is suppressed to avoid trailing dots after the final answer.
+// Providers can also emit completed interim messages mid-turn (e.g. codex
+// narration between tool phases); when the turn lifecycle still reports an
+// active, non-settling turn, keep the indicator visible.
+function hasActiveRunningTurnLifecycle(
+  session: BuildWorkspaceAgentSessionDetailInput["session"]
+): boolean {
+  const lifecycle = session.turnLifecycle;
+  if (!lifecycle?.activeTurnId || lifecycle.settling === true) {
+    return false;
+  }
+  const phase = lifecycle.phase?.trim().toLowerCase() ?? "";
+  return phase === "submitted" || phase === "running" || phase === "waiting";
 }
 
 function isTerminalAgentMessageStatus(

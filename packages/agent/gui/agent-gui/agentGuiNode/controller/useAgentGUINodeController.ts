@@ -9162,6 +9162,10 @@ export function useAgentGUINodeController({
         return null;
       }
       const previous = projectionConversationRef.current;
+      const turnLifecycle =
+        activeSessionState?.agentSessionId === activeConversation.id
+          ? (activeSessionState.turnLifecycle ?? null)
+          : null;
       if (
         previous &&
         previous.id === activeConversation.id &&
@@ -9170,7 +9174,13 @@ export function useAgentGUINodeController({
         previous.title === activeConversation.title &&
         previous.titleFallback === activeConversation.titleFallback &&
         previous.status === activeConversation.status &&
-        previous.cwd === activeConversation.cwd
+        previous.cwd === activeConversation.cwd &&
+        (previous.turnLifecycle?.activeTurnId ?? null) ===
+          (turnLifecycle?.activeTurnId ?? null) &&
+        (previous.turnLifecycle?.phase ?? null) ===
+          (turnLifecycle?.phase ?? null) &&
+        (previous.turnLifecycle?.settling ?? false) ===
+          (turnLifecycle?.settling ?? false)
       ) {
         return previous;
       }
@@ -9184,7 +9194,8 @@ export function useAgentGUINodeController({
             status: activeConversation.status,
             cwd: activeConversation.cwd,
             updatedAtUnixMs: activeConversation.updatedAtUnixMs,
-            syncState: activeConversation.syncState
+            syncState: activeConversation.syncState,
+            turnLifecycle
           }
         : null;
       projectionConversationRef.current = next;
@@ -9198,7 +9209,11 @@ export function useAgentGUINodeController({
       activeConversation?.status,
       activeConversation?.title,
       activeConversation?.titleFallback,
-      activeConversation?.userId
+      activeConversation?.userId,
+      activeSessionState?.agentSessionId,
+      activeSessionState?.turnLifecycle?.activeTurnId,
+      activeSessionState?.turnLifecycle?.phase,
+      activeSessionState?.turnLifecycle?.settling
     ]);
   const draftContent = activeConversationId
     ? (draftBySessionId[activeConversationId] ?? EMPTY_AGENT_COMPOSER_DRAFT)

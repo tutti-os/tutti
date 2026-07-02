@@ -909,6 +909,64 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
+  it("keeps the processing row after an interim assistant message while the turn lifecycle is running", () => {
+    const interimTimelineItems = [
+      timelineItem({
+        id: 1,
+        eventId: "user-1",
+        turnId: "turn-1",
+        actorType: "user",
+        actorId: "user-1",
+        itemType: "message.user",
+        role: "user",
+        content: "Dispatch the sub-agents",
+        occurredAtUnixMs: 10
+      }),
+      timelineItem({
+        id: 2,
+        eventId: "assistant-1",
+        turnId: "turn-1",
+        actorType: "agent",
+        actorId: "codex",
+        itemType: "message.assistant",
+        role: "assistant",
+        content: "I will now dispatch the sub-agents.",
+        status: "completed",
+        occurredAtUnixMs: 20
+      })
+    ];
+    const conversationSource = {
+      id: "session-1",
+      provider: "codex" as const,
+      title: "Codex",
+      titleFallback: null,
+      status: "working" as const,
+      cwd: "/workspace",
+      updatedAtUnixMs: 20
+    };
+
+    const withRunningTurn = buildAgentGUIConversationVM({
+      conversation: {
+        ...conversationSource,
+        turnLifecycle: { activeTurnId: "turn-1", phase: "running" }
+      },
+      workspaceRoot: "/workspace",
+      timelineItems: interimTimelineItems
+    });
+    const withoutTurnLifecycle = buildAgentGUIConversationVM({
+      conversation: conversationSource,
+      workspaceRoot: "/workspace",
+      timelineItems: interimTimelineItems
+    });
+
+    expect(withRunningTurn?.rows.some((row) => row.kind === "processing")).toBe(
+      true
+    );
+    expect(
+      withoutTurnLifecycle?.rows.some((row) => row.kind === "processing")
+    ).toBe(false);
+  });
+
   it("derives pending approval from ACP call.started approval timeline items", () => {
     const conversation = buildAgentGUIConversationVM({
       conversation: {
