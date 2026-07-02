@@ -1,3 +1,4 @@
+//revive:disable:file-length-limit
 package main
 
 import (
@@ -121,11 +122,7 @@ func generateProtocolTypes(schemaDir, repoRoot, codexCommit, codexVersion string
 		return err
 	}
 
-	if err := writeProtocolMetadata(outDir, codexCommit, codexVersion); err != nil {
-		return err
-	}
-
-	return nil
+	return writeProtocolMetadata(outDir, codexCommit, codexVersion)
 }
 
 func filterManualTypeDeclarations(src []byte, manualTypes map[string]struct{}) []byte {
@@ -152,10 +149,6 @@ func filterManualTypeDeclarations(src []byte, manualTypes map[string]struct{}) [
 		i++
 	}
 	return []byte(strings.Join(out, ""))
-}
-
-type schemaDoc struct {
-	Definitions map[string]json.RawMessage `json:"definitions"`
 }
 
 type schemaVariant struct {
@@ -218,11 +211,7 @@ func generateRPCStubs(schemaDir, repoRoot, codexCommit string) error {
 		return err
 	}
 
-	if err := writeFile(outDir, "notifications_gen.go", renderNotifications(notifications, codexCommit)); err != nil {
-		return err
-	}
-
-	return nil
+	return writeFile(outDir, "notifications_gen.go", renderNotifications(notifications, codexCommit))
 }
 
 func parseDefinitionNames(schemaDir string) (map[string]struct{}, error) {
@@ -556,7 +545,7 @@ func resolveResponseType(method rpcMethod, defs map[string]struct{}, overrides m
 
 func methodBaseName(method string) string {
 	parts := strings.FieldsFunc(method, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9')
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
 	})
 	var b strings.Builder
 	for _, part := range parts {
@@ -606,9 +595,9 @@ func renderClientRequests(methods []rpcMethod, codexCommit string) []byte {
 	b.WriteString("type ClientRequests interface {\n")
 	for _, method := range methods {
 		if method.ParamsType == "" {
-			b.WriteString(fmt.Sprintf("\t%s(ctx context.Context) (*%s, error)\n", methodName(method.Method), method.ResponseType))
+			fmt.Fprintf(&b, "\t%s(ctx context.Context) (*%s, error)\n", methodName(method.Method), method.ResponseType)
 		} else {
-			b.WriteString(fmt.Sprintf("\t%s(ctx context.Context, params %s) (*%s, error)\n", methodName(method.Method), paramsType(method.ParamsType), method.ResponseType))
+			fmt.Fprintf(&b, "\t%s(ctx context.Context, params %s) (*%s, error)\n", methodName(method.Method), paramsType(method.ParamsType), method.ResponseType)
 		}
 	}
 	b.WriteString("}\n\n")
@@ -616,17 +605,17 @@ func renderClientRequests(methods []rpcMethod, codexCommit string) []byte {
 	b.WriteString("// Client implements ClientRequests using JSON-RPC.\n")
 	for _, method := range methods {
 		if method.ParamsType == "" {
-			b.WriteString(fmt.Sprintf("func (c *Client) %s(ctx context.Context) (*%s, error) {\n", methodName(method.Method), method.ResponseType))
+			fmt.Fprintf(&b, "func (c *Client) %s(ctx context.Context) (*%s, error) {\n", methodName(method.Method), method.ResponseType)
 		} else {
-			b.WriteString(fmt.Sprintf("func (c *Client) %s(ctx context.Context, params %s) (*%s, error) {\n", methodName(method.Method), paramsType(method.ParamsType), method.ResponseType))
+			fmt.Fprintf(&b, "func (c *Client) %s(ctx context.Context, params %s) (*%s, error) {\n", methodName(method.Method), paramsType(method.ParamsType), method.ResponseType)
 		}
 		b.WriteString("\tvar result ")
 		b.WriteString(method.ResponseType)
 		b.WriteString("\n")
 		if method.ParamsType == "" {
-			b.WriteString(fmt.Sprintf("\tif err := c.Call(ctx, %q, nil, &result); err != nil {\n", method.Method))
+			fmt.Fprintf(&b, "\tif err := c.Call(ctx, %q, nil, &result); err != nil {\n", method.Method)
 		} else {
-			b.WriteString(fmt.Sprintf("\tif err := c.Call(ctx, %q, params, &result); err != nil {\n", method.Method))
+			fmt.Fprintf(&b, "\tif err := c.Call(ctx, %q, params, &result); err != nil {\n", method.Method)
 		}
 		b.WriteString("\t\treturn nil, err\n\t}\n\treturn &result, nil\n}\n\n")
 	}
@@ -648,9 +637,9 @@ func renderServerRequests(methods []rpcMethod, codexCommit string) []byte {
 	b.WriteString("type ServerRequestHandler interface {\n")
 	for _, method := range methods {
 		if method.ParamsType == "" {
-			b.WriteString(fmt.Sprintf("\t%s(ctx context.Context) (*%s, error)\n", methodName(method.Method), method.ResponseType))
+			fmt.Fprintf(&b, "\t%s(ctx context.Context) (*%s, error)\n", methodName(method.Method), method.ResponseType)
 		} else {
-			b.WriteString(fmt.Sprintf("\t%s(ctx context.Context, params %s) (*%s, error)\n", methodName(method.Method), paramsType(method.ParamsType), method.ResponseType))
+			fmt.Fprintf(&b, "\t%s(ctx context.Context, params %s) (*%s, error)\n", methodName(method.Method), paramsType(method.ParamsType), method.ResponseType)
 		}
 	}
 	b.WriteString("}\n\n")
@@ -661,18 +650,18 @@ func renderServerRequests(methods []rpcMethod, codexCommit string) []byte {
 	b.WriteString("type serverRequestParser func(json.RawMessage) (ParsedServerRequest, error)\n\n")
 	b.WriteString("var serverRequestParsers = map[string]serverRequestParser{\n")
 	for _, method := range methods {
-		b.WriteString(fmt.Sprintf("\t%q: func(params json.RawMessage) (ParsedServerRequest, error) {\n", method.Method))
+		fmt.Fprintf(&b, "\t%q: func(params json.RawMessage) (ParsedServerRequest, error) {\n", method.Method)
 		if method.ParamsType == "" {
-			b.WriteString(fmt.Sprintf("\t\treturn ParsedServerRequest{Method: %q, Params: nil, Raw: params}, nil\n", method.Method))
+			fmt.Fprintf(&b, "\t\treturn ParsedServerRequest{Method: %q, Params: nil, Raw: params}, nil\n", method.Method)
 		} else {
 			b.WriteString("\t\tvar payload ")
 			b.WriteString(method.ParamsType)
 			b.WriteString("\n")
 			b.WriteString("\t\tif len(params) > 0 {\n\t\t\tif err := json.Unmarshal(params, &payload); err != nil {\n\t\t\t\treturn ParsedServerRequest{Method: ")
-			b.WriteString(fmt.Sprintf("%q", method.Method))
+			fmt.Fprintf(&b, "%q", method.Method)
 			b.WriteString(", Raw: params}, err\n\t\t\t}\n\t\t}\n")
 			b.WriteString("\t\treturn ParsedServerRequest{Method: ")
-			b.WriteString(fmt.Sprintf("%q", method.Method))
+			fmt.Fprintf(&b, "%q", method.Method)
 			b.WriteString(", Params: payload, Raw: params}, nil\n")
 		}
 		b.WriteString("\t},\n")
@@ -691,7 +680,7 @@ func renderServerRequests(methods []rpcMethod, codexCommit string) []byte {
 	b.WriteString("func dispatchServerRequest(ctx context.Context, handler ServerRequestHandler, req JSONRPCRequest) (any, error) {\n")
 	b.WriteString("\tswitch req.Method {\n")
 	for _, method := range methods {
-		b.WriteString(fmt.Sprintf("\tcase %q:\n", method.Method))
+		fmt.Fprintf(&b, "\tcase %q:\n", method.Method)
 		if method.ParamsType == "" {
 			b.WriteString("\t\treturn handler.")
 			b.WriteString(methodName(method.Method))
@@ -723,18 +712,18 @@ func renderNotifications(notifications []rpcNotification, codexCommit string) []
 	b.WriteString("type notificationParser func(json.RawMessage) (Notification, error)\n\n")
 	b.WriteString("var notificationParsers = map[string]notificationParser{\n")
 	for _, notification := range notifications {
-		b.WriteString(fmt.Sprintf("\t%q: func(params json.RawMessage) (Notification, error) {\n", notification.Method))
+		fmt.Fprintf(&b, "\t%q: func(params json.RawMessage) (Notification, error) {\n", notification.Method)
 		if notification.ParamsType == "" {
-			b.WriteString(fmt.Sprintf("\t\treturn Notification{Method: %q, Params: nil, Raw: params}, nil\n", notification.Method))
+			fmt.Fprintf(&b, "\t\treturn Notification{Method: %q, Params: nil, Raw: params}, nil\n", notification.Method)
 		} else {
 			b.WriteString("\t\tvar payload ")
 			b.WriteString(notification.ParamsType)
 			b.WriteString("\n")
 			b.WriteString("\t\tif len(params) > 0 {\n\t\t\tif err := json.Unmarshal(params, &payload); err != nil {\n\t\t\t\treturn Notification{Method: ")
-			b.WriteString(fmt.Sprintf("%q", notification.Method))
+			fmt.Fprintf(&b, "%q", notification.Method)
 			b.WriteString(", Raw: params}, err\n\t\t\t}\n\t\t}\n")
 			b.WriteString("\t\treturn Notification{Method: ")
-			b.WriteString(fmt.Sprintf("%q", notification.Method))
+			fmt.Fprintf(&b, "%q", notification.Method)
 			b.WriteString(", Params: payload, Raw: params}, nil\n")
 		}
 		b.WriteString("\t},\n")
@@ -829,9 +818,9 @@ func writeProtocolMetadata(outDir, codexCommit, codexVersion string) error {
 	b.WriteString(generatedHeader(codexCommit))
 	b.WriteString("package codexproto\n\n")
 	b.WriteString("// GeneratedCodexCommit is the Codex source commit used to generate this protocol package.\n")
-	b.WriteString(fmt.Sprintf("const GeneratedCodexCommit = %q\n\n", codexCommit))
+	fmt.Fprintf(&b, "const GeneratedCodexCommit = %q\n\n", codexCommit)
 	b.WriteString("// GeneratedCodexVersion is the Codex package version used to generate this protocol package.\n")
-	b.WriteString(fmt.Sprintf("const GeneratedCodexVersion = %q\n", codexVersion))
+	fmt.Fprintf(&b, "const GeneratedCodexVersion = %q\n", codexVersion)
 	return writeFile(outDir, "metadata_gen.go", []byte(b.String()))
 }
 

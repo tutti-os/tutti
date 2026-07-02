@@ -1844,7 +1844,7 @@ func (a *releasableAdapter) Resume(_ context.Context, session Session) error {
 	return nil
 }
 
-func (a *releasableAdapter) Close(context.Context, Session) error { return nil }
+func (*releasableAdapter) Close(context.Context, Session) error { return nil }
 
 func (a *releasableAdapter) ValidatePromptContent(Session, []PromptContentBlock) error {
 	if a.validateEntered != nil {

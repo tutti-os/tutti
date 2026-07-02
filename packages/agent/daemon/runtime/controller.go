@@ -650,7 +650,7 @@ func (c *Controller) releaseIdleLiveSession(
 	idleAfterMS int64,
 ) ReleaseIdleLiveSessionsResult {
 	var result ReleaseIdleLiveSessionsResult
-	releaseAdapter, probe, ok := liveSessionReleaseAdapter(adapter)
+	_, probe, ok := liveSessionReleaseAdapter(adapter)
 	if !ok {
 		result.SkippedUnsupported = 1
 		return result
@@ -680,7 +680,7 @@ func (c *Controller) releaseIdleLiveSession(
 		result.SkippedNotLive = 1
 		return result
 	}
-	releaseAdapter, probe, ok = liveSessionReleaseAdapter(adapter)
+	releaseAdapter, probe, ok := liveSessionReleaseAdapter(adapter)
 	if !ok {
 		result.SkippedUnsupported = 1
 		return result
@@ -1955,37 +1955,6 @@ func (c *Controller) PublishStreamEvent(roomID, agentSessionID string, event Str
 		return
 	}
 	c.hub.Publish(roomID, agentSessionID, []StreamEvent{event})
-}
-
-func (c *Controller) publishSessionStateChanged(session Session) {
-	if c == nil || c.hub == nil {
-		return
-	}
-	roomID := strings.TrimSpace(session.RoomID)
-	agentSessionID := strings.TrimSpace(session.AgentSessionID)
-	if roomID == "" || agentSessionID == "" {
-		return
-	}
-	c.hub.Publish(roomID, agentSessionID, []StreamEvent{sessionStateSnapshotStreamEvent(session)})
-}
-
-func (c *Controller) publishSessionStateSnapshotChanged(session Session) {
-	if c == nil || c.hub == nil {
-		return
-	}
-	roomID := strings.TrimSpace(session.RoomID)
-	agentSessionID := strings.TrimSpace(session.AgentSessionID)
-	if roomID == "" || agentSessionID == "" {
-		return
-	}
-	snapshot := c.sessionStateSnapshot(session)
-	if snapshot.AgentSessionID == "" {
-		return
-	}
-	c.hub.Publish(roomID, agentSessionID, []StreamEvent{{
-		EventType: StreamEventStatePatch,
-		Data:      statePatchFromSessionStateSnapshot(snapshot),
-	}})
 }
 
 func (c *Controller) publishSessionStatePatch(session Session, patch agentsessionstore.WorkspaceAgentStatePatch) {

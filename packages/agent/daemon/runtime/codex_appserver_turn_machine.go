@@ -122,7 +122,7 @@ func (a *CodexAppServerAdapter) settleActiveTurn(
 	}
 }
 
-func (a *CodexAppServerAdapter) activeTurnMatchesProviderTurnIDLocked(
+func (*CodexAppServerAdapter) activeTurnMatchesProviderTurnIDLocked(
 	appSession *codexAppServerSession,
 	providerTurnID string,
 ) bool {

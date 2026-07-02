@@ -10,13 +10,6 @@ import (
 	"github.com/tutti-os/tutti/packages/agentactivity/daemon/internal/titletext"
 )
 
-func acpLiveStateIsEmpty(state acpLiveState) bool {
-	return strings.TrimSpace(state.currentMode) == "" &&
-		!state.commandsKnown &&
-		len(state.availableCommands) == 0 &&
-		len(state.configOptions) == 0 &&
-		len(state.configOptionDescriptors) == 0
-}
 func acpModeValue(update map[string]any) string {
 	return firstNonEmpty(
 		// `currentModeId` is the ACP-canonical field on a current_mode_update
@@ -310,79 +303,6 @@ func acpTextFromValue(value any) string {
 		}
 	}
 	return ""
-}
-
-func acpUpdateEvents(session Session, turnID string, raw json.RawMessage, normalizer *acpTurnNormalizer) []activityshared.Event {
-	var params struct {
-		Update map[string]any `json:"update"`
-	}
-	if err := json.Unmarshal(raw, &params); err != nil || params.Update == nil {
-		return nil
-	}
-	updateType := asString(params.Update["sessionUpdate"])
-	switch updateType {
-	case "user_message_chunk":
-		return nil
-	case "agent_message_chunk":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_message_chunk", true); ok {
-			return events
-		}
-		content := acpTextContent(params.Update["content"])
-		if content == "" {
-			return nil
-		}
-		if normalizer != nil {
-			return normalizer.AppendAssistantChunk(session, turnID, content)
-		}
-		return nil
-	case "agent_thought_chunk":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_thought_chunk", true); ok {
-			return events
-		}
-		content := acpTextContent(params.Update["content"])
-		if content == "" || normalizer == nil {
-			return nil
-		}
-		return normalizer.AppendThinkingChunk(session, turnID, content)
-	case "tool_call", "tool_call_update":
-		if normalizer != nil {
-			if events, ok := normalizer.ToolCallEvents(session, turnID, params.Update); ok {
-				return events
-			}
-			return nil
-		}
-		if event, ok := acpToolCallEvent(session, turnID, params.Update); ok {
-			return []activityshared.Event{event}
-		}
-		return nil
-	case "session_info_update":
-		if event, ok := acpSessionTitleEvent(session, params.Update); ok {
-			return []activityshared.Event{event}
-		}
-		return nil
-	case "config_option_update":
-		if event, ok := acpConfigOptionsUpdatedEvent(session, params.Update); ok {
-			return []activityshared.Event{event}
-		}
-		return nil
-	case "usage_update":
-		if event, ok := acpUsageUpdatedEvent(session); ok {
-			return []activityshared.Event{event}
-		}
-		return nil
-	case "stream_error", "warning", "system_notice":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, updateType, true); ok {
-			return events
-		}
-		return nil
-	case "available_commands_update", "current_mode_update", "plan":
-		return nil
-	default:
-		if updateType == "" {
-			return nil
-		}
-		return nil
-	}
 }
 
 func acpSystemNoticeEvents(session Session, turnID string, update map[string]any, _ *acpTurnNormalizer, fallbackKind string, allowSyntheticNotice bool) ([]activityshared.Event, bool) {

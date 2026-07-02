@@ -63,56 +63,6 @@ func (t *scriptedACPTransport) Start(_ context.Context, spec ProcessSpec) (Proce
 	return t.conn, nil
 }
 
-func acpRequestParamCWD(t *testing.T, conn *scriptedACPConnection, method string) string {
-	t.Helper()
-	return asString(acpRequestParams(t, conn, method)["cwd"])
-}
-
-func acpRequestParams(t *testing.T, conn *scriptedACPConnection, method string) map[string]any {
-	t.Helper()
-
-	requests := acpRequestParamsList(t, conn, method)
-	if len(requests) == 0 {
-		t.Fatalf("missing ACP request method %q", method)
-	}
-	return requests[0]
-}
-
-func lastACPRequestParams(t *testing.T, conn *scriptedACPConnection, method string) map[string]any {
-	t.Helper()
-
-	requests := acpRequestParamsList(t, conn, method)
-	if len(requests) == 0 {
-		t.Fatalf("missing ACP request method %q", method)
-	}
-	return requests[len(requests)-1]
-}
-
-func acpRequestParamsList(t *testing.T, conn *scriptedACPConnection, method string) []map[string]any {
-	t.Helper()
-
-	conn.mu.Lock()
-	sent := append([][]byte(nil), conn.sent...)
-	conn.mu.Unlock()
-
-	var matches []map[string]any
-	for _, data := range sent {
-		for _, line := range acpScanLines(data) {
-			var request struct {
-				Method string         `json:"method"`
-				Params map[string]any `json:"params"`
-			}
-			if err := json.Unmarshal([]byte(line), &request); err != nil {
-				t.Fatalf("unmarshal ACP request: %v", err)
-			}
-			if request.Method == method {
-				matches = append(matches, request.Params)
-			}
-		}
-	}
-	return matches
-}
-
 type scriptedACPConnection struct {
 	mu                         sync.Mutex
 	sent                       [][]byte
@@ -651,30 +601,6 @@ func (c *scriptedACPConnection) sendAvailableCommandsUpdate() {
 	})
 }
 
-func (c *scriptedACPConnection) sendConfigOptionsUpdate(key string, value string) {
-	c.sendJSON(map[string]any{
-		"jsonrpc": "2.0",
-		"method":  acpMethodUpdate,
-		"params": map[string]any{
-			"sessionId": "codex-acp-session-1",
-			"update": map[string]any{
-				"sessionUpdate": "config_option_update",
-				"key":           key,
-				"value":         value,
-				"configOptions": []any{
-					map[string]any{
-						"id":           key,
-						"currentValue": value,
-						"options": []any{
-							map[string]any{"value": value, "name": value},
-						},
-					},
-				},
-			},
-		},
-	})
-}
-
 func (c *scriptedACPConnection) sendJSON(value any) {
 	raw, _ := json.Marshal(value)
 	raw = append(raw, '\n')
@@ -685,25 +611,6 @@ func (c *scriptedACPConnection) permissionOptionID() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.selectedPermissionOption
-}
-
-func (c *scriptedACPConnection) interactiveOutcome() map[string]any {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return clonePayload(c.selectedInteractiveResult)
-}
-
-func (c *scriptedACPConnection) setConfigOptionCalls() []map[string]any {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if len(c.setConfigOptionSnapshots) == 0 {
-		return nil
-	}
-	out := make([]map[string]any, 0, len(c.setConfigOptionSnapshots))
-	for _, snapshot := range c.setConfigOptionSnapshots {
-		out = append(out, clonePayload(snapshot))
-	}
-	return out
 }
 
 func (c *scriptedACPConnection) defaultConfigOptions() []map[string]any {

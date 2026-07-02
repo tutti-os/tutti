@@ -1,28 +1,12 @@
 package agentruntime
 
 import (
-	"strings"
 	"testing"
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
 )
-
-func hasActivityMessage(events []activityshared.Event, role activityshared.MessageRole, content string) bool {
-	for _, event := range events {
-		if event.Type != activityshared.EventMessageAppended && event.Type != activityshared.EventMessageCreated {
-			continue
-		}
-		if role != "" && event.Payload.Role != role {
-			continue
-		}
-		if strings.TrimSpace(event.Payload.Content) == content {
-			return true
-		}
-	}
-	return false
-}
 
 func activityMessagesWithRole(events []activityshared.Event, role activityshared.MessageRole) []activityshared.Event {
 	var out []activityshared.Event
@@ -100,21 +84,6 @@ func reportsWithTimelineItem(reports []agentsessionstore.ReportActivityInput, it
 	return out
 }
 
-func approvalMessageUpdates(events []StreamEvent) []agentsessionstore.WorkspaceAgentMessageUpdate {
-	var out []agentsessionstore.WorkspaceAgentMessageUpdate
-	for _, event := range events {
-		if event.EventType != StreamEventMessageUpdate {
-			continue
-		}
-		update, ok := event.Data.(agentsessionstore.WorkspaceAgentMessageUpdate)
-		if !ok || asString(update.Payload["callType"]) != "approval" {
-			continue
-		}
-		out = append(out, update)
-	}
-	return out
-}
-
 func waitForCondition(t *testing.T, condition func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -130,25 +99,6 @@ func waitForCondition(t *testing.T, condition func() bool) {
 func containsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
-			return true
-		}
-	}
-	return false
-}
-
-func containsCommandSequence(values []string, sequence []string) bool {
-	if len(sequence) == 0 {
-		return true
-	}
-	for index := 0; index+len(sequence) <= len(values); index++ {
-		match := true
-		for offset := range sequence {
-			if values[index+offset] != sequence[offset] {
-				match = false
-				break
-			}
-		}
-		if match {
 			return true
 		}
 	}

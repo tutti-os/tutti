@@ -1,4 +1,3 @@
-//nolint:unused // Retain migrated helpers until the next agent-daemon decomposition pass.
 package agentruntime
 
 import (

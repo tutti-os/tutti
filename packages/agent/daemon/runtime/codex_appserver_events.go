@@ -76,7 +76,7 @@ var appServerNoticeItems = map[string]struct {
 	"contextCompaction": {message: "Context compacted.", emitOnCompleted: true},
 }
 
-func (a *CodexAppServerAdapter) appServerItemEvents(
+func (*CodexAppServerAdapter) appServerItemEvents(
 	session Session,
 	turnID string,
 	item map[string]any,
@@ -748,7 +748,7 @@ func appServerEventsWithOwnerThreadID(events []activityshared.Event, ownerThread
 	return events
 }
 
-func (a *CodexAppServerAdapter) logAppServerForeignThreadDrop(
+func (*CodexAppServerAdapter) logAppServerForeignThreadDrop(
 	session Session,
 	method string,
 	params map[string]any,

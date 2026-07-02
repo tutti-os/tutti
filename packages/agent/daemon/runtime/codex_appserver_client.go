@@ -213,13 +213,6 @@ func codexProtoParams[T any](params map[string]any) (T, error) {
 	return out, nil
 }
 
-func codexProtoRaw(result any) (json.RawMessage, error) {
-	if result == nil {
-		return nil, nil
-	}
-	return json.Marshal(result)
-}
-
 func (c *codexAppServerClient) Initialize(
 	ctx context.Context,
 	timeout time.Duration,

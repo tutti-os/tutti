@@ -2150,7 +2150,6 @@ func canonicalizeSessionMessageBucketsLocked(entry *sessionEntry) bool {
 		delete(entry.sessionMessages, sessionID)
 		delete(entry.messageVersionBySession, sessionID)
 		delete(entry.remoteMessageVersionBySession, sessionID)
-		changed = true
 	}
 	return changed
 }
