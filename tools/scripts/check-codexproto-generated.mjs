@@ -51,6 +51,7 @@ try {
     ],
     workspaceRoot
   );
+  assertNoUntrackedGeneratedFiles();
 
   console.log("codexproto generated artifacts are current");
 } finally {
@@ -82,6 +83,31 @@ function compareDirectories(expectedRoot, actualRoot) {
       [
         "codexproto schema drift detected against pinned Codex commit",
         ...mismatches.map((line) => `- ${line}`)
+      ].join("\n")
+    );
+  }
+}
+
+// `git diff --exit-code` ignores untracked files, so codegen creating a
+// brand-new artifact (e.g. a fresh *_gen.go) would otherwise pass the check
+// while the file is uncommitted.
+function assertNoUntrackedGeneratedFiles() {
+  const result = spawnSync(
+    "git",
+    ["status", "--porcelain", "--", "packages/agent/daemon/runtime/codexproto"],
+    { cwd: workspaceRoot, encoding: "utf8" }
+  );
+  if (result.status !== 0) {
+    throw new Error("git status for codexproto failed");
+  }
+  const untracked = result.stdout
+    .split("\n")
+    .filter((line) => line.startsWith("??"));
+  if (untracked.length > 0) {
+    throw new Error(
+      [
+        "codexproto codegen produced untracked files (invisible to git diff); commit them:",
+        ...untracked.map((line) => `- ${line.slice(3)}`)
       ].join("\n")
     );
   }
