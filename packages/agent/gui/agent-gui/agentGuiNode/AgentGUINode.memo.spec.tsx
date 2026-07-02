@@ -7,6 +7,7 @@ import type {
   AgentGUINodeViewModel
 } from "./model/agentGuiNodeTypes";
 import { AgentGUINode } from "./AgentGUINode";
+import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
 
 const { agentGuiNodeViewSpy } = vi.hoisted(() => ({
   agentGuiNodeViewSpy: vi.fn()
@@ -222,6 +223,9 @@ function createViewModel(
     userProjects: [],
     conversation: null,
     conversationDetail: null,
+    selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+    providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    providerTargetsLoading: false,
     draftPrompt: "",
     draftContent,
     sessionChrome: {

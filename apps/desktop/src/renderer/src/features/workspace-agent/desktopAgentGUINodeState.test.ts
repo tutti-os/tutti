@@ -31,15 +31,14 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
   const workbenchState = normalizeDesktopAgentGUIWorkbenchState({
     composerOverrides: { permissionModeId: "full-access" },
     conversationRailCollapsed: true,
+    agentTargetId: "daemon-gemini",
     lastActiveAgentSessionId: "session-1",
     lastActiveConversationTitle: "A title",
     provider: "gemini"
   });
 
   assert.deepEqual(workbenchState, {
-    composerOverrides: { permissionModeId: "full-access" },
-    composerOverridesByAgentTargetId: null,
-    composerOverridesByProvider: null,
+    agentTargetId: "daemon-gemini",
     conversationRailCollapsed: true,
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: "session-1"
@@ -54,13 +53,12 @@ test("desktop agent gui workbench projection preserves rail state and permission
       conversationCount: 3,
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360.4,
+      agentTargetId: "daemon-gemini",
       lastActiveAgentSessionId: "session-1",
       lastActiveConversationTitle: "A title"
     }),
     {
-      composerOverrides: { permissionModeId: "read-only" },
-      composerOverridesByAgentTargetId: null,
-      composerOverridesByProvider: null,
+      agentTargetId: "daemon-gemini",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1"
@@ -77,7 +75,6 @@ test("desktop agent gui workbench state equality includes rail state", () => {
         lastActiveAgentSessionId: "session-1"
       }),
       normalizeDesktopAgentGUIWorkbenchState({
-        composerOverrides: { permissionModeId: "auto" },
         lastActiveAgentSessionId: "session-1",
         provider: "gemini"
       })
@@ -102,18 +99,18 @@ test("desktop agent gui workbench state equality includes rail state", () => {
     areDesktopAgentGUIWorkbenchStatesEqual(
       normalizeDesktopAgentGUIWorkbenchState({
         lastActiveAgentSessionId: "session-1",
-        lastActiveConversationTitle: "First"
+        providerTargetId: "legacy-target"
       }),
       normalizeDesktopAgentGUIWorkbenchState({
         lastActiveAgentSessionId: "session-1",
-        lastActiveConversationTitle: "Second"
+        agentTargetId: "legacy-target"
       })
     ),
     true
   );
 });
 
-test("desktop agent gui workbench state preserves composer overrides by provider", () => {
+test("desktop agent gui workbench state ignores composer overrides by provider", () => {
   const workbenchState = normalizeDesktopAgentGUIWorkbenchState({
     composerOverridesByProvider: {
       codex: {
@@ -132,21 +129,10 @@ test("desktop agent gui workbench state preserves composer overrides by provider
     }
   });
 
-  assert.deepEqual(workbenchState.composerOverridesByProvider, {
-    codex: {
-      model: "gpt-5",
-      permissionModeId: "auto",
-      reasoningEffort: "high"
-    },
-    gemini: {
-      model: "gemini-pro",
-      permissionModeId: "full-access",
-      reasoningEffort: "medium"
-    }
-  });
+  assert.equal("composerOverridesByProvider" in workbenchState, false);
 });
 
-test("desktop agent gui workbench state preserves composer overrides by agent target", () => {
+test("desktop agent gui workbench state ignores composer overrides by agent target", () => {
   const workbenchState = normalizeDesktopAgentGUIWorkbenchState({
     composerOverridesByAgentTargetId: {
       "local:codex": {
@@ -157,13 +143,7 @@ test("desktop agent gui workbench state preserves composer overrides by agent ta
     }
   });
 
-  assert.deepEqual(workbenchState.composerOverridesByAgentTargetId, {
-    "local:codex": {
-      model: "gpt-5",
-      permissionModeId: "auto",
-      reasoningEffort: "high"
-    }
-  });
+  assert.equal("composerOverridesByAgentTargetId" in workbenchState, false);
 });
 
 test("desktop agent gui composer defaults are agent target keyed", () => {
@@ -252,11 +232,10 @@ test("desktop agent gui node state source consumes instance launch state after n
   source.writeNodeState({
     instanceId: "agent-gui:gemini",
     state: {
-      composerOverrides: { permissionModeId: "full-access" },
+      agentTargetId: "daemon-gemini",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
-      lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title"
+      lastActiveAgentSessionId: "session-1"
     },
     typeId: "agent-gui"
   });
@@ -270,9 +249,7 @@ test("desktop agent gui node state source consumes instance launch state after n
       workspaceId: "workspace-1"
     }),
     {
-      composerOverrides: { permissionModeId: "full-access" },
-      composerOverridesByAgentTargetId: null,
-      composerOverridesByProvider: null,
+      agentTargetId: "daemon-gemini",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1"
@@ -283,11 +260,10 @@ test("desktop agent gui node state source consumes instance launch state after n
     instanceId: "agent-gui:gemini",
     nodeId: "node-1",
     state: {
-      composerOverrides: { permissionModeId: "read-only" },
+      agentTargetId: "daemon-gemini-2",
       conversationRailCollapsed: false,
       conversationRailWidthPx: 420,
-      lastActiveAgentSessionId: "session-2",
-      lastActiveConversationTitle: "Node title"
+      lastActiveAgentSessionId: "session-2"
     },
     typeId: "agent-gui"
   });
@@ -301,13 +277,10 @@ test("desktop agent gui node state source consumes instance launch state after n
       workspaceId: "workspace-1"
     }),
     {
-      composerOverrides: { permissionModeId: "read-only" },
-      composerOverridesByAgentTargetId: null,
-      composerOverridesByProvider: null,
+      agentTargetId: "daemon-gemini-2",
       conversationRailCollapsed: false,
       conversationRailWidthPx: 420,
-      lastActiveAgentSessionId: "session-2",
-      lastActiveConversationTitle: "Node title"
+      lastActiveAgentSessionId: "session-2"
     }
   );
   assert.equal(

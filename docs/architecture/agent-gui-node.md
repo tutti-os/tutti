@@ -144,6 +144,22 @@ Claude Code AgentGUI nodes, but launches still create provider-specific
 multi-instance AgentGUI nodes. The unified entry may choose a default target or
 provider for its launch payload; that selection must not synthesize a provider
 or replace the provider identity recorded on the node/session.
+Unified workbench chrome should keep the generic Agent title and use generic
+Agent artwork instead of provider-branded icons even when the underlying
+launch/session provider is Codex or Claude Code.
+
+AgentGuiNode may expose provider target selection in multiple UI-local entry
+points, including the conversation rail target grid and the provider select next
+to the composer add/reference control.
+These controls are launch/default selection surfaces only: they must flow
+through the controller's provider-selection action, resolve an
+`AgentGUIProviderTarget`, return the node to the home composer when switching
+providers, and preserve the real provider identity used by runtime create/send
+commands. Once a session is active, the composer provider select is display-only
+and must not switch the running session. Do not encode provider switching only
+as a conversation-list filter; filters can scope the visible Codex/Claude
+session list, while provider selection changes which provider a new empty
+composer will launch.
 
 This means an AgentGUI bug can start at several different interfaces. Do not
 assume that a visible UI symptom starts in the visible UI component.
@@ -606,10 +622,9 @@ User-visible rules:
 - AgentGUI conversation titles must use the shared title projection before they
   reach desktop-owned chrome, dock previews, message center cards, or toast
   notifications. Do not display raw `session.title.trim()` in those surfaces.
-- Live runtime snapshot data is the primary source for workbench and dock
-  titles. `lastActiveConversationTitle` is a hydration fallback only; it must not
-  override a current snapshot title and must be cleared when starting a new
-  conversation.
+- Live runtime snapshot data is the source for workbench and dock titles. Do
+  not persist or restore `lastActiveConversationTitle` from workbench node
+  state.
 - Title projection must normalize rich mention markdown, strip provider-only and
   untitled placeholders from workbench chrome, and use cached first-user-message
   content only when the session title is not displayable.
@@ -966,13 +981,18 @@ runtime session reuse must match that ref as part of the launch key. A target
 may identify shared, local, remote, or other host-owned launch mechanisms, but
 those meanings stay outside AgentGUI.
 
-When `providerTargets` is omitted or empty, AgentGUI may synthesize local
-targets from the static provider catalog for picker/display compatibility. Those
-fallback targets do not change the legacy activation contract: AgentGUI does not
-persist or send their `providerTargetRef`. For system local Codex and Claude
-Code targets, the synthesized targets may expose `local:codex` and
-`local:claude-code` as `agentTargetId`, matching the legacy local
-`providerTargetId` format so old node state can fall back without remapping.
+When `providerTargets` is omitted, package-level AgentGUI hosts may synthesize
+local targets from the static provider catalog for picker/display compatibility.
+An explicit `providerTargets` array, including an empty array, is authoritative
+and must not fall back to static local targets. Desktop workbench loads this
+array from tuttid `agent_targets`; while that fetch is in progress it passes an
+empty array plus a loading flag so the rail can show a loading state instead of
+pretending Codex or Claude Code came from durable target data. Fallback targets
+do not change the legacy activation contract: AgentGUI does not persist or send
+their `providerTargetRef`. For system local Codex and Claude Code targets, the
+synthesized targets may expose `local:codex` and `local:claude-code` as
+`agentTargetId`, matching the legacy local `providerTargetId` format so old node
+state can fall back without remapping.
 
 ### Conversation Projection
 

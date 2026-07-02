@@ -118,6 +118,7 @@ export interface CreateAgentGuiWorkbenchContributionInput {
   id?: string;
   providerAvailability?: AgentGuiWorkbenchProviderAvailability;
   providerTargets?: readonly AgentGUIProviderTarget[] | null;
+  providerTargetsLoading?: boolean;
   renderBody(
     context: WorkbenchHostNodeBodyContext<
       AgentGuiWorkbenchState | null,
@@ -150,6 +151,7 @@ export interface CreateAgentGuiWorkbenchContributionInput {
     payload: unknown;
     reason: WorkbenchHostLaunchRequest["reason"];
   }) => unknown | null | undefined;
+  unifiedDockIconUrl?: string;
   workspaceId: string;
 }
 
@@ -169,11 +171,13 @@ export function createAgentGuiWorkbenchContribution(
       label: copy.nodeTitle,
       layout: input.dockLayout ?? "legacySplit",
       providerAvailability: input.providerAvailability,
+      providerTargetsLoading: input.providerTargetsLoading,
       renderPreview: input.renderPreview,
       resolveDockEntryVisibility: input.resolveDockEntryVisibility,
       resolveDockPopupTitle: input.resolveDockPopupTitle,
       sectionId: input.dockSectionId ?? "agents",
-      targets: input.providerTargets
+      targets: input.providerTargets,
+      unifiedDockIconUrl: input.unifiedDockIconUrl
     }),
     externalStateSource: nodeStateSource.externalStateSource,
     id: input.id ?? "workspace-agent-gui",
@@ -214,6 +218,15 @@ export function createAgentGuiWorkbenchContribution(
         }) => {
           const provider = agentGuiWorkbenchProviderFromInstanceId(instanceId);
           const providerTitle = resolveAgentGuiWorkbenchProviderLabel(provider);
+          const isUnifiedDockNode =
+            agentGuiWorkbenchDockIdentityFromIdentifier(node.data.dockEntryId)
+              ?.kind === "unifiedAggregate";
+          const headerTitle = isUnifiedDockNode
+            ? copy.nodeTitle
+            : providerTitle;
+          const headerIconUrl = isUnifiedDockNode
+            ? input.unifiedDockIconUrl
+            : agentGuiDockIconUrls[provider];
           const rawWorkbenchState = (externalNodeState ??
             node.data.runtimeNodeState) as
             | Partial<AgentGuiWorkbenchNodeState>
@@ -235,9 +248,7 @@ export function createAgentGuiWorkbenchContribution(
             node.frame.width
           );
           const conversationTitle =
-            input.resolveDockPopupTitle?.(workbenchState) ??
-            nodeState.lastActiveConversationTitle ??
-            null;
+            input.resolveDockPopupTitle?.(workbenchState) ?? null;
           const persistConversationRailCollapsed = (collapsed: boolean) => {
             nodeStateSource.writeNodeState({
               instanceId,
@@ -280,10 +291,10 @@ export function createAgentGuiWorkbenchContribution(
             conversationTitle,
             conversationRailWidthPx,
             displayMode,
-            iconUrl: agentGuiDockIconUrls[provider],
+            iconUrl: headerIconUrl,
             isConversationRailAutoCollapsed,
             isConversationRailCollapsed,
-            title: providerTitle,
+            title: headerTitle,
             windowActions: {
               close: windowActions.close,
               minimize: windowActions.minimize,
@@ -372,7 +383,11 @@ export function createAgentGuiWorkbenchContribution(
         ? nodeStateSource.findInstanceIdByAgentSessionId(targetAgentSessionId)
         : null;
       const instanceId = existingInstanceId ?? descriptorInstanceId;
-      const title = resolveAgentGuiWorkbenchProviderLabel(provider);
+      const title =
+        agentGuiWorkbenchDockIdentityFromIdentifier(dockEntryId)?.kind ===
+        "unifiedAggregate"
+          ? copy.nodeTitle
+          : resolveAgentGuiWorkbenchProviderLabel(provider);
       const providerTarget = providerTargetLaunchPayloadFromRequest(
         launchPayload,
         provider
@@ -393,10 +408,7 @@ export function createAgentGuiWorkbenchContribution(
               ? { agentTargetId: providerTarget.agentTargetId }
               : {}),
             ...(providerTarget.providerTargetId
-              ? { providerTargetId: providerTarget.providerTargetId }
-              : {}),
-            ...(providerTarget.providerTargetRef
-              ? { providerTargetRef: providerTarget.providerTargetRef }
+              ? { agentTargetId: providerTarget.providerTargetId }
               : {})
           },
           typeId: agentGuiWorkbenchTypeId
@@ -418,10 +430,7 @@ export function createAgentGuiWorkbenchContribution(
               ? { agentTargetId: providerTarget.agentTargetId }
               : {}),
             ...(providerTarget.providerTargetId
-              ? { providerTargetId: providerTarget.providerTargetId }
-              : {}),
-            ...(providerTarget.providerTargetRef
-              ? { providerTargetRef: providerTarget.providerTargetRef }
+              ? { agentTargetId: providerTarget.providerTargetId }
               : {})
           },
           typeId: agentGuiWorkbenchTypeId
@@ -470,11 +479,13 @@ export interface BuildAgentGuiDockEntriesInput {
   label?: string;
   layout: AgentGuiWorkbenchDockLayout;
   providerAvailability?: AgentGuiWorkbenchProviderAvailability;
+  providerTargetsLoading?: boolean;
   renderPreview?: CreateAgentGuiWorkbenchContributionInput["renderPreview"];
   resolveDockEntryVisibility?: CreateAgentGuiWorkbenchContributionInput["resolveDockEntryVisibility"];
   resolveDockPopupTitle?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupTitle"];
   sectionId?: string;
   targets?: readonly AgentGUIProviderTarget[] | null;
+  unifiedDockIconUrl?: string;
 }
 
 export function buildAgentGuiDockEntries(
@@ -488,7 +499,9 @@ export function buildAgentGuiDockEntries(
       createAgentGuiWorkbenchDockEntry({
         aggregateProviders: agentGuiWorkbenchDefaultDockProviders,
         iconUrl:
-          input.dockIconUrls?.[provider] ?? agentGuiDockIconUrls[provider],
+          input.unifiedDockIconUrl ??
+          input.dockIconUrls?.[provider] ??
+          agentGuiDockIconUrls[provider],
         label: input.label ?? agentGuiWorkbenchDefaultCopy.nodeTitle,
         launchPayload,
         layout: "unified",
@@ -525,6 +538,7 @@ export function resolveAgentGuiUnifiedDockLaunchPayload(
     | "defaultProvider"
     | "defaultProviderTargetId"
     | "providerAvailability"
+    | "providerTargetsLoading"
     | "targets"
   >
 ): {
@@ -727,11 +741,13 @@ function resolveUnifiedAgentGuiDockTarget(
     | "defaultProvider"
     | "defaultProviderTargetId"
     | "providerAvailability"
+    | "providerTargetsLoading"
     | "targets"
   >
 ): AgentGUIProviderTarget | null {
   const targets = normalizeAgentGUIProviderTargets(input.targets, {
-    fallbackToLocal: true
+    fallbackToLocal:
+      input.providerTargetsLoading !== true && input.targets == null
   }).filter(
     (
       target

@@ -612,6 +612,7 @@ export const en = {
       conversationFilterAll: "All",
       conversationFilterCodex: "Codex",
       conversationFilterClaudeCode: "Claude Code",
+      providerSwitchLabel: "Switch provider",
       batchRunnerStandaloneTitle: "Agent GUI batch runner",
       batchRunnerSubtitle:
         "Run JSONL prompt cases and review execution results",

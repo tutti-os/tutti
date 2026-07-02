@@ -743,6 +743,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       target: WorkspaceWorkbenchCapabilitySettingsTarget
     ) => void;
     providerTargets?: readonly AgentGUIProviderTarget[];
+    providerTargetsLoading?: boolean;
     renderFilesNodeBody: (
       context: WorkspaceWorkbenchBodyRendererContext
     ) => ReactNode;
@@ -758,6 +759,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       cached.dockIconStyle === input.dockIconStyle &&
       cached.i18n === input.i18n &&
       cached.providerTargets === input.providerTargets &&
+      cached.providerTargetsLoading === input.providerTargetsLoading &&
       cached.themeAppearance === input.themeAppearance
     ) {
       cached.capabilitySettingsRequestRef.current =
@@ -804,6 +806,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           defaultAgentProvider: input.defaultAgentProvider,
           defaultProviderTargetId: input.defaultProviderTargetId,
           dockIcons: {
+            agentUnified: dockIcons.agentUnified,
             agents: dockIcons.agents,
             applications: dockIcons.applications,
             browser: dockIcons.browser,
@@ -817,6 +820,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
             capabilitySettingsRequestRef.current?.(target);
           },
           providerTargets: input.providerTargets,
+          providerTargetsLoading: input.providerTargetsLoading,
           agentProviderStatusService:
             this.dependencies.agentProviderStatusService,
           eventStreamClient: this.dependencies.eventStreamClient,
@@ -898,6 +902,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       dockIcons,
       i18n: input.i18n,
       providerTargets: input.providerTargets,
+      providerTargetsLoading: input.providerTargetsLoading,
       renderFilesNodeBodyRef,
       themeAppearance: input.themeAppearance
     };
@@ -1304,6 +1309,7 @@ interface CachedWorkspaceWorkbenchHostInput {
   dynamicHostInput?: WorkspaceWorkbenchHostInput;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   providerTargets?: readonly AgentGUIProviderTarget[];
+  providerTargetsLoading?: boolean;
   renderFilesNodeBodyRef: {
     current: (context: WorkspaceWorkbenchBodyRendererContext) => ReactNode;
   };

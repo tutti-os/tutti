@@ -49,7 +49,11 @@ import type {
   AgentSessionState
 } from "../../../shared/agentSessionTypes";
 import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSettings";
-import type { AgentGUINodeData, AgentGUIProviderTarget } from "../../../types";
+import type {
+  AgentGUINodeData,
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "../../../types";
 import {
   agentGUIProviderTargetRefsEqual,
   normalizeAgentGUIProviderTargets,
@@ -3266,6 +3270,7 @@ interface UseAgentGUINodeControllerInput {
   avoidGroupingEdits: boolean;
   data: AgentGUINodeData;
   providerTargets?: readonly AgentGUIProviderTarget[];
+  providerTargetsLoading?: boolean;
   defaultProviderTargetId?: string | null;
   openSessionRequest?: AgentGUIOpenSessionRequest | null;
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
@@ -3302,6 +3307,7 @@ export function useAgentGUINodeController({
   avoidGroupingEdits,
   data,
   providerTargets,
+  providerTargetsLoading = false,
   defaultProviderTargetId = null,
   openSessionRequest = null,
   prefillPromptRequest = null,
@@ -3323,28 +3329,44 @@ export function useAgentGUINodeController({
   );
   const normalizedProviderTargets = useMemo(
     () =>
-      normalizedExplicitProviderTargets.length > 0
-        ? normalizedExplicitProviderTargets
-        : normalizeAgentGUIProviderTargets(null),
-    [normalizedExplicitProviderTargets]
+      providerTargetsLoading
+        ? []
+        : providerTargets === undefined
+          ? normalizeAgentGUIProviderTargets(null)
+          : normalizedExplicitProviderTargets,
+    [normalizedExplicitProviderTargets, providerTargets, providerTargetsLoading]
   );
-  const selectedProviderTarget = useMemo(
-    () =>
-      resolveAgentGUIProviderTarget({
-        agentTargetId: data.agentTargetId,
-        defaultProviderTargetId,
-        provider: data.provider,
-        providerTargetId: data.providerTargetId,
-        providerTargets: normalizedProviderTargets
-      }),
-    [
-      data.provider,
-      data.agentTargetId,
-      data.providerTargetId,
+  const shouldFallbackToLocalProviderTargets =
+    providerTargets === undefined && !providerTargetsLoading;
+  const selectedProviderTarget = useMemo(() => {
+    const resolved = resolveAgentGUIProviderTarget({
+      agentTargetId: data.agentTargetId,
       defaultProviderTargetId,
-      normalizedProviderTargets
-    ]
-  );
+      fallbackToLocal: shouldFallbackToLocalProviderTargets,
+      provider: data.provider,
+      providerTargetId: data.providerTargetId,
+      providerTargets: normalizedProviderTargets
+    });
+    return (
+      resolved ?? {
+        targetId: data.agentTargetId ?? "__loading__",
+        provider: data.provider,
+        ref: {
+          kind: "loading",
+          provider: data.provider
+        },
+        label: data.provider,
+        disabled: true
+      }
+    );
+  }, [
+    data.agentTargetId,
+    data.provider,
+    data.providerTargetId,
+    defaultProviderTargetId,
+    normalizedProviderTargets,
+    shouldFallbackToLocalProviderTargets
+  ]);
   const selectedProviderTargetIsExplicit = useMemo(
     () =>
       normalizedExplicitProviderTargets.some(
@@ -6552,27 +6574,19 @@ export function useAgentGUINodeController({
         const provider = target.provider;
         const shouldUseProviderTargetRef =
           selectedProviderTargetIsExplicitRef.current;
-        const agentTargetId = target.agentTargetId ?? null;
+        const agentTargetId = shouldUseProviderTargetRef
+          ? (target.agentTargetId ?? null)
+          : null;
         onDataChangeRef.current((current) =>
           current.provider === provider &&
-          (current.agentTargetId ?? null) === agentTargetId &&
-          (current.providerTargetId ?? null) ===
-            (shouldUseProviderTargetRef ? target.targetId : null) &&
-          agentGUIProviderTargetRefsEqual(
-            current.providerTargetRef,
-            shouldUseProviderTargetRef ? target.ref : null
-          )
+          (current.agentTargetId ?? null) === agentTargetId
             ? current
             : {
                 ...current,
                 provider,
                 agentTargetId,
-                providerTargetId: shouldUseProviderTargetRef
-                  ? target.targetId
-                  : null,
-                providerTargetRef: shouldUseProviderTargetRef
-                  ? target.ref
-                  : null
+                providerTargetId: null,
+                providerTargetRef: null
               }
         );
         const currentData =
@@ -9641,6 +9655,7 @@ export function useAgentGUINodeController({
     pendingApproval
   ]);
   const canSubmit =
+    !providerTargetsLoading &&
     activeLiveState !== "activating" &&
     activeLiveState !== "failed" &&
     !activeConversationResumeUnavailable &&
@@ -9737,6 +9752,7 @@ export function useAgentGUINodeController({
     isSubmitting,
     pendingApproval,
     pendingInteractivePrompt,
+    providerTargetsLoading,
     workspaceId
   ]);
   const activeSessionReasoningSelection = useMemo(
@@ -9908,8 +9924,79 @@ export function useAgentGUINodeController({
     },
     []
   );
+  const selectProvider = useCallback(
+    (input: {
+      provider: AgentGUIProvider;
+      providerTargetId?: string | null;
+    }) => {
+      if (previewMode) {
+        return;
+      }
+      const nextProvider = input.provider;
+      const nextTarget = resolveAgentGUIProviderTarget({
+        defaultProviderTargetId,
+        fallbackToLocal: shouldFallbackToLocalProviderTargets,
+        provider: nextProvider,
+        providerTargetId: input.providerTargetId,
+        providerTargets: normalizedProviderTargets
+      });
+      if (!nextTarget) {
+        return;
+      }
+      if (nextTarget.disabled === true) {
+        return;
+      }
+      const shouldUseProviderTargetRef = normalizedExplicitProviderTargets.some(
+        (target) =>
+          target.provider === nextTarget.provider &&
+          target.targetId === nextTarget.targetId &&
+          agentGUIProviderTargetRefsEqual(target.ref, nextTarget.ref)
+      );
+      const previous = activeConversationIdRef.current;
+      if (previous) {
+        void activation.unactivate(previous);
+      }
+      setIntent({ tag: "home" });
+      isComposerHomeRef.current = true;
+      setIsComposerHome(true);
+      activeConversationIdRef.current = null;
+      setActiveConversationId(null);
+      setIsLoadingMessages(false);
+      setDetailError(null);
+      persistActiveConversation(null);
+      onDataChangeRef.current((current) => {
+        const nextAgentTargetId = shouldUseProviderTargetRef
+          ? (nextTarget.agentTargetId ?? nextTarget.targetId)
+          : null;
+        const nextData: AgentGUINodeData = {
+          ...current,
+          provider: nextProvider,
+          agentTargetId: nextAgentTargetId,
+          lastActiveAgentSessionId: null,
+          providerTargetId: null,
+          providerTargetRef: null
+        };
+        dataRef.current = nextData;
+        return nextData;
+      });
+      window.setTimeout(() => {
+        loadDraftComposerOptions({ force: true });
+      }, 0);
+    },
+    [
+      activation,
+      defaultProviderTargetId,
+      loadDraftComposerOptions,
+      normalizedExplicitProviderTargets,
+      normalizedProviderTargets,
+      persistActiveConversation,
+      previewMode,
+      shouldFallbackToLocalProviderTargets
+    ]
+  );
   const stableCreateConversation =
     useStableControllerEventCallback(createConversation);
+  const stableSelectProvider = useStableControllerEventCallback(selectProvider);
   const stableSelectConversation =
     useStableControllerEventCallback(selectConversation);
   const stableSubmitPrompt = useStableControllerEventCallback(submitPrompt);
@@ -9978,6 +10065,7 @@ export function useAgentGUINodeController({
   const controllerActions = useMemo(
     () => ({
       updateConversationFilter: stableUpdateConversationFilter,
+      selectProvider: stableSelectProvider,
       createConversation: stableCreateConversation,
       selectConversation: stableSelectConversation,
       submitPrompt: stableSubmitPrompt,
@@ -10026,6 +10114,7 @@ export function useAgentGUINodeController({
       stableRetryActivation,
       stableRetryOpenclawGateway,
       stableSelectConversation,
+      stableSelectProvider,
       stableSendQueuedPromptNext,
       stableSubmitGuidancePrompt,
       stableShowPromptImagesUnsupported,
@@ -10048,6 +10137,8 @@ export function useAgentGUINodeController({
         currentUserId,
         data,
         selectedProviderTarget,
+        providerTargets: normalizedProviderTargets,
+        providerTargetsLoading,
         conversationFilter,
         conversations: visibleConversations,
         userProjects,
@@ -10118,6 +10209,8 @@ export function useAgentGUINodeController({
       controllerActions,
       data,
       selectedProviderTarget,
+      normalizedProviderTargets,
+      providerTargetsLoading,
       detailError,
       draftContent,
       draftPrompt,

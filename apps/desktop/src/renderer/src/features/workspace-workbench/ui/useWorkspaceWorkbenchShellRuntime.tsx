@@ -129,6 +129,11 @@ export function useWorkspaceWorkbenchShellRuntime({
   const [agentGuiProviderTargets, setAgentGuiProviderTargets] = useState<
     readonly AgentGUIProviderTarget[] | undefined
   >(undefined);
+  const agentGuiProviderTargetsLoading = agentGuiProviderTargets === undefined;
+  const resolvedAgentGuiProviderTargets = useMemo(
+    () => agentGuiProviderTargets ?? [],
+    [agentGuiProviderTargets]
+  );
   const reporterService = useService(IReporterService);
   const wallpaperRevision = useSyncExternalStore(
     (listener) => workbenchHostService.subscribeWallpaperChanges(listener),
@@ -164,7 +169,8 @@ export function useWorkspaceWorkbenchShellRuntime({
           createHostInput: (hostInput) =>
             workbenchHostService.createHostInput(hostInput),
           defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
-          providerTargets: agentGuiProviderTargets,
+          providerTargets: resolvedAgentGuiProviderTargets,
+          providerTargetsLoading: agentGuiProviderTargetsLoading,
           dockIconStyle: desktopPreferencesState.dockIconStyle,
           i18n: workbenchDesktopI18n,
           onCapabilitySettingsRequest: handleCapabilitySettingsRequest,
@@ -296,7 +302,8 @@ export function useWorkspaceWorkbenchShellRuntime({
       createHostInput: (hostInput) =>
         workbenchHostService.createHostInput(hostInput),
       defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
-      providerTargets: agentGuiProviderTargets,
+      providerTargets: resolvedAgentGuiProviderTargets,
+      providerTargetsLoading: agentGuiProviderTargetsLoading,
       dockIconStyle: desktopPreferencesState.dockIconStyle,
       i18n: workbenchDesktopI18n,
       onCapabilitySettingsRequest: handleCapabilitySettingsRequest,
@@ -309,7 +316,8 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [
     appI18n,
     appCenterState.revision,
-    agentGuiProviderTargets,
+    agentGuiProviderTargetsLoading,
+    resolvedAgentGuiProviderTargets,
     desktopPreferencesState.agentDockLayout,
     desktopPreferencesState.defaultAgentProvider,
     desktopPreferencesState.dockIconStyle,

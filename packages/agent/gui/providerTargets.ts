@@ -94,29 +94,37 @@ export function normalizeAgentGUIProviderTargets(
 export function resolveAgentGUIProviderTarget(input: {
   agentTargetId?: string | null;
   defaultProviderTargetId?: string | null;
+  fallbackToLocal?: boolean;
   provider: AgentGUIProvider;
   providerTargetId?: string | null;
   providerTargets: readonly AgentGUIProviderTarget[];
-}): AgentGUIProviderTarget {
+}): AgentGUIProviderTarget | null {
+  const targetByAgentTargetId = new Map(
+    input.providerTargets.flatMap((target) =>
+      target.agentTargetId ? [[target.agentTargetId, target] as const] : []
+    )
+  );
+  const agentTarget = targetByAgentTargetId.get(
+    input.agentTargetId?.trim() ?? ""
+  );
+  if (agentTarget) {
+    return agentTarget;
+  }
   const providerTargets = input.providerTargets.filter(
     (target) => target.provider === input.provider
   );
   const targetById = new Map(
     providerTargets.map((target) => [target.targetId, target])
   );
-  const targetByAgentTargetId = new Map(
-    providerTargets.flatMap((target) =>
-      target.agentTargetId ? [[target.agentTargetId, target] as const] : []
-    )
-  );
   return (
-    targetByAgentTargetId.get(input.agentTargetId?.trim() ?? "") ??
     targetById.get(input.providerTargetId?.trim() ?? "") ??
     targetById.get(input.defaultProviderTargetId?.trim() ?? "") ??
     targetById.get(localAgentGUIProviderTargetId(input.provider)) ??
     providerTargets.find((target) => target.disabled !== true) ??
     providerTargets[0] ??
-    createLocalAgentGUIProviderTarget(input.provider)
+    (input.fallbackToLocal === false
+      ? null
+      : createLocalAgentGUIProviderTarget(input.provider))
   );
 }
 

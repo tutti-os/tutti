@@ -227,6 +227,115 @@ func TestServiceCreatePassesNormalizedConversationDetailModeToRuntime(t *testing
 	}
 }
 
+func TestServiceCreateResolvesAgentTargetID(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetLookup{
+		targets: map[string]agenttargetbiz.Target{
+			"local-codex": {
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "target-session-1",
+		AgentTargetID:  "local-codex",
+		Provider:       "codex",
+		ProviderTargetRef: map[string]any{
+			"kind":     "client-supplied",
+			"provider": "codex",
+			"targetId": "ignored-client-ref",
+		},
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if got := runtime.startCalls[0].Provider; got != "codex" {
+		t.Fatalf("runtime provider = %q, want codex", got)
+	}
+	if got := runtime.startCalls[0].ProviderTargetRef["kind"]; got != "local_cli" {
+		t.Fatalf("provider target ref kind = %#v, want local_cli", got)
+	}
+	if got := runtime.startCalls[0].ProviderTargetRef["targetId"]; got != "local-codex" {
+		t.Fatalf("provider target ref targetId = %#v, want local-codex", got)
+	}
+}
+
+func TestServiceCreateRejectsInvalidAgentTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		agentTargetID   string
+		requestProvider string
+		target          agenttargetbiz.Target
+	}{
+		{
+			name:            "disabled target",
+			agentTargetID:   "local-codex",
+			requestProvider: "codex",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       false,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+		{
+			name:            "request provider mismatch",
+			agentTargetID:   "local-codex",
+			requestProvider: "claude-code",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+		{
+			name:            "target not found",
+			agentTargetID:   "missing-target",
+			requestProvider: "codex",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := NewService(newFakeRuntime())
+			service.AgentTargetStore = fakeAgentTargetLookup{
+				targets: map[string]agenttargetbiz.Target{
+					tc.target.ID: tc.target,
+				},
+			}
+
+			_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+				AgentSessionID: "target-session-invalid",
+				AgentTargetID:  tc.agentTargetID,
+				Provider:       tc.requestProvider,
+				InitialContent: TextPromptContent("hello"),
+			})
+			if !errors.Is(err, ErrInvalidArgument) {
+				t.Fatalf("Create error = %v, want ErrInvalidArgument", err)
+			}
+		})
+	}
+}
+
 func TestServiceCreateReportsNodeResults(t *testing.T) {
 	runtime := newFakeRuntime()
 	reporter := &recordingAgentAnalyticsReporter{}
@@ -4454,6 +4563,18 @@ func (*fakeRuntime) Subscribe(string, string) (<-chan RuntimeStreamEvent, func()
 	events := make(chan RuntimeStreamEvent)
 	close(events)
 	return events, func() {}, true
+}
+
+type fakeAgentTargetLookup struct {
+	targets map[string]agenttargetbiz.Target
+}
+
+func (f fakeAgentTargetLookup) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	target, ok := f.targets[strings.TrimSpace(id)]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
 }
 
 type activityProjectionRepoStub struct {

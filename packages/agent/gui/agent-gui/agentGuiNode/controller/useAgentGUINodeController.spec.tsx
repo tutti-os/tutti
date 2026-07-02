@@ -1120,13 +1120,92 @@ describe("useAgentGUINodeController", () => {
     expect(onDataChange).toHaveBeenCalled();
     const persistTargetUpdate = onDataChange.mock.calls.find(([updater]) => {
       const next = updater(agentGuiData(null));
-      return next.providerTargetId === "shared-agent:agent-1";
+      return next.agentTargetId === "agent-target-1";
     })?.[0];
     expect(persistTargetUpdate?.(agentGuiData(null))).toMatchObject({
       provider: "codex",
       agentTargetId: "agent-target-1",
-      providerTargetId: "shared-agent:agent-1",
-      providerTargetRef
+      providerTargetId: null,
+      providerTargetRef: null
+    });
+  });
+
+  it("blocks new conversation submit while provider targets are loading", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId, {
+          provider: input.mode === "new" ? input.provider : "codex"
+        }),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        providerTargets: [],
+        providerTargetsLoading: true,
+        onDataChange: vi.fn()
+      })
+    );
+
+    expect(result.current.viewModel.canSubmit).toBe(false);
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("start too early"));
+    });
+
+    await waitFor(() => {
+      expect(activate).not.toHaveBeenCalled();
+    });
+  });
+
+  it("blocks new conversation submit when provider targets are explicitly empty", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId, {
+          provider: input.mode === "new" ? input.provider : "codex"
+        }),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        providerTargets: [],
+        onDataChange: vi.fn()
+      })
+    );
+
+    expect(result.current.viewModel.canSubmit).toBe(false);
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("start without target"));
+    });
+
+    await waitFor(() => {
+      expect(activate).not.toHaveBeenCalled();
     });
   });
 
@@ -1183,7 +1262,7 @@ describe("useAgentGUINodeController", () => {
     expect(providerTargetUpdates).toEqual([]);
   });
 
-  it("does not send a fallback local provider target ref when no explicit target matches the provider", async () => {
+  it("blocks submit when no explicit target matches the provider", async () => {
     const activate = vi.fn(
       async (input: AgentHostActivateAgentSessionInput) => ({
         session: agentSession(input.agentSessionId, {
@@ -1224,18 +1303,14 @@ describe("useAgentGUINodeController", () => {
       })
     );
 
+    expect(result.current.viewModel.canSubmit).toBe(false);
+
     act(() => {
       result.current.actions.submitPrompt(promptBlocks("start local claude"));
     });
 
     await waitFor(() => {
-      expect(activate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          mode: "new",
-          provider: "claude-code",
-          providerTargetRef: null
-        })
-      );
+      expect(activate).not.toHaveBeenCalled();
     });
     const providerTargetUpdates = onDataChange.mock.calls
       .map(([updater]) => updater(initialData))

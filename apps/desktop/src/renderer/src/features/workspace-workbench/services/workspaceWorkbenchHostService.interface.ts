@@ -127,6 +127,7 @@ export interface IWorkspaceWorkbenchHostService {
       target: WorkspaceWorkbenchCapabilitySettingsTarget
     ) => void;
     providerTargets?: readonly AgentGUIProviderTarget[];
+    providerTargetsLoading?: boolean;
     renderFilesNodeBody: (
       context: WorkspaceWorkbenchBodyRendererContext
     ) => ReactNode;

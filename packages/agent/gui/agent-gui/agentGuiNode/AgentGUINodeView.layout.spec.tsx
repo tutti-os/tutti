@@ -32,6 +32,9 @@ const composerMock = vi.hoisted(() => ({
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
+    onProviderSelect?: AgentGUINodeViewProps["actions"]["selectProvider"];
+    providerSelectReadonly?: boolean;
+    providerTargets?: AgentGUINodeViewModel["providerTargets"];
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
   }>
@@ -62,6 +65,9 @@ vi.mock("./AgentComposer", () => ({
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
+    onProviderSelect?: AgentGUINodeViewProps["actions"]["selectProvider"];
+    providerSelectReadonly?: boolean;
+    providerTargets?: AgentGUINodeViewModel["providerTargets"];
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
   }) => {
@@ -69,7 +75,10 @@ vi.mock("./AgentComposer", () => ({
       composerFocusRequestSequence: props.composerFocusRequestSequence,
       compactSupported: props.compactSupported,
       isSendingTurn: props.isSendingTurn,
+      onProviderSelect: props.onProviderSelect,
+      providerSelectReadonly: props.providerSelectReadonly,
       onSubmit: props.onSubmit,
+      providerTargets: props.providerTargets,
       showStopButton: props.showStopButton,
       usage: props.usage
     });
@@ -361,6 +370,222 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(source).toMatch(
       /<TooltipContent\s+side="top"\s+sideOffset=\{6\}\s+className=\{styles\.conversationSectionActionTooltip\}\s*>\s*\{createConversationLabel\}/
     );
+  });
+
+  it("switches providers from the avatar rail tile", () => {
+    const actions = createActions();
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          claudeTarget
+        ]
+      }
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Claude Code" }));
+
+    expect(actions.updateConversationFilter).toHaveBeenCalledWith({
+      kind: "provider",
+      provider: "claude-code"
+    });
+    expect(actions.selectProvider).toHaveBeenCalledWith({
+      provider: "claude-code",
+      providerTargetId: claudeTarget.targetId
+    });
+  });
+
+  it("highlights the selected Claude Code target even when All is not active", () => {
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: { kind: "all" },
+        selectedProviderTarget: claudeTarget,
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          claudeTarget
+        ]
+      }
+    });
+
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "false"
+    );
+    expect(screen.getByRole("tab", { name: "Claude Code" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+  });
+
+  it("selects only the All tile for all-conversation mode", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: { kind: "all" },
+        selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          createLocalAgentGUIProviderTarget("claude-code")
+        ]
+      }
+    });
+
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(screen.getByRole("tab", { name: "Codex" })).toHaveAttribute(
+      "aria-selected",
+      "false"
+    );
+  });
+
+  it("selects the All tile for daemon local Codex targets", () => {
+    const daemonCodexTarget = {
+      ...createLocalAgentGUIProviderTarget("codex"),
+      targetId: "local-codex"
+    };
+
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: { kind: "all" },
+        selectedProviderTarget: daemonCodexTarget,
+        providerTargets: [
+          daemonCodexTarget,
+          {
+            ...createLocalAgentGUIProviderTarget("claude-code"),
+            targetId: "local-claude-code"
+          }
+        ]
+      }
+    });
+
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(screen.getByRole("tab", { name: "Codex" })).toHaveAttribute(
+      "aria-selected",
+      "false"
+    );
+  });
+
+  it("shows provider target loading placeholders without local fallback tiles", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [],
+        providerTargetsLoading: true
+      }
+    });
+
+    expect(screen.getByRole("tablist")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Codex" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Claude Code" })).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+  });
+
+  it("does not synthesize provider rail tiles when provider targets are explicitly empty", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [],
+        providerTargetsLoading: false
+      }
+    });
+
+    expect(screen.getByRole("tablist")).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Codex" })).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+  });
+
+  it("restores the selected provider target in the avatar rail tile", () => {
+    const actions = createActions();
+    const localGeminiTarget = {
+      ...createLocalAgentGUIProviderTarget("gemini"),
+      label: "Local Gemini"
+    };
+    const sharedGeminiTarget = {
+      ...createLocalAgentGUIProviderTarget("gemini"),
+      targetId: "shared-agent:gemini-1",
+      label: "Shared Gemini"
+    };
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: { kind: "all" },
+        selectedProviderTarget: sharedGeminiTarget,
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          localGeminiTarget,
+          sharedGeminiTarget
+        ]
+      }
+    });
+
+    const sharedTile = screen.getByRole("tab", { name: "Shared Gemini" });
+    const localTile = screen.getByRole("tab", { name: "Local Gemini" });
+    expect(sharedTile).toHaveAttribute("aria-selected", "true");
+    expect(localTile).toHaveAttribute("aria-selected", "false");
+
+    fireEvent.click(sharedTile);
+
+    expect(actions.selectProvider).toHaveBeenCalledWith({
+      provider: "gemini",
+      providerTargetId: "shared-agent:gemini-1"
+    });
+  });
+
+  it("passes provider switching options into the empty composer", () => {
+    const actions = createActions();
+    const providerTargets = [
+      createLocalAgentGUIProviderTarget("codex"),
+      createLocalAgentGUIProviderTarget("claude-code")
+    ];
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        providerTargets
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      onProviderSelect: actions.selectProvider,
+      providerSelectReadonly: false,
+      providerTargets
+    });
+  });
+
+  it("renders the composer provider select read-only for an active session", () => {
+    const providerTargets = [
+      createLocalAgentGUIProviderTarget("codex"),
+      createLocalAgentGUIProviderTarget("claude-code")
+    ];
+    const conversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation],
+        providerTargets
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      providerSelectReadonly: true,
+      providerTargets
+    });
   });
 
   it("opens a new conversation draft for the selected project section", () => {
@@ -1713,6 +1938,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     interruptCurrentTurn: vi.fn(),
     updateDraftContent: vi.fn(),
     updateComposerSettings: vi.fn(),
+    selectProvider: vi.fn(),
     sendQueuedPromptNext: vi.fn(),
     removeQueuedPrompt: vi.fn(),
     editQueuedPrompt: vi.fn(),
@@ -1738,6 +1964,8 @@ function createViewModel(): AgentGUINodeViewModel {
       conversationRailWidthPx: null
     },
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+    providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    providerTargetsLoading: false,
     conversationFilter: { kind: "all" },
     conversations: [],
     userProjects: [],
@@ -1980,6 +2208,7 @@ function createLabels(): AgentGUIViewLabels {
     conversationFilterAll: "All",
     conversationFilterCodex: "Codex",
     conversationFilterClaudeCode: "Claude Code",
+    providerSwitchLabel: "Switch provider",
     startConversation: "startConversation",
     selectConversation: "selectConversation",
     loadingConversations: "loadingConversations",

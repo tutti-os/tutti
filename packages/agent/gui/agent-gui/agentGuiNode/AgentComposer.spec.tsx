@@ -4655,6 +4655,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     removeMention: "移除引用",
     addReference: "添加引用",
     referenceWorkspaceFiles: "引用空间文件",
+    providerSwitchLabel: "切换 Provider",
     reviewPicker: {
       title: "代码审查",
       targetLabel: "审查范围",

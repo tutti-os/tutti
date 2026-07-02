@@ -160,6 +160,8 @@ export interface AgentGUINodeViewModel {
   currentUserId?: string | null;
   data: AgentGUINodeData;
   selectedProviderTarget: AgentGUIProviderTarget;
+  providerTargets: readonly AgentGUIProviderTarget[];
+  providerTargetsLoading: boolean;
   conversationFilter: AgentGUIConversationFilter;
   conversations: AgentGUIConversationSummary[];
   userProjects: AgentGUIConversationUserProject[];

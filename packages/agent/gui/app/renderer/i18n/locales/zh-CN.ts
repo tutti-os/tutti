@@ -562,6 +562,7 @@ export const zhCN = {
       conversationFilterAll: "全部",
       conversationFilterCodex: "Codex",
       conversationFilterClaudeCode: "Claude Code",
+      providerSwitchLabel: "切换 Provider",
       batchRunnerStandaloneTitle: "Agent GUI 批量执行面板",
       batchRunnerSubtitle: "批量执行 JSONL 用例，查看进度与执行结果",
       batchRunnerPromptSource: "用例来源",

@@ -25,7 +25,6 @@ import type {
   NodeFrame,
   Point
 } from "../../types";
-import { agentGUIProviderTargetRefsEqual } from "../../providerTargets";
 import type {
   DesktopSize,
   WorkspaceDesktopAgentProbeDemandChange,
@@ -184,6 +183,7 @@ export interface AgentGUINodeProps {
   ) => void;
   onAgentProviderLogin?: (provider: AgentProvider) => void;
   providerTargets?: readonly AgentGUIProviderTarget[];
+  providerTargetsLoading?: boolean;
   defaultProviderTargetId?: string | null;
   onWorkspaceFileReferencesAdded?: (input: {
     provider: AgentProvider;
@@ -418,11 +418,7 @@ function agentGuiStateEquals(
   return (
     left === right ||
     (left.provider === right.provider &&
-      (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
-      agentGUIProviderTargetRefsEqual(
-        left.providerTargetRef,
-        right.providerTargetRef
-      ) &&
+      (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
       left.conversationRailWidthPx === right.conversationRailWidthPx &&
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
@@ -506,6 +502,7 @@ function areAgentGUINodePropsEqual(
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
     previous.onAgentProviderLogin === next.onAgentProviderLogin &&
     previous.providerTargets === next.providerTargets &&
+    previous.providerTargetsLoading === next.providerTargetsLoading &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
     previous.onClose === next.onClose &&
     previous.onResize === next.onResize &&
@@ -563,6 +560,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   providerTargets,
+  providerTargetsLoading = false,
   defaultProviderTargetId = null,
   onWorkspaceFileReferencesAdded,
   onOpenConversationWindow,
@@ -732,6 +730,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     openSessionRequest,
     prefillPromptRequest,
     providerTargets,
+    providerTargetsLoading,
     defaultProviderTargetId,
     previewMode,
     onDataChange: handleDataChange,
@@ -742,13 +741,11 @@ export const AgentGUINode = memo(function AgentGUINode({
     (...args: Parameters<typeof actions.createConversation>) => {
       if (!previewMode) {
         onUpdateNode((current) =>
-          current.lastActiveAgentSessionId === null &&
-          (current.lastActiveConversationTitle ?? null) === null
+          current.lastActiveAgentSessionId === null
             ? current
             : {
                 ...current,
-                lastActiveAgentSessionId: null,
-                lastActiveConversationTitle: null
+                lastActiveAgentSessionId: null
               }
         );
       }
@@ -927,6 +924,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       conversationFilterClaudeCode: t(
         "agentHost.agentGui.conversationFilterClaudeCode"
       ),
+      providerSwitchLabel: t("agentHost.agentGui.providerSwitchLabel"),
       startConversation: t("agentHost.agentGui.startConversation"),
       selectConversation: t("agentHost.agentGui.selectConversation"),
       loadingConversations: t("agentHost.agentGui.loadingConversations"),
@@ -1261,7 +1259,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     [t]
   );
   const collapsedWindowConversationTitle = isConversationRailCollapsed
-    ? (activeConversationDockTitle ?? state.lastActiveConversationTitle ?? null)
+    ? activeConversationDockTitle
     : null;
   const windowTitle =
     collapsedWindowConversationTitle ||
@@ -1271,42 +1269,6 @@ export const AgentGUINode = memo(function AgentGUINode({
   const windowTitleIconUrl =
     agentGuiDockIconUrls[activeProvider as keyof typeof agentGuiDockIconUrls] ??
     null;
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    if (!viewModel.activeConversation) {
-      return;
-    }
-    const nextTitle = activeConversationDockTitle;
-    const previousTitle = state.lastActiveConversationTitle ?? null;
-    if (
-      nextTitle === null &&
-      previousTitle !== null &&
-      viewModel.activeConversation.id === state.lastActiveAgentSessionId
-    ) {
-      return;
-    }
-    if ((state.lastActiveConversationTitle ?? null) === nextTitle) {
-      return;
-    }
-    onUpdateNode((current) => {
-      if ((current.lastActiveConversationTitle ?? null) === nextTitle) {
-        return current;
-      }
-      return {
-        ...current,
-        lastActiveConversationTitle: nextTitle
-      };
-    });
-  }, [
-    activeConversationDockTitle,
-    onUpdateNode,
-    previewMode,
-    state.lastActiveAgentSessionId,
-    state.lastActiveConversationTitle,
-    viewModel.activeConversation
-  ]);
   const activeProbeProvider = activeProvider as AgentProvider;
   const activeAgentProbe = useMemo(
     () =>
