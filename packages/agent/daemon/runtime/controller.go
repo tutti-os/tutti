@@ -1158,6 +1158,67 @@ func (c *Controller) finishTurn(session Session, turnID string) {
 	c.mu.Unlock()
 }
 
+// sessionViewHasUnsettledTurn reports whether the GUI-facing session view still
+// presents an active or blocked turn. It is used to detect a desync where the
+// runtime has already finished a turn but the persisted/streamed view never
+// settled (composer stays blocked, stop button stays inert).
+func sessionViewHasUnsettledTurn(session Session) bool {
+	if sa := session.SubmitAvailability; sa != nil && strings.TrimSpace(sa.State) == "blocked" {
+		return true
+	}
+	if tl := session.TurnLifecycle; tl != nil {
+		if tl.ActiveTurnID != nil && strings.TrimSpace(*tl.ActiveTurnID) != "" {
+			return true
+		}
+		if phase := strings.TrimSpace(tl.Phase); phase != "" && phase != "settled" {
+			return true
+		}
+	}
+	return false
+}
+
+// reconcileStuckTurnView force settles a session whose GUI-facing view still
+// shows an active/blocked turn even though the runtime holds no active turn for
+// it. It synthesizes a turn-completed event and pushes it through the normal
+// settle path (apply -> store -> publish -> report) with a fresh, monotonic
+// timestamp so downstream consumers cannot drop it as stale. Returns true when a
+// reconciliation was performed.
+func (c *Controller) reconcileStuckTurnView(ctx context.Context, session Session, reason string) bool {
+	if c == nil || !sessionViewHasUnsettledTurn(session) {
+		return false
+	}
+	turnID := ""
+	if tl := session.TurnLifecycle; tl != nil && tl.ActiveTurnID != nil {
+		turnID = strings.TrimSpace(*tl.ActiveTurnID)
+	}
+	if turnID == "" {
+		return false
+	}
+	event := newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
+		"reconciled": "cancel-no-active-turn",
+	})
+	if event.Type == "" {
+		return false
+	}
+	events := []activityshared.Event{event}
+	session = applySessionEvents(session, events)
+	session = applyTurnLifecycleFromEvents(session, events)
+	session.Status = deriveSessionStatusFromEvents(events, SessionStatusReady)
+	session.UpdatedAtUnixMS = unixMS(now())
+	c.store(session)
+	c.publish(session, events)
+	c.enqueueSessionReport(ctx, session, events)
+	slog.Info("agent session cancel reconciled stuck turn view",
+		"event", "agent_session.cancel.reconciled_stuck_turn",
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"provider", session.Provider,
+		"turn_id", turnID,
+		"reason", reason,
+	)
+	return true
+}
+
 func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResult, error) {
 	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
 	if err != nil {
@@ -1182,6 +1243,12 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 			"status", session.Status,
 			"reason", reason,
 		)
+		// The runtime holds no active turn, yet the GUI-facing view may still
+		// show a blocked composer / running turn if a prior turn-completed
+		// update failed to reach the persisted session state. Pressing stop is
+		// the user's recovery gesture, so reconcile the stale view by force
+		// settling the turn here instead of leaving it stuck forever.
+		c.reconcileStuckTurnView(ctx, session, reason)
 		return CancelResult{AgentSessionID: session.AgentSessionID, Canceled: false}, nil
 	}
 	if active.cancel != nil {

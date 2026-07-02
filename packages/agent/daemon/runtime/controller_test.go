@@ -3773,3 +3773,118 @@ func TestControllerRejectsUnsupportedProvider(t *testing.T) {
 		t.Fatal("Start returned nil error for unsupported provider")
 	}
 }
+
+// TestControllerCancelReconcilesStuckTurnView reproduces the desync where a turn
+// finished in the runtime (no active turn remains) but the GUI-facing view stayed
+// blocked/running because the turn-completed update never reached the persisted
+// session state. Pressing stop must settle the stale view instead of being a
+// no-op, otherwise the composer stays blocked forever.
+func TestControllerCancelReconcilesStuckTurnView(t *testing.T) {
+	t.Parallel()
+
+	reporter := &recordingReporter{}
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, reporter)
+
+	turnID := "stuck-turn-1"
+	controller.store(Session{
+		RoomID:             "room-1",
+		AgentSessionID:     "agent-1",
+		Provider:           ProviderCodex,
+		ProviderSessionID:  "prov-1",
+		Status:             SessionStatusWorking,
+		TurnLifecycle:      &TurnLifecycle{ActiveTurnID: &turnID, Phase: "running"},
+		SubmitAvailability: blockedSubmitAvailability("active_turn"),
+		UpdatedAtUnixMS:    1,
+	})
+
+	result, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-1",
+		Reason:         "user",
+	})
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if result.Canceled {
+		t.Fatalf("Cancel result = %#v, want Canceled=false (no live turn to cancel)", result)
+	}
+
+	settled, ok := controller.get("room-1", "agent-1")
+	if !ok {
+		t.Fatal("session missing after cancel")
+	}
+	if settled.SubmitAvailability == nil || settled.SubmitAvailability.State != "available" {
+		t.Fatalf("SubmitAvailability = %#v, want available", settled.SubmitAvailability)
+	}
+	if settled.TurnLifecycle == nil || settled.TurnLifecycle.Phase != "settled" {
+		t.Fatalf("TurnLifecycle = %#v, want settled phase", settled.TurnLifecycle)
+	}
+	if settled.TurnLifecycle.ActiveTurnID != nil {
+		t.Fatalf("settled TurnLifecycle.ActiveTurnID = %v, want nil", settled.TurnLifecycle.ActiveTurnID)
+	}
+
+	calls := reporter.waitForCalls(t, 1)
+	if len(calls[len(calls)-1].report.StatePatches) == 0 {
+		t.Fatalf("reconcile report = %#v, want a state patch", calls[len(calls)-1].report)
+	}
+}
+
+// TestControllerCancelLeavesSettledSessionUntouched guards against the
+// reconciliation disturbing healthy sessions: a session that is already settled
+// must not be re-settled or re-reported when stop is pressed with no active turn.
+func TestControllerCancelLeavesSettledSessionUntouched(t *testing.T) {
+	t.Parallel()
+
+	reporter := &recordingReporter{}
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, reporter)
+
+	outcome := "completed"
+	controller.store(Session{
+		RoomID:             "room-1",
+		AgentSessionID:     "agent-1",
+		Provider:           ProviderCodex,
+		ProviderSessionID:  "prov-1",
+		Status:             SessionStatusReady,
+		TurnLifecycle:      &TurnLifecycle{Phase: "settled", Outcome: &outcome},
+		SubmitAvailability: availableSubmitAvailability(),
+		UpdatedAtUnixMS:    1,
+	})
+
+	if _, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-1",
+		Reason:         "user",
+	}); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+
+	if calls := reporter.snapshot(); len(calls) != 0 {
+		t.Fatalf("reporter calls = %d, want 0 for an already-settled session", len(calls))
+	}
+}
+
+func TestSessionViewHasUnsettledTurn(t *testing.T) {
+	t.Parallel()
+
+	active := "turn-1"
+	cases := []struct {
+		name    string
+		session Session
+		want    bool
+	}{
+		{"blocked submit", Session{SubmitAvailability: blockedSubmitAvailability("active_turn")}, true},
+		{"active turn id", Session{TurnLifecycle: &TurnLifecycle{ActiveTurnID: &active, Phase: "running"}}, true},
+		{"running phase only", Session{TurnLifecycle: &TurnLifecycle{Phase: "running"}}, true},
+		{"settled", Session{SubmitAvailability: availableSubmitAvailability(), TurnLifecycle: &TurnLifecycle{Phase: "settled"}}, false},
+		{"empty", Session{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sessionViewHasUnsettledTurn(tc.session); got != tc.want {
+				t.Fatalf("sessionViewHasUnsettledTurn(%s) = %v, want %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}
