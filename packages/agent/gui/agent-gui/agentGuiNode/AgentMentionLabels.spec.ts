@@ -12,7 +12,9 @@ describe("AgentMentionLabels", () => {
     setAgentGuiI18nTestLocale("en");
 
     expect(agentMentionFilterLabel("session")).toBe("Sessions");
+    expect(agentMentionFilterLabel("agent")).toBe("Agents");
     expect(agentMentionFilterLabel("app")).toBe("Apps");
+    expect(agentMentionGroupLabel("agents")).toBe("Agents");
     expect(agentMentionGroupLabel("apps")).toBe("Apps");
     expect(agentMentionGroupLabel("my_sessions")).toBe("My sessions");
     expect(agentMentionEmptyGroupLabel("my_sessions", "")).toBe(
@@ -26,6 +28,8 @@ describe("AgentMentionLabels", () => {
     expect(agentMentionFilterLabel("app")).toBe("应用");
     expect(agentMentionFilterLabel("session")).toBe("会话");
     expect(agentMentionFilterLabel("issue")).toBe("任务");
+    expect(agentMentionFilterLabel("agent")).toBe("Agent");
+    expect(agentMentionGroupLabel("agents")).toBe("Agent");
     expect(agentMentionGroupLabel("apps")).toBe("应用");
     expect(agentMentionGroupLabel("issues")).toBe("任务");
     expect(agentMentionGroupLabel("my_sessions")).toBe("我的会话");

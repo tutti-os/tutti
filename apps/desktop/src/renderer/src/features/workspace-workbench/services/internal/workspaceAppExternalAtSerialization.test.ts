@@ -22,6 +22,7 @@ function mentionInsert(mention: Record<string, unknown>): TestMentionInsert {
 test("accepts external at provider ids", () => {
   assert.equal(toExternalAtProviderId("file"), "file");
   assert.equal(toExternalAtProviderId("workspace-issue"), "workspace-issue");
+  assert.equal(toExternalAtProviderId("agent-target"), "agent-target");
   assert.equal(toExternalAtProviderId("unsupported"), null);
 });
 

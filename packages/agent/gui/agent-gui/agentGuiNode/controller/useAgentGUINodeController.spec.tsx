@@ -4104,13 +4104,15 @@ describe("useAgentGUINodeController", () => {
     await loadAgentActivityRuntimeForTests();
     await waitFor(() => {
       expect(list).toHaveBeenCalledTimes(2);
+      expect(result.current.viewModel.conversations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: firstCreatedId })
+        ])
+      );
+      expect(result.current.viewModel.activeConversation?.id).toBe(
+        firstCreatedId
+      );
     });
-    expect(result.current.viewModel.conversations).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: firstCreatedId })])
-    );
-    expect(result.current.viewModel.activeConversation?.id).toBe(
-      firstCreatedId
-    );
 
     act(() => {
       result.current.actions.createConversation();
@@ -4127,15 +4129,16 @@ describe("useAgentGUINodeController", () => {
     await loadAgentActivityRuntimeForTests();
     await waitFor(() => {
       expect(list).toHaveBeenCalledTimes(3);
+      expect(result.current.viewModel.conversations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: secondCreatedId })
+        ])
+      );
+      expect(result.current.viewModel.activeConversation?.id).toBe(
+        secondCreatedId
+      );
+      expect(result.current.viewModel.activeConversation?.status).toBe("ready");
     });
-
-    expect(result.current.viewModel.conversations).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: secondCreatedId })])
-    );
-    expect(result.current.viewModel.activeConversation?.id).toBe(
-      secondCreatedId
-    );
-    expect(result.current.viewModel.activeConversation?.status).toBe("ready");
     expect(exec).not.toHaveBeenCalled();
   });
 

@@ -741,11 +741,13 @@ export const AgentGUINode = memo(function AgentGUINode({
     (...args: Parameters<typeof actions.createConversation>) => {
       if (!previewMode) {
         onUpdateNode((current) =>
-          current.lastActiveAgentSessionId === null
+          current.lastActiveAgentSessionId === null &&
+          (current.lastActiveConversationTitle ?? null) === null
             ? current
             : {
                 ...current,
-                lastActiveAgentSessionId: null
+                lastActiveAgentSessionId: null,
+                lastActiveConversationTitle: null
               }
         );
       }
@@ -783,6 +785,34 @@ export const AgentGUINode = memo(function AgentGUINode({
         language: locale
       })
     : null;
+  useEffect(() => {
+    if (previewMode || !viewModel.activeConversation) {
+      return;
+    }
+    const conversationTitle = activeConversationDockTitle?.trim() ?? "";
+    if (!conversationTitle) {
+      return;
+    }
+    const conversationId = viewModel.activeConversation.id;
+    onUpdateNode((current) => {
+      if (
+        current.lastActiveAgentSessionId === conversationId &&
+        current.lastActiveConversationTitle === conversationTitle
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        lastActiveAgentSessionId: conversationId,
+        lastActiveConversationTitle: conversationTitle
+      };
+    });
+  }, [
+    activeConversationDockTitle,
+    onUpdateNode,
+    previewMode,
+    viewModel.activeConversation
+  ]);
   const labels = useMemo<AgentGUIViewLabels>(
     () => ({
       initialPlaceholder: t("agentHost.agentGui.initialPlaceholder", {
