@@ -981,6 +981,104 @@ test("setLocations reloads the selected directory when its path changes", async 
   session.dispose();
 });
 
+test("external locations select without loading directories and persist their id", async () => {
+  let copyCalls = 0;
+  let importCalls = 0;
+  const listedPaths: string[] = [];
+  const session = createWorkspaceFileManagerService().createSession({
+    host: {
+      async copyEntriesToClipboard() {
+        copyCalls += 1;
+      },
+      async importFiles() {
+        importCalls += 1;
+        return { supported: true };
+      },
+      async listDirectory(input) {
+        listedPaths.push(input.path);
+        return {
+          directoryPath: input.path,
+          entries: [
+            {
+              hasChildren: false,
+              kind: "file",
+              mtimeMs: 1,
+              name: "notes.txt",
+              path: "/Users/demo/notes.txt",
+              sizeBytes: 12
+            }
+          ],
+          root: "/Users/demo",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    i18n: createTestI18nRuntime(),
+    defaultLocationId: "local:home",
+    locationSections: [
+      {
+        id: "local",
+        label: "Local",
+        locations: [
+          {
+            id: "local:home",
+            kind: "directory",
+            label: "Home",
+            path: "/Users/demo",
+            referenceNodeId: "/Users/demo"
+          }
+        ]
+      },
+      {
+        id: "reference:app-artifact",
+        label: "Apps",
+        locations: [
+          {
+            externalType: "workspace-reference",
+            id: "reference:app-artifact:g:app",
+            kind: "external",
+            label: "Design App",
+            metadata: {
+              nodeId: "g:app",
+              sourceId: "app-artifact"
+            }
+          }
+        ]
+      }
+    ],
+    workspaceID: "workspace-1"
+  });
+
+  await session.initialize();
+  const entry = session.store.entries[0]!;
+  session.select(entry.path);
+  assert.equal(session.store.selectedPath, entry.path);
+  await session.selectLocation("reference:app-artifact:g:app");
+  await session.refresh();
+  await session.copyToClipboard(entry);
+  session.startInlineRename(entry);
+  session.openCreateFileDialog();
+  await session.importFiles("/Users/demo");
+
+  assert.equal(
+    session.store.selectedLocationId,
+    "reference:app-artifact:g:app"
+  );
+  assert.equal(session.store.currentDirectoryPath, "/Users/demo");
+  assert.equal(session.store.selectedPath, null);
+  assert.deepEqual(session.store.previewState, { status: "empty" });
+  assert.equal(session.store.inlineRenameEntryPath, null);
+  assert.equal(session.store.createDialog, null);
+  assert.deepEqual(listedPaths, ["/Users/demo"]);
+  assert.equal(copyCalls, 0);
+  assert.equal(importCalls, 0);
+  assert.equal(
+    session.getPersistedState().selectedLocationId,
+    "reference:app-artifact:g:app"
+  );
+  session.dispose();
+});
+
 test("recent locations load recent entries, search locally, and block mutations", async () => {
   let createFileCalls = 0;
   let hostSearchCalls = 0;

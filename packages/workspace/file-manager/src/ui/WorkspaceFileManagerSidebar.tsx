@@ -11,6 +11,7 @@ import {
 import type { ReactElement } from "react";
 import type {
   WorkspaceFileLocation,
+  WorkspaceFileExternalLocation,
   WorkspaceFileLocationSection
 } from "../services/workspaceFileManagerTypes.ts";
 
@@ -90,7 +91,11 @@ function WorkspaceFileManagerSidebarLocation({
         onSelectLocation(location);
       }}
     >
-      <Icon className="size-4 flex-none" />
+      {location.kind === "external" && location.iconUrl ? (
+        <ExternalLocationIcon location={location} />
+      ) : (
+        <Icon className="size-4 flex-none" />
+      )}
       <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
         {location.label}
       </span>
@@ -106,5 +111,19 @@ function WorkspaceFileManagerSidebarLocation({
       <TooltipTrigger asChild>{content}</TooltipTrigger>
       <TooltipContent side="right">{location.contextLabel}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function ExternalLocationIcon({
+  location
+}: {
+  location: WorkspaceFileExternalLocation;
+}): ReactElement {
+  return (
+    <img
+      alt=""
+      className="size-4 flex-none rounded-[3px] object-cover"
+      src={location.iconUrl ?? undefined}
+    />
   );
 }

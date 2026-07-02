@@ -86,6 +86,7 @@ host openFile  host openFile   任务通道
 - **契约 + 聚合 + base 工具 + picker UI** → 放在 `@tutti-os/workspace-file-reference`(UI 无关部分在 `core`/`contracts`,UI 在 `ui`)。
 - **各源实现** → `apps/desktop`(依赖 `tuttidClient` / `hostFilesApi`),通过 DI 注册进 registry。
 - AgentGui(`@tutti-os/agent-gui`)只通过 `AgentGUINodeView` 的 prop 接收聚合后的能力,**不感知具体源**。
+- File Manager 通过 `external` location 扩展槽消费应用/任务产物源:左栏 location 由 desktop 从 `ReferenceSourceAggregator` 的根分组生成,右侧内容使用嵌入式 reference explorer 渲染。`@tutti-os/workspace-file-manager` 不得反向依赖 `@tutti-os/workspace-file-reference`,因为 reference 包已复用 file-manager 的图标、排序、open-with 和预览类型。
 
 ### 1.4 本地文件:回归防护(避免改造引入 bug)
 

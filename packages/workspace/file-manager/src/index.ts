@@ -31,6 +31,7 @@ export {
 export {
   findWorkspaceFileLocationById,
   flattenWorkspaceFileLocations,
+  isWorkspaceFileExternalLocation,
   isWorkspaceFileRecentLocation,
   resolveWorkspaceFileLocationDefaultId
 } from "./services/workspaceFileManagerLocations.ts";
@@ -46,6 +47,7 @@ export {
   type WorkspaceFileLocationKind,
   type WorkspaceFileLocationSection,
   type WorkspaceFileDirectoryLocation,
+  type WorkspaceFileExternalLocation,
   type WorkspaceFileRecentLocation,
   type WorkspaceFileManagerCapabilities,
   type WorkspaceFileOpenWithApplication,

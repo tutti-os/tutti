@@ -52,6 +52,7 @@ import {
   type WorkspaceFileOpenWithApplication
 } from "@tutti-os/workspace-file-manager";
 import type {
+  NodeRef,
   ReferenceLocateTarget,
   ReferenceNode
 } from "../../../contracts/referenceSource.ts";
@@ -678,6 +679,412 @@ export function ReferenceSourcePicker({
     return dialog;
   }
   return createPortal(dialog, document.body);
+}
+
+export interface ReferenceSourceContentPaneProps {
+  aggregator: ReferenceSourceAggregator;
+  className?: string;
+  copy: WorkspaceFileReferenceCopy;
+  fileManagerCopy?: WorkspaceFileManagerI18nRuntime;
+  hostOs?: NodeJS.Platform;
+  initialNodeRef?: NodeRef | null;
+  initialTarget?: ReferenceLocateTarget | null;
+  resolveEntryIconUrl?: (
+    entry: WorkspaceFileEntry
+  ) => Promise<string | null | undefined>;
+  resolveOpenWithApplicationIcon?: (
+    application: WorkspaceFileOpenWithApplication
+  ) => JSX.Element | null;
+  workspaceId: string;
+}
+
+export function ReferenceSourceContentPane({
+  aggregator,
+  className,
+  copy,
+  fileManagerCopy,
+  hostOs = "darwin",
+  initialNodeRef = null,
+  initialTarget = null,
+  resolveEntryIconUrl,
+  resolveOpenWithApplicationIcon,
+  workspaceId
+}: ReferenceSourceContentPaneProps): JSX.Element {
+  const view = useReferenceSourcePickerView({
+    aggregator,
+    workspaceId,
+    open: true,
+    workspaceRootGroupLabel: copy.t("referencePicker.workspaceRootGroup"),
+    initialTarget,
+    isNodeSelectable: () => false,
+    onClose: noopVoid,
+    onConfirm: noopVoid
+  });
+  useEffect(() => {
+    if (!initialNodeRef) {
+      return;
+    }
+    if (view.selectedGroupKey === nodeRefKey(initialNodeRef)) {
+      return;
+    }
+    const group = view.sidebarGroupsBySource[initialNodeRef.sourceId]?.find(
+      (item) => item.ref.nodeId === initialNodeRef.nodeId
+    );
+    if (!group) {
+      return;
+    }
+    view.selectGroup(group);
+  }, [
+    initialNodeRef,
+    view.selectedGroupKey,
+    view.sidebarGroupsBySource,
+    view.selectGroup
+  ]);
+  const activeFilterSet = new Set(view.activeFilters);
+  const toggleFilter = (id: string) => {
+    const next = new Set(activeFilterSet);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    view.setFilters([...next]);
+  };
+  const clearFilters = () => view.setFilters([]);
+  const searchInput = useComposedInputValue({
+    onCommit: view.setSearchQuery,
+    value: view.searchQuery
+  });
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const [contextMenu, setContextMenu] =
+    useState<ReferenceSourceContextMenuState | null>(null);
+  const [openWithApplications, setOpenWithApplications] = useState<
+    WorkspaceFileOpenWithApplication[]
+  >([]);
+  const [openWithLoading, setOpenWithLoading] = useState(false);
+  const retainedIconEntries = useMemo(
+    () =>
+      collectReferenceNodeIconEntries({
+        childrenByKey: view.childrenByKey,
+        currentEntries: view.currentEntries,
+        expandedKeys: view.expandedKeys,
+        focusedNode: view.focusedNode,
+        searchResults: view.searchResults,
+        selection: view.selection,
+        sidebarGroupsBySource: view.sidebarGroupsBySource
+      }),
+    [
+      view.childrenByKey,
+      view.currentEntries,
+      view.expandedKeys,
+      view.focusedNode,
+      view.searchResults,
+      view.selection,
+      view.sidebarGroupsBySource
+    ]
+  );
+  const iconUrls = useWorkspaceFileEntryIconUrls({
+    entries: retainedIconEntries,
+    includeImageThumbnails: resolveEntryIconUrl !== undefined,
+    resolveEntryIconUrl
+  });
+
+  useEffect(() => {
+    if (!contextMenu || !fileManagerCopy) {
+      setOpenWithApplications([]);
+      setOpenWithLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const cachedApplications = view.getCachedOpenWithApplications(
+      contextMenu.node
+    );
+    if (cachedApplications) {
+      setOpenWithApplications(cachedApplications);
+      setOpenWithLoading(false);
+      return;
+    }
+
+    setOpenWithApplications([]);
+    setOpenWithLoading(true);
+    void view
+      .listOpenWithApplications(contextMenu.node)
+      .then((applications) => {
+        if (cancelled) {
+          return;
+        }
+        setOpenWithApplications(applications);
+        setOpenWithLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setOpenWithApplications([]);
+        setOpenWithLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contextMenu?.node, fileManagerCopy]);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    function handlePointerDown(event: globalThis.PointerEvent): void {
+      const target = event.target;
+      if (target instanceof Node && contextMenuRef.current?.contains(target)) {
+        return;
+      }
+      if (
+        target instanceof Element &&
+        target.closest("[data-workspace-file-manager-submenu]")
+      ) {
+        return;
+      }
+      setContextMenu(null);
+    }
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setContextMenu(null);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [contextMenu]);
+
+  const openReferenceContextMenu = (
+    event: MouseEvent<HTMLElement>,
+    node: ReferenceNode
+  ): void => {
+    if (!fileManagerCopy || node.kind !== "file") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    view.setFocusedNode(node);
+    setContextMenu({
+      node,
+      x: event.clientX,
+      y: event.clientY
+    });
+  };
+  const hasSelectedGroup = view.selectedGroupKey != null;
+
+  return (
+    <div
+      className={cn(
+        "relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--background-fronted)]",
+        className
+      )}
+      data-slot="viewport-menu-boundary"
+      data-workspace-file-menu-boundary=""
+      style={
+        {
+          "--workspace-file-manager-dialog-overlay-z-index": "20"
+        } as CSSProperties
+      }
+    >
+      <div className="flex min-h-0 min-w-0 flex-[1.7] flex-col border-r border-[var(--line-1)]">
+        <div className="flex items-center gap-2 border-b border-[var(--line-1)] p-3">
+          <div className="relative flex-1">
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+            <Input
+              className="pl-9"
+              placeholder={copy.t("referencePicker.searchPlaceholder")}
+              value={searchInput.value}
+              onBlur={searchInput.onBlur}
+              onChange={searchInput.onChange}
+              onCompositionEnd={searchInput.onCompositionEnd}
+              onCompositionStart={searchInput.onCompositionStart}
+            />
+          </div>
+          {view.capabilities?.filterable && view.filterCategories.length > 0 ? (
+            <FilterCategoryFilter
+              categories={view.filterCategories}
+              copy={copy}
+              selected={activeFilterSet}
+              onClear={clearFilters}
+              onToggle={toggleFilter}
+            />
+          ) : null}
+        </div>
+        <ScrollArea
+          className="min-h-0 flex-1"
+          viewportProps={{
+            onScroll: (event) => {
+              const el = event.currentTarget;
+              if (
+                view.hasMore &&
+                !view.isLoading &&
+                !view.isLoadingMore &&
+                el.scrollHeight - el.scrollTop - el.clientHeight < 120
+              ) {
+                view.loadMore();
+              }
+            }
+          }}
+        >
+          <div className="flex flex-col gap-[2px] p-3">
+            {view.isLoading ? (
+              <Feedback>
+                <Spinner size={16} />
+              </Feedback>
+            ) : view.isQuery ? (
+              view.searchResults.length === 0 ? (
+                <Feedback>{copy.t("referencePicker.emptySearch")}</Feedback>
+              ) : (
+                view.searchResults.map((node) => (
+                  <SearchResultRow
+                    key={nodeRefKey(node.ref)}
+                    focused={isFocused(view.focusedNode, node)}
+                    iconUrls={iconUrls}
+                    node={node}
+                    selected={view.isSelected(node)}
+                    onFocus={view.setFocusedNode}
+                    onContextMenu={openReferenceContextMenu}
+                    onOpen={view.openNode}
+                    selectable={view.isSelectable(node)}
+                    onSingleSelect={view.toggleSingleSelectionAndExpand}
+                    onToggle={view.toggleSelection}
+                  />
+                ))
+              )
+            ) : view.currentEntries.length === 0 ? (
+              <Feedback>
+                {copy.t(
+                  hasSelectedGroup
+                    ? "referencePicker.emptyDirectory"
+                    : "referencePicker.selectGroupHint"
+                )}
+              </Feedback>
+            ) : (
+              view.currentEntries.map((node) => (
+                <TreeNodeRow
+                  key={nodeRefKey(node.ref)}
+                  copy={copy}
+                  depth={0}
+                  iconUrls={iconUrls}
+                  node={node}
+                  onContextMenu={openReferenceContextMenu}
+                  view={view}
+                />
+              ))
+            )}
+            {view.hasMore && (view.isQuery || hasSelectedGroup) ? (
+              <Button
+                className="mt-1 w-full"
+                disabled={view.isLoadingMore}
+                size="sm"
+                type="button"
+                variant="ghost"
+                onClick={view.loadMore}
+              >
+                {view.isLoadingMore ? (
+                  <Spinner className="text-current" size={14} />
+                ) : null}
+                {copy.t("referencePicker.loadMore")}
+              </Button>
+            ) : null}
+          </div>
+        </ScrollArea>
+        {fileManagerCopy ? (
+          <WorkspaceFileManagerContextMenu
+            busy={view.isOpeningReference}
+            contextMenu={
+              contextMenu
+                ? {
+                    entry: referenceNodeToWorkspaceFileEntry(contextMenu.node),
+                    x: contextMenu.x,
+                    y: contextMenu.y
+                  }
+                : null
+            }
+            contextMenuRef={contextMenuRef}
+            copy={fileManagerCopy}
+            openWithApplications={openWithApplications}
+            openWithLoading={openWithLoading}
+            positionMode="viewport"
+            revealInFolderLabel={resolveRevealInFolderLabel(
+              fileManagerCopy,
+              hostOs
+            )}
+            resolveOpenWithApplicationIcon={resolveOpenWithApplicationIcon}
+            showCopyAction={false}
+            showCopyPathAction={false}
+            showCreateAction={false}
+            showDeleteAction={false}
+            showExportAction={false}
+            showImportAction={false}
+            showOpenInAppBrowserAction={false}
+            showOpenInDefaultBrowserAction={false}
+            showOpenInFileViewerAction={false}
+            showOpenWithAction={true}
+            showOpenWithOtherAction={true}
+            showRevealInFolderAction={true}
+            showRenameAction={false}
+            onClose={() => setContextMenu(null)}
+            onCopy={noopAsync}
+            onCopyPath={noopAsync}
+            onCreateDirectory={noopVoid}
+            onCreateFile={noopVoid}
+            onDelete={noopVoid}
+            onExport={noopAsync}
+            onImport={noopAsync}
+            onOpen={async () => {
+              if (contextMenu) {
+                await view.openNode(contextMenu.node);
+              }
+            }}
+            onOpenInAppBrowser={noopAsync}
+            onOpenInDefaultBrowser={noopAsync}
+            onOpenInFileViewer={noopAsync}
+            onOpenWithApplication={async (applicationPath) => {
+              if (contextMenu) {
+                await view.openWithApplication(
+                  contextMenu.node,
+                  applicationPath
+                );
+              }
+            }}
+            onOpenWithOtherApplication={async () => {
+              if (contextMenu) {
+                await view.openWithOtherApplication(
+                  contextMenu.node,
+                  fileManagerCopy.t("openWithOtherPickerPrompt")
+                );
+              }
+            }}
+            onRevealInFolder={async () => {
+              if (contextMenu) {
+                await view.revealNode(contextMenu.node);
+              }
+            }}
+            onRename={noopVoid}
+          />
+        ) : null}
+      </div>
+      <div className="@max-[760px]/workspace-file-manager:hidden min-h-0 min-w-[220px] flex-1">
+        <PreviewInfoPane
+          copy={copy}
+          hierarchy={view.breadcrumb}
+          iconUrls={iconUrls}
+          node={view.focusedNode}
+          previewState={view.previewState}
+          sourceLabel={view.activeTabLabel}
+        />
+      </div>
+    </div>
+  );
 }
 
 /**

@@ -207,6 +207,9 @@ function createFileManagerServiceStub(
     getSession() {
       throw new Error("getSession should not be called");
     },
+    getReferenceSourceAggregator() {
+      throw new Error("getReferenceSourceAggregator should not be called");
+    },
     getSnapshotState() {
       return snapshotState;
     },
