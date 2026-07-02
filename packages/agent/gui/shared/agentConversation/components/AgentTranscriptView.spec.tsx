@@ -483,6 +483,60 @@ describe("AgentTranscriptView", () => {
     expect(timelineWheel).not.toHaveBeenCalled();
   });
 
+  it("does not mark loaded historical agent responses as unread", async () => {
+    const base = detailViewModel();
+    const loadedTurn = {
+      id: "turn-2",
+      userMessage: { id: "user-2", body: "Follow-up request" },
+      userMessages: [{ id: "user-2", body: "Follow-up request" }],
+      agentMessages: [{ id: "assistant-2", body: "Follow-up answer" }],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: [
+        {
+          kind: "message" as const,
+          message: {
+            id: "assistant-2",
+            body: "Follow-up answer"
+          }
+        }
+      ]
+    };
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files",
+      userMessageLocator: "User messages"
+    };
+    const { rerender } = render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({ turns: [] })
+        )}
+        labels={labels}
+      />
+    );
+
+    rerender(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({ turns: [base.turns[0]!, loadedTurn] })
+        )}
+        labels={labels}
+      />
+    );
+
+    await act(async () => undefined);
+    const locator = screen.getByTestId("agent-message-locator");
+    for (const tick of locator.querySelectorAll(
+      ".agent-gui-message-locator__tick"
+    )) {
+      expect(tick).not.toHaveAttribute("data-unread-agent-response", "true");
+    }
+  });
+
   it("marks newly answered user message locator ticks as unread until located", async () => {
     const base = detailViewModel();
     const followUpTurn = {

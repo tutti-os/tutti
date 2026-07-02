@@ -453,6 +453,7 @@ function AgentMessageLocatorRail({
           const hadAgentResponse =
             previousAgentResponseByKey.get(item.key) ?? false;
           if (
+            previousAgentResponseByKey.has(item.key) &&
             item.hasAgentResponse &&
             !hadAgentResponse &&
             item.key !== selectedKey
