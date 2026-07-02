@@ -5802,29 +5802,34 @@ button.agent-gui-node__conversation-section-toggle:hover
   --agent-message-locator-hit-size: 18px;
   --agent-message-locator-center-offset: 10px;
   --agent-message-locator-visible-height: 100vh;
+  --agent-message-locator-visible-top-offset: 0px;
+  --agent-message-locator-viewport-height: var(--agent-message-locator-height);
 
   position: sticky;
   top: max(
     0px,
     calc(
-      (
-          var(--agent-message-locator-visible-height) -
-            var(--agent-message-locator-height)
-        ) /
-        2
+      var(--agent-message-locator-visible-top-offset) +
+        (
+          (
+              var(--agent-message-locator-visible-height) -
+                var(--agent-message-locator-viewport-height)
+            ) /
+            2
+        )
     )
   );
   right: 0;
   z-index: 7;
   justify-self: stretch;
   width: calc(100% + var(--agent-gui-message-locator-inline-offset));
-  height: var(--agent-message-locator-height);
+  height: var(--agent-message-locator-viewport-height);
   margin-right: calc(-1 * var(--agent-gui-message-locator-inline-offset));
-  margin-bottom: calc(-1 * var(--agent-message-locator-height));
+  margin-bottom: calc(-1 * var(--agent-message-locator-viewport-height));
   pointer-events: none;
 }
 
-.agent-gui-message-locator::before {
+.agent-gui-message-locator__viewport {
   position: absolute;
   top: 0;
   right: calc(
@@ -5833,17 +5838,30 @@ button.agent-gui-node__conversation-section-toggle:hover
   );
   width: var(--agent-message-locator-hit-size);
   height: 100%;
-  content: "";
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   pointer-events: auto;
+  scrollbar-width: none;
+}
+
+.agent-gui-message-locator__viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.agent-gui-message-locator__content {
+  position: relative;
+  min-height: 100%;
+  height: var(--agent-message-locator-height);
 }
 
 .agent-gui-message-locator__track-segment {
   position: absolute;
   top: var(--agent-message-locator-segment-position);
-  right: var(--agent-message-locator-center-offset);
+  left: 50%;
   width: 1px;
   height: 8px;
-  transform: translateX(50%);
+  transform: translateX(-50%);
   background: color-mix(
     in srgb,
     var(--line-2, var(--tutti-line-2)) 82%,
@@ -5854,10 +5872,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-message-locator__tick {
   position: absolute;
   top: var(--agent-message-locator-position);
-  right: calc(
-    var(--agent-message-locator-center-offset) -
-      var(--agent-message-locator-hit-size) / 2
-  );
+  left: 0;
   display: grid;
   width: var(--agent-message-locator-hit-size);
   height: var(--agent-message-locator-hit-size);
@@ -5930,7 +5945,9 @@ button.agent-gui-node__conversation-section-toggle:hover
   display: grid;
   width: min(360px, calc(100vw - 112px));
   max-width: max-content;
+  max-height: calc(var(--agent-message-locator-visible-height) - 32px);
   gap: 12px;
+  overflow-y: auto;
   padding: 16px;
   border: 1px solid
     color-mix(in srgb, var(--line-2, var(--tutti-line-2)) 72%, transparent);
