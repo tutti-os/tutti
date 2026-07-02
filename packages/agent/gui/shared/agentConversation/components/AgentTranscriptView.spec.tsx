@@ -303,6 +303,90 @@ describe("AgentTranscriptView", () => {
     }
   });
 
+  it("marks newly answered user message locator ticks as unread until located", async () => {
+    const base = detailViewModel();
+    const followUpTurn = {
+      id: "turn-2",
+      userMessage: { id: "user-2", body: "Follow-up request" },
+      userMessages: [{ id: "user-2", body: "Follow-up request" }],
+      agentMessages: [],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: []
+    };
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files",
+      userMessageLocator: "User messages"
+    };
+    const conversationForTurns = (
+      turns: WorkspaceAgentSessionDetailViewModel["turns"]
+    ) => projectAgentConversationVM(detailViewModel({ turns }));
+    const { rerender } = render(
+      <AgentTranscriptView
+        conversation={conversationForTurns([base.turns[0]!, followUpTurn])}
+        labels={labels}
+      />
+    );
+
+    const locator = screen.getByTestId("agent-message-locator");
+    const initialTicks = locator.querySelectorAll(
+      ".agent-gui-message-locator__tick"
+    );
+    expect(initialTicks[0]).not.toHaveAttribute(
+      "data-unread-agent-response",
+      "true"
+    );
+    expect(initialTicks[1]).not.toHaveAttribute(
+      "data-unread-agent-response",
+      "true"
+    );
+
+    rerender(
+      <AgentTranscriptView
+        conversation={conversationForTurns([
+          base.turns[0]!,
+          {
+            ...followUpTurn,
+            agentMessages: [{ id: "assistant-2", body: "Follow-up answer" }],
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-2",
+                  body: "Follow-up answer"
+                }
+              }
+            ]
+          }
+        ])}
+        labels={labels}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        locator.querySelectorAll(".agent-gui-message-locator__tick")[1]
+      ).toHaveAttribute("data-unread-agent-response", "true");
+    });
+    expect(
+      locator.querySelectorAll(".agent-gui-message-locator__tick")[0]
+    ).not.toHaveAttribute("data-unread-agent-response", "true");
+
+    fireEvent.click(
+      locator.querySelectorAll(".agent-gui-message-locator__tick")[1]!
+    );
+
+    await waitFor(() => {
+      expect(
+        locator.querySelectorAll(".agent-gui-message-locator__tick")[1]
+      ).not.toHaveAttribute("data-unread-agent-response", "true");
+    });
+  });
+
   it("renders attached thinking before assistant message content within the same row", () => {
     render(
       <AgentTranscriptView

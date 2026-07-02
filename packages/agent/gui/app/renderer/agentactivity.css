@@ -5772,6 +5772,20 @@ button.agent-gui-node__conversation-section-toggle:hover
   background: transparent;
 }
 
+.agent-gui-message-locator__tick[data-unread-agent-response="true"]
+  .agent-gui-message-locator__dot {
+  background: var(--tutti-purple);
+}
+
+.agent-gui-message-locator__tick[data-unread-agent-response="true"]:hover
+  .agent-gui-message-locator__dot,
+.agent-gui-message-locator__tick[data-unread-agent-response="true"]:focus-visible
+  .agent-gui-message-locator__dot {
+  border-width: 2px;
+  border-color: var(--tutti-purple);
+  background: transparent;
+}
+
 .agent-gui-message-locator__panel {
   position: absolute;
   top: 50%;

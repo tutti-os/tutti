@@ -53,6 +53,7 @@ interface AgentTranscriptViewProps {
 }
 
 interface AgentMessageLocatorItem {
+  hasAgentResponse: boolean;
   key: string;
   rowKey: string;
   turnGroupIndex: number;
@@ -385,6 +386,13 @@ function AgentMessageLocatorRail({
   const [shouldRenderPanel, setShouldRenderPanel] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const previousAgentResponseByKeyRef = useRef<ReadonlyMap<
+    string,
+    boolean
+  > | null>(null);
+  const [unreadAgentResponseKeys, setUnreadAgentResponseKeys] = useState<
+    ReadonlySet<string>
+  >(new Set());
   const [visibleHeightPx, setVisibleHeightPx] = useState<number | null>(null);
   useEffect(() => {
     if (isPanelOpen) {
@@ -410,6 +418,59 @@ function AgentMessageLocatorRail({
       setSelectedKey(null);
     }
   }, [items, selectedKey]);
+  useEffect(() => {
+    const previousAgentResponseByKey = previousAgentResponseByKeyRef.current;
+    const currentKeys = new Set(items.map((item) => item.key));
+
+    setUnreadAgentResponseKeys((currentUnreadKeys) => {
+      let nextUnreadKeys: Set<string> | null = null;
+      const ensureNextUnreadKeys = (): Set<string> => {
+        if (!nextUnreadKeys) {
+          nextUnreadKeys = new Set(currentUnreadKeys);
+        }
+        return nextUnreadKeys;
+      };
+
+      for (const key of currentUnreadKeys) {
+        if (!currentKeys.has(key)) {
+          ensureNextUnreadKeys().delete(key);
+        }
+      }
+
+      if (previousAgentResponseByKey) {
+        for (const item of items) {
+          const hadAgentResponse =
+            previousAgentResponseByKey.get(item.key) ?? false;
+          if (
+            item.hasAgentResponse &&
+            !hadAgentResponse &&
+            item.key !== selectedKey
+          ) {
+            ensureNextUnreadKeys().add(item.key);
+          }
+        }
+      }
+
+      return nextUnreadKeys ?? currentUnreadKeys;
+    });
+
+    previousAgentResponseByKeyRef.current = new Map(
+      items.map((item) => [item.key, item.hasAgentResponse])
+    );
+  }, [items, selectedKey]);
+  useEffect(() => {
+    if (!selectedKey) {
+      return;
+    }
+    setUnreadAgentResponseKeys((currentUnreadKeys) => {
+      if (!currentUnreadKeys.has(selectedKey)) {
+        return currentUnreadKeys;
+      }
+      const nextUnreadKeys = new Set(currentUnreadKeys);
+      nextUnreadKeys.delete(selectedKey);
+      return nextUnreadKeys;
+    });
+  }, [selectedKey]);
   useLayoutEffect(() => {
     const locator = locatorRef.current;
     const scrollParent = locator
@@ -492,9 +553,20 @@ function AgentMessageLocatorRail({
 
   const railHeight = (items.length - 1) * 30 + 18;
   const activeOrSelectedKey = activeKey ?? selectedKey;
+  const markItemRead = (itemKey: string): void => {
+    setUnreadAgentResponseKeys((currentUnreadKeys) => {
+      if (!currentUnreadKeys.has(itemKey)) {
+        return currentUnreadKeys;
+      }
+      const nextUnreadKeys = new Set(currentUnreadKeys);
+      nextUnreadKeys.delete(itemKey);
+      return nextUnreadKeys;
+    });
+  };
   const handleLocateItem = (item: AgentMessageLocatorItem): void => {
     setSelectedKey(item.key);
     setActiveKey(item.key);
+    markItemRead(item.key);
     onLocate(item);
   };
   const openPanel = (): void => {
@@ -579,6 +651,9 @@ function AgentMessageLocatorRail({
           aria-label={item.summary}
           title={item.summary}
           data-selected={item.key === selectedKey ? "true" : undefined}
+          data-unread-agent-response={
+            unreadAgentResponseKeys.has(item.key) ? "true" : undefined
+          }
           onClick={() => handleLocateItem(item)}
           onFocus={() => setActiveKey(item.key)}
           onMouseEnter={() => setActiveKey(item.key)}
@@ -748,6 +823,7 @@ function buildUserMessageLocatorItems(
     }
     const rowKey = rowKeys[rowIndex] ?? transcriptRowKey(row);
     items.push({
+      hasAgentResponse: hasAgentResponseForTurn(rows, row, rowIndex),
       key: `user-message:${rowKey}`,
       rowKey,
       turnGroupIndex: turnGroupIndexByRowIndex.get(rowIndex) ?? rowIndex,
@@ -756,6 +832,30 @@ function buildUserMessageLocatorItems(
     });
   });
   return items;
+}
+
+function hasAgentResponseForTurn(
+  rows: ReadonlyArray<AgentConversationVM["rows"][number]>,
+  userRow: AgentConversationVM["rows"][number],
+  userRowIndex: number
+): boolean {
+  const turnId = userRow.turnId ?? null;
+  for (let index = userRowIndex + 1; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (row.kind !== "message") {
+      continue;
+    }
+    if (row.speaker === "user") {
+      return false;
+    }
+    if (turnId && row.turnId !== turnId) {
+      return false;
+    }
+    if (row.speaker === "assistant") {
+      return true;
+    }
+  }
+  return false;
 }
 
 function summarizeUserMessageRow(
