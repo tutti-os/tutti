@@ -199,6 +199,7 @@ export interface WorkspaceAgentActivityStatePatch {
   permissionModeId?: string;
   settings?: WorkspaceAgentActivityComposerSettings;
   runtimeContext?: Record<string, unknown>;
+  pendingInteractive?: AgentActivitySession["pendingInteractive"];
   cwd?: string;
   title?: string;
   lifecycleStatus?: string;

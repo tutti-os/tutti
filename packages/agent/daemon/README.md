@@ -57,6 +57,12 @@ record. Idle live-session release must not emit completion activity, clear the
 provider session id, remove runtime directories, or interrupt active turns and
 pending interactive requests.
 
+Claude Code SDK sessions keep the SDK `session_id` in `ProviderSessionID` and
+mirror the opaque SDK resume cursor in `runtimeContext.resumeCursor`. The sidecar
+owns SDK stream ordering, turn cancellation, orphan result draining, and cursor
+updates; the Go adapter forwards requests, persists session state patches, and
+restores the last cursor on resume.
+
 ## Legacy Defaults
 
 The legacy runtime constructors still default to `TUTTI_WORKSPACE_ID`,

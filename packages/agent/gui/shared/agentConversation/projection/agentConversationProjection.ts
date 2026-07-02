@@ -941,11 +941,18 @@ function normalizeInteractivePendingStatus(
   value: string | null | undefined,
   statusKind: AgentToolCallVM["statusKind"]
 ): boolean {
-  if (statusKind === "waiting") {
+  if (statusKind === "waiting" || statusKind === "working") {
     return true;
   }
   const normalized = (value ?? "").trim().toLowerCase();
-  return normalized === "waiting_input" || normalized === "waiting";
+  return (
+    normalized === "waiting_input" ||
+    normalized === "waiting" ||
+    normalized === "pending" ||
+    normalized === "running" ||
+    normalized === "streaming" ||
+    normalized === "working"
+  );
 }
 
 function fallbackApprovalFromCall(

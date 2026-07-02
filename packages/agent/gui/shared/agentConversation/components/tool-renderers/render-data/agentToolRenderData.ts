@@ -260,10 +260,12 @@ export function getWebSearchRenderData(
     ),
     output:
       firstString(
+        stringValue(call.output?.text),
+        contentText(call.content),
+        contentText(call.output?.content),
         stringValue(call.output?.stdout),
         stringValue(call.output?.output),
-        stringValue(call.output?.content),
-        contentText(call.output?.content)
+        stringValue(call.output?.content)
       ) ?? "",
     error:
       firstString(
@@ -404,7 +406,10 @@ export function getTaskRenderData(call: AgentToolCallVM): AgentTaskRenderData {
   const errorRawOutput = recordValue(call.error?.rawOutput);
   return {
     title: task?.title ?? call.name,
-    status: task?.status ?? null,
+    status:
+      task?.status ??
+      stringValue(call.metadata?.taskStatus) ??
+      stringValue(call.metadata?.subagentStatus),
     durationText:
       typeof task?.durationMs === "number" && Number.isFinite(task.durationMs)
         ? formatDuration(task.durationMs)
@@ -422,7 +427,9 @@ export function getTaskRenderData(call: AgentToolCallVM): AgentTaskRenderData {
       stringValue(call.metadata?.childSessionID),
       stringValue(call.metadata?.child_session_id),
       stringValue(call.metadata?.subagentSessionID),
-      stringValue(call.metadata?.subagent_session_id)
+      stringValue(call.metadata?.subagent_session_id),
+      stringValue(call.metadata?.subagentAgentId),
+      stringValue(call.metadata?.agentId)
     ),
     steps,
     resultMarkdown: firstString(

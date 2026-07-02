@@ -726,6 +726,60 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
     });
   });
 
+  it("keeps executable Claude AskUserQuestion prompts in the transcript detail view", () => {
+    const claudeSession: AgentHostWorkspaceAgentSession = {
+      ...session,
+      provider: "claude-code"
+    };
+
+    const view = buildWorkspaceAgentSessionDetailViewModel({
+      activity: {
+        ...activity,
+        agentProvider: "claude-code",
+        agentName: "Claude Code"
+      },
+      session: claudeSession,
+      timelineItems: [
+        item({
+          id: 42,
+          seq: 42,
+          turnId: "turn-claude-ask",
+          itemType: "message.user",
+          content: "验证 AskUserQuestion"
+        }),
+        item({
+          id: 43,
+          seq: 43,
+          turnId: "turn-claude-ask",
+          itemType: "call.started",
+          callId: "call-ask-user",
+          callType: "interactive",
+          name: "AskUserQuestion",
+          status: "waiting_input",
+          payload: {
+            callId: "call-ask-user",
+            toolName: "AskUserQuestion",
+            input: {
+              requestId: "request-ask-user",
+              questions: [{ id: "scope", question: "Which scope?" }]
+            }
+          }
+        })
+      ]
+    });
+
+    expect(view.turns[0]?.toolCalls[0]).toMatchObject({
+      toolName: "AskUserQuestion",
+      callType: "interactive",
+      statusKind: "waiting",
+      payload: expect.objectContaining({
+        input: expect.objectContaining({
+          requestId: "request-ask-user"
+        })
+      })
+    });
+  });
+
   it("hides unsupported Claude AskUserQuestion tool calls from the transcript detail view", () => {
     const claudeSession: AgentHostWorkspaceAgentSession = {
       ...session,

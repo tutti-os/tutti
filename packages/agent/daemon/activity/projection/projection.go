@@ -250,10 +250,19 @@ func ProjectMessageUpdate(
 		}
 		message.Payload["text"] = stringValue(message.Payload["text"]) + update.ContentDelta
 	}
+	message.Payload = clearStaleToolPayloadForStatus(message.Kind, message.Status, message.Payload)
 	if message.Payload == nil {
 		message.Payload = map[string]any{}
 	}
 	return message, true
+}
+
+func clearStaleToolPayloadForStatus(kind string, status string, payload map[string]any) map[string]any {
+	if strings.TrimSpace(kind) != "tool_call" || strings.TrimSpace(status) != "completed" || len(payload) == 0 {
+		return payload
+	}
+	delete(payload, "error")
+	return payload
 }
 
 func firstNonZeroInt64(values ...int64) int64 {

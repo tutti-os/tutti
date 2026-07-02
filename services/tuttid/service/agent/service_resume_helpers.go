@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
@@ -78,7 +79,96 @@ func isResumeStaleTurnStatus(status string) bool {
 
 func isRuntimeActiveTurnStatus(status string) bool {
 	switch strings.TrimSpace(status) {
-	case "working", "waiting":
+	case "working":
+		return true
+	default:
+		return false
+	}
+}
+
+func runtimeSessionHasLiveTurn(session RuntimeSession) bool {
+	if isRuntimeActiveTurnStatus(session.Status) {
+		return true
+	}
+	if runtimeSessionHasLivePendingInteractive(session) {
+		return true
+	}
+	if runtimeSessionHasLiveBackgroundAgent(session) {
+		return true
+	}
+	if session.TurnLifecycle == nil {
+		return false
+	}
+	activeTurnID := ""
+	if session.TurnLifecycle.ActiveTurnID != nil {
+		activeTurnID = strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID)
+	}
+	return activeTurnID != "" && isRuntimeActiveTurnPhase(session.TurnLifecycle.Phase)
+}
+
+func runtimeSessionHasLivePendingInteractive(session RuntimeSession) bool {
+	if session.PendingInteractive == nil {
+		return false
+	}
+	if strings.TrimSpace(session.PendingInteractive.RequestID) == "" {
+		return false
+	}
+	switch strings.TrimSpace(session.PendingInteractive.Status) {
+	case "completed", "failed", "canceled", "cancelled", "stopped":
+		return false
+	default:
+		return true
+	}
+}
+
+func runtimeSessionHasLiveBackgroundAgent(session RuntimeSession) bool {
+	backgroundAgents, ok := session.RuntimeContext["backgroundAgents"].(map[string]any)
+	if !ok {
+		return false
+	}
+	if runtimeContextPositiveCount(backgroundAgents["count"]) {
+		return true
+	}
+	items, _ := backgroundAgents["items"].([]any)
+	for _, item := range items {
+		agent, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		status := strings.TrimSpace(payloadString(agent, "status"))
+		if status == "" {
+			status = "running"
+		}
+		switch status {
+		case "completed", "failed", "canceled", "cancelled", "stopped":
+			continue
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+func runtimeContextPositiveCount(value any) bool {
+	switch typed := value.(type) {
+	case int:
+		return typed > 0
+	case int64:
+		return typed > 0
+	case float64:
+		return typed > 0
+	case json.Number:
+		count, err := typed.Int64()
+		return err == nil && count > 0
+	default:
+		return false
+	}
+}
+
+func isRuntimeActiveTurnPhase(phase string) bool {
+	switch strings.TrimSpace(phase) {
+	case "submitted", "working", "running", "streaming",
+		"waiting", "waiting_approval", "waiting_input", "awaiting_approval":
 		return true
 	default:
 		return false

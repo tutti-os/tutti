@@ -44,6 +44,10 @@ export function buildCanonicalWorkspaceAgentDetailView({
   const sortedTimelineItems = [...timelineItems].sort(
     compareTimelineItemsAscending
   );
+  const suppressedToolCallIds = suppressedClaudeAskUserQuestionCallIds(
+    session,
+    sortedTimelineItems
+  );
 
   for (const item of sortedTimelineItems) {
     const role = messageRole(item);
@@ -86,7 +90,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
     const turn = getTurn(turns, turnId);
 
     if (isWorkspaceAgentToolCallItem(item)) {
-      if (shouldSuppressToolCall(session, item)) {
+      if (shouldSuppressToolCall(item, suppressedToolCallIds)) {
         continue;
       }
       upsertToolCall(turn, item);
@@ -269,18 +273,75 @@ function upsertToolCall(
   upsertToolCallAgentItem(turn, call, itemId(item));
 }
 
-function shouldSuppressToolCall(
+function suppressedClaudeAskUserQuestionCallIds(
   session: WorkspaceAgentActivitySession,
+  items: readonly WorkspaceAgentActivityTimelineItem[]
+): Set<string> {
+  const provider = session.provider?.trim().toLowerCase() ?? "";
+  if (provider !== "claude-code") {
+    return new Set();
+  }
+  const suppressed = new Set<string>();
+  for (const item of items) {
+    if (
+      normalizeToolName(toolNameFromItem(item)) !== "askuserquestion" ||
+      !isUnavailableAskUserQuestionFailure(item)
+    ) {
+      continue;
+    }
+    const callId = toolCallSuppressionId(item);
+    if (callId) {
+      suppressed.add(callId);
+    }
+  }
+  return suppressed;
+}
+
+function shouldSuppressToolCall(
+  item: WorkspaceAgentActivityTimelineItem,
+  suppressedToolCallIds: ReadonlySet<string>
+): boolean {
+  const callId = toolCallSuppressionId(item);
+  return callId ? suppressedToolCallIds.has(callId) : false;
+}
+
+function toolCallSuppressionId(
+  item: WorkspaceAgentActivityTimelineItem
+): string | null {
+  return firstPresentString(
+    item.callId,
+    stringRecordValue(item.payload, "callId"),
+    stringRecordValue(item.payload, "toolCallId")
+  );
+}
+
+function isUnavailableAskUserQuestionFailure(
   item: WorkspaceAgentActivityTimelineItem
 ): boolean {
-  // Claude ACP currently cannot execute AskUserQuestion. The model may still emit the
-  // synthetic tool call before ACP rejects it, so suppress it from the transcript UI
-  // instead of surfacing a guaranteed-noise failure card.
-  const provider = session.provider?.trim().toLowerCase() ?? "";
-  return (
-    provider === "claude-code" &&
-    normalizeToolName(toolNameFromItem(item)) === "askuserquestion"
+  const status = firstPresentString(
+    item.status,
+    stringRecordValue(item.payload, "status")
   );
+  if (status !== "failed") {
+    return false;
+  }
+  const payload = normalizedPayload(item.payload);
+  const output = normalizedPayload(
+    payload?.output as WorkspaceAgentActivityTimelineItem["payload"]
+  );
+  const error = normalizedPayload(
+    payload?.error as WorkspaceAgentActivityTimelineItem["payload"]
+  );
+  const message = firstPresentString(
+    stringRecordValue(output, "output"),
+    stringRecordValue(output, "text"),
+    stringRecordValue(output, "message"),
+    stringRecordValue(error, "error"),
+    stringRecordValue(error, "message"),
+    stringRecordValue(payload, "error"),
+    stringRecordValue(payload, "message")
+  );
+  return message?.includes("No such tool available: AskUserQuestion") ?? false;
 }
 
 function upsertToolCallAgentItem(

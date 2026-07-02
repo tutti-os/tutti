@@ -840,6 +840,10 @@ export const en = {
       submitAnswers: "Submit answers",
       answerPlaceholder: "Add details for the agent...",
       waitingForAnswer: "Waiting for your answer...",
+      waitingForBackgroundAgent_one:
+        "Waiting for {{count}} background agent to finish",
+      waitingForBackgroundAgent_other:
+        "Waiting for {{count}} background agents to finish",
       shortcutEnter: "Enter",
       shortcutCmdEnter: "Cmd + Enter",
       shortcutCtrEnter: "Ctr + Enter",

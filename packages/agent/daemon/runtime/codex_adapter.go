@@ -3030,17 +3030,23 @@ func acpPermissionResolvedEvents(session Session, turnID string, pending *pendin
 	}
 	callType := firstNonEmpty(strings.TrimSpace(pending.callType), "approval")
 	if err != nil {
-		return []activityshared.Event{newTurnActivityEventWithID(session, pending.eventID, EventCallFailed, turnID, messageStreamStateFailed, "", pending.name, map[string]any{
-			"callId":   pending.callID,
-			"callType": callType,
-			"name":     pending.name,
-			"toolName": pending.toolName,
-			"status":   messageStreamStateFailed,
-			"error": map[string]any{
+		return []activityshared.Event{
+			newTurnActivityEventWithID(session, pending.eventID, EventCallFailed, turnID, messageStreamStateFailed, "", pending.name, map[string]any{
+				"callId":   pending.callID,
+				"callType": callType,
+				"name":     pending.name,
+				"toolName": pending.toolName,
+				"status":   messageStreamStateFailed,
+				"error": map[string]any{
+					"requestId": pending.requestID,
+					"message":   err.Error(),
+				},
+			}),
+			newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
+				"reason":    err.Error(),
 				"requestId": pending.requestID,
-				"message":   err.Error(),
-			},
-		})}
+			}),
+		}
 	}
 	return []activityshared.Event{
 		newTurnActivityEventWithID(session, pending.eventID, EventCallCompleted, turnID, messageStreamStateCompleted, "", pending.name, map[string]any{

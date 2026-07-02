@@ -252,6 +252,47 @@ func TestProjectMessageUpdateMergesPayloadAndProtectsTerminalStatus(t *testing.T
 	}
 }
 
+func TestProjectMessageUpdateClearsStaleToolErrorOnCompletion(t *testing.T) {
+	existing := MessageSnapshot{
+		ID:                3,
+		AgentSessionID:    "session-1",
+		MessageID:         "tool-1",
+		Version:           4,
+		TurnID:            "turn-1",
+		Role:              "assistant",
+		Kind:              "tool_call",
+		Status:            "failed",
+		Payload:           map[string]any{"error": map[string]any{"message": "request interrupted"}, "input": map[string]any{"toolName": "Read"}},
+		OccurredAtUnixMS:  120,
+		StartedAtUnixMS:   90,
+		CompletedAtUnixMS: 130,
+		CreatedAtUnixMS:   80,
+		UpdatedAtUnixMS:   100,
+	}
+
+	message, ok := ProjectMessageUpdate(existing, true, MessageUpdate{
+		MessageID:         "tool-1",
+		Status:            "completed",
+		Payload:           map[string]any{"output": map[string]any{"text": "done"}},
+		CompletedAtUnixMS: 140,
+	}, 5, 150)
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if message.Status != "completed" {
+		t.Fatalf("Status = %q, want completed", message.Status)
+	}
+	if _, ok := message.Payload["error"]; ok {
+		t.Fatalf("payload = %#v, want stale error cleared", message.Payload)
+	}
+	if got := message.Payload["output"].(map[string]any)["text"]; got != "done" {
+		t.Fatalf("payload = %#v, want completed output", message.Payload)
+	}
+	if got := message.Payload["input"].(map[string]any)["toolName"]; got != "Read" {
+		t.Fatalf("payload = %#v, want existing input preserved", message.Payload)
+	}
+}
+
 func TestProjectMessageUpdateRejectsNewMessageWithoutTurn(t *testing.T) {
 	message, ok := ProjectMessageUpdate(MessageSnapshot{}, false, MessageUpdate{
 		MessageID: "message-1",

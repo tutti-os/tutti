@@ -747,8 +747,14 @@ func TestReporterProjectsCanonicalFieldsFromStartedAndCompletedCallsToMessageUpd
 	if got := updates[1].Payload["output"].(map[string]any)["stdout"]; got != "README.md\n" {
 		t.Fatalf("payload = %#v, want completed output preserved", updates[1].Payload)
 	}
+	if got := updates[1].Payload["output"].(map[string]any)["text"]; got != "README.md" {
+		t.Fatalf("payload = %#v, want canonical output text", updates[1].Payload)
+	}
 	if got := updates[1].Payload["error"].(map[string]any)["stderr"]; got != "warning: truncated\n" {
 		t.Fatalf("payload = %#v, want completed error preserved", updates[1].Payload)
+	}
+	if got := updates[1].Payload["error"].(map[string]any)["text"]; got != "warning: truncated" {
+		t.Fatalf("payload = %#v, want canonical error text", updates[1].Payload)
 	}
 	if got := updates[1].Status; got != "completed" {
 		t.Fatalf("completed update = %#v, want completed status preserved", updates[1])
@@ -790,6 +796,39 @@ func TestReporterProjectsStandardACPToolLifecycleToStableMessageUpdates(t *testi
 	}
 	if got := updates[1].Payload["output"].(map[string]any)["stdout"]; got != "/workspace/app\n" {
 		t.Fatalf("payload = %#v, want preserved output", updates[1].Payload)
+	}
+	if got := updates[1].Payload["output"].(map[string]any)["text"]; got != "/workspace/app" {
+		t.Fatalf("payload = %#v, want canonical output text", updates[1].Payload)
+	}
+}
+
+func TestReporterCanonicalizesToolOutputTextFromContentBlocks(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	report := reportActivityInput(session, []activityshared.Event{
+		newTurnActivityEventWithID(session, "web-search-complete", EventCallCompleted, "turn-web", messageStreamStateCompleted, "", "WebSearch", map[string]any{
+			"callId":   "call-web",
+			"callType": "tool",
+			"name":     "WebSearch",
+			"toolName": "WebSearch",
+			"output": map[string]any{
+				"content": []any{
+					map[string]any{
+						"type": "tool_result",
+						"text": "Web search results for query: \"Tokyo weather\"",
+					},
+				},
+			},
+		}),
+	})
+
+	if len(report.MessageUpdates) != 1 {
+		t.Fatalf("message updates = %#v, want 1", report.MessageUpdates)
+	}
+	output, _ := report.MessageUpdates[0].Payload["output"].(map[string]any)
+	if got := output["text"]; got != "Web search results for query: \"Tokyo weather\"" {
+		t.Fatalf("output = %#v, want canonical output text from content blocks", output)
 	}
 }
 

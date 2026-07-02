@@ -718,6 +718,45 @@ delimited by ---`, and the composer skill picker may show partial or
   [activity_projection.go](../../services/tuttid/service/agent/activity_projection.go)
   [WorkspaceChrome.tsx](../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/WorkspaceChrome.tsx)
 
+### Claude SDK ExitPlanMode fails as interrupted after plan is ready
+
+- Symptom:
+  Claude Code SDK writes a plan, then `ExitPlanMode` appears failed with
+  `request interrupted by application restart`. The composer or dock can briefly
+  show a spinner, then clear without user approval.
+- Quick checks:
+  Compare runtime and durable session state. A live SDK interactive turn can
+  report `Status=created` while `TurnLifecycle.ActiveTurnID` is non-empty and
+  `TurnLifecycle.Phase=waiting_approval`. That is live, not stale. A bare
+  runtime `Status=waiting` without `pendingInteractive`, a live background
+  agent, or a non-empty active turn lifecycle is stale and should not block
+  reconciliation.
+- Root cause:
+  Stale resume reconciliation is only for restored persisted turns whose
+  provider callback no longer exists. If service read/ensure paths look only at
+  runtime `Status`, they can misclassify a live SDK synthetic interactive turn
+  as idle and mark the pending `ExitPlanMode` tool failed.
+- Fix:
+  Gate stale reconciliation with full runtime turn state: status, active turn
+  id, and phase. Treat `submitted`, `working`, `running`, `streaming`,
+  `waiting`, `waiting_approval`, `waiting_input`, and `awaiting_approval` with a
+  non-empty active turn id as live. Also treat a runtime pending interactive
+  prompt with a non-empty request id as live: a call message can reach durable
+  storage before the corresponding turn-lifecycle patch, and stale
+  reconciliation must not fail that just-created prompt during the race window.
+  Do not treat runtime `Status=waiting` alone as live. When a pending
+  interactive request fails or is canceled, emit the failed call and an
+  interrupted turn completion so the controller and durable session leave
+  `waiting_approval`.
+  Only reconcile when no live runtime turn or pending interactive prompt is
+  present, or when resuming from durable state after process loss.
+- Validation:
+  Add agent service tests for `Status=created` plus
+  `TurnLifecycle.Phase=waiting_approval` and a synthetic active turn id. `Get`
+  and `ensureRuntimeSessionResult` must not call stale reconciliation. Also add
+  coverage for `Status=waiting` with no pending interactive/live turn, which
+  must reconcile stale durable state.
+
 ### Codex ACP warns about user-level config as project-local config
 
 - Symptom:
@@ -805,6 +844,95 @@ delimited by ---`, and the composer skill picker may show partial or
   `turn/completed` notifications during a parent turn, plus AgentGUI projection
   tests for failed Agent calls with prompt-only payloads. Run the focused Go and
   GUI specs for those paths.
+
+### Claude SDK subagent events overwrite or complete the parent turn
+
+- Symptom:
+  A Claude Code SDK parent turn that launched `Task` subagents loses the parent
+  answer, finishes early when a child returns `result`, or shows child tool calls
+  as unrelated top-level activity instead of under the parent task.
+- Quick checks:
+  Inspect raw sidecar SDK messages for `parent_tool_use_id`. If that value is
+  non-empty, the event belongs to a nested subagent and must not update parent
+  assistant text, thinking text, usage, resume cursor, or terminal result state.
+  The projected tool metadata should preserve `parentToolUseId` so AgentGUI can
+  fold nested calls under the parent tool.
+- Root cause:
+  Claude Code SDK streams parent and subagent messages through the same query
+  loop. Without filtering on `parent_tool_use_id`, nested assistant/result
+  messages look like normal parent-turn messages. A parent turn may also settle
+  while `runtimeContext.backgroundAgents.count` is still positive; service-layer
+  stale resume reconciliation must treat that as live runtime state, otherwise
+  it can mark late child tools or approvals as failed with the
+  application-restart interruption message while the sidecar reader is still
+  draining background events. After the child finishes, the parent may continue
+  in a synthetic SDK turn; if that turn emits messages/tools without a
+  `turn_started` lifecycle event, AgentGUI can show completed thinking/tool
+  rows while the parent is still working and the composer spinner stays idle.
+  If a previously failed tool message later completes, durable payload merge
+  must clear stale `error` payload data so the UI does not display both the old
+  failure and final success.
+- Fix:
+  Treat non-empty `parent_tool_use_id` as a nested scope marker. Keep child tool
+  lifecycle events, but attach `metadata.parentToolUseId`; ignore nested
+  assistant text/thinking/usage/result for parent-turn state. For `Task` parents,
+  also keep child terminal payloads in task `metadata.steps` when available.
+  When the Agent tool reports an async launch, parse `agentId` and `output_file`
+  into structured metadata and mark the delegated task status as running. The Go
+  SDK adapter must own a persistent single-reader dispatcher for each live
+  sidecar session: `Exec` waits on a per-turn waiter, but the reader keeps
+  draining after terminal turn events and publishes late background/subagent
+  events through the session event sink. Do not make `task_notification` settle
+  the parent turn; treat it as task progress/completion metadata only. If a late
+  `task_notification` has no task or agent id but there is exactly one running
+  delegated task, resolve it to that task so the background agent count can
+  clear. Also emit delegated-task completion from the SDK `TaskCompleted` hook;
+  some SDK runs finish the child JSONL without a usable `task_notification`, and
+  the hook must still clear the runtime background-agent count. When the SDK
+  emits `TaskCreated` with only `task_id`, do not bind it to a running
+  delegated task by count. Use `parentToolUseId` as the canonical key and treat
+  `agentId`/`taskId` as aliases resolved back to an existing Agent tool call;
+  otherwise concurrent subagents can cross-bind ids and keep
+  `backgroundAgents.count` stale. When the SDK
+  resumes parent work after a background agent, the sidecar must emit
+  `turn_started` for the synthetic continuation and the Go adapter must map it
+  to `EventTurnStarted`; keep the background-agent wait banner separate from
+  this turn lifecycle. Top-level assistant text and thinking must be keyed by
+  SDK message/content-block segments rather than by turn id. Treat the live
+  `content_block.index` as a stream locator only, not as durable message
+  identity. Consolidated assistant messages are fallback/tail compensation only,
+  because their content array indexes can differ from live `stream_event` block
+  indexes when thinking or tools are present. Projection code that merges
+  repeated tool-message updates should remove stale `error` data when the
+  canonical status becomes completed.
+- Validation:
+  Add sidecar normalizer coverage for `parentToolUseId`/task steps and adapter
+  coverage that terminal-after events still reach DB/UI through the session
+  event sink. SDK task lifecycle events should also update
+  `runtimeContext.backgroundAgents` from running to completed so composer wait
+  copy clears when the background agent finishes. Add service coverage that
+  runtime `backgroundAgents.count > 0` suppresses stale resume reconciliation
+  even when there is no active parent turn. Add sidecar/adapter coverage for
+  synthetic continuation `turn_started`, plus projection coverage that a
+  completed tool update drops an earlier failed `error` payload.
+
+### Claude SDK Grep or Glob unavailable despite Claude Code preset
+
+- Symptom:
+  Claude emits `Grep` or `Glob`, but the SDK returns `No such tool available`
+  and suggests using shell `grep` or `find`.
+- Root cause:
+  Some Claude Code SDK native builds expose search through `Bash` by default.
+  The `claude_code` tool preset may not register dedicated `Grep`/`Glob` tools
+  unless the host also lists them in `allowedTools` or `tools`.
+- Fix:
+  Keep the `claude_code` preset as the base tool set, and explicitly include
+  `Grep` and `Glob` in Claude SDK `allowedTools`. Avoid replacing `tools` with a
+  short string list unless the host intentionally wants to narrow every built-in
+  tool available to Claude.
+- Validation:
+  Assert the sidecar start payload carries `allowedTools: ["Grep", "Glob"]`,
+  and typecheck against the local `@anthropic-ai/claude-agent-sdk` definitions.
 
 ### Concurrent agent CLI installs corrupt shared npm global state
 
@@ -924,6 +1052,43 @@ delimited by ---`, and the composer skill picker may show partial or
   [service.go](../../services/tuttid/service/agentstatus/service.go)
   [store.go](../../services/tuttid/service/externalagentregistry/store.go)
   [patch-claude-agent-acp.mjs](../../services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs)
+
+### Claude SDK model aliases resolve to configured Anthropic defaults
+
+- Symptom:
+  A Claude Code SDK session shows a Tutti composer model alias such as `sonnet`
+  or `haiku`, but the model response or error mentions a different concrete
+  model such as `mimo-v2.5-pro`.
+- Quick checks:
+  Inspect the effective Claude Code settings env from
+  `$CLAUDE_CONFIG_DIR/settings.json` or `~/.claude/settings.json`, especially
+  `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`,
+  `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, and
+  `ANTHROPIC_BASE_URL`. Also inspect the session `runtime_context_json` for
+  `providerConfig.baseUrl` and `model` before assuming the UI selected the
+  concrete provider model directly.
+- Root cause:
+  The SDK sidecar passes Tutti's Claude Code aliases to
+  `@anthropic-ai/claude-agent-sdk`, while the SDK/Claude Code runtime still
+  resolves those aliases through the user's Claude settings env. A proxy such as
+  MiMo may map `sonnet` to a configured concrete model, and provider access
+  errors then mention that concrete model instead of the Tutti alias.
+- Fix:
+  Keep the sidecar inheriting the user's Claude settings so credentials and base
+  URL keep working. Fix provider access by changing the user's Claude settings or
+  managed provider model config, not by hard-coding Tutti's static alias list.
+  When an old SDK session predates image-input support, normalize its
+  `runtimeContext.capabilities` before projecting it to AgentGUI so stale
+  persisted state does not disable prompt-image paste.
+- Validation:
+  Confirm the session runtime context shows `adapter: claude-agent-sdk`, the
+  expected `providerConfig.baseUrl`, and an `imageInput` capability. Then run the
+  Claude SDK adapter tests plus the agent service tests covering runtime-context
+  normalization.
+- References:
+  [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
+  [service_helpers.go](../../services/tuttid/service/agent/service_helpers.go)
+  [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
 
 ### Published package runtime asset 404 because the consumer bundler never saw the file
 
@@ -1433,3 +1598,39 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   Run the workspace files launch coordinator test and the AgentGUI workspace
   link action test, then `pnpm check:changed` for mixed desktop and AgentGUI
   changes.
+
+### Claude SDK rejects live bypassPermissions mode
+
+- Symptom:
+  A Claude Code SDK session starts in `default`, `auto`, or plan mode, then live
+  switching to `bypassPermissions` fails with
+  `Cannot set permission mode to bypassPermissions because the session was not launched with --dangerously-skip-permissions`.
+  Or the session state already shows `permissionModeId=bypassPermissions`, but
+  ordinary tools such as Bash still surface AgentGUI approval prompts.
+- Quick checks:
+  Inspect the SDK query options emitted by `packages/agent/claude-sdk-sidecar`.
+  `allowDangerouslySkipPermissions` must be enabled when the query is created,
+  not only when the initial permission mode is already `bypassPermissions`.
+  In root/sandboxed runtimes, confirm the sidecar process receives
+  `IS_SANDBOX=1`. If the query launched correctly, inspect the sidecar
+  `canUseTool` callback path; bypass mode should short-circuit ordinary tools
+  after preserving special handling for `AskUserQuestion` and `ExitPlanMode`.
+- Root cause:
+  Claude SDK treats bypass permission support as a session launch capability.
+  `query.setPermissionMode("bypassPermissions")` cannot enable that capability
+  after the query has already started. Tutti's sidecar also owns the
+  `canUseTool` callback; if that callback always requests AgentGUI approval,
+  it can reintroduce prompts even after the SDK permission mode is bypass.
+- Fix:
+  Gate bypass availability with the same rule as Claude Agent ACP: non-root
+  processes can bypass, and root processes can bypass only when `IS_SANDBOX` is
+  set. Launch the SDK query with `allowDangerouslySkipPermissions` whenever
+  that gate passes, regardless of the current permission mode. In `canUseTool`,
+  handle `AskUserQuestion` and `ExitPlanMode` first, then directly allow
+  ordinary tools when the effective permission mode is `bypassPermissions`.
+- Validation:
+  Add sidecar coverage for a `default` session whose query still receives
+  `allowDangerouslySkipPermissions: true`, plus daemon runtime coverage that
+  Claude SDK sidecar process env includes `IS_SANDBOX=1`. Add callback coverage
+  proving bypass mode allows an ordinary Bash request without
+  `approval_requested`, while `AskUserQuestion` still surfaces user input.

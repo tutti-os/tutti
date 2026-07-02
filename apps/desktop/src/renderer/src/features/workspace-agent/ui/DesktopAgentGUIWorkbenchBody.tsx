@@ -65,6 +65,7 @@ import {
   logAgentGUIConversationRailPreferenceDiagnostic,
   stringifyDiagnosticError
 } from "./desktopAgentGUIWorkbenchDiagnostics.ts";
+import { mergeDesktopAgentProbeSnapshots } from "./desktopAgentProbeSnapshot.ts";
 import {
   hasDesktopAgentGUIConversationRailCollapsedState,
   withDesktopAgentGUIProviderComposerDefaults
@@ -626,11 +627,14 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         if (canceled) {
           return;
         }
-        setWorkspaceAgentProbes({
+        setWorkspaceAgentProbes((current) => ({
           isLoadingAvailability: false,
           isLoadingUsage: false,
-          snapshot
-        });
+          snapshot: mergeDesktopAgentProbeSnapshots(
+            current?.snapshot ?? null,
+            snapshot
+          )
+        }));
       })
       .catch((error) => {
         if (canceled) {

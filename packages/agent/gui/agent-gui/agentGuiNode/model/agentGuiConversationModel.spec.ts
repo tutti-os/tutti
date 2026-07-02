@@ -1397,6 +1397,58 @@ describe("agentGuiConversationModel", () => {
     );
   });
 
+  it("treats streaming AskUserQuestion timeline items as pending prompts", () => {
+    expect(
+      selectPendingInteractivePromptFromTimelineItems([
+        {
+          id: 1,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          seq: 1,
+          eventId: "call-1",
+          actorType: "agent",
+          actorId: "claude-code",
+          itemType: "call.started",
+          role: "assistant",
+          callType: "interactive",
+          callId: "call-1",
+          name: "AskUserQuestion",
+          status: "streaming",
+          payload: {
+            input: {
+              requestId: "request-ask",
+              questions: [
+                {
+                  header: "Color",
+                  question: "What's your favorite color?",
+                  options: [
+                    { label: "Blue", description: "The color of the sky" }
+                  ]
+                }
+              ],
+              toolName: "AskUserQuestion"
+            },
+            metadata: {
+              adapter: "claude-agent-sdk",
+              callType: "interactive",
+              interactiveKind: "ask-user",
+              toolName: "AskUserQuestion"
+            },
+            status: "streaming",
+            toolName: "AskUserQuestion"
+          },
+          occurredAtUnixMs: 10,
+          createdAtUnixMs: 10
+        }
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        kind: "ask-user",
+        requestId: "request-ask"
+      })
+    );
+  });
+
   it("treats switch-mode approval timeline items as exit-plan prompts", () => {
     const item: AgentHostWorkspaceAgentTimelineItem = {
       id: 1,

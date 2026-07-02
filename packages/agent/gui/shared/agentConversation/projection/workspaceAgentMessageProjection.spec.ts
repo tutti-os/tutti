@@ -385,6 +385,72 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     expect(call?.output).toEqual({ text: "README contents" });
   });
 
+  it("projects durable AskUserQuestion tool_call messages as pending interactive prompts", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({
+        effectiveStatus: "working",
+        turnPhase: "working"
+      }),
+      messages: [
+        message({
+          messageId: "toolcall:call-ask",
+          id: 1,
+          version: 1,
+          role: "assistant",
+          kind: "tool_call",
+          status: "running",
+          payload: {
+            callId: "call-ask",
+            callType: "interactive",
+            title: "AskUserQuestion",
+            toolName: "AskUserQuestion",
+            status: "streaming",
+            input: {
+              requestId: "request-ask",
+              toolName: "AskUserQuestion",
+              questions: [
+                {
+                  id: "favorite-color",
+                  header: "Color",
+                  question: "What's your favorite color?",
+                  options: [
+                    {
+                      label: "Green",
+                      description: "Pick green"
+                    }
+                  ]
+                }
+              ]
+            },
+            metadata: {
+              adapter: "claude-agent-sdk",
+              callType: "interactive",
+              interactiveKind: "ask-user",
+              toolName: "AskUserQuestion"
+            }
+          }
+        })
+      ]
+    });
+
+    expect(conversation.pendingInteractivePrompt).toEqual({
+      kind: "ask-user",
+      requestId: "request-ask",
+      title: "Ask User Question",
+      questions: [
+        {
+          id: "favorite-color",
+          header: "Color",
+          question: "What's your favorite color?",
+          options: [{ label: "Green", description: "Pick green" }],
+          multiSelect: false,
+          answer: null
+        }
+      ]
+    });
+  });
+
   it("does not use opaque call ids as tool names", () => {
     const opaqueCallId = "call_SMAI3q45S9s5TwOqO8R7ZMdU";
     const conversation = projectWorkspaceAgentMessagesToConversationVM({

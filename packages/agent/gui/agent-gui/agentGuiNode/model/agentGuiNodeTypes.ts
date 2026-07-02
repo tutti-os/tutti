@@ -179,6 +179,7 @@ export interface AgentGUINodeViewModel {
   promptImagesSupported: boolean;
   compactSupported: boolean | null;
   usage: AgentActivityUsage | null;
+  backgroundAgentCount: number;
   /** Codex plan turn finished: offer the TUI-equivalent implement prompt. */
   listError: string | null;
   isDeletingConversation: boolean;

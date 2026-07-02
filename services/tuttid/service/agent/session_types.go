@@ -173,12 +173,24 @@ type RuntimeSession struct {
 	Status             string
 	TurnLifecycle      *TurnLifecycle
 	SubmitAvailability *SubmitAvailability
+	PendingInteractive *RuntimeInteractivePrompt
 	Visible            bool
 	Title              string
 	LastError          string
 	PinnedAtUnixMS     int64
 	CreatedAtUnixMS    int64
 	UpdatedAtUnixMS    int64
+}
+
+type RuntimeInteractivePrompt struct {
+	Kind      string
+	RequestID string
+	ToolName  string
+	Status    string
+	Input     map[string]any
+	Output    map[string]any
+	Error     map[string]any
+	Metadata  map[string]any
 }
 
 type RuntimeStartInput struct {
@@ -194,6 +206,7 @@ type RuntimeStartInput struct {
 	BrowserUse             *bool
 	ComputerUse            *bool
 	ProviderTargetRef      map[string]any
+	RuntimeContext         map[string]any
 	ReasoningEffort        string
 	Speed                  string
 	ConversationDetailMode string
@@ -213,6 +226,7 @@ type RuntimeResumeInput struct {
 	CreatedAtUnixMS   int64
 	UpdatedAtUnixMS   int64
 	Visible           *bool
+	RuntimeContext    map[string]any
 	// RecreateIfMissing lets the runtime start a fresh provider session in place
 	// when the existing one can't be restored locally (imported conversations),
 	// instead of surfacing a non-recoverable restore error.

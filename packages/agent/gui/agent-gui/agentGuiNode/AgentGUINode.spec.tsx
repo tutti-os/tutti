@@ -615,6 +615,9 @@ vi.mock("../../i18n/index", () => ({
       if (key === "agentHost.workspaceAgentProbeDetailQuota") {
         return "额度";
       }
+      if (key === "agentHost.workspaceAgentProbeUsageUnsupported") {
+        return "暂未接入用量";
+      }
       if (key === "agentHost.workspaceAgentProbeQuotaRemaining") {
         return `剩余 ${options?.percent ?? 0}%`;
       }
@@ -905,6 +908,37 @@ describe("AgentGUINode", () => {
       "codex",
       "agent-gui:agent-gui-1"
     );
+  });
+
+  it("shows a fallback when agent probe usage returns no quotas", () => {
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "codex",
+              availability: { status: "available", detailsVisible: false },
+              usage: {
+                capturedAtUnixMs: 1,
+                quotas: []
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    const info = screen.getByTestId("agent-gui-window-agent-info");
+    expect(info).toHaveAttribute("aria-label", "可用，暂未接入用量");
+    fireEvent.mouseEnter(info);
+    expect(screen.getByText("状态")).toBeInTheDocument();
+    expect(screen.getByText("可用")).toBeInTheDocument();
+    expect(screen.getByText("额度")).toBeInTheDocument();
+    expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
   });
 
   it("updates slash status limits when the selected Codex model changes", () => {
@@ -7630,6 +7664,7 @@ function createViewModel(
     promptImagesSupported: true,
     compactSupported: null,
     usage: null,
+    backgroundAgentCount: 0,
     isDeletingConversation: false,
     isDeletingProjectConversations: false,
     pendingDeleteConversation: null,

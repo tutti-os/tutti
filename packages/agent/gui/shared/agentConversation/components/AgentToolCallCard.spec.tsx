@@ -240,6 +240,41 @@ describe("Agent specialized tool cards", () => {
     );
   });
 
+  it("does not show edit diff stats on approval tool headers", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentToolCallCard
+        call={projectAgentToolCall(
+          toolCall({
+            name: "Approval",
+            toolName: "Approval",
+            callType: "approval",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                toolCall: {
+                  input: {
+                    file_path: "/workspace/generated.md",
+                    old_string: "const ready = false",
+                    new_string: "const ready = true"
+                  },
+                  name: "Edit",
+                  title: "Edit",
+                  toolName: "Edit"
+                }
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.queryByText("+1")).toBeNull();
+    expect(screen.queryByText("-1")).toBeNull();
+  });
+
   it("renders tool header icons at the shared 16px size", async () => {
     setAgentGuiI18nTestLocale("en");
 

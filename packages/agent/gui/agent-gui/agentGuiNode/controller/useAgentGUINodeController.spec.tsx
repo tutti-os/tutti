@@ -13091,6 +13091,82 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.canQueueWhileBusy).toBe(false);
   });
 
+  it("reflects pending interactive prompts from state patch events", async () => {
+    let emitEvent:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn((_payload, listener) => {
+        emitEvent = listener;
+        return vi.fn();
+      }),
+      getState: vi.fn(async () => agentSessionState("session-1"))
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    expect(result.current.viewModel.pendingInteractivePrompt).toBeNull();
+
+    act(() => {
+      emitEvent?.({
+        eventType: "state_patch",
+        data: {
+          agentSessionId: "session-1",
+          pendingInteractive: {
+            kind: "interactive",
+            requestId: "request-ask",
+            toolName: "AskUserQuestion",
+            status: "waiting",
+            input: {
+              questions: [
+                {
+                  id: "scope",
+                  header: "Scope",
+                  question: "Which scope should we use?",
+                  options: [{ label: "Small", description: "Minimal change" }]
+                }
+              ]
+            }
+          }
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.pendingInteractivePrompt?.requestId).toBe(
+        "request-ask"
+      );
+    });
+
+    act(() => {
+      emitEvent?.({
+        eventType: "state_patch",
+        data: {
+          agentSessionId: "session-1",
+          pendingInteractive: null
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.pendingInteractivePrompt).toBeNull();
+    });
+  });
+
   it("queues busy prompts locally without sending them through backend exec", async () => {
     const list = vi.fn(async () => ({
       presences: [],

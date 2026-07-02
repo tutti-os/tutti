@@ -60,6 +60,7 @@ type StartInput struct {
 	Env                  []string
 	Title                string
 	Visible              *bool
+	RuntimeContext       map[string]any
 	ProviderTargetRef    map[string]any
 	OpenclawGatewayReady bool
 	PermissionModeID     string
@@ -76,6 +77,7 @@ type ResumeInput struct {
 	Title             string
 	Status            string
 	Visible           *bool
+	RuntimeContext    map[string]any
 	PermissionModeID  string
 	Settings          *SessionSettings
 	CreatedAtUnixMS   int64
@@ -171,6 +173,7 @@ type Session struct {
 	Title                string              `json:"title,omitempty"`
 	LastError            string              `json:"lastError,omitempty"`
 	Visible              bool                `json:"visible"`
+	RuntimeContext       map[string]any      `json:"runtimeContext,omitempty"`
 	ProviderTargetRef    map[string]any      `json:"-"`
 	OpenclawGatewayReady bool                `json:"-"`
 	PermissionModeID     string              `json:"permissionModeId,omitempty"`

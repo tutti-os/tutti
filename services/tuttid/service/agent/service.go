@@ -396,7 +396,7 @@ func (s *Service) LocalAttachmentPath(ctx context.Context, workspaceID string, a
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, reconcileStaleTurn bool) (Session, error) {
 	session, ok := s.controller().Session(workspaceID, agentSessionID)
 	if ok {
-		if reconcileStaleTurn && !isRuntimeActiveTurnStatus(session.Status) {
+		if reconcileStaleTurn && !runtimeSessionHasLiveTurn(session) {
 			if _, err := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID); err != nil {
 				return Session{}, err
 			}
@@ -715,7 +715,7 @@ func (s *Service) ensureRuntimeSessionResult(
 ) (ensuredRuntimeSession, error) {
 	if session, ok := s.controller().Session(workspaceID, agentSessionID); ok {
 		staleTurnReconciled := false
-		if !isRuntimeActiveTurnStatus(session.Status) {
+		if !runtimeSessionHasLiveTurn(session) {
 			var err error
 			staleTurnReconciled, err = s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID)
 			if err != nil {
@@ -755,6 +755,7 @@ func (s *Service) ensureRuntimeSessionResult(
 		CreatedAtUnixMS:   persisted.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   persisted.UpdatedAtUnixMS,
 		Visible:           boolPointer(visibleFromRuntimeContext(persisted.RuntimeContext, true)),
+		RuntimeContext:    clonePayload(persisted.RuntimeContext),
 		RecreateIfMissing: imported,
 	})
 	if err != nil {

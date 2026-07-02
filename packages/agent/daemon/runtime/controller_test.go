@@ -974,6 +974,7 @@ func TestControllerUpdateSettingsMergesModelPatchWithoutRequiringPermissionMode(
 		Settings: &SessionSettings{
 			Model:            "gpt-5.2-codex",
 			ReasoningEffort:  "high",
+			Speed:            "standard",
 			PlanMode:         true,
 			PermissionModeID: "full-access",
 		},
@@ -990,6 +991,7 @@ func TestControllerUpdateSettingsMergesModelPatchWithoutRequiringPermissionMode(
 		AgentSessionID: "agent-session-1",
 		Settings: SessionSettingsPatch{
 			Model: stringPtr("gpt-5.4"),
+			Speed: stringPtr("fast"),
 		},
 	})
 	if err != nil {
@@ -1000,6 +1002,9 @@ func TestControllerUpdateSettingsMergesModelPatchWithoutRequiringPermissionMode(
 	}
 	if updated.Settings.Model != "gpt-5.4" {
 		t.Fatalf("updated settings model = %q, want %q", updated.Settings.Model, "gpt-5.4")
+	}
+	if updated.Settings.Speed != "fast" {
+		t.Fatalf("updated settings speed = %q, want fast", updated.Settings.Speed)
 	}
 	if updated.Settings.ReasoningEffort != "high" || !updated.Settings.PlanMode {
 		t.Fatalf("updated settings = %#v, want non-updated fields preserved", updated.Settings)
@@ -2006,6 +2011,9 @@ func (a *statefulInteractiveAdapter) ApplySessionSettings(_ context.Context, ses
 	}
 	if patch.ReasoningEffort != nil {
 		a.snapshot.Settings.ReasoningEffort = *patch.ReasoningEffort
+	}
+	if patch.Speed != nil {
+		a.snapshot.Settings.Speed = *patch.Speed
 	}
 	if patch.PlanMode != nil {
 		a.snapshot.Settings.PlanMode = *patch.PlanMode
@@ -3243,6 +3251,17 @@ func TestControllerSubmitInteractiveStartsDenyFollowUpAfterActiveTurn(t *testing
 	}
 }
 
+func TestInteractiveDenyFollowUpSkipsClaudeSDKAdapter(t *testing.T) {
+	t.Parallel()
+
+	if adapterShouldReceiveInteractiveDenyFollowUp(NewClaudeCodeSDKAdapter(nil)) {
+		t.Fatal("Claude SDK adapter should consume deny feedback without daemon follow-up")
+	}
+	if !adapterShouldReceiveInteractiveDenyFollowUp(newBlockingExecAdapter()) {
+		t.Fatal("ACP-style adapter should keep daemon deny follow-up")
+	}
+}
+
 func hasActivityEvent(events []activityshared.Event, eventType activityshared.EventType, role activityshared.MessageRole) bool {
 	for _, event := range events {
 		if event.Type != eventType {
@@ -3281,6 +3300,107 @@ func TestControllerExecReportsReturnedEventsNotAlreadyEmitted(t *testing.T) {
 	waitForCondition(t, func() bool {
 		return hasTurnCompletionPatchInReports(reportInputs(reporter.snapshot()), execResult.TurnID)
 	})
+}
+
+func TestControllerSessionEventSinkTracksSyntheticTurnLifecycle(t *testing.T) {
+	t.Parallel()
+
+	reporter := &recordingReporter{}
+	controller := NewController(nil, reporter)
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+		Status:         SessionStatusReady,
+	}
+	controller.store(session)
+
+	controller.applySessionEventsByAgentSessionID("agent-session-1", []activityshared.Event{
+		newTurnActivityEvent(session, EventTurnStarted, "synthetic-turn-1", SessionStatusWorking, "", "", map[string]any{
+			"synthetic": true,
+		}),
+	})
+
+	stored, ok := controller.get("room-1", "agent-session-1")
+	if !ok {
+		t.Fatal("stored session missing")
+	}
+	if stored.Status != SessionStatusWorking {
+		t.Fatalf("session status = %q, want working", stored.Status)
+	}
+	if stored.TurnLifecycle == nil ||
+		stored.TurnLifecycle.ActiveTurnID == nil ||
+		*stored.TurnLifecycle.ActiveTurnID != "synthetic-turn-1" ||
+		stored.TurnLifecycle.Phase != "running" {
+		t.Fatalf("turn lifecycle = %#v, want synthetic running", stored.TurnLifecycle)
+	}
+	if stored.SubmitAvailability == nil ||
+		stored.SubmitAvailability.State != "blocked" ||
+		stored.SubmitAvailability.Reason != "active_turn" {
+		t.Fatalf("submit availability = %#v, want active_turn blocked", stored.SubmitAvailability)
+	}
+
+	reports := reporter.waitForCalls(t, 1)
+	patches := reports[len(reports)-1].report.StatePatches
+	if len(patches) == 0 ||
+		patches[0].TurnLifecycle == nil ||
+		patches[0].TurnLifecycle.ActiveTurnID == nil ||
+		*patches[0].TurnLifecycle.ActiveTurnID != "synthetic-turn-1" {
+		t.Fatalf("reported state patches = %#v, want synthetic turn lifecycle", patches)
+	}
+}
+
+func TestControllerFinishParentTurnDoesNotOverwriteSyntheticLifecycle(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController(nil, nil)
+	parentTurnID := "parent-turn-1"
+	syntheticTurnID := "synthetic-turn-1"
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+		Status:         SessionStatusWorking,
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &syntheticTurnID,
+			Phase:        "running",
+		},
+		SubmitAvailability: blockedSubmitAvailability("active_turn"),
+	}
+	controller.store(session)
+	controller.mu.Lock()
+	controller.turns[sessionKey("room-1", "agent-session-1")] = activeTurn{turnID: parentTurnID}
+	controller.mu.Unlock()
+
+	outcome := "completed"
+	controller.finishTurn(Session{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+		Status:         SessionStatusReady,
+		TurnLifecycle: &TurnLifecycle{
+			Phase:   "settled",
+			Outcome: &outcome,
+		},
+		SubmitAvailability: availableSubmitAvailability(),
+	}, parentTurnID)
+
+	stored, ok := controller.get("room-1", "agent-session-1")
+	if !ok {
+		t.Fatal("stored session missing")
+	}
+	if stored.TurnLifecycle == nil ||
+		stored.TurnLifecycle.ActiveTurnID == nil ||
+		*stored.TurnLifecycle.ActiveTurnID != syntheticTurnID ||
+		stored.TurnLifecycle.Phase != "running" {
+		t.Fatalf("turn lifecycle = %#v, want synthetic running preserved", stored.TurnLifecycle)
+	}
+	if stored.Status != SessionStatusWorking {
+		t.Fatalf("session status = %q, want working", stored.Status)
+	}
+	if _, ok := controller.activeTurn("room-1", "agent-session-1"); ok {
+		t.Fatal("parent active turn map entry still exists")
+	}
 }
 
 func waitForSessionStatus(t *testing.T, controller *Controller, roomID, agentSessionID, status string) Session {
@@ -3577,6 +3697,26 @@ func TestEnrichStreamStateEventsWithSessionSnapshotFillsRuntimeContext(t *testin
 		snapshot: SessionStateSnapshot{
 			AgentSessionID: "agent-session-1",
 			Provider:       ProviderClaudeCode,
+			TurnLifecycle: &TurnLifecycle{
+				ActiveTurnID: stringPtr("synthetic-turn-1"),
+				Phase:        "running",
+			},
+			SubmitAvailability: &SubmitAvailability{
+				State:  "blocked",
+				Reason: "active_turn",
+			},
+			PendingInteractive: &SessionInteractivePrompt{
+				Kind:      "ask-user",
+				RequestID: "request-1",
+				ToolName:  "AskUserQuestion",
+				Status:    "waiting",
+				Input: map[string]any{
+					"questions": []any{map[string]any{
+						"id":       "scope",
+						"question": "Scope?",
+					}},
+				},
+			},
 			RuntimeContext: map[string]any{
 				"usage": map[string]any{
 					"contextWindow": map[string]any{
@@ -3612,6 +3752,23 @@ func TestEnrichStreamStateEventsWithSessionSnapshotFillsRuntimeContext(t *testin
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
 	if got, _ := acpInt64Value(contextWindow["totalTokens"]); got != 200000 {
 		t.Fatalf("runtime context usage = %#v, want totalTokens=200000", patch.RuntimeContext["usage"])
+	}
+	if patch.TurnLifecycle == nil ||
+		patch.TurnLifecycle.ActiveTurnID == nil ||
+		*patch.TurnLifecycle.ActiveTurnID != "synthetic-turn-1" ||
+		patch.TurnLifecycle.Phase != "running" {
+		t.Fatalf("turn lifecycle = %#v, want synthetic running", patch.TurnLifecycle)
+	}
+	if patch.SubmitAvailability == nil ||
+		patch.SubmitAvailability.State != "blocked" ||
+		patch.SubmitAvailability.Reason != "active_turn" {
+		t.Fatalf("submit availability = %#v, want active_turn blocked", patch.SubmitAvailability)
+	}
+	if !patch.PendingInteractivePresent {
+		t.Fatal("pending interactive present = false, want true")
+	}
+	if patch.PendingInteractive == nil || patch.PendingInteractive.RequestID != "request-1" {
+		t.Fatalf("pending interactive = %#v, want request-1", patch.PendingInteractive)
 	}
 }
 
@@ -3692,6 +3849,77 @@ func TestApplySessionEventsTracksLastError(t *testing.T) {
 	})
 	if restarted.LastError != "" {
 		t.Fatalf("last error after new turn = %q, want cleared", restarted.LastError)
+	}
+}
+
+func TestApplySessionEventsMergesRuntimeContextMetadata(t *testing.T) {
+	t.Parallel()
+
+	session := Session{
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+		RuntimeContext: map[string]any{
+			"cwd": "/workspace",
+		},
+	}
+	updated := applySessionEvents(session, []activityshared.Event{
+		newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
+			"runtimeContext": map[string]any{
+				"backgroundAgents": map[string]any{
+					"count": 1,
+				},
+			},
+		}),
+	})
+	if updated.RuntimeContext["cwd"] != "/workspace" {
+		t.Fatalf("runtime context = %#v, want existing cwd kept", updated.RuntimeContext)
+	}
+	backgroundAgents := payloadObject(updated.RuntimeContext["backgroundAgents"])
+	if backgroundAgents["count"] != 1 {
+		t.Fatalf("runtime context = %#v, want backgroundAgents count", updated.RuntimeContext)
+	}
+}
+
+func TestControllerSessionEventSinkKeepsLiveBackgroundAgentsWorking(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController(nil, nil)
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+		Status:         SessionStatusReady,
+		SubmitAvailability: &SubmitAvailability{
+			State: "available",
+		},
+	}
+	controller.store(session)
+
+	controller.applySessionEventsByAgentSessionID(session.AgentSessionID, []activityshared.Event{
+		newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
+			"runtimeContext": map[string]any{
+				"backgroundAgents": map[string]any{
+					"count": 1,
+					"items": []any{map[string]any{
+						"parentToolUseId": "call-agent-1",
+						"status":          "running",
+					}},
+				},
+			},
+		}),
+	})
+
+	updated, ok := controller.get(session.RoomID, session.AgentSessionID)
+	if !ok {
+		t.Fatal("session missing after session event sink")
+	}
+	if updated.Status != SessionStatusWorking {
+		t.Fatalf("status = %q, want working while background agent runs", updated.Status)
+	}
+	if updated.SubmitAvailability == nil ||
+		updated.SubmitAvailability.State != "blocked" ||
+		updated.SubmitAvailability.Reason != "background_agent" {
+		t.Fatalf("submit availability = %#v, want blocked background_agent", updated.SubmitAvailability)
 	}
 }
 

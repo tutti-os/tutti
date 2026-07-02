@@ -208,6 +208,70 @@ The durable activity data is the original turn summary input:
   zero executable diffs; for absolute file paths with a synthetic `/` workspace
   root, use the file's containing directory as the Git cwd.
 
+Claude SDK sidecars must not treat Edit/Write input text as authoritative patch
+data. They should collect the `PostToolUse` `tool_response.structuredPatch`
+hunks, convert them into file-level `changes[].diff` payloads, and only use
+input-derived file metadata for optimistic display before the tool response
+arrives.
+
+Approval tool calls may wrap the pending Edit/Write input so the transcript can
+preview what the user approved. Treat that nested input as preview-only data:
+Approval rows must not contribute edit diff counts, changed-file summaries, or
+undo/reapply patch batches. The executed file-change tool output remains the
+source of truth for edit statistics and reversible patches.
+
+Claude SDK interactive tools must preserve `callType: "interactive"` on the
+top-level durable tool payload, not only inside `metadata`. Agent GUI and
+Message Center both project approvals and prompts from the normalized top-level
+call type. For `AskUserQuestion`, renderer payloads may keep
+`answersByQuestionId` keyed by stable UI question ids, but the Claude SDK
+permission callback must return `updatedInput.answers` keyed by the full
+question text because current Claude SDK result rendering looks up answers by
+question text. Legacy Claude ACP `AskUserQuestion` failures may be hidden only
+when the recorded failure says the tool is unavailable; waiting or completed
+Claude SDK `AskUserQuestion` calls must remain in the Agent GUI detail
+projection so the composer prompt can render.
+
+Runtime interactive prompts also travel through session state. Provider
+adapters expose them as `SessionStateSnapshot.pendingInteractive`; runtime
+state patches must preserve that field through `WorkspaceAgentStatePatch`,
+`AgentActivityStatePatch`, and `AgentHostWorkspaceAgentStatePatch` so
+AgentGuiNode can render prompts before any durable tool-call row completes.
+This field is tri-state: omitted means "no change", an object means "show this
+prompt", and explicit `null` means "clear the current prompt". Do not model it
+as a persisted workspace session field or as a pointer-only JSON field that
+cannot emit `null`.
+
+Claude background agents are session-level runtime state for both ACP and SDK
+adapters. Raw Claude `task_started`, `task_progress`, `task_notification`,
+`task_updated`, and SDK sidecar `task_*` events should update
+`runtimeContext.backgroundAgents` and emit activity timeline events, without
+forcing the parent session into a working lifecycle state. Composer wait copy
+such as "Waiting for 1 background agent to finish" must be derived from that
+structured runtime context. Do not infer background agent waits from terminal
+streaming state or from transcript text; persistent session readers can receive
+task progress after the active prompt call has returned.
+
+For Claude SDK background agents, treat the Agent tool call id
+(`parentToolUseId`) as the canonical background-agent key. SDK `task_id` and
+`agent_id` values are aliases that may arrive later or from hooks without a
+parent id. Do not bind an unscoped `TaskCreated` hook to "the only running"
+delegated task; concurrent launches can otherwise attach one child task id to a
+different Agent tool call and leave the composer wait count permanently stale.
+
+Claude SDK manual `/compact` turns must publish a visible compact completion
+activity when the SDK emits only a `compact_boundary` system message. The
+boundary still updates context usage, but it can arrive before the SDK echoes
+the user message or after the result settles; AgentGUI needs the sidecar to
+attach a durable `compact_completed` event to the compact command turn rather
+than only the currently active turn.
+
+When Claude resumes parent work after a background agent completes, that resumed
+work is a new synthetic turn for AgentGUI lifecycle purposes. The sidecar and
+runtime adapter must publish a turn-start lifecycle patch before transcript or
+tool updates for that synthetic turn; otherwise AgentGuiNode will correctly keep
+the composer idle because the authoritative runtime state is still settled.
+
 Do not persist the UI button state. A successful Undo only flips the local
 button to Reapply for the current render. If the page reloads, the source of
 truth is still the recorded diff plus the current worktree state; `git apply`
@@ -467,6 +531,25 @@ Claude SDK message rather than an ACP `agent_message_chunk`, the daemon adapter
 must normalize that text into the same persisted message projection. AgentGUI
 must not read provider transcript files or SDK-specific logs to recover missing
 final output.
+Tool output follows the same rule. Provider adapters may preserve raw fields
+such as `stdout`, `output`, `content`, or SDK content blocks for diagnostics and
+specialized renderers, but the daemon message projection must populate
+canonical `output.text` when visible tool output exists. AgentGUI renderers
+should prefer canonical fields and treat provider-specific output shapes only as
+legacy persisted-message fallbacks.
+Prompt image input is also part of the normalized runtime contract. Daemon
+adapters that advertise `imageInput` must forward the structured prompt content
+blocks to their runtime boundary; SDK sidecars may keep a text `prompt` fallback
+for short-term IPC compatibility, but image execution must use the structured
+`content` blocks instead of reconstructing input from display text.
+Claude Code runtime options follow the same parity rule. The legacy ACP adapter
+and the Claude SDK adapter must derive system prompt append text, Tutti detail
+mode instructions, plan-mode instructions, plugin directory, custom model args,
+disallowed tools, and the Claude Code built-in tool preset from one daemon-side
+builder before they cross their runtime boundary. SDK sidecars should map that
+structured payload into SDK `query` options; they should not rediscover plugin
+dirs, infer tool availability from UI labels, or keep a separate prompt/options
+contract from the ACP path.
 
 ### Event Reconcile And UI Refresh
 

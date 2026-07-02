@@ -339,6 +339,27 @@ describe("projectAgentToolCall", () => {
     expect(projected.task?.steps).toHaveLength(1);
     expect(projected.task?.steps[0]?.summary).toBe("Searched web");
   });
+
+  it("projects async subagent agent id from metadata", () => {
+    const projected = projectAgentToolCall({
+      ...baseCall(),
+      toolName: "Agent",
+      callType: "subagent",
+      payload: {
+        input: {
+          prompt: "Inspect workspace"
+        },
+        metadata: {
+          subagentAsync: true,
+          taskStatus: "running",
+          subagentAgentId: "a33f4e9013dedffe8"
+        }
+      }
+    });
+
+    expect(projected.task?.delegateSessionId).toBe("a33f4e9013dedffe8");
+    expect(projected.task?.status).toBe("running");
+  });
 });
 
 function baseCall(): WorkspaceAgentSessionDetailToolCall {

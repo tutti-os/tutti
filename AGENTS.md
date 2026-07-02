@@ -110,3 +110,9 @@ Start from:
 - `docs/conventions/README.md`
 - `docs/architecture/README.md`
 - nearest area `AGENTS.md`
+
+## Logs
+
+dev (when the feature is not in remote): ~/.tutti-dev/tuttid.db
+
+prod: ~/.tutti/tuttid.db

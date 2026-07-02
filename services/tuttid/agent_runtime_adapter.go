@@ -62,6 +62,7 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 		CreatedAtUnixMS:   input.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   input.UpdatedAtUnixMS,
 		Visible:           input.Visible,
+		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
 	})
 }
 
@@ -218,6 +219,7 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 		CreatedAtUnixMS:   input.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   input.UpdatedAtUnixMS,
 		Visible:           input.Visible,
+		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
 		RecreateIfMissing: input.RecreateIfMissing,
 	})
 	if err != nil {
@@ -260,6 +262,7 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 		Env:               append([]string(nil), input.Env...),
 		Title:             input.Title,
 		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
+		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
 		PermissionModeID:  input.PermissionModeID,
 		Settings: &agentruntime.SessionSettings{
 			Model:                  input.Model,
@@ -312,6 +315,7 @@ func agentRuntimeSession(session agentruntime.Session) agentservice.RuntimeSessi
 		Visible:            session.Visible,
 		Title:              session.Title,
 		LastError:          session.LastError,
+		RuntimeContext:     cloneRuntimeContext(session.RuntimeContext),
 		CreatedAtUnixMS:    session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:    session.UpdatedAtUnixMS,
 	}
@@ -335,6 +339,9 @@ func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Sessio
 	if state.SubmitAvailability != nil {
 		result.SubmitAvailability = serviceSubmitAvailabilityPointerFromRuntime(state.SubmitAvailability)
 	}
+	if state.PendingInteractive != nil {
+		result.PendingInteractive = serviceInteractivePromptFromRuntime(state.PendingInteractive)
+	}
 	if state.Settings != nil {
 		result.Settings = agentRuntimeComposerSettings(state.Settings)
 	}
@@ -343,6 +350,22 @@ func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Sessio
 		result.UpdatedAtUnixMS = state.UpdatedAtUnixMS
 	}
 	return result
+}
+
+func serviceInteractivePromptFromRuntime(value *agentruntime.SessionInteractivePrompt) *agentservice.RuntimeInteractivePrompt {
+	if value == nil {
+		return nil
+	}
+	return &agentservice.RuntimeInteractivePrompt{
+		Kind:      value.Kind,
+		RequestID: value.RequestID,
+		ToolName:  value.ToolName,
+		Status:    value.Status,
+		Input:     cloneRuntimeContext(value.Input),
+		Output:    cloneRuntimeContext(value.Output),
+		Error:     cloneRuntimeContext(value.Error),
+		Metadata:  cloneRuntimeContext(value.Metadata),
+	}
 }
 
 func serviceSubmitAvailabilityPointerFromRuntime(value *agentruntime.SubmitAvailability) *agentservice.SubmitAvailability {

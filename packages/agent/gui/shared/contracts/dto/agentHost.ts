@@ -1,3 +1,5 @@
+import type { AgentHostAgentSessionInteractivePrompt } from "./agentSession";
+
 export interface AgentHostMockSession {
   name: string;
   userId: string;
@@ -1033,6 +1035,7 @@ export interface AgentHostWorkspaceAgentStatePatch {
     permissionModeId?: string | null;
   };
   runtimeContext?: Record<string, unknown>;
+  pendingInteractive?: AgentHostAgentSessionInteractivePrompt | null;
   cwd?: string;
   title?: string;
   lifecycleStatus?: string;

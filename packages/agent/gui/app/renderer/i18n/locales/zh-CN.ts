@@ -775,6 +775,8 @@ export const zhCN = {
       submitAnswers: "提交回答",
       answerPlaceholder: "补充更多细节...",
       waitingForAnswer: "等待你的回答...",
+      waitingForBackgroundAgent_one: "等待 {{count}} 个后台 agent 完成",
+      waitingForBackgroundAgent_other: "等待 {{count}} 个后台 agent 完成",
       shortcutEnter: "Enter",
       shortcutCmdEnter: "Cmd + Enter",
       shortcutCtrEnter: "Ctr + Enter",

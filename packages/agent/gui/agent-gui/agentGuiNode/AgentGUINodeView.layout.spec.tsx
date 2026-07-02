@@ -25,6 +25,7 @@ const conversationMetaMock = vi.hoisted(() => ({
 
 const composerMock = vi.hoisted(() => ({
   calls: [] as Array<{
+    backgroundAgentStatusText?: string | null;
     composerFocusRequestSequence?: number | null;
     compactSupported?: boolean | null;
     isSendingTurn?: boolean;
@@ -55,6 +56,7 @@ vi.mock("./AgentSessionChrome", () => ({
 
 vi.mock("./AgentComposer", () => ({
   AgentComposer: (props: {
+    backgroundAgentStatusText?: string | null;
     composerFocusRequestSequence?: number | null;
     compactSupported?: boolean | null;
     isSendingTurn?: boolean;
@@ -66,6 +68,7 @@ vi.mock("./AgentComposer", () => ({
     usage?: AgentGUINodeViewModel["usage"];
   }) => {
     composerMock.calls.push({
+      backgroundAgentStatusText: props.backgroundAgentStatusText,
       composerFocusRequestSequence: props.composerFocusRequestSequence,
       compactSupported: props.compactSupported,
       isSendingTurn: props.isSendingTurn,
@@ -1501,6 +1504,23 @@ describe("AgentGUINodeView usage", () => {
 
     expect(composerMock.calls.at(-1)?.usage?.percentUsed).toBeNull();
   });
+
+  it("passes background agent waiting status to the composer", () => {
+    const activeConversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversations: [activeConversation],
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        backgroundAgentCount: 2
+      }
+    });
+
+    expect(composerMock.calls.at(-1)?.backgroundAgentStatusText).toBe(
+      "waitingForBackgroundAgent:2"
+    );
+  });
 });
 
 describe("AgentGUINodeView detail header actions", () => {
@@ -1758,6 +1778,7 @@ function createViewModel(): AgentGUINodeViewModel {
     promptImagesSupported: true,
     compactSupported: null,
     usage: null,
+    backgroundAgentCount: 0,
     listError: null,
     isDeletingConversation: false,
     isDeletingProjectConversations: false,
@@ -2040,6 +2061,8 @@ function createLabels(): AgentGUIViewLabels {
     submitAnswers: "submitAnswers",
     answerPlaceholder: "answerPlaceholder",
     waitingForAnswer: "waitingForAnswer",
+    waitingForBackgroundAgent: (count: number) =>
+      `waitingForBackgroundAgent:${count}`,
     thinkingLabel: "thinkingLabel",
     toolCallsLabel: (count: number) => `toolCalls:${count}`,
     openConversationWindow: "openConversationWindow",
