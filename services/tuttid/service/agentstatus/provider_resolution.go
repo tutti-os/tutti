@@ -62,6 +62,17 @@ func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, req
 	if strings.TrimSpace(spec.ExternalRegistryID) == "" {
 		return s.resolveStaticProviderSpec(ctx, spec, requireManagedRuntime), nil
 	}
+	// Prefer the bundled, pre-patched Claude Code bridge shipped with the desktop
+	// app so Claude Code works fully offline: no remote registry fetch and no
+	// runtime npm install. Falls through to the external registry path when the
+	// bridge is not bundled or the managed Node runtime is unavailable.
+	if spec.ExternalRegistryID == claudeACPExternalRegistryID {
+		if entry := s.bundledClaudeACPEntryPath(); entry != "" {
+			// The bundled bridge is authoritative — never fall back to the remote
+			// registry / npm install once it is shipped.
+			return s.resolveBundledClaudeACPSpec(ctx, spec, entry, requireManagedRuntime), nil
+		}
+	}
 	agent, err := s.externalAgentRegistry().Agent(ctx, spec.ExternalRegistryID)
 	if err != nil {
 		spec.AdapterUnavailableReasonCode = ReasonExternalAgentRegistryUnavailable

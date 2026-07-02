@@ -11,17 +11,22 @@
 //   waiting for a user turn
 // - publish Claude Code's native /goal status attachments as ACP goal updates
 //   so Tutti can show the active goal without reimplementing the command
+// - forward background task lifecycle (task_started/notification/progress/
+//   updated) as session updates so the client can keep a session "working"
+//   while a backgrounded subagent runs past end_turn, and cancel it
 //
-// Why a codemod and not a unified diff: the bridge ships only a bundled
-// `dist/acp-agent.js` and is provisioned from the ACP external agent registry,
-// so there is no source tree to patch. The string anchors below are stable
-// across 0.42.x–0.51.x. The
-// script is idempotent (skips if a `fast` option is already present).
+// This codemod is now the *generator* for the shipped unified diff
+// `claude-agent-acp.patch` (the artifact that is actually applied at install
+// time, both for the vendored bundle and the registry fallback). Keeping the
+// codemod as the generator preserves version-tolerant string anchors (stable
+// across 0.42.x–0.53.x) and `variants`, while distribution uses a reviewable
+// `git apply`-able diff. Regenerate + drift-check via
+// `tools/scripts/verify-claude-acp-patch.sh`. The script is idempotent (skips
+// an edit if its target is already present).
 //
-// Applied automatically after the bridge installs (InstallerPostStep in
-// installer.go embeds this file). Pass --dist <path> or CLAUDE_AGENT_ACP_DIST
-// to target a managed package installation. Without an explicit target, the
-// script falls back to global npm locations for manual maintenance only.
+// Pass --dist <path> or CLAUDE_AGENT_ACP_DIST to patch a package in place.
+// Without an explicit target, the script falls back to global npm locations
+// for manual maintenance only.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -485,6 +490,73 @@ const PERMISSION_MODE_ALIASES = {`
   }
 ];
 
+const TASK_LIFECYCLE_EDITS = [
+  {
+    name: "forward background task lifecycle updates",
+    find: `                            case "task_started":
+                            case "task_notification":
+                            case "task_progress":
+                            case "task_updated":
+                                break;`,
+    replace: `                            case "task_started": {
+                                // tutti patch: forward background task lifecycle so the
+                                // client can keep the session "working" while a backgrounded
+                                // subagent/shell runs past end_turn, and cancel it.
+                                await this.client.sessionUpdate({
+                                    sessionId: message.session_id,
+                                    update: {
+                                        sessionUpdate: "task_started",
+                                        taskId: message.task_id,
+                                        ...(message.tool_use_id ? { toolCallId: message.tool_use_id } : {}),
+                                        ...(message.description ? { description: message.description } : {}),
+                                        ...(message.subagent_type ? { subagentType: message.subagent_type } : {}),
+                                        ...(message.task_type ? { taskType: message.task_type } : {}),
+                                    },
+                                });
+                                break;
+                            }
+                            case "task_notification": {
+                                await this.client.sessionUpdate({
+                                    sessionId: message.session_id,
+                                    update: {
+                                        sessionUpdate: "task_notification",
+                                        taskId: message.task_id,
+                                        ...(message.tool_use_id ? { toolCallId: message.tool_use_id } : {}),
+                                        status: message.status,
+                                        ...(message.summary ? { summary: message.summary } : {}),
+                                        ...(message.usage ? { usage: message.usage } : {}),
+                                    },
+                                });
+                                break;
+                            }
+                            case "task_updated": {
+                                await this.client.sessionUpdate({
+                                    sessionId: message.session_id,
+                                    update: {
+                                        sessionUpdate: "task_updated",
+                                        taskId: message.task_id,
+                                        ...(message.patch ? { patch: message.patch } : {}),
+                                    },
+                                });
+                                break;
+                            }
+                            case "task_progress": {
+                                await this.client.sessionUpdate({
+                                    sessionId: message.session_id,
+                                    update: {
+                                        sessionUpdate: "task_progress",
+                                        taskId: message.task_id,
+                                        ...(message.description ? { description: message.description } : {}),
+                                        ...(message.summary ? { summary: message.summary } : {}),
+                                        ...(message.usage ? { usage: message.usage } : {}),
+                                        ...(message.last_tool_name ? { lastToolName: message.last_tool_name } : {}),
+                                    },
+                                });
+                                break;
+                            }`
+  }
+];
+
 const TOKEN_USAGE_COMPACT_EDITS = [
   {
     name: "do not publish zero usage when compact usage probe fails",
@@ -628,6 +700,10 @@ function hasCompactUsageProbeFailureFix(source) {
   );
 }
 
+function hasTaskLifecycleUpdates(source) {
+  return source.includes('sessionUpdate: "task_notification"');
+}
+
 const distPath = resolveDistPath();
 if (!existsSync(distPath)) {
   console.error(`claude-agent-acp bundle not found at: ${distPath}`);
@@ -724,6 +800,22 @@ if (hasCompactUsageProbeFailureFix(source)) {
   } catch (error) {
     console.error(
       `claude-agent-acp compact-usage patch failed: ${error.message} Bridge layout changed; update services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs.`
+    );
+    process.exit(1);
+  }
+}
+
+if (hasTaskLifecycleUpdates(source)) {
+  console.log(
+    `Already forwards background task lifecycle updates: ${distPath}`
+  );
+} else {
+  try {
+    source = applyEdits(source, TASK_LIFECYCLE_EDITS);
+    changed = true;
+  } catch (error) {
+    console.error(
+      `claude-agent-acp task-lifecycle patch failed: ${error.message} Bridge layout changed; update services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs.`
     );
     process.exit(1);
   }

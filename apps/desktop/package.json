@@ -27,6 +27,10 @@
       {
         "from": "build/browser-mcp",
         "to": "bin/browser-mcp"
+      },
+      {
+        "from": "build/claude-acp",
+        "to": "bin/claude-acp"
       }
     ],
     "publish": [

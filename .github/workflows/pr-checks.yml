@@ -48,6 +48,9 @@ jobs:
       - name: Check golangci-lint version pin
         run: node ./tools/scripts/setup-dev.mjs --only=golangci-lint
 
+      - name: Check claude-agent-acp patch is current and applies
+        run: bash ./tools/scripts/verify-claude-acp-patch.sh
+
   ts-lint:
     name: TypeScript Lint
     runs-on: ubuntu-latest

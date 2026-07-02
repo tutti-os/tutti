@@ -1,0 +1,375 @@
+--- a/dist/acp-agent.js
++++ b/dist/acp-agent.js
+@@ -182,6 +182,113 @@
+ export function isLocalCommandMetadata(content) {
+     return stripLocalCommandMetadata(content) === null;
+ }
++function tuttiClaudeGoalStatusUpdate(message) {
++    const attachment = message?.attachment;
++    if (!attachment || attachment.type !== "goal_status") {
++        return null;
++    }
++    const objective = typeof attachment.condition === "string" ? attachment.condition.trim() : "";
++    if (!objective) {
++        return { sessionUpdate: "thread_goal_cleared" };
++    }
++    const goal = {
++        objective,
++        status: attachment.met === true ? "complete" : "active",
++    };
++    if (typeof attachment.reason === "string" && attachment.reason.trim() !== "") {
++        goal.reason = attachment.reason.trim();
++    }
++    for (const key of ["iterations", "durationMs", "tokens"]) {
++        if (typeof attachment[key] === "number" && Number.isFinite(attachment[key])) {
++            goal[key] = attachment[key];
++        }
++    }
++    return { sessionUpdate: "thread_goal_update", goal };
++}
++async function tuttiClaudeLatestTranscriptGoalStatusUpdate(cwd, sessionId) {
++    if (typeof cwd !== "string" || !cwd || typeof sessionId !== "string" || !sessionId) {
++        return null;
++    }
++    const transcriptPath = path.join(CLAUDE_CONFIG_DIR, "projects", cwd.replace(/[^A-Za-z0-9_-]/g, "-"), `${sessionId}.jsonl`);
++    let transcript;
++    try {
++        transcript = await fs.readFile(transcriptPath, "utf8");
++    } catch {
++        return null;
++    }
++    let latest = null;
++    for (const line of transcript.trimEnd().split("\n")) {
++        if (!line) {
++            continue;
++        }
++        try {
++            const entry = JSON.parse(line);
++            latest = tuttiClaudeGoalStatusUpdate(entry.message ?? entry) ?? latest;
++        } catch {
++            continue;
++        }
++    }
++    return latest;
++}
++async function tuttiClaudeSettledTranscriptGoalStatusUpdate(cwd, sessionId) {
++    let latest = await tuttiClaudeLatestTranscriptGoalStatusUpdate(cwd, sessionId);
++    if (!latest || latest.sessionUpdate === "thread_goal_cleared" || latest.goal?.status === "complete") {
++        return latest;
++    }
++    // ponytail: fixed settle delays, replace with direct final attachment forwarding if the bridge exposes it.
++    for (const delayMs of [75, 200]) {
++        await new Promise((resolve) => setTimeout(resolve, delayMs));
++        const next = await tuttiClaudeLatestTranscriptGoalStatusUpdate(cwd, sessionId);
++        if (next) {
++            latest = next;
++        }
++        if (latest.sessionUpdate === "thread_goal_cleared" || latest.goal?.status === "complete") {
++            return latest;
++        }
++    }
++    return latest;
++}
++function tuttiClaudeGoalCommandOutputUpdate(content) {
++    if (typeof content !== "string") {
++        return null;
++    }
++    const text = stripMarkerTags(content).trim();
++    if (text === "" || text.startsWith("No goal set.") || /^Goal cleared\.?$/i.test(text)) {
++        return { sessionUpdate: "thread_goal_cleared" };
++    }
++    const match = text.match(/^Goal set:\s*([\s\S]+)$/i);
++    if (!match) {
++        return null;
++    }
++    const objective = match[1]?.trim();
++    if (!objective) {
++        return null;
++    }
++    return {
++        sessionUpdate: "thread_goal_update",
++        goal: { objective, status: "active" },
++    };
++}
++function tuttiClaudeGoalPromptUpdate(text) {
++    if (typeof text !== "string") {
++        return null;
++    }
++    const match = text.trim().match(/^\/goal(?:\s+([\s\S]*))?$/);
++    if (!match) {
++        return null;
++    }
++    const args = (match[1] ?? "").trim();
++    if (!args) {
++        return null;
++    }
++    if (args.toLowerCase() === "clear") {
++        return { sessionUpdate: "thread_goal_cleared" };
++    }
++    return {
++        sessionUpdate: "thread_goal_update",
++        goal: { objective: args, status: "active" },
++    };
++}
+ const PERMISSION_MODE_ALIASES = {
+     auto: "auto",
+     default: "default",
+@@ -576,6 +683,13 @@
+         // Local-only commands (e.g. `/clear`) return a result without replaying the
+         // user message, so the consumer can't promote the turn from the echo.
+         const firstText = params.prompt[0]?.type === "text" ? params.prompt[0].text : "";
++        const goalPromptUpdate = tuttiClaudeGoalPromptUpdate(firstText);
++        if (goalPromptUpdate) {
++            await this.client.sessionUpdate({
++                sessionId: params.sessionId,
++                update: goalPromptUpdate,
++            });
++        }
+         const isLocalOnlyCommand = firstText.startsWith("/") && LOCAL_ONLY_COMMANDS.has(firstText.split(" ", 1)[0]);
+         // Each prompt is a Turn whose deferred the persistent consumer settles once
+         // the turn's outcome is known. `prompt()` owns no loop: it enqueues the
+@@ -849,6 +963,16 @@
+                     });
+                 }
+                 switch (message.type) {
++                    case "attachment": {
++                        const goalUpdate = tuttiClaudeGoalStatusUpdate(message);
++                        if (goalUpdate) {
++                            await this.client.sessionUpdate({
++                                sessionId: message.sessionId ?? message.session_id ?? params.sessionId,
++                                update: goalUpdate,
++                            });
++                        }
++                        break;
++                    }
+                     case "system":
+                         switch (message.subtype) {
+                             case "init":
+@@ -891,41 +1015,33 @@
+                                 break;
+                             }
+                             case "compact_boundary": {
+-                                // Refresh the displayed usage immediately so the client doesn't
+-                                // keep showing the stale pre-compaction size (e.g. "944k/1m")
+-                                // right after the user sees "Compacting completed", which is
+-                                // confusing and wrong.
+-                                //
+-                                // Prefer the SDK's authoritative post-compaction `used` via
+-                                // getContextUsage — it reflects the real retained context
+-                                // (system prompt + tools + surviving messages), which the
+-                                // per-message API usage numbers can't give us until the next
+-                                // turn's result. If the control request fails, fall back to the
+-                                // used:0 approximation: directionally correct (context just
+-                                // dropped dramatically) and replaced within seconds by the next
+-                                // result message.
+-                                //
+-                                // `size` keeps coming from session.contextWindowSize (learned
+-                                // from modelUsage / the model heuristic) — getContextUsage's
+-                                // window field under-reports extended 1M windows.
+-                                //
+-                                // The "Compacting completed." text is emitted from the `status`
+-                                // handler (keyed on `compact_result`), not here, so the failure
+-                                // path gets a message too.
++                                // Refresh the displayed usage only when the SDK returns the
++                                // authoritative post-compaction value. Publishing 0 on probe
++                                // failure makes the client briefly show an impossible empty
++                                // context window before the next usage event restores reality.
+                                 const usedTokens = await fetchContextUsedTokens(session.query, this.logger);
+                                 lastAssistantUsage = null;
+-                                lastAssistantTotalUsage = usedTokens ?? 0;
+-                                await this.client.sessionUpdate({
+-                                    sessionId: message.session_id,
+-                                    update: {
+-                                        sessionUpdate: "usage_update",
+-                                        used: lastAssistantTotalUsage,
+-                                        size: session.contextWindowSize,
+-                                    },
+-                                });
++                                if (typeof usedTokens === "number" && Number.isFinite(usedTokens)) {
++                                    lastAssistantTotalUsage = usedTokens;
++                                    await this.client.sessionUpdate({
++                                        sessionId: message.session_id,
++                                        update: {
++                                            sessionUpdate: "usage_update",
++                                            used: lastAssistantTotalUsage,
++                                            size: session.contextWindowSize,
++                                        },
++                                    });
++                                }
+                                 break;
+                             }
+                             case "local_command_output": {
++                                const goalUpdate = tuttiClaudeGoalCommandOutputUpdate(message.content);
++                                if (goalUpdate) {
++                                    await this.client.sessionUpdate({
++                                        sessionId: message.session_id,
++                                        update: goalUpdate,
++                                    });
++                                }
+                                 await this.client.sessionUpdate({
+                                     sessionId: message.session_id,
+                                     update: {
+@@ -1075,11 +1191,62 @@
+                             case "hook_progress":
+                             case "hook_response":
+                             case "files_persisted":
+-                            case "task_started":
+-                            case "task_notification":
+-                            case "task_progress":
+-                            case "task_updated":
++                            case "task_started": {
++                                // tutti patch: forward background task lifecycle so the
++                                // client can keep the session "working" while a backgrounded
++                                // subagent/shell runs past end_turn, and cancel it.
++                                await this.client.sessionUpdate({
++                                    sessionId: message.session_id,
++                                    update: {
++                                        sessionUpdate: "task_started",
++                                        taskId: message.task_id,
++                                        ...(message.tool_use_id ? { toolCallId: message.tool_use_id } : {}),
++                                        ...(message.description ? { description: message.description } : {}),
++                                        ...(message.subagent_type ? { subagentType: message.subagent_type } : {}),
++                                        ...(message.task_type ? { taskType: message.task_type } : {}),
++                                    },
++                                });
++                                break;
++                            }
++                            case "task_notification": {
++                                await this.client.sessionUpdate({
++                                    sessionId: message.session_id,
++                                    update: {
++                                        sessionUpdate: "task_notification",
++                                        taskId: message.task_id,
++                                        ...(message.tool_use_id ? { toolCallId: message.tool_use_id } : {}),
++                                        status: message.status,
++                                        ...(message.summary ? { summary: message.summary } : {}),
++                                        ...(message.usage ? { usage: message.usage } : {}),
++                                    },
++                                });
+                                 break;
++                            }
++                            case "task_updated": {
++                                await this.client.sessionUpdate({
++                                    sessionId: message.session_id,
++                                    update: {
++                                        sessionUpdate: "task_updated",
++                                        taskId: message.task_id,
++                                        ...(message.patch ? { patch: message.patch } : {}),
++                                    },
++                                });
++                                break;
++                            }
++                            case "task_progress": {
++                                await this.client.sessionUpdate({
++                                    sessionId: message.session_id,
++                                    update: {
++                                        sessionUpdate: "task_progress",
++                                        taskId: message.task_id,
++                                        ...(message.description ? { description: message.description } : {}),
++                                        ...(message.summary ? { summary: message.summary } : {}),
++                                        ...(message.usage ? { usage: message.usage } : {}),
++                                        ...(message.last_tool_name ? { lastToolName: message.last_tool_name } : {}),
++                                    },
++                                });
++                                break;
++                            }
+                             case "worker_shutting_down":
+                                 // A Remote Control worker announced a graceful teardown. This is a
+                                 // live-tail signal for remote clients to explain why a session went
+@@ -1253,6 +1420,13 @@
+                                 unreachable(message, this.logger);
+                                 break;
+                         }
++                        const transcriptGoalUpdate = await tuttiClaudeSettledTranscriptGoalStatusUpdate(session.cwd, message.session_id ?? params.sessionId);
++                        if (transcriptGoalUpdate) {
++                            await this.client.sessionUpdate({
++                                sessionId: params.sessionId,
++                                update: transcriptGoalUpdate,
++                            });
++                        }
+                         // Settle the user turn at its terminal result so the client unlocks
+                         // as soon as the answer is done, rather than waiting for the SDK's
+                         // trailing `idle` (which can lag while background work runs — issue
+@@ -1445,6 +1619,13 @@
+                         if (message.message.role !== "system" &&
+                             typeof message.message.content === "string" &&
+                             message.message.content.includes("<local-command-stdout>")) {
++                            const goalUpdate = tuttiClaudeGoalCommandOutputUpdate(message.message.content);
++                            if (goalUpdate) {
++                                await this.client.sessionUpdate({
++                                    sessionId: message.session_id ?? params.sessionId,
++                                    update: goalUpdate,
++                                });
++                            }
+                             const stripped = stripLocalCommandMetadata(message.message.content);
+                             if (typeof stripped === "string") {
+                                 for (const notification of toAcpNotifications(stripped, message.message.role, params.sessionId, session.toolUseCache, this.client, this.logger, {
+@@ -2268,7 +2449,7 @@
+             // Rebuild config options since effort levels depend on the selected model
+             const effortOpt = session.configOptions.find((o) => o.id === "effort");
+             const currentEffort = typeof effortOpt?.currentValue === "string" ? effortOpt.currentValue : undefined;
+-            session.configOptions = buildConfigOptions(session.modes, session.models, session.modelInfos, currentEffort, session.agents, session.currentAgent);
++            session.configOptions = buildConfigOptions(session.modes, session.models, session.modelInfos, currentEffort, session.configOptions.find((o) => o.id === "fast")?.currentValue === "fast", session.agents, session.currentAgent);
+             // Sync effort with the SDK if it changed after the model switch
+             const newEffortOpt = session.configOptions.find((o) => o.id === "effort");
+             const newEffort = typeof newEffortOpt?.currentValue === "string" ? newEffortOpt.currentValue : undefined;
+@@ -2311,6 +2492,9 @@
+                 await session.query.applyFlagSettings({
+                     effortLevel: toSdkEffortLevel(value),
+                 });
++            }
++            else if (configId === "fast") {
++                await session.query.applyFlagSettings({ fastMode: value === "fast" });
+             }
+         }
+     }
+@@ -2666,7 +2850,7 @@
+         const currentAgent = requestedAgent && agents.some((a) => a.name === requestedAgent)
+             ? requestedAgent
+             : DEFAULT_AGENT_ID;
+-        const configOptions = buildConfigOptions(modes, models, allowedModels, settingsManager.getSettings().effortLevel, agents, currentAgent);
++        const configOptions = buildConfigOptions(modes, models, allowedModels, settingsManager.getSettings().effortLevel, settingsManager.getSettings().fastMode === true, agents, currentAgent);
+         // Apply the initial effort level to the SDK so it matches the UI default
+         const initialEffort = configOptions.find((o) => o.id === "effort");
+         if (initialEffort &&
+@@ -2676,6 +2860,11 @@
+                 effortLevel: initialEffort.currentValue,
+             });
+         }
++        // tutti patch: apply the initial fast mode so the SDK matches the UI.
++        const initialFast = configOptions.find((o) => o.id === "fast");
++        if (initialFast && initialFast.currentValue === "fast") {
++            await q.applyFlagSettings({ fastMode: true });
++        }
+         this.sessions[sessionId] = {
+             query: q,
+             input: input,
+@@ -2874,7 +3063,7 @@
+         return [];
+     }
+ }
+-export function buildConfigOptions(modes, models, modelInfos, currentEffortLevel, agents = [], currentAgent = DEFAULT_AGENT_ID) {
++export function buildConfigOptions(modes, models, modelInfos, currentEffortLevel, currentFastMode, agents = [], currentAgent = DEFAULT_AGENT_ID) {
+     const options = [
+         {
+             id: "mode",
+@@ -2952,6 +3141,19 @@
+             ],
+         });
+     }
++    // tutti patch: orthogonal fast/speed dimension backed by SDK fastMode.
++    options.push({
++        id: "fast",
++        name: "Fast",
++        description: "Fast mode (Opus, faster output, increased usage)",
++        category: "speed",
++        type: "select",
++        currentValue: currentFastMode === true || currentFastMode === "fast" || currentFastMode === "on" ? "fast" : "standard",
++        options: [
++            { value: "standard", name: "Standard" },
++            { value: "fast", name: "Fast" },
++        ],
++    });
+     return options;
+ }
+ // Claude Code CLI persists display strings like "opus[1m]" in settings,
