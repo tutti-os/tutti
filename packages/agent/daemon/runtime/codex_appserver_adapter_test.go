@@ -2443,13 +2443,67 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 	t.Parallel()
 
 	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
 	transport.conn.goalStartsTurn = true
 	transport.conn.goalCompletionAfterTurns = 2
+
+	var sinkMu sync.Mutex
+	sinkEvents := []activityshared.Event{}
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, events...)
+	})
+
 	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
 		Type: "text", Text: "/goal finish the DrawingML pass",
 	}}, "", "turn-local-goal", nil, nil)
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
+	}
+
+	// Exec settles after the goal's FIRST turn; continuation turns are
+	// codex-driven, nudged when codex does not self-continue, and adopted by
+	// the reducer as their own turns.
+	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
+		t.Fatalf("first goal turn completed events = %d, want 1", len(completed))
+	}
+	firstMessages := []string{}
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Role == activityshared.MessageRoleAssistant &&
+			event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
+			firstMessages = append(firstMessages, event.Payload.Content)
+		}
+	}
+	if strings.Join(firstMessages, "\n") != "I'll work on the goal." {
+		t.Fatalf("first turn assistant messages = %#v", firstMessages)
+	}
+
+	// The continuation nudge re-sends goal/set; the mock then starts the
+	// second turn, which must be adopted and stream through the session sink.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		sinkMu.Lock()
+		adoptedCompleted := ""
+		adoptedStarted := false
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventTurnStarted && event.Payload.Metadata["goalContinuation"] == true {
+				adoptedStarted = true
+			}
+			if event.Type == activityshared.EventMessageAppended &&
+				event.Payload.Role == activityshared.MessageRoleAssistant &&
+				event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
+				adoptedCompleted = event.Payload.Content
+			}
+		}
+		sinkMu.Unlock()
+		if adoptedStarted && adoptedCompleted == "Goal complete." {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("adopted continuation turn did not complete; started=%v message=%q", adoptedStarted, adoptedCompleted)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	goalSets := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet)
@@ -2462,19 +2516,259 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 	if asString(goalSets[1]["objective"]) != "finish the DrawingML pass" {
 		t.Fatalf("continuation goal objective = %#v", goalSets[1])
 	}
+}
 
-	assistantMessages := []string{}
-	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
-		if event.Payload.Role == activityshared.MessageRoleAssistant &&
-			event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
-			assistantMessages = append(assistantMessages, event.Payload.Content)
+// A server-initiated turn/started with no registered turn context and no goal
+// keeps the legacy drop behavior (stray turns such as compaction).
+func TestCodexAppServerAdapterUnownedTurnIgnoredWithoutGoal(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	var sinkMu sync.Mutex
+	sinkEvents := []activityshared.Event{}
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, events...)
+	})
+
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(nil, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "turn-stray", "status": "inProgress", "items": []any{}},
+		}),
+	}, nil, nil)
+
+	if adapter.sessionActiveTurn(session.AgentSessionID) != nil {
+		t.Fatalf("stray turn without goal must not be adopted")
+	}
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+	if len(sinkEvents) != 0 {
+		t.Fatalf("stray turn without goal emitted events: %#v", sinkEvents)
+	}
+}
+
+// A server-initiated turn/started while the goal is paused (Stop pressed) is
+// interrupted instead of adopted, so codex cannot keep running a stopped goal.
+func TestCodexAppServerAdapterUnownedTurnInterruptedForPausedGoal(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"objective": "finish it",
+		"status":    "paused",
+	})
+
+	appSession := adapter.getSession(session.AgentSessionID)
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "turn-paused-goal", "status": "inProgress", "items": []any{}},
+		}),
+	}, nil, nil)
+
+	if adapter.sessionActiveTurn(session.AgentSessionID) != nil {
+		t.Fatalf("paused-goal turn must not be adopted")
+	}
+	waitForCondition(t, func() bool {
+		requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt)
+		for _, request := range requests {
+			if asString(request["turnId"]) == "turn-paused-goal" {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// Cancel must pause an active goal before interrupting the turn, so codex does
+// not auto-start the next goal turn right after the interrupt.
+func TestCodexAppServerAdapterCancelPausesActiveGoal(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"objective": "finish it",
+		"status":    "active",
+	})
+
+	execDone := make(chan struct{})
+	go func() {
+		defer close(execDone)
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	events, err := adapter.Cancel(context.Background(), session, "user requested")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	goalSet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalSet)
+	if asString(goalSet["status"]) != "paused" {
+		t.Fatalf("goal/set params = %#v, want paused status", goalSet)
+	}
+	if status := asString(adapter.sessionGoal(session.AgentSessionID)["status"]); status != "paused" {
+		t.Fatalf("in-memory goal status = %q, want paused", status)
+	}
+	foundGoalEvent := false
+	for _, event := range events {
+		if event.Type == activityshared.EventSessionUpdated &&
+			event.Payload.Metadata["acpSessionUpdate"] == "thread_goal_update" {
+			foundGoalEvent = true
 		}
 	}
-	if strings.Join(assistantMessages, "\n") != "I'll work on the goal.\nGoal complete." {
-		t.Fatalf("assistant messages = %#v", assistantMessages)
+	if !foundGoalEvent {
+		t.Fatalf("Cancel events missing thread_goal_update, got %#v", events)
 	}
-	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
-		t.Fatalf("logical goal completed events = %d, want 1", len(completed))
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec did not finish after interrupt")
+	}
+}
+
+// Mid-turn /goal commands are thread-level control operations: they must run
+// the goal RPC instead of being steered into the active turn as prompt text.
+func TestCodexAppServerAdapterMidTurnGoalClearDoesNotSteer(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"objective": "finish it",
+		"status":    "active",
+	})
+
+	execDone := make(chan struct{})
+	go func() {
+		defer close(execDone)
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal clear",
+	}}, "", "turn-local-2", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec /goal clear: %v", err)
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnSteer); len(requests) != 0 {
+		t.Fatalf("mid-turn /goal clear must not steer, sent %#v", requests)
+	}
+	transport.conn.mu.Lock()
+	cleared := transport.conn.goalCleared
+	transport.conn.mu.Unlock()
+	if !cleared {
+		t.Fatalf("thread/goal/clear was not executed")
+	}
+	if goal := adapter.sessionGoal(session.AgentSessionID); len(goal) != 0 {
+		t.Fatalf("in-memory goal not cleared: %#v", goal)
+	}
+	steered := false
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Metadata["goalControl"] == true {
+			steered = true
+		}
+	}
+	if !steered {
+		t.Fatalf("mid-turn /goal clear user message missing goalControl metadata: %#v", events)
+	}
+
+	transport.conn.completePendingTurn()
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("held turn did not finish")
+	}
+}
+
+// thread/goal/updated notifications must reach the GUI as session events even
+// while no turn is running (the banner refreshes off this signal).
+func TestCodexAppServerAdapterGoalUpdateNotificationEmitsSessionEvent(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	var sinkMu sync.Mutex
+	sinkEvents := []activityshared.Event{}
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, events...)
+	})
+
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(nil, session, "turn-1", acpMessage{
+		Method: appServerNotifyThreadGoalUpdated,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"goal": map[string]any{
+				"objective": "finish it",
+				"status":    "usageLimited",
+			},
+		}),
+	}, nil, nil)
+
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+	foundUpdate := false
+	foundNotice := false
+	for _, event := range sinkEvents {
+		if event.Type == activityshared.EventSessionUpdated &&
+			event.Payload.Metadata["acpSessionUpdate"] == "thread_goal_update" {
+			foundUpdate = true
+		}
+		if event.Type == activityshared.EventMessageAppended &&
+			strings.Contains(event.Payload.Content, "usage limit") {
+			foundNotice = true
+		}
+	}
+	if !foundUpdate {
+		t.Fatalf("missing thread_goal_update session event, got %#v", sinkEvents)
+	}
+	if !foundNotice {
+		t.Fatalf("missing usage-limited status notice, got %#v", sinkEvents)
+	}
+}
+
+// Start/Resume restore the thread's persisted goal so the banner survives
+// daemon restarts.
+func TestCodexAppServerAdapterStartRestoresGoal(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	adapter.SetSessionEventSink(func(string, []activityshared.Event) {})
+	transport.conn.mu.Lock()
+	transport.conn.goal = map[string]any{
+		"threadId":  "codex-thread-1",
+		"objective": "finish it",
+		"status":    "active",
+	}
+	transport.conn.mu.Unlock()
+	session := testAppServerSession()
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return asString(adapter.sessionGoal(session.AgentSessionID)["status"]) == "active"
+	})
+	goalGet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalGet)
+	if asString(goalGet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/get params = %#v", goalGet)
 	}
 }
 

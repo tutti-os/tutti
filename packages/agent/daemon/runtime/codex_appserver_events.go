@@ -931,17 +931,31 @@ func (a *CodexAppServerAdapter) applyAccountUpdate(agentSessionID string, params
 	}
 }
 
-func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[string]any) {
+// applyGoalUpdate stores the latest goal snapshot and reports the status
+// transition so callers can emit user-visible notices when the goal stops
+// progressing (paused/blocked/usageLimited/budgetLimited).
+func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[string]any) (oldStatus, newStatus string, statusChanged bool) {
 	if len(goal) == 0 {
-		return
+		return "", "", false
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession == nil {
-		return
+		return "", "", false
 	}
+	oldStatus = strings.TrimSpace(asString(appSession.goal["status"]))
 	appSession.goal = clonePayload(goal)
+	newStatus = strings.TrimSpace(asString(appSession.goal["status"]))
+	if oldStatus != newStatus {
+		slog.Info("agent session app-server goal status changed",
+			"event", "agent_session.app_server.goal.status_changed",
+			"agent_session_id", agentSessionID,
+			"old_status", oldStatus,
+			"new_status", newStatus,
+		)
+	}
+	return oldStatus, newStatus, oldStatus != newStatus
 }
 
 func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
@@ -950,6 +964,13 @@ func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession == nil {
 		return
+	}
+	if appSession.goal != nil {
+		slog.Info("agent session app-server goal cleared",
+			"event", "agent_session.app_server.goal.cleared",
+			"agent_session_id", agentSessionID,
+			"old_status", strings.TrimSpace(asString(appSession.goal["status"])),
+		)
 	}
 	appSession.goal = nil
 }
@@ -1682,6 +1703,26 @@ func appServerGoalNoticeEvent(session Session, turnID string, method string, res
 	default:
 		return nil
 	}
+}
+
+// appServerGoalStatusNoticeEvent describes a goal status transition into a
+// non-progressing state, so the user learns why the goal stopped advancing.
+func appServerGoalStatusNoticeEvent(session Session, turnID string, newStatus string) *activityshared.Event {
+	title := ""
+	switch newStatus {
+	case "paused":
+		title = "Goal paused — resume it from the goal banner or with /goal active."
+	case "blocked":
+		title = "Goal blocked — the agent cannot continue without help."
+	case "usageLimited":
+		title = "Goal stopped: usage limit reached."
+	case "budgetLimited":
+		title = "Goal stopped: token budget exhausted."
+	default:
+		return nil
+	}
+	event := appServerSystemNoticeEvent(session, turnID, "system_notice", title, "")
+	return &event
 }
 
 func appServerGoalStatusDetail(goal map[string]any) string {

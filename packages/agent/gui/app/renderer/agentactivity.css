@@ -2930,6 +2930,38 @@ aside.workspace-agents-status-panel
   opacity: 0.8;
 }
 
+.agent-gui-chrome__goal-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.agent-gui-chrome__goal-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--agent-gui-text-secondary, var(--text-secondary));
+  cursor: pointer;
+}
+
+.agent-gui-chrome__goal-actions button:hover {
+  background: color-mix(
+    in srgb,
+    var(--agent-gui-text-primary, var(--text-primary)) 8%,
+    transparent
+  );
+  color: var(--agent-gui-text-primary, var(--text-primary));
+}
+
 .agent-gui-chrome__message-slot {
   display: flex;
   min-width: 0;

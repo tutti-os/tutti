@@ -1117,6 +1117,9 @@ export const AgentGUINode = memo(function AgentGUINode({
       goalBudgetUsage: (used: number, budget: number) =>
         t("agentHost.agentGui.goalBudgetUsage", { used, budget }),
       goalClearHint: t("agentHost.agentGui.goalClearHint"),
+      goalPauseAction: t("agentHost.agentGui.goalPauseAction"),
+      goalResumeAction: t("agentHost.agentGui.goalResumeAction"),
+      goalClearAction: t("agentHost.agentGui.goalClearAction"),
       processing: t("agentHost.agentGui.processing"),
       turnSummary: t("agentHost.agentGui.turnSummary"),
       userMessageLocator: t("agentHost.agentGui.userMessageLocator"),

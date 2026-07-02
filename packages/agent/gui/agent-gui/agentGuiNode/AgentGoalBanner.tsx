@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { Target } from "lucide-react";
+import { Pause, Play, Target, X } from "lucide-react";
 import { cn } from "../../app/renderer/lib/utils";
 import styles from "./AgentGUIChrome.styles";
 
@@ -13,6 +13,9 @@ export interface AgentGoalBannerLabels {
   statusComplete: string;
   budgetUsage: (used: number, budget: number) => string;
   clearHint: string;
+  pauseAction: string;
+  resumeAction: string;
+  clearAction: string;
 }
 
 export interface AgentGoalBannerProps {
@@ -21,7 +24,18 @@ export interface AgentGoalBannerProps {
   tokenBudget?: number;
   tokensUsed?: number;
   labels: AgentGoalBannerLabels;
+  onPauseGoal?: () => void;
+  onResumeGoal?: () => void;
+  onClearGoal?: () => void;
 }
+
+// Statuses from which the goal can be resumed with /goal active.
+const RESUMABLE_GOAL_STATUSES = new Set([
+  "paused",
+  "blocked",
+  "usagelimited",
+  "budgetlimited"
+]);
 
 // Statuses that mean the goal is finished. We hide the banner for these so a
 // trivial objective that Codex immediately marks complete does not linger above
@@ -92,16 +106,20 @@ export function describeGoal(input: {
  * composer, in the same dock slot as the session error/notice chrome. Reuses
  * the muted chrome card styling so it reads as informational, not an error.
  *
- * Read-only by design: clearing the goal is done by typing `/goal clear` in the
- * composer. The banner only hints at that command rather than offering its own
- * (potentially destructive) control.
+ * When action callbacks are provided the banner offers pause (active goal),
+ * resume (paused/limited goal), and clear controls that submit the matching
+ * /goal command through the composer pipeline. Without callbacks it falls
+ * back to the read-only "/goal clear" hint.
  */
 export function AgentGoalBanner({
   objective,
   status,
   tokenBudget,
   tokensUsed,
-  labels
+  labels,
+  onPauseGoal,
+  onResumeGoal,
+  onClearGoal
 }: AgentGoalBannerProps): JSX.Element {
   "use memo";
   const description = describeGoal({
@@ -112,6 +130,11 @@ export function AgentGoalBanner({
     labels
   });
   const fullMessage = `${labels.goalLabel} ${description}`;
+  const normalizedStatus = normalizeGoalStatus(status);
+  const showPause = onPauseGoal !== undefined && normalizedStatus === "active";
+  const showResume =
+    onResumeGoal !== undefined && RESUMABLE_GOAL_STATUSES.has(normalizedStatus);
+  const hasActions = showPause || showResume || onClearGoal !== undefined;
   return (
     <div className={styles.sessionChrome}>
       <section
@@ -136,12 +159,50 @@ export function AgentGoalBanner({
               </span>
             </p>
           </div>
-          <span
-            className={styles.chromeGoalHint}
-            data-testid="agent-gui-goal-banner-clear-hint"
-          >
-            {labels.clearHint}
-          </span>
+          {hasActions ? (
+            <div className={styles.chromeGoalActions}>
+              {showPause ? (
+                <button
+                  type="button"
+                  onClick={onPauseGoal}
+                  title={labels.pauseAction}
+                  data-testid="agent-gui-goal-banner-pause"
+                >
+                  <Pause aria-hidden className="size-3" />
+                  {labels.pauseAction}
+                </button>
+              ) : null}
+              {showResume ? (
+                <button
+                  type="button"
+                  onClick={onResumeGoal}
+                  title={labels.resumeAction}
+                  data-testid="agent-gui-goal-banner-resume"
+                >
+                  <Play aria-hidden className="size-3" />
+                  {labels.resumeAction}
+                </button>
+              ) : null}
+              {onClearGoal !== undefined ? (
+                <button
+                  type="button"
+                  onClick={onClearGoal}
+                  title={labels.clearAction}
+                  aria-label={labels.clearAction}
+                  data-testid="agent-gui-goal-banner-clear"
+                >
+                  <X aria-hidden className="size-3" />
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <span
+              className={styles.chromeGoalHint}
+              data-testid="agent-gui-goal-banner-clear-hint"
+            >
+              {labels.clearHint}
+            </span>
+          )}
         </div>
       </section>
     </div>

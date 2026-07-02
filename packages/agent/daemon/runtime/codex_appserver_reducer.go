@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
@@ -81,6 +82,42 @@ func (r codexAppServerReducer) ReduceNotification(
 					}, session, activeTurn, providerTurnID, "queued cancel")
 				}
 			}
+		} else if turn := payloadObject(params["turn"]); turn != nil {
+			// Server-initiated turn with no registered turn context: codex
+			// drives goal continuation on its own, so adopt the turn while the
+			// goal is active — otherwise its output would be dropped and the
+			// GUI would freeze while codex keeps working invisibly.
+			providerTurnID := strings.TrimSpace(asString(turn["id"]))
+			goal := a.sessionGoal(session.AgentSessionID)
+			goalStatus := strings.TrimSpace(asString(goal["status"]))
+			switch {
+			case goalStatus == "paused":
+				// The user explicitly stopped the goal (Stop pauses it); codex
+				// must not keep running turns for it.
+				slog.Warn("agent session app-server interrupting unowned turn for paused goal",
+					"event", "agent_session.app_server.turn.unowned_interrupted",
+					"agent_session_id", session.AgentSessionID,
+					"provider_turn_id", providerTurnID,
+					"goal_status", goalStatus,
+				)
+				// Async: a synchronous RPC on the read loop would block its own
+				// response from being dispatched.
+				go a.sendThreadInterrupt(client, session,
+					firstNonEmpty(asString(params["threadId"]), session.ProviderSessionID),
+					providerTurnID, "goal paused")
+			case len(goal) > 0:
+				// A goal exists (in whatever state — codex may legitimately run
+				// a wrap-up turn while flipping the goal to complete): adopt the
+				// turn so its output stays visible.
+				a.adoptServerInitiatedTurn(session, providerTurnID)
+			default:
+				slog.Info("agent session app-server unowned turn ignored",
+					"event", "agent_session.app_server.turn.unowned",
+					"agent_session_id", session.AgentSessionID,
+					"provider_turn_id", providerTurnID,
+					"goal_status", goalStatus,
+				)
+			}
 		}
 		return codexAppServerReduction{}
 	case appServerNotifyTurnCompleted:
@@ -158,10 +195,28 @@ func (r codexAppServerReducer) ReduceNotification(
 		a.resolvePendingRequestFromProvider(session.AgentSessionID, params)
 		return codexAppServerReduction{}
 	case appServerNotifyThreadGoalUpdated:
-		a.applyGoalUpdate(session.AgentSessionID, payloadObject(params["goal"]))
+		// Goal updates are session-scoped metadata: emit through the session
+		// sink so the GUI banner refreshes even while no turn context exists
+		// (returned reduction events are dropped without an active turn).
+		_, newStatus, statusChanged := a.applyGoalUpdate(session.AgentSessionID, payloadObject(params["goal"]))
+		goalEvents := []activityshared.Event{}
+		if event, ok := acpGoalUpdatedEvent(session, "thread_goal_update"); ok {
+			goalEvents = append(goalEvents, event)
+		}
+		if statusChanged {
+			if noticeTurnID := firstNonEmpty(turnID, a.sessionMarkerTurnID(session.AgentSessionID)); noticeTurnID != "" {
+				if notice := appServerGoalStatusNoticeEvent(session, noticeTurnID, newStatus); notice != nil {
+					goalEvents = append(goalEvents, *notice)
+				}
+			}
+		}
+		a.emitSessionEvents(session.AgentSessionID, appServerEventsWithOwnerThreadID(goalEvents, ownerThreadID))
 		return codexAppServerReduction{}
 	case appServerNotifyThreadGoalCleared:
 		a.applyGoalClear(session.AgentSessionID)
+		if event, ok := acpGoalUpdatedEvent(session, "thread_goal_cleared"); ok {
+			a.emitSessionEvents(session.AgentSessionID, appServerEventsWithOwnerThreadID([]activityshared.Event{event}, ownerThreadID))
+		}
 		return codexAppServerReduction{}
 	case appServerNotifyThreadStarted:
 		return codexAppServerReduction{}

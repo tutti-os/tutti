@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import {
   AgentGoalBanner,
   describeGoal,
@@ -16,7 +16,10 @@ const labels: AgentGoalBannerLabels = {
   statusBudgetLimited: "Budget limited",
   statusComplete: "Complete",
   budgetUsage: (used, budget) => `${used}/${budget} tokens`,
-  clearHint: "Type /goal clear to clear"
+  clearHint: "Type /goal clear to clear",
+  pauseAction: "Pause",
+  resumeAction: "Resume",
+  clearAction: "End goal"
 };
 
 describe("isGoalBannerVisible", () => {
@@ -106,4 +109,54 @@ describe("AgentGoalBanner", () => {
     ).toBe("Type /goal clear to clear");
     expect(screen.queryByRole("button")).toBeNull();
   });
+
+  it("offers pause and clear actions for an active goal", () => {
+    const onPauseGoal = vi.fn();
+    const onResumeGoal = vi.fn();
+    const onClearGoal = vi.fn();
+    render(
+      <AgentGoalBanner
+        objective="Ship it"
+        status="active"
+        labels={labels}
+        onPauseGoal={onPauseGoal}
+        onResumeGoal={onResumeGoal}
+        onClearGoal={onClearGoal}
+      />
+    );
+
+    expect(screen.queryByTestId("agent-gui-goal-banner-clear-hint")).toBeNull();
+    expect(screen.queryByTestId("agent-gui-goal-banner-resume")).toBeNull();
+    fireEvent.click(screen.getByTestId("agent-gui-goal-banner-pause"));
+    fireEvent.click(screen.getByTestId("agent-gui-goal-banner-clear"));
+    expect(onPauseGoal).toHaveBeenCalledTimes(1);
+    expect(onClearGoal).toHaveBeenCalledTimes(1);
+    expect(onResumeGoal).not.toHaveBeenCalled();
+  });
+
+  it.each(["paused", "blocked", "usageLimited", "budgetLimited"])(
+    "offers resume and clear actions for a %s goal",
+    (status) => {
+      const onPauseGoal = vi.fn();
+      const onResumeGoal = vi.fn();
+      const onClearGoal = vi.fn();
+      render(
+        <AgentGoalBanner
+          objective="Ship it"
+          status={status}
+          labels={labels}
+          onPauseGoal={onPauseGoal}
+          onResumeGoal={onResumeGoal}
+          onClearGoal={onClearGoal}
+        />
+      );
+
+      expect(screen.queryByTestId("agent-gui-goal-banner-pause")).toBeNull();
+      fireEvent.click(screen.getByTestId("agent-gui-goal-banner-resume"));
+      fireEvent.click(screen.getByTestId("agent-gui-goal-banner-clear"));
+      expect(onResumeGoal).toHaveBeenCalledTimes(1);
+      expect(onClearGoal).toHaveBeenCalledTimes(1);
+      expect(onPauseGoal).not.toHaveBeenCalled();
+    }
+  );
 });

@@ -334,6 +334,9 @@ export interface AgentGUIViewLabels {
   goalStatusComplete: string;
   goalBudgetUsage: (used: number, budget: number) => string;
   goalClearHint: string;
+  goalPauseAction: string;
+  goalResumeAction: string;
+  goalClearAction: string;
   processing: string;
   turnSummary: string;
   userMessageLocator: string;
@@ -486,6 +489,7 @@ interface AgentGUINodeViewProps {
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
+    submitGoalCommand: (command: string) => void;
     submitGuidancePrompt: (
       content: AgentPromptContentBlock[],
       displayPrompt?: string
@@ -1878,7 +1882,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       statusBudgetLimited: labels.goalStatusBudgetLimited,
       statusComplete: labels.goalStatusComplete,
       budgetUsage: labels.goalBudgetUsage,
-      clearHint: labels.goalClearHint
+      clearHint: labels.goalClearHint,
+      pauseAction: labels.goalPauseAction,
+      resumeAction: labels.goalResumeAction,
+      clearAction: labels.goalClearAction
     }),
     [
       labels.goalLabel,
@@ -1889,7 +1896,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.goalStatusBudgetLimited,
       labels.goalStatusComplete,
       labels.goalBudgetUsage,
-      labels.goalClearHint
+      labels.goalClearHint,
+      labels.goalPauseAction,
+      labels.goalResumeAction,
+      labels.goalClearAction
     ]
   );
   const interactivePromptLabels = useMemo(
@@ -2184,6 +2194,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.updateComposerSettings
   );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
+  const submitGoalCommand = useStableEventCallback(actions.submitGoalCommand);
   const submitGuidancePrompt = useStableEventCallback(
     actions.submitGuidancePrompt
   );
@@ -2762,6 +2773,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           onSubmitBottomDockInteractivePrompt={
             submitBottomDockInteractivePrompt
           }
+          onSubmitGoalCommand={submitGoalCommand}
         />
       ) : null}
     </main>
@@ -3035,6 +3047,7 @@ interface AgentGUIBottomDockPaneProps {
   onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
   onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
   onSubmitBottomDockInteractivePrompt: AgentGUINodeViewProps["actions"]["submitInteractivePrompt"];
+  onSubmitGoalCommand: AgentGUINodeViewProps["actions"]["submitGoalCommand"];
 }
 
 const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
@@ -3051,7 +3064,8 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   onAuthLogin,
   onRetryActivation,
   onContinueInNewConversation,
-  onSubmitBottomDockInteractivePrompt
+  onSubmitBottomDockInteractivePrompt,
+  onSubmitGoalCommand
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
   const state = useSnapshot(store) as AgentGUIBottomDockStoreSnapshot;
@@ -3122,6 +3136,9 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           tokenBudget={goalTokenBudget ?? undefined}
           tokensUsed={goalTokensUsed ?? undefined}
           labels={goalBannerLabels}
+          onPauseGoal={() => onSubmitGoalCommand("/goal paused")}
+          onResumeGoal={() => onSubmitGoalCommand("/goal active")}
+          onClearGoal={() => onSubmitGoalCommand("/goal clear")}
         />
       ) : null}
       {bottomDockReplacementPrompt ? (

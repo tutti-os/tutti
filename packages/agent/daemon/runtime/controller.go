@@ -2578,30 +2578,39 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 	if agentSessionID == "" {
 		return
 	}
+	// Read-apply-store atomically: a non-atomic window here lets a background
+	// sink emission overwrite a session another goroutine just settled (lost
+	// update on status/title).
 	c.mu.Lock()
 	var session Session
-	found := false
-	for _, candidate := range c.sessions {
+	foundKey := ""
+	for key, candidate := range c.sessions {
 		if strings.TrimSpace(candidate.AgentSessionID) == agentSessionID {
 			session = candidate
-			found = true
+			foundKey = key
 			break
 		}
 	}
-	c.mu.Unlock()
-	if !found {
+	if foundKey == "" {
+		c.mu.Unlock()
 		return
 	}
 	session = applySessionEvents(session, events)
+	// Adapter-initiated turns (goal continuation adoption) reach the
+	// controller only through this sink; apply their lifecycle so the GUI's
+	// stop button and submit availability track them like Exec-driven turns.
 	session = applyTurnLifecycleFromEvents(session, events)
 	session.Status = deriveSessionStatusFromEvents(events, session.Status)
 	if shouldAdvanceSessionUpdatedAtFromEvents(events) {
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
-	key := sessionKey(session.RoomID, session.AgentSessionID)
-	c.mu.Lock()
-	session = c.reconcileSessionStatusLocked(key, session)
-	c.sessions[key] = session
+	// Adopted turns run without a controller turn record, so skip the
+	// no-turn-record status reconcile while the lifecycle reports an active
+	// turn — forcing ready here would hide a legitimately running turn.
+	if session.TurnLifecycle == nil || session.TurnLifecycle.ActiveTurnID == nil {
+		session = c.reconcileSessionStatusLocked(foundKey, session)
+	}
+	c.sessions[foundKey] = session
 	c.mu.Unlock()
 	c.publish(session, events)
 	c.enqueueSessionReport(context.Background(), session, events)

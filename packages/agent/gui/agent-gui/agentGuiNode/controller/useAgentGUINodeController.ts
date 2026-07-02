@@ -8110,6 +8110,30 @@ export function useAgentGUINodeController({
     ]
   );
 
+  // Goal control commands (/goal clear|paused|active) act on the running
+  // thread immediately; the local prompt queue would defer them until the
+  // turn ends, defeating their purpose (e.g. stopping a runaway goal).
+  const submitGoalCommand = useCallback(
+    (command: string) => {
+      if (previewMode) {
+        return;
+      }
+      const agentSessionId = activeConversationIdRef.current;
+      if (!agentSessionId) {
+        return;
+      }
+      submitExistingPrompt(
+        agentSessionId,
+        textPromptContent(command),
+        undefined,
+        {
+          bypassLocalQueue: true
+        }
+      );
+    },
+    [previewMode, submitExistingPrompt]
+  );
+
   const submitPrompt = useCallback(
     (content: AgentPromptContentBlock[], displayPrompt?: string) => {
       if (previewMode) {
@@ -10551,6 +10575,8 @@ export function useAgentGUINodeController({
   const stableSelectConversation =
     useStableControllerEventCallback(selectConversation);
   const stableSubmitPrompt = useStableControllerEventCallback(submitPrompt);
+  const stableSubmitGoalCommand =
+    useStableControllerEventCallback(submitGoalCommand);
   const stableSubmitGuidancePrompt =
     useStableControllerEventCallback(submitGuidancePrompt);
   const stableShowPromptImagesUnsupported = useStableControllerEventCallback(
@@ -10623,6 +10649,7 @@ export function useAgentGUINodeController({
       createConversation: stableCreateConversation,
       selectConversation: stableSelectConversation,
       submitPrompt: stableSubmitPrompt,
+      submitGoalCommand: stableSubmitGoalCommand,
       submitGuidancePrompt: stableSubmitGuidancePrompt,
       loadOlderConversationMessages: stableLoadOlderConversationMessages,
       showPromptImagesUnsupported: stableShowPromptImagesUnsupported,
@@ -10676,6 +10703,7 @@ export function useAgentGUINodeController({
       stableSubmitApprovalOption,
       stableSubmitInteractivePrompt,
       stableSubmitPrompt,
+      stableSubmitGoalCommand,
       stableToggleConversationPinned,
       stableUpdateConversationFilter,
       stableUpdateComposerSettings,

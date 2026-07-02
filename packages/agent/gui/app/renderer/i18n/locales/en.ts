@@ -758,6 +758,9 @@ export const en = {
       goalStatusComplete: "Complete",
       goalBudgetUsage: "{{used}}/{{budget}} tokens",
       goalClearHint: "Type /goal clear to clear",
+      goalPauseAction: "Pause",
+      goalResumeAction: "Resume",
+      goalClearAction: "End goal",
       processing: "Planning next moves",
       agentTargetRequired:
         "Select an available agent target before starting a session.",

@@ -456,6 +456,80 @@ func (c *codexAppServerClient) ThreadGoalClear(
 	return caller.rawResult, nil
 }
 
+// The NoHandler goal variants are for background or mid-turn goal RPCs: a
+// handler-carrying call claims the single active message handler slot and
+// serializes behind other calls, so concurrent turn notifications would be
+// swallowed (or the call would block) while the RPC is in flight.
+
+func (c *codexAppServerClient) ThreadGoalSetNoHandler(
+	ctx context.Context,
+	params map[string]any,
+) (json.RawMessage, error) {
+	typedParams, err := codexProtoParams[codexproto.ThreadGoalSetParams](params)
+	if err != nil {
+		return nil, err
+	}
+	client, caller := c.typed(0, nil, true)
+	_, err = client.ThreadGoalSet(ctx, typedParams)
+	if err != nil {
+		return nil, err
+	}
+	return caller.rawResult, nil
+}
+
+func (c *codexAppServerClient) ThreadGoalGetNoHandler(
+	ctx context.Context,
+	params map[string]any,
+) (json.RawMessage, error) {
+	typedParams, err := codexProtoParams[codexproto.ThreadGoalGetParams](params)
+	if err != nil {
+		return nil, err
+	}
+	client, caller := c.typed(0, nil, true)
+	_, err = client.ThreadGoalGet(ctx, typedParams)
+	if err != nil {
+		return nil, err
+	}
+	return caller.rawResult, nil
+}
+
+func (c *codexAppServerClient) ThreadGoalClearNoHandler(
+	ctx context.Context,
+	params map[string]any,
+) (json.RawMessage, error) {
+	typedParams, err := codexProtoParams[codexproto.ThreadGoalClearParams](params)
+	if err != nil {
+		return nil, err
+	}
+	client, caller := c.typed(0, nil, true)
+	_, err = client.ThreadGoalClear(ctx, typedParams)
+	if err != nil {
+		return nil, err
+	}
+	return caller.rawResult, nil
+}
+
+// callGoalNoHandler mirrors callGoal for the NoHandler variants.
+func (s *codexAppServerSession) callGoalNoHandler(
+	ctx context.Context,
+	method string,
+	params map[string]any,
+) (json.RawMessage, error) {
+	if s == nil || s.client == nil {
+		return nil, ErrSessionDisconnected
+	}
+	switch method {
+	case appServerMethodThreadGoalClear:
+		return s.client.ThreadGoalClearNoHandler(ctx, params)
+	case appServerMethodThreadGoalGet:
+		return s.client.ThreadGoalGetNoHandler(ctx, params)
+	case appServerMethodThreadGoalSet:
+		return s.client.ThreadGoalSetNoHandler(ctx, params)
+	default:
+		return nil, errors.New("unsupported app-server goal method")
+	}
+}
+
 func (s *codexAppServerSession) callGoal(
 	ctx context.Context,
 	method string,

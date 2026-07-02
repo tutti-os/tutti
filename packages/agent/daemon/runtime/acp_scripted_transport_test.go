@@ -466,6 +466,12 @@ func (c *scriptedACPConnection) handleAppServerMessage(line string, id json.RawM
 		})
 		c.completeAppServerTurn()
 		return true
+	case appServerMethodThreadGoalGet:
+		c.sendJSON(map[string]any{
+			"id":     id,
+			"result": map[string]any{"goal": nil},
+		})
+		return true
 	case appServerMethodTurnInterrupt:
 		c.mu.Lock()
 		c.appServerTurnStatus = "interrupted"
