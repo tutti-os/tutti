@@ -28,6 +28,7 @@ describe("AgentMessageMarkdown", () => {
       "data-agent-mention-kind",
       "workspace-reference"
     );
+    expect(chip).toHaveAttribute("data-agent-reference-source", "task");
     // 角标数字已移除:chip 只展示标签,不再渲染文件数。
     expect(chip).toHaveTextContent("我的小项目");
     expect(chip).not.toHaveTextContent("3");
@@ -53,6 +54,7 @@ describe("AgentMessageMarkdown", () => {
       "data-agent-mention-kind",
       "workspace-reference"
     );
+    expect(mention).toHaveAttribute("data-agent-reference-source", "app");
     expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
     expect(
       mention?.querySelector('[data-agent-mention-app-icon="true"] img')

@@ -2033,14 +2033,14 @@ describe("AgentFileMentionPalette", () => {
       /\[data-agent-file-mention="true"\]\[data-agent-mention-kind="file"\]\.tsh-agent-object-token--file\s*{[^}]*color:\s*var\(--folder\)/s
     );
     expect(css).toMatch(
-      /\[data-agent-mention-kind="workspace-app"\]\.tsh-agent-object-token--entity\s*{[^}]*color:\s*var\(--tutti-purple\)/s
+      /\[data-agent-mention-kind="workspace-app"\]\.tsh-agent-object-token--entity,\s*\[data-agent-mention-kind="workspace-reference"\]\[data-agent-reference-source="app"\]\.tsh-agent-object-token--entity\s*{[^}]*color:\s*var\(--agent-gui-mention-app-color,\s*var\(--tutti-purple\)\)/s
     );
     expect(css).toMatch(
       /\.workspace-agents-status-panel__activity-summary\s+\.workspace-agents-status-panel__detail-markdown\s+a,[\s\S]*?\.workspace-agents-status-panel__detail-markdown\s+code\s+a\s*{[^}]*color:\s*var\(--tutti-purple\)/s
     );
   });
 
-  it("uses accent blue for editable workspace app mentions", () => {
+  it("uses the Agent GUI app mention color for editable workspace app mentions", () => {
     const nodeViewSource = readFileSync(
       resolve("agent-gui/agentGuiNode/agentRichText/AgentMentionNodeView.tsx"),
       "utf8"
@@ -2048,10 +2048,16 @@ describe("AgentFileMentionPalette", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
     const workspaceAppFallbackIconRule =
       css.match(
-        /\[data-agent-mention-kind="workspace-app"\]\s+\[data-agent-mention-app-icon="true"\]\s+\.tsh-agent-object-token__kind-icon\s*{[^}]*}/s
+        /\[data-agent-mention-kind="workspace-app"\]\s+\[data-agent-mention-app-icon="true"\]\s+\.tsh-agent-object-token__kind-icon,[\s\S]*?\[data-agent-mention-kind="workspace-reference"\]\[data-agent-reference-source="app"\]\s+\[data-agent-mention-app-icon="true"\]\s+\.tsh-agent-object-token__kind-icon\s*{[^}]*}/s
       )?.[0] ?? "";
 
-    expect(nodeViewSource).toContain("text-[var(--accent)]");
+    expect(nodeViewSource).toContain(
+      "text-[var(--agent-gui-mention-app-color,var(--tutti-purple))]"
+    );
+    expect(nodeViewSource).not.toContain("text-[var(--accent)]");
+    expect(css).toMatch(
+      /--agent-gui-mention-app-color:\s*var\(--tutti-purple\);/
+    );
     expect(nodeViewSource).toContain("text-[13px]");
     expect(nodeViewSource).toContain("relative grid size-4");
     expect(nodeViewSource).not.toContain("size-[18px]");

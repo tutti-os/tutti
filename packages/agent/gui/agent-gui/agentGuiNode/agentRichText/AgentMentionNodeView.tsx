@@ -435,7 +435,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
         data-agent-mention-kind={mention.kind}
       >
         <span
-          className="group relative top-0 inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-transparent bg-transparent px-1 py-0 align-middle text-[13px] font-medium leading-6 text-[var(--accent)] no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]"
+          className="group relative top-0 inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-transparent bg-transparent px-1 py-0 align-middle text-[13px] font-medium leading-6 text-[var(--agent-gui-mention-app-color,var(--tutti-purple))] no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]"
           data-agent-mention-kind={mention.kind}
           data-slot="mention-pill"
         >

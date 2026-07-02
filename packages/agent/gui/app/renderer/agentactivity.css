@@ -276,6 +276,7 @@
   --agent-gui-package-danger: var(--state-danger);
   --agent-gui-accent: var(--agent-gui-package-accent);
   --agent-gui-accent-strong: var(--agent-gui-package-accent-strong);
+  --agent-gui-mention-app-color: var(--tutti-purple);
   --agent-gui-success: var(--agent-gui-package-success);
   --agent-gui-warning: var(--agent-gui-package-warning);
   --agent-gui-danger: var(--agent-gui-package-danger);
@@ -3929,8 +3930,9 @@ aside.workspace-agents-status-panel
   -webkit-mask-size: 16px 16px;
 }
 
-[data-agent-mention-kind="workspace-app"].tsh-agent-object-token--entity {
-  color: var(--tutti-purple);
+[data-agent-mention-kind="workspace-app"].tsh-agent-object-token--entity,
+[data-agent-mention-kind="workspace-reference"][data-agent-reference-source="app"].tsh-agent-object-token--entity {
+  color: var(--agent-gui-mention-app-color, var(--tutti-purple));
 }
 
 [data-agent-mention-kind="skill"].tsh-agent-object-token--entity,
@@ -3966,6 +3968,9 @@ aside.workspace-agents-status-panel
 }
 
 [data-agent-mention-kind="workspace-app"]
+  [data-agent-mention-app-icon="true"]
+  .tsh-agent-object-token__kind-icon,
+[data-agent-mention-kind="workspace-reference"][data-agent-reference-source="app"]
   [data-agent-mention-app-icon="true"]
   .tsh-agent-object-token__kind-icon {
   display: block;
@@ -4131,6 +4136,7 @@ aside.workspace-agents-status-panel
   --agent-gui-accent-strong: var(--agent-gui-package-accent-strong);
   --agent-gui-accent-bg: var(--agent-gui-package-accent-bg);
   --agent-gui-border-focus: var(--agent-gui-package-border-focus);
+  --agent-gui-mention-app-color: var(--tutti-purple);
   --agent-gui-success: var(--agent-gui-package-success);
   --agent-gui-warning: var(--agent-gui-package-warning);
   --agent-gui-danger: var(--agent-gui-package-danger);
