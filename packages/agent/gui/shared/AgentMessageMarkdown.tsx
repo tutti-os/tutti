@@ -852,6 +852,7 @@ function MentionLink({
       data-agent-mention-icon-url={mention.iconUrl}
       data-agent-mention-href={href}
       data-agent-mention-kind={mention.kind}
+      data-agent-reference-source={mention.referenceSource}
       aria-label={mention.label}
       role="link"
       tabIndex={0}
@@ -1622,6 +1623,7 @@ interface ParsedMentionLink {
   label: string;
   iconUrl?: string;
   participant: string;
+  referenceSource?: string;
   summary: string;
   /** 引用文件数量(workspace-reference 专用,来自 href 的 count 参数)。 */
   fileCount?: number;
@@ -1703,6 +1705,7 @@ function parseMentionLink(
       iconUrl: mention.scope?.icon?.trim() || appIconUrl,
       fileCount: referenceFileCountFromParam(mention.scope?.count ?? null),
       participant: label,
+      referenceSource: source || undefined,
       summary: ""
     };
   }
