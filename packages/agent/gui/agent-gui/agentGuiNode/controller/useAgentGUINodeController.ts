@@ -232,6 +232,9 @@ const AGENT_RESUME_SESSION_NOT_LOCAL_FALLBACK_MESSAGE =
   "The previous agent session is not available on this machine.";
 const AGENT_GUI_CAUGHT_ERROR_STACK_LIMIT = 4000;
 const SELECTED_SESSION_NOT_FOUND_RETRY_DELAY_MS = 150;
+const AGENT_GUI_ALL_CONVERSATION_FILTER = {
+  kind: "all"
+} as const satisfies AgentGUIConversationFilter;
 
 type AgentGUIRuntimeErrorPhase =
   | "create_conversation"
@@ -265,6 +268,8 @@ export interface AgentGUIRememberComposerDefaultsInput {
   provider: AgentGUINodeData["provider"];
   defaults: AgentGUIComposerDefaults | null;
 }
+
+export type AgentGUIConversationScope = "multi-provider" | "single-provider";
 
 function composerDefaultsFromSettings(
   settings: AgentSessionComposerSettings
@@ -3268,6 +3273,7 @@ interface UseAgentGUINodeControllerInput {
   currentUserId?: string | null;
   workspacePath: string;
   avoidGroupingEdits: boolean;
+  conversationScope?: AgentGUIConversationScope;
   data: AgentGUINodeData;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
@@ -3305,6 +3311,7 @@ export function useAgentGUINodeController({
   currentUserId,
   workspacePath,
   avoidGroupingEdits,
+  conversationScope = "multi-provider",
   data,
   providerTargets,
   providerTargetsLoading = false,
@@ -3398,9 +3405,14 @@ export function useAgentGUINodeController({
     useState<AgentGUIConversationFilter>(
       () => createAgentGUIConversationFilterState().filter
     );
-  const queryConversationFilter =
-    data.provider === "codex" || data.provider === "claude-code"
+  const effectiveConversationFilter =
+    conversationScope === "multi-provider"
       ? conversationFilter
+      : AGENT_GUI_ALL_CONVERSATION_FILTER;
+  const queryConversationFilter =
+    conversationScope === "multi-provider" &&
+    (data.provider === "codex" || data.provider === "claude-code")
+      ? effectiveConversationFilter
       : null;
   const conversationListQuery =
     useMemo<AgentGUIConversationListQuery | null>(() => {
@@ -9920,9 +9932,13 @@ export function useAgentGUINodeController({
 
   const updateConversationFilter = useCallback(
     (filter: AgentGUIConversationFilter) => {
+      if (conversationScope !== "multi-provider") {
+        setConversationFilter(AGENT_GUI_ALL_CONVERSATION_FILTER);
+        return;
+      }
       setConversationFilter(normalizeAgentGUIConversationFilter(filter));
     },
-    []
+    [conversationScope]
   );
   const selectProvider = useCallback(
     (input: {
@@ -10139,7 +10155,7 @@ export function useAgentGUINodeController({
         selectedProviderTarget,
         providerTargets: normalizedProviderTargets,
         providerTargetsLoading,
-        conversationFilter,
+        conversationFilter: effectiveConversationFilter,
         conversations: visibleConversations,
         userProjects,
         activeConversation,
@@ -10204,7 +10220,7 @@ export function useAgentGUINodeController({
       canSubmit,
       canQueueWhileBusy,
       conversation,
-      conversationFilter,
+      effectiveConversationFilter,
       conversationDetail,
       controllerActions,
       data,

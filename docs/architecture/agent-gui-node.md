@@ -148,6 +148,16 @@ Unified workbench chrome should keep the generic Agent title and use generic
 Agent artwork instead of provider-branded icons even when the underlying
 launch/session provider is Codex or Claude Code.
 
+Desktop hosts must pass the dock layout into AgentGUI as a conversation scope.
+`unified` maps to multi-provider scope, where the All/Codex/Claude Code filter
+is serialized into the conversation-list query and affects only list
+projection. `legacySplit` maps to single-provider scope, where the controller
+does not serialize a provider filter into the query; the conversation list
+store's legacy provider key keeps Codex and Claude Code dock panels scoped to
+their node provider. If a provider filter action fires in single-provider
+scope, the controller must reset it to All rather than mutating the composer or
+showing another provider's sessions in a provider-specific dock panel.
+
 AgentGuiNode may expose provider target selection in multiple UI-local entry
 points, including the conversation rail target grid and the provider select next
 to the composer add/reference control.
@@ -1115,6 +1125,13 @@ to archive the selected file under a Tutti-managed agent prompt assets
 directory, then returns that managed absolute path to AgentGUI. This capability
 is file-only in desktop today; image drafts keep the existing image input path
 unless a runtime explicitly advertises image prompt upload support.
+
+Agent launch mentions use the external rich-text `agent-target` provider. The
+`workspace-app` provider is reserved for real workspace apps and must not return
+legacy `agent-codex` or `agent-claude-code` pseudo apps. New agent mentions
+should serialize as `mention://agent-target/local:codex` or
+`mention://agent-target/local:claude-code`; historical pseudo-app mentions may
+remain as display tokens but are not a new insertion target.
 
 Quick check:
 

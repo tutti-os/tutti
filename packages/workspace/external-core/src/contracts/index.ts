@@ -11,6 +11,7 @@ import type {
 export const TUTTI_EXTERNAL_AT_PROVIDER_IDS = {
   agentGeneratedFile: "agent-generated-file",
   agentSession: "agent-session",
+  agentTarget: "agent-target",
   file: "file",
   workspaceApp: "workspace-app",
   workspaceIssue: "workspace-issue"
@@ -23,6 +24,7 @@ export const tuttiExternalAtProviderIds = [
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.file,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceIssue,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceApp,
+  TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentTarget,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentSession,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentGeneratedFile
 ] as const satisfies readonly TuttiExternalAtProviderId[];

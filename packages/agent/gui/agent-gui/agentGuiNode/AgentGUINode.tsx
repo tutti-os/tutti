@@ -37,6 +37,7 @@ import { CanvasNodePanelLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { useAgentGUINodeController } from "./controller/useAgentGUINodeController";
 import type {
   AgentGUIOpenSessionRequest,
+  AgentGUIConversationScope,
   AgentGUIPrefillPromptRequest,
   AgentGUIRememberComposerDefaultsInput
 } from "./controller/useAgentGUINodeController";
@@ -172,6 +173,7 @@ export interface AgentGUINodeProps {
   agentSettings: Pick<AgentSettings, "avoidGroupingEdits">;
   title: string;
   state: AgentGUINodeData;
+  conversationScope?: AgentGUIConversationScope;
   position: Point;
   width: number;
   height: number;
@@ -492,6 +494,7 @@ function areAgentGUINodePropsEqual(
       next.agentSettings.avoidGroupingEdits &&
     previous.title === next.title &&
     agentGuiStateEquals(previous.state, next.state) &&
+    previous.conversationScope === next.conversationScope &&
     previous.position.x === next.position.x &&
     previous.position.y === next.position.y &&
     previous.width === next.width &&
@@ -551,6 +554,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   agentSettings,
   title,
   state,
+  conversationScope = "multi-provider",
   position,
   width,
   height,
@@ -726,6 +730,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     currentUserId,
     workspacePath,
     avoidGroupingEdits: agentSettings.avoidGroupingEdits,
+    conversationScope,
     data: state,
     openSessionRequest,
     prefillPromptRequest,
@@ -745,7 +750,8 @@ export const AgentGUINode = memo(function AgentGUINode({
             ? current
             : {
                 ...current,
-                lastActiveAgentSessionId: null
+                lastActiveAgentSessionId: null,
+                lastActiveConversationTitle: null
               }
         );
       }
@@ -777,6 +783,32 @@ export const AgentGUINode = memo(function AgentGUINode({
   const activeConversationDockTitle = viewModel.activeConversation
     ? resolveAgentGUIDockConversationTitle(viewModel.activeConversation)
     : null;
+  useEffect(() => {
+    if (
+      previewMode ||
+      !activeConversationDockTitle ||
+      !viewModel.activeConversationId
+    ) {
+      return;
+    }
+    onUpdateNode((current) => {
+      if (
+        current.lastActiveAgentSessionId !== viewModel.activeConversationId ||
+        current.lastActiveConversationTitle === activeConversationDockTitle
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        lastActiveConversationTitle: activeConversationDockTitle
+      };
+    });
+  }, [
+    activeConversationDockTitle,
+    onUpdateNode,
+    previewMode,
+    viewModel.activeConversationId
+  ]);
   const activeConversationWindowTitle = viewModel.activeConversation
     ? formatAgentGUIConversationPlainTitle(viewModel.activeConversation, {
         fallbackAgentLabel: fallbackAgentTitle,

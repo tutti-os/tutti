@@ -1,7 +1,7 @@
 # Agent Unified Dock RD 与 Loop Primitive 验收
 
 日期: 2026-07-01
-状态: foundation cleanup complete; ready for next implementation/refactor session
+状态: RD implementation acceptance complete on 2026-07-02; remaining risks are non-blocking validation notes
 输入 PRD: `docs/specs/2026-07-01-agent-unified-dock-prd.md`
 范围: 需求开发文档、实现前架构准备、Loop Primitive RD Acceptance Test
 
@@ -389,6 +389,85 @@ pnpm check:full
    - AgentGUI/workbench contribution 根据 preference 选择 split/unified dock entries。
    - AgentGUI 顶部 filter UI 接入已落地的 pure filter model，并验证不联动 composer。
    - 历史 workbench/session 兼容与 legacy launch 回归测试。
+
+## 2026-07-02 RD 实施与验收记录
+
+结论: PASS with documented residual risks.
+
+本轮基于当前开发分支审查了既有实现，未重复实现已满足的 dock foundation、
+desktop preference、daemon `agentTargetId` authority 与 Agent Target storage。补齐的
+缺口集中在两个兼容面:
+
+1. `legacySplit` provider-specific AgentGUI 面板不能因为 unified filter 模型看到另一
+   provider 的会话。本轮新增 AgentGUI `conversationScope`，desktop host 按
+   `agentDockLayout` 传入:
+   - `unified` -> `multi-provider`: All/Codex/Claude Code filter 进入 conversation query。
+   - `legacySplit` -> `single-provider`: 不向 conversation query 写入显式 filter，继续用
+     legacy provider-scoped query key；provider filter action 被 controller 压回 All。
+2. AgentGUI `@` agent 候选从 `workspace-app` 伪应用迁移到 `agent-target`:
+   - `workspace-app` 只返回真实 workspace apps。
+   - 默认 external `@` provider 列表包含 `agent-target`。
+   - 显式 `providers: ["workspace-app"]` 只返回 apps。
+   - 新插入 href 保持 `mention://agent-target/local:codex` /
+     `mention://agent-target/local:claude-code`。
+
+### 验收矩阵
+
+| 项目                                    | 结果 | 证据 / 说明                                                                                                                                                                                                                        |
+| --------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| legacySplit default                     | PASS | `agentDockLayout` 既有 desktop preference 默认仍是 `legacySplit`；本轮只按该 preference 派生 `conversationScope`。                                                                                                                 |
+| unified aggregation                     | PASS | 既有 `workbench/contribution.test.ts` 覆盖 unified single Agent entry、generic Agent title/icon、Codex/Claude Code node matching。                                                                                                 |
+| provider-specific multi-instance        | PASS | 既有 `workbench/launch.test.ts` 覆盖 unified dock launch 仍使用真实 provider instance id，不把 `agent-gui:unified` 当 provider identity。                                                                                          |
+| legacy id compatibility                 | PASS | 既有 tests 覆盖 `agent-gui`、`agent-gui:codex`、`agent-gui:claude-code`、`agent-gui:unified` 解析路径。                                                                                                                            |
+| prefill/draft provider isolation        | PASS | 既有 launch tests 覆盖 unified aggregate prefill 不跨 provider 复用同一 dock entry node。                                                                                                                                          |
+| conversation filter independence        | PASS | `useAgentGUINodeController.spec.tsx` 覆盖 multi-provider filter 切换不改变 node provider、selected target、draft、composer defaults。                                                                                              |
+| single-provider scope guard             | PASS | 新增 controller test 覆盖 `single-provider` scope 下 Claude Code filter action 不会让 Codex 面板显示 Claude Code 会话，view model filter 回到 All。                                                                                |
+| historical sessions without target id   | PASS | conversation model 仍按 `session.provider` 过滤；provider filter 不要求 `agentTargetId`。                                                                                                                                          |
+| agentTargetId runtime authority         | PASS | 既有 daemon implementation 从 `agent_targets.launch_ref_json` 派生 runtime ref，拒绝 missing/disabled/mismatched target；本轮未改 daemon authority。                                                                               |
+| providerTargetRef legacy-only           | PASS | 本轮未新增 providerTargetRef 写入 authority；desktop/AgentGUI launch 仍以 daemon target/ref 派生为准。                                                                                                                             |
+| agent-target @ provider migration       | PASS | 新增 renderer/external-core/ui-rich-text tests 覆盖 `agent-target` provider、workspace-app 排除 agent pseudo apps、默认 external providers 包含 agent-target、显式 workspace-app 查询只返 apps、colon href 保持。                  |
+| historical workspace-app agent mentions | RISK | 历史 token 仍可作为普通 mention 展示；本轮不保证继续 open/resolve，符合非目标。                                                                                                                                                    |
+| full desktop suite                      | PASS | `check:changed` 的 desktop test lane 通过；直接 focused desktop node command 也通过 35 tests。                                                                                                                                     |
+| changed-aware validation                | RISK | `pnpm check:changed` 通过 19/20 lanes；AgentGUI 大 vitest lane 首次暴露 stale-list test 时序断言，已改为等待 view-model 状态并单独通过。后续 failed-only/串行重跑在 Node/Vitest worker 侧 OOM 或长时间挂起，未再出现业务断言失败。 |
+| full repository check                   | RISK | 本轮未跑 `pnpm check:full`；使用 focused tests、package typechecks、`check:i18n`、`check:changed` 的 19/20 passing lanes 与 AgentGUI focused regression tests 作为验收证据。                                                       |
+| blocked items                           | PASS | 无 BLOCKED 项。                                                                                                                                                                                                                    |
+
+### 已运行检查
+
+```sh
+pnpm --dir packages/agent/gui exec vitest run --environment jsdom \
+  agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx \
+  -t "conversation filter|single-provider scope" --reporter verbose
+
+pnpm --dir packages/agent/gui exec vitest run --environment jsdom \
+  workbench/launch.test.ts workbench/contribution.test.ts
+
+cd apps/desktop && node --import ./test/register-asset-stub.mjs --test \
+  --experimental-strip-types \
+  ./src/renderer/src/features/rich-text-at/services/internal/desktopRichTextAtService.test.ts \
+  ./src/renderer/src/features/workspace-workbench/services/internal/workspaceWorkbenchHostService.test.ts \
+  ./src/renderer/src/features/workspace-workbench/services/internal/workspaceAppExternalAtSerialization.test.ts
+
+pnpm --filter @tutti-os/workspace-external-core test -- \
+  src/core/index.test.ts src/rich-text/index.test.ts
+
+pnpm --filter @tutti-os/ui-rich-text test -- src/core/richTextDocument.test.ts
+
+pnpm --filter @tutti-os/agent-gui typecheck
+pnpm --filter @tutti-os/desktop typecheck
+pnpm check:i18n
+
+pnpm check:changed
+pnpm check:changed -- --failed-only
+```
+
+`pnpm check:changed` 结果: 19/20 lanes passed. `@tutti-os/agent-gui:test`
+lane initially found a stale-list timing assertion in
+`useAgentGUINodeController.spec.tsx`; after the test was tightened to wait for
+the actual view-model state, the exact test passed standalone. Re-running the
+large AgentGUI lane then failed in the test worker with heap OOM or hung under
+larger heap, with no remaining product assertion failure in the focused
+regressions.
 
 ## 验收标准
 

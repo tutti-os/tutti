@@ -64,6 +64,21 @@ picker 选中文件夹(navigable 源)
 
 > agent 能否执行 `tutti` CLI:**能**。现有 `issue-manager` 等 skill 就是这么让 agent 跑 `issue get --json` 的,同一机制。
 
+## 1.1 Agent target mentions
+
+Agent launch mentions are not workspace app mentions. The external `@` bridge
+has a dedicated `agent-target` provider for first-party Agent targets:
+
+- Omitted `window.tuttiExternal.at.query.providers` defaults include
+  `agent-target`.
+- Explicit `providers: ["workspace-app"]` returns only real workspace apps.
+- New Agent mention insertions use
+  `mention://agent-target/local:codex` or
+  `mention://agent-target/local:claude-code`.
+- `workspace-app` must not return `agent-codex` or `agent-claude-code` pseudo
+  apps. Existing historical pseudo-app mention tokens can remain display-only;
+  do not create new ones.
+
 ---
 
 ## 2. 源模型(app / task 对称)

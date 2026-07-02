@@ -316,7 +316,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     workspaceId: string;
   }): Promise<TuttiExternalAtQueryResult[]> {
     const providerIds = new Set(
-      input.query.providers && input.query.providers.length > 0
+      input.query.providers !== undefined
         ? input.query.providers
         : tuttiExternalAtProviderIds
     );

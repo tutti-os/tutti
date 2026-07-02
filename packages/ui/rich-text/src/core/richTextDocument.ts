@@ -282,7 +282,7 @@ export function createRichTextMentionHref(
 
   const params = createMentionQueryParams(mention);
   const queryString = params.toString();
-  const pathname = `${encodeURIComponent(providerId)}/${encodeURIComponent(entityId)}`;
+  const pathname = `${encodeURIComponent(providerId)}/${encodeURIComponent(entityId).replace(/%3A/giu, ":")}`;
   return queryString
     ? `mention://${pathname}?${queryString}`
     : `mention://${pathname}`;
