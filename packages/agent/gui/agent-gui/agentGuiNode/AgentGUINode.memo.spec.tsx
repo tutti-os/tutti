@@ -203,6 +203,40 @@ describe("AgentGUINode memoization", () => {
 
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("rerenders when the legacy provider target identity changes", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      state: createState({
+        providerTargetId: "shared-agent:codex-a",
+        providerTargetRef: {
+          kind: "shared-agent",
+          provider: "codex",
+          sharedAgentId: "codex-a"
+        }
+      })
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({
+          providerTargetId: "shared-agent:codex-b",
+          providerTargetRef: {
+            kind: "shared-agent",
+            provider: "codex",
+            sharedAgentId: "codex-b"
+          }
+        })}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createProps(

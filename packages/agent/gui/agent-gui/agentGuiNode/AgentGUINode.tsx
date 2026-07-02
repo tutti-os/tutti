@@ -54,6 +54,7 @@ import {
   resolveAgentGUIDockConversationTitle,
   resolveAgentGUIProviderDisplayLabel
 } from "./model/agentGuiProviderIdentity";
+import { agentGUIProviderTargetRefsEqual } from "../../providerTargets";
 import {
   buildDockAgentProbeTooltipLines,
   findWorkspaceAgentProbeForDockProvider,
@@ -415,6 +416,29 @@ function normalizeSlashStatusModelName(
   );
 }
 
+function resolveAgentGUIRailStatusProvider(input: {
+  activeProvider: AgentProvider;
+  conversationFilter: ReturnType<
+    typeof useAgentGUINodeController
+  >["viewModel"]["conversationFilter"];
+  conversationScope: AgentGUIConversationScope;
+  providerTargets: readonly AgentGUIProviderTarget[];
+}): AgentProvider | null {
+  if (input.conversationScope !== "multi-provider") {
+    return input.activeProvider as AgentProvider;
+  }
+  const filter = input.conversationFilter;
+  if (filter.kind !== "agentTarget") {
+    return null;
+  }
+  const target = input.providerTargets.find(
+    (candidate) =>
+      candidate.disabled !== true &&
+      (candidate.agentTargetId?.trim() ?? "") === filter.agentTargetId
+  );
+  return target ? (target.provider as AgentProvider) : null;
+}
+
 function agentGuiStateEquals(
   left: AgentGUINodeData,
   right: AgentGUINodeData
@@ -423,6 +447,11 @@ function agentGuiStateEquals(
     left === right ||
     (left.provider === right.provider &&
       (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
+      (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
+      agentGUIProviderTargetRefsEqual(
+        left.providerTargetRef,
+        right.providerTargetRef
+      ) &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
       left.conversationRailWidthPx === right.conversationRailWidthPx &&
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
@@ -548,11 +577,14 @@ function areAgentGUINodePropsEqual(
     previous.onMinimize === next.onMinimize &&
     previous.onToggleMaximize === next.onToggleMaximize &&
     previous.onShowMessage === next.onShowMessage &&
-    workspaceAgentProbeRenderStateEqualsForProvider(
-      previous.workspaceAgentProbes,
-      next.workspaceAgentProbes,
-      previous.state.provider
-    ) &&
+    (previous.conversationScope === "multi-provider" ||
+    next.conversationScope === "multi-provider"
+      ? previous.workspaceAgentProbes === next.workspaceAgentProbes
+      : workspaceAgentProbeRenderStateEqualsForProvider(
+          previous.workspaceAgentProbes,
+          next.workspaceAgentProbes,
+          previous.state.provider
+        )) &&
     previous.onAgentProbeDemandChange === next.onAgentProbeDemandChange &&
     previous.onAgentProbeRefreshRequest === next.onAgentProbeRefreshRequest &&
     previous.managedAgentsState === next.managedAgentsState &&
@@ -1347,6 +1379,21 @@ export const AgentGUINode = memo(function AgentGUINode({
     agentGuiDockIconUrls[activeProvider as keyof typeof agentGuiDockIconUrls] ??
     null;
   const activeProbeProvider = activeProvider as AgentProvider;
+  const railStatusProvider = useMemo(
+    () =>
+      resolveAgentGUIRailStatusProvider({
+        activeProvider: activeProbeProvider,
+        conversationFilter: viewModel.conversationFilter,
+        conversationScope: viewModel.conversationScope,
+        providerTargets: viewModel.providerTargets
+      }),
+    [
+      activeProbeProvider,
+      viewModel.conversationFilter,
+      viewModel.conversationScope,
+      viewModel.providerTargets
+    ]
+  );
   const activeAgentProbe = useMemo(
     () =>
       findWorkspaceAgentProbeForDockProvider(
@@ -1354,6 +1401,16 @@ export const AgentGUINode = memo(function AgentGUINode({
         activeProbeProvider
       ),
     [activeProbeProvider, workspaceAgentProbes?.snapshot]
+  );
+  const railAgentProbe = useMemo(
+    () =>
+      railStatusProvider
+        ? findWorkspaceAgentProbeForDockProvider(
+            workspaceAgentProbes?.snapshot ?? null,
+            railStatusProvider
+          )
+        : null,
+    [railStatusProvider, workspaceAgentProbes?.snapshot]
   );
   const isActiveAgentProviderReady = useMemo(() => {
     const managedAgent =
@@ -1397,6 +1454,16 @@ export const AgentGUINode = memo(function AgentGUINode({
       viewModel.composerSettings.selectedModelValue
     ]
   );
+  const railSlashStatusQuotaSource =
+    railStatusProvider &&
+    railAgentProbe?.usage?.quotas &&
+    railAgentProbe.usage.quotas.length > 0
+      ? railAgentProbe.usage.quotas
+      : [];
+  const railSlashStatusLimits = useMemo(
+    () => slashStatusLimitsFromQuotas(railSlashStatusQuotaSource, null, t),
+    [railSlashStatusQuotaSource, t]
+  );
   const agentProbeLines = useMemo(() => {
     return buildDockAgentProbeTooltipLines(
       activeAgentProbe,
@@ -1424,6 +1491,27 @@ export const AgentGUINode = memo(function AgentGUINode({
       onAgentProbeDemandChange(null, probeSourceId);
     };
   }, [activeProbeProvider, nodeId, onAgentProbeDemandChange, previewMode]);
+  useEffect(() => {
+    if (
+      previewMode ||
+      !onAgentProbeDemandChange ||
+      !railStatusProvider ||
+      railStatusProvider === activeProbeProvider
+    ) {
+      return;
+    }
+    const probeSourceId = `agent-gui:${nodeId}:rail`;
+    onAgentProbeDemandChange(railStatusProvider, probeSourceId);
+    return () => {
+      onAgentProbeDemandChange(null, probeSourceId);
+    };
+  }, [
+    activeProbeProvider,
+    nodeId,
+    onAgentProbeDemandChange,
+    previewMode,
+    railStatusProvider
+  ]);
   const handleAgentProbeInfoOpen = useCallback(() => {
     if (previewMode || !onAgentProbeRefreshRequest) {
       return;
@@ -1522,6 +1610,8 @@ export const AgentGUINode = memo(function AgentGUINode({
             slashStatusLimitsLoading={
               workspaceAgentProbes?.isLoadingUsage ?? false
             }
+            railConfigProvider={railStatusProvider}
+            railSlashStatusLimits={railSlashStatusLimits}
             previewMode={previewMode}
             onLinkAction={handleLinkAction}
             capabilityMenuState={capabilityMenuState}

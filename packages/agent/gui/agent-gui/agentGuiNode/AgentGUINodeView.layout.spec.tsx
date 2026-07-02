@@ -1948,13 +1948,6 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
     async listAgentGeneratedFiles(input) {
       return { workspaceId: input.workspaceId, entries: [] };
     },
-    async listSessionsPage(input) {
-      return {
-        workspaceId: input.workspaceId,
-        sessions: [],
-        hasMore: false
-      };
-    },
     async load() {
       return snapshot;
     },

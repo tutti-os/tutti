@@ -160,9 +160,26 @@ and must not switch the running session. Do not encode provider switching only
 as a conversation-list filter; filters can scope the visible Codex/Claude
 session list, while provider selection changes which provider a new empty
 composer will launch.
+The empty composer chrome and settings defaults must follow the selected
+provider target immediately, including the empty-state artwork, model options,
+and permission modes. Generic home composer overrides are single-target draft
+state and must be cleared when the selected provider target changes; provider-
+or target-scoped defaults may still provide the next settings.
+When an empty composer has an `agentTargetId`, model, permission, reasoning,
+and speed options are target-scoped. Do not fall back to provider-level options
+for that target; a missing target-scoped option snapshot should remain a
+loading/missing state until the target options arrive.
+If restored node data has a stale `provider` that disagrees with a resolvable
+`agentTargetId`, the target's provider wins for empty-composer settings and
+launch preparation.
 UI affordances that aggregate across providers, such as rail provider filters
 and composer provider switching, belong to the current conversation scope
 derived by the host/workbench presentation, not to durable AgentGUI node data.
+Provider-scoped rail footer affordances, such as usage limits and environment
+setup, follow the rail's active provider filter target in multi-provider scope;
+when the rail filter is `All`, they should stay hidden because there is no
+single provider target to inspect. In legacy single-provider dock scope, the
+same footer continues to use the node/session provider.
 
 This means an AgentGUI bug can start at several different interfaces. Do not
 assume that a visible UI symptom starts in the visible UI component.

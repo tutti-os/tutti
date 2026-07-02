@@ -886,6 +886,91 @@ describe("AgentGUINode", () => {
     );
   });
 
+  it("keeps the rail config entry visible for legacy single-provider docks", () => {
+    mockViewModel = createViewModel({
+      conversationScope: "single-provider",
+      conversationFilter: { kind: "all" }
+    });
+
+    renderAgentGUINode();
+
+    expect(
+      screen.getByTitle("agentHost.agentGui.agentConfig")
+    ).toBeInTheDocument();
+  });
+
+  it("hides the rail config entry for the unified All provider filter", () => {
+    mockViewModel = createViewModel({
+      conversationScope: "multi-provider",
+      conversationFilter: { kind: "all" },
+      providerTargets: [
+        createLocalAgentGUIProviderTarget("codex"),
+        createLocalAgentGUIProviderTarget("claude-code")
+      ]
+    });
+
+    renderAgentGUINode();
+
+    expect(screen.queryByTitle("agentHost.agentGui.agentConfig")).toBeNull();
+  });
+
+  it("renders rail config usage from the unified provider filter target", async () => {
+    const onAgentProbeDemandChange = vi.fn();
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    mockViewModel = createViewModel({
+      conversationScope: "multi-provider",
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: claudeTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: codexTarget,
+      providerTargets: [codexTarget, claudeTarget]
+    });
+
+    renderAgentGUINode({
+      onAgentProbeDemandChange,
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "codex",
+              availability: { status: "available", detailsVisible: false },
+              usage: {
+                capturedAtUnixMs: 1,
+                quotas: [{ quotaType: "session", percentRemaining: 11 }]
+              }
+            },
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              usage: {
+                capturedAtUnixMs: 1,
+                quotas: [{ quotaType: "session", percentRemaining: 42 }]
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    expect(onAgentProbeDemandChange).toHaveBeenCalledWith(
+      "claude-code",
+      "agent-gui:agent-gui-1:rail"
+    );
+
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    await waitFor(() => {
+      expect(screen.getByText("42% left")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("11% left")).toBeNull();
+  });
+
   it("requests a fresh agent probe when the title info entry opens", () => {
     const onAgentProbeRefreshRequest = vi.fn();
 
@@ -1708,6 +1793,31 @@ describe("AgentGUINode", () => {
     expect(
       document.querySelector(".agent-gui-node__timeline-centered")
     ).toContainElement(emptyHeading);
+  });
+
+  it("renders the empty hero icon from the selected provider target", () => {
+    mockViewModel = createViewModel({
+      data: {
+        provider: "codex",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      selectedProviderTarget: createLocalAgentGUIProviderTarget("claude-code"),
+      providerTargets: [
+        createLocalAgentGUIProviderTarget("codex"),
+        createLocalAgentGUIProviderTarget("claude-code")
+      ]
+    });
+
+    renderAgentGUINode();
+
+    const iconEffect = document.querySelector(
+      ".agent-gui-node__empty-hero-icon-effect"
+    );
+    expect(iconEffect).toHaveAttribute(
+      "src",
+      MANAGED_AGENT_ICON_URLS["claude-code"]
+    );
   });
 
   it("resolves provider-specific hero icon artwork", () => {

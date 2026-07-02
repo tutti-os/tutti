@@ -459,6 +459,8 @@ interface AgentGUINodeViewProps {
   isAgentProviderReady: boolean;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
+  railConfigProvider?: string | null;
+  railSlashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   actions: {
@@ -840,6 +842,8 @@ export function AgentGUINodeView({
   isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
+  railConfigProvider,
+  railSlashStatusLimits,
   previewMode = false,
   onAgentProviderLogin,
   actions,
@@ -1256,9 +1260,18 @@ export function AgentGUINodeView({
       ? "0 minmax(var(--agent-gui-detail-min-width), 1fr)"
       : "var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
   } as CSSProperties;
+  const effectiveRailConfigProvider =
+    railConfigProvider === undefined
+      ? viewModel.data.provider
+      : railConfigProvider;
+  const effectiveRailSlashStatusLimits =
+    railSlashStatusLimits ?? slashStatusLimits;
   const openAgentEnvSetup = useCallback(() => {
-    openAgentEnvPanel({ provider: viewModel.data.provider, focus: null });
-  }, [viewModel.data.provider]);
+    if (!effectiveRailConfigProvider) {
+      return;
+    }
+    openAgentEnvPanel({ provider: effectiveRailConfigProvider, focus: null });
+  }, [effectiveRailConfigProvider]);
   const conversationRailStoreState =
     useMemo<AgentGUIConversationRailStoreSnapshot>(
       () => ({
@@ -1276,7 +1289,8 @@ export function AgentGUINodeView({
         createConversationDisabled,
         openclawGateway,
         isCollapsed: conversationRailCollapsed,
-        slashStatusLimits,
+        railConfigProvider: effectiveRailConfigProvider,
+        slashStatusLimits: effectiveRailSlashStatusLimits,
         selectedProviderTarget: viewModel.selectedProviderTarget,
         providerTargets: viewModel.providerTargets,
         providerTargetsLoading: viewModel.providerTargetsLoading,
@@ -1320,7 +1334,8 @@ export function AgentGUINodeView({
         retryOpenclawGateway,
         selectConversation,
         selectProjectDirectory,
-        slashStatusLimits,
+        effectiveRailConfigProvider,
+        effectiveRailSlashStatusLimits,
         viewModel.selectedProviderTarget,
         viewModel.providerTargets,
         viewModel.providerTargetsLoading,
@@ -2349,6 +2364,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     }),
     [bottomDockComposerProps]
   );
+  const emptyHeroProvider =
+    viewModel.selectedProviderTarget?.provider ?? viewModel.data.provider;
   const bottomDockStoreState = useMemo<AgentGUIBottomDockStoreSnapshot>(
     () => ({
       // The lifted prompt is rendered from props on the pane; the store still
@@ -2666,7 +2683,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       >
         {!hasActiveConversation ? (
           <AgentGUIEmptyHeroPane
-            provider={viewModel.data.provider}
+            provider={emptyHeroProvider}
             emptyLabel={labels.empty}
             emptyProvider={labels.emptyProvider ?? ""}
             inlineNoticeChrome={inlineNoticeChrome}
@@ -3112,6 +3129,7 @@ interface AgentGUIConversationRailPaneProps {
   createConversationDisabled: boolean;
   openclawGateway: OpenclawGatewayViewModel | null;
   isCollapsed: boolean;
+  railConfigProvider: string | null;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   selectedProviderTarget: AgentGUINodeViewModel["selectedProviderTarget"];
   providerTargets: AgentGUINodeViewModel["providerTargets"];
@@ -3213,6 +3231,8 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.createConversationDisabled === next.createConversationDisabled &&
     current.openclawGateway === next.openclawGateway &&
     current.isCollapsed === next.isCollapsed &&
+    current.railConfigProvider === next.railConfigProvider &&
+    current.slashStatusLimits === next.slashStatusLimits &&
     current.selectedProviderTarget === next.selectedProviderTarget &&
     current.providerTargets === next.providerTargets &&
     current.providerTargetsLoading === next.providerTargetsLoading &&
@@ -3612,6 +3632,7 @@ const AgentGUIConversationRailPane = memo(
     createConversationDisabled,
     openclawGateway,
     isCollapsed,
+    railConfigProvider,
     slashStatusLimits,
     providerTargets,
     providerTargetsLoading,
@@ -3893,68 +3914,70 @@ const AgentGUIConversationRailPane = memo(
             })
           )}
         </ScrollArea>
-        <div className="shrink-0 px-2 py-1.5">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                title={labels.agentConfig}
-                disabled={previewMode}
-              >
-                <EnvironmentLinedIcon
-                  aria-hidden="true"
-                  width={16}
-                  height={16}
-                />
-                <span>{labels.agentConfig}</span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="start"
-              className="w-[300px] max-w-[calc(100vw-32px)] gap-3 text-xs"
-              data-testid="agent-gui-config-menu"
-            >
-              <div className="flex min-w-0 flex-col gap-3">
-                {slashStatusLimits.length > 0 ? (
-                  <>
-                    <div className="flex min-w-0 flex-col gap-2">
-                      <span className="text-[13px] font-semibold leading-4">
-                        {labels.slashStatusLimits}
-                      </span>
-                      {slashStatusLimits.map((limit) => (
-                        <AgentUsageMeter
-                          key={limit.id}
-                          label={limit.label}
-                          value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
-                          percent={
-                            typeof limit.percentRemaining === "number" &&
-                            Number.isFinite(limit.percentRemaining)
-                              ? limit.percentRemaining
-                              : null
-                          }
-                        />
-                      ))}
-                    </div>
-                    <span className="h-px bg-[var(--border-1)]" />
-                  </>
-                ) : null}
-                <button
+        {railConfigProvider ? (
+          <div className="shrink-0 px-2 py-1.5">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
                   type="button"
-                  data-testid="agent-gui-config-env-setup"
-                  className="nodrag -mx-1 flex w-[calc(100%+0.5rem)] items-center gap-2 rounded-[6px] px-2 py-1 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
+                  variant="ghost"
+                  className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  title={labels.agentConfig}
                   disabled={previewMode}
-                  onClick={() => onOpenAgentEnvSetup()}
                 >
-                  <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
-                  <span>{labels.agentEnvSetup}</span>
-                </button>
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+                  <EnvironmentLinedIcon
+                    aria-hidden="true"
+                    width={16}
+                    height={16}
+                  />
+                  <span>{labels.agentConfig}</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="top"
+                align="start"
+                className="w-[300px] max-w-[calc(100vw-32px)] gap-3 text-xs"
+                data-testid="agent-gui-config-menu"
+              >
+                <div className="flex min-w-0 flex-col gap-3">
+                  {slashStatusLimits.length > 0 ? (
+                    <>
+                      <div className="flex min-w-0 flex-col gap-2">
+                        <span className="text-[13px] font-semibold leading-4">
+                          {labels.slashStatusLimits}
+                        </span>
+                        {slashStatusLimits.map((limit) => (
+                          <AgentUsageMeter
+                            key={limit.id}
+                            label={limit.label}
+                            value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
+                            percent={
+                              typeof limit.percentRemaining === "number" &&
+                              Number.isFinite(limit.percentRemaining)
+                                ? limit.percentRemaining
+                                : null
+                            }
+                          />
+                        ))}
+                      </div>
+                      <span className="h-px bg-[var(--border-1)]" />
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    data-testid="agent-gui-config-env-setup"
+                    className="nodrag -mx-1 flex w-[calc(100%+0.5rem)] items-center gap-2 rounded-[6px] px-2 py-1 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
+                    disabled={previewMode}
+                    onClick={() => onOpenAgentEnvSetup()}
+                  >
+                    <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
+                    <span>{labels.agentEnvSetup}</span>
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        ) : null}
         <ConfirmationDialog
           cancelLabel={labels.cancel}
           className={AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME}
