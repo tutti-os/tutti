@@ -94,6 +94,7 @@ func (r *ReportSessionStateReply) UnmarshalJSON(data []byte) error {
 }
 
 type WorkspaceAgentSessionStateUpdate struct {
+	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
 	Provider           string                            `json:"provider,omitempty"`
 	ProviderSessionID  string                            `json:"providerSessionId,omitempty"`
 	Model              string                            `json:"model,omitempty"`
@@ -320,6 +321,7 @@ type EventSource struct {
 	Provider          string `json:"provider,omitempty"`
 	ProviderSessionID string `json:"providerSessionId,omitempty"`
 	AgentID           string `json:"agentId,omitempty"`
+	AgentTargetID     string `json:"agentTargetId,omitempty"`
 	CWD               string `json:"cwd,omitempty"`
 	SessionOrigin     string `json:"sessionOrigin,omitempty"`
 	UserID            string `json:"-"`
@@ -327,6 +329,7 @@ type EventSource struct {
 
 type WorkspaceAgentStatePatch struct {
 	AgentSessionID     string                            `json:"agentSessionId"`
+	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
 	Provider           string                            `json:"provider,omitempty"`
 	ProviderSessionID  string                            `json:"providerSessionId,omitempty"`
 	Model              string                            `json:"model,omitempty"`
@@ -468,6 +471,7 @@ type WorkspaceAgentPresence struct {
 type WorkspaceAgentSession struct {
 	ID                 uint64                            `json:"id"`
 	AgentSessionID     string                            `json:"agentSessionId"`
+	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
 	PresenceID         uint64                            `json:"presenceId"`
 	UserID             string                            `json:"userId"`
 	Provider           string                            `json:"provider"`
@@ -492,6 +496,7 @@ func (s WorkspaceAgentSession) MarshalJSON() ([]byte, error) {
 	type output struct {
 		ID                 uint64                            `json:"id"`
 		AgentSessionID     string                            `json:"agentSessionId"`
+		AgentTargetID      string                            `json:"agentTargetId,omitempty"`
 		PresenceID         uint64                            `json:"presenceId"`
 		UserID             string                            `json:"userId"`
 		Provider           string                            `json:"provider"`
@@ -514,6 +519,7 @@ func (s WorkspaceAgentSession) MarshalJSON() ([]byte, error) {
 	return json.Marshal(output{
 		ID:                 s.ID,
 		AgentSessionID:     s.AgentSessionID,
+		AgentTargetID:      s.AgentTargetID,
 		PresenceID:         s.PresenceID,
 		UserID:             s.UserID,
 		Provider:           s.Provider,
@@ -604,6 +610,8 @@ func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
 		ID                     flexibleUint64           `json:"id"`
 		AgentSessionID         string                   `json:"agentSessionId"`
 		AgentSessionIDSnake    string                   `json:"agent_session_id"`
+		AgentTargetID          string                   `json:"agentTargetId"`
+		AgentTargetIDSnake     string                   `json:"agent_target_id"`
 		AgentID                string                   `json:"agentId"`
 		AgentIDSnake           string                   `json:"agent_id"`
 		PresenceID             flexibleUint64           `json:"presenceId"`
@@ -645,9 +653,10 @@ func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
 			raw.AgentID,
 			raw.AgentIDSnake,
 		),
-		PresenceID: uint64(firstNonZeroFlexibleUint64(raw.PresenceID, raw.PresenceIDSnake)),
-		UserID:     firstNonEmptyString(raw.UserID, raw.UserIDSnake),
-		Provider:   raw.Provider,
+		AgentTargetID: firstNonEmptyString(raw.AgentTargetID, raw.AgentTargetIDSnake),
+		PresenceID:    uint64(firstNonZeroFlexibleUint64(raw.PresenceID, raw.PresenceIDSnake)),
+		UserID:        firstNonEmptyString(raw.UserID, raw.UserIDSnake),
+		Provider:      raw.Provider,
 		ProviderSessionID: firstNonEmptyString(
 			raw.ProviderSessionID,
 			raw.ProviderSessionIDSnake,

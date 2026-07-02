@@ -207,6 +207,7 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 	session, err := a.controller.Resume(ctx, agentruntime.ResumeInput{
 		RoomID:            input.WorkspaceID,
 		AgentSessionID:    input.AgentSessionID,
+		AgentTargetID:     input.AgentTargetID,
 		Provider:          input.Provider,
 		ProviderSessionID: input.ProviderSessionID,
 		CWD:               input.Cwd,
@@ -255,6 +256,7 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 	result, err := a.controller.Start(ctx, agentruntime.StartInput{
 		RoomID:            input.WorkspaceID,
 		AgentSessionID:    input.AgentSessionID,
+		AgentTargetID:     input.AgentTargetID,
 		Provider:          input.Provider,
 		CWD:               input.Cwd,
 		Env:               append([]string(nil), input.Env...),
@@ -301,6 +303,7 @@ func agentRuntimeSession(session agentruntime.Session) agentservice.RuntimeSessi
 	return agentservice.RuntimeSession{
 		ID:                 session.AgentSessionID,
 		WorkspaceID:        session.RoomID,
+		AgentTargetID:      session.AgentTargetID,
 		Provider:           session.Provider,
 		ProviderSessionID:  session.ProviderSessionID,
 		Cwd:                session.CWD,

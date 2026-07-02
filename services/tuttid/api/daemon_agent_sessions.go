@@ -614,6 +614,7 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 	}
 	runtimeContext := clonePayloadPointer(session.RuntimeContext)
 	return tuttigenerated.WorkspaceAgentSession{
+		AgentTargetId:      optionalStringPointer(strings.TrimSpace(session.AgentTargetID)),
 		CreatedAt:          session.CreatedAt,
 		Cwd:                stringPointer(strings.TrimSpace(session.Cwd)),
 		EndedAt:            session.EndedAt,

@@ -356,12 +356,14 @@ export function createDesktopAgentHostAgentSessionsApi({
       return toAgentHostAgentSessionFromCore(workspaceId, session);
     },
     async getComposerOptions(payload: {
+      agentTargetId?: string | null;
       cwd?: string | null;
       provider?: string;
       settings?: AgentHostAgentSessionComposerSettings | null;
     }) {
       return agentActivityService.getComposerOptions({
         workspaceId,
+        agentTargetId: payload.agentTargetId,
         cwd: payload.cwd,
         provider: payload.provider,
         settings: payload.settings

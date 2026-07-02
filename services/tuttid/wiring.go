@@ -18,6 +18,7 @@ import (
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
+	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	appclicli "github.com/tutti-os/tutti/services/tuttid/service/cli/appcli"
@@ -206,6 +207,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
 	issueStore, _ := store.(workspaceissues.Store)
 	preferencesStore, _ := store.(workspacedata.PreferencesStore)
+	agentTargetStore, _ := store.(workspacedata.AgentTargetStore)
 	managedCredentialsStore, _ := store.(workspacedata.ManagedCredentialsStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
@@ -217,6 +219,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	preferences := preferencesservice.Service{
 		Store:     preferencesStore,
 		Publisher: eventstreamservice.DesktopPreferencesPublisher{Service: events},
+	}
+	agentTargets := agenttargetservice.Service{
+		Store: agentTargetStore,
 	}
 	managedCredentials := &managedcredentialsservice.Service{
 		Store: managedCredentialsStore,
@@ -272,6 +277,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	)
 	agentSessionService.AnalyticsReporter = analyticsReporter
 	agentSessionService.ModelCatalog = agentservice.NewAgentModelCatalog()
+	agentSessionService.AgentTargetStore = agentTargetStore
 	agentSessionService.SessionReader = agentActivityProjection
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
@@ -387,6 +393,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		UserProjectService: userprojectservice.Service{
 			Store: userProjectStore,
 		},
+		AgentTargetService:        agentTargets,
 		PreferencesService:        preferences,
 		ManagedCredentialsService: managedCredentials,
 		EventStreamService:        events,

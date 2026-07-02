@@ -100,8 +100,6 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
   assert.equal(nodeState.lastActiveAgentSessionId, "session-2");
   assert.deepEqual(stateChanges, [
     {
-      composerOverrides: null,
-      composerOverridesByProvider: null,
       conversationRailCollapsed: false,
       conversationRailWidthPx: null,
       lastActiveAgentSessionId: "session-2"

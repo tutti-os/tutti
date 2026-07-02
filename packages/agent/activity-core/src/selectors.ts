@@ -50,11 +50,19 @@ export function selectSessionDisplayStatuses(
       return [
         session.agentSessionId,
         sessionStatus === "failed"
-          ? (latestTurnStatus ?? sessionStatus)
+          ? shouldLatestTurnStatusOverrideFailedSession(latestTurnStatus)
+            ? latestTurnStatus
+            : sessionStatus
           : sessionStatus
       ];
     })
   );
+}
+
+function shouldLatestTurnStatusOverrideFailedSession(
+  status: AgentActivityDisplayStatus | null
+): status is AgentActivityDisplayStatus {
+  return status !== null && status !== "working" && status !== "idle";
 }
 
 export function resolveLatestAgentActivityMessageDisplayStatus(

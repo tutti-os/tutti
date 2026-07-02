@@ -55,6 +55,7 @@ export interface AgentHostAgentSessionComposerSettings {
 export interface AgentHostAgentSession {
   workspaceId: string;
   agentSessionId: string;
+  agentTargetId?: string | null;
   provider: AgentHostAgentSessionProvider;
   providerSessionId: string;
   resumable?: boolean;
@@ -74,6 +75,7 @@ export interface AgentHostAgentSessionEvent {
   id: string;
   workspaceId: string;
   agentSessionId: string;
+  agentTargetId?: string | null;
   provider: AgentHostAgentSessionProvider;
   providerSessionId?: string;
   type: string;
@@ -99,6 +101,7 @@ export interface AgentHostAgentSessionInteractivePrompt {
 export interface AgentHostAgentSessionState {
   workspaceId: string;
   agentSessionId: string;
+  agentTargetId?: string | null;
   provider: AgentHostAgentSessionProvider;
   providerSessionId?: string;
   resumable?: boolean;
@@ -151,6 +154,7 @@ interface AgentHostActivateAgentSessionInputBase {
 
 export interface AgentHostActivateNewAgentSessionInput extends AgentHostActivateAgentSessionInputBase {
   mode: "new";
+  agentTargetId?: string | null;
   provider: AgentHostAgentSessionProvider;
   /**
    * Opaque target reference supplied by the host. It is not authority,

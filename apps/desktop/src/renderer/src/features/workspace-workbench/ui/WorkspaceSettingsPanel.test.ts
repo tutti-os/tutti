@@ -61,6 +61,18 @@ test("workspace settings agent panel lists agent controls", () => {
   assert.match(source, /aria-checked=\{selected\}/);
   assert.match(source, /desktopAgentConversationDetailModes\.map/);
   assert.match(source, /onAgentConversationDetailModeChange\(mode\)/);
+  const agentSectionStart = source.indexOf(
+    "function WorkspaceAgentSettingsSection"
+  );
+  const generalSectionStart = source.indexOf(
+    "function WorkspaceGeneralSettingsSection"
+  );
+  assert.ok(agentSectionStart >= 0);
+  assert.ok(generalSectionStart > agentSectionStart);
+  assert.doesNotMatch(
+    source.slice(agentSectionStart, generalSectionStart),
+    /agentDockLayout|agentDockLayoutLabel|desktopAgentDockLayouts/
+  );
 });
 
 test("workspace settings work mode selected state uses a tutti purple border", () => {
@@ -242,6 +254,40 @@ test("workspace settings app source control lives in developer settings", () => 
     source.slice(developerSectionStart, controlStart),
     /<AppCatalogChannelControl/
   );
+});
+
+test("workspace settings agent dock layout lives in developer settings", () => {
+  const agentSectionStart = source.indexOf(
+    "function WorkspaceAgentSettingsSection"
+  );
+  const generalSectionStart = source.indexOf(
+    "function WorkspaceGeneralSettingsSection"
+  );
+  const developerSectionStart = source.indexOf(
+    "function WorkspaceDeveloperSettingsSection"
+  );
+  const appCatalogControlStart = source.indexOf(
+    "function AppCatalogChannelControl"
+  );
+
+  assert.ok(agentSectionStart >= 0);
+  assert.ok(generalSectionStart > agentSectionStart);
+  assert.ok(developerSectionStart >= 0);
+  assert.ok(appCatalogControlStart > developerSectionStart);
+  assert.doesNotMatch(
+    source.slice(agentSectionStart, generalSectionStart),
+    /workspace\.settings\.general\.agentDockLayoutLabel/
+  );
+  const developerSection = source.slice(
+    developerSectionStart,
+    appCatalogControlStart
+  );
+  assert.match(
+    developerSection,
+    /workspace\.settings\.general\.agentDockLayoutLabel/
+  );
+  assert.match(developerSection, /desktopAgentDockLayouts\.map/);
+  assert.match(developerSection, /onAgentDockLayoutChange/);
 });
 
 test("workspace managed provider API key is masked until toggled visible", () => {

@@ -44,6 +44,9 @@
                 "type": "string",
                 "minLength": 1
               },
+              "agentTargetId": {
+                "type": "string"
+              },
               "eventType": {
                 "const": "session_update"
               },
@@ -273,6 +276,9 @@
               "provider": {
                 "type": "string"
               },
+              "agentTargetId": {
+                "type": "string"
+              },
               "providerSessionId": {
                 "type": "string"
               },
@@ -341,6 +347,9 @@
       "agentSessionId": {
         "type": "string",
         "minLength": 1
+      },
+      "agentTargetId": {
+        "type": "string"
       },
       "eventType": {
         "type": "string",

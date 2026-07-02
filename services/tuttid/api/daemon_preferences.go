@@ -336,6 +336,30 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}, nil
 	}
 
+	agentDockLayout := strings.TrimSpace(string(request.Body.Preferences.AgentDockLayout))
+	if agentDockLayout == "" {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonMissingDesktopAgentDockLayout,
+					apierrors.WithDeveloperMessage("desktop agent dock layout is required"),
+					apierrors.WithParams(map[string]any{"field": "preferences.agentDockLayout"}),
+				),
+			),
+		}, nil
+	}
+	if !preferencesbiz.IsDesktopAgentDockLayout(agentDockLayout) {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonUnsupportedDesktopAgentDockLayout,
+					apierrors.WithDeveloperMessage("desktop agent dock layout is unsupported"),
+					apierrors.WithParams(map[string]any{"field": "preferences.agentDockLayout"}),
+				),
+			),
+		}, nil
+	}
+
 	var windowSnapping *preferencesservice.DesktopWindowSnappingInput
 	if request.Body.Preferences.WorkbenchWindowSnapping != nil {
 		windowSnappingShortcutPreset := strings.TrimSpace(
@@ -377,6 +401,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 			request.Body.Preferences.AgentGuiConversationRailCollapsedByProvider,
 		),
 		AgentConversationDetailMode: agentConversationDetailMode,
+		AgentDockLayout:             agentDockLayout,
 		AppCatalogChannel:           appCatalogChannel,
 		BrowserUseConnectionMode:    browserUseConnectionMode,
 		DefaultAgentProvider:        defaultAgentProvider,

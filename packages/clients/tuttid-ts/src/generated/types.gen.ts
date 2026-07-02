@@ -274,6 +274,7 @@ export type DesktopPreferences = {
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
+  agentDockLayout: DesktopAgentDockLayout;
   appCatalogChannel: DesktopAppCatalogChannel;
   browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
   defaultAgentProvider: WorkspaceAgentProvider;
@@ -306,6 +307,8 @@ export type DesktopAgentComposerDefaults = {
 };
 
 export type DesktopAgentConversationDetailMode = "coding" | "general";
+
+export type DesktopAgentDockLayout = "legacySplit" | "unified";
 
 export type DesktopAgentComposerDefaultsByProvider = {
   "claude-code"?: DesktopAgentComposerDefaults;
@@ -344,6 +347,32 @@ export type DesktopPreferencesStateResponse = {
 
 export type PutDesktopPreferencesRequest = {
   preferences: DesktopPreferences;
+};
+
+export type AgentTargetProvider = "codex" | "claude-code";
+
+export type AgentTargetSource = "system" | "user";
+
+export type AgentTargetLaunchRef = {
+  type: "local_cli";
+  provider: AgentTargetProvider;
+};
+
+export type AgentTarget = {
+  id: string;
+  provider: AgentTargetProvider;
+  launchRef: AgentTargetLaunchRef;
+  name: string;
+  iconKey?: string | null;
+  enabled: boolean;
+  source: AgentTargetSource;
+  sortOrder: number;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type ListAgentTargetsResponse = {
+  targets: Array<AgentTarget>;
 };
 
 export type ListWorkspacesResponse = {
@@ -1102,6 +1131,10 @@ export type AgentProviderStatusListResponse = {
 
 export type WorkspaceAgentSession = {
   id: string;
+  /**
+   * Agent target that authorized this session launch. Historical or imported provider-only sessions may omit it.
+   */
+  agentTargetId?: string | null;
   provider: WorkspaceAgentProvider;
   providerSessionId?: string | null;
   cwd: string | null;
@@ -1318,7 +1351,11 @@ export type UpdateWorkspaceAgentSessionVisibilityRequest = {
 
 export type CreateWorkspaceAgentSessionRequest = {
   agentSessionId: string;
-  provider: WorkspaceAgentProvider;
+  /**
+   * Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
+   */
+  agentTargetId?: string | null;
+  provider?: WorkspaceAgentProvider;
   initialContent: Array<AgentPromptContentBlock>;
   /**
    * Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
@@ -1331,7 +1368,7 @@ export type CreateWorkspaceAgentSessionRequest = {
     [key: string]: unknown;
   };
   /**
-   * Opaque host-owned provider target reference. It is not authority; trusted launchers must re-authenticate and resolve it before invoking a provider.
+   * Deprecated opaque host-owned provider target reference. It is not launch authority; the daemon derives the trusted provider target ref from the stored agent target identified by agentTargetId.
    */
   providerTargetRef?: {
     [key: string]: unknown;
@@ -1468,6 +1505,7 @@ export type SubmitWorkspaceAgentInteractiveRequest = {
 export type WorkspaceAgentSessionEventEnvelope = {
   seq: number;
   agentSessionId: string;
+  agentTargetId?: string | null;
   type: string;
   occurredAt: string;
   payload: {
@@ -2757,6 +2795,45 @@ export type AttachEventStreamResponses = {
    */
   200: unknown;
 };
+
+export type ListAgentTargetsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-targets";
+};
+
+export type ListAgentTargetsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentTargetsError =
+  ListAgentTargetsErrors[keyof ListAgentTargetsErrors];
+
+export type ListAgentTargetsResponses = {
+  /**
+   * Agent Targets
+   */
+  200: ListAgentTargetsResponse;
+};
+
+export type ListAgentTargetsResponse2 =
+  ListAgentTargetsResponses[keyof ListAgentTargetsResponses];
 
 export type ListWorkspacesData = {
   body?: never;

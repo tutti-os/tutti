@@ -11,6 +11,7 @@ describe("agent gui provider targets", () => {
   it("creates local targets for the default provider catalog", () => {
     expect(createLocalAgentGUIProviderTarget("codex")).toEqual({
       targetId: "local:codex",
+      agentTargetId: "local:codex",
       provider: "codex",
       ref: {
         kind: "local",
@@ -155,6 +156,46 @@ describe("agent gui provider targets", () => {
     ).toMatchObject({
       targetId: "shared-agent:codex-1",
       provider: "codex"
+    });
+  });
+
+  it("resolves agent target ids across providers before using provider fallback", () => {
+    const targets = normalizeAgentGUIProviderTargets(
+      [
+        {
+          targetId: "local:codex",
+          agentTargetId: "local:codex",
+          provider: "codex",
+          ref: {
+            kind: "local",
+            provider: "codex"
+          },
+          label: "Codex"
+        },
+        {
+          targetId: "local:claude-code",
+          agentTargetId: "local:claude-code",
+          provider: "claude-code",
+          ref: {
+            kind: "local",
+            provider: "claude-code"
+          },
+          label: "Claude Code"
+        }
+      ],
+      { fallbackToLocal: false }
+    );
+
+    expect(
+      resolveAgentGUIProviderTarget({
+        agentTargetId: "local:claude-code",
+        provider: "codex",
+        providerTargets: targets
+      })
+    ).toMatchObject({
+      agentTargetId: "local:claude-code",
+      provider: "claude-code",
+      targetId: "local:claude-code"
     });
   });
 });

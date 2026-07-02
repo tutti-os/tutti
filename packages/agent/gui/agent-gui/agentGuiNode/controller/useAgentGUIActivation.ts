@@ -12,6 +12,7 @@ import type { AgentGUIProviderTargetRef } from "../../../types";
 type AgentGUILiveState = "inactive" | "activating" | "active" | "failed";
 interface AgentGUIActivateInput {
   agentSessionId: string;
+  agentTargetId?: string | null;
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
@@ -70,6 +71,7 @@ export function useAgentGUIActivation({
                 mode: input.mode,
                 workspaceId,
                 agentSessionId,
+                agentTargetId: input.agentTargetId,
                 provider: input.provider,
                 cwd: input.cwd,
                 initialContent: input.initialContent,

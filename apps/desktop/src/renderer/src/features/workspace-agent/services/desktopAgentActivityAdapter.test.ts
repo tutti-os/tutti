@@ -625,6 +625,7 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
 
   const session = await adapter.createSession({
     agentSessionId: "22222222-2222-4222-8222-222222222222",
+    agentTargetId: "local:codex",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
     metadata: {
@@ -653,6 +654,7 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
       workspaceId,
       {
         agentSessionId: "22222222-2222-4222-8222-222222222222",
+        agentTargetId: "local:codex",
         cwd: "/workspace",
         initialContent: [{ type: "text", text: "hello" }],
         initialDisplayPrompt: null,
@@ -665,11 +667,6 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
         permissionModeId: "read-only",
         planMode: true,
         provider: "codex",
-        providerTargetRef: {
-          kind: "sharedAgent",
-          provider: "codex",
-          sharedAgentId: "agent-1"
-        },
         reasoningEffort: "high",
         speed: null,
         title: "Plan",
@@ -1248,6 +1245,10 @@ test("desktop agent activity adapter uses a fresh Claude draft id after target s
     })
   );
   await firstSubmission;
+  await waitForCondition(
+    () => calls.includes(`delete:${fixedAgentSessionId}`),
+    "expected the stale Claude draft from the previous target to be deleted"
+  );
 });
 
 test("desktop agent activity adapter loads Claude options without mutating draft sessions", async () => {

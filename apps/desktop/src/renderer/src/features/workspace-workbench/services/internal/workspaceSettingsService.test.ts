@@ -730,6 +730,10 @@ test("WorkspaceSettingsService writes changed preferences", async () => {
         writes.push(mode);
         return mode;
       },
+      onSetAgentDockLayout: async (layout) => {
+        writes.push(layout);
+        return layout;
+      },
       onSetThemeSource: async (source) => {
         writes.push(source);
         return createTheme(source);
@@ -742,9 +746,17 @@ test("WorkspaceSettingsService writes changed preferences", async () => {
   await service.changeDockPlacement("left");
   await service.changeDefaultAgentProvider("claude-code");
   await service.changeAgentConversationDetailMode("general");
+  await service.changeAgentDockLayout("unified");
   await service.changeThemeSource("dark");
 
-  assert.deepEqual(writes, ["zh-CN", "left", "claude-code", "general", "dark"]);
+  assert.deepEqual(writes, [
+    "zh-CN",
+    "left",
+    "claude-code",
+    "general",
+    "unified",
+    "dark"
+  ]);
 });
 
 test("WorkspaceSettingsService refreshes App Center after changing catalog channel", async () => {
@@ -788,6 +800,9 @@ test("WorkspaceSettingsService reports preference save failures", async () => {
       onSetDefaultAgentProvider: async () => {
         throw new Error("provider failed");
       },
+      onSetAgentDockLayout: async () => {
+        throw new Error("agent dock failed");
+      },
       onSetThemeSource: async () => {
         throw new Error("theme failed");
       },
@@ -799,12 +814,14 @@ test("WorkspaceSettingsService reports preference save failures", async () => {
   await service.changeLocale("zh-CN");
   await service.changeDockPlacement("left");
   await service.changeDefaultAgentProvider("claude-code");
+  await service.changeAgentDockLayout("unified");
   await service.changeThemeSource("dark");
 
   assert.deepEqual(notifications.items, [
     "We couldn't switch the app language right now.",
     "We couldn't update the dock layout right now.",
     "We couldn't update the default provider right now.",
+    "We couldn't update the Agent dock right now.",
     "We couldn't switch the app appearance right now."
   ]);
 });
@@ -1027,6 +1044,7 @@ function createWorkspaceSettingsClient(
 function createDesktopPreferencesService(input: {
   onSetDefaultAgentProvider?: IDesktopPreferencesService["setDefaultAgentProvider"];
   onSetAgentConversationDetailMode?: IDesktopPreferencesService["setAgentConversationDetailMode"];
+  onSetAgentDockLayout?: IDesktopPreferencesService["setAgentDockLayout"];
   onSetAppCatalogChannel?: IDesktopPreferencesService["setAppCatalogChannel"];
   onSetBrowserUseConnectionMode?: IDesktopPreferencesService["setBrowserUseConnectionMode"];
   onSetDockIconStyle?: IDesktopPreferencesService["setDockIconStyle"];
@@ -1050,6 +1068,8 @@ function createDesktopPreferencesService(input: {
       input.onSetAppCatalogChannel ?? (async (channel) => channel),
     setAgentConversationDetailMode:
       input.onSetAgentConversationDetailMode ?? (async (mode) => mode),
+    setAgentDockLayout:
+      input.onSetAgentDockLayout ?? (async (layout) => layout),
     setBrowserUseConnectionMode:
       input.onSetBrowserUseConnectionMode ?? (async (mode) => mode),
     setDefaultAgentProvider:
@@ -1082,10 +1102,12 @@ function createPreferencesState(
     agentComposerDefaultsByProvider: {},
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
+    agentDockLayout: "legacySplit",
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     changingAppCatalogChannel: null,
     changingAgentConversationDetailMode: null,
+    changingAgentDockLayout: null,
     changingBrowserUseConnectionMode: null,
     changingDefaultAgentProvider: null,
     changingDockIconStyle: null,

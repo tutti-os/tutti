@@ -22,6 +22,9 @@ export function createDesktopTuttidClient(
   };
 
   return {
+    async listAgentTargets() {
+      return (await resolveClient()).listAgentTargets();
+    },
     async startAccountLogin() {
       return (await resolveClient()).startAccountLogin();
     },

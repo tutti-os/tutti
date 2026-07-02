@@ -6,6 +6,7 @@ import type {
   AgentGUIConversationUserProject,
   AgentGUIInteractivePrompt
 } from "./agentGuiConversationModel";
+import type { AgentGUIConversationFilter } from "./agentGuiConversationFilter";
 import type {
   AgentSessionCommand,
   AgentSessionComposerSettings,
@@ -17,6 +18,8 @@ import type {
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
+
+export type AgentGUIConversationScope = "single-provider" | "multi-provider";
 
 export interface AgentGUISessionChrome {
   auth: {
@@ -159,6 +162,10 @@ export interface AgentGUINodeViewModel {
   currentUserId?: string | null;
   data: AgentGUINodeData;
   selectedProviderTarget: AgentGUIProviderTarget;
+  providerTargets: readonly AgentGUIProviderTarget[];
+  providerTargetsLoading: boolean;
+  conversationScope: AgentGUIConversationScope;
+  conversationFilter: AgentGUIConversationFilter;
   conversations: AgentGUIConversationSummary[];
   userProjects: AgentGUIConversationUserProject[];
   activeConversation: AgentGUIConversationSummary | null;

@@ -14,12 +14,24 @@ import {
   type AgentProviderComposerOptionsResponse,
   type AppReferenceListResponse,
   type CliCapabilitiesResponse,
+  type CreateWorkspaceAgentSessionRequest,
   type IssueManagerReferenceSearchResponse,
+  type ListAgentTargetsResponse,
   type ListWorkspacesResponse,
   type WorkspaceFilePreviewResponse,
   type WorkspaceGitPatchSupportResponse,
   type WorkspaceGitPatchResponse
 } from "./index.ts";
+
+test("create workspace agent session request supports target-only authority", () => {
+  const request = {
+    agentSessionId: "11111111-1111-4111-8111-111111111111",
+    agentTargetId: "local:codex",
+    initialContent: [{ type: "text", text: "hello" }]
+  } satisfies CreateWorkspaceAgentSessionRequest;
+
+  assert.equal(request.agentTargetId, "local:codex");
+});
 
 test("generated tuttid client returns parsed health response", async () => {
   const client = createClient({
@@ -111,6 +123,62 @@ test("shared tuttid client unwraps workspace list responses", async () => {
     totalCount: 1,
     workspaces: [{ id: "ws-1", name: "One", lastOpenedAt: null }]
   } satisfies ListWorkspacesResponse);
+});
+
+test("shared tuttid client unwraps agent target responses", async () => {
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      assert.equal(new URL(request.url).pathname, "/v1/agent-targets");
+
+      return new Response(
+        JSON.stringify({
+          targets: [
+            {
+              id: "local:codex",
+              provider: "codex",
+              launchRef: {
+                type: "local_cli",
+                provider: "codex"
+              },
+              name: "Codex",
+              iconKey: "codex",
+              enabled: true,
+              source: "system",
+              sortOrder: 10,
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  assert.deepEqual(await client.listAgentTargets(), {
+    targets: [
+      {
+        id: "local:codex",
+        provider: "codex",
+        launchRef: {
+          type: "local_cli",
+          provider: "codex"
+        },
+        name: "Codex",
+        iconKey: "codex",
+        enabled: true,
+        source: "system",
+        sortOrder: 10,
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1
+      }
+    ]
+  } satisfies ListAgentTargetsResponse);
 });
 
 test("shared tuttid client forwards bearer auth tokens", async () => {

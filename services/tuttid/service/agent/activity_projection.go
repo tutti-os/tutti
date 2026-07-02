@@ -7,7 +7,6 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	agentactivityprojection "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/projection"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"
@@ -122,6 +121,7 @@ func (p *ActivityProjection) ReportSessionState(
 		WorkspaceID:       strings.TrimSpace(input.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(input.AgentSessionID),
 		Origin:            strings.TrimSpace(input.SessionOrigin),
+		AgentTargetID:     strings.TrimSpace(firstNonEmptyString(input.State.AgentTargetID, input.Source.AgentTargetID)),
 		Provider:          strings.TrimSpace(firstNonEmptyString(input.State.Provider, input.Source.Provider)),
 		ProviderSessionID: strings.TrimSpace(firstNonEmptyString(input.State.ProviderSessionID, input.Source.ProviderSessionID)),
 		Model:             strings.TrimSpace(input.State.Model),
@@ -160,7 +160,12 @@ func (p *ActivityProjection) ReportSessionState(
 				input.WorkspaceID,
 				input.AgentSessionID,
 				"session_update",
-				activitySessionUpdateEventPayload(input.WorkspaceID, input.AgentSessionID, result.LastEventUnixMS),
+				activitySessionUpdateEventPayload(
+					input.WorkspaceID,
+					input.AgentSessionID,
+					result.LastEventUnixMS,
+					firstNonEmptyString(input.State.AgentTargetID, input.Source.AgentTargetID),
+				),
 			)
 		}
 		if result.StateApplied {
@@ -207,6 +212,9 @@ func activityStatePatchEventPayload(
 	}
 	if provider := strings.TrimSpace(firstNonEmptyString(state.Provider, input.Source.Provider)); provider != "" {
 		payload["provider"] = provider
+	}
+	if agentTargetID := strings.TrimSpace(firstNonEmptyString(state.AgentTargetID, input.Source.AgentTargetID)); agentTargetID != "" {
+		payload["agentTargetId"] = agentTargetID
 	}
 	if providerSessionID := strings.TrimSpace(firstNonEmptyString(state.ProviderSessionID, input.Source.ProviderSessionID)); providerSessionID != "" {
 		payload["providerSessionId"] = providerSessionID
@@ -266,16 +274,22 @@ func sessionStateTitle(state agentsessionstore.WorkspaceAgentSessionStateUpdate)
 	)
 }
 
-func activitySessionUpdateEventPayload(workspaceID string, agentSessionID string, lastEventUnixMS int64) map[string]any {
+func activitySessionUpdateEventPayload(workspaceID string, agentSessionID string, lastEventUnixMS int64, agentTargetID ...string) map[string]any {
 	if lastEventUnixMS <= 0 {
 		lastEventUnixMS = time.Now().UnixMilli()
 	}
-	return map[string]any{
+	payload := map[string]any{
 		"agentSessionId":  strings.TrimSpace(agentSessionID),
 		"eventType":       "session_update",
 		"lastEventUnixMs": lastEventUnixMS,
 		"workspaceId":     strings.TrimSpace(workspaceID),
 	}
+	if len(agentTargetID) > 0 {
+		if value := strings.TrimSpace(agentTargetID[0]); value != "" {
+			payload["agentTargetId"] = value
+		}
+	}
+	return payload
 }
 
 func activitySessionDeletedEventPayload(workspaceID string, agentSessionID string) map[string]any {
@@ -766,60 +780,6 @@ func activityMessagesEventPayload(messages []agentactivitybiz.Message) []map[str
 			item["updatedAtUnixMs"] = message.UpdatedAtUnixMS
 		}
 		out = append(out, item)
-	}
-	return out
-}
-
-func persistedSessionFromActivity(session agentactivitybiz.Session) PersistedSession {
-	return PersistedSession{
-		ID:                strings.TrimSpace(session.ID),
-		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
-		Origin:            strings.TrimSpace(session.Origin),
-		Provider:          strings.TrimSpace(session.Provider),
-		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
-		Cwd:               strings.TrimSpace(session.Cwd),
-		Settings:          composerSettingsFromPayload(session.Settings),
-		RuntimeContext:    clonePayload(session.RuntimeContext),
-		Status:            agentActivitySessionStatus(session),
-		CurrentPhase:      strings.TrimSpace(session.CurrentPhase),
-		Visible:           visibleFromRuntimeContext(session.RuntimeContext, true),
-		Title:             strings.TrimSpace(session.Title),
-		LastError:         strings.TrimSpace(session.LastError),
-		PinnedAtUnixMS:    session.PinnedAtUnixMS,
-		LastEventUnixMS:   session.LastEventUnixMS,
-		StartedAtUnixMS:   session.StartedAtUnixMS,
-		EndedAtUnixMS:     session.EndedAtUnixMS,
-		CreatedAtUnixMS:   session.CreatedAtUnixMS,
-		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
-	}
-}
-
-func agentActivitySessionStatus(session agentactivitybiz.Session) string {
-	return agentactivityprojection.CanonicalSessionStatus(session.Status, session.CurrentPhase)
-}
-
-func sessionMessagesFromActivity(messages []agentactivitybiz.Message) []SessionMessage {
-	if len(messages) == 0 {
-		return nil
-	}
-	out := make([]SessionMessage, 0, len(messages))
-	for _, message := range messages {
-		out = append(out, SessionMessage{
-			ID:                message.ID,
-			AgentSessionID:    strings.TrimSpace(message.AgentSessionID),
-			MessageID:         strings.TrimSpace(message.MessageID),
-			TurnID:            strings.TrimSpace(message.TurnID),
-			Role:              strings.TrimSpace(message.Role),
-			Kind:              strings.TrimSpace(message.Kind),
-			Status:            strings.TrimSpace(message.Status),
-			Payload:           message.Payload,
-			OccurredAtUnixMS:  message.OccurredAtUnixMS,
-			StartedAtUnixMS:   message.StartedAtUnixMS,
-			CompletedAtUnixMS: message.CompletedAtUnixMS,
-			CreatedAtUnixMS:   message.CreatedAtUnixMS,
-			UpdatedAtUnixMS:   message.UpdatedAtUnixMS,
-			Version:           message.Version,
-		})
 	}
 	return out
 }

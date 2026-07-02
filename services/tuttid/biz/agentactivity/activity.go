@@ -58,6 +58,7 @@ type Session struct {
 	ID                string
 	WorkspaceID       string
 	Origin            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Model             string
@@ -81,6 +82,7 @@ type SessionStateReport struct {
 	WorkspaceID       string
 	AgentSessionID    string
 	Origin            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Model             string

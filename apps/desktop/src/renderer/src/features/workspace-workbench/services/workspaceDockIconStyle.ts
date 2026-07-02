@@ -31,6 +31,10 @@ const defaultCodexIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/codex.png",
   import.meta.url
 ).href;
+const defaultAgentUnifiedIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/agent-unified.png",
+  import.meta.url
+).href;
 const defaultGeminiIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/gemini.png",
   import.meta.url
@@ -53,6 +57,7 @@ const defaultTuttiIconUrl = new URL(
 ).href;
 
 export interface WorkspaceDockIconSet {
+  agentUnified: string;
   agents: Record<AgentGuiWorkbenchProvider, string>;
   applications: string;
   browser: string;
@@ -76,6 +81,7 @@ export function resolveWorkspaceDockIconSet(_input: {
     openclaw: defaultOpenclawIconUrl
   };
   return {
+    agentUnified: defaultAgentUnifiedIconUrl,
     agents,
     applications: defaultApplicationsIconUrl,
     browser: defaultBrowserIconUrl,

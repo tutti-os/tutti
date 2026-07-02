@@ -609,6 +609,10 @@ export const en = {
       agentEnvSetup: "Environment Check",
       noConversations: "No sessions yet",
       emptyProjectConversations: "No chats yet",
+      conversationFilterAll: "All",
+      conversationFilterCodex: "Codex",
+      conversationFilterClaudeCode: "Claude Code",
+      providerSwitchLabel: "Switch provider",
       batchRunnerStandaloneTitle: "Agent GUI batch runner",
       batchRunnerSubtitle:
         "Run JSONL prompt cases and review execution results",
@@ -754,6 +758,8 @@ export const en = {
       goalBudgetUsage: "{{used}}/{{budget}} tokens",
       goalClearHint: "Type /goal clear to clear",
       processing: "Planning next moves",
+      agentTargetRequired:
+        "Select an available agent target before starting a session.",
       promptImagesUnsupported:
         "This agent does not support image input with the current model.",
       visibleErrorStartFailed: "{{provider}} failed to start",

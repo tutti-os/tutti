@@ -69,6 +69,13 @@ export type DesktopAgentConversationDetailMode =
 export const defaultDesktopAgentConversationDetailMode: DesktopAgentConversationDetailMode =
   "coding";
 
+export const desktopAgentDockLayouts = ["legacySplit", "unified"] as const;
+
+export type DesktopAgentDockLayout = (typeof desktopAgentDockLayouts)[number];
+
+export const defaultDesktopAgentDockLayout: DesktopAgentDockLayout =
+  "legacySplit";
+
 export function readInitialDockPlacementFromLocation(
   locationSearch?: string
 ): DesktopDockPlacement {
@@ -157,6 +164,23 @@ export function normalizeDesktopAgentConversationDetailMode(
   return isDesktopAgentConversationDetailMode(value)
     ? value
     : defaultDesktopAgentConversationDetailMode;
+}
+
+export function isDesktopAgentDockLayout(
+  value: unknown
+): value is DesktopAgentDockLayout {
+  return (
+    typeof value === "string" &&
+    desktopAgentDockLayouts.includes(value as DesktopAgentDockLayout)
+  );
+}
+
+export function normalizeDesktopAgentDockLayout(
+  value: unknown
+): DesktopAgentDockLayout {
+  return isDesktopAgentDockLayout(value)
+    ? value
+    : defaultDesktopAgentDockLayout;
 }
 
 export const desktopAgentProviders = [

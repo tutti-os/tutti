@@ -7,6 +7,7 @@ import type {
   AgentGUINodeViewModel
 } from "./model/agentGuiNodeTypes";
 import { AgentGUINode } from "./AgentGUINode";
+import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
 
 const { agentGuiNodeViewSpy } = vi.hoisted(() => ({
   agentGuiNodeViewSpy: vi.fn()
@@ -172,6 +173,36 @@ describe("AgentGUINode memoization", () => {
 
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("rerenders when per-target composer overrides change", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      state: createState({
+        agentTargetId: "target-a",
+        composerOverridesByAgentTargetId: {
+          "target-a": { model: "gpt-5" }
+        }
+      })
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({
+          agentTargetId: "target-a",
+          composerOverridesByAgentTargetId: {
+            "target-a": { model: "gpt-5.1" }
+          }
+        })}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createProps(
@@ -222,6 +253,9 @@ function createViewModel(
     userProjects: [],
     conversation: null,
     conversationDetail: null,
+    selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+    providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    providerTargetsLoading: false,
     draftPrompt: "",
     draftContent,
     sessionChrome: {

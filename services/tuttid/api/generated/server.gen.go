@@ -43,6 +43,9 @@ type ServerInterface interface {
 	// Probe whether tuttid can start a local agent provider runtime command
 	// (POST /v1/agent-providers/{provider}/probe)
 	ProbeAgentProvider(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
+	// List daemon-owned Agent Targets
+	// (GET /v1/agent-targets)
+	ListAgentTargets(w http.ResponseWriter, r *http.Request)
 	// List CLI capabilities visible in the current context
 	// (GET /v1/cli/capabilities)
 	ListCliCapabilities(w http.ResponseWriter, r *http.Request, params ListCliCapabilitiesParams)
@@ -670,6 +673,26 @@ func (siw *ServerInterfaceWrapper) ProbeAgentProvider(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ProbeAgentProvider(w, r, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAgentTargets operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentTargets(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentTargets(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5941,6 +5964,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/actions/{actionID}/run", wrapper.RunAgentProviderAction)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/composer-options", wrapper.GetAgentProviderComposerOptions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/probe", wrapper.ProbeAgentProvider)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-targets", wrapper.ListAgentTargets)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/cli/capabilities", wrapper.ListCliCapabilities)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/cli/commands/{commandID}/invoke", wrapper.InvokeCliCommand)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events/ws", wrapper.AttachEventStream)
@@ -6762,6 +6786,89 @@ type ProbeAgentProvider503JSONResponse struct {
 }
 
 func (response ProbeAgentProvider503JSONResponse) VisitProbeAgentProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentTargetsRequestObject struct {
+}
+
+type ListAgentTargetsResponseObject interface {
+	VisitListAgentTargetsResponse(w http.ResponseWriter) error
+}
+
+type ListAgentTargets200JSONResponse ListAgentTargetsResponse
+
+func (response ListAgentTargets200JSONResponse) VisitListAgentTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentTargets401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListAgentTargets401JSONResponse) VisitListAgentTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentTargets405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListAgentTargets405JSONResponse) VisitListAgentTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentTargets502JSONResponse struct {
+	PreferencesOperationErrorJSONResponse
+}
+
+func (response ListAgentTargets502JSONResponse) VisitListAgentTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentTargets503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListAgentTargets503JSONResponse) VisitListAgentTargetsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -20915,6 +21022,9 @@ type StrictServerInterface interface {
 	// Probe whether tuttid can start a local agent provider runtime command
 	// (POST /v1/agent-providers/{provider}/probe)
 	ProbeAgentProvider(ctx context.Context, request ProbeAgentProviderRequestObject) (ProbeAgentProviderResponseObject, error)
+	// List daemon-owned Agent Targets
+	// (GET /v1/agent-targets)
+	ListAgentTargets(ctx context.Context, request ListAgentTargetsRequestObject) (ListAgentTargetsResponseObject, error)
 	// List CLI capabilities visible in the current context
 	// (GET /v1/cli/capabilities)
 	ListCliCapabilities(ctx context.Context, request ListCliCapabilitiesRequestObject) (ListCliCapabilitiesResponseObject, error)
@@ -21523,6 +21633,30 @@ func (sh *strictHandler) ProbeAgentProvider(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ProbeAgentProviderResponseObject); ok {
 		if err := validResponse.VisitProbeAgentProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAgentTargets operation middleware
+func (sh *strictHandler) ListAgentTargets(w http.ResponseWriter, r *http.Request) {
+	var request ListAgentTargetsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentTargets(ctx, request.(ListAgentTargetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentTargets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentTargetsResponseObject); ok {
+		if err := validResponse.VisitListAgentTargetsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

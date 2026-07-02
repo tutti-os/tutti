@@ -81,6 +81,7 @@ export interface PreferencesDesktopPreferencesV1 {
     openclaw?: boolean;
   };
   agentConversationDetailMode: "coding" | "general";
+  agentDockLayout: "legacySplit" | "unified";
   appCatalogChannel: "production" | "staging";
   browserUseConnectionMode?: "isolated" | "autoConnect";
   defaultAgentProvider:
@@ -192,6 +193,7 @@ export type AgentActivityUpdatedPayloadV1 =
       data: {
         workspaceId: string;
         agentSessionId: string;
+        agentTargetId?: string;
         eventType: "session_update";
         lastEventUnixMs: number;
       };
@@ -246,6 +248,7 @@ export type AgentActivityUpdatedPayloadV1 =
         lastEventUnixMs: number;
         occurredAtUnixMs?: number;
         provider?: string;
+        agentTargetId?: string;
         providerSessionId?: string;
         model?: string;
         cwd?: string;

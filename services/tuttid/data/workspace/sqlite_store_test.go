@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
@@ -38,6 +40,55 @@ func TestSQLiteStoreMigrationDropsLegacyLocalPathColumn(t *testing.T) {
 	}
 	if hasLocalPath {
 		t.Fatal("expected local_path column to be removed")
+	}
+}
+
+func TestSQLiteStoreMigrationRepairsAgentTargetIDColumnWhenMarkerExists(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "tuttid.db")
+	createLegacyAgentActivityV4MarkedDatabaseWithoutAgentTargetID(t, dbPath)
+
+	store, err := OpenSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("OpenSQLiteStore() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	ctx := context.Background()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	hasAgentTargetID, err := store.hasColumn(ctx, "workspace_agent_sessions", "agent_target_id")
+	if err != nil {
+		t.Fatalf("hasColumn() error = %v", err)
+	}
+	if !hasAgentTargetID {
+		t.Fatal("agent_target_id column was not repaired")
+	}
+
+	sessions, ok, err := store.ListSessions(ctx, "ws-legacy-agent-target-id")
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("ListSessions() ok = false, want true")
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("ListSessions() len = %d, want 2", len(sessions))
+	}
+	targetBySessionID := map[string]string{}
+	for _, session := range sessions {
+		targetBySessionID[session.ID] = session.AgentTargetID
+	}
+	if targetBySessionID["session-legacy"] != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("codex AgentTargetID = %q, want %s", targetBySessionID["session-legacy"], agenttargetbiz.IDLocalCodex)
+	}
+	if targetBySessionID["session-legacy-claude"] != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("claude AgentTargetID = %q, want %s", targetBySessionID["session-legacy-claude"], agenttargetbiz.IDLocalClaudeCode)
 	}
 }
 
@@ -396,6 +447,70 @@ func TestSQLiteStoreReportAndListAgentActivityMessages(t *testing.T) {
 	}
 	if !ok || len(older.Messages) != 1 || older.Messages[0].Version != 2 {
 		t.Fatalf("older page = %#v ok=%v", older, ok)
+	}
+}
+
+func TestSQLiteStorePreservesAgentTargetIDAcrossStateReports(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-agent-target-activity",
+		Name: "Workspace Agent Target Activity",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:       "ws-agent-target-activity",
+		AgentSessionID:    "session-1",
+		AgentTargetID:     "local:codex",
+		Origin:            agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:          "codex",
+		ProviderSessionID: "provider-session-1",
+		Cwd:               "/workspace",
+		Title:             "target session",
+		Status:            "running",
+		OccurredAtUnixMS:  100,
+		StartedAtUnixMS:   90,
+	}); err != nil {
+		t.Fatalf("ReportSessionState(with target) error = %v", err)
+	}
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:      "ws-agent-target-activity",
+		AgentSessionID:   "session-1",
+		Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:         "codex",
+		Cwd:              "/workspace",
+		Title:            "target session",
+		Status:           "ready",
+		OccurredAtUnixMS: 200,
+		StartedAtUnixMS:  90,
+	}); err != nil {
+		t.Fatalf("ReportSessionState(without target) error = %v", err)
+	}
+
+	session, ok, err := store.GetSession(ctx, "ws-agent-target-activity", "session-1")
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetSession() ok = false, want true")
+	}
+	if session.AgentTargetID != "local:codex" {
+		t.Fatalf("GetSession() agent target id = %q, want local:codex", session.AgentTargetID)
+	}
+	sessions, ok, err := store.ListSessions(ctx, "ws-agent-target-activity")
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if !ok || len(sessions) != 1 {
+		t.Fatalf("ListSessions() ok=%v len=%d, want one session", ok, len(sessions))
+	}
+	if sessions[0].AgentTargetID != "local:codex" {
+		t.Fatalf("ListSessions() agent target id = %q, want local:codex", sessions[0].AgentTargetID)
 	}
 }
 
@@ -1390,4 +1505,121 @@ func openTestSQLiteStore(t *testing.T) *SQLiteStore {
 	}
 
 	return store
+}
+
+func createLegacyAgentActivityV4MarkedDatabaseWithoutAgentTargetID(t *testing.T, dbPath string) {
+	t.Helper()
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`
+CREATE TABLE tuttid_schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at_unix_ms INTEGER NOT NULL
+);
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms) VALUES
+  ('workspaces_v1', 1),
+  ('workspaces_v2', 1),
+  ('workspaces_v3', 1),
+  ('workspaces_v4', 1),
+  ('workspace_agent_activity_v1', 1),
+  ('workspace_agent_activity_v2', 1),
+  ('workspace_agent_activity_v3', 1),
+  ('workspace_agent_activity_v4', 1);
+
+CREATE TABLE workspaces (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at_unix_ms INTEGER NOT NULL,
+  updated_at_unix_ms INTEGER NOT NULL,
+  last_opened_at_unix_ms INTEGER
+);
+INSERT INTO workspaces (id, name, created_at_unix_ms, updated_at_unix_ms, last_opened_at_unix_ms)
+VALUES ('ws-legacy-agent-target-id', 'Legacy Agent Target ID', 1, 1, 1);
+
+CREATE TABLE workspace_workbench_snapshots (
+  workspace_id TEXT PRIMARY KEY,
+  schema_version INTEGER NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  created_at_unix_ms INTEGER NOT NULL,
+  updated_at_unix_ms INTEGER NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE TABLE workspace_agent_sessions (
+  workspace_id TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  origin TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL DEFAULT '',
+  provider_session_id TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL DEFAULT '',
+  settings_json TEXT NOT NULL DEFAULT '{}',
+  runtime_context_json TEXT NOT NULL DEFAULT '{}',
+  cwd TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT '',
+  current_phase TEXT NOT NULL DEFAULT '',
+  last_error TEXT NOT NULL DEFAULT '',
+  message_version INTEGER NOT NULL DEFAULT 0,
+  last_event_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  started_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  ended_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  deleted_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  created_at_unix_ms INTEGER NOT NULL,
+  updated_at_unix_ms INTEGER NOT NULL,
+  pinned_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (workspace_id, agent_session_id),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+INSERT INTO workspace_agent_sessions (
+  workspace_id, agent_session_id, origin, provider, provider_session_id, model,
+  settings_json, runtime_context_json, cwd, title, status, current_phase,
+  last_error, message_version, last_event_at_unix_ms, started_at_unix_ms,
+  ended_at_unix_ms, deleted_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
+  pinned_at_unix_ms
+) VALUES (
+  'ws-legacy-agent-target-id', 'session-legacy', 'runtime', 'codex', 'provider-session-legacy', '',
+  '{}', '{}', '/', 'Legacy Session', 'running', 'idle',
+  '', 0, 1, 1,
+  0, 0, 1, 1,
+  0
+),
+(
+  'ws-legacy-agent-target-id', 'session-legacy-claude', 'runtime', 'claude-code', 'provider-session-legacy-claude', '',
+  '{}', '{}', '/', 'Legacy Claude Session', 'running', 'idle',
+  '', 0, 1, 1,
+  0, 0, 1, 1,
+  0
+);
+
+CREATE TABLE workspace_agent_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  turn_id TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT '',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  occurred_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  started_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  completed_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  deleted_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  created_at_unix_ms INTEGER NOT NULL,
+  updated_at_unix_ms INTEGER NOT NULL,
+  UNIQUE (workspace_id, agent_session_id, message_id),
+  FOREIGN KEY (workspace_id, agent_session_id)
+    REFERENCES workspace_agent_sessions(workspace_id, agent_session_id)
+    ON DELETE CASCADE
+);
+`)
+	if err != nil {
+		t.Fatalf("create legacy agent activity database: %v", err)
+	}
 }

@@ -23,6 +23,9 @@ function createTransportClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
   return {
+    async listAgentTargets() {
+      throw new Error("not used");
+    },
     async startAccountLogin() {
       throw new Error("not used");
     },

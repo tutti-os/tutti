@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:8aea696f56324a16"
+	BusinessEventCatalogRevision = "sha256:00e7c0e227c0387c"
 )
 
 type Topic string
@@ -100,6 +100,7 @@ type PreferencesDesktopPreferences struct {
 		Openclaw   *bool `json:"openclaw,omitempty"`
 	} `json:"agentGuiConversationRailCollapsedByProvider"`
 	AgentConversationDetailMode   string            `json:"agentConversationDetailMode"`
+	AgentDockLayout               string            `json:"agentDockLayout"`
 	AppCatalogChannel             string            `json:"appCatalogChannel"`
 	BrowserUseConnectionMode      *string           `json:"browserUseConnectionMode,omitempty"`
 	DefaultAgentProvider          string            `json:"defaultAgentProvider"`
@@ -189,10 +190,11 @@ type WorkspaceWorkspaceApp struct {
 }
 
 type AgentActivityUpdatedPayload struct {
-	WorkspaceId    string `json:"workspaceId"`
-	AgentSessionId string `json:"agentSessionId"`
-	EventType      string `json:"eventType"`
-	Data           any    `json:"data"`
+	WorkspaceId    string  `json:"workspaceId"`
+	AgentSessionId string  `json:"agentSessionId"`
+	AgentTargetId  *string `json:"agentTargetId,omitempty"`
+	EventType      string  `json:"eventType"`
+	Data           any     `json:"data"`
 }
 
 type AnalyticsDebugReportedPayload struct {

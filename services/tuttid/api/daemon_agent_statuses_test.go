@@ -153,7 +153,7 @@ func TestDaemonAPIRoutesUnsupportedAgentProviderStatus(t *testing.T) {
 		t.Fatalf("providers length = %d, want 1", len(response.Providers))
 	}
 	status := response.Providers[0]
-	if status.Provider != tuttigenerated.Gemini {
+	if status.Provider != tuttigenerated.WorkspaceAgentProviderGemini {
 		t.Fatalf("provider = %q, want gemini", status.Provider)
 	}
 	if status.Availability.Status != tuttigenerated.AgentProviderAvailabilityStatusUnsupported {

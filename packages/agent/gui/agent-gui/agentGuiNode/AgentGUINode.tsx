@@ -25,7 +25,6 @@ import type {
   NodeFrame,
   Point
 } from "../../types";
-import { agentGUIProviderTargetRefsEqual } from "../../providerTargets";
 import type {
   DesktopSize,
   WorkspaceDesktopAgentProbeDemandChange,
@@ -41,6 +40,7 @@ import type {
   AgentGUIPrefillPromptRequest,
   AgentGUIRememberComposerDefaultsInput
 } from "./controller/useAgentGUINodeController";
+import type { AgentGUIConversationScope } from "./model/agentGuiNodeTypes";
 import {
   AgentGUINodeView,
   type AgentGUIViewLabels,
@@ -184,7 +184,9 @@ export interface AgentGUINodeProps {
   ) => void;
   onAgentProviderLogin?: (provider: AgentProvider) => void;
   providerTargets?: readonly AgentGUIProviderTarget[];
+  providerTargetsLoading?: boolean;
   defaultProviderTargetId?: string | null;
+  conversationScope?: AgentGUIConversationScope;
   onWorkspaceFileReferencesAdded?: (input: {
     provider: AgentProvider;
     references: readonly WorkspaceFileReference[];
@@ -418,11 +420,7 @@ function agentGuiStateEquals(
   return (
     left === right ||
     (left.provider === right.provider &&
-      (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
-      agentGUIProviderTargetRefsEqual(
-        left.providerTargetRef,
-        right.providerTargetRef
-      ) &&
+      (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
       left.conversationRailWidthPx === right.conversationRailWidthPx &&
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
@@ -437,6 +435,10 @@ function agentGuiStateEquals(
       composerOverridesByProviderEqual(
         left.composerOverridesByProvider,
         right.composerOverridesByProvider
+      ) &&
+      composerOverridesByAgentTargetIdEqual(
+        left.composerOverridesByAgentTargetId,
+        right.composerOverridesByAgentTargetId
       ))
   );
 }
@@ -453,6 +455,31 @@ function composerOverridesByProviderEqual(
     const key = provider as keyof NonNullable<
       AgentGUINodeData["composerOverridesByProvider"]
     >;
+    const leftSettings = left?.[key] ?? null;
+    const rightSettings = right?.[key] ?? null;
+    if (
+      (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
+      (leftSettings?.reasoningEffort ?? null) !==
+        (rightSettings?.reasoningEffort ?? null) ||
+      (leftSettings?.planMode ?? null) !== (rightSettings?.planMode ?? null) ||
+      (leftSettings?.permissionModeId ?? null) !==
+        (rightSettings?.permissionModeId ?? null)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function composerOverridesByAgentTargetIdEqual(
+  left: AgentGUINodeData["composerOverridesByAgentTargetId"],
+  right: AgentGUINodeData["composerOverridesByAgentTargetId"]
+): boolean {
+  const keys = new Set([
+    ...Object.keys(left ?? {}),
+    ...Object.keys(right ?? {})
+  ]);
+  for (const key of keys) {
     const leftSettings = left?.[key] ?? null;
     const rightSettings = right?.[key] ?? null;
     if (
@@ -506,7 +533,9 @@ function areAgentGUINodePropsEqual(
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
     previous.onAgentProviderLogin === next.onAgentProviderLogin &&
     previous.providerTargets === next.providerTargets &&
+    previous.providerTargetsLoading === next.providerTargetsLoading &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
+    previous.conversationScope === next.conversationScope &&
     previous.onClose === next.onClose &&
     previous.onResize === next.onResize &&
     previous.onUpdateNode === next.onUpdateNode &&
@@ -563,7 +592,9 @@ export const AgentGUINode = memo(function AgentGUINode({
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   providerTargets,
+  providerTargetsLoading = false,
   defaultProviderTargetId = null,
+  conversationScope = "single-provider",
   onWorkspaceFileReferencesAdded,
   onOpenConversationWindow,
   onClose,
@@ -729,9 +760,11 @@ export const AgentGUINode = memo(function AgentGUINode({
     workspacePath,
     avoidGroupingEdits: agentSettings.avoidGroupingEdits,
     data: state,
+    conversationScope,
     openSessionRequest,
     prefillPromptRequest,
     providerTargets,
+    providerTargetsLoading,
     defaultProviderTargetId,
     previewMode,
     onDataChange: handleDataChange,
@@ -786,6 +819,34 @@ export const AgentGUINode = memo(function AgentGUINode({
         language: locale
       })
     : null;
+  useEffect(() => {
+    if (previewMode || !viewModel.activeConversation) {
+      return;
+    }
+    const conversationTitle = activeConversationDockTitle?.trim() ?? "";
+    if (!conversationTitle) {
+      return;
+    }
+    const conversationId = viewModel.activeConversation.id;
+    onUpdateNode((current) => {
+      if (
+        current.lastActiveAgentSessionId === conversationId &&
+        current.lastActiveConversationTitle === conversationTitle
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        lastActiveAgentSessionId: conversationId,
+        lastActiveConversationTitle: conversationTitle
+      };
+    });
+  }, [
+    activeConversationDockTitle,
+    onUpdateNode,
+    previewMode,
+    viewModel.activeConversation
+  ]);
   const labels = useMemo<AgentGUIViewLabels>(
     () => ({
       initialPlaceholder: t("agentHost.agentGui.initialPlaceholder", {
@@ -922,6 +983,12 @@ export const AgentGUINode = memo(function AgentGUINode({
       emptyProjectConversations: t(
         "agentHost.agentGui.emptyProjectConversations"
       ),
+      conversationFilterAll: t("agentHost.agentGui.conversationFilterAll"),
+      conversationFilterCodex: t("agentHost.agentGui.conversationFilterCodex"),
+      conversationFilterClaudeCode: t(
+        "agentHost.agentGui.conversationFilterClaudeCode"
+      ),
+      providerSwitchLabel: t("agentHost.agentGui.providerSwitchLabel"),
       startConversation: t("agentHost.agentGui.startConversation"),
       selectConversation: t("agentHost.agentGui.selectConversation"),
       loadingConversations: t("agentHost.agentGui.loadingConversations"),
@@ -1257,7 +1324,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     [t]
   );
   const collapsedWindowConversationTitle = isConversationRailCollapsed
-    ? (activeConversationDockTitle ?? state.lastActiveConversationTitle ?? null)
+    ? activeConversationDockTitle
     : null;
   const windowTitle =
     collapsedWindowConversationTitle ||
@@ -1267,42 +1334,6 @@ export const AgentGUINode = memo(function AgentGUINode({
   const windowTitleIconUrl =
     agentGuiDockIconUrls[activeProvider as keyof typeof agentGuiDockIconUrls] ??
     null;
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    if (!viewModel.activeConversation) {
-      return;
-    }
-    const nextTitle = activeConversationDockTitle;
-    const previousTitle = state.lastActiveConversationTitle ?? null;
-    if (
-      nextTitle === null &&
-      previousTitle !== null &&
-      viewModel.activeConversation.id === state.lastActiveAgentSessionId
-    ) {
-      return;
-    }
-    if ((state.lastActiveConversationTitle ?? null) === nextTitle) {
-      return;
-    }
-    onUpdateNode((current) => {
-      if ((current.lastActiveConversationTitle ?? null) === nextTitle) {
-        return current;
-      }
-      return {
-        ...current,
-        lastActiveConversationTitle: nextTitle
-      };
-    });
-  }, [
-    activeConversationDockTitle,
-    onUpdateNode,
-    previewMode,
-    state.lastActiveAgentSessionId,
-    state.lastActiveConversationTitle,
-    viewModel.activeConversation
-  ]);
   const activeProbeProvider = activeProvider as AgentProvider;
   const activeAgentProbe = useMemo(
     () =>

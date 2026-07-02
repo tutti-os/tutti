@@ -5,6 +5,7 @@ import (
 	"time"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
@@ -14,6 +15,7 @@ type Service struct {
 	AnalyticsReporter            reporterservice.Reporter
 	AvailabilityChecker          ProviderAvailabilityChecker
 	ModelCatalog                 AgentModelCatalog
+	AgentTargetStore             AgentTargetStore
 	SessionReader                SessionReader
 	MessageReader                MessageReader
 	ExternalImportStore          agentactivitybiz.Repository
@@ -54,12 +56,17 @@ type SessionDirectoryAllocator interface {
 	CreateSessionDirectory(context.Context) (string, error)
 }
 
+type AgentTargetStore interface {
+	GetAgentTarget(context.Context, string) (agenttargetbiz.Target, error)
+}
+
 type ComposerCapabilityLister interface {
 	ListComposerCapabilityOptions(context.Context, string, string, []ComposerSkillOption) ([]ComposerCapabilityOption, []string)
 }
 
 type Session struct {
 	ID                 string
+	AgentTargetID      string
 	Provider           string
 	ProviderSessionID  string
 	Cwd                string
@@ -125,6 +132,7 @@ type PersistedSession struct {
 	ID                string
 	WorkspaceID       string
 	Origin            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Cwd               string
@@ -186,6 +194,7 @@ type SessionPinUpdater interface {
 type RuntimeSession struct {
 	ID                 string
 	WorkspaceID        string
+	AgentTargetID      string
 	Provider           string
 	ProviderSessionID  string
 	Cwd                string
@@ -206,6 +215,7 @@ type RuntimeSession struct {
 type RuntimeStartInput struct {
 	WorkspaceID            string
 	AgentSessionID         string
+	AgentTargetID          string
 	Provider               string
 	Cwd                    string
 	Env                    []string
@@ -225,6 +235,7 @@ type RuntimeStartInput struct {
 type RuntimeResumeInput struct {
 	WorkspaceID       string
 	AgentSessionID    string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Cwd               string
@@ -331,6 +342,7 @@ type RuntimeStreamEvent struct {
 
 type CreateSessionInput struct {
 	AgentSessionID         string
+	AgentTargetID          string
 	Provider               string
 	InitialContent         []PromptContentBlock
 	InitialDisplayPrompt   string

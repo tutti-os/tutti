@@ -27,6 +27,7 @@ import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-ap
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import type { IReporterService } from "@renderer/features/analytics";
+import type { DesktopAgentDockLayout } from "@shared/preferences";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import type {
   WorkspaceWorkbenchBodyRendererContext,
@@ -36,6 +37,7 @@ import type { WorkspaceBrowserService } from "./workspaceBrowserService.ts";
 
 export interface DesktopWorkbenchContributionContext {
   appI18n: I18nRuntime<string>;
+  agentDockLayout: DesktopAgentDockLayout;
   appCenterService: IWorkspaceAppCenterService;
   browserApi?: DesktopBrowserApi;
   browserService: WorkspaceBrowserService;
@@ -47,6 +49,7 @@ export interface DesktopWorkbenchContributionContext {
   defaultAgentProvider?: string | null;
   defaultProviderTargetId?: string | null;
   dockIcons: {
+    agentUnified: string;
     agents: Record<string, string>;
     applications: string;
     browser: string;
@@ -60,6 +63,7 @@ export interface DesktopWorkbenchContributionContext {
     target: WorkspaceWorkbenchCapabilitySettingsTarget
   ) => void;
   providerTargets?: readonly AgentGUIProviderTarget[];
+  providerTargetsLoading?: boolean;
   agentProviderStatusService: AgentProviderStatusService;
   workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;

@@ -160,6 +160,7 @@ export function toAgentHostAgentSessionFromCore(
 ): AgentHostAgentSession {
   return {
     agentSessionId: session.agentSessionId,
+    agentTargetId: session.agentTargetId ?? null,
     createdAtUnixMs: session.createdAtUnixMs ?? 0,
     cwd: options.cwd ?? session.cwd ?? "/",
     permissionModeId: options.permissionModeId ?? undefined,
@@ -195,6 +196,7 @@ export function toAgentHostAgentSessionState(
     session.runtimeContext ?? options.defaults?.runtimeContext;
   return {
     agentSessionId,
+    agentTargetId: session.agentTargetId ?? null,
     ...(settings ? { settings } : {}),
     ...(session.permissionConfig
       ? { permissionConfig: session.permissionConfig }
@@ -202,7 +204,7 @@ export function toAgentHostAgentSessionState(
     ...(runtimeContext ? { runtimeContext } : {}),
     permissionModeId: resolveComposerPermissionMode(settings) ?? undefined,
     provider: session.provider,
-    providerSessionId: session.id,
+    providerSessionId: session.providerSessionId ?? session.id,
     resumable: session.resumable ?? false,
     status: toAgentHostAgentSessionStatus(session.status),
     ...(session.turnLifecycle ? { turnLifecycle: session.turnLifecycle } : {}),
@@ -225,6 +227,7 @@ export function agentHostWorkspaceSessionFromCore(
     options.agentSessionId?.trim() || session.agentSessionId;
   return {
     agentSessionId,
+    agentTargetId: session.agentTargetId ?? null,
     createdAtUnixMs: session.createdAtUnixMs,
     cwd: session.cwd ?? "/",
     endedAtUnixMs: session.endedAtUnixMs,
