@@ -41,7 +41,7 @@ function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
   if (normalizedKind !== "edit" && normalizedKind !== "move") {
     return null;
   }
-  const input = objectValue(toolCall.rawInput);
+  const input = objectValue(toolCall.rawInput) ?? objectValue(toolCall.input);
   const content = arrayValue(toolCall.content);
   const locations = arrayValue(toolCall.locations);
   return {

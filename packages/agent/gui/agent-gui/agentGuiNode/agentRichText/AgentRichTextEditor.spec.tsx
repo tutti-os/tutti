@@ -1290,6 +1290,34 @@ describe("AgentRichTextEditor", () => {
     ).not.toBeNull();
   });
 
+  it("renders agent target mention chips from markdown hrefs", async () => {
+    render(
+      <AgentRichTextEditor
+        value="[@Claude Code](mention://agent-target/local:claude-code?workspaceId=workspace-1)"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    await waitFor(() =>
+      expect(
+        editor.querySelector('[data-agent-mention-kind="agent-target"]')
+      ).not.toBeNull()
+    );
+
+    const agentMention = editor.querySelector(
+      '[data-agent-mention-kind="agent-target"]'
+    );
+    expect(agentMention).toHaveTextContent("Claude Code");
+    expect(agentMention).toHaveAttribute(
+      "data-agent-mention-kind",
+      "agent-target"
+    );
+  });
+
   it("renders image file mention chips with dock preview thumbnails", async () => {
     let suggestionState: AgentFileMentionSuggestionState | null = null;
     render(

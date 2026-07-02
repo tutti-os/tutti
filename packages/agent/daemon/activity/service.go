@@ -458,11 +458,15 @@ func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessi
 		RuntimeContext:     clonePayloadMap(state.RuntimeContext),
 		TurnLifecycle:      cloneTurnLifecycle(state.TurnLifecycle),
 		SubmitAvailability: cloneSubmitAvailability(state.SubmitAvailability),
+		PendingInteractive: cloneInteractivePrompt(state.PendingInteractive),
 		CWD:                strings.TrimSpace(state.CWD),
 		Title:              strings.TrimSpace(state.Title),
 		LifecycleStatus:    strings.TrimSpace(state.LifecycleStatus),
 		CurrentPhase:       strings.TrimSpace(state.CurrentPhase),
 		OccurredAtUnixMS:   state.OccurredAtUnixMS,
+	}
+	if state.PendingInteractive != nil {
+		patch.PendingInteractivePresent = true
 	}
 	if state.Turn != nil {
 		patch.Turn = &WorkspaceAgentTurnPatch{

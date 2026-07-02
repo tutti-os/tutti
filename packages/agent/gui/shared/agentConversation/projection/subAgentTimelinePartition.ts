@@ -14,10 +14,11 @@ import type { AgentToolGroupRowVM } from "../contracts/agentToolGroupRowVM";
 
 // Codex app-server collab child threads report their activity through the
 // parent session. The daemon stamps every child-thread row with a non-empty
-// payload.ownerThreadId (reporter.go withOwnerThreadID); parent rows never
-// carry the key. These rows must never interleave with the parent transcript:
-// they are segregated here and re-surfaced as live sub-agent lanes on the
-// parent's collab tool card (the spawn card, which has no ownerThreadId).
+// payload.ownerThreadId plus payload.ownerCallId — the spawn call that
+// created the thread (reporter.go withOwnerThreadID, ADR 0007); parent rows
+// never carry the keys. These rows must never interleave with the parent
+// transcript: they are segregated here and re-surfaced as live sub-agent
+// lanes on the parent's collab spawn card, located by ownerCallId alone.
 
 export interface SubAgentTimelinePartition {
   mainTimelineItems: WorkspaceAgentActivityTimelineItem[];
@@ -30,11 +31,20 @@ export interface SubAgentTimelinePartition {
 export function timelineItemOwnerThreadId(
   item: WorkspaceAgentActivityTimelineItem
 ): string | null {
-  const ownerThreadId = item.payload?.ownerThreadId;
-  if (typeof ownerThreadId !== "string") {
+  return trimmedPayloadString(item.payload?.ownerThreadId);
+}
+
+export function timelineItemOwnerCallId(
+  item: WorkspaceAgentActivityTimelineItem
+): string | null {
+  return trimmedPayloadString(item.payload?.ownerCallId);
+}
+
+function trimmedPayloadString(value: unknown): string | null {
+  if (typeof value !== "string") {
     return null;
   }
-  const trimmed = ownerThreadId.trim();
+  const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -72,12 +82,11 @@ export function partitionSubAgentTimelineItems(
 }
 
 // A collab spawn card summarizes one delegated agent in the parent transcript.
-// Lanes attach to cards by (a) the card input's receiverThreadIds — the daemon
-// forwards the raw item's declared child thread ids, the authoritative key —
-// then (b) exact match on a completed card's output payload mentioning the
-// child thread id, and finally (c) time affinity for rows produced before the
-// daemon forwarded receiverThreadIds: the most recently started collab card
-// that began at or before the lane's first activity, preferring running cards.
+// Lanes attach to cards by the ownerCallId the daemon records on every child
+// row (the spawn call's item id, ADR 0007) — an exact lookup, never a guess.
+// Rows without the key (recordings that predate it) and rows whose spawn card
+// is outside the loaded message window stay hidden: a partial timeline must
+// degrade to "not loaded yet", not to a mis-attached lane.
 interface SubAgentCollabCard {
   callId: string;
   startedAtUnixMs: number;
@@ -87,7 +96,6 @@ interface SubAgentCollabCard {
   // tool-rejected), where no child lifecycle exists to drive the lane.
   callStatus: AgentTaskSubAgentStatus;
   receiverThreadIds: ReadonlySet<string>;
-  outputStrings: ReadonlySet<string>;
   childStatuses: ReadonlyMap<string, AgentTaskSubAgentStatus>;
 }
 
@@ -99,17 +107,18 @@ export function buildSubAgentLanesByCallId(
   if (cards.length === 0) {
     return lanesByCallId;
   }
+  const cardsByCallId = new Map(cards.map((card) => [card.callId, card]));
   const lanedOwners = new Set<string>();
   for (const [ownerThreadId, items] of partition.subAgentItemsByOwner) {
     const sortedItems = [...items].sort(compareTimelineItemsAscending);
-    const startedAtUnixMs = timelineItemTime(sortedItems[0]);
-    const card =
-      cards.find((candidate) =>
-        candidate.receiverThreadIds.has(ownerThreadId)
-      ) ??
-      cards.find((candidate) => candidate.outputStrings.has(ownerThreadId)) ??
-      matchCardByTimeAffinity(cards, startedAtUnixMs);
-    if (!card) {
+    const ownerCallId = firstOwnerCallId(sortedItems);
+    if (!ownerCallId) {
+      continue;
+    }
+    const card = cardsByCallId.get(ownerCallId);
+    // The daemon never records a control card as owner; skipping here keeps
+    // wait/close cards lane-free even against malformed rows.
+    if (!card || isControlAgentToken(card.agentName)) {
       continue;
     }
     lanedOwners.add(ownerThreadId);
@@ -432,7 +441,6 @@ function collectCollabCards(
       latestAtUnixMs: number;
       latestCallStatus: string | null;
       receiverThreadIds: Set<string>;
-      outputStrings: Set<string>;
       childStatuses: Map<string, AgentTaskSubAgentStatus>;
     }
   >();
@@ -458,7 +466,6 @@ function collectCollabCards(
           stringValue(item.payload?.status)
         ),
         receiverThreadIds: collectReceiverThreadIds(input),
-        outputStrings: collectStringValues(output),
         childStatuses: collectChildStatuses(output)
       });
       continue;
@@ -472,9 +479,6 @@ function collectCollabCards(
     }
     for (const value of collectReceiverThreadIds(input)) {
       existing.receiverThreadIds.add(value);
-    }
-    for (const value of collectStringValues(output)) {
-      existing.outputStrings.add(value);
     }
     for (const [threadId, childStatus] of collectChildStatuses(output)) {
       existing.childStatuses.set(threadId, childStatus);
@@ -492,7 +496,6 @@ function collectCollabCards(
         agentName: stringValue(input?.agentName),
         callStatus: subAgentStatusFromCallStatus(card.latestCallStatus),
         receiverThreadIds: card.receiverThreadIds,
-        outputStrings: card.outputStrings,
         childStatuses: card.childStatuses
       };
     })
@@ -521,29 +524,28 @@ function isCollabCardItem(item: WorkspaceAgentActivityTimelineItem): boolean {
   return COLLAB_CARD_TOOL_NAMES.has(toolName);
 }
 
-function matchCardByTimeAffinity(
-  cards: readonly SubAgentCollabCard[],
-  laneStartedAtUnixMs: number
-): SubAgentCollabCard | null {
-  const startedBeforeLane = cards.filter(
-    (card) => card.startedAtUnixMs <= laneStartedAtUnixMs
-  );
-  const candidates = startedBeforeLane.length > 0 ? startedBeforeLane : cards;
-  const pool = candidates;
-  if (pool.length === 0) {
-    return null;
+function firstOwnerCallId(
+  sortedItems: readonly WorkspaceAgentActivityTimelineItem[]
+): string | null {
+  for (const item of sortedItems) {
+    const ownerCallId = timelineItemOwnerCallId(item);
+    if (ownerCallId) {
+      return ownerCallId;
+    }
   }
-  if (startedBeforeLane.length > 0) {
-    // Latest card that had already started when the lane began.
-    return pool.reduce((latest, card) =>
-      card.startedAtUnixMs >= latest.startedAtUnixMs ? card : latest
-    );
+  return null;
+}
+
+function isControlAgentToken(agentName: string | null): boolean {
+  switch (normalizeToolToken(agentName)) {
+    case "wait":
+    case "waitagent":
+    case "close":
+    case "closeagent":
+      return true;
+    default:
+      return false;
   }
-  // Ordering edge: the lane's rows arrived before any card. Attach to the
-  // earliest candidate so the lane surfaces as soon as a card exists.
-  return pool.reduce((earliest, card) =>
-    card.startedAtUnixMs < earliest.startedAtUnixMs ? card : earliest
-  );
 }
 
 function subAgentStatusFromCallStatus(
@@ -660,43 +662,6 @@ function collectChildStatusesInto(
       }
     }
     collectChildStatusesInto(entry, out, depth + 1);
-  }
-}
-
-function collectStringValues(value: unknown, depth = 0): Set<string> {
-  const out = new Set<string>();
-  collectStringValuesInto(value, depth, out);
-  return out;
-}
-
-function collectStringValuesInto(
-  value: unknown,
-  depth: number,
-  out: Set<string>
-): void {
-  if (depth > 5 || value == null) {
-    return;
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed) {
-      out.add(trimmed);
-    }
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      collectStringValuesInto(entry, depth + 1, out);
-    }
-    return;
-  }
-  if (typeof value === "object") {
-    for (const [key, entry] of Object.entries(
-      value as Record<string, unknown>
-    )) {
-      out.add(key);
-      collectStringValuesInto(entry, depth + 1, out);
-    }
   }
 }
 

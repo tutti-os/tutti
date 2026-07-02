@@ -233,7 +233,8 @@ export function createDesktopAgentGUIWorkbenchHostInput({
           "file",
           "workspace-issue",
           "agent-session",
-          "workspace-app"
+          "workspace-app",
+          "agent-target"
         ],
         surface: "composer",
         target: "agent-gui",

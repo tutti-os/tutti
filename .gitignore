@@ -43,6 +43,7 @@ apps/desktop/build/tuttid/
 apps/desktop/build/tuttid-dev/
 apps/desktop/build/tutti/
 apps/desktop/build/browser-mcp/
+apps/desktop/build/claude-sdk-sidecar/
 apps/cli/build/
 services/tuttid/builtin-apps/tutti-onboarding/build/
 

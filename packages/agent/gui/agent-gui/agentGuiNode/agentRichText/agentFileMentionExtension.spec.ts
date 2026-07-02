@@ -84,6 +84,21 @@ describe("parseAgentMentionMarkdown", () => {
     });
   });
 
+  it("accepts agent target mention hrefs without an @ prefix", () => {
+    expect(
+      parseAgentMentionMarkdown(
+        "[Codex](mention://agent-target/local:codex?workspaceId=workspace-1)"
+      )
+    ).toMatchObject({
+      item: {
+        kind: "agent-target",
+        workspaceId: "workspace-1",
+        targetId: "local:codex",
+        name: "Codex"
+      }
+    });
+  });
+
   it("accepts workspace issue mention hrefs without an @ prefix", () => {
     expect(
       parseAgentMentionMarkdown(
@@ -254,6 +269,42 @@ describe("attrsToMentionItem", () => {
       source: "app",
       fileCount: 0
     });
+  });
+
+  it("round-trips agent target attrs", () => {
+    expect(
+      attrsToMentionItem({
+        kind: "agent-target",
+        href: "mention://agent-target/local:claude-code?workspaceId=ws-1",
+        name: "Claude Code",
+        targetId: "local:claude-code",
+        workspaceId: "ws-1",
+        description: "Run Claude Code locally",
+        agentProviderId: "claude-code",
+        iconUrl: "tutti://agent/claude-code.svg"
+      })
+    ).toMatchObject({
+      kind: "agent-target",
+      targetId: "local:claude-code",
+      workspaceId: "ws-1",
+      agentProviderId: "claude-code",
+      iconUrl: "tutti://agent/claude-code.svg"
+    });
+  });
+});
+
+describe("formatAgentMentionMarkdown — agent target", () => {
+  it("renders the agent-target mention href without falling back to workspace-app", () => {
+    expect(
+      formatAgentMentionMarkdown({
+        kind: "agent-target",
+        href: "mention://agent-target/local:codex?workspaceId=ws-1",
+        workspaceId: "ws-1",
+        targetId: "local:codex",
+        name: "Codex",
+        agentProviderId: "codex"
+      })
+    ).toBe("[@Codex](mention://agent-target/local:codex?workspaceId=ws-1)");
   });
 });
 

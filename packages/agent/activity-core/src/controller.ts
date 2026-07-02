@@ -565,6 +565,14 @@ function cloneAgentActivitySession(
     submitAvailability: session.submitAvailability
       ? { ...session.submitAvailability }
       : session.submitAvailability,
+    pendingInteractive:
+      session.pendingInteractive === null
+        ? null
+        : session.pendingInteractive
+          ? (cloneJSONValue(
+              session.pendingInteractive
+            ) as AgentActivitySession["pendingInteractive"])
+          : session.pendingInteractive,
     runtimeContext: cloneJSONRecord(session.runtimeContext)
   };
 }
@@ -1316,6 +1324,16 @@ function inlineStatePatchFromActivityUpdateData(
     runtimeContext: cloneJSONRecord(
       recordValue(source.runtimeContext) ?? undefined
     ),
+    ...(source.pendingInteractive !== undefined
+      ? {
+          pendingInteractive:
+            source.pendingInteractive === null
+              ? null
+              : (cloneJSONValue(
+                  recordValue(source.pendingInteractive) ?? {}
+                ) as AgentActivityStatePatch["pendingInteractive"])
+        }
+      : {}),
     startedAtUnixMs: numberValue(source.startedAtUnixMs),
     endedAtUnixMs: numberValue(source.endedAtUnixMs),
     title: stringValue(source.title) || undefined,
@@ -1414,6 +1432,14 @@ function agentActivitySessionFromInlineStatePatch(input: {
     runtimeContext:
       cloneJSONRecord(input.patch.runtimeContext) ??
       cloneJSONRecord(input.existingSession.runtimeContext),
+    pendingInteractive:
+      input.patch.pendingInteractive !== undefined
+        ? input.patch.pendingInteractive === null
+          ? null
+          : (cloneJSONValue(
+              input.patch.pendingInteractive
+            ) as AgentActivitySession["pendingInteractive"])
+        : input.existingSession.pendingInteractive,
     lastEventUnixMs:
       input.patch.lastEventUnixMs ??
       input.patch.occurredAtUnixMs ??
@@ -1435,6 +1461,14 @@ function cloneAgentActivityStatePatch(
   return {
     ...statePatch,
     runtimeContext: cloneJSONRecord(statePatch.runtimeContext),
+    pendingInteractive:
+      statePatch.pendingInteractive === null
+        ? null
+        : statePatch.pendingInteractive
+          ? (cloneJSONValue(
+              statePatch.pendingInteractive
+            ) as AgentActivityStatePatch["pendingInteractive"])
+          : statePatch.pendingInteractive,
     ...(statePatch.submitAvailability
       ? { submitAvailability: { ...statePatch.submitAvailability } }
       : {}),

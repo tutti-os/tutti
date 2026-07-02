@@ -9,7 +9,7 @@ import "encoding/json"
 type Notification struct {
 	Method string
 	Params any
-	Raw json.RawMessage
+	Raw    json.RawMessage
 }
 
 type notificationParser func(json.RawMessage) (Notification, error)

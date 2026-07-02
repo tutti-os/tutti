@@ -27,7 +27,7 @@ type ServerRequestHandler interface {
 type ParsedServerRequest struct {
 	Method string
 	Params any
-	Raw json.RawMessage
+	Raw    json.RawMessage
 }
 
 type serverRequestParser func(json.RawMessage) (ParsedServerRequest, error)

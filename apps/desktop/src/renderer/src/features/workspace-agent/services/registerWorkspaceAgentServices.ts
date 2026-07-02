@@ -11,8 +11,10 @@ import { IAgentProviderStatusService } from "./agentProviderStatusService.interf
 import type { AgentProviderTerminalCommandRunner } from "./agentProviderStatusService.interface";
 import { bindDesktopManagedAgentProviderVisibilityRefresh } from "./internal/desktopAgentProviderVisibilityRefresh.ts";
 import { DesktopAgentProviderStatusService } from "./internal/desktopAgentProviderStatusService";
+import { DesktopAgentsService } from "./internal/desktopAgentsService";
 import { WorkspaceAgentActivityService } from "./internal/workspaceAgentActivityService";
 import { WorkspaceAgentPromptSessionService } from "./internal/workspaceAgentPromptSessionService";
+import { IAgentsService } from "./agentsService.interface";
 import { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import { IWorkspaceAgentPromptSessionService } from "./workspaceAgentPromptSessionService.interface";
 
@@ -29,11 +31,13 @@ export interface WorkspaceAgentServiceRegistrationInput {
     DesktopRuntimeApi,
     "logRendererDiagnostic" | "logTerminalDiagnostic"
   >;
+  resolveAgentIconUrl?: (provider: string) => string;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
 
 export interface WorkspaceAgentServiceRegistrationResult {
+  agentsService: IAgentsService;
   agentProviderStatusService: IAgentProviderStatusService;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
 }
@@ -56,6 +60,11 @@ export function registerWorkspaceAgentServices(
     agentProviderStatusService
   );
   bindDesktopManagedAgentProviderVisibilityRefresh(agentProviderStatusService);
+  const agentsService = new DesktopAgentsService({
+    resolveAgentIconUrl: input.resolveAgentIconUrl,
+    tuttidClient: input.tuttidClient
+  });
+  registry.registerInstance(IAgentsService, agentsService);
   const workspaceAgentActivityService = new WorkspaceAgentActivityService({
     ...input,
     agentProviderStatusService
@@ -72,5 +81,9 @@ export function registerWorkspaceAgentServices(
       workspaceUserProjectService: input.workspaceUserProjectService
     })
   );
-  return { agentProviderStatusService, workspaceAgentActivityService };
+  return {
+    agentsService,
+    agentProviderStatusService,
+    workspaceAgentActivityService
+  };
 }

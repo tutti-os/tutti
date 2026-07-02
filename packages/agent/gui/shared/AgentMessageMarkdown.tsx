@@ -55,6 +55,12 @@ import {
 import { resolveAgentWorkspaceFileVisualKind } from "./workspaceFileVisualKind";
 import { stabilizeStreamingMarkdownTail } from "./streamingMarkdownTailStabilizer";
 import { useStreamingVisibleText } from "./useStreamingVisibleText";
+import { managedAgentRoundedIconUrl } from "./managedAgentIcons";
+import {
+  resolveAgentTargetPresentation,
+  useAgentTargetPresentations,
+  type AgentMessageMarkdownAgentTarget
+} from "./AgentTargetPresentationContext";
 
 const COLLAPSED_LINE_LIMIT = 8;
 const APPROX_CHARS_PER_LINE = 34;
@@ -109,6 +115,7 @@ interface AgentMessageMarkdownProps {
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   workspaceLinkContext?: AgentMessageMarkdownWorkspaceLinkContext | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   collapsible?: boolean;
   expandLabel?: string;
   className?: string;
@@ -128,6 +135,7 @@ export interface AgentMessageMarkdownWorkspaceAppIcon {
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
+const EMPTY_AGENT_TARGETS: readonly AgentMessageMarkdownAgentTarget[] = [];
 
 type MarkdownDomProps<Tag extends keyof JSX.IntrinsicElements> =
   ComponentPropsWithoutRef<Tag> & {
@@ -146,6 +154,7 @@ export function AgentMessageMarkdown({
   onLinkAction,
   workspaceLinkContext = null,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
+  agentTargets,
   collapsible = false,
   expandLabel,
   className,
@@ -158,6 +167,8 @@ export function AgentMessageMarkdown({
 }: AgentMessageMarkdownProps): JSX.Element {
   "use memo";
   const { t } = useTranslation();
+  const contextAgentTargets = useAgentTargetPresentations();
+  const effectiveAgentTargets = agentTargets ?? contextAgentTargets;
   const visibleContent = useStreamingVisibleText(content, {
     enabled: streaming,
     frameMs: STREAMING_MARKDOWN_FRAME_MS,
@@ -248,6 +259,7 @@ export function AgentMessageMarkdown({
           {...props}
           onLinkClick={handleLinkClick}
           workspaceAppIcons={workspaceAppIcons}
+          agentTargets={effectiveAgentTargets}
           previewMode={previewMode}
         />
       ),
@@ -264,7 +276,14 @@ export function AgentMessageMarkdown({
       ol: MarkdownOrderedList,
       li: MarkdownListItem
     }),
-    [enableImageZoom, handleLinkClick, inline, previewMode, workspaceAppIcons]
+    [
+      effectiveAgentTargets,
+      enableImageZoom,
+      handleLinkClick,
+      inline,
+      previewMode,
+      workspaceAppIcons
+    ]
   );
 
   return (
@@ -603,12 +622,14 @@ function MarkdownLink({
   onClick: _onClick,
   onLinkClick,
   workspaceAppIcons,
+  agentTargets,
   previewMode,
   href,
   ...props
 }: MarkdownDomProps<"a"> & {
   onLinkClick?: (href: string) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   previewMode?: boolean;
 }): JSX.Element {
   "use memo";
@@ -619,6 +640,7 @@ function MarkdownLink({
         targetHref,
         textFromReactNode(props.children),
         workspaceAppIcons ?? [],
+        agentTargets ?? EMPTY_AGENT_TARGETS,
         t("agentHost.agentGui.workspaceAppFactoryMentionFallback")
       )
     : null;
@@ -867,7 +889,8 @@ function MentionLink({
       }}
     >
       {mention.kind === "workspace-app" ||
-      mention.kind === "workspace-reference" ? (
+      mention.kind === "workspace-reference" ||
+      mention.kind === "agent-target" ? (
         <span
           className="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-[4px] bg-block"
           aria-hidden="true"
@@ -1612,12 +1635,14 @@ function markdownUrlTransform(value: string): string {
 
 type MentionKind =
   | "session"
+  | "agent-target"
   | "workspace-app"
   | "workspace-reference"
   | "workspace-app-factory"
   | "workspace-issue";
 
 interface ParsedMentionLink {
+  agentProviderId?: string;
   appId?: string;
   kind: MentionKind;
   label: string;
@@ -1633,6 +1658,7 @@ function parseMentionLink(
   href: string,
   rawLabel: string,
   workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[] = [],
+  agentTargets: readonly AgentMessageMarkdownAgentTarget[] = EMPTY_AGENT_TARGETS,
   appFactoryFallbackLabel = "Create app"
 ): ParsedMentionLink | null {
   const mention = parseRichTextMentionHref(href, rawLabel);
@@ -1651,9 +1677,12 @@ function parseMentionLink(
             ? "workspace-app-factory"
             : resource === "workspace-issue"
               ? "workspace-issue"
-              : resource;
+              : resource === "agent-target"
+                ? "agent-target"
+                : resource;
   if (
     kind !== "session" &&
+    kind !== "agent-target" &&
     kind !== "workspace-app" &&
     kind !== "workspace-reference" &&
     kind !== "workspace-app-factory" &&
@@ -1685,6 +1714,25 @@ function parseMentionLink(
           }
         : {}),
       participant: label,
+      summary: ""
+    };
+  }
+  if (kind === "agent-target") {
+    const workspaceId = mention.scope?.workspaceId?.trim() || "";
+    const target = resolveAgentTargetPresentation({
+      agentTargetId: entityId,
+      agentTargets,
+      workspaceId
+    });
+    const agentProviderId = target?.provider?.trim() || undefined;
+    const targetLabel = target?.name?.trim() || label;
+    return {
+      agentProviderId,
+      kind,
+      label: targetLabel,
+      iconUrl:
+        target?.iconUrl?.trim() || managedAgentRoundedIconUrl(agentProviderId),
+      participant: targetLabel,
       summary: ""
     };
   }

@@ -2024,6 +2024,10 @@ func TestClaudeCodeAdapterStartAppliesPlanMode(t *testing.T) {
 	if !ok || !monitorDisallowed {
 		t.Fatalf("disallowedTools = %#v, want Monitor disabled", options["disallowedTools"])
 	}
+	tools, ok := options["tools"].(map[string]any)
+	if !ok || tools["type"] != "preset" || tools["preset"] != "claude_code" {
+		t.Fatalf("tools = %#v, want claude_code preset", options["tools"])
+	}
 }
 
 func TestClaudeCodeAdapterApplySessionSettingsTogglesPlanMode(t *testing.T) {
@@ -2245,6 +2249,16 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 	if !ok {
 		t.Fatalf("claudeCode.options = %#v, want map", claudeCode["options"])
 	}
+	allowedTools, ok := options["allowedTools"].([]any)
+	grepAllowed := false
+	globAllowed := false
+	for _, tool := range allowedTools {
+		grepAllowed = grepAllowed || asString(tool) == "Grep"
+		globAllowed = globAllowed || asString(tool) == "Glob"
+	}
+	if !ok || !grepAllowed || !globAllowed {
+		t.Fatalf("allowedTools = %#v, want Grep and Glob enabled", options["allowedTools"])
+	}
 	plugins, ok := options["plugins"].([]any)
 	if !ok || len(plugins) != 1 {
 		t.Fatalf("claudeCode.options.plugins = %#v, want local plugin list", options["plugins"])
@@ -2257,8 +2271,8 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 		t.Fatalf("claudeCode.options.plugins = %#v, want local plugin path %q", plugins, pluginDir)
 	}
 	filters, ok := claudeCode["emitRawSDKMessages"].([]any)
-	if !ok || len(filters) != 2 {
-		t.Fatalf("claudeCode.emitRawSDKMessages = %#v, want system/init + result filters", claudeCode["emitRawSDKMessages"])
+	if !ok || len(filters) < 6 {
+		t.Fatalf("claudeCode.emitRawSDKMessages = %#v, want init/task/result filters", claudeCode["emitRawSDKMessages"])
 	}
 	filter, _ := filters[0].(map[string]any)
 	if got, _ := filter["type"].(string); got != "system" {
@@ -2268,13 +2282,22 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 		t.Fatalf("claudeCode.emitRawSDKMessages = %#v, want system init filter first", filters)
 	}
 	emittedTypes := map[string]bool{}
+	emittedSystemSubtypes := map[string]bool{}
 	for _, f := range filters {
 		m, _ := f.(map[string]any)
 		emittedTypes[asString(m["type"])] = true
+		if asString(m["type"]) == "system" {
+			emittedSystemSubtypes[asString(m["subtype"])] = true
+		}
 	}
 	for _, want := range []string{"system", "result"} {
 		if !emittedTypes[want] {
 			t.Fatalf("claudeCode.emitRawSDKMessages = %#v, want %q included for auth-failure capture", filters, want)
+		}
+	}
+	for _, want := range []string{"init", "task_started", "task_progress", "task_notification", "task_updated"} {
+		if !emittedSystemSubtypes[want] {
+			t.Fatalf("claudeCode.emitRawSDKMessages = %#v, want system/%q included", filters, want)
 		}
 	}
 	instructions, ok := options["planModeInstructions"].(string)
@@ -2540,6 +2563,100 @@ func TestClaudeCodeAdapterMirrorsSDKGoalStatusIntoRuntimeContext(t *testing.T) {
 	goal = payloadObject(snapshot.RuntimeContext["goal"])
 	if asString(goal["objective"]) != "ship native goal from transcript" || asString(goal["status"]) != "complete" || asString(goal["reason"]) != "top-level done" {
 		t.Fatalf("runtime goal = %#v, want complete top-level SDK goal status", goal)
+	}
+}
+
+func TestClaudeCodeAdapterProjectsSDKTaskMessagesIntoBackgroundAgents(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-task")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	startRaw, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"type":        "system",
+			"subtype":     "task_started",
+			"task_id":     "task-1",
+			"description": "Inspect ACP subagent flow",
+			"task_type":   "general",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal task started: %v", err)
+	}
+	events, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-task", acpMessage{
+		Method: claudeSDKMessageMethod,
+		Params: startRaw,
+	}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("handle task started: %v", err)
+	}
+	if len(activityEventsWithType(events, activityshared.EventActivityStarted)) != 1 ||
+		len(activityEventsWithType(events, activityshared.EventSessionUpdated)) != 1 {
+		t.Fatalf("events = %#v, want activity.started + session.updated", events)
+	}
+	background := payloadObject(adapter.SessionState(session).RuntimeContext["backgroundAgents"])
+	if got := background["count"]; got != 1 {
+		t.Fatalf("backgroundAgents = %#v, want running count 1", background)
+	}
+
+	progressRaw, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"type":           "system",
+			"subtype":        "task_progress",
+			"task_id":        "task-1",
+			"summary":        "Read t3code adapter",
+			"last_tool_name": "Grep",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal task progress: %v", err)
+	}
+	if _, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-task", acpMessage{
+		Method: claudeSDKMessageMethod,
+		Params: progressRaw,
+	}, nil, nil, nil); err != nil {
+		t.Fatalf("handle task progress: %v", err)
+	}
+	background = payloadObject(adapter.SessionState(session).RuntimeContext["backgroundAgents"])
+	items, _ := background["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("backgroundAgents = %#v, want one item", background)
+	}
+	item := payloadObject(items[0])
+	if asString(item["summary"]) != "Read t3code adapter" || asString(item["lastToolName"]) != "Grep" {
+		t.Fatalf("background item = %#v, want progress fields", item)
+	}
+
+	completeRaw, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"type":    "system",
+			"subtype": "task_notification",
+			"task_id": "task-1",
+			"status":  "completed",
+			"summary": "Done",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal task notification: %v", err)
+	}
+	events, err = adapter.handleACPMessage(context.Background(), nil, session, "turn-task", acpMessage{
+		Method: claudeSDKMessageMethod,
+		Params: completeRaw,
+	}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("handle task notification: %v", err)
+	}
+	if len(activityEventsWithType(events, activityshared.EventActivityCompleted)) != 1 {
+		t.Fatalf("events = %#v, want activity.completed", events)
+	}
+	background = payloadObject(adapter.SessionState(session).RuntimeContext["backgroundAgents"])
+	if got := background["count"]; got != 0 {
+		t.Fatalf("backgroundAgents = %#v, want running count 0", background)
 	}
 }
 

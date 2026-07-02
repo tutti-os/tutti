@@ -909,6 +909,64 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
+  it("keeps the processing row after an interim assistant message while the turn lifecycle is running", () => {
+    const interimTimelineItems = [
+      timelineItem({
+        id: 1,
+        eventId: "user-1",
+        turnId: "turn-1",
+        actorType: "user",
+        actorId: "user-1",
+        itemType: "message.user",
+        role: "user",
+        content: "Dispatch the sub-agents",
+        occurredAtUnixMs: 10
+      }),
+      timelineItem({
+        id: 2,
+        eventId: "assistant-1",
+        turnId: "turn-1",
+        actorType: "agent",
+        actorId: "codex",
+        itemType: "message.assistant",
+        role: "assistant",
+        content: "I will now dispatch the sub-agents.",
+        status: "completed",
+        occurredAtUnixMs: 20
+      })
+    ];
+    const conversationSource = {
+      id: "session-1",
+      provider: "codex" as const,
+      title: "Codex",
+      titleFallback: null,
+      status: "working" as const,
+      cwd: "/workspace",
+      updatedAtUnixMs: 20
+    };
+
+    const withRunningTurn = buildAgentGUIConversationVM({
+      conversation: {
+        ...conversationSource,
+        turnLifecycle: { activeTurnId: "turn-1", phase: "running" }
+      },
+      workspaceRoot: "/workspace",
+      timelineItems: interimTimelineItems
+    });
+    const withoutTurnLifecycle = buildAgentGUIConversationVM({
+      conversation: conversationSource,
+      workspaceRoot: "/workspace",
+      timelineItems: interimTimelineItems
+    });
+
+    expect(withRunningTurn?.rows.some((row) => row.kind === "processing")).toBe(
+      true
+    );
+    expect(
+      withoutTurnLifecycle?.rows.some((row) => row.kind === "processing")
+    ).toBe(false);
+  });
+
   it("derives pending approval from ACP call.started approval timeline items", () => {
     const conversation = buildAgentGUIConversationVM({
       conversation: {
@@ -1397,6 +1455,58 @@ describe("agentGuiConversationModel", () => {
     );
   });
 
+  it("treats streaming AskUserQuestion timeline items as pending prompts", () => {
+    expect(
+      selectPendingInteractivePromptFromTimelineItems([
+        {
+          id: 1,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          seq: 1,
+          eventId: "call-1",
+          actorType: "agent",
+          actorId: "claude-code",
+          itemType: "call.started",
+          role: "assistant",
+          callType: "interactive",
+          callId: "call-1",
+          name: "AskUserQuestion",
+          status: "streaming",
+          payload: {
+            input: {
+              requestId: "request-ask",
+              questions: [
+                {
+                  header: "Color",
+                  question: "What's your favorite color?",
+                  options: [
+                    { label: "Blue", description: "The color of the sky" }
+                  ]
+                }
+              ],
+              toolName: "AskUserQuestion"
+            },
+            metadata: {
+              adapter: "claude-agent-sdk",
+              callType: "interactive",
+              interactiveKind: "ask-user",
+              toolName: "AskUserQuestion"
+            },
+            status: "streaming",
+            toolName: "AskUserQuestion"
+          },
+          occurredAtUnixMs: 10,
+          createdAtUnixMs: 10
+        }
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        kind: "ask-user",
+        requestId: "request-ask"
+      })
+    );
+  });
+
   it("treats switch-mode approval timeline items as exit-plan prompts", () => {
     const item: AgentHostWorkspaceAgentTimelineItem = {
       id: 1,
@@ -1841,7 +1951,8 @@ describe("agentGuiConversationModel", () => {
         role: "assistant",
         payload: {
           text: "Scanning the repository layout",
-          ownerThreadId: "child-thread-1"
+          ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1"
         },
         occurredAtUnixMs: 30
       }),
@@ -1857,7 +1968,8 @@ describe("agentGuiConversationModel", () => {
         payload: {
           callId: "child-call-1",
           name: "Run command",
-          ownerThreadId: "child-thread-1"
+          ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1"
         },
         occurredAtUnixMs: 40
       })

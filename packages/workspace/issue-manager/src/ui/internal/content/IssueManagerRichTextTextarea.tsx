@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
+import type { RichTextTriggerQueryMatch } from "@tutti-os/ui-rich-text/types";
 import { RichTextTriggerEditor } from "@tutti-os/ui-rich-text/editor";
+import type { MentionPaletteCategoryConfig } from "@tutti-os/ui-rich-text/at-panel";
 import { Button, LinkIcon, cn } from "@tutti-os/ui-system";
 import type {
   IssueManagerController,
@@ -31,6 +33,22 @@ export function IssueManagerRichTextTextarea({
     () => controller.resolveRichTextTriggerProviders(surface),
     [controller, surface]
   );
+  const mentionPaletteCategories = useMemo(
+    () =>
+      [
+        {
+          id: "agent",
+          label: controller.copy.t("richTextAt.agents"),
+          providerIds: ["agent-target"]
+        },
+        {
+          id: "app",
+          label: controller.copy.t("richTextAt.apps"),
+          providerIds: ["workspace-app"]
+        }
+      ] satisfies readonly MentionPaletteCategoryConfig<RichTextTriggerQueryMatch>[],
+    [controller.copy]
+  );
   const showReferenceAction = controller.canReferenceWorkspaceFiles;
   const [focusSignal, setFocusSignal] = useState(0);
   const previousValueRef = useRef(value);
@@ -60,6 +78,16 @@ export function IssueManagerRichTextTextarea({
         loadingLabel: controller.copy.t("richTextAt.loading"),
         noMatchesLabel: controller.copy.t("richTextAt.noMatches"),
         removeReferenceActionLabel: controller.copy.t("actions.removeReference")
+      }}
+      palette={{
+        categories: mentionPaletteCategories,
+        defaultCategoryId: "agent",
+        labels: {
+          tabHint: controller.copy.t("richTextAt.switchCategory"),
+          cycleFilter: controller.copy.t("richTextAt.switchCategory"),
+          moveSelection: controller.copy.t("richTextAt.switchSelection"),
+          empty: controller.copy.t("richTextAt.noMatches")
+        }
       }}
       textareaClassName={cn(
         issueManagerRichTextTextareaBaseClassName,

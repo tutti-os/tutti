@@ -164,6 +164,10 @@ Current runtime behavior:
   hosts can set `menuPlacement` to `bottom-start`, `top-start`, or `auto-start`
   and adjust the gap with `menuOffset`; hosts that want AgentGUI-style panels
   aligned to the editor surface can set `menuAnchor` to `editor`
+- `RichTextTriggerEditor` renders a flat result menu by default; hosts that need
+  grouped AgentGUI-style tabs can pass the optional `palette` prop with
+  `MentionPaletteCategoryConfig[]`, labels, and a default category while keeping
+  query providers and insertion side effects host-owned
 
 ## External At-Panel Integration
 

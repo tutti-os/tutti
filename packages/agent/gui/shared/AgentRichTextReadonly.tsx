@@ -7,6 +7,11 @@ import { AGENT_RICH_TEXT_CARET_ANCHOR } from "../agent-gui/agentGuiNode/agentRic
 import { createAgentRichTextReadonlyExtensions } from "../agent-gui/agentGuiNode/agentRichText/agentRichTextExtensions";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "./AgentMessageMarkdown";
 import type { AgentGUIProviderSkillOption } from "../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
+import {
+  resolveAgentTargetPresentation,
+  useAgentTargetPresentations,
+  type AgentMessageMarkdownAgentTarget
+} from "./AgentTargetPresentationContext";
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
@@ -18,6 +23,7 @@ interface AgentRichTextReadonlyProps {
   onLinkClick?: (href: string) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
 }
 
 export function AgentRichTextReadonly({
@@ -26,13 +32,17 @@ export function AgentRichTextReadonly({
   editorClassName,
   onLinkClick,
   availableSkills = [],
-  workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
+  workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
+  agentTargets
 }: AgentRichTextReadonlyProps): JSX.Element {
   "use memo";
-  const contentDoc = plainTextToAgentRichTextDocWithWorkspaceAppIcons(
+  const contextAgentTargets = useAgentTargetPresentations();
+  const effectiveAgentTargets = agentTargets ?? contextAgentTargets;
+  const contentDoc = plainTextToAgentRichTextDocWithMentionPresentations(
     value,
     availableSkills,
-    workspaceAppIcons
+    workspaceAppIcons,
+    effectiveAgentTargets
   );
   const isMentionOnly = isMentionOnlyRichTextDoc(contentDoc);
   const editor = useEditor({
@@ -80,16 +90,23 @@ export function AgentRichTextReadonly({
     if (!editor || editor.isDestroyed) {
       return;
     }
-    const nextDoc = plainTextToAgentRichTextDocWithWorkspaceAppIcons(
+    const nextDoc = plainTextToAgentRichTextDocWithMentionPresentations(
       value,
       availableSkills,
-      workspaceAppIcons
+      workspaceAppIcons,
+      effectiveAgentTargets
     );
     if (JSON.stringify(editor.getJSON()) === JSON.stringify(nextDoc)) {
       return;
     }
     editor.commands.setContent(nextDoc, { emitUpdate: false });
-  }, [availableSkills, editor, value, workspaceAppIcons]);
+  }, [
+    availableSkills,
+    effectiveAgentTargets,
+    editor,
+    value,
+    workspaceAppIcons
+  ]);
 
   if (!editor) {
     return (
@@ -135,16 +152,20 @@ function isMentionOnlyRichTextDoc(doc: JSONContent): boolean {
   );
 }
 
-function plainTextToAgentRichTextDocWithWorkspaceAppIcons(
+function plainTextToAgentRichTextDocWithMentionPresentations(
   value: string,
   availableSkills: readonly AgentGUIProviderSkillOption[],
-  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[]
+  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[],
+  agentTargets: readonly AgentMessageMarkdownAgentTarget[]
 ): JSONContent {
-  const doc = plainTextToAgentRichTextDoc(value, { skills: availableSkills });
-  if (workspaceAppIcons.length === 0) {
-    return doc;
+  let doc = plainTextToAgentRichTextDoc(value, { skills: availableSkills });
+  if (workspaceAppIcons.length > 0) {
+    doc = hydrateWorkspaceAppMentionIcons(doc, workspaceAppIcons);
   }
-  return hydrateWorkspaceAppMentionIcons(doc, workspaceAppIcons);
+  if (agentTargets.length > 0) {
+    doc = hydrateAgentTargetMentionPresentations(doc, agentTargets);
+  }
+  return doc;
 }
 
 function hydrateWorkspaceAppMentionIcons(
@@ -211,4 +232,42 @@ function resolveWorkspaceAppIconUrl(input: {
   return (
     exactMatch?.iconUrl?.trim() || fallbackMatch?.iconUrl?.trim() || undefined
   );
+}
+
+function hydrateAgentTargetMentionPresentations(
+  node: JSONContent,
+  agentTargets: readonly AgentMessageMarkdownAgentTarget[]
+): JSONContent {
+  const nextContent = node.content?.map((child) =>
+    hydrateAgentTargetMentionPresentations(child, agentTargets)
+  );
+  if (node.type !== "agentFileMention") {
+    return nextContent ? { ...node, content: nextContent } : node;
+  }
+  const attrs = node.attrs ?? {};
+  if (attrs.kind !== "agent-target") {
+    return nextContent ? { ...node, content: nextContent } : node;
+  }
+  const agentTargetId =
+    typeof attrs.targetId === "string" ? attrs.targetId.trim() : "";
+  const workspaceId =
+    typeof attrs.workspaceId === "string" ? attrs.workspaceId.trim() : "";
+  const target = resolveAgentTargetPresentation({
+    agentTargetId,
+    agentTargets,
+    workspaceId
+  });
+  if (!target) {
+    return nextContent ? { ...node, content: nextContent } : node;
+  }
+  return {
+    ...node,
+    attrs: {
+      ...node.attrs,
+      agentProviderId: target.provider?.trim() ?? "",
+      iconUrl: target.iconUrl?.trim() ?? "",
+      name: target.name?.trim() || attrs.name
+    },
+    ...(nextContent ? { content: nextContent } : {})
+  };
 }

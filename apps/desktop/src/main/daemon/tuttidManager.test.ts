@@ -16,6 +16,7 @@ import test from "node:test";
 import {
   isLikelyTuttidProcess,
   resolveBrowserMcpDaemonEnv,
+  resolveClaudeSDKSidecarDaemonEnv,
   resolveLaunchSpec,
   resolveManagedDaemonProcessEnv
 } from "./tuttidManager.ts";
@@ -133,6 +134,93 @@ test("resolveBrowserMcpDaemonEnv points the daemon at a vendored bundle when pre
     assert.deepEqual(got, {
       TUTTI_BROWSER_MCP_ENTRY_PATH: entry
     });
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveClaudeSDKSidecarDaemonEnv is a no-op in development", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_COMMAND;
+    delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH;
+    const got = resolveClaudeSDKSidecarDaemonEnv({
+      isPackaged: false,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveClaudeSDKSidecarDaemonEnv respects an explicit operator override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    process.env.TUTTI_CLAUDE_SDK_SIDECAR_COMMAND = "/custom/sidecar";
+    delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH;
+    const got = resolveClaudeSDKSidecarDaemonEnv({
+      isPackaged: true,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveClaudeSDKSidecarDaemonEnv points the daemon at a vendored bundle when present", async () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_COMMAND;
+    delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH;
+    const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-resources-"));
+    const entry = join(
+      resourcesPath,
+      "bin",
+      "claude-sdk-sidecar",
+      "src",
+      "main.ts"
+    );
+    await mkdir(dirname(entry), { recursive: true });
+    await writeFile(entry, "// stub\n");
+
+    const got = resolveClaudeSDKSidecarDaemonEnv({
+      isPackaged: true,
+      resourcesPath
+    });
+    assert.deepEqual(got, {
+      TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH: entry
+    });
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_APP_RUNTIME_ROOT;
+    delete process.env.TUTTI_APP_RUNTIME_CACHE_ROOT;
+    const endpoint = {
+      accessToken: "token",
+      boundAddr: null,
+      listenerInfoPath: "/tmp/listener.json",
+      pidPath: "/tmp/tuttid.pid",
+      requestedAddr: "127.0.0.1:0"
+    };
+    const got = resolveManagedDaemonProcessEnv({
+      endpoint,
+      logOutput: "file",
+      userShellEnv: {},
+      logDir: "/tmp/logs",
+      parentPID: 123,
+      sessionID: "session-1"
+    });
+    assert.equal(
+      got.TUTTI_APP_RUNTIME_CACHE_ROOT?.endsWith("/app-runtimes"),
+      true
+    );
   } finally {
     restoreEnv(previousEnv);
   }

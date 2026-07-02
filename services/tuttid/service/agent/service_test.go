@@ -2711,6 +2711,36 @@ func TestServiceGetsComposerOptionsLeavesUnresolvedProviderModelUnset(t *testing
 	}
 }
 
+func TestServiceSessionNormalizesStaleClaudeSDKImageCapability(t *testing.T) {
+	session := serviceSession(RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Settings: &ComposerSettings{
+			Model: "haiku",
+		},
+		RuntimeContext: map[string]any{
+			"adapter":      "claude-agent-sdk",
+			"capabilities": []any{"compact", "tokenUsage", "rateLimits", "planMode", "interrupt", "review"},
+		},
+		Status:          "ready",
+		CreatedAtUnixMS: 100,
+		UpdatedAtUnixMS: 200,
+	}, true)
+
+	capabilities, ok := session.RuntimeContext["capabilities"].([]any)
+	hasImageInput := false
+	for _, capability := range capabilities {
+		if capability == "imageInput" {
+			hasImageInput = true
+			break
+		}
+	}
+	if !ok || !hasImageInput {
+		t.Fatalf("capabilities = %#v, want imageInput", session.RuntimeContext["capabilities"])
+	}
+}
+
 func TestServiceUpdateSettingsNormalizesCodexMinimalReasoningEffort(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
@@ -3864,14 +3894,25 @@ func TestServiceReconcilesOpenToolCallBeforeSubmittingInteractive(t *testing.T) 
 	}
 }
 
-func TestServiceReconcilesStalePersistedTurnWhenRuntimeSessionIsReady(t *testing.T) {
+func TestServiceReconcilesGhostOpenApprovalWhileBackgroundAgentsAreLive(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
-		ID:                "session-1",
-		WorkspaceID:       "ws-1",
-		Provider:          "codex",
-		ProviderSessionID: "provider-session-1",
-		Status:            "ready",
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
+			"backgroundAgents": map[string]any{
+				"count": float64(1),
+				"items": []any{
+					map[string]any{
+						"agentId":         "agent-1",
+						"parentToolUseId": "toolu-agent",
+						"status":          "running",
+					},
+				},
+			},
+		},
 	}
 	reconciled := make([]PersistedSession, 0)
 	service := NewService(runtime)
@@ -3879,29 +3920,97 @@ func TestServiceReconcilesStalePersistedTurnWhenRuntimeSessionIsReady(t *testing
 		reconciled: &reconciled,
 		sessions: map[string]PersistedSession{
 			"ws-1:session-1": {
-				ID:                "session-1",
-				WorkspaceID:       "ws-1",
-				Provider:          "codex",
-				ProviderSessionID: "provider-session-1",
-				Status:            "waiting",
+				ID:           "session-1",
+				WorkspaceID:  "ws-1",
+				Provider:     "claude-code",
+				Status:       "active",
+				CurrentPhase: "idle",
 			},
 		},
 	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			AgentSessionID: "session-1",
+			Messages: []SessionMessage{{
+				MessageID: "approval-1",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "waiting_approval",
+				Payload: map[string]any{
+					"input":  map[string]any{"requestId": "permission-1"},
+					"status": "waiting_approval",
+				},
+			}},
+		},
+	}
 
-	if _, err := service.SubmitInteractive(
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.ID != "session-1" {
+		t.Fatalf("session ID = %q, want session-1", session.ID)
+	}
+	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
+		t.Fatalf("reconciled = %#v, want ghost open approval cleared", reconciled)
+	}
+}
+
+func TestServiceSubmitInteractiveReconcilesStaleLiveRequestError(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.submitInteractiveErr = errors.New(`interactive request "permission-1" is no longer live`)
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "active",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			AgentSessionID: "session-1",
+			Messages: []SessionMessage{{
+				MessageID: "approval-1",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "waiting_approval",
+				Payload: map[string]any{
+					"input":  map[string]any{"requestId": "permission-1"},
+					"status": "waiting_approval",
+				},
+			}},
+		},
+	}
+
+	session, err := service.SubmitInteractive(
 		context.Background(),
 		"ws-1",
 		"session-1",
 		"permission-1",
-		SubmitInteractiveInput{OptionID: stringRef("approve")},
-	); err != nil {
+		SubmitInteractiveInput{OptionID: stringRef("allow")},
+	)
+	if err != nil {
 		t.Fatalf("SubmitInteractive returned error: %v", err)
 	}
-	if len(reconciled) != 1 {
-		t.Fatalf("reconciled = %#v, want stale ready runtime session reconciled", reconciled)
+	if session.ID != "session-1" {
+		t.Fatalf("session ID = %q, want session-1", session.ID)
 	}
-	if len(runtime.submitInteractiveCalls) != 0 {
-		t.Fatalf("submit interactive calls = %#v, want skipped stale live request", runtime.submitInteractiveCalls)
+	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
+		t.Fatalf("reconciled = %#v, want stale approval cleared after no-longer-live", reconciled)
 	}
 }
 
@@ -3975,6 +4084,58 @@ func TestServiceGetReconcilesStalePersistedTurn(t *testing.T) {
 	}
 }
 
+func TestServiceGetReconcilesRuntimeWaitingWithoutLivePendingInteractive(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "waiting",
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	reader := fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:           "session-1",
+				WorkspaceID:  "ws-1",
+				Provider:     "claude-code",
+				Status:       "active",
+				CurrentPhase: "waiting_approval",
+			},
+		},
+	}
+	service.SessionReader = reader
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{
+						"requestId": "plan-1",
+						"toolName":  "ExitPlanMode",
+					},
+				},
+			}},
+		},
+	}
+
+	_, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if len(reconciled) != 1 {
+		t.Fatalf("reconciled = %#v, want stale waiting runtime session reconciled", reconciled)
+	}
+	persisted := reader.sessions["ws-1:session-1"]
+	if persisted.Status == "waiting" || persisted.CurrentPhase == "waiting_approval" {
+		t.Fatalf("persisted session = %#v, want stale waiting cleared", persisted)
+	}
+}
+
 func TestServiceReconcilesStalePersistedTurnBeforeCanceling(t *testing.T) {
 	runtime := newFakeRuntime()
 	reconciled := make([]PersistedSession, 0)
@@ -4037,6 +4198,219 @@ func TestServiceReconcilesPhaseOnlyStalePersistedTurnBeforeCanceling(t *testing.
 	}
 	if len(runtime.cancelCalls) != 0 {
 		t.Fatalf("cancel calls = %#v, want skipped stale runtime cancel", runtime.cancelCalls)
+	}
+}
+
+func TestServiceGetDoesNotReconcileLiveRuntimeWaitingApprovalTurn(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "synthetic-turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &activeTurnID,
+			Phase:        "waiting_approval",
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "ready",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{"toolName": "ExitPlanMode"},
+				},
+			}},
+		},
+	}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.TurnLifecycle == nil || session.TurnLifecycle.Phase != "waiting_approval" {
+		t.Fatalf("turn lifecycle = %#v, want live waiting approval", session.TurnLifecycle)
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile for live runtime turn", reconciled)
+	}
+}
+
+func TestServiceEnsureRuntimeSessionDoesNotReconcileLiveRuntimeWaitingApprovalTurn(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "synthetic-turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &activeTurnID,
+			Phase:        "waiting_approval",
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "ready",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{"toolName": "ExitPlanMode"},
+				},
+			}},
+		},
+	}
+
+	ensured, err := service.ensureRuntimeSessionResult(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("ensureRuntimeSessionResult returned error: %v", err)
+	}
+	if ensured.StaleTurnReconciled {
+		t.Fatal("stale turn reconciled = true, want false for live waiting approval turn")
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile for live runtime turn", reconciled)
+	}
+}
+
+func TestServiceGetDoesNotReconcileLiveRuntimePendingInteractive(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		PendingInteractive: &RuntimeInteractivePrompt{
+			Kind:      "exit-plan",
+			RequestID: "plan-1",
+			ToolName:  "ExitPlanMode",
+			Status:    "waiting",
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:           "session-1",
+				WorkspaceID:  "ws-1",
+				Provider:     "claude-code",
+				Status:       "ready",
+				CurrentPhase: "idle",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{
+						"requestId": "plan-1",
+						"toolName":  "ExitPlanMode",
+					},
+				},
+			}},
+		},
+	}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.Status != "created" {
+		t.Fatalf("session status = %q, want live runtime status", session.Status)
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile for live pending interactive", reconciled)
+	}
+}
+
+func TestServiceGetDoesNotReconcileLiveRuntimeBackgroundAgent(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		RuntimeContext: map[string]any{
+			"backgroundAgents": map[string]any{
+				"count": 1,
+				"items": []any{map[string]any{
+					"parentToolUseId": "call-agent-1",
+					"status":          "running",
+				}},
+			},
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "ready",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "streaming",
+				Payload: map[string]any{
+					"input": map[string]any{"toolName": "Read"},
+				},
+			}},
+		},
+	}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.RuntimeContext["backgroundAgents"] == nil {
+		t.Fatalf("runtime context = %#v, want backgroundAgents preserved", session.RuntimeContext)
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile while background agent is running", reconciled)
 	}
 }
 
@@ -4225,6 +4599,7 @@ type fakeRuntime struct {
 	resumeCalls            []RuntimeResumeInput
 	sessions               map[string]RuntimeSession
 	submitInteractiveCalls []RuntimeSubmitInteractiveInput
+	submitInteractiveErr   error
 	startErr               error
 	startCalls             []RuntimeStartInput
 	startHook              func(RuntimeStartInput, RuntimeSession) RuntimeSession
@@ -4439,6 +4814,9 @@ func (f *fakeRuntime) ValidatePromptContent(_ context.Context, input RuntimeExec
 
 func (f *fakeRuntime) SubmitInteractive(_ context.Context, input RuntimeSubmitInteractiveInput) error {
 	f.submitInteractiveCalls = append(f.submitInteractiveCalls, input)
+	if f.submitInteractiveErr != nil {
+		return f.submitInteractiveErr
+	}
 	return nil
 }
 

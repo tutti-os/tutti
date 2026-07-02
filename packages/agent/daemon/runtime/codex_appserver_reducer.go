@@ -38,7 +38,7 @@ func (r codexAppServerReducer) ReduceNotification(
 	}
 	route := a.appServerNotificationRoute(session, message.Method, params)
 	if route.drop {
-		routed := appServerEventsWithOwnerThreadID(route.events, route.ownerThreadID)
+		routed := appServerEventsWithOwner(route.events, route.ownerThreadID, route.ownerCallID)
 		for index := range routed {
 			// The activity store rejects turnless message updates; fall back to
 			// the parent's turn so hidden child markers always reach the GUI.
@@ -53,8 +53,9 @@ func (r codexAppServerReducer) ReduceNotification(
 	}
 	turnID = firstNonEmpty(route.turnID, turnID)
 	ownerThreadID := route.ownerThreadID
+	ownerCallID := route.ownerCallID
 	emit := func(events []activityshared.Event) codexAppServerReduction {
-		return codexAppServerReduction{Events: appServerEventsWithOwnerThreadID(events, ownerThreadID)}
+		return codexAppServerReduction{Events: appServerEventsWithOwner(events, ownerThreadID, ownerCallID)}
 	}
 	switch message.Method {
 	case appServerNotifyTurnStarted:

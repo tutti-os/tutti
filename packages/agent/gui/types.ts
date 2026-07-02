@@ -82,6 +82,7 @@ export interface AgentGUIProviderTarget {
   ref: AgentGUIProviderTargetRef;
   label: string;
   description?: string;
+  iconUrl?: string | null;
   ownerLabel?: string;
   disabled?: boolean;
   unavailableReason?: string;

@@ -203,6 +203,11 @@ describe("sortCommunityApps", () => {
         id: "design-review",
         name: "Design Review",
         sourceKind: "bundled"
+      }),
+      createApp({
+        id: "omni-catcher",
+        name: "Omni Catcher",
+        sourceKind: "bundled"
       })
     ];
 
@@ -213,7 +218,8 @@ describe("sortCommunityApps", () => {
         "design-review",
         "product-competition",
         "daily-tech-radar",
-        "draw-topic-app"
+        "draw-topic-app",
+        "omni-catcher"
       ]
     );
   });
@@ -226,6 +232,7 @@ describe("isCommunityRecommendedApp", () => {
     assert.equal(isCommunityRecommendedApp("product-competition"), true);
     assert.equal(isCommunityRecommendedApp("design-review"), true);
     assert.equal(isCommunityRecommendedApp("draw-topic-app"), true);
+    assert.equal(isCommunityRecommendedApp("omni-catcher"), true);
     assert.equal(isCommunityRecommendedApp("automation"), false);
     assert.equal(isCommunityRecommendedApp("vibe-design"), false);
   });

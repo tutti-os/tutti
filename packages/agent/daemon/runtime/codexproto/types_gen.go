@@ -1969,7 +1969,6 @@ type ReviewDelivery string
 const ReviewDeliveryDetached ReviewDelivery = "detached"
 const ReviewDeliveryInline ReviewDelivery = "inline"
 
-
 type ReviewStartParamsTarget interface{}
 
 type ReviewTarget interface{}
@@ -3756,7 +3755,6 @@ type ThreadActiveFlag string
 
 const ThreadActiveFlagWaitingOnApproval ThreadActiveFlag = "waitingOnApproval"
 const ThreadActiveFlagWaitingOnUserInput ThreadActiveFlag = "waitingOnUserInput"
-
 
 type ThreadGoalStatus string
 

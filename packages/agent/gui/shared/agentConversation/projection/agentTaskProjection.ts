@@ -45,7 +45,10 @@ export function projectAgentTaskItem(
     id: call.id,
     turnId: call.turnId ?? "turn:unknown",
     title: call.summary.trim() || call.name,
-    status: call.status,
+    status:
+      stringValue(metadata?.taskStatus) ??
+      stringValue(metadata?.subagentStatus) ??
+      call.status,
     prompt:
       stringValue(input?.prompt) ??
       stringValue(input?.description) ??
@@ -56,6 +59,8 @@ export function projectAgentTaskItem(
       stringValue(metadata?.child_session_id) ??
       stringValue(metadata?.subagentSessionID) ??
       stringValue(metadata?.subagent_session_id) ??
+      stringValue(metadata?.subagentAgentId) ??
+      stringValue(metadata?.agentId) ??
       stringValue(claudeToolResponse?.agentId),
     steps,
     result: firstNonEmptyText(output),

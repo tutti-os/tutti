@@ -22,6 +22,7 @@ func runtimeResumeInputFromRuntimeSession(session RuntimeSession) RuntimeResumeI
 		CreatedAtUnixMS:   session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
 		Visible:           boolPointer(session.Visible),
+		RuntimeContext:    clonePayload(session.RuntimeContext),
 	}
 }
 
@@ -40,6 +41,7 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 		CreatedAtUnixMS:   session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
 		Visible:           boolPointer(visibleFromRuntimeContext(session.RuntimeContext, true)),
+		RuntimeContext:    clonePayload(session.RuntimeContext),
 	}
 }
 

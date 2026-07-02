@@ -325,6 +325,18 @@ test("round-trips storage content through the structured document adapter", () =
   );
 });
 
+test("keeps colons in mention entity path segments", () => {
+  const target = createRichTextMentionAttrs("agent-target", {
+    entityId: "local:codex",
+    label: "Codex"
+  });
+
+  assert.equal(
+    createRichTextMentionMarkdown(target),
+    "[@Codex](mention://agent-target/local:codex)"
+  );
+});
+
 test("parses workspace refs with spaces and parentheses in hrefs", () => {
   const content =
     "Files [White House (cropped).jpg](/Users/example/Downloads/White House (cropped).jpg) [html_files](/Users/example/Downloads/html files/)";

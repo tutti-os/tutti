@@ -80,6 +80,45 @@ func TestServiceListProviderAvailabilityUsesAgentStatusSnapshot(t *testing.T) {
 	}
 }
 
+func TestServiceListProviderAvailabilityUsesClaudeSDKSidecarDetail(t *testing.T) {
+	capturedAt := time.Unix(10, 0).UTC()
+	lister := &fakeAgentProviderStatusLister{
+		snapshot: agentstatusservice.Snapshot{
+			CapturedAt: capturedAt,
+			Providers: []agentstatusservice.ProviderStatus{{
+				Provider: "claude-code",
+				Availability: agentstatusservice.Availability{
+					CheckedAt:  &capturedAt,
+					ReasonCode: agentstatusservice.ReasonClaudeSDKSidecarUnavailable,
+					Status:     agentstatusservice.AvailabilityNotInstalled,
+				},
+				CLI: agentstatusservice.CLIStatus{
+					Installed:  true,
+					BinaryPath: "/usr/local/bin/claude",
+				},
+				Adapter: agentstatusservice.AdapterStatus{Installed: false},
+				Auth:    agentstatusservice.AuthInfo{Status: agentstatusservice.AuthAuthenticated},
+			}},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
+
+	availability, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{
+		Provider: "claude-code",
+	})
+	if err != nil {
+		t.Fatalf("ListProviderAvailability returned error: %v", err)
+	}
+	got := availability[0]
+	if got.LastError == nil || got.LastError.Message != "Claude SDK sidecar not found" {
+		t.Fatalf("lastError = %#v, want SDK sidecar message", got.LastError)
+	}
+	if len(got.Checks) < 2 || got.Checks[1].Detail != "Claude SDK sidecar not found" {
+		t.Fatalf("checks = %#v, want SDK sidecar adapter detail", got.Checks)
+	}
+}
+
 func TestServiceListProviderAvailabilityUsesShortCache(t *testing.T) {
 	capturedAt := time.Unix(10, 0).UTC()
 	lister := &fakeAgentProviderStatusLister{

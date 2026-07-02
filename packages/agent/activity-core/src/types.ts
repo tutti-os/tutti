@@ -28,6 +28,7 @@ export interface AgentActivitySession {
   status: AgentActivitySessionStatus | (string & {});
   turnLifecycle?: AgentActivityTurnLifecycle | null;
   submitAvailability?: AgentActivitySubmitAvailability | null;
+  pendingInteractive?: AgentActivityInteractivePrompt | null;
   visible?: boolean;
   resumable?: boolean;
   currentPhase?: string | null;
@@ -40,6 +41,17 @@ export interface AgentActivitySession {
   pinnedAtUnixMs?: number | null;
   createdAtUnixMs?: number;
   updatedAtUnixMs?: number;
+}
+
+export interface AgentActivityInteractivePrompt {
+  kind: string;
+  requestId?: string;
+  toolName?: string;
+  status?: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  error?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 export type AgentActivityCancelReason =
@@ -222,6 +234,7 @@ export interface AgentActivityStatePatch {
   runtimeContext?: Record<string, unknown>;
   startedAtUnixMs?: number;
   submitAvailability?: AgentActivitySubmitAvailability;
+  pendingInteractive?: AgentActivityInteractivePrompt | null;
   endedAtUnixMs?: number;
   title?: string;
   turn?: {

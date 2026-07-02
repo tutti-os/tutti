@@ -224,12 +224,12 @@ const issueManagerEn = {
   },
   richTextAt: {
     all: "All",
+    agents: "Agents",
     apps: "Apps",
     files: "Files",
     issues: "Tasks",
     loading: "Loading...",
     noMatches: "No matches",
-    sessions: "Sessions",
     showMore: "Show {{count}} more",
     switchCategory: "Switch category",
     switchSelection: "Switch selection"
@@ -456,12 +456,12 @@ const issueManagerZhCN = {
   },
   richTextAt: {
     all: "全部",
+    agents: "Agent",
     apps: "应用",
     files: "文件",
     issues: "任务",
     loading: "正在加载...",
     noMatches: "没有匹配项",
-    sessions: "会话",
     showMore: "再显示 {{count}} 项",
     switchCategory: "切换分类",
     switchSelection: "切换选中"

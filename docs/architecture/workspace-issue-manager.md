@@ -88,13 +88,15 @@ Expected exports:
 be the default dependency-injection entry for hosts. It owns service/session
 creation plus shared state orchestration. `./ui` should consume those services
 and stay focused on rendering, DOM interaction, and imperative UI bridges.
-Issue and task content editors consume host-provided `@` rich-text workspace app
-trigger providers through the workbench node seam. They should open providers as
-soon as the `@` trigger is typed, before a search term exists, so workspace app
-mentions stay discoverable in the same flow as Agent GUI and other rich-text
-surfaces. Files and issue references should stay on their explicit reference
-actions instead of appearing in this `@` picker, and the Task Center app itself
-should be excluded from issue-manager app mentions.
+Issue and task content editors consume host-provided `@` rich-text trigger
+providers through the workbench node seam. The default issue-manager picker uses
+the shared rich-text mention palette with top-level Agent and App tabs,
+aligned with Agent GUI mention behavior: Agent mentions resolve
+`agent-target` providers, App mentions resolve `workspace-app` providers, and
+the menu opens as soon as the `@` trigger is typed, before a search term exists.
+Files and issue references should stay on their explicit reference actions
+instead of appearing in this `@` picker, and the Task Center app itself should
+be excluded from issue-manager app mentions.
 
 The npm package name should be `@tutti-os/workspace-issue-manager`.
 It participates in the shared public npm release group documented in

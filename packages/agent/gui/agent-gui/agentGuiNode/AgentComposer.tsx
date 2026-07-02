@@ -212,6 +212,7 @@ export interface AgentComposerProps {
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
   activePrompt: AgentConversationPromptVM | null;
+  backgroundAgentStatusText?: string | null;
   activePromptKeyboardShortcutsEnabled?: boolean;
   promptTips?: readonly AgentComposerPromptTip[];
   isInterrupting: boolean;
@@ -786,6 +787,14 @@ function resolveComposerProviderIconUrl(provider: string): string {
   );
 }
 
+function resolveComposerProviderTargetIconUrl(
+  target: AgentGUIProviderTarget
+): string {
+  return (
+    target.iconUrl?.trim() || resolveComposerProviderIconUrl(target.provider)
+  );
+}
+
 export function AgentComposer({
   workspaceId,
   workspacePath,
@@ -812,6 +821,7 @@ export function AgentComposer({
   canQueueWhileBusy,
   showStopButton,
   activePrompt,
+  backgroundAgentStatusText = null,
   activePromptKeyboardShortcutsEnabled = true,
   promptTips = EMPTY_PROMPT_TIPS,
   isInterrupting,
@@ -2934,6 +2944,15 @@ export function AgentComposer({
         )}
         data-edge-glow={showEdgeGlow ? "true" : undefined}
       >
+        {backgroundAgentStatusText ? (
+          <AgentChromeNotice
+            tone="muted"
+            role="status"
+            testId="agent-gui-composer-background-agent-status"
+            title={backgroundAgentStatusText}
+            icon={<Spinner className="h-3.5 w-3.5" />}
+          />
+        ) : null}
         {isSelectedProjectMissing ? (
           <AgentChromeNotice
             tone="danger"
@@ -3304,9 +3323,7 @@ export function AgentComposer({
                             alt=""
                             aria-hidden="true"
                             className="size-4 shrink-0 rounded-[4px]"
-                            src={resolveComposerProviderIconUrl(
-                              target.provider
-                            )}
+                            src={resolveComposerProviderTargetIconUrl(target)}
                           />
                           <span className="min-w-0 truncate">
                             {target.label}

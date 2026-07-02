@@ -2255,6 +2255,49 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function numberValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function activeBackgroundAgentCount(
+  runtimeContext: Record<string, unknown> | null | undefined
+): number {
+  const backgroundAgents = recordValue(runtimeContext?.backgroundAgents);
+  if (!backgroundAgents) {
+    return 0;
+  }
+  const items = Array.isArray(backgroundAgents.items)
+    ? backgroundAgents.items
+    : [];
+  if (items.length === 0) {
+    const count = numberValue(backgroundAgents.count);
+    return count === null ? 0 : Math.max(0, Math.floor(count));
+  }
+  return items.filter((item) => {
+    const record = recordValue(item);
+    if (!record) {
+      return false;
+    }
+    const status = String(record.status ?? "")
+      .trim()
+      .toLowerCase();
+    return ![
+      "completed",
+      "failed",
+      "cancelled",
+      "canceled",
+      "stopped"
+    ].includes(status);
+  }).length;
+}
+
 function appServerStartupMetadata(
   runtimeContext: Record<string, unknown> | null | undefined
 ): Record<string, unknown> | null {
@@ -3130,6 +3173,7 @@ function hasSessionControlStatePatch(
     patch.settings !== undefined ||
     patch.runtimeContext !== undefined ||
     patch.submitAvailability !== undefined ||
+    patch.pendingInteractive !== undefined ||
     patch.turn?.submitAvailability !== undefined ||
     patch.turn?.phase !== undefined
   );
@@ -3206,6 +3250,13 @@ function mergeSessionControlStatePatch(
     next.submitAvailability = submitAvailability;
     changed = true;
   }
+  if (
+    patch.pendingInteractive !== undefined &&
+    !sameJSONValue(current.pendingInteractive ?? null, patch.pendingInteractive)
+  ) {
+    next.pendingInteractive = patch.pendingInteractive;
+    changed = true;
+  }
   if (patch.turn?.phase) {
     next.turnLifecycle = {
       activeTurnId:
@@ -3229,6 +3280,10 @@ function mergeSessionControlStatePatch(
     changed = true;
   }
   return changed ? next : current;
+}
+
+function sameJSONValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
 function conversationStatusFromSessionState(
@@ -3770,6 +3825,10 @@ export function useAgentGUINodeController({
     sessionRuntimeContext: activeSessionState?.runtimeContext
   });
   const activeSessionRuntimeContext = activeSessionState?.runtimeContext;
+  const backgroundAgentCount = useMemo(
+    () => activeBackgroundAgentCount(activeSessionRuntimeContext),
+    [activeSessionRuntimeContext]
+  );
   const composerSupport = useMemo(
     () =>
       composerSettingsSupportFromOptions(
@@ -9475,6 +9534,10 @@ export function useAgentGUINodeController({
         return null;
       }
       const previous = projectionConversationRef.current;
+      const turnLifecycle =
+        activeSessionState?.agentSessionId === activeConversation.id
+          ? (activeSessionState.turnLifecycle ?? null)
+          : null;
       if (
         previous &&
         previous.id === activeConversation.id &&
@@ -9483,7 +9546,13 @@ export function useAgentGUINodeController({
         previous.title === activeConversation.title &&
         previous.titleFallback === activeConversation.titleFallback &&
         previous.status === activeConversation.status &&
-        previous.cwd === activeConversation.cwd
+        previous.cwd === activeConversation.cwd &&
+        (previous.turnLifecycle?.activeTurnId ?? null) ===
+          (turnLifecycle?.activeTurnId ?? null) &&
+        (previous.turnLifecycle?.phase ?? null) ===
+          (turnLifecycle?.phase ?? null) &&
+        (previous.turnLifecycle?.settling ?? false) ===
+          (turnLifecycle?.settling ?? false)
       ) {
         return previous;
       }
@@ -9497,7 +9566,8 @@ export function useAgentGUINodeController({
             status: activeConversation.status,
             cwd: activeConversation.cwd,
             updatedAtUnixMs: activeConversation.updatedAtUnixMs,
-            syncState: activeConversation.syncState
+            syncState: activeConversation.syncState,
+            turnLifecycle
           }
         : null;
       projectionConversationRef.current = next;
@@ -9511,7 +9581,11 @@ export function useAgentGUINodeController({
       activeConversation?.status,
       activeConversation?.title,
       activeConversation?.titleFallback,
-      activeConversation?.userId
+      activeConversation?.userId,
+      activeSessionState?.agentSessionId,
+      activeSessionState?.turnLifecycle?.activeTurnId,
+      activeSessionState?.turnLifecycle?.phase,
+      activeSessionState?.turnLifecycle?.settling
     ]);
   const draftContent = activeConversationId
     ? (draftBySessionId[activeConversationId] ?? EMPTY_AGENT_COMPOSER_DRAFT)
@@ -10478,6 +10552,7 @@ export function useAgentGUINodeController({
         promptImagesSupported,
         compactSupported,
         usage,
+        backgroundAgentCount,
         listError,
         isDeletingConversation,
         isDeletingProjectConversations,
@@ -10537,6 +10612,7 @@ export function useAgentGUINodeController({
       promptImagesSupported,
       compactSupported,
       usage,
+      backgroundAgentCount,
       isInterrupting,
       isCancelPending,
       isLoadingConversations,

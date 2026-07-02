@@ -102,6 +102,7 @@ type WorkspaceAgentSessionStateUpdate struct {
 	RuntimeContext     map[string]any                    `json:"runtimeContext,omitempty"`
 	TurnLifecycle      *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
 	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	PendingInteractive *WorkspaceAgentInteractivePrompt  `json:"pendingInteractive,omitempty"`
 	CWD                string                            `json:"cwd,omitempty"`
 	Title              string                            `json:"title,omitempty"`
 	LifecycleStatus    string                            `json:"lifecycleStatus,omitempty"`
@@ -142,6 +143,17 @@ type WorkspaceAgentTurnLifecycle struct {
 	Settling         bool                            `json:"settling,omitempty"`
 	Outcome          *string                         `json:"outcome,omitempty"`
 	CompletedCommand *WorkspaceAgentCompletedCommand `json:"completedCommand,omitempty"`
+}
+
+type WorkspaceAgentInteractivePrompt struct {
+	Kind      string         `json:"kind"`
+	RequestID string         `json:"requestId,omitempty"`
+	ToolName  string         `json:"toolName,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Input     map[string]any `json:"input,omitempty"`
+	Output    map[string]any `json:"output,omitempty"`
+	Error     map[string]any `json:"error,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
 type ReportSessionMessagesInput struct {
@@ -328,24 +340,44 @@ type EventSource struct {
 }
 
 type WorkspaceAgentStatePatch struct {
-	AgentSessionID     string                            `json:"agentSessionId"`
-	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
-	Provider           string                            `json:"provider,omitempty"`
-	ProviderSessionID  string                            `json:"providerSessionId,omitempty"`
-	Model              string                            `json:"model,omitempty"`
-	PermissionModeID   string                            `json:"permissionModeId,omitempty"`
-	Settings           map[string]any                    `json:"settings,omitempty"`
-	RuntimeContext     map[string]any                    `json:"runtimeContext,omitempty"`
-	TurnLifecycle      *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
-	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	CWD                string                            `json:"cwd,omitempty"`
-	Title              string                            `json:"title,omitempty"`
-	LifecycleStatus    string                            `json:"lifecycleStatus,omitempty"`
-	CurrentPhase       string                            `json:"currentPhase,omitempty"`
-	LastError          string                            `json:"lastError,omitempty"`
-	OccurredAtUnixMS   int64                             `json:"occurredAtUnixMs,omitempty"`
-	Turn               *WorkspaceAgentTurnPatch          `json:"turn,omitempty"`
-	Entities           []WorkspaceAgentEntityPatch       `json:"entities,omitempty"`
+	AgentSessionID            string                            `json:"agentSessionId"`
+	AgentTargetID             string                            `json:"agentTargetId,omitempty"`
+	Provider                  string                            `json:"provider,omitempty"`
+	ProviderSessionID         string                            `json:"providerSessionId,omitempty"`
+	Model                     string                            `json:"model,omitempty"`
+	PermissionModeID          string                            `json:"permissionModeId,omitempty"`
+	Settings                  map[string]any                    `json:"settings,omitempty"`
+	RuntimeContext            map[string]any                    `json:"runtimeContext,omitempty"`
+	TurnLifecycle             *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
+	SubmitAvailability        *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	PendingInteractive        *WorkspaceAgentInteractivePrompt  `json:"pendingInteractive,omitempty"`
+	PendingInteractivePresent bool                              `json:"-"`
+	CWD                       string                            `json:"cwd,omitempty"`
+	Title                     string                            `json:"title,omitempty"`
+	LifecycleStatus           string                            `json:"lifecycleStatus,omitempty"`
+	CurrentPhase              string                            `json:"currentPhase,omitempty"`
+	LastError                 string                            `json:"lastError,omitempty"`
+	OccurredAtUnixMS          int64                             `json:"occurredAtUnixMs,omitempty"`
+	Turn                      *WorkspaceAgentTurnPatch          `json:"turn,omitempty"`
+	Entities                  []WorkspaceAgentEntityPatch       `json:"entities,omitempty"`
+}
+
+func (p WorkspaceAgentStatePatch) MarshalJSON() ([]byte, error) {
+	type alias WorkspaceAgentStatePatch
+	data, err := json.Marshal(alias(p))
+	if err != nil || !p.PendingInteractivePresent {
+		return data, err
+	}
+	var object map[string]any
+	if err := json.Unmarshal(data, &object); err != nil {
+		return nil, err
+	}
+	if p.PendingInteractive == nil {
+		object["pendingInteractive"] = nil
+	} else {
+		object["pendingInteractive"] = p.PendingInteractive
+	}
+	return json.Marshal(object)
 }
 
 type WorkspaceAgentTurnPatch struct {

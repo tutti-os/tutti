@@ -112,6 +112,8 @@ func TestRunExternalAgentRegistryNPMInstallerReplacesExistingRegistryEnv(t *test
 }
 
 func TestResolveExternalRegistryNPMSpecExecEnvUsesRankedRegistry(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
@@ -184,6 +186,8 @@ func TestRunExternalAgentRegistryNPMInstallerPinsDedicatedCache(t *testing.T) {
 }
 
 func TestResolveExternalRegistryNPMSpecExecEnvPinsDedicatedCache(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)

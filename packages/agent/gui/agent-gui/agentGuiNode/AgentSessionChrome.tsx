@@ -13,7 +13,7 @@ import type { AgentGUISessionChrome } from "./model/agentGuiNodeTypes";
 import styles from "./AgentGUIChrome.styles";
 
 interface AgentChromeNoticeProps {
-  tone: "warning" | "danger";
+  tone: "warning" | "danger" | "muted";
   title: string;
   description?: string;
   icon?: ReactNode;
@@ -98,13 +98,16 @@ export function AgentChromeNotice({
 }: AgentChromeNoticeProps): JSX.Element {
   "use memo";
   const fullMessage = description ? `${title} ${description}` : title;
+  const toneClassName =
+    tone === "danger"
+      ? styles.chromeCardDanger
+      : tone === "muted"
+        ? styles.chromeCardMuted
+        : styles.chromeCardWarning;
   return (
     <div className={styles.sessionChrome}>
       <section
-        className={cn(
-          styles.chromeCard,
-          tone === "danger" ? styles.chromeCardDanger : styles.chromeCardWarning
-        )}
+        className={cn(styles.chromeCard, toneClassName)}
         role={role}
         data-testid={testId}
       >

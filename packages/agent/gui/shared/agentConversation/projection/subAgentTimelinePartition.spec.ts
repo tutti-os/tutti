@@ -4,6 +4,7 @@ import {
   attachSubAgentLanesToConversationVM,
   buildSubAgentLanesByCallId,
   partitionSubAgentTimelineItems,
+  timelineItemOwnerCallId,
   timelineItemOwnerThreadId
 } from "./subAgentTimelinePartition";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
@@ -34,6 +35,35 @@ describe("subAgentTimelinePartition", () => {
       ).toBeNull();
       expect(
         timelineItemOwnerThreadId(timelineItem({ id: 2, eventId: "parent-2" }))
+      ).toBeNull();
+    });
+  });
+
+  describe("timelineItemOwnerCallId", () => {
+    it("reads a non-empty ownerCallId from the payload", () => {
+      expect(
+        timelineItemOwnerCallId(
+          timelineItem({
+            id: 1,
+            eventId: "child-1",
+            payload: { ownerThreadId: "child-thread-1", ownerCallId: "spawn-1" }
+          })
+        )
+      ).toBe("spawn-1");
+    });
+
+    it("ignores blank and missing ownerCallId values", () => {
+      expect(
+        timelineItemOwnerCallId(
+          timelineItem({
+            id: 1,
+            eventId: "child-1",
+            payload: { ownerThreadId: "child-thread-1", ownerCallId: " " }
+          })
+        )
+      ).toBeNull();
+      expect(
+        timelineItemOwnerCallId(timelineItem({ id: 2, eventId: "child-2" }))
       ).toBeNull();
     });
   });
@@ -100,7 +130,7 @@ describe("subAgentTimelinePartition", () => {
   });
 
   describe("buildSubAgentLanesByCallId", () => {
-    it("attaches a running lane to the in-progress collab spawn card", () => {
+    it("attaches a running lane to its recorded spawn card", () => {
       const partition = partitionSubAgentTimelineItems([
         collabCardItem({
           id: 10,
@@ -113,6 +143,7 @@ describe("subAgentTimelinePartition", () => {
           id: 11,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: "Scanning the repository layout",
           occurredAtUnixMs: 150
         }),
@@ -120,6 +151,7 @@ describe("subAgentTimelinePartition", () => {
           id: 12,
           eventId: "child-call-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           name: "Run command",
           occurredAtUnixMs: 220
         })
@@ -156,6 +188,7 @@ describe("subAgentTimelinePartition", () => {
           id: 11,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: longText,
           occurredAtUnixMs: 150
         })
@@ -185,7 +218,8 @@ describe("subAgentTimelinePartition", () => {
           role: "assistant_thinking",
           payload: {
             text: "Considering options",
-            ownerThreadId: "child-thread-1"
+            ownerThreadId: "child-thread-1",
+            ownerCallId: "spawn-1"
           },
           occurredAtUnixMs: 150
         })
@@ -197,61 +231,7 @@ describe("subAgentTimelinePartition", () => {
       expect(lane?.latestActivity).toBe("Considering options");
     });
 
-    it("prefers an exact match when a completed card's output names the child thread", () => {
-      const partition = partitionSubAgentTimelineItems([
-        collabCardItem({
-          id: 10,
-          eventId: "spawn-1-started",
-          callId: "spawn-1",
-          status: "running",
-          occurredAtUnixMs: 100
-        }),
-        collabCardItem({
-          id: 11,
-          eventId: "spawn-2-started",
-          callId: "spawn-2",
-          status: "running",
-          occurredAtUnixMs: 110
-        }),
-        collabCardItem({
-          id: 12,
-          eventId: "spawn-1-completed",
-          callId: "spawn-1",
-          itemType: "call.completed",
-          status: "completed",
-          occurredAtUnixMs: 300,
-          output: {
-            result: { agent_id: "child-thread-1", status: "completed" }
-          }
-        }),
-        childAssistantItem({
-          id: 13,
-          eventId: "child-msg-1",
-          ownerThreadId: "child-thread-1",
-          text: "done",
-          occurredAtUnixMs: 250
-        })
-      ]);
-
-      const lanes = buildSubAgentLanesByCallId(partition);
-
-      // Time affinity alone would pick spawn-2 (latest card started before the
-      // lane); the completed output's agent_id pins the lane to spawn-1.
-      // spawn-2 (receiver-less) only carries its synthesized pending lane.
-      expect(
-        lanes
-          .get("spawn-2")
-          ?.some((lane) => lane.ownerThreadId === "child-thread-1")
-      ).toBe(false);
-      expect(lanes.get("spawn-1")).toEqual([
-        expect.objectContaining({
-          ownerThreadId: "child-thread-1",
-          status: "completed"
-        })
-      ]);
-    });
-
-    it("keys lanes by the card input's receiverThreadIds over time affinity while both spawns run", () => {
+    it("attaches each lane to its recorded spawn card, never by time affinity", () => {
       const partition = partitionSubAgentTimelineItems([
         collabCardItem({
           id: 10,
@@ -269,12 +249,14 @@ describe("subAgentTimelinePartition", () => {
           occurredAtUnixMs: 110,
           receiverThreadIds: ["child-thread-2"]
         }),
-        // child-1's first activity lands after spawn-2 started: time affinity
-        // alone would mis-attribute it to spawn-2 while both are running.
+        // child-1's first activity lands after spawn-2 started: any time-based
+        // guess would mis-attribute it to spawn-2 while both are running. The
+        // recorded ownerCallId pins it to spawn-1.
         childAssistantItem({
           id: 12,
           eventId: "child-1-msg",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: "working on task one",
           occurredAtUnixMs: 150
         }),
@@ -282,6 +264,7 @@ describe("subAgentTimelinePartition", () => {
           id: 13,
           eventId: "child-2-msg",
           ownerThreadId: "child-thread-2",
+          ownerCallId: "spawn-2",
           text: "working on task two",
           occurredAtUnixMs: 160
         })
@@ -318,6 +301,7 @@ describe("subAgentTimelinePartition", () => {
           id: 12,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: "still working",
           occurredAtUnixMs: 200
         })
@@ -342,6 +326,7 @@ describe("subAgentTimelinePartition", () => {
           id: 11,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: "working",
           occurredAtUnixMs: 150
         })
@@ -366,6 +351,7 @@ describe("subAgentTimelinePartition", () => {
           id: 11,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: "working",
           occurredAtUnixMs: 150
         })
@@ -458,6 +444,30 @@ describe("subAgentTimelinePartition", () => {
       expect(buildSubAgentLanesByCallId(partition).size).toBe(0);
     });
 
+    it("never attaches lanes to a wait/close control card, even when rows point at it", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "wait-1-started",
+          callId: "wait-1",
+          status: "running",
+          occurredAtUnixMs: 100,
+          receiverThreadIds: ["child-thread-1"],
+          agentName: "waitAgent"
+        }),
+        childAssistantItem({
+          id: 11,
+          eventId: "child-msg-1",
+          ownerThreadId: "child-thread-1",
+          ownerCallId: "wait-1",
+          text: "working",
+          occurredAtUnixMs: 150
+        })
+      ]);
+
+      expect(buildSubAgentLanesByCallId(partition).size).toBe(0);
+    });
+
     it("titles the lane from the subAgentName marker and hides markers from the log", () => {
       const partition = partitionSubAgentTimelineItems([
         collabCardItem({
@@ -471,6 +481,7 @@ describe("subAgentTimelinePartition", () => {
           id: 11,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: "working",
           occurredAtUnixMs: 150
         }),
@@ -481,6 +492,7 @@ describe("subAgentTimelinePartition", () => {
           role: "assistant",
           payload: {
             ownerThreadId: "child-thread-1",
+            ownerCallId: "spawn-1",
             messageKind: "subAgentName",
             subAgentName: "Repo smell analyst"
           },
@@ -510,6 +522,7 @@ describe("subAgentTimelinePartition", () => {
           id: 11,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: "finishing",
           occurredAtUnixMs: 200
         }),
@@ -517,6 +530,7 @@ describe("subAgentTimelinePartition", () => {
           id: 12,
           eventId: "child-terminal-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           status: "completed",
           occurredAtUnixMs: 350
         })
@@ -546,6 +560,7 @@ describe("subAgentTimelinePartition", () => {
           id: 11,
           eventId: "child-terminal-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           status: "failed",
           detail: "child thread exploded",
           occurredAtUnixMs: 350
@@ -573,6 +588,7 @@ describe("subAgentTimelinePartition", () => {
           id: 11,
           eventId: "child-terminal-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           status: "canceled",
           occurredAtUnixMs: 350
         })
@@ -608,6 +624,7 @@ describe("subAgentTimelinePartition", () => {
           id: 12,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: "latest child activity",
           occurredAtUnixMs: 200
         })
@@ -618,12 +635,13 @@ describe("subAgentTimelinePartition", () => {
       ).toBe("failed");
     });
 
-    it("attaches an early-arriving lane once a card exists (ordering edge)", () => {
+    it("attaches an early-arriving lane once its spawn card exists (ordering edge)", () => {
       const partition = partitionSubAgentTimelineItems([
         childAssistantItem({
           id: 10,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: "started before the card",
           occurredAtUnixMs: 90
         }),
@@ -641,7 +659,70 @@ describe("subAgentTimelinePartition", () => {
       ).toBe("child-thread-1");
     });
 
-    it("returns no lanes when there is no collab card to attach to", () => {
+    it("hides lanes whose spawn card is outside the loaded window (partial history)", () => {
+      // The spawn card lives in an older, not-yet-loaded message page. The
+      // child rows carry their recorded ownerCallId but must not attach to the
+      // unrelated loaded card by any guess — they stay hidden until the older
+      // page loads.
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "spawn-2-started",
+          callId: "spawn-2",
+          status: "running",
+          occurredAtUnixMs: 100,
+          receiverThreadIds: ["child-thread-2"]
+        }),
+        childAssistantItem({
+          id: 11,
+          eventId: "child-msg-1",
+          ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
+          text: "orphan output",
+          occurredAtUnixMs: 150
+        })
+      ]);
+
+      const lanes = buildSubAgentLanesByCallId(partition);
+
+      expect(lanes.has("spawn-1")).toBe(false);
+      expect(
+        lanes
+          .get("spawn-2")
+          ?.some((lane) => lane.ownerThreadId === "child-thread-1")
+      ).toBe(false);
+    });
+
+    it("ignores child rows without ownerCallId (recordings that predate the field)", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "spawn-1-started",
+          callId: "spawn-1",
+          status: "running",
+          occurredAtUnixMs: 100,
+          receiverThreadIds: ["child-thread-1"]
+        }),
+        childAssistantItem({
+          id: 11,
+          eventId: "child-msg-1",
+          ownerThreadId: "child-thread-1",
+          text: "legacy child output",
+          occurredAtUnixMs: 150
+        })
+      ]);
+
+      const lanes = buildSubAgentLanesByCallId(partition).get("spawn-1");
+
+      // The declared receiver still surfaces as a seeded placeholder lane, but
+      // the legacy rows' activity never attaches by guesswork.
+      expect(lanes?.map((lane) => lane.ownerThreadId)).toEqual([
+        "child-thread-1"
+      ]);
+      expect(lanes?.[0]?.latestActivity).toBeNull();
+    });
+
+    it("returns no lanes when there is no collab card at all", () => {
       const partition = partitionSubAgentTimelineItems([
         timelineItem({
           id: 10,
@@ -656,6 +737,7 @@ describe("subAgentTimelinePartition", () => {
           id: 11,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1",
           text: "orphan output",
           occurredAtUnixMs: 150
         })
@@ -746,12 +828,14 @@ function childAssistantItem({
   id,
   eventId,
   ownerThreadId,
+  ownerCallId,
   text,
   occurredAtUnixMs
 }: {
   id: number;
   eventId: string;
   ownerThreadId: string;
+  ownerCallId?: string;
   text: string;
   occurredAtUnixMs: number;
 }): WorkspaceAgentActivityTimelineItem {
@@ -760,7 +844,7 @@ function childAssistantItem({
     eventId,
     itemType: "message.assistant",
     role: "assistant",
-    payload: { text, ownerThreadId },
+    payload: { text, ownerThreadId, ...(ownerCallId ? { ownerCallId } : {}) },
     occurredAtUnixMs,
     createdAtUnixMs: occurredAtUnixMs
   });
@@ -770,12 +854,14 @@ function childCallItem({
   id,
   eventId,
   ownerThreadId,
+  ownerCallId,
   name,
   occurredAtUnixMs
 }: {
   id: number;
   eventId: string;
   ownerThreadId: string;
+  ownerCallId?: string;
   name: string;
   occurredAtUnixMs: number;
 }): WorkspaceAgentActivityTimelineItem {
@@ -787,7 +873,12 @@ function childCallItem({
     callId: `${eventId}-call`,
     name,
     status: "running",
-    payload: { name, ownerThreadId, callId: `${eventId}-call` },
+    payload: {
+      name,
+      ownerThreadId,
+      ...(ownerCallId ? { ownerCallId } : {}),
+      callId: `${eventId}-call`
+    },
     occurredAtUnixMs,
     createdAtUnixMs: occurredAtUnixMs
   });
@@ -797,6 +888,7 @@ function childLifecycleItem({
   id,
   eventId,
   ownerThreadId,
+  ownerCallId,
   status,
   detail,
   occurredAtUnixMs
@@ -804,6 +896,7 @@ function childLifecycleItem({
   id: number;
   eventId: string;
   ownerThreadId: string;
+  ownerCallId?: string;
   status: "completed" | "failed" | "canceled";
   detail?: string;
   occurredAtUnixMs: number;
@@ -816,6 +909,7 @@ function childLifecycleItem({
     status,
     payload: {
       ownerThreadId,
+      ...(ownerCallId ? { ownerCallId } : {}),
       messageKind: "subAgentLifecycle",
       subAgentLifecycleStatus: status,
       ...(detail ? { detail } : {})

@@ -263,6 +263,84 @@ The durable activity data is the original turn summary input:
   zero executable diffs; for absolute file paths with a synthetic `/` workspace
   root, use the file's containing directory as the Git cwd.
 
+Claude SDK sidecars must not treat Edit/Write input text as authoritative patch
+data. They should collect the `PostToolUse` `tool_response.structuredPatch`
+hunks, convert them into file-level `changes[].diff` payloads, and only use
+input-derived file metadata for optimistic display before the tool response
+arrives.
+
+Approval tool calls may wrap the pending Edit/Write input so the transcript can
+preview what the user approved. Treat that nested input as preview-only data:
+Approval rows must not contribute edit diff counts, changed-file summaries, or
+undo/reapply patch batches. The executed file-change tool output remains the
+source of truth for edit statistics and reversible patches.
+
+Claude SDK interactive tools must preserve `callType: "interactive"` on the
+top-level durable tool payload, not only inside `metadata`. Agent GUI and
+Message Center both project approvals and prompts from the normalized top-level
+call type. For `AskUserQuestion`, renderer payloads may keep
+`answersByQuestionId` keyed by stable UI question ids, but the Claude SDK
+permission callback must return `updatedInput.answers` keyed by the full
+question text because current Claude SDK result rendering looks up answers by
+question text. Legacy Claude ACP `AskUserQuestion` failures may be hidden only
+when the recorded failure says the tool is unavailable; waiting or completed
+Claude SDK `AskUserQuestion` calls must remain in the Agent GUI detail
+projection so the composer prompt can render.
+
+Runtime interactive prompts also travel through session state. Provider
+adapters expose them as `SessionStateSnapshot.pendingInteractive`; runtime
+state patches must preserve that field through `WorkspaceAgentStatePatch`,
+`AgentActivityStatePatch`, and `AgentHostWorkspaceAgentStatePatch` so
+AgentGuiNode can render prompts before any durable tool-call row completes.
+This field is tri-state: omitted means "no change", an object means "show this
+prompt", and explicit `null` means "clear the current prompt". Do not model it
+as a persisted workspace session field or as a pointer-only JSON field that
+cannot emit `null`.
+
+Claude background agents are session-level runtime state for both ACP and SDK
+adapters. Raw Claude `task_started`, `task_progress`, `task_notification`,
+`task_updated`, and SDK sidecar `task_*` events should update
+`runtimeContext.backgroundAgents` and emit activity timeline events, without
+forcing the parent session into a working lifecycle state. Composer wait copy
+such as "Waiting for 1 background agent to finish" must be derived from that
+structured runtime context. Do not infer background agent waits from terminal
+streaming state or from transcript text; persistent session readers can receive
+task progress after the active prompt call has returned.
+
+For Claude SDK background agents, treat the Agent tool call id
+(`parentToolUseId`) as the canonical background-agent key. SDK `task_id` and
+`agent_id` values are aliases that may arrive later or from hooks without a
+parent id, and `task_id` frequently carries the agent id, so aliases must be
+resolved against both maps. Do not bind any unscoped task event (`TaskCreated`,
+`TaskCompleted`, `task_started`, `task_progress`, `task_notification`) to "the
+only running" delegated task when its alias fails to resolve and another
+registered task already has a known alias; concurrent launches can otherwise
+attach one child task id to a different Agent tool call, fold two background
+agents into one runtime entry, and leave the composer wait count stale or
+cleared early. The daemon `backgroundAgents` map follows the same canonical
+rule: an update carrying an explicit parent tool call id may merge through
+weaker aliases only into an entry with an empty or identical recorded parent.
+Delegated tasks settle only on the child `result` message, the
+`task_notification` system message, or the `TaskCompleted` hook. Child
+assistant messages tagged with `parent_tool_use_id` stream while the child is
+still running and must not complete the task, and a trailing `task_progress`
+after settlement must not flip the task back to running; only a new
+`task_started` may restart it. Violating either rule makes the running
+background-agent count oscillate without new launches.
+
+Claude SDK manual `/compact` turns must publish a visible compact completion
+activity when the SDK emits only a `compact_boundary` system message. The
+boundary still updates context usage, but it can arrive before the SDK echoes
+the user message or after the result settles; AgentGUI needs the sidecar to
+attach a durable `compact_completed` event to the compact command turn rather
+than only the currently active turn.
+
+When Claude resumes parent work after a background agent completes, that resumed
+work is a new synthetic turn for AgentGUI lifecycle purposes. The sidecar and
+runtime adapter must publish a turn-start lifecycle patch before transcript or
+tool updates for that synthetic turn; otherwise AgentGuiNode will correctly keep
+the composer idle because the authoritative runtime state is still settled.
+
 Do not persist the UI button state. A successful Undo only flips the local
 button to Reapply for the current render. If the page reloads, the source of
 truth is still the recorded diff plus the current worktree state; `git apply`
@@ -522,6 +600,25 @@ Claude SDK message rather than an ACP `agent_message_chunk`, the daemon adapter
 must normalize that text into the same persisted message projection. AgentGUI
 must not read provider transcript files or SDK-specific logs to recover missing
 final output.
+Tool output follows the same rule. Provider adapters may preserve raw fields
+such as `stdout`, `output`, `content`, or SDK content blocks for diagnostics and
+specialized renderers, but the daemon message projection must populate
+canonical `output.text` when visible tool output exists. AgentGUI renderers
+should prefer canonical fields and treat provider-specific output shapes only as
+legacy persisted-message fallbacks.
+Prompt image input is also part of the normalized runtime contract. Daemon
+adapters that advertise `imageInput` must forward the structured prompt content
+blocks to their runtime boundary; SDK sidecars may keep a text `prompt` fallback
+for short-term IPC compatibility, but image execution must use the structured
+`content` blocks instead of reconstructing input from display text.
+Claude Code runtime options follow the same parity rule. The legacy ACP adapter
+and the Claude SDK adapter must derive system prompt append text, Tutti detail
+mode instructions, plan-mode instructions, plugin directory, custom model args,
+disallowed tools, and the Claude Code built-in tool preset from one daemon-side
+builder before they cross their runtime boundary. SDK sidecars should map that
+structured payload into SDK `query` options; they should not rediscover plugin
+dirs, infer tool availability from UI labels, or keep a separate prompt/options
+contract from the ACP path.
 
 ### Event Reconcile And UI Refresh
 
@@ -1035,14 +1132,17 @@ When `providerTargets` is omitted, package-level AgentGUI hosts may synthesize
 local targets from the static provider catalog for picker/display compatibility.
 An explicit `providerTargets` array, including an empty array, is authoritative
 and must not fall back to static local targets. Desktop workbench loads this
-array from tuttid `agent_targets`; while that fetch is in progress it passes an
-empty array plus a loading flag so the rail can show a loading state instead of
-pretending Codex or Claude Code came from durable target data. Fallback targets
-do not change the legacy activation contract: AgentGUI does not persist or send
-their `providerTargetRef`. For system local Codex and Claude Code targets, the
-synthesized targets may expose `local:codex` and `local:claude-code` as
-`agentTargetId`, matching the legacy local `providerTargetId` format so old node
-state can fall back without remapping.
+array through the renderer `AgentsService`, which is the renderer-side source
+of truth for agent target presentation data. The same service-backed snapshot
+feeds the AgentGUI rail, the composer `@` agent target contributor, and
+readonly/markdown mention hydration. While that fetch is in progress the
+workbench passes an empty array plus a loading flag so the rail can show a
+loading state instead of pretending Codex or Claude Code came from durable
+target data. Fallback targets do not change the legacy activation contract:
+AgentGUI does not persist or send their `providerTargetRef`. For system local
+Codex and Claude Code targets, the synthesized targets may expose `local:codex`
+and `local:claude-code` as `agentTargetId`, matching the legacy local
+`providerTargetId` format so old node state can fall back without remapping.
 
 ### Conversation Projection
 
@@ -1165,6 +1265,24 @@ to archive the selected file under a Tutti-managed agent prompt assets
 directory, then returns that managed absolute path to AgentGUI. This capability
 is file-only in desktop today; image drafts keep the existing image input path
 unless a runtime explicitly advertises image prompt upload support.
+
+Agent launch mentions use the external rich-text `agent-target` provider. The
+`workspace-app` provider is reserved for real workspace apps and must not return
+legacy `agent-codex` or `agent-claude-code` pseudo apps. New agent mentions
+should serialize as `mention://agent-target/local:codex` or
+`mention://agent-target/local:claude-code` with workspace scope only; they must
+not serialize provider ids or icon hints into the href. Renderer display code
+must resolve labels, providers, and icons by looking up the current
+`agentTargetId` in `AgentsService`-derived presentation data, so future
+user-defined icons and editable targets have one renderer source of truth.
+Historical pseudo-app mentions may remain as display tokens but are not a new
+insertion target.
+Desktop AgentGUI host input must include the `agent-target` capability when it
+builds composer context mention providers. Inside the AgentGUI mention palette,
+the Apps tab queries only `workspace-app`; first-party launch targets appear in
+a separate Agents tab that queries only `agent-target`. Do not use the Apps tab
+as an agent fallback, because that recreates the old pseudo workspace-app
+contract.
 
 Quick check:
 

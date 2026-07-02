@@ -226,6 +226,9 @@ function LoadingEllipsis(): JSX.Element {
 function diffStatsForCall(
   call: AgentToolCallVM
 ): { added: number; removed: number } | null {
+  if (call.rendererKind === "approval") {
+    return null;
+  }
   const files = getFileChangeRenderData(call);
   if (files.length > 0) {
     const totals = files.reduce(

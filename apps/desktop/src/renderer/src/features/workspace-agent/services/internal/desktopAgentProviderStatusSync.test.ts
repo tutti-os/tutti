@@ -24,6 +24,26 @@ test("shouldRefreshProviderStatusAfterSessionError matches provider availability
     ),
     true
   );
+  assert.equal(
+    shouldRefreshProviderStatusAfterSessionError(
+      new TuttidProtocolError({
+        code: "workspace_operation_failed",
+        reason: "claude_sdk_sidecar_unavailable",
+        statusCode: 502
+      })
+    ),
+    true
+  );
+  assert.equal(
+    shouldRefreshProviderStatusAfterSessionError(
+      new TuttidProtocolError({
+        code: "workspace_operation_failed",
+        reason: "managed_runtime_unavailable",
+        statusCode: 502
+      })
+    ),
+    true
+  );
 });
 
 test("shouldRefreshProviderStatusAfterSessionError ignores unrelated failures", () => {

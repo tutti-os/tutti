@@ -87,6 +87,8 @@ apps/desktop/build/tuttid/
 
 For macOS packages, the bundled `tuttid` daemon and `tutti` CLI must be universal binaries. Build both `darwin/arm64` and `darwin/amd64`, merge them with `lipo`, and verify the resulting binary contains `arm64` and `x86_64` slices before packaging.
 
+Vendored Node runtimes that bring their own Mach-O binaries, such as `claude-sdk-sidecar`, must be compatible with Electron's universal merge. If the same packaged binary is copied into both the x64 and arm64 app bundles, cover that path with `build.mac.x64ArchFiles` so `@electron/universal` can skip `lipo` for the duplicate resource.
+
 `electron-builder` then packages that daemon into the desktop app as:
 
 ```text

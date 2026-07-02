@@ -4,6 +4,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"go/format"
 	"os"
 	"path/filepath"
 	"sort"
@@ -806,6 +807,9 @@ func normalizeGeneratedHeader(src []byte, codexCommit string) []byte {
 	if len(parts) > 1 {
 		rest = strings.TrimLeft(parts[1], "\n")
 	}
+	for strings.Contains(rest, "\n\n\n") {
+		rest = strings.ReplaceAll(rest, "\n\n\n", "\n\n")
+	}
 	return []byte(generatedHeader(codexCommit) + rest)
 }
 
@@ -826,6 +830,13 @@ func writeProtocolMetadata(outDir, codexCommit, codexVersion string) error {
 
 func writeFile(dir, name string, contents []byte) error {
 	path := filepath.Join(dir, name)
+	if filepath.Ext(name) == ".go" {
+		formatted, err := format.Source(contents)
+		if err != nil {
+			return fmt.Errorf("format %s: %w", name, err)
+		}
+		contents = formatted
+	}
 	return os.WriteFile(path, contents, 0o644)
 }
 

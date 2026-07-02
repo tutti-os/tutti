@@ -8,7 +8,7 @@ import type {
   HealthStatusResponse,
   TuttidClient
 } from "@tutti-os/client-tuttid-ts";
-import { resolveTuttiEnv } from "../defaults.ts";
+import { resolveDesktopDefaultsFromEnv, resolveTuttiEnv } from "../defaults.ts";
 import {
   desktopErrorCodes,
   formatErrorMessage
@@ -242,6 +242,12 @@ const vendoredBrowserMcpRelPath = join(
   "bin",
   "chrome-devtools-mcp.js"
 );
+const vendoredClaudeSDKSidecarRelPath = join(
+  "bin",
+  "claude-sdk-sidecar",
+  "src",
+  "main.ts"
+);
 
 // resolveBrowserMcpDaemonEnv points the daemon at a vendored chrome-devtools-mcp
 // in packaged builds so browser use never has to fetch it over the network at
@@ -274,6 +280,53 @@ export function resolveBrowserMcpDaemonEnv(
   };
 }
 
+export function resolveClaudeSDKSidecarDaemonEnv(
+  runtime?: DesktopElectronAppRuntime
+): Record<string, string> {
+  if (
+    process.env.TUTTI_CLAUDE_SDK_SIDECAR_COMMAND?.trim() ||
+    process.env.TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH?.trim()
+  ) {
+    return {};
+  }
+  let appRuntime: DesktopElectronAppRuntime;
+  try {
+    appRuntime = runtime ?? resolveElectronAppRuntime();
+  } catch {
+    return {};
+  }
+  if (!appRuntime.isPackaged) {
+    return {};
+  }
+  const entry = join(appRuntime.resourcesPath, vendoredClaudeSDKSidecarRelPath);
+  if (!existsSync(entry)) {
+    return {};
+  }
+  return {
+    TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH: entry
+  };
+}
+
+function resolveManagedRuntimeDaemonEnv(
+  userShellEnv?: Record<string, string>
+): Record<string, string> {
+  const rootOverride =
+    process.env.TUTTI_APP_RUNTIME_ROOT?.trim() ||
+    userShellEnv?.TUTTI_APP_RUNTIME_ROOT?.trim();
+  const cacheRootOverride =
+    process.env.TUTTI_APP_RUNTIME_CACHE_ROOT?.trim() ||
+    userShellEnv?.TUTTI_APP_RUNTIME_CACHE_ROOT?.trim();
+  if (rootOverride || cacheRootOverride) {
+    return {};
+  }
+  return {
+    TUTTI_APP_RUNTIME_CACHE_ROOT: join(
+      resolveDesktopDefaultsFromEnv().state.rootDir,
+      "app-runtimes"
+    )
+  };
+}
+
 export function resolveManagedDaemonProcessEnv(
   input: ManagedDaemonProcessEnvInput
 ): NodeJS.ProcessEnv {
@@ -281,7 +334,9 @@ export function resolveManagedDaemonProcessEnv(
     ...process.env,
     ...(input.userShellEnv ?? {}),
     ...resolveEndpointEnv(input.endpoint),
+    ...resolveManagedRuntimeDaemonEnv(input.userShellEnv),
     ...resolveBrowserMcpDaemonEnv(),
+    ...resolveClaudeSDKSidecarDaemonEnv(),
     TUTTI_APP_VERSION: process.env.TUTTI_APP_VERSION?.trim() ?? "",
     TUTTI_DESKTOP_PARENT_PID: String(input.parentPID ?? process.pid),
     TUTTI_LOG_DIR: input.logDir ?? resolveDesktopLogsDir(),

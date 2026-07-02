@@ -145,7 +145,7 @@ func NewDefaultControllerWithOptions(
 	host := options.HostMetadata
 	return NewController(
 		[]Adapter{
-			newClaudeCodeAdapterWithHostMetadata(transport, host, options.ProviderCommandResolver),
+			newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
 			NewCodexAppServerAdapterWithHostMetadata(transport, host),
 			NewNexightAdapterWithHostMetadata(transport, host),
 			NewGeminiAdapterWithHostMetadata(transport, host),
@@ -154,6 +154,17 @@ func NewDefaultControllerWithOptions(
 		},
 		reporter,
 	)
+}
+
+func newDefaultClaudeCodeAdapter(
+	transport ProcessTransport,
+	host HostMetadata,
+	commandResolver ProviderCommandResolver,
+) Adapter {
+	if claudeCodeSDKRuntimeEnabled() {
+		return NewClaudeCodeSDKAdapter(transport)
+	}
+	return newClaudeCodeAdapterWithHostMetadata(transport, host, commandResolver)
 }
 
 func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, error) {
@@ -200,6 +211,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		Status:               SessionStatusReady,
 		Title:                firstNonEmpty(strings.TrimSpace(input.Title), provider),
 		Visible:              sessionVisible(input.Visible),
+		RuntimeContext:       clonePayload(input.RuntimeContext),
 		ProviderTargetRef:    clonePayload(input.ProviderTargetRef),
 		OpenclawGatewayReady: input.OpenclawGatewayReady,
 		PermissionModeID:     permissionModeID,
@@ -295,6 +307,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		Status:            firstNonEmpty(normalizeSessionStatus(input.Status), SessionStatusReady),
 		Title:             firstNonEmpty(strings.TrimSpace(input.Title), provider),
 		Visible:           sessionVisible(input.Visible),
+		RuntimeContext:    clonePayload(input.RuntimeContext),
 		PermissionModeID:  normalizePermissionModeIDWithFallback(provider, input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
 		Settings:          normalizeOptionalSessionSettings(input.Settings, provider, firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider))),
 		CreatedAtUnixMS:   createdAtUnixMS,
@@ -508,6 +521,9 @@ func applySessionEvents(session Session, events []activityshared.Event) Session 
 		if title := strings.TrimSpace(event.Payload.Title); title != "" {
 			session.Title = title
 		}
+		if runtimeContext := payloadMap(event.Payload.Metadata, "runtimeContext"); len(runtimeContext) > 0 {
+			session.RuntimeContext = mergeRuntimeContextPatch(session.RuntimeContext, runtimeContext)
+		}
 		if next := deriveSessionStatusFromEvents([]activityshared.Event{event}, ""); next != "" {
 			session.Status = next
 		}
@@ -519,6 +535,20 @@ func applySessionEvents(session Session, events []activityshared.Event) Session 
 		}
 	}
 	return session
+}
+
+func mergeRuntimeContextPatch(current map[string]any, patch map[string]any) map[string]any {
+	if len(patch) == 0 {
+		return clonePayload(current)
+	}
+	next := clonePayload(current)
+	if next == nil {
+		next = map[string]any{}
+	}
+	for key, value := range patch {
+		next[key] = clonePayloadValue(value)
+	}
+	return next
 }
 
 func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, error) {
@@ -833,6 +863,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		if shouldAdvanceSessionUpdatedAtFromEvents(events) {
 			session.UpdatedAtUnixMS = unixMS(now())
 		}
+		session = c.preserveCurrentSessionSettings(session)
 		c.store(session)
 		emitted = append(emitted, events...)
 		c.publish(session, events)
@@ -904,6 +935,7 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		if shouldAdvanceSessionUpdatedAtFromEvents(events) {
 			session.UpdatedAtUnixMS = unixMS(now())
 		}
+		session = c.preserveCurrentSessionSettings(session)
 		c.store(session)
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
@@ -1216,6 +1248,128 @@ func (c *Controller) preserveActiveTurnStatus(session Session, turnID string, pr
 	return session
 }
 
+func (c *Controller) preserveCurrentSessionSettings(session Session) Session {
+	if c == nil {
+		return session
+	}
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.preserveCurrentSessionSettingsLocked(key, session)
+}
+
+func (c *Controller) preserveCurrentSessionSettingsLocked(key string, session Session) Session {
+	if c == nil {
+		return session
+	}
+	current, ok := c.sessions[key]
+	if !ok ||
+		strings.TrimSpace(current.RoomID) != strings.TrimSpace(session.RoomID) ||
+		strings.TrimSpace(current.AgentSessionID) != strings.TrimSpace(session.AgentSessionID) ||
+		strings.TrimSpace(current.Provider) != strings.TrimSpace(session.Provider) {
+		return session
+	}
+	session.PermissionModeID = strings.TrimSpace(current.PermissionModeID)
+	if current.Settings != nil {
+		settings := normalizeSessionSettings(current.Settings, current.Provider, session.PermissionModeID)
+		session.Settings = cloneSessionSettings(settings)
+	} else {
+		session.Settings = nil
+	}
+	session.RuntimeContext = runtimeContextWithSessionSettings(session.RuntimeContext, session.SettingsValue())
+	return session
+}
+
+func runtimeContextWithSessionSettings(runtimeContext map[string]any, settings SessionSettings) map[string]any {
+	next := clonePayload(runtimeContext)
+	if next == nil {
+		next = map[string]any{}
+	}
+	next["permissionModeId"] = strings.TrimSpace(settings.PermissionModeID)
+	next["planMode"] = settings.PlanMode
+	next["model"] = strings.TrimSpace(settings.Model)
+	next["reasoningEffort"] = strings.TrimSpace(settings.ReasoningEffort)
+	next["speed"] = strings.TrimSpace(settings.Speed)
+	return next
+}
+
+func sessionHasDifferentLiveTurn(session Session, turnID string) bool {
+	if !sessionHasLiveTurnLifecycle(session) {
+		return false
+	}
+	return runtimeTurnLifecycleActiveTurnID(session.TurnLifecycle) != strings.TrimSpace(turnID)
+}
+
+func settleFinishedTurnLifecycle(session Session, turnID string) Session {
+	if session.TurnLifecycle == nil {
+		return session
+	}
+	if runtimeTurnLifecycleActiveTurnID(session.TurnLifecycle) != strings.TrimSpace(turnID) {
+		return session
+	}
+	if !runtimeTurnLifecyclePhaseIsLive(session.TurnLifecycle.Phase) {
+		return session
+	}
+	outcome := "completed"
+	if session.TurnLifecycle.Outcome != nil && strings.TrimSpace(*session.TurnLifecycle.Outcome) != "" {
+		outcome = strings.TrimSpace(*session.TurnLifecycle.Outcome)
+	}
+	session.TurnLifecycle = &TurnLifecycle{
+		Phase:            "settled",
+		Outcome:          &outcome,
+		CompletedCommand: cloneRuntimeCompletedCommand(session.TurnLifecycle.CompletedCommand),
+	}
+	session.SubmitAvailability = availableSubmitAvailability()
+	return session
+}
+
+func sessionHasLiveTurnLifecycle(session Session) bool {
+	if session.TurnLifecycle == nil {
+		return false
+	}
+	return runtimeTurnLifecycleActiveTurnID(session.TurnLifecycle) != "" &&
+		runtimeTurnLifecyclePhaseIsLive(session.TurnLifecycle.Phase)
+}
+
+func sessionHasLiveBackgroundAgents(session Session) bool {
+	backgroundAgents := payloadMap(session.RuntimeContext, "backgroundAgents")
+	if len(backgroundAgents) == 0 {
+		return false
+	}
+	if metadataInt64(backgroundAgents, "count") > 0 {
+		return true
+	}
+	items, _ := backgroundAgents["items"].([]any)
+	for _, item := range items {
+		agent := payloadMap(map[string]any{"item": item}, "item")
+		if len(agent) == 0 {
+			continue
+		}
+		status := firstNonEmptyString(payloadString(agent, "status"), string(activityshared.ActivityStatusRunning))
+		if !claudeSDKBackgroundAgentStatusIsTerminal(status) {
+			return true
+		}
+	}
+	return false
+}
+
+func runtimeTurnLifecycleActiveTurnID(value *TurnLifecycle) string {
+	if value == nil || value.ActiveTurnID == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value.ActiveTurnID)
+}
+
+func runtimeTurnLifecyclePhaseIsLive(phase string) bool {
+	switch strings.TrimSpace(phase) {
+	case "submitted", "working", "running", "streaming",
+		"waiting", "waiting_approval", "waiting_input", "awaiting_approval":
+		return true
+	default:
+		return false
+	}
+}
+
 func unemittedActivityEvents(events []activityshared.Event, emitted []activityshared.Event) []activityshared.Event {
 	if len(events) == 0 {
 		return nil
@@ -1260,6 +1414,12 @@ func (c *Controller) finishTurn(session Session, turnID string) {
 	if active, ok := c.turns[key]; ok && active.turnID == turnID {
 		delete(c.turns, key)
 	}
+	if current, ok := c.sessions[key]; ok && sessionHasDifferentLiveTurn(current, turnID) {
+		c.mu.Unlock()
+		return
+	}
+	session = c.preserveCurrentSessionSettingsLocked(key, session)
+	session = settleFinishedTurnLifecycle(session, turnID)
 	session = c.reconcileSessionStatusLocked(key, session)
 	c.sessions[key] = session
 	c.mu.Unlock()
@@ -1399,6 +1559,14 @@ func (c *Controller) reconcileSessionStatusLocked(key string, session Session) S
 	if _, hasActiveTurn := c.turns[key]; hasActiveTurn {
 		return session
 	}
+	if sessionHasLiveTurnLifecycle(session) {
+		return session
+	}
+	if sessionHasLiveBackgroundAgents(session) {
+		session.Status = SessionStatusWorking
+		session.SubmitAvailability = blockedSubmitAvailability("background_agent")
+		return session
+	}
 	if session.Status != SessionStatusWorking {
 		return session
 	}
@@ -1418,6 +1586,9 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 	}
 	if input.Settings.ReasoningEffort != nil {
 		settings.ReasoningEffort = strings.TrimSpace(*input.Settings.ReasoningEffort)
+	}
+	if input.Settings.Speed != nil {
+		settings.Speed = strings.TrimSpace(*input.Settings.Speed)
 	}
 	if input.Settings.PlanMode != nil {
 		settings.PlanMode = *input.Settings.PlanMode
@@ -1588,8 +1759,12 @@ func (c *Controller) sessionStateSnapshot(session Session) SessionStateSnapshot 
 		Provider:          session.Provider,
 		ProviderSessionID: session.ProviderSessionID,
 		Status:            session.Status,
-		PermissionModeID:  session.PermissionModeID,
-		Settings:          normalizeOptionalSessionSettings(session.Settings, session.Provider, session.PermissionModeID),
+		TurnLifecycle:     cloneRuntimeTurnLifecycle(session.TurnLifecycle),
+		SubmitAvailability: cloneRuntimeSubmitAvailability(
+			session.SubmitAvailability,
+		),
+		PermissionModeID: session.PermissionModeID,
+		Settings:         normalizeOptionalSessionSettings(session.Settings, session.Provider, session.PermissionModeID),
 		RuntimeContext: map[string]any{
 			"cwd":              session.CWD,
 			"title":            session.Title,
@@ -1609,7 +1784,9 @@ func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteract
 		result, err := interactiveAdapter.SubmitInteractive(ctx, session, input)
 		if err == nil {
 			c.syncClaudeCodeModeFromSelection(session, result.OptionID)
-			c.scheduleInteractiveDenyFollowUp(input)
+			if adapterShouldReceiveInteractiveDenyFollowUp(adapter) {
+				c.scheduleInteractiveDenyFollowUp(input)
+			}
 		}
 		return result, err
 	}
@@ -1704,6 +1881,13 @@ func permissionModeStatePatch(session Session) agentsessionstore.WorkspaceAgentS
 		RuntimeContext:    runtimeContext,
 		OccurredAtUnixMS:  session.UpdatedAtUnixMS,
 	}
+}
+
+func adapterShouldReceiveInteractiveDenyFollowUp(adapter Adapter) bool {
+	if _, ok := adapter.(*ClaudeCodeSDKAdapter); ok {
+		return false
+	}
+	return true
 }
 
 func (c *Controller) scheduleInteractiveDenyFollowUp(input SubmitInteractiveInput) {
@@ -1835,7 +2019,11 @@ func sessionStateSnapshotStreamEvent(session Session) StreamEvent {
 			Title:             strings.TrimSpace(session.Title),
 			LifecycleStatus:   lifecycleStatus,
 			CurrentPhase:      currentPhase,
-			OccurredAtUnixMS:  occurredAtUnixMS,
+			TurnLifecycle:     activityTurnLifecycleFromRuntime(session.TurnLifecycle),
+			SubmitAvailability: activitySubmitAvailabilityFromRuntime(
+				session.SubmitAvailability,
+			),
+			OccurredAtUnixMS: occurredAtUnixMS,
 		},
 	}
 }
@@ -1851,11 +2039,78 @@ func statePatchFromSessionStateSnapshot(snapshot SessionStateSnapshot) agentsess
 		PermissionModeID:  strings.TrimSpace(snapshot.PermissionModeID),
 		Settings:          sessionSettingsPayload(snapshot.Settings),
 		RuntimeContext:    runtimeContext,
-		CWD:               strings.TrimSpace(runtimeContextString(runtimeContext, "cwd")),
-		Title:             strings.TrimSpace(runtimeContextString(runtimeContext, "title")),
-		LifecycleStatus:   string(activityshared.SessionLifecycleStatusActive),
-		CurrentPhase:      snapshotStatusPhase(snapshot.Status),
-		OccurredAtUnixMS:  snapshot.UpdatedAtUnixMS,
+		TurnLifecycle:     activityTurnLifecycleFromRuntime(snapshot.TurnLifecycle),
+		SubmitAvailability: activitySubmitAvailabilityFromRuntime(
+			snapshot.SubmitAvailability,
+		),
+		CWD:             strings.TrimSpace(runtimeContextString(runtimeContext, "cwd")),
+		Title:           strings.TrimSpace(runtimeContextString(runtimeContext, "title")),
+		LifecycleStatus: string(activityshared.SessionLifecycleStatusActive),
+		CurrentPhase:    snapshotStatusPhase(snapshot.Status),
+		PendingInteractive: activityInteractivePromptFromRuntime(
+			snapshot.PendingInteractive,
+		),
+		PendingInteractivePresent: true,
+		OccurredAtUnixMS:          snapshot.UpdatedAtUnixMS,
+	}
+}
+
+func activityTurnLifecycleFromRuntime(value *TurnLifecycle) *agentsessionstore.WorkspaceAgentTurnLifecycle {
+	if value == nil {
+		return nil
+	}
+	var activeTurnID *string
+	if value.ActiveTurnID != nil {
+		active := strings.TrimSpace(*value.ActiveTurnID)
+		activeTurnID = &active
+	}
+	var outcome *string
+	if value.Outcome != nil {
+		next := strings.TrimSpace(*value.Outcome)
+		outcome = &next
+	}
+	return &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		ActiveTurnID:     activeTurnID,
+		Phase:            strings.TrimSpace(value.Phase),
+		Settling:         value.Settling,
+		Outcome:          outcome,
+		CompletedCommand: activityCompletedCommandFromRuntime(value.CompletedCommand),
+	}
+}
+
+func activityCompletedCommandFromRuntime(value *CompletedCommand) *agentsessionstore.WorkspaceAgentCompletedCommand {
+	if value == nil {
+		return nil
+	}
+	return &agentsessionstore.WorkspaceAgentCompletedCommand{
+		Kind:   strings.TrimSpace(value.Kind),
+		Status: strings.TrimSpace(value.Status),
+	}
+}
+
+func activitySubmitAvailabilityFromRuntime(value *SubmitAvailability) *agentsessionstore.WorkspaceAgentSubmitAvailability {
+	if value == nil {
+		return nil
+	}
+	return &agentsessionstore.WorkspaceAgentSubmitAvailability{
+		State:  strings.TrimSpace(value.State),
+		Reason: strings.TrimSpace(value.Reason),
+	}
+}
+
+func activityInteractivePromptFromRuntime(prompt *SessionInteractivePrompt) *agentsessionstore.WorkspaceAgentInteractivePrompt {
+	if prompt == nil {
+		return nil
+	}
+	return &agentsessionstore.WorkspaceAgentInteractivePrompt{
+		Kind:      strings.TrimSpace(prompt.Kind),
+		RequestID: strings.TrimSpace(prompt.RequestID),
+		ToolName:  strings.TrimSpace(prompt.ToolName),
+		Status:    strings.TrimSpace(prompt.Status),
+		Input:     clonePayload(prompt.Input),
+		Output:    clonePayload(prompt.Output),
+		Error:     clonePayload(prompt.Error),
+		Metadata:  clonePayload(prompt.Metadata),
 	}
 }
 
@@ -2338,10 +2593,16 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 		return
 	}
 	session = applySessionEvents(session, events)
+	session = applyTurnLifecycleFromEvents(session, events)
+	session.Status = deriveSessionStatusFromEvents(events, session.Status)
 	if shouldAdvanceSessionUpdatedAtFromEvents(events) {
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
-	c.store(session)
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.mu.Lock()
+	session = c.reconcileSessionStatusLocked(key, session)
+	c.sessions[key] = session
+	c.mu.Unlock()
 	c.publish(session, events)
 	c.enqueueSessionReport(context.Background(), session, events)
 }
@@ -2542,6 +2803,10 @@ func enrichReportStatePatches(
 	for index := range report.StatePatches {
 		report.StatePatches[index].Settings = clonePayload(patch.Settings)
 		report.StatePatches[index].RuntimeContext = clonePayload(patch.RuntimeContext)
+		report.StatePatches[index].TurnLifecycle = cloneTurnLifecycle(patch.TurnLifecycle)
+		report.StatePatches[index].SubmitAvailability = cloneSubmitAvailability(patch.SubmitAvailability)
+		report.StatePatches[index].PendingInteractive = cloneInteractivePrompt(patch.PendingInteractive)
+		report.StatePatches[index].PendingInteractivePresent = patch.PendingInteractivePresent
 		if report.StatePatches[index].Provider == "" {
 			report.StatePatches[index].Provider = patch.Provider
 		}

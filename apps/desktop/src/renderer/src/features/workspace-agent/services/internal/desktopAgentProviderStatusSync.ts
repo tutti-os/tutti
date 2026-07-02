@@ -7,7 +7,9 @@ const providerStatusRefreshReasons = new Set([
   "agent_provider_unavailable",
   "auth_required",
   "auth_unknown",
-  "cli_not_found"
+  "claude_sdk_sidecar_unavailable",
+  "cli_not_found",
+  "managed_runtime_unavailable"
 ]);
 
 export function shouldRefreshProviderStatusAfterSessionError(

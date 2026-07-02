@@ -209,13 +209,27 @@ func providerAvailabilityChecksFromAgentStatus(status agentstatusservice.Provide
 		{
 			Name:   "adapter",
 			Passed: status.Adapter.Installed,
-			Detail: firstNonEmptyString(status.Adapter.BinaryPath, "ACP adapter not found"),
+			Detail: providerAvailabilityAdapterDetail(status),
 		},
 		{
 			Name:   "auth",
 			Passed: status.Auth.Status == agentstatusservice.AuthAuthenticated,
 			Detail: providerAvailabilityAuthDetail(status.Auth),
 		},
+	}
+}
+
+func providerAvailabilityAdapterDetail(status agentstatusservice.ProviderStatus) string {
+	if strings.TrimSpace(status.Adapter.BinaryPath) != "" {
+		return strings.TrimSpace(status.Adapter.BinaryPath)
+	}
+	switch strings.TrimSpace(status.Availability.ReasonCode) {
+	case agentstatusservice.ReasonClaudeSDKSidecarUnavailable:
+		return "Claude SDK sidecar not found"
+	case agentstatusservice.ReasonManagedRuntimeUnavailable:
+		return "Managed Node runtime is unavailable"
+	default:
+		return "ACP adapter not found"
 	}
 }
 
@@ -235,7 +249,7 @@ func providerAvailabilityNeedsInstall(availability ProviderAvailability) bool {
 		return false
 	}
 	switch strings.TrimSpace(availability.LastError.Code) {
-	case "cli_not_found", "acp_adapter_not_found":
+	case "cli_not_found", "acp_adapter_not_found", agentstatusservice.ReasonClaudeSDKSidecarUnavailable, agentstatusservice.ReasonManagedRuntimeUnavailable:
 		return true
 	default:
 		return false
@@ -297,7 +311,7 @@ func providerAvailabilityErrorMessage(status agentstatusservice.ProviderStatus) 
 			return "CLI binary not found"
 		}
 		if !status.Adapter.Installed {
-			return "ACP adapter not found"
+			return providerAvailabilityAdapterDetail(status)
 		}
 		return "provider is not installed"
 	case agentstatusservice.AvailabilityAuthRequired:

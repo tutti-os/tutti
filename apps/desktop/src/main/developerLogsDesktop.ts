@@ -81,9 +81,11 @@ async function listDeveloperLogsAgentSessions(
   const workspaces = await tuttidClient.listWorkspaces();
   const sessionPages = await Promise.all(
     workspaces.workspaces.map((workspace) =>
-      tuttidClient
-        .listWorkspaceAgentSessions(workspace.id)
-        .catch(() => ({ sessions: [], workspaceId: workspace.id }))
+      tuttidClient.listWorkspaceAgentSessions(workspace.id).catch(() => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: workspace.id
+      }))
     )
   );
 

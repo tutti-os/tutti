@@ -2595,6 +2595,9 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__composer-input-group > .agent-gui-chrome__session-chrome {
+  position: relative;
+  z-index: 3;
+  min-width: 0;
   margin-right: 8px;
   margin-left: 8px;
 }
@@ -5801,6 +5804,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   --agent-message-locator-dot-size: 6px;
   --agent-message-locator-hit-size: 18px;
   --agent-message-locator-center-offset: 10px;
+  --agent-message-locator-scrollbar-gap: 4px;
   --agent-message-locator-visible-height: 100vh;
   --agent-message-locator-visible-top-offset: 0px;
   --agent-message-locator-viewport-height: var(--agent-message-locator-height);
@@ -5833,7 +5837,8 @@ button.agent-gui-node__conversation-section-toggle:hover
   position: absolute;
   top: 0;
   right: calc(
-    var(--agent-message-locator-center-offset) -
+    var(--agent-message-locator-scrollbar-gap) +
+      var(--agent-message-locator-center-offset) -
       var(--agent-message-locator-hit-size) / 2
   );
   width: var(--agent-message-locator-hit-size);
@@ -5941,7 +5946,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-message-locator__panel {
   position: absolute;
   top: 50%;
-  right: 22px;
+  right: calc(22px + var(--agent-message-locator-scrollbar-gap));
   display: grid;
   width: min(360px, calc(100vw - 112px));
   max-width: max-content;

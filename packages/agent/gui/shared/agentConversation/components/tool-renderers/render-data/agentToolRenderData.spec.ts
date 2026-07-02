@@ -583,6 +583,45 @@ describe("agentToolRenderData", () => {
     expect(web.queries).toEqual(["today top news", "agent renderer parity"]);
   });
 
+  it("extracts SDK web search output from canonical output text", () => {
+    const web = getWebSearchRenderData(
+      makeCall({
+        toolName: "WebSearch",
+        input: {
+          query: "current weather in Tokyo Japan today"
+        },
+        output: {
+          text: 'Web search results for query: "current weather in Tokyo Japan today"'
+        }
+      })
+    );
+
+    expect(web.output).toContain(
+      'Web search results for query: "current weather in Tokyo Japan today"'
+    );
+  });
+
+  it("extracts SDK web search output from top-level tool result content", () => {
+    const web = getWebSearchRenderData(
+      makeCall({
+        toolName: "WebSearch",
+        input: {
+          query: "Tokyo weather now July 2026"
+        },
+        content: [
+          {
+            type: "tool_result",
+            text: 'Web search results for query: "Tokyo weather now July 2026"'
+          }
+        ]
+      })
+    );
+
+    expect(web.output).toContain(
+      'Web search results for query: "Tokyo weather now July 2026"'
+    );
+  });
+
   it("does not render task summary as output when output and error are missing", () => {
     const prompt =
       "Generate one random integer from 1 to 10 inclusive. Use your own randomness.";

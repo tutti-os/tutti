@@ -51,6 +51,17 @@ import {
   useAgentGUINodeController
 } from "./useAgentGUINodeController";
 vi.mock("@tutti-os/ui-system", () => ({
+  ArrowLeftIcon: () => null,
+  ArrowRightIcon: () => null,
+  Badge: ({ children }: { children?: unknown }) => children ?? null,
+  FileCodeIcon: () => null,
+  FileTextIcon: () => null,
+  FolderIcon: () => null,
+  ImageFileIcon: () => null,
+  ProductIcon: () => null,
+  StatusDot: () => null,
+  VideoFileIcon: () => null,
+  cn: (...values: unknown[]) => values.filter(Boolean).join(" "),
   toast: {
     error: vi.fn()
   }
@@ -14043,6 +14054,82 @@ describe("useAgentGUINodeController", () => {
       });
     });
     expect(result.current.viewModel.queuedPrompts).toEqual([]);
+  });
+
+  it("reflects pending interactive prompts from state patch events", async () => {
+    let emitEvent:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn((_payload, listener) => {
+        emitEvent = listener;
+        return vi.fn();
+      }),
+      getState: vi.fn(async () => agentSessionState("session-1"))
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    expect(result.current.viewModel.pendingInteractivePrompt).toBeNull();
+
+    act(() => {
+      emitEvent?.({
+        eventType: "state_patch",
+        data: {
+          agentSessionId: "session-1",
+          pendingInteractive: {
+            kind: "interactive",
+            requestId: "request-ask",
+            toolName: "AskUserQuestion",
+            status: "waiting",
+            input: {
+              questions: [
+                {
+                  id: "scope",
+                  header: "Scope",
+                  question: "Which scope should we use?",
+                  options: [{ label: "Small", description: "Minimal change" }]
+                }
+              ]
+            }
+          }
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.pendingInteractivePrompt?.requestId).toBe(
+        "request-ask"
+      );
+    });
+
+    act(() => {
+      emitEvent?.({
+        eventType: "state_patch",
+        data: {
+          agentSessionId: "session-1",
+          pendingInteractive: null
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.pendingInteractivePrompt).toBeNull();
+    });
   });
 
   it("queues busy prompts locally without sending them through backend exec", async () => {

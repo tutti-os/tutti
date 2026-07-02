@@ -21,7 +21,8 @@ const communityRecommendedAppIdGroups = [
   ["design-review"],
   ["product-competition"],
   ["daily-product-radar", "daily-tech-radar", "radar"],
-  ["draw-topic-app", "answer-book", "app_answer_book", "idea-draw"]
+  ["draw-topic-app", "answer-book", "app_answer_book", "idea-draw"],
+  ["omni-catcher"]
 ] as const;
 
 const recommendedAppDisplayRankById = buildRecommendedAppDisplayRankById();

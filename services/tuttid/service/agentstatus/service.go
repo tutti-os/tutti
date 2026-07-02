@@ -754,6 +754,8 @@ func agentProviderProbeAdapterUnavailableMessage(reasonCode string) string {
 		return "ACP external agent registry is unavailable"
 	case ReasonManagedRuntimeUnavailable:
 		return "Managed Node runtime is unavailable"
+	case ReasonClaudeSDKSidecarUnavailable:
+		return "Claude SDK sidecar not found"
 	default:
 		return "ACP adapter not found"
 	}

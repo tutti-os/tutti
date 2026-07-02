@@ -307,9 +307,9 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 			"task":      asStringRaw(item["prompt"]),
 			"agentName": tool,
 		}
-		// The GUI keys sub-agent lanes to this card by child thread id; without
-		// receiverThreadIds it can only guess by time affinity, which
-		// mis-attributes lanes while multiple spawns run concurrently.
+		// The GUI seeds placeholder lanes from the spawn card's declared
+		// children before any child rows arrive; lane attachment itself rides
+		// the ownerCallId recorded on each child row (ADR 0007).
 		if receivers := appServerReceiverThreadIDs(item["receiverThreadIds"]); len(receivers) > 0 {
 			ids := make([]any, 0, len(receivers))
 			for _, id := range receivers {
@@ -408,10 +408,15 @@ func appServerOutputText(value any) string {
 
 type appServerNotificationRoute struct {
 	ownerThreadID string
-	turnID        string
-	normalizer    *acpTurnNormalizer
-	events        []activityshared.Event
-	drop          bool
+	// ownerCallID is the spawn collabAgentToolCall item id that created the
+	// owning child thread (registry parentItemID). Stamped on every routed
+	// child event so the GUI attaches lanes by recorded edge, not inference
+	// (ADR 0007).
+	ownerCallID string
+	turnID      string
+	normalizer  *acpTurnNormalizer
+	events      []activityshared.Event
+	drop        bool
 }
 
 func (a *CodexAppServerAdapter) appServerNotificationRoute(
@@ -437,6 +442,7 @@ func (a *CodexAppServerAdapter) appServerNotificationRoute(
 	if event := appServerChildTerminalStatusEvent(session, eventThreadID, method, params); event.Type != "" {
 		return appServerNotificationRoute{
 			ownerThreadID: eventThreadID,
+			ownerCallID:   child.parentItemID,
 			turnID:        event.Payload.TurnID,
 			events:        []activityshared.Event{event},
 			drop:          true,
@@ -451,6 +457,7 @@ func (a *CodexAppServerAdapter) appServerNotificationRoute(
 	}
 	return appServerNotificationRoute{
 		ownerThreadID: eventThreadID,
+		ownerCallID:   child.parentItemID,
 		turnID:        firstNonEmpty(asString(params["turnId"]), asString(payloadObject(params["turn"])["id"])),
 		normalizer:    child.normalizer,
 	}
@@ -493,6 +500,14 @@ func (a *CodexAppServerAdapter) rememberAppServerChildThreads(agentSessionID str
 	}
 	parentThreadID = strings.TrimSpace(parentThreadID)
 	parentItemID := strings.TrimSpace(asString(item["id"]))
+	// Only the spawn card owns the children it declares. Wait/close control
+	// cards also list receiverThreadIds and must register the thread for
+	// routing, but must never claim lane ownership: parentItemID is
+	// first-wins below, and it becomes each child row's ownerCallId
+	// (ADR 0007).
+	if appServerAgentControlToolName(asString(item["tool"])) != "" {
+		parentItemID = ""
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
@@ -737,13 +752,15 @@ func appServerReceiverThreadIDs(value any) []string {
 	return out
 }
 
-func appServerEventsWithOwnerThreadID(events []activityshared.Event, ownerThreadID string) []activityshared.Event {
+func appServerEventsWithOwner(events []activityshared.Event, ownerThreadID string, ownerCallID string) []activityshared.Event {
 	ownerThreadID = strings.TrimSpace(ownerThreadID)
 	if ownerThreadID == "" || len(events) == 0 {
 		return events
 	}
+	ownerCallID = strings.TrimSpace(ownerCallID)
 	for index := range events {
 		events[index].OwnerThreadID = ownerThreadID
+		events[index].OwnerCallID = ownerCallID
 	}
 	return events
 }

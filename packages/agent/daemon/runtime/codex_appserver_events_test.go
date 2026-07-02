@@ -205,6 +205,7 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 	}
 	lifecycle := childLifecycleEvents[0]
 	if lifecycle.OwnerThreadID != "child-thread-1" ||
+		lifecycle.OwnerCallID != "spawn-child-1" ||
 		lifecycle.Payload.TurnID != "child-turn-1" ||
 		lifecycle.Payload.Metadata["messageKind"] != "subAgentLifecycle" ||
 		lifecycle.Payload.Metadata["subAgentLifecycleStatus"] != "completed" {
@@ -227,6 +228,9 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 	if event.OwnerThreadID != "child-thread-1" {
 		t.Fatalf("OwnerThreadID = %q, want child-thread-1", event.OwnerThreadID)
 	}
+	if event.OwnerCallID != "spawn-child-1" {
+		t.Fatalf("OwnerCallID = %q, want spawn-child-1 (the spawn card id, ADR 0007)", event.OwnerCallID)
+	}
 	if event.AgentSessionID != session.AgentSessionID || event.ProviderSessionID != session.ProviderSessionID {
 		t.Fatalf("event session = %q/%q, want parent session", event.AgentSessionID, event.ProviderSessionID)
 	}
@@ -240,6 +244,45 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 	parentAfterChild := normalizer.AppendAssistantChunk(session, "parent-turn-1", "parent output")
 	if len(parentAfterChild) != 1 || parentAfterChild[0].Payload.Content != "parent output" {
 		t.Fatalf("parent normalizer was corrupted by child lane: %#v", parentAfterChild)
+	}
+}
+
+// Only the spawn card owns the children it declares (ADR 0007): a wait/close
+// control card arriving first registers the thread for routing but must not
+// claim parentItemID — first-wins would otherwise bind the lane to the
+// control card for good.
+func TestCodexAppServerControlCardNeverClaimsChildOwnership(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewCodexAppServerAdapter(nil)
+	session := Session{
+		AgentSessionID:    "agent-session-1",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "parent-thread-1",
+		CWD:               "/workspace",
+	}
+	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{threadID: session.ProviderSessionID})
+
+	adapter.rememberAppServerChildThreads(session.AgentSessionID, session.ProviderSessionID, map[string]any{
+		"type":              "collabAgentToolCall",
+		"id":                "wait-call-1",
+		"tool":              "wait",
+		"receiverThreadIds": []any{"child-thread-1"},
+	})
+	child, ok := adapter.appServerChildThread(session.AgentSessionID, "child-thread-1")
+	if !ok || child.parentItemID != "" {
+		t.Fatalf("child after control card = %#v, want registered without ownership", child)
+	}
+
+	adapter.rememberAppServerChildThreads(session.AgentSessionID, session.ProviderSessionID, map[string]any{
+		"type":              "collabAgentToolCall",
+		"id":                "spawn-call-1",
+		"tool":              "spawnAgent",
+		"receiverThreadIds": []any{"child-thread-1"},
+	})
+	child, ok = adapter.appServerChildThread(session.AgentSessionID, "child-thread-1")
+	if !ok || child.parentItemID != "spawn-call-1" {
+		t.Fatalf("child after spawn card = %#v, want ownership claimed by spawn-call-1", child)
 	}
 }
 

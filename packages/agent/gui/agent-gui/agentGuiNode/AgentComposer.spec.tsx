@@ -3949,11 +3949,11 @@ describe("AgentComposer", () => {
       ).toContainElement(screen.getByTestId("agent-gui-review-picker-panel"));
       expect(onSubmit).not.toHaveBeenCalled();
 
-      // Selecting the "uncommitted changes" scope submits a bare /review.
+      // Selecting the "uncommitted changes" scope submits an explicit target.
       fireEvent.click(screen.getByText("未提交的更改"));
       expect(onSubmit).toHaveBeenCalledTimes(1);
       expect(onSubmit.mock.calls[0]?.[0]).toEqual([
-        { type: "text", text: "/review" }
+        { type: "text", text: "/review uncommitted" }
       ]);
     }
   );

@@ -174,6 +174,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     notifications: notificationService,
     reporterService,
     runtimeApi: desktopApi.runtime,
+    resolveAgentIconUrl: resolveWorkspaceRichTextAgentIconUrl,
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
     ),
@@ -192,6 +193,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     agentOutcomeNotificationController.dispose();
   };
   registerRichTextAtServices(registry, {
+    agentsService: workspaceAgentServices.agentsService,
     tuttidClient,
     getLocale: getActiveLocale,
     resolveAgentIconUrl: resolveWorkspaceRichTextAgentIconUrl,

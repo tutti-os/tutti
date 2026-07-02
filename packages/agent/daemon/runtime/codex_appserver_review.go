@@ -15,6 +15,7 @@ import (
 // free-form instructions can never be misread as a structured choice:
 //
 //	(empty)            -> uncommittedChanges
+//	uncommitted        -> uncommittedChanges (review picker default)
 //	base:<branch>      -> baseBranch
 //	commit:<sha>       -> commit
 //	custom:<text>      -> custom
@@ -26,6 +27,9 @@ import (
 func appServerReviewTarget(args string) map[string]any {
 	args = strings.TrimSpace(args)
 	if args == "" {
+		return map[string]any{"type": "uncommittedChanges"}
+	}
+	if strings.EqualFold(args, "uncommitted") {
 		return map[string]any{"type": "uncommittedChanges"}
 	}
 	if keyword, rest, ok := strings.Cut(args, ":"); ok {

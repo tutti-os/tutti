@@ -12,6 +12,10 @@ import {
   resetCachedMarkdownImagesForTests,
   splitStreamingMarkdownBlocks
 } from "./AgentMessageMarkdown";
+import {
+  MANAGED_AGENT_ICON_ROUNDED_URLS,
+  managedAgentRoundedIconUrl
+} from "./managedAgentIcons";
 
 describe("AgentMessageMarkdown", () => {
   afterEach(() => {
@@ -1131,6 +1135,48 @@ describe("AgentMessageMarkdown", () => {
       mention?.querySelector('[data-agent-mention-app-icon="true"] img')
     ).toHaveAttribute("src", iconUrl);
     expect(mention).toHaveTextContent("Weather");
+  });
+
+  it("renders agent target mentions with managed agent icons", () => {
+    const iconUrl = MANAGED_AGENT_ICON_ROUNDED_URLS["claude-code"];
+    const { container } = render(
+      <AgentMessageMarkdown
+        content="让 [@Claude Code](mention://agent-target/local:claude-code?workspaceId=room-1) 做题"
+        agentTargets={[
+          {
+            agentTargetId: "local:claude-code",
+            iconUrl,
+            name: "Claude Code",
+            provider: "claude-code",
+            workspaceId: "room-1"
+          }
+        ]}
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "agent-target");
+    expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
+    expect(
+      mention?.querySelector('[data-agent-mention-app-icon="true"] img')
+    ).toHaveAttribute("src", iconUrl);
+    expect(mention).toHaveTextContent("Claude Code");
+  });
+
+  it("renders agent target mentions without provider ids as agent tokens", () => {
+    const { container } = render(
+      <AgentMessageMarkdown content="让 [@Claude Code](mention://agent-target/local:claude-code?workspaceId=room-1) 做题" />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "agent-target");
+    expect(mention).toHaveAttribute(
+      "data-agent-mention-icon-url",
+      managedAgentRoundedIconUrl(undefined)
+    );
+    expect(
+      mention?.querySelector(".tsh-agent-object-token__icon")
+    ).not.toBeInTheDocument();
   });
 
   it("renders workspace app factory mentions as object tokens", () => {

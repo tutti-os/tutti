@@ -2,11 +2,12 @@ import {
   fireEvent,
   render,
   screen,
+  act,
   waitFor,
   within
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StrictMode, act } from "react";
+import { StrictMode } from "react";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentHostManagedAgentsState } from "../../shared/contracts/dto";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
@@ -512,17 +513,20 @@ vi.mock("../../i18n/index", () => ({
       "agentHost.roomIssueNode.issueStatusFailed": "失败",
       "agentHost.roomIssueNode.issueStatusCanceled": "已取消",
       "agentHost.agentGui.mentionFilterApp": "App",
+      "agentHost.agentGui.mentionFilterAgent": "Agent",
       "agentHost.agentGui.mentionFilterFile": "文件",
       "agentHost.agentGui.mentionFilterSession": "会话",
       "agentHost.agentGui.mentionFilterCollab": "协作",
       "agentHost.agentGui.mentionFilterIssue": "Tasks",
       "agentHost.agentGui.mentionGroupApps": "App",
+      "agentHost.agentGui.mentionGroupAgents": "Agent",
       "agentHost.agentGui.mentionGroupFiles": "文件",
       "agentHost.agentGui.mentionGroupMySessions": "我的会话",
       "agentHost.agentGui.mentionGroupCollabSessions": "协作会话",
       "agentHost.agentGui.mentionGroupIssues": "Tasks",
       "agentHost.agentGui.mentionEmptyMySessions": "暂无会话",
       "agentHost.agentGui.mentionEmptyCollabSessions": "暂无协作会话",
+      "agentHost.agentGui.mentionEmptyAgents": "No agents yet",
       "agentHost.agentGui.mentionEmptyIssues": "No tasks yet",
       "agentHost.agentGui.mentionNoMatchingFiles": "没有匹配到文件",
       "agentHost.agentGui.fileMentionEmpty": "根据你输入的内容搜索工作区文件",
@@ -559,6 +563,7 @@ vi.mock("../../i18n/index", () => ({
         "根据你输入的内容搜索工作区文件",
       "agentHost.agentGui.contextPickerBrowseSessionHint":
         "输入内容以搜索我发起的 Agent 会话",
+      "agentHost.agentGui.contextPickerBrowseAgentHint": "输入内容以搜索 Agent",
       "agentHost.agentGui.contextPickerBrowseAppHint": "输入内容以搜索应用",
       "agentHost.agentGui.contextPickerBrowseIssueHint":
         "输入内容以搜索当前房间内的 Issue",
@@ -613,6 +618,9 @@ vi.mock("../../i18n/index", () => ({
       }
       if (key === "agentHost.workspaceAgentProbeDetailQuota") {
         return "额度";
+      }
+      if (key === "agentHost.workspaceAgentProbeUsageUnsupported") {
+        return "暂未接入用量";
       }
       if (key === "agentHost.workspaceAgentProbeQuotaRemaining") {
         return `剩余 ${options?.percent ?? 0}%`;
@@ -884,6 +892,37 @@ describe("AgentGUINode", () => {
       "codex",
       "agent-gui:agent-gui-1"
     );
+  });
+
+  it("shows a fallback when agent probe usage returns no quotas", () => {
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "codex",
+              availability: { status: "available", detailsVisible: false },
+              usage: {
+                capturedAtUnixMs: 1,
+                quotas: []
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    const info = screen.getByTestId("agent-gui-window-agent-info");
+    expect(info).toHaveAttribute("aria-label", "可用，暂未接入用量");
+    fireEvent.mouseEnter(info);
+    expect(screen.getByText("状态")).toBeInTheDocument();
+    expect(screen.getByText("可用")).toBeInTheDocument();
+    expect(screen.getByText("额度")).toBeInTheDocument();
+    expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
   });
 
   it("keeps the rail config entry visible for legacy single-provider docks", () => {
@@ -1742,10 +1781,12 @@ describe("AgentGUINode", () => {
     });
     expect(railResizeHandle).not.toHaveAttribute("aria-hidden", "true");
 
-    fireEvent.pointerDown(screen.getByTestId("agentGui-node-resizer-right"), {
-      clientX: 720,
-      clientY: 0,
-      pointerId: 1
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByTestId("agentGui-node-resizer-right"), {
+        clientX: 720,
+        clientY: 0,
+        pointerId: 1
+      });
     });
     await act(async () => {
       window.dispatchEvent(
@@ -2419,7 +2460,7 @@ describe("AgentGUINode", () => {
     vi.useRealTimers();
   });
 
-  it("refreshes relative time labels every minute while the session list stays open", () => {
+  it("refreshes relative time labels every minute while the session list stays open", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-18T17:20:00Z"));
     mockViewModel = createViewModel({
@@ -2440,7 +2481,7 @@ describe("AgentGUINode", () => {
 
     expect(screen.getByText("刚刚")).toBeTruthy();
 
-    act(() => {
+    await act(async () => {
       vi.advanceTimersByTime(60_000);
     });
 
@@ -5121,7 +5162,7 @@ describe("AgentGUINode", () => {
     ).toBeNull();
   });
 
-  it("cycles mention tabs from session through file, issue, and app", async () => {
+  it("cycles mention tabs from session through file, issue, agent, and app", async () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
       draftPrompt: ""
@@ -5150,6 +5191,9 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Tab" });
     await expectSelectedTab("Tasks");
+
+    fireEvent.keyDown(getComposerEditor(), { key: "Tab" });
+    await expectSelectedTab("Agent");
 
     fireEvent.keyDown(getComposerEditor(), { key: "Tab" });
     await expectSelectedTab("App");
@@ -5417,7 +5461,7 @@ describe("AgentGUINode", () => {
     ).closest("button");
     const taskOption = within(palette).getByRole("tab", { name: "Tasks" });
     const sessionOption = within(palette).getByRole("tab", { name: "会话" });
-    const appOption = within(palette).getByRole("tab", { name: "App" });
+    const agentOption = within(palette).getByRole("tab", { name: "Agent" });
 
     expect(
       within(firstTaskOption as HTMLButtonElement).getByText("执行中")
@@ -5443,15 +5487,14 @@ describe("AgentGUINode", () => {
       expect(
         within(palette).getByRole("tab", { name: "Tasks" })
       ).toHaveAttribute("aria-selected", "false");
-      expect(within(palette).getByRole("tab", { name: "App" })).toHaveAttribute(
-        "aria-selected",
-        "true"
-      );
+      expect(
+        within(palette).getByRole("tab", { name: "Agent" })
+      ).toHaveAttribute("aria-selected", "true");
       expect(
         within(palette).getByRole("tab", { name: "会话" })
       ).toHaveAttribute("aria-selected", "false");
     });
-    expect(appOption).toHaveAttribute("aria-selected", "true");
+    expect(agentOption).toHaveAttribute("aria-selected", "true");
   });
 
   it.skip("continues arrow navigation across browse groups", async () => {
@@ -7516,6 +7559,7 @@ function createViewModel(
     promptImagesSupported: true,
     compactSupported: null,
     usage: null,
+    backgroundAgentCount: 0,
     isDeletingConversation: false,
     isDeletingProjectConversations: false,
     pendingDeleteConversation: null,

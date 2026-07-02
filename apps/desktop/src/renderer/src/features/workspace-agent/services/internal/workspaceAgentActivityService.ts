@@ -1432,6 +1432,9 @@ function hostStatePatchEventFromSession(
       provider: session.provider,
       providerSessionId: session.providerSessionId ?? undefined,
       runtimeContext: session.runtimeContext ?? undefined,
+      ...(session.pendingInteractive !== undefined
+        ? { pendingInteractive: session.pendingInteractive }
+        : {}),
       title: session.title,
       ...(inferredTurnState
         ? {

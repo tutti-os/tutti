@@ -45,7 +45,7 @@ func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) 
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return s.resolveExternalProviderRuntime(ctx, spec, resolver, env)
 	}
-	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), nil)
+	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), spec.AdapterEnv)
 	return providerRuntimeResolution{
 		CLIPath:        resolveBinaryWithResolver(resolver, spec.BinaryNames, nil),
 		AdapterPath:    adapterPath,

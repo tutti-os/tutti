@@ -10,10 +10,12 @@ import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
+import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 
 type AgentMentionNodeViewKind =
   | "file"
+  | "agent-target"
   | "session"
   | "workspace-app"
   | "workspace-reference"
@@ -60,6 +62,9 @@ function normalizeKind(value: string): AgentMentionNodeViewKind {
   }
   if (value === "workspace-app-factory") {
     return "workspace-app-factory";
+  }
+  if (value === "agent-target") {
+    return "agent-target";
   }
   return "file";
 }
@@ -194,6 +199,21 @@ function mentionViewModel(
       directoryPath: "",
       entryKind: "",
       href,
+      kind,
+      label: name
+    };
+  }
+
+  if (kind === "agent-target") {
+    const agentProviderId = attrString(attrs, "agentProviderId").trim();
+    return {
+      ariaLabel: `${t("agentHost.agentGui.mentionKindAgent")} ${name}`.trim(),
+      directoryPath: "",
+      entryKind: "",
+      href,
+      iconUrl:
+        attrString(attrs, "iconUrl").trim() ||
+        managedAgentRoundedIconUrl(agentProviderId),
       kind,
       label: name
     };
@@ -419,7 +439,8 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
 
   if (
     mention.kind === "workspace-app" ||
-    mention.kind === "workspace-reference"
+    mention.kind === "workspace-reference" ||
+    mention.kind === "agent-target"
   ) {
     return (
       <NodeViewWrapper

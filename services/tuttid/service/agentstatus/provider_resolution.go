@@ -17,6 +17,14 @@ import (
 
 const ReasonExternalAgentRegistryUnavailable = "external_agent_registry_unavailable"
 const ReasonManagedRuntimeUnavailable = "managed_runtime_unavailable"
+const ReasonClaudeSDKSidecarUnavailable = "claude_sdk_sidecar_unavailable"
+
+const claudeCodeRuntimeEnv = "TUTTI_CLAUDE_CODE_RUNTIME"
+const claudeCodeRuntimeACP = "acp"
+const claudeCodeRuntimeSDK = "sdk"
+const claudeSDKSidecarCommandEnv = "TUTTI_CLAUDE_SDK_SIDECAR_COMMAND"
+const claudeSDKSidecarEntryPathEnv = "TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH"
+const claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
 
 type ProviderCommandResolution struct {
 	Command []string
@@ -59,6 +67,9 @@ func (s Service) ResolveProviderCommand(ctx context.Context, provider string) (P
 }
 
 func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) (ProviderSpec, error) {
+	if spec.Provider == agentprovider.ClaudeCode {
+		spec = s.resolveClaudeCodeRuntimeSpec(ctx, spec, requireManagedRuntime)
+	}
 	if strings.TrimSpace(spec.ExternalRegistryID) == "" {
 		return s.resolveStaticProviderSpec(ctx, spec, requireManagedRuntime), nil
 	}
@@ -75,6 +86,113 @@ func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, req
 	}
 	spec.AdapterUnavailableReasonCode = "external_agent_registry_distribution_unavailable"
 	return spec, nil
+}
+
+func (s Service) resolveClaudeCodeRuntimeSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
+	if claudeCodeAgentStatusRuntime() == claudeCodeRuntimeACP {
+		return claudeCodeACPProviderSpec(spec)
+	}
+	return s.resolveClaudeCodeSDKProviderSpec(ctx, spec, requireManagedRuntime)
+}
+
+func claudeCodeAgentStatusRuntime() string {
+	runtime := strings.TrimSpace(os.Getenv(claudeCodeRuntimeEnv))
+	if strings.EqualFold(runtime, claudeCodeRuntimeACP) {
+		return claudeCodeRuntimeACP
+	}
+	return claudeCodeRuntimeSDK
+}
+
+func claudeCodeACPProviderSpec(spec ProviderSpec) ProviderSpec {
+	spec.ExternalRegistryID = firstNonBlank(spec.ExternalRegistryID, "claude-acp")
+	if spec.AdapterInstall.Kind == "" {
+		spec.AdapterInstall.Kind = InstallerKindExternalAgentRegistryNPM
+	}
+	spec.AdapterInstall.DisplayCommand = firstNonBlank(
+		spec.AdapterInstall.DisplayCommand,
+		"Install claude-acp from ACP External Agent Registry",
+	)
+	if spec.AdapterInstall.PostInstall == InstallerPostStepNone {
+		spec.AdapterInstall.PostInstall = InstallerPostStepPatchClaudeAgentACP
+	}
+	return spec
+}
+
+func (s Service) resolveClaudeCodeSDKProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
+	spec.ExternalRegistryID = ""
+	spec.AdapterPackage = AdapterPackageRequirement{}
+	spec.AdapterInstall = InstallerSpec{}
+	spec.AdapterUnavailableReasonCode = ""
+
+	if command := strings.TrimSpace(os.Getenv(claudeSDKSidecarCommandEnv)); command != "" {
+		spec.AdapterCommand = strings.Fields(command)
+		if len(spec.AdapterCommand) > 0 {
+			spec.AdapterBinaryNames = []string{spec.AdapterCommand[0]}
+		}
+		return spec
+	}
+
+	entry := s.resolveClaudeSDKSidecarEntryPath()
+	if entry == "" {
+		spec.AdapterCommand = nil
+		spec.AdapterBinaryNames = []string{"tutti-claude-sdk-sidecar-missing"}
+		spec.AdapterUnavailableReasonCode = ReasonClaudeSDKSidecarUnavailable
+		return spec
+	}
+
+	nodeBinary := nodeBinaryName()
+	nodeCommand := nodeBinary
+	if appRuntime, ok := s.resolveManagedNodeRuntimeForProvider(ctx, requireManagedRuntime); ok {
+		spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), spec.AdapterEnv...)
+		nodeCommand = appRuntime.Node
+	} else if requireManagedRuntime {
+		spec.AdapterUnavailableReasonCode = ReasonManagedRuntimeUnavailable
+	}
+	spec.AdapterCommand = []string{nodeCommand, claudeSDKSidecarDefaultNodeArg, entry}
+	spec.AdapterBinaryNames = []string{nodeBinary}
+	return spec
+}
+
+func (s Service) resolveClaudeSDKSidecarEntryPath() string {
+	env := s.commandResolver().Env(nil)
+	if entry := strings.TrimSpace(managedruntime.EnvValue(env, claudeSDKSidecarEntryPathEnv)); entry != "" {
+		if s.fileExists(entry) {
+			return entry
+		}
+		return ""
+	}
+	root := findClaudeSDKRepoRoot()
+	if root == "" {
+		return ""
+	}
+	entry := filepath.Join(root, "packages/agent/claude-sdk-sidecar/src/main.ts")
+	if s.fileExists(entry) {
+		return entry
+	}
+	return ""
+}
+
+func findClaudeSDKRepoRoot() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		if fileExistsPath(filepath.Join(dir, "pnpm-workspace.yaml")) &&
+			fileExistsPath(filepath.Join(dir, "packages/agent/claude-sdk-sidecar/src/main.ts")) {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+func fileExistsPath(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {

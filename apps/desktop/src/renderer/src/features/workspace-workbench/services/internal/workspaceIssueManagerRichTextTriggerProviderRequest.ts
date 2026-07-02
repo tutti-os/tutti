@@ -1,6 +1,7 @@
 import type { DesktopRichTextAtCapability } from "@renderer/features/rich-text-at";
 
 export const workspaceIssueManagerRichTextTriggerCapabilities = [
+  "agent-target",
   "workspace-app"
 ] as const satisfies readonly DesktopRichTextAtCapability[];
 

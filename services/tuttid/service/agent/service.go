@@ -450,9 +450,15 @@ func (s *Service) LocalAttachmentPath(ctx context.Context, workspaceID string, a
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, reconcileStaleTurn bool) (Session, error) {
 	session, ok := s.controller().Session(workspaceID, agentSessionID)
 	if ok {
-		if reconcileStaleTurn && !isRuntimeActiveTurnStatus(session.Status) {
-			if _, err := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID); err != nil {
+		if reconcileStaleTurn {
+			shouldReconcile, err := s.shouldReconcilePersistedStaleTurn(session, workspaceID, agentSessionID)
+			if err != nil {
 				return Session{}, err
+			}
+			if shouldReconcile {
+				if _, err := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID); err != nil {
+					return Session{}, err
+				}
 			}
 		}
 		service := serviceSession(
@@ -713,6 +719,15 @@ func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, age
 		OptionID:       optionalInputString(input.OptionID),
 		Payload:        input.Payload,
 	}); err != nil {
+		if isStaleInteractiveRequestError(err) {
+			reconciled, recErr := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID)
+			if recErr != nil {
+				return Session{}, recErr
+			}
+			if reconciled {
+				return s.get(ctx, workspaceID, agentSessionID, false)
+			}
+		}
 		return Session{}, normalizeRuntimeError(err)
 	}
 	return s.Get(ctx, workspaceID, agentSessionID)
@@ -746,77 +761,4 @@ func optionalInputString(input *string) string {
 		return ""
 	}
 	return strings.TrimSpace(*input)
-}
-
-func (s *Service) ensureRuntimeSession(
-	ctx context.Context,
-	workspaceID string,
-	agentSessionID string,
-) (RuntimeSession, error) {
-	ensured, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
-	return ensured.Session, err
-}
-
-type ensuredRuntimeSession struct {
-	Session             RuntimeSession
-	StaleTurnReconciled bool
-}
-
-func (s *Service) ensureRuntimeSessionResult(
-	ctx context.Context,
-	workspaceID string,
-	agentSessionID string,
-) (ensuredRuntimeSession, error) {
-	if session, ok := s.controller().Session(workspaceID, agentSessionID); ok {
-		staleTurnReconciled := false
-		if !isRuntimeActiveTurnStatus(session.Status) {
-			var err error
-			staleTurnReconciled, err = s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID)
-			if err != nil {
-				return ensuredRuntimeSession{}, err
-			}
-		}
-		return ensuredRuntimeSession{Session: session, StaleTurnReconciled: staleTurnReconciled}, nil
-	}
-	if s.SessionReader == nil {
-		return ensuredRuntimeSession{}, ErrSessionNotFound
-	}
-	persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID)
-	if !ok || strings.TrimSpace(persisted.Provider) == "" {
-		return ensuredRuntimeSession{}, ErrSessionNotFound
-	}
-	// Imported sessions used to be rejected here, which is what surfaced the
-	// "can't resume on this device, start a new conversation" dead-end. They now
-	// resume in place (same-device) or, when the provider session can't be
-	// restored locally, get a fresh provider session created on demand. The
-	// recreate is opt-in (RecreateIfMissing) so it stays scoped to imported
-	// conversations and doesn't change restore-error handling for normal ones.
-	imported := strings.TrimSpace(persisted.Origin) == WorkspaceAgentSessionOriginImported
-	prepared, err := s.prepareRuntimeForResume(ctx, persisted)
-	if err != nil {
-		return ensuredRuntimeSession{}, err
-	}
-	session, err := s.controller().Resume(ctx, RuntimeResumeInput{
-		WorkspaceID:       strings.TrimSpace(persisted.WorkspaceID),
-		AgentSessionID:    strings.TrimSpace(persisted.ID),
-		Provider:          strings.TrimSpace(persisted.Provider),
-		ProviderSessionID: strings.TrimSpace(persisted.ProviderSessionID),
-		Cwd:               strings.TrimSpace(prepared.Cwd),
-		Env:               append([]string(nil), prepared.Env...),
-		Title:             strings.TrimSpace(persisted.Title),
-		Status:            strings.TrimSpace(persisted.Status),
-		Settings:          cloneComposerSettings(persisted.Settings),
-		CreatedAtUnixMS:   persisted.CreatedAtUnixMS,
-		UpdatedAtUnixMS:   persisted.UpdatedAtUnixMS,
-		Visible:           boolPointer(visibleFromRuntimeContext(persisted.RuntimeContext, true)),
-		RecreateIfMissing: imported,
-	})
-	if err != nil {
-		return ensuredRuntimeSession{}, normalizeRuntimeError(err)
-	}
-	staleTurnReconciled, err := s.reconcileStaleTurnOnResume(ctx, persisted)
-	if err != nil {
-		return ensuredRuntimeSession{}, err
-	}
-	return ensuredRuntimeSession{Session: session, StaleTurnReconciled: staleTurnReconciled}, nil
 }

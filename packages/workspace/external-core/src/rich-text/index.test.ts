@@ -13,16 +13,16 @@ import type {
 test("creates one rich text provider per requested external at provider", () => {
   const providers = createTuttiExternalAtRichTextTriggerProviders({
     bridge: null,
-    providerIds: ["workspace-app", "agent-session"]
+    providerIds: ["workspace-app", "agent-target", "agent-session"]
   });
 
   assert.deepEqual(
     providers.map((provider) => provider.id),
-    ["workspace-app", "agent-session"]
+    ["workspace-app", "agent-target", "agent-session"]
   );
   assert.deepEqual(
     providers.map((provider) => provider.trigger),
-    ["@", "@"]
+    ["@", "@", "@"]
   );
 });
 
@@ -61,6 +61,14 @@ test("queries the external bridge with the provider filter", async () => {
     results.map((item) => item.providerId),
     ["workspace-app"]
   );
+});
+
+test("defaults external at rich text providers to include agent targets", () => {
+  const providers = createTuttiExternalAtRichTextTriggerProviders({
+    bridge: null
+  });
+
+  assert.ok(providers.some((provider) => provider.id === "agent-target"));
 });
 
 test("queries multiple external at providers with one bridge call", async () => {

@@ -4,8 +4,6 @@ export interface DesktopWorkspaceAppMentionOrderItem {
 }
 
 const workspaceAppMentionRankGroups = [
-  ["agent-codex"],
-  ["agent-claude-code"],
   ["ai-media-canvas", "media-canvas"],
   ["vibe-design"],
   ["group-chat"],

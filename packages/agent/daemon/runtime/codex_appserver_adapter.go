@@ -1928,6 +1928,9 @@ func (a *CodexAppServerAdapter) fetchChildThreadNickname(client *codexAppServerC
 		if event.Type == "" {
 			return
 		}
+		if child, ok := a.appServerChildThread(session.AgentSessionID, childThreadID); ok {
+			event.OwnerCallID = child.parentItemID
+		}
 		if event.Payload.TurnID == "" {
 			// The activity store rejects turnless message updates.
 			event.Payload.TurnID = a.sessionMarkerTurnID(session.AgentSessionID)
@@ -1974,22 +1977,28 @@ func (a *CodexAppServerAdapter) interruptLinkedChildThreads(
 	if a == nil || appSession == nil || appSession.client == nil {
 		return nil
 	}
-	childThreadIDs := a.takeLinkedChildThreadIDs(session.AgentSessionID)
-	if len(childThreadIDs) == 0 {
+	linkedChildren := a.takeLinkedChildThreads(session.AgentSessionID)
+	if len(linkedChildren) == 0 {
 		return nil
 	}
-	events := make([]activityshared.Event, 0, len(childThreadIDs))
-	for _, childThreadID := range childThreadIDs {
-		go a.sendThreadInterrupt(appSession.client, session, childThreadID, "", reason)
-		event := appServerSubAgentLifecycleEvent(session, childThreadID, markerTurnID, "canceled", reason)
+	events := make([]activityshared.Event, 0, len(linkedChildren))
+	for _, child := range linkedChildren {
+		go a.sendThreadInterrupt(appSession.client, session, child.threadID, "", reason)
+		event := appServerSubAgentLifecycleEvent(session, child.threadID, markerTurnID, "canceled", reason)
 		if event.Type != "" {
+			event.OwnerCallID = child.parentItemID
 			events = append(events, event)
 		}
 	}
 	return events
 }
 
-func (a *CodexAppServerAdapter) takeLinkedChildThreadIDs(agentSessionID string) []string {
+type linkedChildThread struct {
+	threadID     string
+	parentItemID string
+}
+
+func (a *CodexAppServerAdapter) takeLinkedChildThreads(agentSessionID string) []linkedChildThread {
 	if a == nil {
 		return nil
 	}
@@ -1999,15 +2008,23 @@ func (a *CodexAppServerAdapter) takeLinkedChildThreadIDs(agentSessionID string) 
 	if appSession == nil || len(appSession.childThreads) == 0 {
 		return nil
 	}
-	childThreadIDs := make([]string, 0, len(appSession.childThreads))
-	for childThreadID := range appSession.childThreads {
-		if trimmed := strings.TrimSpace(childThreadID); trimmed != "" {
-			childThreadIDs = append(childThreadIDs, trimmed)
+	children := make([]linkedChildThread, 0, len(appSession.childThreads))
+	for childThreadID, child := range appSession.childThreads {
+		trimmed := strings.TrimSpace(childThreadID)
+		if trimmed == "" {
+			continue
 		}
+		linked := linkedChildThread{threadID: trimmed}
+		if child != nil {
+			linked.parentItemID = child.parentItemID
+		}
+		children = append(children, linked)
 	}
-	sort.Strings(childThreadIDs)
+	sort.Slice(children, func(left, right int) bool {
+		return children[left].threadID < children[right].threadID
+	})
 	appSession.childThreads = nil
-	return childThreadIDs
+	return children
 }
 
 func (a *CodexAppServerAdapter) markTurnForceCanceled(turn *codexAppServerActiveTurn) {

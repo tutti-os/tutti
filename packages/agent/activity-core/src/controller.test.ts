@@ -909,6 +909,64 @@ test("controller preserves runtime context from inline state patches", async () 
   );
 });
 
+test("controller preserves pending interactive prompts from inline state patches", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              agentSessionId: "session-1",
+              status: "working",
+              updatedAtUnixMs: 100
+            })
+          ]
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+  await controller.load();
+
+  const result = controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "state_patch",
+    data: {
+      agentSessionId: "session-1",
+      occurredAtUnixMs: 200,
+      pendingInteractive: {
+        kind: "ask-user",
+        requestId: "request-1",
+        toolName: "AskUserQuestion",
+        status: "waiting",
+        input: { questions: [{ id: "scope", question: "Scope?" }] }
+      }
+    }
+  });
+
+  assert.equal(result.applied, true);
+  assert.deepEqual(controller.getSnapshot().sessions[0]?.pendingInteractive, {
+    kind: "ask-user",
+    requestId: "request-1",
+    toolName: "AskUserQuestion",
+    status: "waiting",
+    input: { questions: [{ id: "scope", question: "Scope?" }] }
+  });
+
+  controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "state_patch",
+    data: {
+      agentSessionId: "session-1",
+      occurredAtUnixMs: 201,
+      pendingInteractive: null
+    }
+  });
+
+  assert.equal(controller.getSnapshot().sessions[0]?.pendingInteractive, null);
+});
+
 test("controller keeps existing agent target id when state patch omits it", async () => {
   const controller = createAgentActivityController({
     adapter: fakeAdapter({

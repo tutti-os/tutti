@@ -90,6 +90,43 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.queryByText("Allow once")).toBeNull();
   });
 
+  it("renders approval file previews from nested toolCall direct input payloads", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            callType: "approval",
+            toolName: "Approval",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                options: [{ id: "allow_once", label: "Allow once" }],
+                toolCall: {
+                  input: {
+                    file_path: "/workspace/generated.md",
+                    old_string: "const ready = false",
+                    new_string: "const ready = true"
+                  },
+                  name: "Edit",
+                  title: "Edit",
+                  toolName: "Edit"
+                }
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.queryByText("Approval options")).toBeNull();
+    expect(screen.getByText("generated.md")).toBeTruthy();
+    expect(screen.getByText("const ready = true")).toBeTruthy();
+    expect(screen.queryByText("Allow once")).toBeNull();
+  });
+
   it("renders ask-user options and selected answer from the typed ask-user vm", async () => {
     setAgentGuiI18nTestLocale("en");
 
