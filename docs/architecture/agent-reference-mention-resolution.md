@@ -75,6 +75,8 @@ has a dedicated `agent-target` provider for first-party Agent targets:
 - New Agent mention insertions use
   `mention://agent-target/local:codex` or
   `mention://agent-target/local:claude-code`.
+- AgentGUI composer host capabilities include `agent-target`; its Apps tab
+  stays scoped to `workspace-app`, while its Agents tab queries `agent-target`.
 - `workspace-app` must not return `agent-codex` or `agent-claude-code` pseudo
   apps. Existing historical pseudo-app mention tokens can remain display-only;
   do not create new ones.

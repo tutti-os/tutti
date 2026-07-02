@@ -1132,6 +1132,12 @@ legacy `agent-codex` or `agent-claude-code` pseudo apps. New agent mentions
 should serialize as `mention://agent-target/local:codex` or
 `mention://agent-target/local:claude-code`; historical pseudo-app mentions may
 remain as display tokens but are not a new insertion target.
+Desktop AgentGUI host input must include the `agent-target` capability when it
+builds composer context mention providers. Inside the AgentGUI mention palette,
+the Apps tab queries only `workspace-app`; first-party launch targets appear in
+a separate Agents tab that queries only `agent-target`. Do not use the Apps tab
+as an agent fallback, because that recreates the old pseudo workspace-app
+contract.
 
 Quick check:
 

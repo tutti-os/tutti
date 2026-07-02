@@ -403,6 +403,9 @@ function resolveMentionPaletteEmptyLabel(input: {
   if (input.filter === "app") {
     return agentMentionEmptyGroupLabel("apps", input.query);
   }
+  if (input.filter === "agent") {
+    return agentMentionEmptyGroupLabel("agents", input.query);
+  }
   if (input.filter === "issue") {
     return agentMentionEmptyGroupLabel("issues", input.query);
   }
@@ -488,6 +491,15 @@ function agentMentionItemToRowItem(
       name: item.name,
       description: item.description ?? null,
       iconUrl: item.iconUrl ?? null
+    };
+  }
+
+  if (item.kind === "agent-target") {
+    return {
+      kind: "app",
+      name: item.name,
+      description: item.description ?? null,
+      iconUrl: item.iconUrl ?? managedAgentRoundedIconUrl(item.agentProviderId)
     };
   }
 
@@ -602,6 +614,8 @@ function mentionStatusTone(
 
 function browseHintForFilter(filter: AgentMentionFilterId): string {
   switch (filter) {
+    case "agent":
+      return translate("agentHost.agentGui.contextPickerBrowseAgentHint");
     case "app":
       return translate("agentHost.agentGui.contextPickerBrowseAppHint");
     case "file":
