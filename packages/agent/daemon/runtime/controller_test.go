@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2207,6 +2208,104 @@ func (a *asyncExecTestAdapter) calls() (bool, bool) {
 // prompt is steered into an already-running provider turn, so ExecAsync emits
 // only the steered user message for the new turn id and no terminal event ever
 // arrives for it.
+// The runtime can own cancellable work the controller's turn registry does
+// not know about - linked child agents outliving their parent turn, or a
+// desynced turn record. Cancel must reconcile with the adapter instead of
+// skipping ("cancel skipped because no active turn exists" band-aid).
+func TestControllerCancelWithoutTurnRecordReconcilesWithAdapter(t *testing.T) {
+	t.Parallel()
+
+	adapter := &cancelReconcileAdapter{}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Test",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// No Exec ran: the controller holds no turn record, but the adapter still
+	// has running children to stop.
+	result, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		Reason:         "user requested",
+	})
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if adapter.cancelCalls.Load() != 1 {
+		t.Fatalf("adapter cancel calls = %d, want 1 (reconcile must reach the adapter)", adapter.cancelCalls.Load())
+	}
+	if !result.Canceled {
+		t.Fatalf("result = %#v, want Canceled=true when the adapter stopped work", result)
+	}
+}
+
+// When neither the controller nor the adapter has anything to cancel, the
+// reconciled path still answers calmly.
+func TestControllerCancelWithoutAnyWorkReturnsNotCanceled(t *testing.T) {
+	t.Parallel()
+
+	adapter := &cancelReconcileAdapter{empty: true}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Test",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	result, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+	})
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if adapter.cancelCalls.Load() != 1 {
+		t.Fatalf("adapter cancel calls = %d, want 1", adapter.cancelCalls.Load())
+	}
+	if result.Canceled {
+		t.Fatalf("result = %#v, want Canceled=false when nothing was running", result)
+	}
+}
+
+type cancelReconcileAdapter struct {
+	cancelCalls atomic.Int64
+	empty       bool
+}
+
+func (*cancelReconcileAdapter) Provider() string { return ProviderCodex }
+
+func (*cancelReconcileAdapter) Start(context.Context, Session) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (*cancelReconcileAdapter) Resume(context.Context, Session) error { return nil }
+
+func (*cancelReconcileAdapter) Close(context.Context, Session) error { return nil }
+
+func (*cancelReconcileAdapter) Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (a *cancelReconcileAdapter) Cancel(_ context.Context, session Session, _ string) ([]activityshared.Event, error) {
+	a.cancelCalls.Add(1)
+	if a.empty {
+		return nil, nil
+	}
+	// Shape produced by interruptLinkedChildThreads: canceled child markers.
+	return []activityshared.Event{
+		appServerSubAgentLifecycleEvent(session, "child-thread-1", "turn-1", "canceled", "user requested"),
+	}, nil
+}
+
 type steeringAsyncExecAdapter struct {
 	execDone chan struct{}
 }

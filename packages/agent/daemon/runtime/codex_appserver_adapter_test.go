@@ -1457,6 +1457,83 @@ func TestCodexAppServerAdapterFetchesChildThreadNickname(t *testing.T) {
 	})
 }
 
+// Pins the terminal contract the settle-path inversion must preserve: a
+// normal turn emits exactly one turn-outcome event, delivered through the
+// emit sink before Exec returns.
+func TestCodexAppServerAdapterEmitsExactlyOneTurnOutcome(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	var mu sync.Mutex
+	var streamed []activityshared.Event
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text",
+		Text: "inspect the repo",
+	}}, "", "turn-local-1", func(next []activityshared.Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		streamed = append(streamed, next...)
+	}, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	countOutcomes := func(list []activityshared.Event) int {
+		count := 0
+		for _, event := range list {
+			switch string(event.Type) {
+			case string(activityshared.EventTurnCompleted), string(activityshared.EventTurnFailed), EventTurnCanceled:
+				count++
+			}
+		}
+		return count
+	}
+	if got := countOutcomes(events); got != 1 {
+		t.Fatalf("returned turn outcome events = %d, want exactly 1", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if got := countOutcomes(streamed); got != 1 {
+		t.Fatalf("streamed turn outcome events = %d, want exactly 1", got)
+	}
+}
+
+// Pins the client-death terminal transition: when the app-server connection
+// dies mid-turn, the turn settles as failed instead of hanging.
+func TestCodexAppServerAdapterClientDeathSettlesTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+		execDone <- events
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	_ = transport.conn.Close()
+
+	select {
+	case events := <-execDone:
+		outcomes := 0
+		for _, event := range events {
+			if event.Type == activityshared.EventTurnFailed {
+				outcomes++
+			}
+		}
+		if outcomes != 1 {
+			t.Fatalf("turn outcome after client death = %#v, want one EventTurnFailed", events)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec did not settle after client death")
+	}
+}
+
 func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {
 	t.Parallel()
 

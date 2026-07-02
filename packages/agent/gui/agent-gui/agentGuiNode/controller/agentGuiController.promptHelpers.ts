@@ -40,12 +40,17 @@ export function createOptimisticPromptMessage(input: {
         input.clientSubmitId
       )
     : null;
+  // The echo deliberately carries no durable-domain identity: durable rows
+  // use the daemon's small monotonic version counter (ADR 0004), so a fake
+  // timestamp version would win every version comparison against the durable
+  // twin and poison version-based cursors. version/id 0 keeps the echo out of
+  // that domain; ordering comes from the durable/overlay split, not version.
   return {
-    id: Math.max(1, Math.floor(input.occurredAtUnixMs)),
+    id: 0,
     workspaceId: input.workspaceId,
     agentSessionId: input.agentSessionId,
     messageId: clientSubmitMessageId ?? `optimistic:user:${input.turnId}`,
-    version: Math.max(1, Math.floor(input.occurredAtUnixMs)),
+    version: 0,
     turnId: input.turnId,
     role: "user",
     kind: "text",

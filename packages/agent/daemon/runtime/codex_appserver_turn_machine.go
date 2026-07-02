@@ -108,6 +108,7 @@ func (a *CodexAppServerAdapter) settleActiveTurn(
 			activeTurn = nil
 		}
 	}
+	emits := activeTurn != nil && activeTurn.settleEmits
 	a.mu.Unlock()
 	if activeTurn == nil {
 		return
@@ -115,6 +116,9 @@ func (a *CodexAppServerAdapter) settleActiveTurn(
 	select {
 	case activeTurn.terminal <- terminal:
 	default:
+	}
+	if emits {
+		a.finalizeSettledTurn(agentSessionID, activeTurn, terminal)
 	}
 }
 

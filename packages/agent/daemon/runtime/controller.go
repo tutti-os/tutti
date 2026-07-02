@@ -1279,8 +1279,49 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 	)
 	active, ok := c.activeTurn(session.RoomID, session.AgentSessionID)
 	if !ok {
-		slog.Info("agent session cancel skipped because no active turn exists",
-			"event", "agent_session.cancel.no_active_turn",
+		// No controller turn record - but the runtime may own cancellable
+		// work the registry does not know about (linked child agents that
+		// outlive their parent turn, or a desynced turn record). Reconcile
+		// with the adapter instead of skipping: the turn machine answers
+		// no-op cancels safely, and anything it actually stopped surfaces
+		// as events.
+		events, err := adapter.Cancel(ctx, session, reason)
+		if err != nil && errors.Is(err, ErrSessionNoActiveTurn) {
+			// The adapter's way of answering "nothing was running" - the
+			// reconcile found no runtime work either.
+			err = nil
+		}
+		if err != nil {
+			slog.Warn("agent session cancel adapter failed without active turn",
+				"event", "agent_session.cancel.reconcile_failed",
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider", session.Provider,
+				"reason", reason,
+				"error", err.Error(),
+			)
+			return CancelResult{}, err
+		}
+		if len(events) > 0 {
+			session = applySessionEvents(session, events)
+			if shouldAdvanceSessionUpdatedAtFromEvents(events) {
+				session.UpdatedAtUnixMS = unixMS(now())
+			}
+			c.store(session)
+			c.publish(session, events)
+			c.enqueueSessionReport(ctx, session, events)
+			slog.Info("agent session cancel reconciled runtime work without a turn record",
+				"event", "agent_session.cancel.reconciled",
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider", session.Provider,
+				"reason", reason,
+				"event_count", len(events),
+			)
+			return CancelResult{AgentSessionID: session.AgentSessionID, Canceled: true}, nil
+		}
+		slog.Info("agent session cancel found nothing to stop",
+			"event", "agent_session.cancel.nothing_to_stop",
 			"room_id", session.RoomID,
 			"agent_session_id", session.AgentSessionID,
 			"provider", session.Provider,
