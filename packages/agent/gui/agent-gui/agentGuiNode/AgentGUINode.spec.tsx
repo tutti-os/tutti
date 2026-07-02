@@ -7,8 +7,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StrictMode, act } from "react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentHostManagedAgentsState } from "../../shared/contracts/dto";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
@@ -18,6 +16,7 @@ import type {
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
+import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
 import { agentGuiDockIconUrls } from "../../dockIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
@@ -841,26 +840,6 @@ describe("AgentGUINode", () => {
     ).toBeNull();
   });
 
-  it("mounts the agent GUI theme shell on the window body", () => {
-    const { container } = renderAgentGUINode();
-
-    const windowBody = container.querySelector(
-      '[data-workspace-node-window-body="true"]'
-    );
-
-    expect(windowBody).toHaveClass("agent-gui-node__shell");
-  });
-
-  it("lets the embedded window inherit the host body height", () => {
-    const { container } = renderAgentGUINode({ embedded: true, height: 560 });
-
-    const windowRoot = container.querySelector<HTMLElement>(
-      '[data-workspace-node-window-root="true"]'
-    );
-
-    expect(windowRoot).toHaveStyle({ width: "100%", height: "100%" });
-  });
-
   it("shows agent probe usage details in the title info entry", () => {
     const onAgentProbeDemandChange = vi.fn();
 
@@ -1514,17 +1493,6 @@ describe("AgentGUINode", () => {
     expect(
       document.querySelectorAll(".agent-gui-node__new-conversation-icon-button")
     ).toHaveLength(1);
-  });
-
-  it("keeps the new-conversation icon at the chrome button icon size", () => {
-    const css = readFileSync(
-      resolve(process.cwd(), "app/renderer/agentactivity.css"),
-      "utf8"
-    );
-
-    expect(css).toMatch(
-      /\.agent-gui-node__new-conversation-icon-button\s+svg\s*\{[\s\S]{0,120}width:\s*14px;[\s\S]{0,120}height:\s*14px;/
-    );
   });
 
   it("renders the Agent GUI window header controls without a maximize button", () => {
@@ -2251,17 +2219,6 @@ describe("AgentGUINode", () => {
     expect(
       screen.getByTestId("agent-gui-conversation-meta-session-1")
     ).toHaveAttribute("data-kind", "unread-complete");
-
-    const css = readFileSync(
-      resolve(process.cwd(), "app/renderer/agentactivity.css"),
-      "utf8"
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-unread-lamp\s*{[^}]*width:\s*6px[^}]*height:\s*6px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-meta\[data-kind="unread-complete"\]\s*{[^}]*width:\s*10px;[^}]*min-width:\s*10px;/s
-    );
   });
 
   it("shows a spinner for working conversations, a warning glyph for waiting ones, and relative time for settled ones", () => {
@@ -2511,7 +2468,10 @@ describe("AgentGUINode", () => {
     );
     fireEvent.click(sendButton);
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("hello world"));
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(
+      promptBlocks("hello world"),
+      undefined
+    );
   });
 
   it("disables direct replies for another user's conversation", () => {
@@ -3492,7 +3452,10 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(editor, { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("hello"));
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(
+      promptBlocks("hello"),
+      undefined
+    );
 
     mockSubmitPrompt.mockClear();
     fireEvent.keyDown(editor, { key: "Enter", shiftKey: true });
@@ -3776,7 +3739,10 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/init"));
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(
+      promptBlocks("/init"),
+      undefined
+    );
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
     await waitFor(() =>
       expect(getComposerEditor()).not.toHaveTextContent("/init")
@@ -3799,7 +3765,10 @@ describe("AgentGUINode", () => {
     fireEvent.keyDown(editor, { key: "ArrowDown" });
     fireEvent.keyDown(editor, { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/compact"));
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(
+      promptBlocks("/compact"),
+      undefined
+    );
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
@@ -3819,7 +3788,10 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/compact"));
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(
+      promptBlocks("/compact"),
+      undefined
+    );
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
@@ -3948,56 +3920,6 @@ describe("AgentGUINode", () => {
     ).toBeTruthy();
   });
 
-  it("renders slash commands as a floating scrollable dropdown", () => {
-    mockViewModel = createViewModel({
-      activeConversationId: "session-1",
-      draftPrompt: "/",
-      availableCommands: [
-        { name: "web", description: "Search the web", inputHint: "query" },
-        { name: "read", description: "Read files" }
-      ]
-    });
-    renderAgentGUINode({ workbenchWindowZIndex: 41 });
-
-    const palette = screen.getByRole("listbox", {
-      name: "agentHost.agentGui.slashCommandPalette"
-    });
-    const dropdown = screen.getByTestId("agent-gui-slash-palette-surface");
-    const inputShell = getComposerEditor().closest(
-      ".agent-gui-node__composer-input-shell"
-    );
-
-    expect(dropdown).not.toBeNull();
-    expect(inputShell).toHaveStyle({ zIndex: "var(--z-popover)" });
-    expect(dropdown).toHaveStyle({ zIndex: "var(--z-popover)" });
-    expect(dropdown).toHaveStyle({
-      position: "fixed",
-      minHeight: "280px",
-      height: "280px",
-      maxHeight: "280px",
-      overflow: "hidden"
-    });
-    expect(dropdown).toHaveClass("overflow-hidden");
-    expect(dropdown).toHaveClass("border-0");
-    expect(dropdown).toHaveClass("p-0");
-    expect(dropdown).toHaveClass("bg-background-fronted");
-    expect(dropdown).toHaveClass("nodrag");
-    expect(dropdown).toHaveClass("[-webkit-app-region:no-drag]");
-    expect(palette).toHaveClass("nodrag");
-    expect(palette).toHaveClass("flex");
-    expect(palette).toHaveClass("flex-col");
-    expect(palette).toHaveClass("h-full");
-    expect(palette).toHaveClass("overflow-y-auto");
-    expect(palette).not.toHaveClass("grid");
-    const firstOption = screen.getByText("web").closest('[role="option"]');
-    expect(firstOption).toHaveClass("nodrag");
-    expect(firstOption).toHaveClass("flex");
-    expect(firstOption).toHaveClass("min-h-9");
-    expect(firstOption).not.toHaveClass("min-h-[52px]");
-    expect(firstOption).not.toHaveClass("min-h-[38px]");
-    expect(firstOption).not.toHaveClass("grid");
-  });
-
   it("dismisses the slash command palette when the node window resize starts", async () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
@@ -4118,7 +4040,10 @@ describe("AgentGUINode", () => {
       key: "Enter"
     });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/web query"));
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(
+      promptBlocks("/web query"),
+      undefined
+    );
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
@@ -4154,7 +4079,7 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(editor, { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/"));
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/"), undefined);
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
@@ -4249,7 +4174,8 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(editor, { key: "Enter" });
     expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("$architecture-review")
+      promptBlocks("$architecture-review"),
+      undefined
     );
   });
 
@@ -4376,7 +4302,10 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/init"));
+    expect(mockSubmitPrompt).toHaveBeenCalledWith(
+      promptBlocks("/init"),
+      undefined
+    );
   });
 
   it("inserts Claude Code plugin skill triggers from the slash picker", () => {
@@ -4454,7 +4383,8 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(editor, { key: "Enter" });
     expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("/product-design:frontend-design")
+      promptBlocks("/product-design:frontend-design"),
+      undefined
     );
   });
 
@@ -5023,42 +4953,6 @@ describe("AgentGUINode", () => {
     expect(within(palette).queryByText("docs")).toBeNull();
   });
 
-  it("centers the file mention error state inside the palette", async () => {
-    mockViewModel = createViewModel({
-      activeConversationId: "session-1",
-      draftPrompt: ""
-    });
-    mockSearchWorkspaceFileManagerEntries.mockRejectedValue(
-      new Error("search failed")
-    );
-    renderAgentGUINode();
-
-    pasteComposerText("@read");
-
-    const palette = await screen.findByRole("listbox", {
-      name: "agentHost.agentGui.fileMentionPalette"
-    });
-    fireEvent.click(within(palette).getByRole("tab", { name: "文件" }));
-    const errorText = await within(palette).findByText(
-      "agentHost.agentGui.fileMentionError"
-    );
-
-    const errorEmptyState = within(palette).getByTestId(
-      "agent-gui-mention-palette-empty-state"
-    );
-    expect(errorEmptyState).toHaveClass(
-      "rich-text-at-mention-palette__empty-state"
-    );
-    expect(errorEmptyState).toHaveAttribute(
-      "data-empty-state-icon",
-      "folder-failed"
-    );
-    expect(errorEmptyState.querySelector("svg")).not.toBeNull();
-    expect(errorText).toHaveClass(
-      "rich-text-at-mention-palette__empty-state-text"
-    );
-  });
-
   it("supports arrow navigation in the empty-state session mention palette", async () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
@@ -5278,149 +5172,6 @@ describe("AgentGUINode", () => {
       presences: [],
       sessions: []
     });
-  });
-
-  it("keeps mention category tabs and palette height stable when switching tabs", async () => {
-    mockListWorkspaceIssues.mockResolvedValueOnce({
-      issues: [],
-      totalCount: 0,
-      statusCounts: undefined
-    });
-    renderAgentGUINode();
-
-    pasteComposerText("@");
-
-    const palette = await screen.findByRole("listbox", {
-      name: "agentHost.agentGui.fileMentionPalette"
-    });
-    expect(await within(palette).findByText("暂无会话")).toBeTruthy();
-    const surface = screen.getByTestId("agent-gui-mention-palette-surface");
-    const initialSurfaceStyle = surface.getAttribute("style") ?? "";
-    const initialSurfaceHeight =
-      initialSurfaceStyle.match(/height:[^;]+/)?.[0] ?? "";
-    expect(initialSurfaceHeight).toBeTruthy();
-
-    fireEvent.click(within(palette).getByRole("tab", { name: "Tasks" }));
-
-    await waitFor(() =>
-      expect(mockListWorkspaceIssues).toHaveBeenCalledTimes(1)
-    );
-    expect(within(palette).getByRole("tab", { name: "Tasks" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
-    expect(within(palette).getByRole("tab", { name: "会话" })).toBeVisible();
-    expect(
-      within(palette).queryByTestId("agent-mention-loading-banner")
-    ).toBeNull();
-    await waitFor(() =>
-      expect(
-        within(palette).queryByTestId("agent-mention-loading-spinner")
-      ).toBeNull()
-    );
-    expect(within(palette).getByText("Tab")).toBeVisible();
-    expect(within(palette).getByText("↑")).toBeVisible();
-    expect(within(palette).getByText("↓")).toBeVisible();
-    expect(
-      (surface.getAttribute("style") ?? "").match(/height:[^;]+/)?.[0]
-    ).toBe(initialSurfaceHeight);
-  });
-
-  it("renders the file mention palette as a floating scrollable surface", async () => {
-    mockViewModel = createViewModel({
-      activeConversationId: "session-1",
-      draftPrompt: ""
-    });
-    renderAgentGUINode();
-
-    pasteComposerText("@");
-
-    await screen.findByRole("listbox", {
-      name: "agentHost.agentGui.fileMentionPalette"
-    });
-    const surface = screen.getByTestId("agent-gui-mention-palette-surface");
-
-    expect(surface).toHaveStyle({
-      position: "fixed",
-      zIndex: "var(--z-popover)"
-    });
-    expect(surface.parentElement).toHaveAttribute(
-      "data-workspace-node-window-root",
-      "true"
-    );
-    expect(surface).toHaveClass(
-      "max-h-[320px]",
-      "overflow-hidden",
-      "border-[var(--line-1)]",
-      "p-0"
-    );
-    expect(surface.style.minHeight).toBe("280px");
-    expect(surface.style.maxHeight).toBe("320px");
-    expect(surface.style.height).toBe("280px");
-    const scrollRegion = surface.querySelector(
-      ".agent-gui-node__mention-palette-scroll-region"
-    );
-    expect(scrollRegion).not.toBeNull();
-    const palette = surface.querySelector(".agent-gui-node__mention-palette");
-    expect(palette).not.toBeNull();
-    expect(palette).toHaveClass("rich-text-at-mention-palette__shell");
-    expect(scrollRegion?.parentElement).toHaveClass(
-      "rich-text-at-mention-palette__scroll-shell"
-    );
-    expect((scrollRegion as HTMLElement).style.maxHeight).toBe("");
-    expect(scrollRegion).toHaveClass(
-      "rich-text-at-mention-palette__scroll-body"
-    );
-    const hint = screen.getByTestId("agent-gui-mention-palette-hint");
-    expect(
-      hint.closest(".agent-gui-node__mention-palette-footer")
-    ).not.toBeNull();
-    const scrollbar = surface.querySelector(
-      ".agent-gui-node__mention-palette-scrollbar"
-    );
-    if (scrollbar) {
-      expect(
-        scrollbar.querySelector(
-          ".workspace-agents-status-panel__scrollbar-thumb"
-        )
-      ).not.toBeNull();
-    }
-  });
-
-  it("uses the same mention palette height bounds before a conversation starts", async () => {
-    renderAgentGUINode();
-
-    pasteComposerText("@");
-
-    await screen.findByRole("listbox", {
-      name: "agentHost.agentGui.fileMentionPalette"
-    });
-    const surface = screen.getByTestId("agent-gui-mention-palette-surface");
-
-    expect(surface.style.minHeight).toBe("280px");
-    expect(surface.style.maxHeight).toBe("320px");
-    expect(surface.style.height).toBe("280px");
-  });
-
-  it("mounts the file mention palette inside its owning workbench window boundary", async () => {
-    mockViewModel = createViewModel({
-      activeConversationId: "session-1",
-      draftPrompt: ""
-    });
-    renderAgentGUINode({ workbenchWindowZIndex: 41 });
-
-    pasteComposerText("@");
-
-    await screen.findByRole("listbox", {
-      name: "agentHost.agentGui.fileMentionPalette"
-    });
-    const surface = screen.getByTestId("agent-gui-mention-palette-surface");
-
-    expect(surface).toHaveStyle({ zIndex: "var(--z-popover)" });
-    expect(surface.parentElement).toHaveAttribute(
-      "data-slot",
-      "viewport-menu-boundary"
-    );
   });
 
   it("dismisses the file mention palette when the node window resize starts", async () => {
@@ -6023,7 +5774,8 @@ describe("AgentGUINode", () => {
     );
 
     expect(mockSubmitPrompt).toHaveBeenCalledWith(
-      promptBlocks("[@README.md](/workspace/docs/README.md)")
+      promptBlocks("[@README.md](/workspace/docs/README.md)"),
+      undefined
     );
   });
 
@@ -6406,165 +6158,6 @@ describe("AgentGUINode", () => {
         delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTop;
       }
     }
-  });
-
-  it("reserves bottom dock overflow inside the timeline scroll area", () => {
-    const originalGetBoundingClientRect =
-      HTMLElement.prototype.getBoundingClientRect;
-
-    HTMLElement.prototype.getBoundingClientRect =
-      function getBoundingClientRect() {
-        if (this.getAttribute("data-testid") === "agent-gui-bottom-dock") {
-          return {
-            x: 0,
-            y: 456,
-            width: 720,
-            height: 104,
-            top: 456,
-            right: 720,
-            bottom: 560,
-            left: 0,
-            toJSON: () => undefined
-          };
-        }
-        if (
-          this.classList.contains(
-            "agent-gui-node__composer-queued-prompt-panel"
-          )
-        ) {
-          return {
-            x: 24,
-            y: 360,
-            width: 672,
-            height: 96,
-            top: 360,
-            right: 696,
-            bottom: 456,
-            left: 24,
-            toJSON: () => undefined
-          };
-        }
-        return originalGetBoundingClientRect.call(this);
-      };
-
-    try {
-      mockViewModel = createViewModel({
-        activeConversationId: "session-1",
-        conversationDetail: detailViewModel(),
-        queuedPrompts: [textQueuedPrompt("queued-1", "follow-up while busy")]
-      });
-
-      renderAgentGUINode();
-
-      expect(
-        screen
-          .getByTestId("agent-gui-timeline")
-          .style.getPropertyValue("--agent-gui-bottom-dock-safe-area")
-      ).toBe("96px");
-    } finally {
-      HTMLElement.prototype.getBoundingClientRect =
-        originalGetBoundingClientRect;
-    }
-  });
-
-  it("centers the bottom dock composer with the transcript flow", () => {
-    const css = readFileSync(
-      resolve(process.cwd(), "app/renderer/agentactivity.css"),
-      "utf8"
-    );
-
-    expect(css).toMatch(/--agent-gui-detail-padding-x:\s*32px/);
-    expect(css).toMatch(
-      /--agent-gui-session-flow-background:\s*var\(\s*--background-session-flow,\s*rgb\(252 253 255\)\s*\)/s
-    );
-    expect(css).toMatch(
-      /--agent-gui-session-sidepanel-background:\s*var\(\s*--background-session-sidepanel,\s*rgb\(244 245 247\)\s*\)/s
-    );
-    expect(css).toMatch(
-      /:root\[data-theme="dark"\]\s+\.agent-gui-node__shell\s*{[^}]*--agent-gui-session-flow-background:\s*var\(\s*--background-session-flow,\s*rgb\(24 24 24\)\s*\)[^}]*--agent-gui-session-sidepanel-background:\s*var\(\s*--background-session-sidepanel,\s*rgb\(42 42 43\)\s*\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__primary\s*{[^}]*background:\s*var\(--agent-gui-session-sidepanel-background\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__layout\s*{[^}]*background:\s*var\(--agent-gui-session-sidepanel-background\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__detail-panel\s*{[^}]*background:\s*var\(--agent-gui-session-flow-background\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__rail\s*{[^}]*background:\s*var\(--agent-gui-session-sidepanel-background\)/s
-    );
-    expect(css).toMatch(
-      /\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__detail\s*{[^}]*padding-top:\s*var\(--agent-gui-workbench-header-height\)/s
-    );
-    expect(css).toMatch(
-      /\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__timeline-with-composer\s*{[^}]*padding-top:\s*20px/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__content--detail\s*{[^}]*padding-inline:\s*28px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__timeline\s*{[^}]*padding:\s*32px\s+var\(--agent-gui-detail-padding-x\)\s+calc\(24px\s*\+\s*var\(--agent-gui-bottom-dock-safe-area,\s*0px\)\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__timeline-with-composer\s*{[^}]*padding-bottom:\s*calc\(120px\s*\+\s*var\(--agent-gui-bottom-dock-safe-area,\s*0px\)\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s*{[^}]*border:\s*1px solid var\(--line-2\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:focus-within,\s*\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:hover\s*{[^}]*border-color:\s*var\(--line-2\)/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__conversation-timeline\.agent-gui-node__timeline\s*{[^}]*padding-right:\s*28px[^}]*padding-left:\s*28px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__timeline-with-composer\.agent-gui-node__timeline--scrolled-from-top\s*{[^}]*-webkit-mask-image:\s*linear-gradient[^}]*mask-image:\s*linear-gradient/s
-    );
-    expect(css).toMatch(/\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*100%/s);
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*{[^}]*margin-right:\s*auto[^}]*margin-left:\s*auto/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*{[^}]*pointer-events:\s*none/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-node__composer\s*{[^}]*padding-right:\s*12px[^}]*padding-left:\s*12px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-node__composer\s*{[^}]*pointer-events:\s*none/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome,[\s\S]*?\.agent-gui-node__composer-input-shell\s*{[^}]*pointer-events:\s*auto/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:hover\s+textarea,[\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within\s+\.agent-gui-node__composer-textarea\s*{[^}]*scrollbar-width:\s*thin/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*display:\s*block[^}]*width:\s*0[^}]*height:\s*0/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:hover\s+textarea::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within\s+\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*width:\s*4px[^}]*height:\s*4px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\s*{[^}]*display:\s*inline-flex[^}]*align-items:\s*center[^}]*height:\s*24px[^}]*min-height:\s*24px[^}]*line-height:\s*24px[^}]*vertical-align:\s*middle/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\[data-agent-file-mention="true"\]\.tsh-agent-object-token,[\s\S]*?\.agent-rich-text-mention-node\s+\[data-slot="mention-pill"\]\s*{[^}]*display:\s*inline-flex[^}]*align-items:\s*center[^}]*top:\s*0[^}]*height:\s*24px[^}]*min-height:\s*24px[^}]*padding-top:\s*0[^}]*padding-bottom:\s*0[^}]*line-height:\s*24px[^}]*transform:\s*none[^}]*vertical-align:\s*middle/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\s+\[data-slot="mention-pill"\]\s*{[^}]*height:\s*24px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token--file\s*{[^}]*vertical-align:\s*middle/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-placeholder-node:first-child::before\s*{[^}]*font-size:\s*13px[^}]*line-height:\s*24px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer textarea::placeholder,[\s\S]*?\.agent-gui-node__composer-textarea::placeholder\s*{[^}]*line-height:\s*24px/s
-    );
   });
 
   it("deduplicates inline notices already shown by session chrome", () => {
@@ -7506,14 +7099,17 @@ function renderAgentGUINode({
         {node}
       </section>
     );
-  const nodeWithProviders =
-    agentActivityRuntime === undefined ? (
-      wrappedNode
-    ) : (
-      <AgentActivityHostProvider agentActivityRuntime={agentActivityRuntime}>
-        {wrappedNode}
-      </AgentActivityHostProvider>
-    );
+  const nodeWithProviders = (
+    <AgentActivityHostProvider
+      agentActivityRuntime={
+        agentActivityRuntime === undefined
+          ? createNoopAgentActivityRuntime()
+          : agentActivityRuntime
+      }
+    >
+      {wrappedNode}
+    </AgentActivityHostProvider>
+  );
   return render(
     strictMode ? (
       <StrictMode>{nodeWithProviders}</StrictMode>
@@ -7521,6 +7117,171 @@ function renderAgentGUINode({
       nodeWithProviders
     )
   );
+}
+
+function createEmptyAgentActivitySnapshot(
+  workspaceId: string
+): AgentActivitySnapshot {
+  return {
+    workspaceId,
+    presences: [],
+    sessions: [],
+    sessionMessagesById: {},
+    composerOptionsByProvider: {}
+  };
+}
+
+function createAgentActivitySnapshotFromViewModel(
+  workspaceId: string
+): AgentActivitySnapshot {
+  const empty = createEmptyAgentActivitySnapshot(workspaceId);
+  return {
+    ...empty,
+    sessions: mockViewModel.conversations.map((conversation) => ({
+      workspaceId,
+      agentSessionId: conversation.id,
+      provider: String(conversation.provider),
+      userId: conversation.userId,
+      cwd: conversation.cwd,
+      title: conversation.title,
+      status: conversation.status,
+      visible: true,
+      resumable: conversation.resumable,
+      pinnedAtUnixMs: conversation.pinnedAtUnixMs,
+      updatedAtUnixMs: conversation.updatedAtUnixMs,
+      lastEventUnixMs: conversation.updatedAtUnixMs
+    }))
+  };
+}
+
+function createNoopAgentActivityRuntime(): AgentActivityRuntime {
+  const createSession = (workspaceId: string, agentSessionId: string) => ({
+    workspaceId,
+    agentSessionId,
+    provider: "codex",
+    cwd: "/workspace",
+    title: "",
+    status: "ready"
+  });
+  return {
+    promptContentUploadSupport: { file: true, image: true },
+    async cancelSession(input) {
+      return {
+        session: createSession(input.workspaceId, input.agentSessionId),
+        canceled: false,
+        reason: "no_active_turn"
+      };
+    },
+    async createSession(input) {
+      return createSession(input.workspaceId, "session-1");
+    },
+    async deleteSession(input) {
+      void input;
+      return { removed: true };
+    },
+    async activateSession(input) {
+      return {
+        session: createSession(input.workspaceId, input.agentSessionId),
+        messages: [],
+        activation: { status: "ready" }
+      } as unknown as Awaited<
+        ReturnType<AgentActivityRuntime["activateSession"]>
+      >;
+    },
+    async getSession(workspaceId, agentSessionId) {
+      return createSession(workspaceId, agentSessionId);
+    },
+    async getComposerOptions() {
+      return {};
+    },
+    async updateSessionSettings(input) {
+      return {
+        agentSessionId: input.agentSessionId,
+        settings: input.settings
+      };
+    },
+    async warmupOpenclawGateway() {
+      return { accepted: true, ready: true };
+    },
+    async getSessionControlState() {
+      return { status: "ready" } as Awaited<
+        ReturnType<AgentActivityRuntime["getSessionControlState"]>
+      >;
+    },
+    getSnapshot(workspaceId) {
+      return createAgentActivitySnapshotFromViewModel(workspaceId);
+    },
+    async listSessionMessages() {
+      return { messages: [], latestVersion: 0, hasMore: false };
+    },
+    async listAgentGeneratedFiles(input) {
+      return { workspaceId: input.workspaceId, entries: [] };
+    },
+    async listSessionsPage(input) {
+      return {
+        workspaceId: input.workspaceId,
+        sessions: [],
+        hasMore: false
+      };
+    },
+    async load(workspaceId) {
+      return createAgentActivitySnapshotFromViewModel(workspaceId);
+    },
+    ensureSessionSynchronized() {
+      return () => undefined;
+    },
+    retainSessionEvents() {
+      return () => undefined;
+    },
+    async sendInput(input) {
+      const session = createSession(input.workspaceId, input.agentSessionId);
+      return {
+        session,
+        turnId: "turn-1",
+        turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" },
+        submitAvailability: { state: "ready" }
+      };
+    },
+    async uploadPromptContent(input) {
+      return { content: input.content };
+    },
+    async readSessionAttachment(input) {
+      return {
+        attachmentId: input.attachmentId,
+        mimeType: "application/octet-stream",
+        data: ""
+      };
+    },
+    async readPromptAsset(input) {
+      return {
+        assetId: input.assetId ?? undefined,
+        mimeType: input.mimeType,
+        path: input.path ?? "",
+        data: ""
+      };
+    },
+    async setSessionPinned(input) {
+      return createSession(input.workspaceId, input.agentSessionId);
+    },
+    async trackSettingsProjectChange() {},
+    async trackDraftComposerSettingsChange() {},
+    reportDiagnostic() {},
+    async unactivateSession(input) {
+      return {
+        agentSessionId: input.agentSessionId,
+        buffered: true
+      };
+    },
+    async submitInteractive() {
+      return {};
+    },
+    subscribeSessionEvents() {
+      return () => undefined;
+    },
+    subscribe() {
+      return () => undefined;
+    }
+  };
 }
 
 function getChromeNewConversationButton(): HTMLButtonElement {

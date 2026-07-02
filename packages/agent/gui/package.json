@@ -37,7 +37,7 @@
   },
   "scripts": {
     "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/agentactivity.css dist/app/renderer/agentactivity.css app/renderer/assets/icons dist/app/renderer/assets/icons",
-    "test": "vitest run --environment jsdom",
+    "test": "vitest run --environment jsdom --maxWorkers=3",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
