@@ -223,6 +223,21 @@ All four state machines are consolidated, but sequenced into independently shipp
 - **Exit:** Codex speaks only app-server; `codex_adapter.go` gone; generic ACP stack green; full runtime package tests green.
 
 ### Step 9 — *(deferred / separate effort)* Desktop optimistic/reconcile rewrite (state machine A, desktop-half)
+
+> **Status: DONE (2026-07-02, Phase 2).** Root cause sharpened during
+> implementation: optimistic echoes were minted with `version/id` = ms
+> wall-clock (~10^12) while durable rows carry the daemon's small monotonic
+> counter (ADR 0004) — two version domains on one number line, so a durable
+> twin could never replace its echo in id-keyed merges and any echo-
+> contaminated array desynced paging cursors. Fix: echoes carry `version 0`
+> (outside the durable domain), the durable/overlay merge appends surviving
+> echoes after durable rows, detail stores filter optimistic rows at the
+> boundary, cursor helpers skip them, and the initial-load backfill targets
+> per-turn missing user prompts inside the paged window (recovers rapid-fire
+> prompts buried below the newest page). The three historical failure shapes
+> are pinned as integration tests. Plan + vector analysis:
+> `2026-07-02-codex-appserver-step9-desktop-plan.md`.
+
 - On top of the frozen Cluster A snapshot contract, rewrite the desktop optimistic echo + version tracking + reconcile so an unpainted optimistic row cannot desync `after_version`, and a `clientSubmitId`-based backfill recovers the true user row.
 - **Exit:** the "user message disappears" bug class is closed end-to-end; desktop consumes only tutti domain types (invariant holds).
 
@@ -266,3 +281,24 @@ Decisions refined against three real consumers (`codex-sdk-go`, `t3code`, `trayc
 - **[ADR 0005](../adr/0005-turn-lifecycle-optimal-projection.md)** — **commit to the optimal turn model, no compromise, risk-controlled.** Target: one unified per-session **projection** (turn state + messages + compaction + approvals) reconciled vs the Step-4 snapshot, behind a **non-blocking command/observe `Exec`**. Sequenced on the existing steps: Step 5 = explicit `turnPhase` machine as source of truth (A+B); Step 7 = invert `Exec` via a **strangler shim** + unify the projection (C+D), gated on Step 4. De-risked by shadow-compare + strangler reversibility + one controller touch. tutti's blocking `Exec` + single-slot + implicit state is the anomaly vs t3code/traycer.
 
 Glossary: `docs/adr/glossary.md`.
+
+## Closure matrix — 四狀態機 × 五 bug 群 (2026-07-02)
+
+Final acceptance for the refactor: every bug cluster is owned by exactly one
+explicit state machine, closed by construction, and pinned by regression
+tests (Step-0 corpus + Phase-0 expansion; run commands in
+`2026-07-01-codex-appserver-bug-corpus.md`).
+
+| Cluster (bug 群) | State machine (狀態機) | Closed by | By-construction fix | Pinning tests (examples) | Status |
+|---|---|---|---|---|---|
+| **A — daemon↔desktop hydration / optimistic reconcile** ("user message disappears": `7633ebb9`/`2d73bad7`/`08920807`; #608; #585) | Hydration / snapshot contract | Step 4 + ADR 0004 (daemon-half); **Step 9 (desktop-half, Phase 2)** | Daemon: `Version` = per-session monotonic gap-free cursor, identity = `MessageID = f(clientSubmitId)`, display order = `OccurredAt`. Desktop: echoes live outside the version domain (version 0, overlay-only, appended after durable rows), cursors computed from durable rows only, per-turn targeted backfill, echo dropped only on confirmed identity, submit failure keeps the text recoverable. | `TestStoreListSessionMessagesPagesByVersionDespiteOccurredAtOrder`; controller-spec shapes "shape 7633ebb9 / 2d73bad7 / 08920807", rapid-fire, reconnect-refresh pins; `agentGuiController.promptHelpers.spec.ts` | **Closed** |
+| **B — thread / sub-agent identity** (#602 foreign-thread drops; sub-agent card identity) | Thread identity (registry + routing) | Step 3 + ADR 0003; Phase-0 ordering telemetry | Route child threads by `receiverThreadIds` linkage with `OwnerThreadID` stamping and suppress-set instead of dropping; early-arrival drops recorded and surfaced on registration (`droppedBeforeRegistration`). | `TestCodexAppServerAdapterRoutesLinkedChildThreadEvents`, `TestAppServerForeignThreadMismatch`, `TestCodexAppServerChildRegistrationReportsEarlyDrops`, nickname/name-marker tests | **Closed** |
+| **C — turn / compaction lifecycle** (compact-at-100% `67009835`; `4118312f`; `2412b08d`; stuck-spinner desync) | Turn + compaction lifecycle (`turnPhase` machine) | Step 5 (A+B) + Step 7/Phase-1 S1 (C) per ADR 0005 | Explicit `turnPhase` enum with terminal-as-phase; settle path owns terminal event production from all exits (protocol settle, force-cancel, external-death watcher); blocking shell reduced to a dedupe-guarded shadow with telemetry. | `TestCodexAppServerAdapterExecStreamsTurn`, `TestCodexAppServerAdapterSlashCompact`, `TestCodexAppServerAdapterEmitsExactlyOneTurnOutcome`, `TestCodexAppServerAdapterClientDeathSettlesTurn` | **Closed** |
+| **D — session / live-session lifecycle** (#604 idle-recycle bolted on; wedged-turn force-close; controller cancel band-aid) | Session / live-session lifecycle (facade-owned) | Step 7 + Phase-1 S3 (boundary doc) + S4 (cancel reconcile) per ADR 0005 C+D | Adapter owns live-session semantics + busy veto (`ErrLiveSessionBusy`); controller owns scheduling + idle policy; `Cancel` reconciles with the adapter instead of skipping when no turn record exists (linked children stoppable after parent turn ends). | `TestCodexAppServerAdapterConcurrentStartsLeaveSingleLiveProcess`, `TestCodexAppServerAdapterCancelAfterTurnCompletedStillMarksChildrenCanceled`, `TestControllerCancelWithoutTurnRecordReconcilesWithAdapter` | **Closed** |
+| **E — approval / authorization** (#418 detail; cua stalls `1ec14c03`; pending state non-durable) | Approval resolver (durable pending projection) | Step 6 + ADR 0006; Phase-0 live verification | Approvals are durable pending items resolved by id (`serverRequest/resolved` handled as authoritative terminal); reconnect policy = interrupted + re-offer, verified live: codex does NOT re-issue pending server-requests on `thread/resume` (ADR 0006 verification section), so omission-based self-healing is correct. | `TestCodexAppServerAdapterCommandApprovalApprove`, `TestCodexAppServerAdapterCommandApprovalDecisionMapping`, `TestAppServerUserInputAnswers`, `TestLiveProtocolResumeServerRequestReissue` (env-gated) | **Closed** |
+
+Residual (tracked, out of scope): blocking `Exec` shell deletion once the
+async path has soaked (ADR 0005 implementation outcome); nested sub-agent
+activity visualization (deferred by D10); pre-existing flaky data race in the
+generic ACP stack (`standard_acp_adapter.go`/`acp_turn_normalizer.go`,
+inherited from main, untouched here).

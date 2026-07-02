@@ -102,7 +102,6 @@ import { isWorkspaceAgentUntitledTask } from "../../../shared/workspaceAgentLate
 import { projectWorkspaceAgentMessagesToTimelineItems } from "../../../shared/agentConversation/projection/workspaceAgentMessageProjection";
 import { mergeWorkspaceAgentMessages } from "../../../host/workspaceAgentSessionMessages";
 import {
-  createWorkspaceAgentActivityUserMessageIdFromClientSubmitId,
   isWorkspaceAgentActivityOptimisticMessage,
   selectWorkspaceAgentActivityOverlayMessages,
   type WorkspaceAgentActivityMessage,
@@ -157,6 +156,7 @@ import {
   type AgentGUIConversationListQuery
 } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore";
 import { useAgentGuiConversationList } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
+import { createOptimisticPromptMessage } from "./agentGuiController.promptHelpers";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { pendingInterruptActionForDisplayStatus } from "./pendingInterrupt";
 import {
@@ -1659,7 +1659,12 @@ function minFiniteMessageVersion(
 ): number | null {
   let result: number | null = null;
   for (const message of messages) {
-    if (!Number.isFinite(message.version)) {
+    // Optimistic echoes live outside the durable version domain (version 0)
+    // and must never feed a paging cursor.
+    if (
+      !Number.isFinite(message.version) ||
+      isWorkspaceAgentActivityOptimisticMessage(message)
+    ) {
       continue;
     }
     result =
@@ -1668,15 +1673,58 @@ function minFiniteMessageVersion(
   return result;
 }
 
-function hasUserTextMessage(
-  messages: readonly WorkspaceAgentActivityMessage[]
-): boolean {
-  return messages.some(
-    (message) =>
-      message.kind.trim().toLowerCase() === "text" &&
-      message.role.trim().toLowerCase() === "user" &&
-      workspaceAgentActivityMessageText(message).trim() !== ""
+function isUserTextMessage(message: WorkspaceAgentActivityMessage): boolean {
+  return (
+    message.kind.trim().toLowerCase() === "text" &&
+    message.role.trim().toLowerCase() === "user" &&
+    workspaceAgentActivityMessageText(message).trim() !== ""
   );
+}
+
+// The initial-load backfill target: a turn inside the paged window whose user
+// prompt has not been loaded yet. Checking for "any user text message" is not
+// enough - under rapid-fire submits the newest page can contain a later
+// turn's prompt while an earlier turn's prompt is still buried below the
+// window (the "user message disappears after reload" shape). Turns whose rows
+// all sit ABOVE the newest paged version are the live tail: their user row
+// arrives over the stream, not from older pages, so they must not trigger a
+// backfill.
+function windowHasTurnMissingUserPrompt(
+  messages: readonly WorkspaceAgentActivityMessage[],
+  newestPagedVersion: number | null
+): boolean {
+  if (newestPagedVersion === null) {
+    return messages.length > 0 && !messages.some(isUserTextMessage);
+  }
+  const turnIdsWithUserPrompt = new Set<string>();
+  const pagedTurnIds = new Set<string>();
+  for (const message of messages) {
+    if (isWorkspaceAgentActivityOptimisticMessage(message)) {
+      continue;
+    }
+    const turnId = message.turnId?.trim() ?? "";
+    if (!turnId) {
+      continue;
+    }
+    if (
+      Number.isFinite(message.version) &&
+      message.version <= newestPagedVersion
+    ) {
+      pagedTurnIds.add(turnId);
+    }
+    if (isUserTextMessage(message)) {
+      turnIdsWithUserPrompt.add(turnId);
+    }
+  }
+  if (pagedTurnIds.size === 0) {
+    return false;
+  }
+  for (const turnId of pagedTurnIds) {
+    if (!turnIdsWithUserPrompt.has(turnId)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function workspaceAgentActivityMessageText(
@@ -1715,7 +1763,10 @@ function maxFiniteMessageVersion(
 ): number | null {
   let result: number | null = null;
   for (const message of messages) {
-    if (!Number.isFinite(message.version)) {
+    if (
+      !Number.isFinite(message.version) ||
+      isWorkspaceAgentActivityOptimisticMessage(message)
+    ) {
       continue;
     }
     result =
@@ -2024,42 +2075,6 @@ function createAgentGUIConversationId(): string {
   }
   const fallbackHex = Math.random().toString(16).slice(2).padEnd(12, "0");
   return `00000000-0000-4000-8000-${fallbackHex.slice(0, 12)}`;
-}
-
-function createOptimisticPromptMessage(input: {
-  workspaceId: string;
-  agentSessionId: string;
-  turnId: string;
-  clientSubmitId?: string;
-  userId: string;
-  prompt: string;
-  content: AgentPromptContentBlock[];
-  occurredAtUnixMs: number;
-}): WorkspaceAgentActivityMessage {
-  const clientSubmitMessageId = input.clientSubmitId
-    ? createWorkspaceAgentActivityUserMessageIdFromClientSubmitId(
-        input.clientSubmitId
-      )
-    : null;
-  return {
-    id: Math.max(1, Math.floor(input.occurredAtUnixMs)),
-    workspaceId: input.workspaceId,
-    agentSessionId: input.agentSessionId,
-    messageId: clientSubmitMessageId ?? `optimistic:user:${input.turnId}`,
-    version: Math.max(1, Math.floor(input.occurredAtUnixMs)),
-    turnId: input.turnId,
-    role: "user",
-    kind: "text",
-    payload: {
-      __agentGuiOptimisticPrompt: true,
-      actorId: input.userId,
-      ...(input.clientSubmitId ? { clientSubmitId: input.clientSubmitId } : {}),
-      content: input.content,
-      text: input.prompt
-    },
-    occurredAtUnixMs: input.occurredAtUnixMs,
-    startedAtUnixMs: input.occurredAtUnixMs
-  };
 }
 
 function createPendingOptimisticTurnId(clientSubmitId: string): string {
@@ -5282,7 +5297,10 @@ export function useAgentGUINodeController({
         for (
           let backfillPageIndex = 0;
           hasOlderMessages &&
-          !hasUserTextMessage(detailMessages) &&
+          windowHasTurnMissingUserPrompt(
+            detailMessages,
+            maxFiniteMessageVersion(page.messages)
+          ) &&
           oldestLoadedVersion !== null &&
           backfillPageIndex < AGENT_GUI_DETAIL_MISSING_USER_BACKFILL_PAGE_LIMIT;
           backfillPageIndex += 1

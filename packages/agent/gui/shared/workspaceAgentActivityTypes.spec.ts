@@ -169,6 +169,96 @@ describe("selectWorkspaceAgentActivityOverlayMessages", () => {
   });
 });
 
+// Step 9: optimistic echoes live outside the durable version domain
+// (version 0), so ordering must come from the domain split - durable rows
+// first (version order), surviving echoes appended after them - never from a
+// raw version sort across both domains.
+describe("mergeWorkspaceAgentActivityDurableAndOverlayMessages ordering", () => {
+  it("renders surviving optimistic echoes after all durable rows", () => {
+    const durableAsk = userMessage({
+      id: 5,
+      messageId: "user-5",
+      version: 5,
+      occurredAtUnixMs: 5000
+    });
+    const durableAnswer = userMessage({
+      id: 6,
+      messageId: "assistant-6",
+      version: 6,
+      role: "assistant",
+      payload: { text: "answer" },
+      occurredAtUnixMs: 6000
+    });
+    const echo = userMessage({
+      id: 0,
+      messageId: "client-submit:user:submit-1",
+      version: 0,
+      turnId: "pending:submit-1",
+      payload: {
+        __agentGuiOptimisticPrompt: true,
+        clientSubmitId: "submit-1",
+        text: "new ask"
+      },
+      occurredAtUnixMs: 7000
+    });
+
+    const merged = mergeWorkspaceAgentActivityDurableAndOverlayMessages({
+      durableMessages: [durableAsk, durableAnswer],
+      localMessages: [echo]
+    });
+
+    expect(merged.map((message) => message.messageId)).toEqual([
+      "user-5",
+      "assistant-6",
+      "client-submit:user:submit-1"
+    ]);
+  });
+
+  it("orders multiple surviving echoes by occurredAt", () => {
+    const durableAsk = userMessage({
+      id: 5,
+      messageId: "user-5",
+      version: 5,
+      occurredAtUnixMs: 5000
+    });
+    const echoLater = userMessage({
+      id: 0,
+      messageId: "client-submit:user:submit-2",
+      version: 0,
+      turnId: "pending:submit-2",
+      payload: {
+        __agentGuiOptimisticPrompt: true,
+        clientSubmitId: "submit-2",
+        text: "second ask"
+      },
+      occurredAtUnixMs: 8000
+    });
+    const echoEarlier = userMessage({
+      id: 0,
+      messageId: "client-submit:user:submit-1",
+      version: 0,
+      turnId: "pending:submit-1",
+      payload: {
+        __agentGuiOptimisticPrompt: true,
+        clientSubmitId: "submit-1",
+        text: "first ask"
+      },
+      occurredAtUnixMs: 7000
+    });
+
+    const merged = mergeWorkspaceAgentActivityDurableAndOverlayMessages({
+      durableMessages: [durableAsk],
+      localMessages: [echoLater, echoEarlier]
+    });
+
+    expect(merged.map((message) => message.messageId)).toEqual([
+      "user-5",
+      "client-submit:user:submit-1",
+      "client-submit:user:submit-2"
+    ]);
+  });
+});
+
 function userMessage(
   overrides: Partial<WorkspaceAgentActivityMessage>
 ): WorkspaceAgentActivityMessage {
