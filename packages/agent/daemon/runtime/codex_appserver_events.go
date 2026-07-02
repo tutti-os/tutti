@@ -579,9 +579,42 @@ func appServerChildTerminalStatusEvent(
 		}
 		turnID := firstNonEmpty(asString(params["turnId"]), asString(payloadObject(params["turn"])["id"]))
 		return appServerSubAgentLifecycleEvent(session, ownerThreadID, turnID, "failed", appServerChildFailureDetail(payloadObject(params["error"])))
+	case appServerNotifyThreadNameUpdated:
+		return appServerSubAgentNameEvent(session, ownerThreadID, asString(params["threadName"]))
 	default:
 		return activityshared.Event{}
 	}
+}
+
+// appServerSubAgentNameEvent projects a child thread's name onto a hidden
+// ownerThreadId-tagged marker so the GUI can title the sub-agent lane with
+// the agent's real identity instead of the collab tool name.
+func appServerSubAgentNameEvent(session Session, ownerThreadID string, name string) activityshared.Event {
+	ownerThreadID = strings.TrimSpace(ownerThreadID)
+	name = strings.TrimSpace(name)
+	if ownerThreadID == "" || name == "" {
+		return activityshared.Event{}
+	}
+	messageID := "subagent-name:" + ownerThreadID
+	payload := map[string]any{
+		"messageId":     messageID,
+		"contentMode":   messageContentModeSnapshot,
+		"messageKind":   "subAgentName",
+		"subAgentName":  name,
+		"ownerThreadId": ownerThreadID,
+	}
+	event := newTurnActivityEventWithID(
+		session,
+		messageID,
+		EventMessage,
+		"",
+		"completed",
+		RoleAssistant,
+		"",
+		payload,
+	)
+	event.OwnerThreadID = ownerThreadID
+	return event
 }
 
 func appServerChildLifecycleStatus(status string) string {

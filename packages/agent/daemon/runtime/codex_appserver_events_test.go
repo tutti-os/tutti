@@ -302,6 +302,70 @@ func TestCodexAppServerUnhandledServerRequestCardOnlyForUnknownMethods(t *testin
 	}
 }
 
+func TestCodexAppServerChildThreadNameUpdateEmitsNameMarker(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewCodexAppServerAdapter(nil)
+	session := Session{
+		AgentSessionID:    "agent-session-1",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "parent-thread-1",
+	}
+	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{threadID: session.ProviderSessionID})
+	reducer := newCodexAppServerReducer(adapter)
+	normalizer := newACPTurnNormalizer()
+
+	reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
+		Method: appServerNotifyItemStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turnId":   "parent-turn-1",
+			"item": map[string]any{
+				"type":              "collabAgentToolCall",
+				"id":                "spawn-child-1",
+				"tool":              "spawnAgent",
+				"status":            "inProgress",
+				"receiverThreadIds": []any{"child-thread-1"},
+			},
+		}),
+	}, normalizer, nil)
+
+	nameEvents := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
+		Method: appServerNotifyThreadNameUpdated,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId":   "child-thread-1",
+			"threadName": "Repo smell analyst",
+		}),
+	}, normalizer, nil).Events
+	if len(nameEvents) != 1 {
+		t.Fatalf("child name events = %#v, want one name marker", nameEvents)
+	}
+	marker := nameEvents[0]
+	if marker.OwnerThreadID != "child-thread-1" ||
+		marker.Payload.Metadata["messageKind"] != "subAgentName" ||
+		marker.Payload.Metadata["subAgentName"] != "Repo smell analyst" {
+		t.Fatalf("child name marker = %#v", marker)
+	}
+	// The activity store rejects turnless message updates.
+	if marker.Payload.TurnID == "" {
+		t.Fatalf("child name marker has no turn id")
+	}
+
+	// The PARENT thread's own name updates keep today's behavior (no marker).
+	parentNameEvents := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
+		Method: appServerNotifyThreadNameUpdated,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId":   session.ProviderSessionID,
+			"threadName": "Parent title",
+		}),
+	}, normalizer, nil).Events
+	for _, event := range parentNameEvents {
+		if event.Payload.Metadata["messageKind"] == "subAgentName" {
+			t.Fatalf("parent thread name produced a sub-agent marker: %#v", event)
+		}
+	}
+}
+
 func TestCodexAppServerChildThreadErrorDoesNotFailParentTurn(t *testing.T) {
 	t.Parallel()
 
