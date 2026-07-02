@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
@@ -182,6 +183,19 @@ type codexAppServerActiveTurn struct {
 	// returns (turn fully finalized). Cancel waits on it so it only responds
 	// after the turn has actually stopped.
 	terminated chan struct{}
+	// terminatedOnce closes terminated exactly once regardless of which path
+	// finalizes the turn (settle path or the blocking shell).
+	terminatedOnce sync.Once
+	// emitTerminal delivers the turn's final events through the turn's own
+	// single-shot emission chain (the shell's turnClosed guard dedupes).
+	emitTerminal func([]activityshared.Event)
+	// settleEmits marks turns whose terminal events are produced by the
+	// settle path (notification loop) instead of a parked goroutine
+	// (ADR 0005 C inversion). Guarded by the adapter mutex.
+	settleEmits bool
+	// settleFinalized records that finalizeSettledTurn produced the terminal
+	// events; the blocking shell logs a shadow miss if it ever has to.
+	settleFinalized atomic.Bool
 
 	cancelRequested     bool
 	cancelInterruptSent bool
@@ -1156,6 +1170,108 @@ func (a *CodexAppServerAdapter) ExecAsync(
 	return nil
 }
 
+func (appTurn *codexAppServerActiveTurn) markTerminated() {
+	appTurn.terminatedOnce.Do(func() { close(appTurn.terminated) })
+}
+
+// markTurnSettleEmits flips the turn to settle-path terminal emission just
+// before the provider turn is submitted, under the adapter mutex so the
+// notification loop observes it consistently.
+func (a *CodexAppServerAdapter) markTurnSettleEmits(agentSessionID string, appTurn *codexAppServerActiveTurn) {
+	if a == nil || appTurn == nil {
+		return
+	}
+	a.mu.Lock()
+	appTurn.settleEmits = true
+	a.mu.Unlock()
+}
+
+// finalizeSettledTurn produces the settled turn's terminal events from the
+// notification path, releases the active-turn slot, and signals terminated —
+// terminal production no longer depends on a parked goroutine (ADR 0005 C).
+// Classification mirrors the blocking shell exactly; the shell's turnClosed
+// guard drops any duplicate.
+func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTurn *codexAppServerActiveTurn, terminal codexAppServerTurnTerminal) {
+	if a == nil || appTurn == nil || appTurn.emitTerminal == nil {
+		return
+	}
+	appTurn.settleFinalized.Store(true)
+	session := appTurn.session
+	turnID := appTurn.turnID
+	if terminal.err != nil {
+		if errors.Is(terminal.err, context.Canceled) ||
+			errors.Is(terminal.err, errPermissionRequestCanceled) ||
+			a.turnForceCanceled(appTurn) ||
+			terminal.phase == codexAppServerTurnPhaseCanceled {
+			terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
+			terminalEvents = append(terminalEvents, appTurn.normalizer.FinishInterrupted(session, turnID, "interrupted")...)
+			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
+				"error": terminal.err.Error(),
+			}))
+			appTurn.emitTerminal(terminalEvents)
+		} else {
+			terminalEvents := appTurn.normalizer.FinishFailed(session, turnID)
+			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(terminal.err)))
+			appTurn.emitTerminal(terminalEvents)
+		}
+	} else {
+		appTurn.normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(terminal.turn))
+		appTurn.emitTerminal(appServerTurnTerminalEvents(session, turnID, terminal.turn, appTurn.normalizer))
+	}
+	a.endActiveTurn(agentSessionID, appTurn)
+	appTurn.markTerminated()
+}
+
+// settleTurnExternal settles THIS turn (pointer match) from an external
+// death signal — context cancellation or client death — as a first-class
+// machine transition instead of a parked-goroutine select arm.
+func (a *CodexAppServerAdapter) settleTurnExternal(agentSessionID string, appTurn *codexAppServerActiveTurn, terminal codexAppServerTurnTerminal) {
+	if a == nil || appTurn == nil {
+		return
+	}
+	a.mu.Lock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	settled := false
+	if appSession != nil && appSession.activeTurn == appTurn && !appTurn.phase.terminal() {
+		appTurn.phase = terminal.phase
+		appSession.activeTurnID = ""
+		settled = true
+	}
+	emits := settled && appTurn.settleEmits
+	a.mu.Unlock()
+	if !settled {
+		return
+	}
+	select {
+	case appTurn.terminal <- terminal:
+	default:
+	}
+	if emits {
+		a.finalizeSettledTurn(agentSessionID, appTurn, terminal)
+	}
+}
+
+// watchTurnExternalTermination translates external death signals (context
+// cancellation, client death) into turn-machine transitions. It exits as
+// soon as the turn terminates through any path.
+func (a *CodexAppServerAdapter) watchTurnExternalTermination(appSession *codexAppServerSession, appTurn *codexAppServerActiveTurn) {
+	select {
+	case <-appTurn.terminated:
+	case <-appTurn.ctx.Done():
+		a.settleTurnExternal(appTurn.session.AgentSessionID, appTurn, codexAppServerTurnTerminal{
+			err: appTurn.ctx.Err(), phase: codexAppServerTurnPhaseCanceled,
+		})
+	case <-appSession.client.Done():
+		err := appSession.client.Err()
+		if err == nil {
+			err = ErrSessionDisconnected
+		}
+		a.settleTurnExternal(appTurn.session.AgentSessionID, appTurn, codexAppServerTurnTerminal{
+			err: err, phase: codexAppServerTurnPhaseFailed,
+		})
+	}
+}
+
 func (a *CodexAppServerAdapter) execBlocking(
 	ctx context.Context,
 	session Session,
@@ -1242,9 +1358,11 @@ func (a *CodexAppServerAdapter) execBlocking(
 		terminal:     make(chan codexAppServerTurnTerminal, 1),
 		terminated:   make(chan struct{}),
 	}
+	appTurn.emitTerminal = emitTerminal
 	// Signal turn termination once this goroutine returns (after terminal events
 	// are emitted), so a concurrent Cancel only responds after the turn stopped.
-	defer close(appTurn.terminated)
+	// The settle path may finalize first; the Once keeps the close single.
+	defer appTurn.markTerminated()
 	if !a.beginActiveTurn(session.AgentSessionID, appTurn) {
 		return nil, ErrSessionActiveTurn
 	}
@@ -1253,6 +1371,10 @@ func (a *CodexAppServerAdapter) execBlocking(
 	if handled, err := a.execSlashCommand(ctx, appSession, session, visibleText, turnID, appTurn, normalizer, emitEvents, emitTerminal, emitCommands); handled {
 		return snapshotEvents(), err
 	}
+
+	// From here on the settle path (notification loop) owns terminal event
+	// production; the blocking shell below only waits and returns.
+	a.markTurnSettleEmits(session.AgentSessionID, appTurn)
 
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
 	turnParams := appServerTurnStartParams(session, appSession.threadID, content, appSession.planModeMask, appSession.defaultModeMask, appSession.defaultModel)
@@ -1299,8 +1421,26 @@ func (a *CodexAppServerAdapter) execBlocking(
 			a.interruptActiveTurnAsync(appSession, session, appTurn, providerTurnID, "queued cancel")
 		}
 	}
+	go a.watchTurnExternalTermination(appSession, appTurn)
 	finalTurn, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, initialTurn)
+	// The settle path finalizes AFTER delivering the terminal channel value:
+	// wait for terminated (closed at the end of finalize) so the snapshot
+	// includes the terminal events. The timeout is a safety net for any
+	// settle hole; the shell classification below then covers it.
+	select {
+	case <-appTurn.terminated:
+	case <-time.After(2 * time.Second):
+	}
 	a.endActiveTurn(session.AgentSessionID, appTurn)
+	if appTurn.settleFinalized.Load() {
+		// The settle path already produced the terminal events.
+		return snapshotEvents(), nil
+	}
+	slog.Warn(
+		"agent session app-server turn terminal produced by blocking shell (settle shadow miss)",
+		"agent_session_id", session.AgentSessionID,
+		"turn_id", turnID,
+	)
 	if finishErr != nil {
 		if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) || a.turnForceCanceled(appTurn) {
 			terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
@@ -1905,11 +2045,19 @@ func (a *CodexAppServerAdapter) markTurnForceCanceled(turn *codexAppServerActive
 	}
 	a.mu.Lock()
 	turn.forceCanceled = true
+	agentSessionID := turn.session.AgentSessionID
+	emits := turn.settleEmits && !turn.phase.terminal()
 	turn.phase = codexAppServerTurnPhaseCanceled
 	a.mu.Unlock()
+	terminal := codexAppServerTurnTerminal{err: errPermissionRequestCanceled, phase: codexAppServerTurnPhaseCanceled}
 	select {
-	case turn.terminal <- codexAppServerTurnTerminal{err: errPermissionRequestCanceled, phase: codexAppServerTurnPhaseCanceled}:
+	case turn.terminal <- terminal:
 	default:
+	}
+	// Force-cancel is a first-class terminal transition: finalize from here
+	// so terminal events do not depend on the (possibly wedged) shell.
+	if emits {
+		a.finalizeSettledTurn(agentSessionID, turn, terminal)
 	}
 }
 

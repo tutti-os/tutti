@@ -76,3 +76,52 @@ adapter API:
   enum beachhead, C+D = the structural completion; all committed, sequenced.**
 - Makes ADR 0004 (cursor) a hard prerequisite and ADR 0003 (`OwnerThreadID`) a
   feeder of the same unified projection.
+
+## Implementation outcome (2026-07-02, Phase 1)
+
+Step 7 (C+D) closed with three findings and two recorded deviations.
+
+**Finding — caller migration was already complete.** The controller's
+`runAsyncExecTurn` is purely event-driven (it finishes on terminal/steer
+events from the sink, never on `Exec`'s return); the blocking `adapter.Exec`
+path serves only non-`AsyncExecAdapter` providers. The strangler shim's
+"migrate callers one at a time" phase had therefore already happened; the
+remaining inversion was adapter-internal.
+
+**S1 — settle path owns terminal production (commit 2bb62315).** Turn outcome
+events (`EventTurnCompleted/Failed/Canceled` + finish classification) are now
+produced by the settle sequence itself, from all three exits: protocol settle
+(`settleActiveTurn`), force-cancel (`markTurnForceCanceled`), and an external
+death watcher (ctx cancel / client death become machine transitions). The
+blocking shell no longer classifies; it waits on the turn's `terminated`
+signal and snapshots. A dedupe-guarded shadow classification remains in the
+shell behind a 2s safety net, with `slog.Warn` telemetry on any shadow miss —
+this is the strangler's reversibility retained until Step 9 (Phase 2) proves
+the async path end-to-end, after which the shell can be deleted.
+
+**S2 deviation — submit/wait split skipped.** With S1 landed, the parked
+Exec goroutine only idles; it produces nothing. Splitting `Exec` into
+submit/await APIs would have churned the adapter surface for no behavioral
+gain. The essence of C — terminal truth owned by the projection/settle path,
+not the blocking await — is achieved without it.
+
+**S3 deviation — session-lifecycle ownership was already correct (doc-only).**
+The adapter owns live-session semantics and the busy veto
+(`ErrLiveSessionBusy`, test-covered); the controller owns scheduling and the
+idle-recycle policy over its own session timestamps
+(`ReleaseIdleLiveSessions`). No code change; the boundary matches this ADR's
+Cluster D intent.
+
+**S4 — controller cancel band-aid retired (commit b3043e85).** `Controller.Cancel`
+no longer skips when its turn registry has no record ("cancel skipped because
+no active turn exists"). It reconciles with the adapter: always calls
+`adapter.Cancel`, publishes returned events (e.g. linked child agents
+outliving a completed parent turn), and answers `Canceled=true` iff work was
+actually stopped. The adapter's `ErrSessionNoActiveTurn` maps to a calm
+"nothing to stop" result.
+
+Gates: Step-0 corpus (15) + Phase-0 expansion (18 runtime + 3 activity) green;
+full `packages/agent/daemon` module green; `-race` green for all app-server
+code (a pre-existing flaky race in `standard_acp_adapter.go`/
+`acp_turn_normalizer.go` — untouched by this refactor, inherited from main —
+was observed and is out of scope here).

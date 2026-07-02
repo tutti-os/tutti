@@ -199,6 +199,17 @@ All four state machines are consolidated, but sequenced into independently shipp
 - **Exit:** approval flow is a standalone, tested unit reconciled against the snapshot; Cluster E cases covered (detail, approve/deny mapping, `requestUserInput`, `serverRequest/resolved` terminal, unknown-request reject).
 
 ### Step 7 — Thin the Adapter into a Thread/Turn facade + session lifecycle (state machine D) · *optimal path C+D (ADR 0005)*
+
+> **Status: DONE (2026-07-02, Phase 1).** The C inversion landed inside-out: the
+> controller's `runAsyncExecTurn` was already purely event-driven (blocking
+> `adapter.Exec` serves only non-async adapters), so the remaining work was
+> adapter-internal. Terminal event production now lives on the settle path
+> (protocol settle / force-cancel / external-death watcher); the blocking shell
+> is a dedupe-guarded shadow with warn telemetry, retained as the safety net
+> until Step 9 (Phase 2) completes. The controller `Cancel` no-active-turn
+> band-aid is retired in favor of adapter reconcile-cancel. Deviations and
+> verification: ADR 0005 "Implementation outcome" section.
+
 - What remains of `codex_appserver_adapter.go` collapses onto Thread/Turn lifecycle orchestration over the new layers (facade shape per `codex-sdk-go`).
 - **Invert `Exec` to non-blocking via a strangler shim (C):** introduce the async submit/observe core; keep the blocking `Exec([]activityshared.Event, error)` signature as a thin wrapper over it (block until the projection reports terminal); migrate `controller.go` and callers to the async API incrementally; delete the wrapper only when no caller needs it. The controller observes terminal outcome via the existing `EventSink` stream + projected turn state, not a blocking return — removing the wedge/liveness-floor/single-turn constraints by construction.
 - **Unify the projection (D):** turn state + messages share one per-session reconciled projection (one `Version` cursor per ADR 0004, `OwnerThreadID` lanes per ADR 0003) — matching t3code's single `sequence` log / traycer's single chat event log.
