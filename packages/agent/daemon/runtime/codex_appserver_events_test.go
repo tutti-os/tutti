@@ -185,6 +185,70 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerChildThreadErrorDoesNotFailParentTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewCodexAppServerAdapter(nil)
+	session := Session{
+		AgentSessionID:    "agent-session-1",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "parent-thread-1",
+		CWD:               "/workspace",
+	}
+	activeTurn := &codexAppServerActiveTurn{
+		turnID:   "parent-turn-1",
+		phase:    codexAppServerTurnPhaseRunning,
+		terminal: make(chan codexAppServerTurnTerminal, 1),
+	}
+	// activeTurnID stays empty on purpose: before turn/started records the
+	// provider turn id (or during a goal-continuation gap) the empty id
+	// matches any turn id as a wildcard, so a child error routed to the
+	// parent would fail its running turn.
+	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{
+		threadID:   session.ProviderSessionID,
+		activeTurn: activeTurn,
+	})
+	reducer := newCodexAppServerReducer(adapter)
+	normalizer := newACPTurnNormalizer()
+
+	// Link the child thread the same way a real collab spawn does.
+	reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
+		Method: appServerNotifyItemStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turnId":   "parent-turn-1",
+			"item": map[string]any{
+				"type":              "collabAgentToolCall",
+				"id":                "spawn-child-1",
+				"tool":              "spawnAgent",
+				"status":            "inProgress",
+				"prompt":            "inspect",
+				"receiverThreadIds": []any{"child-thread-1"},
+			},
+		}),
+	}, normalizer, nil)
+
+	events := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
+		Method: appServerNotifyError,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId":  "child-thread-1",
+			"willRetry": false,
+			"error":     map[string]any{"message": "child thread exploded"},
+		}),
+	}, normalizer, nil).Events
+	if len(events) != 0 {
+		t.Fatalf("child error events = %#v, want suppressed", events)
+	}
+	if activeTurn.phase != codexAppServerTurnPhaseRunning {
+		t.Fatalf("parent turn phase = %q, want still running", activeTurn.phase)
+	}
+	select {
+	case terminal := <-activeTurn.terminal:
+		t.Fatalf("parent turn terminal = %#v, want none from child error", terminal)
+	default:
+	}
+}
+
 // TestCodexAppServerAdapterApplyTokenUsagePrefersLastRequest verifies that
 // usedTokens reflects the most-recent request's context size ("last"), not the
 // running sum across all requests in the thread ("total").  The two diverge

@@ -510,6 +510,12 @@ func appServerSuppressChildNotification(method string) bool {
 		appServerNotifyThreadGoalCleared,
 		appServerNotifyTurnStarted,
 		appServerNotifyTurnCompleted,
+		// A child's error must never reach failActiveTurnFromAppServerError on
+		// the parent session: with an empty parent activeTurnID (wildcard
+		// match) it would fail the parent's running turn. Child failures reach
+		// the transcript through the parent's collabAgentToolCall item.
+		appServerNotifyError,
+		appServerNotifyServerRequestResolved,
 		appServerNotifyPlanUpdated,
 		appServerNotifyTokenUsage,
 		appServerNotifyRateLimitsUpdated,
