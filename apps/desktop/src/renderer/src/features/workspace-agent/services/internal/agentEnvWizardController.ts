@@ -100,16 +100,16 @@ export function attachAgentEnvWizard(
   let detached = false;
 
   resetWizardForOpen(params.focus);
-  // The wizard renders the network diagnostic, so its detections opt into the
-  // network probe; the dock and other callers stay local-only.
-  if (params.focus) {
-    void params.service.refresh([params.provider], { includeNetwork: true });
-  } else {
-    void params.service.ensureLoaded({
-      providers: [params.provider],
-      includeNetwork: true
-    });
-  }
+  // Always force a fresh status check on attach (both the plain config-gear
+  // open, focus === null, and a deep-linked focus). `ensureLoaded` would
+  // otherwise happily serve whatever snapshot is already sitting in the
+  // renderer's in-memory cache — including a reason code like
+  // `acp_adapter_version_mismatch` captured before the user re-authenticated
+  // outside this dialog (e.g. re-logging in via an external terminal never
+  // triggers window focus/visibilitychange, the only other refresh trigger).
+  // Opening this wizard is precisely when the user needs live truth, not a
+  // stale snapshot, so always refresh rather than cache-hit.
+  void params.service.refresh([params.provider], { includeNetwork: true });
 
   const clearRevealTimer = (): void => {
     if (revealTimer !== null) {

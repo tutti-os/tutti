@@ -264,7 +264,7 @@ test("Chinese language contexts use the CJK font stack and medium weights", () =
   assert.match(baseSource, /font-weight:\s*500/);
 });
 
-test("global overlay tokens keep toasts above panels and tooltips above dialogs", () => {
+test("global overlay tokens keep toasts above every dialog layer and tooltips above toasts", () => {
   const themeSource = readStyleSource("theme.css");
   const popoverZ = readZIndexToken(themeSource, "--z-popover");
   const toastZ = readZIndexToken(themeSource, "--z-toast");
@@ -277,12 +277,15 @@ test("global overlay tokens keep toasts above panels and tooltips above dialogs"
 
   assert.ok(popoverZ < panelZ);
   assert.ok(panelZ < panelPopoverZ);
-  assert.ok(panelPopoverZ < toastZ);
-  assert.ok(toastZ < dialogOverlayZ);
+  assert.ok(panelPopoverZ < dialogOverlayZ);
   assert.ok(dialogOverlayZ < dialogZ);
   assert.ok(dialogZ < dialogPopoverZ);
-  assert.ok(panelPopoverZ < dialogPopoverZ);
-  assert.ok(dialogPopoverZ < tooltipZ);
+  // Toasts must clear every dialog layer: a notification raised by an action
+  // taken inside an open dialog (install/login failures in the agent config
+  // wizard, for one) has to stay visible above that dialog's own backdrop
+  // scrim, not be swallowed behind it (Feishu bug CPuSqH).
+  assert.ok(dialogPopoverZ < toastZ);
+  assert.ok(toastZ < tooltipZ);
 });
 
 test("global backdrop uses the dark scrim value in every theme mode", () => {

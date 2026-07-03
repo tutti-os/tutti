@@ -128,10 +128,16 @@
   --z-popover: 100200;
   --z-panel: 100500;
   --z-panel-popover: 100550;
-  --z-toast: 100560;
   --z-dialog-overlay: 100600;
   --z-dialog: 100610;
   --z-dialog-popover: 100620;
+  /* Toasts sit above every dialog layer (not just panels): a toast raised in
+     direct response to an action taken inside an open dialog (e.g. the Claude
+     Code / Codex config wizard's install or re-login button) must stay
+     visible, not render behind that dialog's own backdrop scrim. See Feishu
+     bug CPuSqH — a "此适配器版本不支持" error toast fired from inside the
+     open config dialog was visually swallowed by the dialog overlay. */
+  --z-toast: 100630;
   --z-tooltip: 100700;
 
   --workbench-canvas-bg: oklch(0.948 0.006 84);

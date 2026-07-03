@@ -205,10 +205,19 @@ test("anomaly without consent moves to confirming and does not report", () => {
   assert.equal(getAgentEnvWizardSnapshot().reportState, "confirming");
 });
 
-test("attach with a focus refreshes; detect focus uses ensureLoaded only when no focus", () => {
+test("attach with a focus refreshes", () => {
   resetAgentEnvWizardStoreForTests();
   const service = new FakeService(readyStatus());
   const detach = attachAgentEnvWizard(params(service, { focus: "install" }));
+  detach();
+  assert.equal(service.refreshCalls, 1);
+  assert.equal(service.ensureCalls, 0);
+});
+
+test("attach with no focus also refreshes, not ensureLoaded, so opening the config gear never serves a stale cached snapshot (Feishu CPuSqH)", () => {
+  resetAgentEnvWizardStoreForTests();
+  const service = new FakeService(readyStatus());
+  const detach = attachAgentEnvWizard(params(service, { focus: null }));
   detach();
   assert.equal(service.refreshCalls, 1);
   assert.equal(service.ensureCalls, 0);

@@ -119,10 +119,14 @@ export function DesktopAgentProviderManageDialog({
       return;
     }
 
+    // Force a fresh check rather than `ensureLoaded` (which happily serves
+    // whatever snapshot is already cached in-memory). This dialog is where a
+    // user goes specifically to see/fix provider connection problems, so it
+    // must never show a reason code (e.g. a stale `acp_adapter_version_mismatch`)
+    // captured before an out-of-band re-auth that no other refresh trigger
+    // (window focus, a failed session create) happened to observe.
     void agentProviderStatusService
-      .ensureLoaded({
-        providers: [...desktopAgentProviderManageDialogProviders]
-      })
+      .refresh([...desktopAgentProviderManageDialogProviders])
       .catch(() => null);
   }, [agentProviderStatusService, open]);
 
