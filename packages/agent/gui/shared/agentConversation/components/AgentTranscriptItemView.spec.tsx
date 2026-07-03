@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { getAgentEnvPanelStore } from "../../agentEnv/agentEnvPanelStore";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
@@ -759,8 +765,85 @@ describe("AgentTranscriptItemView render stability", () => {
     for (const divider of dividers) {
       expect(divider.className).toContain("bg-[var(--line-1)]");
     }
-    expect(getByText("Context compacted.")).toBeTruthy();
+    expect(
+      getByText("agentHost.agentGui.contextCompactionCompleted")
+    ).toBeTruthy();
     expect(queryByText("agentHost.agentGui.systemNoticeDefault")).toBeNull();
+  });
+
+  it("renders in-progress compaction notices as a divider with a ticking timer", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(66_000);
+      const { getByRole, getByText } = render(
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={assistantMessageRow({
+            kind: "message-content",
+            id: "assistant-notice-compacting",
+            turnId: "turn-1",
+            body: "Compacting context.",
+            occurredAtUnixMs: 61_000,
+            systemNotice: {
+              noticeKind: "system_notice",
+              severity: null,
+              title: "Compacting context.",
+              detail: "",
+              retryable: null
+            }
+          })}
+          thinkingLabel="Thought process"
+        />
+      );
+
+      const notice = getByRole("status");
+      expect(notice.className).toContain("items-center");
+      expect(notice.className).not.toContain("rounded-[8px]");
+      const dividers = notice.querySelectorAll('span[aria-hidden="true"]');
+      expect(dividers).toHaveLength(2);
+      expect(
+        getByText(/agentHost\.agentGui\.contextCompactionInProgress/)
+      ).toBeTruthy();
+      expect(getByText(/· 5s/)).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(3_000);
+      });
+      expect(getByText(/· 8s/)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renders interrupted compaction notices as a static divider", () => {
+    const { getByRole, getByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-notice-compaction-interrupted",
+          turnId: "turn-1",
+          body: "Context compaction interrupted.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "system_notice",
+            severity: null,
+            title: "Context compaction interrupted.",
+            detail: "",
+            retryable: null
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("status");
+    expect(notice.className).not.toContain("rounded-[8px]");
+    expect(notice.querySelectorAll('span[aria-hidden="true"]')).toHaveLength(2);
+    expect(
+      getByText("agentHost.agentGui.contextCompactionInterrupted")
+    ).toBeTruthy();
   });
 
   it("renders plan-tagged assistant messages as a dedicated plan card", () => {
