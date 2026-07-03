@@ -8222,6 +8222,46 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   font-weight: 700;
 }
 
+.agent-gui-node__empty-provider-gate {
+  max-width: 520px;
+  gap: 14px;
+}
+
+.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-icon-effect {
+  margin-bottom: 10px;
+}
+
+.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-title {
+  font-size: 24px;
+}
+
+.agent-gui-node__empty-provider-gate-description {
+  max-width: 420px;
+  margin: 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+  animation: agent-gui-empty-hero-enter 280ms cubic-bezier(0.16, 1, 0.3, 1)
+    150ms both;
+}
+
+.agent-gui-node__empty-provider-gate-status {
+  min-height: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  animation: agent-gui-empty-hero-enter 280ms cubic-bezier(0.16, 1, 0.3, 1)
+    170ms both;
+}
+
+.agent-gui-node__empty-provider-gate-action {
+  min-width: 132px;
+  gap: 8px;
+  animation: agent-gui-empty-hero-enter 300ms cubic-bezier(0.16, 1, 0.3, 1)
+    190ms both;
+}
+
 .agent-gui-node__empty-hero-body > .agent-gui-node__composer-hero {
   animation: agent-gui-empty-hero-enter 300ms cubic-bezier(0.16, 1, 0.3, 1)
     180ms both;

@@ -481,6 +481,49 @@ describe("useAgentGUINodeController", () => {
     }
   });
 
+  it("resolves provider readiness gates from the selected provider target before legacy node provider", () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "daemon-claude"
+        }),
+        conversationScope: "multi-provider",
+        providerTargets: [
+          {
+            targetId: "daemon-claude",
+            agentTargetId: "daemon-claude",
+            provider: "claude-code",
+            ref: { kind: "daemon", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        providerReadinessGates: {
+          codex: { status: "not_installed" },
+          "claude-code": { status: "auth_required" }
+        },
+        onDataChange: vi.fn()
+      })
+    );
+
+    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      "claude-code"
+    );
+    expect(result.current.viewModel.data.provider).toBe("claude-code");
+    expect(result.current.viewModel.providerReadinessGate?.status).toBe(
+      "auth_required"
+    );
+  });
+
   it("does not persist provider target ids while filtering rail conversations", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),

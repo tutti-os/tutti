@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type JSX
 } from "react";
 import { useSnapshot } from "valtio";
@@ -13,6 +14,8 @@ import { AgentGUI } from "@tutti-os/agent-gui";
 import type {
   AgentActivityRuntime,
   AgentQueuedPromptRuntime,
+  AgentGUIProvider,
+  AgentGUIProviderReadinessGateAction,
   AgentGUIProviderTarget,
   AgentGUIProps,
   AgentHostInputApi
@@ -72,6 +75,7 @@ import {
   withDesktopAgentGUIProviderComposerDefaults
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
 import { useDesktopManagedAgentsState } from "./useDesktopManagedAgentsState.ts";
+import { projectDesktopAgentProviderReadinessGates } from "../services/internal/desktopAgentProviderReadinessGate.ts";
 
 export const DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT =
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT;
@@ -143,6 +147,14 @@ const DESKTOP_AGENT_GUI_NOOP = (): void => {};
 const AGENT_PROBE_REFRESH_DEBOUNCE_MS = 300;
 const DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS =
   [] satisfies NonNullable<AgentGUIProps["contextMentionProviders"]>;
+const DESKTOP_AGENT_GUI_EMPTY_PROVIDER_STATUS_SNAPSHOT = {
+  capturedAt: null,
+  defaultProvider: null,
+  error: null,
+  isLoading: false,
+  pendingActions: [],
+  statuses: []
+} satisfies ReturnType<IAgentProviderStatusService["getSnapshot"]>;
 const DESKTOP_AGENT_GUI_POSITION = { x: 0, y: 0 };
 type DesktopAgentProbeState = NonNullable<
   AgentGUIProps["workspaceAgentProbes"]
@@ -330,6 +342,15 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     agentProviderStatusService,
     { ensureLoaded: !previewMode }
   );
+  const providerStatusSnapshot = useSyncExternalStore(
+    agentProviderStatusService && !previewMode
+      ? (listener) => agentProviderStatusService.subscribe(listener)
+      : noopSubscribe,
+    agentProviderStatusService && !previewMode
+      ? () => agentProviderStatusService.getSnapshot()
+      : getEmptyProviderStatusSnapshot,
+    getEmptyProviderStatusSnapshot
+  );
   const provider = desktopAgentGUIProviderFromInstanceId(context.instanceId);
   // Activation funnel stage ③ "saw a chattable surface": the agent workbench
   // body is mounted (not a dock preview) and the active provider is ready, so
@@ -428,6 +449,40 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       });
     },
     [agentProviderStatusService, context.host, workspaceId]
+  );
+  const handleProviderReadinessGateAction = useCallback(
+    (
+      actionProvider: AgentGUIProvider,
+      action: AgentGUIProviderReadinessGateAction
+    ) => {
+      if (!isDesktopManagedAgentProvider(actionProvider)) {
+        return;
+      }
+      if (action === "refresh") {
+        void agentProviderStatusService?.refresh([actionProvider]);
+        return;
+      }
+      void agentProviderStatusService?.runAction(actionProvider, action, {
+        workbenchHost: context.host,
+        workspaceId
+      });
+    },
+    [agentProviderStatusService, context.host, workspaceId]
+  );
+  const providerReadinessGates = useMemo(
+    () =>
+      desktopPreferencesState.agentDockLayout === "unified" && !previewMode
+        ? projectDesktopAgentProviderReadinessGates({
+            snapshot: providerStatusSnapshot,
+            onAction: handleProviderReadinessGateAction
+          })
+        : null,
+    [
+      desktopPreferencesState.agentDockLayout,
+      handleProviderReadinessGateAction,
+      previewMode,
+      providerStatusSnapshot
+    ]
   );
   const rawWorkbenchStateSource = useMemo(
     () => context.externalNodeState ?? context.node.data.runtimeNodeState,
@@ -1013,6 +1068,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         nodeId={context.node.id}
         providerTargets={providerTargetsLoading ? [] : providerTargets}
         providerTargetsLoading={providerTargetsLoading}
+        providerReadinessGates={providerReadinessGates}
         defaultProviderTargetId={defaultProviderTargetId}
         conversationScope={
           desktopPreferencesState.agentDockLayout === "unified"
@@ -1087,6 +1143,16 @@ export const DesktopAgentGUIWorkbenchBody = memo(
   DesktopAgentGUIWorkbenchBodyImpl,
   areDesktopAgentGUIWorkbenchBodyPropsEqual
 );
+
+function getEmptyProviderStatusSnapshot(): ReturnType<
+  IAgentProviderStatusService["getSnapshot"]
+> {
+  return DESKTOP_AGENT_GUI_EMPTY_PROVIDER_STATUS_SNAPSHOT;
+}
+
+function noopSubscribe(): () => void {
+  return () => {};
+}
 
 const AUTH_FAILURE_MARKERS = [
   "authentication_failed",

@@ -180,6 +180,17 @@ setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
 single provider target to inspect. In legacy single-provider dock scope, the
 same footer continues to use the node/session provider.
+Unified empty-home provider readiness is a host-projected, provider-scoped gate,
+not a durable session rule. Desktop may subscribe to its
+`agentProviderStatusService` and pass a narrow readiness map plus install,
+login, or refresh callbacks into AgentGUI only when `agentDockLayout` is
+`unified`. AgentGUI resolves the gate from the selected
+`AgentGUIProviderTarget.provider` first, from `agentTargetId` through the
+current provider target list second, and from legacy node/session `provider`
+only when no target can be resolved. A non-ready provider replaces only the
+empty-home composer with a friendly gate; active/history conversations,
+existing-session composer behavior, and the legacySplit dock hover
+install/login chain remain outside this gate.
 
 This means an AgentGUI bug can start at several different interfaces. Do not
 assume that a visible UI symptom starts in the visible UI component.

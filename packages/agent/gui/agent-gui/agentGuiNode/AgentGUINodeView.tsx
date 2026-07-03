@@ -86,7 +86,10 @@ import {
   MANAGED_AGENT_ICON_URLS
 } from "../../shared/managedAgentIcons";
 import type { UiLanguage } from "../../contexts/settings/domain/agentSettings";
-import type { AgentGUIProvider } from "../../types";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderReadinessGate
+} from "../../types";
 import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
 import { TaskSearchField } from "../RoomIssueNode/TaskSearchField";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
@@ -227,6 +230,20 @@ export interface AgentGUIViewLabels {
   followupPlaceholder: string;
   installRequiredPlaceholder: string;
   installRequiredAction: string;
+  providerGateCheckingTitle: string;
+  providerGateCheckingDescription: string;
+  providerGateInstallTitle: string;
+  providerGateInstallDescription: string;
+  providerGateInstallAction: string;
+  providerGateLoginTitle: string;
+  providerGateLoginDescription: string;
+  providerGateLoginAction: string;
+  providerGateUnavailableTitle: string;
+  providerGateUnavailableDescription: string;
+  providerGateRetryAction: string;
+  providerGatePendingInstall: string;
+  providerGatePendingLogin: string;
+  providerGatePendingRefresh: string;
   collaboratorSessionReadOnlyPlaceholder: string;
   send: string;
   modelLabel: string;
@@ -1653,6 +1670,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     avoidGroupingEdits: viewModel.avoidGroupingEdits
   });
   const hasActiveConversation = viewModel.activeConversationId !== null;
+  const emptyProviderReadinessGate = !hasActiveConversation
+    ? viewModel.providerReadinessGate
+    : null;
   const activePrompt =
     viewModel.pendingInteractivePrompt ?? viewModel.pendingApproval;
   const activePromptRequestId = activePrompt?.requestId ?? null;
@@ -1783,7 +1803,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       ? null
       : labels.installRequiredPlaceholder;
   const showProviderSetupNotice =
-    !isAgentProviderReady && !isCollaboratorConversation;
+    !emptyProviderReadinessGate &&
+    !isAgentProviderReady &&
+    !isCollaboratorConversation;
   const submitDisabled =
     isCollaboratorConversation ||
     !isAgentProviderReady ||
@@ -2715,19 +2737,27 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         viewportContentStyle={AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE}
       >
         {!hasActiveConversation ? (
-          <AgentGUIEmptyHeroPane
-            provider={emptyHeroProvider}
-            emptyLabel={labels.empty}
-            emptyProvider={labels.emptyProvider ?? ""}
-            inlineNoticeChrome={inlineNoticeChrome}
-            isRespondingApproval={viewModel.isRespondingApproval}
-            onSubmitApprovalOption={submitApprovalOption}
-            onRetryActivation={retryActivation}
-            onAuthLogin={authLogin}
-            onContinueInNewConversation={continueInNewConversation}
-            chromeLabels={chromeLabels}
-            composerProps={emptyHeroComposerProps}
-          />
+          emptyProviderReadinessGate ? (
+            <AgentGUIProviderReadinessGatePane
+              provider={emptyHeroProvider}
+              gate={emptyProviderReadinessGate}
+              labels={labels}
+            />
+          ) : (
+            <AgentGUIEmptyHeroPane
+              provider={emptyHeroProvider}
+              emptyLabel={labels.empty}
+              emptyProvider={labels.emptyProvider ?? ""}
+              inlineNoticeChrome={inlineNoticeChrome}
+              isRespondingApproval={viewModel.isRespondingApproval}
+              onSubmitApprovalOption={submitApprovalOption}
+              onRetryActivation={retryActivation}
+              onAuthLogin={authLogin}
+              onContinueInNewConversation={continueInNewConversation}
+              chromeLabels={chromeLabels}
+              composerProps={emptyHeroComposerProps}
+            />
+          )
         ) : (
           <AgentGUIConversationTimelinePane
             conversation={conversation}
@@ -2982,6 +3012,149 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
     </div>
   );
 });
+
+interface AgentGUIProviderReadinessGatePaneProps {
+  provider: AgentGUINodeViewModel["data"]["provider"];
+  gate: AgentGUIProviderReadinessGate;
+  labels: Pick<
+    AgentGUIViewLabels,
+    | "providerGateCheckingTitle"
+    | "providerGateCheckingDescription"
+    | "providerGateInstallTitle"
+    | "providerGateInstallDescription"
+    | "providerGateInstallAction"
+    | "providerGateLoginTitle"
+    | "providerGateLoginDescription"
+    | "providerGateLoginAction"
+    | "providerGateUnavailableTitle"
+    | "providerGateUnavailableDescription"
+    | "providerGateRetryAction"
+    | "providerGatePendingInstall"
+    | "providerGatePendingLogin"
+    | "providerGatePendingRefresh"
+  >;
+}
+
+const AgentGUIProviderReadinessGatePane = memo(
+  function AgentGUIProviderReadinessGatePane({
+    provider,
+    gate,
+    labels
+  }: AgentGUIProviderReadinessGatePaneProps): React.JSX.Element {
+    "use memo";
+
+    const heroIconUrl = resolveAgentGUIHeroIconUrl(provider);
+    const pendingAction = gate.pendingAction ?? null;
+    const isPending = pendingAction !== null;
+    const content = providerGateContent(gate.status, labels);
+    const action = providerGateAction(gate.status);
+    const pendingLabel =
+      pendingAction === "install"
+        ? labels.providerGatePendingInstall
+        : pendingAction === "login"
+          ? labels.providerGatePendingLogin
+          : pendingAction === "refresh"
+            ? labels.providerGatePendingRefresh
+            : null;
+
+    return (
+      <div className={styles.emptyHero}>
+        <div
+          className={cn(styles.emptyHeroBody, styles.emptyProviderGate)}
+          data-testid="agent-gui-provider-readiness-gate"
+          role="status"
+        >
+          <img
+            aria-hidden="true"
+            className={styles.emptyHeroIconEffect}
+            draggable={false}
+            src={heroIconUrl}
+            alt=""
+          />
+          <h2 className={styles.emptyHeroTitle}>{content.title}</h2>
+          <p className={styles.emptyProviderGateDescription}>
+            {content.description}
+          </p>
+          {pendingLabel ? (
+            <div
+              className={styles.emptyProviderGateStatus}
+              data-testid="agent-gui-provider-readiness-gate-pending"
+            >
+              {pendingLabel}
+            </div>
+          ) : null}
+          {action ? (
+            <Button
+              type="button"
+              className={cn(
+                styles.emptyProviderGateAction,
+                "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
+              )}
+              data-testid="agent-gui-provider-readiness-gate-action"
+              disabled={isPending}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => {
+                if (isPending) {
+                  return;
+                }
+                gate.onAction?.(provider, action);
+              }}
+            >
+              <Wrench size={16} strokeWidth={2} aria-hidden="true" />
+              {isPending && pendingLabel ? pendingLabel : content.actionLabel}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+);
+
+function providerGateContent(
+  status: AgentGUIProviderReadinessGate["status"],
+  labels: AgentGUIProviderReadinessGatePaneProps["labels"]
+): { title: string; description: string; actionLabel?: string } {
+  switch (status) {
+    case "checking":
+      return {
+        title: labels.providerGateCheckingTitle,
+        description: labels.providerGateCheckingDescription
+      };
+    case "not_installed":
+      return {
+        title: labels.providerGateInstallTitle,
+        description: labels.providerGateInstallDescription,
+        actionLabel: labels.providerGateInstallAction
+      };
+    case "auth_required":
+      return {
+        title: labels.providerGateLoginTitle,
+        description: labels.providerGateLoginDescription,
+        actionLabel: labels.providerGateLoginAction
+      };
+    case "unavailable":
+      return {
+        title: labels.providerGateUnavailableTitle,
+        description: labels.providerGateUnavailableDescription,
+        actionLabel: labels.providerGateRetryAction
+      };
+  }
+}
+
+function providerGateAction(
+  status: AgentGUIProviderReadinessGate["status"]
+): AgentGUIProviderReadinessGate["pendingAction"] {
+  switch (status) {
+    case "not_installed":
+      return "install";
+    case "auth_required":
+      return "login";
+    case "unavailable":
+      return "refresh";
+    case "checking":
+      return null;
+  }
+}
 
 function EmptyHeroTitle({
   label,

@@ -1,5 +1,9 @@
 import type { AgentActivityUsage } from "@tutti-os/agent-activity-core";
-import type { AgentGUINodeData, AgentGUIProviderTarget } from "../../../types";
+import type {
+  AgentGUINodeData,
+  AgentGUIProviderReadinessGate,
+  AgentGUIProviderTarget
+} from "../../../types";
 import type {
   AgentGUIApprovalRequest,
   AgentGUIConversationSummary,
@@ -209,4 +213,5 @@ export interface AgentGUINodeViewModel {
   conversationDetail: WorkspaceAgentSessionDetailViewModel | null;
   sessionChrome: AgentGUISessionChrome;
   inlineNotice: AgentGUIInlineNotice | null;
+  providerReadinessGate: AgentGUIProviderReadinessGate | null;
 }

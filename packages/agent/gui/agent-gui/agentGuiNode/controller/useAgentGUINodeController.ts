@@ -52,6 +52,7 @@ import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSet
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
+  AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget
 } from "../../../types";
 import {
@@ -3540,6 +3541,9 @@ interface UseAgentGUINodeControllerInput {
   conversationScope?: AgentGUIConversationScope;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  providerReadinessGates?: Partial<
+    Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
+  > | null;
   defaultProviderTargetId?: string | null;
   openSessionRequest?: AgentGUIOpenSessionRequest | null;
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
@@ -3578,6 +3582,7 @@ export function useAgentGUINodeController({
   conversationScope = "single-provider",
   providerTargets,
   providerTargetsLoading = false,
+  providerReadinessGates = null,
   defaultProviderTargetId = null,
   openSessionRequest = null,
   prefillPromptRequest = null,
@@ -10615,6 +10620,11 @@ export function useAgentGUINodeController({
   );
   const viewData =
     activeConversationId === null ? selectedComposerTargetData.data : data;
+  const providerReadinessGate =
+    activeConversationId === null
+      ? (providerReadinessGates?.[effectiveSelectedProviderTarget.provider] ??
+        null)
+      : null;
   const controllerActions = useMemo(
     () => ({
       updateConversationFilter: stableUpdateConversationFilter,
@@ -10746,7 +10756,8 @@ export function useAgentGUINodeController({
               autoDismissMs: null
             }
           : null,
-        detailError
+        detailError,
+        providerReadinessGate
       },
       actions: controllerActions
     }),
@@ -10768,6 +10779,7 @@ export function useAgentGUINodeController({
       data,
       effectiveSelectedProviderTarget,
       normalizedProviderTargets,
+      providerReadinessGate,
       providerTargetsLoading,
       detailError,
       draftContent,

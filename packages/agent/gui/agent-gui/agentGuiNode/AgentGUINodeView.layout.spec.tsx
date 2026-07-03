@@ -1644,6 +1644,110 @@ describe("AgentGUINodeView provider setup notice", () => {
   });
 });
 
+describe("AgentGUINodeView provider readiness gate", () => {
+  afterEach(() => {
+    composerMock.calls = [];
+  });
+
+  it("renders an empty-state gate instead of the composer when the provider is not installed", () => {
+    const onAction = vi.fn();
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        providerReadinessGate: {
+          status: "not_installed",
+          onAction
+        }
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toHaveTextContent("providerGateInstallTitle");
+    expect(screen.queryByTestId("agent-gui-provider-setup-notice")).toBeNull();
+    expect(screen.queryByTestId("agent-composer")).toBeNull();
+
+    fireEvent.click(
+      screen.getByTestId("agent-gui-provider-readiness-gate-action")
+    );
+
+    expect(onAction).toHaveBeenCalledWith("codex", "install");
+  });
+
+  it("renders a login gate for auth-required providers", () => {
+    const onAction = vi.fn();
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        providerReadinessGate: {
+          status: "auth_required",
+          onAction
+        }
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toHaveTextContent("providerGateLoginTitle");
+
+    fireEvent.click(
+      screen.getByTestId("agent-gui-provider-readiness-gate-action")
+    );
+
+    expect(onAction).toHaveBeenCalledWith("codex", "login");
+  });
+
+  it("disables the gate action while an action is pending", () => {
+    const onAction = vi.fn();
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        providerReadinessGate: {
+          status: "not_installed",
+          pendingAction: "install",
+          onAction
+        }
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate-pending")
+    ).toHaveTextContent("providerGatePendingInstall");
+
+    const action = screen.getByTestId(
+      "agent-gui-provider-readiness-gate-action"
+    );
+    expect(action).toBeDisabled();
+    fireEvent.click(action);
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("shows the normal empty composer when no gate is present", () => {
+    renderAgentGUINodeView();
+
+    expect(
+      screen.queryByTestId("agent-gui-provider-readiness-gate")
+    ).toBeNull();
+    expect(screen.getByTestId("agent-composer")).toBeInTheDocument();
+  });
+
+  it("does not gate existing active conversations", () => {
+    const activeConversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversations: [activeConversation],
+        providerReadinessGate: {
+          status: "not_installed"
+        }
+      })
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-provider-readiness-gate")
+    ).toBeNull();
+    expect(screen.getByTestId("agent-conversation-flow")).toBeInTheDocument();
+  });
+});
+
 describe("AgentGUINodeView usage alert banner", () => {
   afterEach(() => {
     conversationFlowMock.calls = [];
@@ -1995,7 +2099,8 @@ function createViewModel(
       rawState: null
     },
     inlineNotice: null,
-    ...overrides
+    ...overrides,
+    providerReadinessGate: overrides.providerReadinessGate ?? null
   };
 }
 
@@ -2088,6 +2193,20 @@ function createLabels(): AgentGUIViewLabels {
     followupPlaceholder: "followupPlaceholder",
     installRequiredPlaceholder: "installRequiredPlaceholder",
     installRequiredAction: "installRequiredAction",
+    providerGateCheckingTitle: "providerGateCheckingTitle",
+    providerGateCheckingDescription: "providerGateCheckingDescription",
+    providerGateInstallTitle: "providerGateInstallTitle",
+    providerGateInstallDescription: "providerGateInstallDescription",
+    providerGateInstallAction: "providerGateInstallAction",
+    providerGateLoginTitle: "providerGateLoginTitle",
+    providerGateLoginDescription: "providerGateLoginDescription",
+    providerGateLoginAction: "providerGateLoginAction",
+    providerGateUnavailableTitle: "providerGateUnavailableTitle",
+    providerGateUnavailableDescription: "providerGateUnavailableDescription",
+    providerGateRetryAction: "providerGateRetryAction",
+    providerGatePendingInstall: "providerGatePendingInstall",
+    providerGatePendingLogin: "providerGatePendingLogin",
+    providerGatePendingRefresh: "providerGatePendingRefresh",
     collaboratorSessionReadOnlyPlaceholder:
       "collaboratorSessionReadOnlyPlaceholder",
     send: "send",

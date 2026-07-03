@@ -104,6 +104,11 @@ const styles = {
   emptyHeroIconEffect: "agent-gui-node__empty-hero-icon-effect",
   emptyHeroProvider: "agent-gui-node__empty-hero-provider",
   emptyHeroTitle: "agent-gui-node__empty-hero-title",
+  emptyProviderGate: "agent-gui-node__empty-provider-gate",
+  emptyProviderGateAction: "agent-gui-node__empty-provider-gate-action",
+  emptyProviderGateDescription:
+    "agent-gui-node__empty-provider-gate-description",
+  emptyProviderGateStatus: "agent-gui-node__empty-provider-gate-status",
   emptyState: "agent-gui-node__empty-state",
   unavailableChatEmpty: "agent-gui-node__unavailable-chat-empty",
   unavailableChatEmptyIcon: "agent-gui-node__unavailable-chat-empty-icon",

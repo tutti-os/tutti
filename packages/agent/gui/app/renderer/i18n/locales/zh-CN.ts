@@ -338,6 +338,24 @@ export const zhCN = {
       followupPlaceholder: "要求 {{provider}} 继续后续变更",
       installRequiredPlaceholder: "请先完成 {{provider}} 配置，然后再发送消息",
       installRequiredAction: "设置",
+      providerGateCheckingTitle: "正在检查 Agent",
+      providerGateCheckingDescription:
+        "稍等一下，我们正在确认 {{provider}} 是否已经可用。",
+      providerGateInstallTitle: "先安装 {{provider}}",
+      providerGateInstallDescription:
+        "需要先安装 {{provider}}，才能在这里开始新的对话。",
+      providerGateInstallAction: "安装",
+      providerGateLoginTitle: "登录 {{provider}}",
+      providerGateLoginDescription:
+        "{{provider}} 已安装。先完成一次登录，然后就可以开始对话。",
+      providerGateLoginAction: "登录",
+      providerGateUnavailableTitle: "{{provider}} 暂时还不可用",
+      providerGateUnavailableDescription:
+        "我们还不能确认 {{provider}} 已准备好，可以再检测一次。",
+      providerGateRetryAction: "重新检测",
+      providerGatePendingInstall: "正在安装…",
+      providerGatePendingLogin: "正在打开登录…",
+      providerGatePendingRefresh: "正在检测…",
       collaboratorSessionReadOnlyPlaceholder: "非当前用户会话，不可直接对话",
       send: "发送",
       modelLabel: "模型",

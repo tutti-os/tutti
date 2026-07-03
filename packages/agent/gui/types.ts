@@ -88,6 +88,26 @@ export interface AgentGUIProviderTarget {
   unavailableReason?: string;
 }
 
+export type AgentGUIProviderReadinessGateStatus =
+  | "checking"
+  | "not_installed"
+  | "auth_required"
+  | "unavailable";
+
+export type AgentGUIProviderReadinessGateAction =
+  | "install"
+  | "login"
+  | "refresh";
+
+export interface AgentGUIProviderReadinessGate {
+  status: AgentGUIProviderReadinessGateStatus;
+  pendingAction?: AgentGUIProviderReadinessGateAction | null;
+  onAction?: (
+    provider: AgentGUIProvider,
+    action: AgentGUIProviderReadinessGateAction
+  ) => void;
+}
+
 export interface WebsiteNodeData {
   url: string;
   sessionMode: WebsiteWindowSessionMode;

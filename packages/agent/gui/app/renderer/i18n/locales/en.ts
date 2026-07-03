@@ -366,6 +366,24 @@ export const en = {
       installRequiredPlaceholder:
         "Finish setting up {{provider}} to send messages",
       installRequiredAction: "Set up",
+      providerGateCheckingTitle: "Checking your agent",
+      providerGateCheckingDescription:
+        "One moment while we check whether {{provider}} is ready.",
+      providerGateInstallTitle: "Install {{provider}} first",
+      providerGateInstallDescription:
+        "{{provider}} needs to be installed before you can start a new chat here.",
+      providerGateInstallAction: "Install",
+      providerGateLoginTitle: "Sign in to {{provider}}",
+      providerGateLoginDescription:
+        "{{provider}} is installed. Sign in once, then come back and start chatting.",
+      providerGateLoginAction: "Sign in",
+      providerGateUnavailableTitle: "{{provider}} is not ready yet",
+      providerGateUnavailableDescription:
+        "We could not confirm that {{provider}} is ready. Try checking again.",
+      providerGateRetryAction: "Check again",
+      providerGatePendingInstall: "Installing…",
+      providerGatePendingLogin: "Opening sign in…",
+      providerGatePendingRefresh: "Checking…",
       collaboratorSessionReadOnlyPlaceholder:
         "This session belongs to another user and cannot be replied to directly",
       send: "Send",

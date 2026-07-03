@@ -2734,6 +2734,56 @@ describe("AgentGUINode", () => {
     ).not.toBeDisabled();
   });
 
+  it("checks empty-home provider readiness against the selected provider target before legacy node provider", () => {
+    mockViewModel = createViewModel({
+      data: {
+        provider: "claude-code",
+        agentTargetId: "local:claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      selectedProviderTarget: {
+        ...createLocalAgentGUIProviderTarget("claude-code"),
+        agentTargetId: "local:claude-code"
+      },
+      activeConversation: null,
+      activeConversationId: null,
+      draftPrompt: "hello",
+      canQueueWhileBusy: true,
+      providerReadinessGate: null
+    });
+
+    renderAgentGUINode({
+      state: {
+        provider: "codex",
+        agentTargetId: "local:claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      managedAgentsState: createManagedAgentsState({
+        readyAgentIds: ["claude-code"],
+        items: [
+          createManagedAgentsStateItem({
+            toolId: "codex-cli",
+            agentId: "codex",
+            hostDetected: true
+          }),
+          createManagedAgentsStateItem({
+            toolId: "claude-code-cli",
+            agentId: "claude-code",
+            hostDetected: true
+          })
+        ]
+      })
+    });
+
+    expect(getComposerEditor()).not.toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByTestId("agent-gui-provider-setup-notice")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "agentHost.agentGui.send" })
+    ).not.toBeDisabled();
+  });
+
   it("shows a provider setup notice while keeping the disabled composer reason on the input placeholder", () => {
     mockViewModel = createViewModel({
       data: {
@@ -7062,6 +7112,7 @@ function createViewModel(
     ...overrides,
     conversationScope: overrides.conversationScope ?? "single-provider",
     conversationFilter: overrides.conversationFilter ?? { kind: "all" },
+    providerReadinessGate: overrides.providerReadinessGate ?? null,
     listError: overrides.listError ?? null
   };
 }

@@ -21,6 +21,8 @@ import type {
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
   AgentGUINodeData,
+  AgentGUIProvider,
+  AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget,
   NodeFrame,
   Point
@@ -187,6 +189,9 @@ export interface AgentGUINodeProps {
   onAgentProviderLogin?: (provider: AgentProvider) => void;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  providerReadinessGates?: Partial<
+    Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
+  > | null;
   defaultProviderTargetId?: string | null;
   conversationScope?: AgentGUIConversationScope;
   onWorkspaceFileReferencesAdded?: (input: {
@@ -565,6 +570,7 @@ function areAgentGUINodePropsEqual(
     previous.onAgentProviderLogin === next.onAgentProviderLogin &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.providerReadinessGates === next.providerReadinessGates &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
     previous.conversationScope === next.conversationScope &&
     previous.onClose === next.onClose &&
@@ -628,6 +634,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   onAgentProviderLogin,
   providerTargets,
   providerTargetsLoading = false,
+  providerReadinessGates = null,
   defaultProviderTargetId = null,
   conversationScope = "single-provider",
   onWorkspaceFileReferencesAdded,
@@ -801,6 +808,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     prefillPromptRequest,
     providerTargets,
     providerTargetsLoading,
+    providerReadinessGates,
     defaultProviderTargetId,
     previewMode,
     onDataChange: handleDataChange,
@@ -836,6 +844,10 @@ export const AgentGUINode = memo(function AgentGUINode({
   const fallbackAgentTitle = t("sidebar.fallbackAgentLabel");
   const activeProvider =
     viewModel.activeConversation?.provider ?? state.provider;
+  const activeReadinessProvider =
+    viewModel.activeConversationId !== null
+      ? activeProvider
+      : viewModel.selectedProviderTarget.provider;
   const selectedProviderTargetLabel =
     viewModel.selectedProviderTarget?.label ??
     resolveAgentGUIProviderDisplayLabel(state.provider, fallbackAgentTitle);
@@ -906,6 +918,50 @@ export const AgentGUINode = memo(function AgentGUINode({
         }
       ),
       installRequiredAction: t("agentHost.agentGui.installRequiredAction"),
+      providerGateCheckingTitle: t(
+        "agentHost.agentGui.providerGateCheckingTitle"
+      ),
+      providerGateCheckingDescription: t(
+        "agentHost.agentGui.providerGateCheckingDescription",
+        { provider: displayProviderLabel }
+      ),
+      providerGateInstallTitle: t(
+        "agentHost.agentGui.providerGateInstallTitle",
+        { provider: displayProviderLabel }
+      ),
+      providerGateInstallDescription: t(
+        "agentHost.agentGui.providerGateInstallDescription",
+        { provider: displayProviderLabel }
+      ),
+      providerGateInstallAction: t(
+        "agentHost.agentGui.providerGateInstallAction"
+      ),
+      providerGateLoginTitle: t("agentHost.agentGui.providerGateLoginTitle", {
+        provider: displayProviderLabel
+      }),
+      providerGateLoginDescription: t(
+        "agentHost.agentGui.providerGateLoginDescription",
+        { provider: displayProviderLabel }
+      ),
+      providerGateLoginAction: t("agentHost.agentGui.providerGateLoginAction"),
+      providerGateUnavailableTitle: t(
+        "agentHost.agentGui.providerGateUnavailableTitle",
+        { provider: displayProviderLabel }
+      ),
+      providerGateUnavailableDescription: t(
+        "agentHost.agentGui.providerGateUnavailableDescription",
+        { provider: displayProviderLabel }
+      ),
+      providerGateRetryAction: t("agentHost.agentGui.providerGateRetryAction"),
+      providerGatePendingInstall: t(
+        "agentHost.agentGui.providerGatePendingInstall"
+      ),
+      providerGatePendingLogin: t(
+        "agentHost.agentGui.providerGatePendingLogin"
+      ),
+      providerGatePendingRefresh: t(
+        "agentHost.agentGui.providerGatePendingRefresh"
+      ),
       collaboratorSessionReadOnlyPlaceholder: t(
         "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder"
       ),
@@ -1421,8 +1477,9 @@ export const AgentGUINode = memo(function AgentGUINode({
     [railStatusProvider, workspaceAgentProbes?.snapshot]
   );
   const isActiveAgentProviderReady = useMemo(() => {
-    const managedAgent =
-      getAgentHostManagedToolchainAgentByName(activeProbeProvider);
+    const managedAgent = getAgentHostManagedToolchainAgentByName(
+      activeReadinessProvider
+    );
     if (!managedAgent) {
       return true;
     }
@@ -1435,7 +1492,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         managedAgentsState
       ) === "installed"
     );
-  }, [activeProbeProvider, managedAgentsState]);
+  }, [activeReadinessProvider, managedAgentsState]);
   const runtimeSlashStatusQuotas = useMemo(
     () =>
       slashStatusQuotasFromRuntimeUsage(
