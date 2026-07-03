@@ -369,6 +369,8 @@ export const en = {
       providerGateCheckingTitle: "Checking your agent",
       providerGateCheckingDescription:
         "One moment while we check whether {{provider}} is ready.",
+      providerGateCheckingAgentsDescription:
+        "One moment while we check whether agents are ready.",
       providerGateInstallTitle: "Install {{provider}} first",
       providerGateInstallDescription:
         "{{provider}} needs to be installed before you can start a new chat here.",

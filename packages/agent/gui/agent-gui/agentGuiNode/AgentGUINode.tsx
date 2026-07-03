@@ -924,6 +924,9 @@ export const AgentGUINode = memo(function AgentGUINode({
         "agentHost.agentGui.providerGateCheckingDescription",
         { provider: displayProviderLabel }
       ),
+      providerGateCheckingAgentsDescription: t(
+        "agentHost.agentGui.providerGateCheckingAgentsDescription"
+      ),
       providerGateInstallTitle: t(
         "agentHost.agentGui.providerGateInstallTitle",
         { provider: displayProviderLabel }

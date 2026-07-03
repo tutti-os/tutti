@@ -341,6 +341,8 @@ export const zhCN = {
       providerGateCheckingTitle: "正在检查 Agent",
       providerGateCheckingDescription:
         "稍等一下，我们正在确认 {{provider}} 是否已经可用。",
+      providerGateCheckingAgentsDescription:
+        "稍等一下，我们正在确认 agents 是否已经可用。",
       providerGateInstallTitle: "先安装 {{provider}}",
       providerGateInstallDescription:
         "需要先安装 {{provider}}，才能在这里开始新的对话。",

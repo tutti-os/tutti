@@ -3258,6 +3258,29 @@ describe("AgentGUINodeView provider readiness gate", () => {
     expect(onAction).toHaveBeenCalledWith("codex", "login");
   });
 
+  it("renders the aggregate agents checking gate when the All tab is active", () => {
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        conversationScope: "multi-provider",
+        conversationFilter: { kind: "all" },
+        providerReadinessGate: {
+          status: "checking"
+        }
+      })
+    });
+
+    const gate = screen.getByTestId("agent-gui-provider-readiness-gate");
+
+    expect(gate).toHaveTextContent("providerGateCheckingTitle");
+    expect(gate).toHaveTextContent("providerGateCheckingAgentsDescription");
+    expect(
+      gate.querySelector(".agent-gui-node__empty-hero-launchpad-icon")
+    ).not.toBeNull();
+    expect(
+      gate.querySelector("img.agent-gui-node__empty-hero-icon-effect")
+    ).toBeNull();
+  });
+
   it("disables the gate action while an action is pending", () => {
     const onAction = vi.fn();
     renderAgentGUINodeView({
@@ -3819,6 +3842,8 @@ function createLabels(): AgentGUIViewLabels {
     installRequiredAction: "installRequiredAction",
     providerGateCheckingTitle: "providerGateCheckingTitle",
     providerGateCheckingDescription: "providerGateCheckingDescription",
+    providerGateCheckingAgentsDescription:
+      "providerGateCheckingAgentsDescription",
     providerGateInstallTitle: "providerGateInstallTitle",
     providerGateInstallDescription: "providerGateInstallDescription",
     providerGateInstallAction: "providerGateInstallAction",

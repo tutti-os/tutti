@@ -272,6 +272,7 @@ export interface AgentGUIViewLabels {
   installRequiredAction: string;
   providerGateCheckingTitle: string;
   providerGateCheckingDescription: string;
+  providerGateCheckingAgentsDescription: string;
   providerGateInstallTitle: string;
   providerGateInstallDescription: string;
   providerGateInstallAction: string;
@@ -2924,6 +2925,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             <AgentGUIProviderReadinessGatePane
               provider={emptyHeroProvider}
               gate={emptyProviderReadinessGate}
+              showAllProviders={viewModel.conversationFilter.kind === "all"}
               labels={labels}
             />
           ) : (
@@ -3245,10 +3247,12 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
 interface AgentGUIProviderReadinessGatePaneProps {
   provider: AgentGUINodeViewModel["data"]["provider"];
   gate: AgentGUIProviderReadinessGate;
+  showAllProviders?: boolean;
   labels: Pick<
     AgentGUIViewLabels,
     | "providerGateCheckingTitle"
     | "providerGateCheckingDescription"
+    | "providerGateCheckingAgentsDescription"
     | "providerGateInstallTitle"
     | "providerGateInstallDescription"
     | "providerGateInstallAction"
@@ -3268,14 +3272,23 @@ const AgentGUIProviderReadinessGatePane = memo(
   function AgentGUIProviderReadinessGatePane({
     provider,
     gate,
+    showAllProviders = false,
     labels
   }: AgentGUIProviderReadinessGatePaneProps): React.JSX.Element {
     "use memo";
 
     const heroIconUrl = resolveAgentGUIHeroIconUrl(provider);
+    const launchpadIconPresentations = useMemo(
+      () => agentGUILaunchpadIconPresentations(),
+      []
+    );
     const pendingAction = gate.pendingAction ?? null;
     const isPending = pendingAction !== null;
-    const content = providerGateContent(gate.status, labels);
+    const showAllProvidersChecking =
+      showAllProviders && gate.status === "checking";
+    const content = providerGateContent(gate.status, labels, {
+      showAllProviders: showAllProvidersChecking
+    });
     const action = providerGateAction(gate.status);
     const pendingLabel =
       pendingAction === "install"
@@ -3293,13 +3306,20 @@ const AgentGUIProviderReadinessGatePane = memo(
           data-testid="agent-gui-provider-readiness-gate"
           role="status"
         >
-          <img
-            aria-hidden="true"
-            className={styles.emptyHeroIconEffect}
-            draggable={false}
-            src={heroIconUrl}
-            alt=""
-          />
+          {showAllProvidersChecking ? (
+            <AgentGUIAllProviderGridIcon
+              className={styles.emptyHeroLaunchpadIcon}
+              icons={launchpadIconPresentations}
+            />
+          ) : (
+            <img
+              aria-hidden="true"
+              className={styles.emptyHeroIconEffect}
+              draggable={false}
+              src={heroIconUrl}
+              alt=""
+            />
+          )}
           <h2 className={styles.emptyHeroTitle}>{content.title}</h2>
           <p className={styles.emptyProviderGateDescription}>
             {content.description}
@@ -3341,13 +3361,17 @@ const AgentGUIProviderReadinessGatePane = memo(
 
 function providerGateContent(
   status: AgentGUIProviderReadinessGate["status"],
-  labels: AgentGUIProviderReadinessGatePaneProps["labels"]
+  labels: AgentGUIProviderReadinessGatePaneProps["labels"],
+  options: { showAllProviders?: boolean } = {}
 ): { title: string; description: string; actionLabel?: string } {
   switch (status) {
     case "checking":
       return {
         title: labels.providerGateCheckingTitle,
-        description: labels.providerGateCheckingDescription
+        description:
+          options.showAllProviders === true
+            ? labels.providerGateCheckingAgentsDescription
+            : labels.providerGateCheckingDescription
       };
     case "not_installed":
       return {
