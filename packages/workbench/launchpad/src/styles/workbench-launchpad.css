@@ -88,7 +88,7 @@
   transition:
     opacity 180ms ease,
     transform 180ms cubic-bezier(0.4, 0, 1, 1);
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 
 .workspace-launchpad-overlay__content[data-dock-placement="left"] {
@@ -118,7 +118,7 @@
   min-width: 0;
   align-items: flex-start;
   justify-content: center;
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 
 .workspace-launchpad-search {
