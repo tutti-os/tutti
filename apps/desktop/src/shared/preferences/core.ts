@@ -255,7 +255,7 @@ export const desktopUpdateChannels = ["stable", "rc"] as const;
 
 export type DesktopUpdateChannel = (typeof desktopUpdateChannels)[number];
 
-export const defaultDesktopUpdateChannel: DesktopUpdateChannel = "rc";
+export const defaultDesktopUpdateChannel: DesktopUpdateChannel = "stable";
 
 export function isDesktopSleepPreventionMode(
   value: unknown

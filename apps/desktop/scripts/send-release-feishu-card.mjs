@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { RELEASE_REPO_NAME, RELEASE_REPO_OWNER } from "./lib/releaseConfig.mjs";
 
@@ -181,12 +181,62 @@ function resolveMirroredAssetUrl(
   return `${normalizeBaseUrl(releaseAssetBaseUrl)}/${encodeURIComponent(tag)}/${encodeURIComponent(assetName)}`;
 }
 
+async function loadReleaseSummary(summaryPath) {
+  if (!summaryPath) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(await readFile(summaryPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function buildSummaryElements(summary) {
+  const zh = summary?.zh;
+  if (!zh?.headline || !Array.isArray(zh.sections)) {
+    return [];
+  }
+
+  const updateLines = [];
+  for (const section of zh.sections.slice(0, 4)) {
+    const items = Array.isArray(section.items) ? section.items.slice(0, 3) : [];
+    for (const item of items) {
+      updateLines.push(`- ${section.title}：${item}`);
+    }
+  }
+
+  const qaLines = Array.isArray(zh.qaFocus)
+    ? zh.qaFocus.slice(0, 3).map((item) => `- ${item}`)
+    : [];
+  const content = [
+    `**本次更新**\n${zh.headline}`,
+    updateLines.length > 0 ? updateLines.join("\n") : "",
+    qaLines.length > 0 ? `\n**QA 重点**\n${qaLines.join("\n")}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return [
+    {
+      tag: "div",
+      text: {
+        content,
+        tag: "lark_md"
+      }
+    },
+    { tag: "hr" }
+  ];
+}
+
 function buildCardPayload({
   actor,
   branch,
   macUrl,
   releaseUrl,
   runUrl,
+  summary,
   tag,
   target
 }) {
@@ -218,6 +268,7 @@ function buildCardPayload({
           }
         },
         { tag: "hr" },
+        ...buildSummaryElements(summary),
         {
           fields: [
             {
@@ -332,6 +383,9 @@ async function main() {
   });
   const release = await loadRelease(repository, tag, resolveGithubToken());
   const mirroredAssetNames = await listAssetNames(releaseAssetDirectory);
+  const summary = await loadReleaseSummary(
+    readOption(args, "summary", "RELEASE_SUMMARY_PATH")
+  );
   const payload = buildCardPayload({
     actor,
     branch,
@@ -344,6 +398,7 @@ async function main() {
       ) || findAssetUrl(release, /\.dmg$/i, releaseAssetBaseUrl),
     releaseUrl,
     runUrl,
+    summary,
     tag,
     target
   });
@@ -369,7 +424,9 @@ if (
 
 export {
   buildCardPayload,
+  buildSummaryElements,
   findPreferredAssetName,
+  loadReleaseSummary,
   listAssetNames,
   resolveMirroredAssetUrl,
   resolveIntroText,

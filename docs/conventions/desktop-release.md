@@ -6,8 +6,8 @@ This document defines the durable release conventions for the Tutti desktop app.
 
 Desktop releases for `apps/desktop` use two GitHub Release shapes:
 
-- stable releases such as `tutti-desktop-v1.12.20`, which should become `Latest`
-- release candidates such as `tutti-desktop-v1.12.19-rc.0`, which should remain `Pre-release`
+- stable releases such as `v1.12.20`, which should become `Latest`
+- release candidates such as `v1.12.19-rc.0`, which should remain `Pre-release`
 
 The current release flow intentionally includes:
 
@@ -42,7 +42,7 @@ The release workflow file is `.github/workflows/desktop-release.yml`.
 
 Supported triggers:
 
-- pushing a tag matching `tutti-desktop-v*`
+- pushing a tag matching `v*`
 - scheduled run at `20:16 UTC` every day (`04:16` Beijing time)
 - manual `workflow_dispatch`
 
@@ -60,7 +60,7 @@ Less common RC bump shapes are still supported by the release resolver, but the 
 The release tag prefix is:
 
 ```text
-tutti-desktop-v
+v
 ```
 
 The desktop package version is aligned from the release tag during CI.
@@ -114,13 +114,27 @@ The desktop app uses `electron-updater` and GitHub Releases as the update source
 
 Current updater behavior:
 
-- stable channel only
+- stable release channel is the public default
+- `rc` release channel is available as an internal opt-in from developer settings
 - packaged builds only
 - default policy is `prompt`
 - scheduled update check interval is three hours
 - macOS update checks are disabled for unsupported unsigned or ad-hoc bundles
 
-macOS auto-update metadata must keep x64, arm64, and universal zip entries in `latest-mac.yml`. The file names must include `${arch}` so `electron-updater` can distinguish `mac-x64`, `mac-arm64`, and `mac-universal` assets.
+Channel meanings:
+
+- `stable`: maps to electron-updater `channel="latest"` with `allowPrerelease=false`
+- `rc`: maps to electron-updater `channel="rc"` with `allowPrerelease=true`
+
+New installs default to `stable`. Existing stored `rc` defaults from older builds are migrated back to `stable` once. After that migration, users who explicitly select `rc` in developer settings keep that preference.
+
+RC auto-update depends on both release shape and update metadata:
+
+- RC tags must use semver prerelease shape, such as `v1.12.21-rc.1`
+- RC GitHub Releases must remain `Pre-release` and must not become GitHub `Latest`
+- RC build artifacts must include RC updater metadata such as `rc-mac.yml`; the release workflow materializes `rc-mac.yml` from the generated macOS updater metadata before uploading RC artifacts
+
+macOS auto-update metadata must keep x64, arm64, and universal zip entries in `latest-mac.yml` and RC channel equivalents such as `rc-mac.yml`. The file names must include `${arch}` so `electron-updater` can distinguish `mac-x64`, `mac-arm64`, and `mac-universal` assets.
 
 For automatic updates, electron-updater should download the same-architecture zip first: Intel Macs use `mac-x64.zip`, Apple Silicon Macs use `mac-arm64.zip`, and `mac-universal.zip` remains a fallback and the primary manual download. Do not make universal the only auto-update zip while architecture-specific packages exist.
 
@@ -153,11 +167,48 @@ When `TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL` is configured, the download buttons
 
 After a successful mirrored upload, the workflow also upserts a managed `Direct Downloads` section into the GitHub Release body so the release description matches the Feishu direct links.
 
-The mirrored desktop release also writes mutable `latest.json` metadata at the release asset prefix root. That file lists the current desktop release tag, version, and CloudFront/static URLs for every uploaded asset:
+Stable mirrored desktop releases also write mutable `latest.json` metadata at the release asset prefix root. That file lists the current stable desktop release tag, version, channel, preferred downloads, and CloudFront/static URLs for every uploaded asset:
 
 ```text
 https://<asset-base-url>/latest.json
 ```
+
+The prefix-root `latest.json` is a public stable contract. Release candidates may upload immutable assets under their tag directory, but they must not update the prefix-root `latest.json`.
+
+The `latest.json` metadata must include stable-identifying fields:
+
+- `channel: "stable"`
+- `prerelease: false`
+- a plain semver `version`, without `-rc`
+- a stable `tag`, such as `v1.12.20`
+- `preferredDownloads.macosUniversalDmg`
+
+External download workers should treat these fields as a fail-closed contract. If the metadata is missing, malformed, or points at an RC tag, the worker must not return that package as the public download.
+
+Stable mirrored releases also update the aggregate changelog feed:
+
+```text
+https://<asset-base-url>/changelog.json
+```
+
+`changelog.json` is updated only for stable releases. RC builds can still generate per-run summaries for Feishu and GitHub Release notes, but they should not appear on the public changelog feed unless that policy is changed explicitly.
+
+## Release Summaries
+
+The desktop release workflow generates `release-summary.json` for every published desktop release.
+
+Summary generation is best-effort:
+
+- if `AGNES_API_KEY` is configured, the workflow asks Agnes to summarize commits and diff stats
+- if the key is missing, the API fails, or the response is invalid, the workflow falls back to a deterministic commit-based summary
+
+The summary is used to:
+
+- upsert a managed `Release Summary` section into the GitHub Release body
+- enrich the Feishu release card when Feishu notification is enabled
+- update `changelog.json` for stable releases
+
+Do not commit real model API keys. Configure `AGNES_API_KEY` as a GitHub secret.
 
 ## Required Secrets
 

@@ -53,7 +53,8 @@ import type { DesktopLocale } from "../shared/i18n/index.ts";
 import type { DesktopLogger } from "./logging.ts";
 import { resolveDesktopDefaultsFromEnv } from "./defaults.ts";
 
-const updateChannelDefaultMigrationID = "desktop-update-channel-default-rc-v1";
+const updateChannelDefaultMigrationID =
+  "desktop-update-channel-default-stable-v1";
 
 export interface DesktopHostPreferencesState {
   getAgentComposerDefaultsByProvider(): DesktopAgentComposerDefaultsByProvider;
@@ -443,8 +444,8 @@ async function migrateInitializedDesktopPreferences(
     preferences.agentDockLayout
   );
   if (
-    preferences.updateChannel !== "stable" ||
-    defaultDesktopUpdateChannel !== "rc"
+    preferences.updateChannel !== "rc" ||
+    defaultDesktopUpdateChannel !== "stable"
   ) {
     if (
       preferences.minimizeAnimation === normalizedMinimizeAnimation &&

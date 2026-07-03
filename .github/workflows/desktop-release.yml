@@ -294,6 +294,15 @@ jobs:
             pnpm --filter @tutti-os/desktop build:mac:signed
           fi
 
+      - name: Materialize RC updater metadata
+        if: ${{ needs.resolve.outputs.release_prerelease == 'true' }}
+        run: |
+          if [[ ! -f apps/desktop/dist/latest-mac.yml ]]; then
+            echo "latest-mac.yml is required before creating rc-mac.yml." >&2
+            exit 1
+          fi
+          cp apps/desktop/dist/latest-mac.yml apps/desktop/dist/rc-mac.yml
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -411,15 +420,44 @@ jobs:
             --recursive \
             --cache-control "public, max-age=31536000, immutable"
 
-      - name: Build desktop release latest metadata
-        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' }}
+      - name: Generate desktop release summary
         env:
+          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+          RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_prerelease == 'true' && 'rc' || 'stable' }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+          RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+        run: |
+          node apps/desktop/scripts/generate-release-summary.mjs \
+            --output release-summary.json
+
+      - name: Upload desktop release summary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-desktop-release-summary
+          path: release-summary.json
+
+      - name: Update release notes with summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${TUTTI_DESKTOP_RELEASE_TAG}" --json body --jq .body > release-body.md
+          node apps/desktop/scripts/upsert-release-summary.mjs \
+            release-body.md \
+            release-summary.json \
+            updated-release-body.md
+          gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --notes-file updated-release-body.md
+
+      - name: Build desktop release latest metadata
+        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' && needs.resolve.outputs.release_make_latest == 'true' }}
+        env:
+          RELEASE_GIT_SHA: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
           RELEASE_ASSET_BASE_URL: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL }}
+          RELEASE_SOURCE_REF: ${{ github.ref_name }}
           RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
         run: node apps/desktop/scripts/build-release-latest.mjs release-assets release-latest.json
 
       - name: Upload desktop release latest metadata to AWS S3
-        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' }}
+        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' && needs.resolve.outputs.release_make_latest == 'true' }}
         run: |
           prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}"
           if [ -n "${prefix}" ]; then
@@ -428,6 +466,31 @@ jobs:
             s3_root="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}"
           fi
           aws s3 cp release-latest.json "${s3_root}/latest.json" \
+            --content-type "application/json" \
+            --cache-control "public, max-age=60"
+
+      - name: Update desktop release changelog metadata
+        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' && needs.resolve.outputs.release_make_latest == 'true' }}
+        run: |
+          prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}"
+          if [ -n "${prefix}" ]; then
+            s3_root="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${prefix}"
+          else
+            s3_root="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}"
+          fi
+          if ! aws s3 cp "${s3_root}/changelog.json" existing-changelog.json 2> changelog-download.err; then
+            if grep -Eq "(404|NoSuchKey|Not Found)" changelog-download.err; then
+              echo '{"schemaVersion":"tutti.desktop.changelog.v1","entries":[]}' > existing-changelog.json
+            else
+              cat changelog-download.err >&2
+              exit 1
+            fi
+          fi
+          node apps/desktop/scripts/upsert-release-changelog.mjs \
+            existing-changelog.json \
+            release-summary.json \
+            changelog.json
+          aws s3 cp changelog.json "${s3_root}/changelog.json" \
             --content-type "application/json" \
             --cache-control "public, max-age=60"
 
@@ -495,10 +558,18 @@ jobs:
           merge-multiple: true
           path: release-assets
 
+      - name: Download release summary
+        if: env.FEISHU_WEBHOOK_URL != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: tutti-desktop-release-summary
+          path: release-summary
+
       - name: Send release card
         if: env.FEISHU_WEBHOOK_URL != ''
         env:
           RELEASE_ASSET_DIRECTORY: release-assets
+          RELEASE_SUMMARY_PATH: release-summary/release-summary.json
         run: node apps/desktop/scripts/send-release-feishu-card.mjs
 
       - name: Skip Feishu card

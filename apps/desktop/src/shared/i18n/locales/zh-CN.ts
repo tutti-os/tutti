@@ -643,6 +643,13 @@ export const zhCN = {
         openLogsDirectory: "打开日志目录",
         addFileDefaultOpener: "添加",
         removeFileDefaultOpener: "移除 .{{extension}}",
+        releaseChannelDescription:
+          "选择稳定版更新；内部验收时可切到 RC 构建。",
+        releaseChannelLabel: "发布渠道",
+        releaseChannelOptions: {
+          rc: "RC",
+          stable: "稳定版"
+        },
         showAppDeveloperSourcesDescription:
           "在应用中心卡片中展示应用作者和 GitHub 来源。",
         showAppDeveloperSourcesLabel: "展示应用作者与来源",

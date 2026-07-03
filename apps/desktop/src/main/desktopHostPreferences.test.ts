@@ -33,7 +33,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             themeSource: "system",
-            updateChannel: "rc",
+            updateChannel: "stable",
             updatePolicy: "prompt"
           }
         };
@@ -72,7 +72,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         themeSource: "dark",
-        updateChannel: "rc",
+        updateChannel: "stable",
         updatePolicy: "prompt"
       }
     }
@@ -85,6 +85,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
   assert.equal(state.getSleepPreventionMode(), "never");
   assert.equal(state.getDockIconStyle(), "default");
   assert.equal(state.getThemeSource(), "dark");
+  assert.equal(state.getUpdateChannel(), "stable");
 });
 
 test("createDesktopHostPreferencesState keeps initialized theme preferences", async () => {
@@ -113,7 +114,7 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             themeSource: "system",
-            updateChannel: "rc",
+            updateChannel: "stable",
             updatePolicy: "prompt"
           }
         };
@@ -135,7 +136,7 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
   assert.equal(state.getThemeSource(), "system");
 });
 
-test("createDesktopHostPreferencesState migrates the old stable default update channel once", async () => {
+test("createDesktopHostPreferencesState keeps initialized stable update channel", async () => {
   const migrationStateRootDir = await mkdtemp(
     join(tmpdir(), "tutti-update-channel-migration-")
   );
@@ -179,15 +180,63 @@ test("createDesktopHostPreferencesState migrates the old stable default update c
     }
   });
 
-  assert.equal(state.getUpdateChannel(), "rc");
+  assert.equal(state.getUpdateChannel(), "stable");
+  assert.deepEqual(putRequests, []);
+});
+
+test("createDesktopHostPreferencesState migrates the old rc default update channel once", async () => {
+  const migrationStateRootDir = await mkdtemp(
+    join(tmpdir(), "tutti-update-channel-migration-")
+  );
+  const putRequests: PutDesktopPreferencesRequest[] = [];
+  const state = await createDesktopHostPreferencesState({
+    fallbackLocale: "zh-CN",
+    logger: createLogger(),
+    migrationStateRootDir,
+    tuttidClient: {
+      async getDesktopPreferences() {
+        return {
+          initialized: true,
+          preferences: {
+            agentComposerDefaultsByProvider: {},
+            agentGuiConversationRailCollapsedByProvider: {},
+            agentConversationDetailMode: "coding",
+            agentDockLayout: "legacySplit",
+            appCatalogChannel: "production",
+            defaultAgentProvider: "codex",
+
+            dockIconStyle: "default",
+            dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+            locale: "zh-CN",
+            minimizeAnimation: "scale",
+            sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
+            themeSource: "dark",
+            updateChannel: "rc",
+            updatePolicy: "prompt"
+          }
+        };
+      },
+      async putDesktopPreferences(request) {
+        putRequests.push(request);
+        return {
+          initialized: true,
+          preferences: request.preferences
+        };
+      }
+    }
+  });
+
+  assert.equal(state.getUpdateChannel(), "stable");
   assert.equal(putRequests.length, 1);
-  assert.equal(putRequests[0]?.preferences.updateChannel, "rc");
+  assert.equal(putRequests[0]?.preferences.updateChannel, "stable");
   assert.match(
     await readFile(
       join(
         migrationStateRootDir,
         "migrations",
-        "desktop-update-channel-default-rc-v1"
+        "desktop-update-channel-default-stable-v1"
       ),
       "utf8"
     ),
@@ -195,7 +244,7 @@ test("createDesktopHostPreferencesState migrates the old stable default update c
   );
 });
 
-test("createDesktopHostPreferencesState preserves stable after the update channel migration ran", async () => {
+test("createDesktopHostPreferencesState preserves rc after the stable default migration ran", async () => {
   const migrationStateRootDir = await mkdtemp(
     join(tmpdir(), "tutti-update-channel-migration-")
   );
@@ -204,7 +253,7 @@ test("createDesktopHostPreferencesState preserves stable after the update channe
     join(
       migrationStateRootDir,
       "migrations",
-      "desktop-update-channel-default-rc-v1"
+      "desktop-update-channel-default-stable-v1"
     ),
     "applied",
     "utf8"
@@ -234,7 +283,7 @@ test("createDesktopHostPreferencesState preserves stable after the update channe
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             themeSource: "dark",
-            updateChannel: "stable",
+            updateChannel: "rc",
             updatePolicy: "prompt"
           }
         };
@@ -247,7 +296,7 @@ test("createDesktopHostPreferencesState preserves stable after the update channe
   });
 
   assert.equal(putCalls, 0);
-  assert.equal(state.getUpdateChannel(), "stable");
+  assert.equal(state.getUpdateChannel(), "rc");
 });
 
 test("createDesktopHostPreferencesState notifies subscribers after sync changes", async () => {

@@ -672,6 +672,13 @@ export const en = {
         openLogsDirectory: "Open logs folder",
         addFileDefaultOpener: "Add",
         removeFileDefaultOpener: "Remove .{{extension}}",
+        releaseChannelDescription:
+          "Choose stable release updates, or opt in to RC builds for internal verification.",
+        releaseChannelLabel: "Release channel",
+        releaseChannelOptions: {
+          rc: "RC",
+          stable: "Stable"
+        },
         showAppDeveloperSourcesDescription:
           "Show each app's authors and GitHub source inside App Center cards.",
         showAppDeveloperSourcesLabel: "Show app authors and source",
