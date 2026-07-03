@@ -261,6 +261,9 @@ describe("AgentTranscriptView", () => {
 
       const locator = screen.getByTestId("agent-message-locator");
       expect(locator).toBeTruthy();
+      expect(locator).toHaveStyle({
+        "--agent-message-locator-height": "66px"
+      });
       fireEvent.mouseEnter(locator);
       const panel = screen.getByTestId("agent-message-locator-panel");
       expect(within(panel).getByText("User asks for a fix")).toBeTruthy();
@@ -297,6 +300,193 @@ describe("AgentTranscriptView", () => {
       expect(
         locator.querySelectorAll(".agent-gui-message-locator__tick")[1]
       ).toHaveAttribute("data-selected", "true");
+    } finally {
+      vi.useRealTimers();
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("locates the nearest user message when clicking the locator rail around a dot", () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    const base = detailViewModel();
+
+    try {
+      render(
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(
+            detailViewModel({
+              turns: [
+                base.turns[0]!,
+                {
+                  id: "turn-2",
+                  userMessage: { id: "user-2", body: "Follow-up request" },
+                  userMessages: [{ id: "user-2", body: "Follow-up request" }],
+                  agentMessages: [
+                    { id: "assistant-2", body: "Follow-up answer" }
+                  ],
+                  toolCalls: [],
+                  toolCallCount: 0,
+                  hasFailedToolCall: false,
+                  agentItems: [
+                    {
+                      kind: "message",
+                      message: {
+                        id: "assistant-2",
+                        body: "Follow-up answer"
+                      }
+                    }
+                  ]
+                }
+              ]
+            })
+          )}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files",
+            userMessageLocator: "User messages"
+          }}
+        />
+      );
+
+      const locator = screen.getByTestId("agent-message-locator");
+      const viewport = screen.getByTestId("agent-message-locator-viewport");
+      viewport.getBoundingClientRect = () =>
+        ({
+          bottom: 96,
+          height: 96,
+          left: 0,
+          right: 36,
+          top: 0,
+          width: 36,
+          x: 0,
+          y: 0,
+          toJSON: () => ({})
+        }) as DOMRect;
+
+      fireEvent.click(viewport, { clientY: 34 });
+
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: "center",
+        behavior: "smooth"
+      });
+      expect(
+        locator.querySelectorAll(".agent-gui-message-locator__tick")[1]
+      ).toHaveAttribute("data-selected", "true");
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("uses fast container scrolling for distant user message locator targets", () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    vi.useFakeTimers();
+    const base = detailViewModel();
+
+    try {
+      render(
+        <div data-testid="agent-gui-timeline" style={{ overflowY: "auto" }}>
+          <AgentTranscriptView
+            conversation={projectAgentConversationVM(
+              detailViewModel({
+                turns: [
+                  base.turns[0]!,
+                  {
+                    id: "turn-2",
+                    userMessage: {
+                      id: "user-2",
+                      body: "Distant follow-up request"
+                    },
+                    userMessages: [
+                      {
+                        id: "user-2",
+                        body: "Distant follow-up request"
+                      }
+                    ],
+                    agentMessages: [
+                      { id: "assistant-2", body: "Distant answer" }
+                    ],
+                    toolCalls: [],
+                    toolCallCount: 0,
+                    hasFailedToolCall: false,
+                    agentItems: [
+                      {
+                        kind: "message",
+                        message: {
+                          id: "assistant-2",
+                          body: "Distant answer"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              })
+            )}
+            labels={{
+              thinkingLabel: "Thought process",
+              toolCallsLabel: (count) => `Tool calls (${count})`,
+              processing: "Planning next moves",
+              turnSummary: "Changed files",
+              userMessageLocator: "User messages"
+            }}
+          />
+        </div>
+      );
+
+      const timeline = screen.getByTestId("agent-gui-timeline");
+      Object.defineProperty(timeline, "clientHeight", {
+        configurable: true,
+        value: 400
+      });
+      Object.defineProperty(timeline, "scrollHeight", {
+        configurable: true,
+        value: 4000
+      });
+      timeline.getBoundingClientRect = () =>
+        ({
+          bottom: 400,
+          height: 400,
+          left: 0,
+          right: 800,
+          top: 0,
+          width: 800,
+          x: 0,
+          y: 0,
+          toJSON: () => ({})
+        }) as DOMRect;
+      const distantRow = screen
+        .getByText("Distant follow-up request")
+        .closest<HTMLElement>("[data-agent-transcript-row]");
+      expect(distantRow).toBeTruthy();
+      distantRow!.getBoundingClientRect = () =>
+        ({
+          bottom: 3280,
+          height: 80,
+          left: 0,
+          right: 800,
+          top: 3200,
+          width: 800,
+          x: 0,
+          y: 3200,
+          toJSON: () => ({})
+        }) as DOMRect;
+
+      fireEvent.click(
+        screen
+          .getByTestId("agent-message-locator")
+          .querySelectorAll(".agent-gui-message-locator__tick")[1]!
+      );
+
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(timeline.scrollTop).toBe(3040);
     } finally {
       vi.useRealTimers();
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;

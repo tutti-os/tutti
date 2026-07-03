@@ -5819,9 +5819,9 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-message-locator {
   --agent-message-locator-dot-size: 6px;
-  --agent-message-locator-hit-size: 18px;
-  --agent-message-locator-center-offset: 10px;
-  --agent-message-locator-scrollbar-gap: 4px;
+  --agent-message-locator-hit-size: 36px;
+  --agent-message-locator-center-offset: 18px;
+  --agent-message-locator-scrollbar-gap: 8px;
   --agent-message-locator-visible-height: 100vh;
   --agent-message-locator-visible-top-offset: 0px;
   --agent-message-locator-viewport-height: var(--agent-message-locator-height);
@@ -5865,6 +5865,8 @@ button.agent-gui-node__conversation-section-toggle:hover
   overscroll-behavior: contain;
   pointer-events: auto;
   scrollbar-width: none;
+  cursor: pointer;
+  z-index: 1;
 }
 
 .agent-gui-message-locator__viewport::-webkit-scrollbar {
@@ -5906,6 +5908,9 @@ button.agent-gui-node__conversation-section-toggle:hover
   transform: translateY(-50%);
   cursor: pointer;
   pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .agent-gui-message-locator__dot {

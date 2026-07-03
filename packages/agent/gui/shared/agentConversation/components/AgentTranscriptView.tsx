@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent,
   type FocusEvent,
   type JSX,
   type WheelEvent
@@ -26,8 +27,12 @@ const AGENT_TRANSCRIPT_TURN_GAP_PX = 12;
 const AGENT_TRANSCRIPT_FALLBACK_TURN_COUNT = 3;
 const AGENT_MESSAGE_LOCATOR_PANEL_FADE_MS = 160;
 const AGENT_MESSAGE_LOCATOR_ITEM_SPACING_PX = 30;
-const AGENT_MESSAGE_LOCATOR_HIT_SIZE_PX = 18;
+const AGENT_MESSAGE_LOCATOR_HIT_SIZE_PX = 36;
 const AGENT_MESSAGE_LOCATOR_BOTTOM_SAFE_INSET_MAX_PX = 48;
+const AGENT_MESSAGE_LOCATOR_NATIVE_SMOOTH_MAX_DISTANCE_PX = 720;
+const AGENT_MESSAGE_LOCATOR_FAST_SCROLL_SPEED_PX_PER_MS = 8;
+const AGENT_MESSAGE_LOCATOR_FAST_SCROLL_MIN_DURATION_MS = 120;
+const agentMessageLocatorScrollAnimations = new WeakMap<HTMLElement, number>();
 
 interface AgentTranscriptTurnGroup {
   key: string;
@@ -221,10 +226,10 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
         if (!renderedRow) {
           return false;
         }
-        renderedRow.scrollIntoView({
-          block: "center",
-          behavior: "smooth"
-        });
+        scrollTranscriptRowIntoView(
+          renderedRow,
+          scrollParent ?? findMessageLocatorScrollParent(renderedRow)
+        );
         return true;
       };
 
@@ -611,6 +616,36 @@ function AgentMessageLocatorRail({
     markItemRead(item.key);
     onLocate(item);
   };
+  const itemFromPointerEvent = (
+    event: MouseEvent<HTMLElement>
+  ): AgentMessageLocatorItem | null => {
+    const viewport = locatorViewportRef.current;
+    if (!viewport) {
+      return null;
+    }
+    const rect = viewport.getBoundingClientRect();
+    const pointerY = event.clientY - rect.top + viewport.scrollTop;
+    const index = Math.round(
+      (pointerY - AGENT_MESSAGE_LOCATOR_HIT_SIZE_PX / 2) /
+        AGENT_MESSAGE_LOCATOR_ITEM_SPACING_PX
+    );
+    return items[Math.max(0, Math.min(items.length - 1, index))] ?? null;
+  };
+  const handleViewportClick = (event: MouseEvent<HTMLDivElement>): void => {
+    if ((event.target as HTMLElement | null)?.closest("button")) {
+      return;
+    }
+    const item = itemFromPointerEvent(event);
+    if (item) {
+      handleLocateItem(item);
+    }
+  };
+  const handleViewportMouseMove = (event: MouseEvent<HTMLDivElement>): void => {
+    const item = itemFromPointerEvent(event);
+    if (item) {
+      setActiveKey(item.key);
+    }
+  };
   const openPanel = (): void => {
     if (closePanelTimeoutRef.current !== null) {
       window.clearTimeout(closePanelTimeoutRef.current);
@@ -674,6 +709,8 @@ function AgentMessageLocatorRail({
         ref={locatorViewportRef}
         className="agent-gui-message-locator__viewport"
         data-testid="agent-message-locator-viewport"
+        onClick={handleViewportClick}
+        onMouseMove={handleViewportMouseMove}
       >
         <div
           className="agent-gui-message-locator__content"
@@ -783,6 +820,91 @@ function scrollMessageLocatorViewportToIndex(
   if (selectedBottom > currentBottom - padding) {
     viewport.scrollTop = Math.max(0, selectedBottom - viewportHeight + padding);
   }
+}
+
+function scrollTranscriptRowIntoView(
+  row: HTMLElement,
+  scrollParent: HTMLElement | null
+): void {
+  if (!scrollParent) {
+    row.scrollIntoView({
+      block: "center",
+      behavior: "smooth"
+    });
+    return;
+  }
+
+  const targetScrollTop = targetScrollTopForTranscriptRow(row, scrollParent);
+  const distance = Math.abs(targetScrollTop - scrollParent.scrollTop);
+  if (distance <= AGENT_MESSAGE_LOCATOR_NATIVE_SMOOTH_MAX_DISTANCE_PX) {
+    row.scrollIntoView({
+      block: "center",
+      behavior: "smooth"
+    });
+    return;
+  }
+
+  animateMessageLocatorScroll(scrollParent, targetScrollTop, distance);
+}
+
+function targetScrollTopForTranscriptRow(
+  row: HTMLElement,
+  scrollParent: HTMLElement
+): number {
+  const rowRect = row.getBoundingClientRect();
+  const scrollParentRect = scrollParent.getBoundingClientRect();
+  const visibleFrame = readMessageLocatorVisibleFrame(scrollParent);
+  const rowCenter =
+    rowRect.top -
+    scrollParentRect.top +
+    scrollParent.scrollTop +
+    rowRect.height / 2;
+  const maxScrollTop = Math.max(
+    0,
+    scrollParent.scrollHeight - scrollParent.clientHeight
+  );
+  const targetScrollTop =
+    rowCenter - visibleFrame.topOffsetPx - visibleFrame.heightPx / 2;
+  return Math.min(maxScrollTop, Math.max(0, targetScrollTop));
+}
+
+function animateMessageLocatorScroll(
+  scrollParent: HTMLElement,
+  targetScrollTop: number,
+  distance: number
+): void {
+  const previousAnimation =
+    agentMessageLocatorScrollAnimations.get(scrollParent);
+  if (previousAnimation !== undefined) {
+    window.cancelAnimationFrame(previousAnimation);
+  }
+
+  const startScrollTop = scrollParent.scrollTop;
+  const delta = targetScrollTop - startScrollTop;
+  const durationMs = Math.max(
+    AGENT_MESSAGE_LOCATOR_FAST_SCROLL_MIN_DURATION_MS,
+    distance / AGENT_MESSAGE_LOCATOR_FAST_SCROLL_SPEED_PX_PER_MS
+  );
+  const startedAt = performance.now();
+
+  const step = (now: number): void => {
+    const progress = Math.min(1, (now - startedAt) / durationMs);
+    scrollParent.scrollTop = startScrollTop + delta * progress;
+    if (progress >= 1) {
+      scrollParent.scrollTop = targetScrollTop;
+      agentMessageLocatorScrollAnimations.delete(scrollParent);
+      return;
+    }
+    agentMessageLocatorScrollAnimations.set(
+      scrollParent,
+      window.requestAnimationFrame(step)
+    );
+  };
+
+  agentMessageLocatorScrollAnimations.set(
+    scrollParent,
+    window.requestAnimationFrame(step)
+  );
 }
 
 function readMessageLocatorVisibleFrame(
