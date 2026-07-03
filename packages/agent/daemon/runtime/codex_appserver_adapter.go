@@ -138,6 +138,11 @@ type codexAppServerSession struct {
 	goal                   map[string]any
 	startupModelsReady     bool
 	startupRateLimitsReady bool
+	// lifecycleSeq numbers the adapter's TurnLifecycle snapshots (ADR 0008):
+	// monotonically increasing per session so consumers receiving snapshots
+	// over different channels can drop stale ones. Guarded by the adapter
+	// mutex.
+	lifecycleSeq uint64
 	// Collaboration mode masks come from collaborationMode/list. The app-server
 	// expects the active mode settings, including developer_instructions, on
 	// every turn/start request.
@@ -1125,6 +1130,83 @@ func (a *CodexAppServerAdapter) applyStartupModels(
 	return true
 }
 
+// nextTurnLifecycleSeq allocates the next per-session lifecycle snapshot
+// sequence number.
+func (a *CodexAppServerAdapter) nextTurnLifecycleSeq(agentSessionID string) uint64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return 0
+	}
+	appSession.lifecycleSeq++
+	return appSession.lifecycleSeq
+}
+
+// stampTurnLifecycleSnapshots stamps an adapter-origin TurnLifecycle snapshot
+// onto every turn.* event in the batch (ADR 0008). Every such event is
+// emitted by this adapter at one of its own turn-machine transition points,
+// so the snapshot is the machine's statement serialized exactly once; events
+// that already carry a snapshot (controller-stamped submit events) are left
+// untouched.
+func (a *CodexAppServerAdapter) stampTurnLifecycleSnapshots(agentSessionID string, events []activityshared.Event) []activityshared.Event {
+	for index := range events {
+		snapshot, ok := adapterSnapshotForTurnEvent(events[index])
+		if !ok {
+			continue
+		}
+		if _, stamped := activityshared.TurnLifecycleSnapshotFromEvent(events[index]); stamped {
+			continue
+		}
+		snapshot.Origin = activityshared.TurnLifecycleOriginAdapter
+		snapshot.Seq = a.nextTurnLifecycleSeq(agentSessionID)
+		activityshared.StampTurnLifecycleSnapshot(&events[index], snapshot)
+	}
+	return events
+}
+
+// adapterSnapshotForTurnEvent translates the turn transition an event states
+// into the full lifecycle snapshot for that moment.
+func adapterSnapshotForTurnEvent(event activityshared.Event) (activityshared.TurnLifecycleSnapshot, bool) {
+	turnID := strings.TrimSpace(event.Payload.TurnID)
+	switch event.Type {
+	case activityshared.EventTurnStarted:
+		return activityshared.TurnLifecycleSnapshot{
+			ActiveTurnID: turnID,
+			Phase:        string(activityshared.TurnPhaseRunning),
+		}, true
+	case activityshared.EventTurnUpdated:
+		switch strings.TrimSpace(event.Payload.TurnPhase) {
+		case string(activityshared.TurnPhaseSubmitted):
+			return activityshared.TurnLifecycleSnapshot{ActiveTurnID: turnID, Phase: string(activityshared.TurnPhaseSubmitted)}, true
+		case string(activityshared.TurnPhaseWorking), string(activityshared.TurnPhaseRunning), "streaming":
+			return activityshared.TurnLifecycleSnapshot{ActiveTurnID: turnID, Phase: string(activityshared.TurnPhaseRunning)}, true
+		case string(activityshared.TurnPhaseWaitingApproval), string(activityshared.TurnPhaseWaiting):
+			return activityshared.TurnLifecycleSnapshot{ActiveTurnID: turnID, Phase: string(activityshared.TurnPhaseWaitingApproval)}, true
+		case string(activityshared.TurnPhaseWaitingInput):
+			return activityshared.TurnLifecycleSnapshot{ActiveTurnID: turnID, Phase: string(activityshared.TurnPhaseWaitingInput)}, true
+		default:
+			return activityshared.TurnLifecycleSnapshot{}, false
+		}
+	case activityshared.EventTurnCompleted:
+		outcome := strings.TrimSpace(event.Payload.TurnOutcome)
+		if outcome == "" {
+			outcome = string(activityshared.TurnOutcomeCompleted)
+		}
+		return activityshared.TurnLifecycleSnapshot{
+			Phase:   string(activityshared.TurnPhaseSettled),
+			Outcome: outcome,
+		}, true
+	case activityshared.EventTurnFailed:
+		return activityshared.TurnLifecycleSnapshot{
+			Phase:   string(activityshared.TurnPhaseSettled),
+			Outcome: string(activityshared.TurnOutcomeFailed),
+		}, true
+	default:
+		return activityshared.TurnLifecycleSnapshot{}, false
+	}
+}
+
 func (a *CodexAppServerAdapter) emitSessionEvents(agentSessionID string, events []activityshared.Event) {
 	if a == nil || len(events) == 0 {
 		return
@@ -1320,6 +1402,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 	var events []activityshared.Event
 	turnClosed := false
 	emitLocked := func(next []activityshared.Event) {
+		next = a.stampTurnLifecycleSnapshots(session.AgentSessionID, next)
 		events = append(events, next...)
 		if emit != nil {
 			emit(next)
@@ -1927,7 +2010,7 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 		if turnClosed {
 			return
 		}
-		a.emitSessionEvents(session.AgentSessionID, next)
+		a.emitSessionEvents(session.AgentSessionID, a.stampTurnLifecycleSnapshots(session.AgentSessionID, next))
 	}
 	emitTerminal := func(next []activityshared.Event) {
 		eventsMu.Lock()
@@ -1936,7 +2019,7 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 			return
 		}
 		turnClosed = true
-		a.emitSessionEvents(session.AgentSessionID, next)
+		a.emitSessionEvents(session.AgentSessionID, a.stampTurnLifecycleSnapshots(session.AgentSessionID, next))
 	}
 	appTurn := &codexAppServerActiveTurn{
 		turnID:      turnID,

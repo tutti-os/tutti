@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -316,13 +317,9 @@ func runtimeContextPositiveCount(value any) bool {
 }
 
 func isRuntimeActiveTurnPhase(phase string) bool {
-	switch strings.TrimSpace(phase) {
-	case "submitted", "working", "running", "streaming",
-		"waiting", "waiting_approval", "waiting_input", "awaiting_approval":
-		return true
-	default:
-		return false
-	}
+	// Delegates to the canonical predicate in activityshared; do not add
+	// phase tokens here.
+	return activityshared.TurnLifecyclePhaseIsLive(phase)
 }
 
 func (s *Service) prepareRuntimeForResume(ctx context.Context, session PersistedSession) (preparedRuntime, error) {

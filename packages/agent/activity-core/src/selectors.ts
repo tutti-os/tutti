@@ -107,6 +107,38 @@ export function resolveLatestAgentActivityMessageDisplayStatus(
   return null;
 }
 
+// SOURCE OF TRUTH: packages/agent/daemon/activity/events/turn_lifecycle_snapshot.go
+// (LiveTurnLifecyclePhases / TurnLifecyclePhaseIsLive). Keep both lists
+// identical; the Go side owns the vocabulary (ADR 0008).
+export const LIVE_TURN_LIFECYCLE_PHASES = [
+  "submitted",
+  "running",
+  "waiting_approval",
+  "waiting_input"
+] as const;
+
+const LEGACY_LIVE_TURN_LIFECYCLE_PHASES = [
+  "working",
+  "streaming",
+  "waiting",
+  "awaiting_approval"
+] as const;
+
+export function isLiveTurnLifecyclePhase(
+  phase: string | null | undefined
+): boolean {
+  const normalized = normalizeStatus(phase);
+  if (!normalized) {
+    return false;
+  }
+  return (
+    (LIVE_TURN_LIFECYCLE_PHASES as readonly string[]).includes(normalized) ||
+    (LEGACY_LIVE_TURN_LIFECYCLE_PHASES as readonly string[]).includes(
+      normalized
+    )
+  );
+}
+
 export function normalizeAgentActivityDisplayStatus(
   status: string | null | undefined,
   options: {
@@ -161,6 +193,11 @@ export function normalizeAgentActivityDisplayStatus(
       return "waiting";
     case "running":
     case "submitted":
+    // Legacy persisted live tokens: a present lifecycle resolves entirely
+    // here — status/currentPhase fallbacks apply only when the record has
+    // no lifecycle at all (non-migrated providers, ADR 0008).
+    case "working":
+    case "streaming":
       return "working";
     default:
       break;

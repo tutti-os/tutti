@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  isLiveTurnLifecyclePhase,
+  LIVE_TURN_LIFECYCLE_PHASES,
   normalizeAgentActivityDisplayStatus,
   resolveLatestAgentActivityMessageDisplayStatus,
   selectNeedsAttentionCount,
@@ -587,3 +589,44 @@ function message(
     ...overrides
   };
 }
+
+test("LIVE_TURN_LIFECYCLE_PHASES mirrors the Go canonical list", () => {
+  // SOURCE OF TRUTH: packages/agent/daemon/activity/events/turn_lifecycle_snapshot.go
+  // (LiveTurnLifecyclePhases). The Go side pins the same literal list in
+  // TestLiveTurnLifecyclePhasesCanonicalList; change both together.
+  assert.deepEqual(
+    [...LIVE_TURN_LIFECYCLE_PHASES],
+    ["submitted", "running", "waiting_approval", "waiting_input"]
+  );
+  for (const phase of LIVE_TURN_LIFECYCLE_PHASES) {
+    assert.equal(isLiveTurnLifecyclePhase(phase), true);
+  }
+  for (const legacy of [
+    "working",
+    "streaming",
+    "waiting",
+    "awaiting_approval"
+  ]) {
+    assert.equal(isLiveTurnLifecyclePhase(legacy), true);
+  }
+  for (const dead of ["", "settled", "idle", "failed"]) {
+    assert.equal(isLiveTurnLifecyclePhase(dead), false);
+  }
+});
+
+test("a present turn lifecycle resolves the display status entirely", () => {
+  // Legacy live tokens resolve inside the lifecycle branch — a contradictory
+  // session.status must not override them (ADR 0008).
+  assert.equal(
+    normalizeAgentActivityDisplayStatus("ready", {
+      turnLifecyclePhase: "working"
+    }),
+    "working"
+  );
+  assert.equal(
+    normalizeAgentActivityDisplayStatus("failed", {
+      turnLifecyclePhase: "streaming"
+    }),
+    "working"
+  );
+});

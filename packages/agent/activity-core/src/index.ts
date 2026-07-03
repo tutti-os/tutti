@@ -26,6 +26,8 @@ export {
   type LoadAllAgentSessionMessagesResult
 } from "./pagination.ts";
 export {
+  isLiveTurnLifecyclePhase,
+  LIVE_TURN_LIFECYCLE_PHASES,
   normalizeAgentActivityDisplayStatus,
   resolveLatestAgentActivityMessageDisplayStatus,
   selectNeedsAttentionCount,

@@ -519,10 +519,24 @@ func (p *ActivityProjection) ReconcileStaleTurnOnResume(ctx context.Context, ses
 			Title:             strings.TrimSpace(session.Title),
 			LifecycleStatus:   "active",
 			CurrentPhase:      "idle",
-			OccurredAtUnixMS:  now,
+			// Repair the persisted lifecycle copy too: the runtime confirmed
+			// no live turn exists, and lifecycle-first consumers (ADR 0008)
+			// would otherwise keep reading a stale live phase after resume.
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+				ActiveTurnID: nil,
+				Phase:        "settled",
+				Outcome:      staleResumeLifecycleOutcome(),
+			},
+			SubmitAvailability: &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "available"},
+			OccurredAtUnixMS:   now,
 		},
 	})
 	return err
+}
+
+func staleResumeLifecycleOutcome() *string {
+	outcome := "canceled"
+	return &outcome
 }
 
 func (p *ActivityProjection) ListSessionMessages(

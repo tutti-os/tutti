@@ -785,7 +785,9 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 			Outcome: strings.TrimSpace(event.Payload.TurnOutcome),
 		}
 	}
-	applyExplicitTurnLifecycleToPatch(&patch, event)
+	if !applyLifecycleSnapshotToPatch(&patch, event) {
+		applyExplicitTurnLifecycleToPatch(&patch, event)
+	}
 	switch event.Type {
 	case activityshared.EventSessionStarted:
 		patch.LifecycleStatus = firstNonEmptyString(patch.LifecycleStatus, string(activityshared.SessionLifecycleStatusActive))
@@ -887,6 +889,90 @@ func cloneInteractivePrompt(value *agentsessionstore.WorkspaceAgentInteractivePr
 		Output:    clonePayload(value.Output),
 		Error:     clonePayload(value.Error),
 		Metadata:  clonePayload(value.Metadata),
+	}
+}
+
+// applyLifecycleSnapshotToPatch copies a stamped TurnLifecycle snapshot
+// (ADR 0008) into the state patch, provider-agnostic: the patch is a pure
+// copy of the turn owner's statement plus derived views. Returns false when
+// the event carries no snapshot so legacy providers keep their historic
+// patch shaping until Phase B.
+func applyLifecycleSnapshotToPatch(patch *agentsessionstore.WorkspaceAgentStatePatch, event activityshared.Event) bool {
+	if patch == nil {
+		return false
+	}
+	snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(event)
+	if !ok {
+		return false
+	}
+	turnID := firstNonEmptyString(strings.TrimSpace(snapshot.ActiveTurnID), strings.TrimSpace(event.Payload.TurnID))
+	var turnActive *string
+	if snapshot.Phase != "settled" && strings.TrimSpace(snapshot.ActiveTurnID) != "" {
+		activeTurnID := strings.TrimSpace(snapshot.ActiveTurnID)
+		turnActive = &activeTurnID
+	}
+	// The persisted store historically records interrupted turns as
+	// "canceled"; keep that vocabulary for outcome.
+	outcome := strings.TrimSpace(snapshot.Outcome)
+	if outcome == string(activityshared.TurnOutcomeInterrupted) {
+		outcome = "canceled"
+	}
+	if patch.Turn == nil {
+		patch.Turn = &agentsessionstore.WorkspaceAgentTurnPatch{TurnID: turnID}
+	}
+	patch.Turn.Phase = snapshot.Phase
+	patch.Turn.ActiveTurnID = turnActive
+	patch.Turn.Outcome = outcome
+	patch.Turn.SubmitAvailability = submitAvailabilityPatchForSnapshotPhase(snapshot.Phase)
+	if command := completedCommandFromEventMetadata(event.Payload.Metadata); command != nil {
+		patch.Turn.CompletedCommand = command
+	}
+	patch.SubmitAvailability = cloneSubmitAvailability(patch.Turn.SubmitAvailability)
+	patch.TurnLifecycle = &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		ActiveTurnID:     turnActive,
+		Phase:            snapshot.Phase,
+		Outcome:          nil,
+		CompletedCommand: cloneCompletedCommand(patch.Turn.CompletedCommand),
+	}
+	if outcome != "" {
+		patch.TurnLifecycle.Outcome = &outcome
+	}
+	if snapshot.Phase != "" {
+		patch.CurrentPhase = currentPhaseForSnapshotPhase(snapshot.Phase, outcome)
+	}
+	return true
+}
+
+func submitAvailabilityPatchForSnapshotPhase(phase string) *agentsessionstore.WorkspaceAgentSubmitAvailability {
+	switch {
+	case phase == "settled":
+		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "available"}
+	case activityshared.TurnLifecyclePhaseIsWaiting(phase):
+		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "waiting"}
+	case activityshared.TurnLifecyclePhaseIsLive(phase):
+		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "active_turn"}
+	default:
+		return nil
+	}
+}
+
+func currentPhaseForSnapshotPhase(phase string, outcome string) string {
+	switch {
+	case phase == "settled":
+		if outcome == "failed" {
+			return "failed"
+		}
+		return "idle"
+	case activityshared.TurnLifecyclePhaseIsWaiting(phase):
+		// Preserve the persisted vocabulary: waiting variants are stored
+		// verbatim (waiting_approval / waiting_input).
+		return phase
+	case phase == string(activityshared.TurnPhaseSubmitted):
+		return "submitted"
+	case activityshared.TurnLifecyclePhaseIsLive(phase):
+		return "working"
+	default:
+		return ""
 	}
 }
 

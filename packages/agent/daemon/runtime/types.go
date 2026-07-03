@@ -183,6 +183,14 @@ type Session struct {
 	Settings             *SessionSettings    `json:"settings,omitempty"`
 	CreatedAtUnixMS      int64               `json:"createdAtUnixMs"`
 	UpdatedAtUnixMS      int64               `json:"updatedAtUnixMs"`
+	// LifecycleAuthority is set once an adapter-origin TurnLifecycle snapshot
+	// was applied (ADR 0008). Authority sessions copy lifecycle from
+	// snapshots and derive Status purely; legacy sessions keep the historic
+	// event-folding path until their provider publishes snapshots (Phase B).
+	LifecycleAuthority bool `json:"-"`
+	// LifecycleSeq is the sequence of the last applied lifecycle snapshot;
+	// lower-seq snapshots arriving over a slower channel are dropped.
+	LifecycleSeq uint64 `json:"-"`
 }
 
 type SessionInteractivePrompt struct {

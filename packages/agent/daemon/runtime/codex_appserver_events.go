@@ -1094,6 +1094,13 @@ func (a *CodexAppServerAdapter) respondAppServerServerRequest(
 	selection, err := pending.wait(ctx)
 	if err != nil {
 		resolved := acpPermissionResolvedEvents(session, turnID, pending, pendingACPResponse{}, err)
+		// The shared error path emits only call.failed; append the
+		// back-to-running turn.updated so the lifecycle cannot strand in
+		// waiting_approval when a request is rejected or canceled.
+		resolved = append(resolved, newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWorking, "", "", map[string]any{
+			"phase":     string(activityshared.TurnPhaseWorking),
+			"requestId": pending.requestID,
+		}))
 		if emit != nil {
 			emit(resolved)
 		}

@@ -1,3 +1,4 @@
+import { isLiveTurnLifecyclePhase } from "@tutti-os/agent-activity-core";
 import type {
   WorkspaceAgentActivitySession,
   WorkspaceAgentActivityTimelineItem
@@ -1068,7 +1069,10 @@ function shouldShowProcessingIndicator(
   session: BuildWorkspaceAgentSessionDetailInput["session"],
   turns: readonly WorkspaceAgentSessionDetailTurn[]
 ): boolean {
-  if (!isSessionWorking(session)) {
+  // The turn lifecycle is the source of truth for "is a turn running"
+  // (ADR 0008); session.status is only a fallback for records that carry no
+  // lifecycle (non-migrated providers).
+  if (!sessionHasRunnableIndicatorState(session)) {
     return false;
   }
   const lastTurn = turns.at(-1);
@@ -1100,8 +1104,22 @@ function hasActiveRunningTurnLifecycle(
   if (!lifecycle?.activeTurnId || lifecycle.settling === true) {
     return false;
   }
-  const phase = lifecycle.phase?.trim().toLowerCase() ?? "";
-  return phase === "submitted" || phase === "running" || phase === "waiting";
+  return isLiveTurnLifecyclePhase(lifecycle.phase);
+}
+
+// Primary indicator gate: a present turn lifecycle decides entirely; the
+// legacy session.status check applies only when the record has no lifecycle.
+function sessionHasRunnableIndicatorState(
+  session: BuildWorkspaceAgentSessionDetailInput["session"]
+): boolean {
+  const lifecycle = session.turnLifecycle;
+  if (lifecycle?.phase) {
+    return (
+      Boolean(lifecycle.activeTurnId) &&
+      isLiveTurnLifecyclePhase(lifecycle.phase)
+    );
+  }
+  return isSessionWorking(session);
 }
 
 function isTerminalAgentMessageStatus(
