@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { setAgentGuiI18nTestLocale } from "../../../../i18n/testUtils";
 import { type WorkspaceAgentSessionDetailToolCall } from "../../../workspaceAgentSessionDetailViewModel";
 import { projectAgentToolCall } from "../../projection/agentToolProjection";
@@ -9,6 +9,7 @@ import { ToolMarkdownBlock } from "./agentToolContentShared";
 
 describe("AgentExpandedToolContent", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     setAgentGuiI18nTestLocale("zh-CN");
   });
 
@@ -1214,6 +1215,8 @@ describe("AgentExpandedToolContent", () => {
 
   it("renders a named standalone sub-agent card with an activity log", async () => {
     setAgentGuiI18nTestLocale("en");
+    vi.useFakeTimers();
+    vi.setSystemTime(101_000);
 
     render(
       <AgentSubAgentCard

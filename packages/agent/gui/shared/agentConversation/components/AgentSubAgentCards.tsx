@@ -1,4 +1,4 @@
-import { memo, useState, type JSX } from "react";
+import { memo, useEffect, useState, type JSX } from "react";
 import { AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { AgentLinedIcon } from "../../../app/renderer/components/icons/AgentLinedIcon";
 import { translate } from "../../../i18n/index";
@@ -112,7 +112,8 @@ function SubAgentHeader({
   "use memo";
   const running = subAgent.status === "running";
   const statusLabel = subAgentStatusLabel(subAgent.status);
-  const elapsedText = subAgentElapsedText(subAgent);
+  const runningNowUnixMs = useRunningSubAgentNowUnixMs(subAgent);
+  const elapsedText = subAgentElapsedText(subAgent, runningNowUnixMs);
   const nameText = subAgentNameText(subAgent);
   return (
     <div
@@ -247,15 +248,50 @@ function subAgentStatusLabel(status: AgentTaskSubAgentVM["status"]): string {
   }
 }
 
-function subAgentElapsedText(subAgent: AgentTaskSubAgentVM): string | null {
+function useRunningSubAgentNowUnixMs(
+  subAgent: AgentTaskSubAgentVM
+): number | null {
+  const shouldTick =
+    subAgent.status === "running" &&
+    typeof subAgent.startedAtUnixMs === "number";
+  const [nowUnixMs, setNowUnixMs] = useState<number | null>(() =>
+    shouldTick ? Date.now() : null
+  );
+
+  useEffect(() => {
+    if (!shouldTick) {
+      setNowUnixMs(null);
+      return;
+    }
+
+    const updateNow = () => setNowUnixMs(Date.now());
+    updateNow();
+    const intervalId = window.setInterval(updateNow, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [shouldTick, subAgent.startedAtUnixMs]);
+
+  return nowUnixMs;
+}
+
+function subAgentElapsedText(
+  subAgent: AgentTaskSubAgentVM,
+  runningNowUnixMs: number | null
+): string | null {
   const started = subAgent.startedAtUnixMs;
-  const latest = subAgent.latestActivityAtUnixMs;
-  if (
-    typeof started !== "number" ||
-    typeof latest !== "number" ||
-    latest <= started
-  ) {
+  if (typeof started !== "number") {
     return null;
   }
-  return formatAgentToolDurationMs(latest - started);
+
+  const terminal = subAgent.terminalAtUnixMs;
+  const latest = subAgent.latestActivityAtUnixMs;
+  const ended =
+    typeof terminal === "number"
+      ? terminal
+      : subAgent.status === "running" && typeof runningNowUnixMs === "number"
+        ? Math.max(latest ?? started, runningNowUnixMs)
+        : latest;
+  if (typeof ended !== "number" || ended <= started) {
+    return null;
+  }
+  return formatAgentToolDurationMs(ended - started);
 }

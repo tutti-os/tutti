@@ -503,6 +503,14 @@ require a fetch so the controller snapshot remains authoritative. UI code
 should debug both the event payload and the reconcile fetch before treating a
 missing transcript row as a rendering-only bug.
 
+Live display-only clocks in transcript rows, such as running sub-agent elapsed
+time, are UI-local interaction state. Do not derive a running timer solely from
+`latestActivityAt - startedAt`: `latestActivityAt` only changes when a durable
+activity event arrives, so quiet but still-running work will appear frozen.
+Running rows that need wall-clock elapsed text should own a local tick, while
+completed, failed, or canceled rows should render a fixed terminal duration
+from terminal/latest activity timestamps.
+
 When a session status bug mentions "still processing", "queued", or a disabled
 composer after a turn finishes, inspect the full runtime tuple:
 `status`, `currentPhase`, and `turnLifecycle.phase`. The Agent Activity snapshot
