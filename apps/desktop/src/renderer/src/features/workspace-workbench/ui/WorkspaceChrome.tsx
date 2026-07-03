@@ -167,6 +167,7 @@ export function WorkspaceChrome({
           : `calc(${WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX}px + var(--cove-workspace-mac-traffic-light-gutter, ${WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX}px))`
       } as React.CSSProperties)
     : undefined;
+  const [messageCenterOpen, setMessageCenterOpen] = useState(false);
   const [externalImportWizardProviders, setExternalImportWizardProviders] =
     useState<WorkspaceAgentProvider[] | undefined>(undefined);
   const [externalImportWizardOpen, setExternalImportWizardOpen] =
@@ -183,7 +184,10 @@ export function WorkspaceChrome({
     <>
       <header
         className={cn(
-          "grid min-h-[52px] items-center gap-4 bg-transparent px-4 [-webkit-app-region:drag]",
+          "grid min-h-[52px] items-center gap-4 bg-transparent px-4",
+          messageCenterOpen
+            ? "[-webkit-app-region:no-drag]"
+            : "[-webkit-app-region:drag]",
           "grid-cols-[max-content_minmax(0,1fr)_max-content]",
           isDarwin && "pl-[var(--workspace-chrome-left-padding)]",
           isWindows &&
@@ -212,6 +216,8 @@ export function WorkspaceChrome({
           <WorkspaceFeedbackGroupPopover />
           <WorkspaceAgentMessageCenterAction
             launchNode={launchNode}
+            open={messageCenterOpen}
+            setOpen={setMessageCenterOpen}
             workspace={workspace}
           />
           <WorkspaceMissionControlActions
@@ -244,9 +250,13 @@ export function WorkspaceChrome({
 
 function WorkspaceAgentMessageCenterAction({
   launchNode,
+  open,
+  setOpen,
   workspace
 }: {
   launchNode?: WorkbenchHostChromeRenderContext["launchNode"];
+  open: boolean;
+  setOpen: (nextOpen: boolean) => void;
   workspace: WorkspaceSummary;
 }) {
   const { i18n, locale, t } = useTranslation();
@@ -256,7 +266,6 @@ function WorkspaceAgentMessageCenterAction({
   const reporterService = useService(IReporterService);
   const notifications = useService(INotificationService);
   const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const [open, setOpen] = useState(false);
   const [highlightedMessageCenterItemId, setHighlightedMessageCenterItemId] =
     useState<string | null>(null);
   const snapshotRef = useRef<{
@@ -364,7 +373,7 @@ function WorkspaceAgentMessageCenterAction({
       registerWorkspaceMessageCenterOpenHandler(workspace.id, () => {
         setOpen(true);
       }),
-    [workspace.id]
+    [setOpen, workspace.id]
   );
 
   useEffect(() => {
@@ -393,7 +402,7 @@ function WorkspaceAgentMessageCenterAction({
         setOpen(false);
       });
     },
-    [launchNode]
+    [launchNode, setOpen]
   );
 
   useEffect(() => {
@@ -632,7 +641,7 @@ function WorkspaceAgentMessageCenterAction({
   );
   const closeMessageCenter = useCallback(() => {
     setOpen(false);
-  }, []);
+  }, [setOpen]);
   const handleHighlightedMessageCenterItemSettled = useCallback(
     (itemId: string) => {
       setHighlightedMessageCenterItemId((current) =>

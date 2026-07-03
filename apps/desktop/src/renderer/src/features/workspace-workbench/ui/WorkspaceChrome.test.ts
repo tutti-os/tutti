@@ -9,6 +9,16 @@ const source = readFileSync(
   "utf8"
 );
 
+test("workspace chrome header releases the drag region while the message center is open", () => {
+  assert.match(
+    source,
+    /messageCenterOpen\s*\?\s*"\[-webkit-app-region:no-drag\]"\s*:\s*"\[-webkit-app-region:drag\]"/
+  );
+  assert.doesNotMatch(source, /min-h-\[52px\][^"]*\[-webkit-app-region:drag\]/);
+  assert.match(source, /open=\{messageCenterOpen\}/);
+  assert.match(source, /setOpen=\{setMessageCenterOpen\}/);
+});
+
 test("workspace chrome deck submit forwards to submitPlanDecision instead of branching on plan action", () => {
   // Must call submitPlanDecision with promptKind threaded from the panel
   assert.match(source, /workspaceAgentActivityService\.submitPlanDecision\(/);
