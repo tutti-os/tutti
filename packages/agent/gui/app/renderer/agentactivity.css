@@ -7450,7 +7450,11 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   overflow-y: auto;
   overflow-wrap: anywhere;
   scrollbar-gutter: stable;
-  scrollbar-width: none;
+  /* Keep the scrollbar persistently visible (not hover/focus-only) once the
+     draft overflows the visible viewport: a long pasted/dictated block of
+     text must never look like a single visible line with no affordance that
+     more content exists below (see: Feishu recvo2ITCPrpcA). */
+  scrollbar-width: thin;
   white-space: pre-wrap;
 }
 
@@ -7463,41 +7467,10 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   max-height: var(--agent-gui-composer-text-viewport-height);
 }
 
-.agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area:hover
-  textarea,
-.agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area:hover
-  .agent-gui-node__composer-textarea,
-.agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area:focus-within
-  textarea,
-.agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area:focus-within
-  .agent-gui-node__composer-textarea {
-  scrollbar-width: thin;
-}
-
 .agent-gui-node__composer[data-layout="dock"] textarea::-webkit-scrollbar,
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-textarea::-webkit-scrollbar {
   display: block;
-  width: 0;
-  height: 0;
-}
-
-.agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area:hover
-  textarea::-webkit-scrollbar,
-.agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area:hover
-  .agent-gui-node__composer-textarea::-webkit-scrollbar,
-.agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area:focus-within
-  textarea::-webkit-scrollbar,
-.agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area:focus-within
-  .agent-gui-node__composer-textarea::-webkit-scrollbar {
   width: 4px;
   height: 4px;
 }
