@@ -314,6 +314,8 @@ async function buildAgnesSummary(input, apiKey) {
     '{"zh":{"headline":"","sections":[{"title":"","items":[""]}],"qaFocus":[""]},"en":{"headline":"","sections":[{"title":"","items":[""]}],"qaFocus":[""]}}',
     "Use Chinese for zh and English for en. Do not invent changes beyond commits and diff stat.",
     "Write from user-visible impact first. Avoid implementation jargon unless it directly affects installation, updates, data safety, or QA.",
+    "When a change is release infrastructure only, describe it as internal QA, packaging, download, or update validation work; do not claim regular users can access it unless the commits explicitly add user-facing UI or settings.",
+    "For beta channel changes, say internal beta packages or development-branch validation. Do not describe beta as public early access unless the commits explicitly say it is exposed to users.",
     `For zh.sections[].title, use only these section titles: ${zhSectionTitles.join("、")}.`,
     `For en.sections[].title, use only these section titles: ${enSectionTitles.join(", ")}.`,
     "Do not use module or architecture headings such as Core Architecture, Backend, Database, IPC, AgentGUI, or Services.",
