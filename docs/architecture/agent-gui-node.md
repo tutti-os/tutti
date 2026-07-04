@@ -1238,10 +1238,12 @@ the rail silently patches in the rest from local static data. When the daemon
 `/agents` contract covers the full provider set needed by AgentGUI, desktop
 should switch the rail, composer `@` agent target contributor, and mention
 hydration to the same service-backed snapshot in one change. Until then,
-fallback targets do not change the legacy activation contract: AgentGUI does
-not persist or send their `providerTargetRef`. For system local Codex and
-Claude Code targets, the synthesized targets may expose `local:codex` and
-`local:claude-code` as `agentTargetId`, matching the legacy local
+future providers in the local fallback catalog, such as Hermes and OpenClaw,
+must render as disabled/coming-soon targets rather than clickable launch
+targets. Fallback targets do not change the legacy activation contract:
+AgentGUI does not persist or send their `providerTargetRef`. For system local
+Codex and Claude Code targets, the synthesized targets may expose `local:codex`
+and `local:claude-code` as `agentTargetId`, matching the legacy local
 `providerTargetId` format so old node state can fall back without remapping.
 
 ### Conversation Projection

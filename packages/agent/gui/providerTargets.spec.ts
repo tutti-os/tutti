@@ -84,6 +84,12 @@ describe("agent gui provider targets", () => {
         disabled: true,
         label: "Hermes",
         provider: "hermes"
+      },
+      {
+        agentTargetId: null,
+        disabled: true,
+        label: "OpenClaw",
+        provider: "openclaw"
       }
     ]);
   });
@@ -148,6 +154,26 @@ describe("agent gui provider targets", () => {
     expect(targets.map((target) => target.provider)).toEqual([
       "codex",
       "claude-code"
+    ]);
+  });
+
+  it("marks future providers disabled in the local fallback catalog", () => {
+    const targets = normalizeAgentGUIProviderTargets(undefined, {
+      includeDisabledPlaceholders: true
+    });
+
+    expect(
+      targets.map((target) => ({
+        disabled: target.disabled === true,
+        provider: target.provider
+      }))
+    ).toEqual([
+      { disabled: false, provider: "codex" },
+      { disabled: false, provider: "claude-code" },
+      { disabled: true, provider: "nexight" },
+      { disabled: true, provider: "hermes" },
+      { disabled: false, provider: "gemini" },
+      { disabled: true, provider: "openclaw" }
     ]);
   });
 

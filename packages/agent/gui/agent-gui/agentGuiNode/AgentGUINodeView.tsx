@@ -29,7 +29,10 @@ import {
 } from "../../app/renderer/components/ui/popover";
 import { AgentUsageMeter } from "./AgentUsageMeter";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
-import { createLocalAgentGUIProviderTargets } from "../../providerTargets";
+import {
+  createDisabledPlaceholderAgentGUIProviderTarget,
+  createLocalAgentGUIProviderTarget
+} from "../../providerTargets";
 import type {
   ReferenceLocateTarget,
   ReferenceNode,
@@ -4410,8 +4413,15 @@ const agentGUIProviderRailDefaultProviders = [
   "codex",
   "claude-code",
   "nexight",
-  "hermes"
+  "hermes",
+  "openclaw"
 ] as const satisfies readonly AgentGUIProvider[];
+
+const agentGUIProviderRailDisabledProviders = new Set<AgentGUIProvider>([
+  "nexight",
+  "hermes",
+  "openclaw"
+]);
 
 function agentGUIProviderRailOrderIndex(provider: AgentGUIProvider): number {
   const index = agentGUIProviderRailOrder.indexOf(provider);
@@ -4491,7 +4501,11 @@ function agentGUIProviderRailTargets(
   }
   return [
     ...source,
-    ...createLocalAgentGUIProviderTargets(missingDefaultProviders)
+    ...missingDefaultProviders.map((provider) =>
+      agentGUIProviderRailDisabledProviders.has(provider)
+        ? createDisabledPlaceholderAgentGUIProviderTarget(provider)
+        : createLocalAgentGUIProviderTarget(provider)
+    )
   ];
 }
 
@@ -4661,7 +4675,7 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
             data-disabled={target.disabled === true ? "true" : undefined}
             data-provider-tile="true"
             data-selected={providerSelected ? "true" : "false"}
-            disabled={previewMode}
+            disabled={previewMode || target.disabled === true}
             onClick={() => selectProviderTile(target)}
           >
             <span className={styles.providerRailAvatar}>

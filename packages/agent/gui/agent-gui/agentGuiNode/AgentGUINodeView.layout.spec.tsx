@@ -498,7 +498,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectProvider).not.toHaveBeenCalled();
   });
 
-  it("keeps unavailable provider rail targets selectable without greying them", () => {
+  it("keeps unavailable provider rail targets disabled and non-selectable", () => {
     const actions = createActions();
     const tuttiTarget = {
       ...createLocalAgentGUIProviderTarget("nexight"),
@@ -506,6 +506,10 @@ describe("AgentGUINodeView layout persistence", () => {
     };
     const hermesTarget = {
       ...createLocalAgentGUIProviderTarget("hermes"),
+      disabled: true
+    };
+    const openclawTarget = {
+      ...createLocalAgentGUIProviderTarget("openclaw"),
       disabled: true
     };
     renderAgentGUINodeView({
@@ -516,36 +520,33 @@ describe("AgentGUINodeView layout persistence", () => {
           createLocalAgentGUIProviderTarget("codex"),
           createLocalAgentGUIProviderTarget("claude-code"),
           tuttiTarget,
-          hermesTarget
+          hermesTarget,
+          openclawTarget
         ]
       }
     });
 
     const tuttiTile = screen.getByRole("tab", { name: "Tutti" });
     const hermesTile = screen.getByRole("tab", { name: "Hermes" });
+    const openclawTile = screen.getByRole("tab", { name: "OpenClaw" });
 
     expect(tuttiTile).toHaveAttribute("data-disabled", "true");
     expect(hermesTile).toHaveAttribute("data-disabled", "true");
-    expect(tuttiTile).not.toBeDisabled();
-    expect(hermesTile).not.toBeDisabled();
+    expect(openclawTile).toHaveAttribute("data-disabled", "true");
+    expect(tuttiTile).toBeDisabled();
+    expect(hermesTile).toBeDisabled();
+    expect(openclawTile).toBeDisabled();
 
     fireEvent.click(tuttiTile);
     fireEvent.click(hermesTile);
+    fireEvent.click(openclawTile);
 
-    expect(actions.selectConversationFilterTarget).toHaveBeenCalledTimes(2);
-    expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(1, {
-      provider: tuttiTarget.provider,
-      providerTargetId: tuttiTarget.targetId
-    });
-    expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(2, {
-      provider: hermesTarget.provider,
-      providerTargetId: hermesTarget.targetId
-    });
+    expect(actions.selectConversationFilterTarget).not.toHaveBeenCalled();
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectProvider).not.toHaveBeenCalled();
   });
 
-  it("orders provider rail tiles as Codex, Claude Code, Tutti, Hermes without visible provider labels", () => {
+  it("orders provider rail tiles as Codex, Claude Code, Tutti, Hermes, OpenClaw without visible provider labels", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -572,7 +573,7 @@ describe("AgentGUINodeView layout persistence", () => {
             tab.getAttribute("aria-label") ??
             tab.textContent?.replace(/\s+/gu, " ").trim()
         )
-    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes"]);
+    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
     expect(screen.getByRole("tab", { name: "All" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Codex" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Claude Code" })).toHaveTextContent(
@@ -580,6 +581,7 @@ describe("AgentGUINodeView layout persistence", () => {
     );
     expect(screen.getByRole("tab", { name: "Tutti" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Hermes" })).toHaveTextContent("");
+    expect(screen.getByRole("tab", { name: "OpenClaw" })).toHaveTextContent("");
 
     expect(
       screen
@@ -977,12 +979,16 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Tutti" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Hermes" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Tutti" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Hermes" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeDisabled();
     expect(
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
-    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes"]);
+    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
   });
 
-  it("keeps the provider rail to the four default agent tiles for local fallback catalogs", () => {
+  it("keeps the provider rail to the default agent tiles for local fallback catalogs", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -993,7 +999,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
-    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes"]);
+    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
   });
 
   it("falls back to All for avatar rail targets without an agent target id", () => {

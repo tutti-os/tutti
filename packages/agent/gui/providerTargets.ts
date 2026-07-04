@@ -24,7 +24,8 @@ export const agentGUIDefaultTargetProviders = [
 
 const agentGUIDisabledPlaceholderProviders = [
   "nexight",
-  "hermes"
+  "hermes",
+  "openclaw"
 ] as const satisfies readonly AgentGUIProvider[];
 
 export function createLocalAgentGUIProviderTarget(
@@ -58,6 +59,22 @@ export function createLocalAgentGUIProviderTargets(
 ): AgentGUIProviderTarget[] {
   return providers.map((provider) =>
     createLocalAgentGUIProviderTarget(provider)
+  );
+}
+
+function createFallbackAgentGUIProviderTargets(
+  providers: readonly AgentGUIProvider[] = agentGUIDefaultTargetProviders,
+  options?: { includeDisabledPlaceholders?: boolean }
+): AgentGUIProviderTarget[] {
+  const disabledProviders = new Set<AgentGUIProvider>(
+    options?.includeDisabledPlaceholders === true
+      ? agentGUIDisabledPlaceholderProviders
+      : []
+  );
+  return providers.map((provider) =>
+    disabledProviders.has(provider)
+      ? createDisabledPlaceholderAgentGUIProviderTarget(provider)
+      : createLocalAgentGUIProviderTarget(provider)
   );
 }
 
@@ -123,7 +140,9 @@ export function normalizeAgentGUIProviderTargets(
   }
   return normalizedTargets.length > 0 || !fallbackToLocal
     ? normalizedTargets
-    : createLocalAgentGUIProviderTargets();
+    : createFallbackAgentGUIProviderTargets(undefined, {
+        includeDisabledPlaceholders
+      });
 }
 
 export function resolveAgentGUIProviderTarget(input: {

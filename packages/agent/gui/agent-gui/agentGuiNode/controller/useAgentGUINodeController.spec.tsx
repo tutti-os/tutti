@@ -5696,7 +5696,7 @@ describe("useAgentGUINodeController", () => {
         currentUserId: "user-1",
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
-        data: agentGuiData(null, "hermes"),
+        data: agentGuiData(null, "codex"),
         onDataChange: vi.fn()
       })
     );
@@ -5711,7 +5711,7 @@ describe("useAgentGUINodeController", () => {
 
     expect(activate).toHaveBeenCalledWith(
       expect.objectContaining({
-        provider: "hermes",
+        provider: "codex",
         title: "hello from hero"
       })
     );
@@ -5724,7 +5724,7 @@ describe("useAgentGUINodeController", () => {
     ).toBeUndefined();
   });
 
-  it("blocks OpenClaw conversation creation until the gateway is ready", async () => {
+  it("keeps OpenClaw local fallback disabled even when the gateway is ready", async () => {
     let resolveWarmup: (() => void) | undefined;
     const warmupOpenclawGateway = vi.fn(
       () =>
@@ -5781,19 +5781,8 @@ describe("useAgentGUINodeController", () => {
         promptBlocks("start openclaw session")
       );
     });
-    await waitFor(() => {
-      expect(activate).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).not.toBeNull();
-    });
-    expect(activate.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        mode: "new",
-        provider: "openclaw",
-        openclawGatewayReady: true
-      })
-    );
+    expect(activate).not.toHaveBeenCalled();
+    expect(result.current.viewModel.activeConversationId).toBeNull();
     unmount();
   });
 
