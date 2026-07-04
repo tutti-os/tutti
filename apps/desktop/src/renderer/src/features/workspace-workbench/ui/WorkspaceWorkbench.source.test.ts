@@ -100,13 +100,8 @@ test("WorkspaceLaunchpad renders one generic Agent entry", () => {
   );
 });
 
-test("workspace shell preserves AgentGUI local provider target fallback for empty loads", () => {
-  assert.match(
-    shellRuntimeSource,
-    /agentGuiProviderTargets && agentGuiProviderTargets\.length > 0\s*\?\s*agentGuiProviderTargets\s*:\s*undefined/s
-  );
-  assert.doesNotMatch(
-    shellRuntimeSource,
-    /const resolvedAgentGuiProviderTargets = useMemo\(\s*\(\) => agentGuiProviderTargets \?\? \[\]/s
-  );
+test("workspace shell leaves AgentGUI provider targets on local fallback", () => {
+  assert.doesNotMatch(shellRuntimeSource, /loadAgentGuiProviderTargets/);
+  assert.match(shellRuntimeSource, /providerTargets:\s*undefined/);
+  assert.match(shellRuntimeSource, /providerTargetsLoading:\s*false/);
 });

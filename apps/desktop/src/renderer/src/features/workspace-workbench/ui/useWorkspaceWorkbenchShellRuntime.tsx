@@ -3,10 +3,8 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   useSyncExternalStore
 } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
 import { useService } from "@tutti-os/infra/di";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
@@ -126,19 +124,6 @@ export function useWorkspaceWorkbenchShellRuntime({
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const [agentGuiProviderTargets, setAgentGuiProviderTargets] = useState<
-    readonly AgentGUIProviderTarget[] | undefined
-  >(undefined);
-  const agentGuiProviderTargetsLoading = agentGuiProviderTargets === undefined;
-  // An empty daemon target list means "no remote targets found", not "hide the
-  // local Codex/Claude rail tiles"; let AgentGUI synthesize its local fallback.
-  const resolvedAgentGuiProviderTargets = useMemo(
-    () =>
-      agentGuiProviderTargets && agentGuiProviderTargets.length > 0
-        ? agentGuiProviderTargets
-        : undefined,
-    [agentGuiProviderTargets]
-  );
   const reporterService = useService(IReporterService);
   const wallpaperRevision = useSyncExternalStore(
     (listener) => workbenchHostService.subscribeWallpaperChanges(listener),
@@ -173,8 +158,8 @@ export function useWorkspaceWorkbenchShellRuntime({
           createHostInput: (hostInput) =>
             workbenchHostService.createHostInput(hostInput),
           defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
-          providerTargets: resolvedAgentGuiProviderTargets,
-          providerTargetsLoading: agentGuiProviderTargetsLoading,
+          providerTargets: undefined,
+          providerTargetsLoading: false,
           dockIconStyle: desktopPreferencesState.dockIconStyle,
           i18n: workbenchDesktopI18n,
           onCapabilitySettingsRequest: handleCapabilitySettingsRequest,
@@ -244,19 +229,6 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [state.workspace.id, workbenchHostService]);
 
   useEffect(() => {
-    let disposed = false;
-    setAgentGuiProviderTargets(undefined);
-    void workbenchHostService.loadAgentGuiProviderTargets().then((targets) => {
-      if (!disposed) {
-        setAgentGuiProviderTargets(targets);
-      }
-    });
-    return () => {
-      disposed = true;
-    };
-  }, [state.workspace.id, workbenchHostService]);
-
-  useEffect(() => {
     return workbenchHostService.onOpenFileRequest((request) => {
       const host = workbenchHostRef.current;
       if (!host || request.workspaceId !== state.workspace.id) {
@@ -305,8 +277,8 @@ export function useWorkspaceWorkbenchShellRuntime({
       createHostInput: (hostInput) =>
         workbenchHostService.createHostInput(hostInput),
       defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
-      providerTargets: resolvedAgentGuiProviderTargets,
-      providerTargetsLoading: agentGuiProviderTargetsLoading,
+      providerTargets: undefined,
+      providerTargetsLoading: false,
       dockIconStyle: desktopPreferencesState.dockIconStyle,
       i18n: workbenchDesktopI18n,
       onCapabilitySettingsRequest: handleCapabilitySettingsRequest,
@@ -319,8 +291,6 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [
     appI18n,
     appCenterState.revision,
-    agentGuiProviderTargetsLoading,
-    resolvedAgentGuiProviderTargets,
     desktopPreferencesState.defaultAgentProvider,
     desktopPreferencesState.dockIconStyle,
     desktopPreferencesState.theme.appearance,

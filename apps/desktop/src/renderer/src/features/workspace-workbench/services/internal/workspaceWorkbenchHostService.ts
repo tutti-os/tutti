@@ -116,18 +116,12 @@ import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-ref
 import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
 import { serializeWorkspaceAppExternalAtMatch } from "./workspaceAppExternalAtSerialization.ts";
 import { requestWorkspaceWorkbenchNodeLaunch } from "../workspaceWorkbenchNodeLaunchCoordinator.ts";
-import {
-  IAgentsService,
-  type IAgentsService as AgentsService
-} from "../../../workspace-agent/services/agentsService.interface.ts";
-
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
 const workspaceDockNativePreviewTimeoutMs = 2_500;
 
 export interface WorkspaceWorkbenchHostServiceDependencies {
   agentProviderStatusService: AgentProviderStatusService;
-  agentsService: AgentsService;
   appCenterService: IWorkspaceAppCenterService;
   browserApi?: DesktopBrowserApi;
   browserService: WorkspaceBrowserService;
@@ -208,14 +202,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   };
   private readonly windowCloseRequestTracker =
     createWindowCloseRequestTracker();
-  private agentGuiProviderTargetsPromise: Promise<
-    readonly AgentGUIProviderTarget[]
-  > | null = null;
 
   constructor(
     externalDependencies: WorkspaceWorkbenchHostExternalDependencies,
     richTextAtService: IDesktopRichTextAtService,
-    agentsService: AgentsService,
     agentProviderStatusService: AgentProviderStatusService,
     workspaceAgentActivityService: WorkspaceAgentActivityService,
     workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService,
@@ -228,7 +218,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     );
     this.dependencies = {
       agentProviderStatusService,
-      agentsService,
       appCenterService,
       browserApi: externalDependencies.browserApi,
       browserService: createWorkspaceBrowserService({
@@ -262,16 +251,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 
   approveWindowClose(): Promise<void> {
     return this.dependencies.hostWindowApi.approveClose();
-  }
-
-  loadAgentGuiProviderTargets(): Promise<readonly AgentGUIProviderTarget[]> {
-    if (!this.agentGuiProviderTargetsPromise) {
-      this.agentGuiProviderTargetsPromise = this.dependencies.agentsService
-        .load()
-        .then((snapshot) => snapshot.providerTargets)
-        .catch(() => []);
-    }
-    return this.agentGuiProviderTargetsPromise;
   }
 
   onWindowCloseRequest(
@@ -1233,17 +1212,16 @@ function resolveWorkspaceNodeCaptureTarget(nodeId: string): {
 
 // Avoid decorator syntax so the renderer Babel pass can parse this file.
 IDesktopRichTextAtService(WorkspaceWorkbenchHostService, undefined, 1);
-IAgentsService(WorkspaceWorkbenchHostService, undefined, 2);
-IAgentProviderStatusService(WorkspaceWorkbenchHostService, undefined, 3);
-IWorkspaceAgentActivityService(WorkspaceWorkbenchHostService, undefined, 4);
+IAgentProviderStatusService(WorkspaceWorkbenchHostService, undefined, 2);
+IWorkspaceAgentActivityService(WorkspaceWorkbenchHostService, undefined, 3);
 IWorkspaceAgentPromptSessionService(
   WorkspaceWorkbenchHostService,
   undefined,
-  5
+  4
 );
-IWorkspaceAppCenterService(WorkspaceWorkbenchHostService, undefined, 6);
-IWorkspaceFileManagerService(WorkspaceWorkbenchHostService, undefined, 7);
-IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 8);
+IWorkspaceAppCenterService(WorkspaceWorkbenchHostService, undefined, 5);
+IWorkspaceFileManagerService(WorkspaceWorkbenchHostService, undefined, 6);
+IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 7);
 
 export function createWorkspaceAppExternalUserProjectApi(
   service: IWorkspaceUserProjectService

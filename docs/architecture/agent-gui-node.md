@@ -1229,20 +1229,19 @@ runtime session reuse must match that ref as part of the launch key. A target
 may identify shared, local, remote, or other host-owned launch mechanisms, but
 those meanings stay outside AgentGUI.
 
-When `providerTargets` is omitted, package-level AgentGUI hosts may synthesize
-local targets from the static provider catalog for picker/display compatibility.
-An explicit `providerTargets` array, including an empty array, is authoritative
-and must not fall back to static local targets. Desktop workbench loads this
-array through the renderer `AgentsService`, which is the renderer-side source
-of truth for agent target presentation data. The same service-backed snapshot
-feeds the AgentGUI rail, the composer `@` agent target contributor, and
-readonly/markdown mention hydration. While that fetch is in progress the
-workbench passes an empty array plus a loading flag so the rail can show a
-loading state instead of pretending Codex or Claude Code came from durable
-target data. Fallback targets do not change the legacy activation contract:
-AgentGUI does not persist or send their `providerTargetRef`. For system local
-Codex and Claude Code targets, the synthesized targets may expose `local:codex`
-and `local:claude-code` as `agentTargetId`, matching the legacy local
+When `providerTargets` is omitted, package-level AgentGUI hosts synthesize local
+targets from the static provider catalog for picker/display compatibility.
+Desktop workbench currently leaves `providerTargets` omitted and does not feed
+the renderer `AgentsService` `/agents` snapshot into AgentGUI. This avoids a
+hybrid runtime where durable targets list only a subset of the providers while
+the rail silently patches in the rest from local static data. When the daemon
+`/agents` contract covers the full provider set needed by AgentGUI, desktop
+should switch the rail, composer `@` agent target contributor, and mention
+hydration to the same service-backed snapshot in one change. Until then,
+fallback targets do not change the legacy activation contract: AgentGUI does
+not persist or send their `providerTargetRef`. For system local Codex and
+Claude Code targets, the synthesized targets may expose `local:codex` and
+`local:claude-code` as `agentTargetId`, matching the legacy local
 `providerTargetId` format so old node state can fall back without remapping.
 
 ### Conversation Projection
