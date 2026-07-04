@@ -85,6 +85,7 @@ type scriptedAppServerConnection struct {
 	goalStartsTurn               bool
 	goalTurnsStarted             int
 	goalCompletionAfterTurns     int
+	goalTurnFailAtTurn           int // goal-driven turn number (1-based) that settles as "failed" instead of "completed"
 	goalCleared                  bool
 	replayTokenUsageOnResume     bool // mirror real codex: emit token usage during thread/resume
 	threadResumeError            bool // fail thread/resume with an RPC error
@@ -541,6 +542,9 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			if goalStartsTurn && goalTurnNumber > 0 {
 				turnID := fmt.Sprintf("turn-goal-%d", goalTurnNumber)
 				itemID := fmt.Sprintf("item-goal-%d", goalTurnNumber)
+				c.mu.Lock()
+				failThisTurn := c.goalTurnFailAtTurn > 0 && goalTurnNumber == c.goalTurnFailAtTurn
+				c.mu.Unlock()
 				messageText := "I'll work on the goal."
 				if goalStatus == "complete" && goalTurnNumber > 1 {
 					messageText = "Goal complete."
@@ -549,6 +553,22 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					"threadId": "codex-thread-1",
 					"turn":     map[string]any{"id": turnID, "status": "inProgress", "items": []any{}},
 				})
+				if failThisTurn {
+					// Simulate a mid-goal turn ending in a transient failure
+					// (a tool or model error) while the goal itself remains
+					// "active" per codex's own thread state: the turn
+					// settles failed but the goal is not paused/completed.
+					c.notify(appServerNotifyTurnCompleted, map[string]any{
+						"threadId": "codex-thread-1",
+						"turn": map[string]any{
+							"id":     turnID,
+							"status": "failed",
+							"items":  []any{},
+							"error":  map[string]any{"message": "transient tool failure"},
+						},
+					})
+					continue
+				}
 				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
 					"threadId": "codex-thread-1", "turnId": turnID, "itemId": itemID, "delta": messageText,
 				})
@@ -2535,6 +2555,94 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 	}
 	if asString(goalSets[1]["objective"]) != "finish the DrawingML pass" {
 		t.Fatalf("continuation goal objective = %#v", goalSets[1])
+	}
+}
+
+// A mid-goal turn that settles failed (a transient tool/model error) while
+// codex's own thread state still reports the goal active must not strand the
+// goal: the continuation nudge has to fire on a failed settle exactly like it
+// does on a clean completion, or the goal stops advancing for good with no
+// further signal ("goal 执行一半不动了").
+func TestCodexAppServerAdapterGoalContinuesAfterMidGoalTurnFailure(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
+	transport.conn.goalStartsTurn = true
+	transport.conn.goalTurnFailAtTurn = 2
+	transport.conn.goalCompletionAfterTurns = 3
+
+	var sinkMu sync.Mutex
+	sinkEvents := []activityshared.Event{}
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, events...)
+	})
+
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal finish the DrawingML pass",
+	}}, "", "turn-local-goal", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
+		t.Fatalf("first goal turn completed events = %d, want 1", len(completed))
+	}
+
+	// The second turn (adopted, codex-driven) settles failed. Without the
+	// fix, finalizeSettledTurn only nudged on a clean completion, so this
+	// failed settle would never schedule a continuation and the goal would
+	// hang here forever.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		sinkMu.Lock()
+		failedSeen := false
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventTurnFailed {
+				failedSeen = true
+			}
+		}
+		sinkMu.Unlock()
+		if failedSeen {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("adopted continuation turn did not settle failed")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// The nudge must still fire after the failed settle and drive the goal to
+	// its third, successful turn.
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		sinkMu.Lock()
+		adoptedCompleted := ""
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventMessageAppended &&
+				event.Payload.Role == activityshared.MessageRoleAssistant &&
+				event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
+				adoptedCompleted = event.Payload.Content
+			}
+		}
+		sinkMu.Unlock()
+		if adoptedCompleted == "Goal complete." {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("goal did not continue past the failed turn to completion")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// initial /goal (turn 1) + nudge after turn 1 (turn 2, fails) + nudge
+	// after turn 2's failure (turn 3, completes the goal). The nudge
+	// scheduled after turn 3 sees the goal already "complete" and returns
+	// before sending a fourth RPC.
+	goalSets := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet)
+	if len(goalSets) != 3 {
+		t.Fatalf("goal/set requests = %d, want 3", len(goalSets))
 	}
 }
 

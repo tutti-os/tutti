@@ -1340,11 +1340,19 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 	}
 	a.endActiveTurn(agentSessionID, appTurn)
 	appTurn.markTerminated()
-	if terminal.err == nil && terminal.phase == codexAppServerTurnPhaseCompleted {
-		// With an active goal, codex normally auto-starts the next turn; the
-		// nudge covers the case where it does not.
-		a.scheduleGoalContinuationNudge(session)
-	}
+	// With an active goal, codex normally auto-starts the next turn; the
+	// nudge covers the case where it does not. This must run regardless of
+	// how the turn settled: a mid-goal turn can end failed (a transient tool
+	// or model error) or externally canceled (client hiccup) while codex's
+	// own thread state still reports the goal active, and if codex does not
+	// resume on its own the goal would otherwise stop advancing for good
+	// with no further signal. scheduleGoalContinuationNudge already no-ops
+	// once the goal itself is no longer active (paused/complete/cleared) or
+	// the app-server connection is gone, so calling it unconditionally here
+	// cannot resume a goal that was legitimately stopped (for example Cancel
+	// pauses the goal before interrupting the turn, so a user-initiated
+	// cancellation settles with the goal already paused).
+	a.scheduleGoalContinuationNudge(session)
 }
 
 // settleTurnExternal settles THIS turn (pointer match) from an external
