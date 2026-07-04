@@ -860,100 +860,11 @@ function AgentComposerMaskIcon({
   );
 }
 
-type DotLottieWcProps = {
-  autoplay?: boolean;
-  className?: string;
-  loop?: boolean;
-  src: string;
-  style?: CSSProperties;
-};
-
-declare module "react" {
-  namespace JSX {
-    interface IntrinsicElements {
-      "dotlottie-wc": DotLottieWcProps;
-    }
-  }
-}
-
-const HANDOFF_DOTLOTTIE_SCRIPT_ID = "agent-gui-handoff-dotlottie-wc";
-const HANDOFF_DOTLOTTIE_SOURCE_PRELOAD_ID =
-  "agent-gui-handoff-dotlottie-source-preload";
-const HANDOFF_DOTLOTTIE_SCRIPT_URL =
-  "https://unpkg.com/@lottiefiles/dotlottie-wc@0.9.14/dist/dotlottie-wc.js";
-const HANDOFF_DOTLOTTIE_SRC =
-  "https://lottie.host/03d75946-52e5-4ccf-97df-174919a13ced/Av6piqVmPa.lottie";
 const HANDOFF_SELECT_IDLE_VALUE = "__agent-handoff-idle__";
 
-function ensureHandoffDotLottieAssets(): void {
-  if (typeof document === "undefined") {
-    return;
-  }
-  if (!document.getElementById(HANDOFF_DOTLOTTIE_SOURCE_PRELOAD_ID)) {
-    const preload = document.createElement("link");
-    preload.id = HANDOFF_DOTLOTTIE_SOURCE_PRELOAD_ID;
-    preload.as = "fetch";
-    preload.crossOrigin = "anonymous";
-    preload.href = HANDOFF_DOTLOTTIE_SRC;
-    preload.rel = "preload";
-    document.head.appendChild(preload);
-  }
-  if (!document.getElementById(HANDOFF_DOTLOTTIE_SCRIPT_ID)) {
-    const script = document.createElement("script");
-    script.id = HANDOFF_DOTLOTTIE_SCRIPT_ID;
-    script.src = HANDOFF_DOTLOTTIE_SCRIPT_URL;
-    script.type = "module";
-    document.head.appendChild(script);
-  }
-}
-
 function AgentComposerHandoffIcon(): JSX.Element {
-  const rootRef = useRef<HTMLSpanElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  useEffect(() => {
-    ensureHandoffDotLottieAssets();
-  }, []);
-
-  const startPlaying = useCallback(() => {
-    ensureHandoffDotLottieAssets();
-    setIsPlaying(true);
-  }, []);
-
-  const reset = useCallback(() => {
-    setIsPlaying(false);
-  }, []);
-
-  useEffect(() => {
-    const trigger = rootRef.current?.closest(
-      `.${styles.composerHandoffTrigger}`
-    );
-    if (!trigger) {
-      return;
-    }
-    trigger.addEventListener("mouseenter", startPlaying);
-    trigger.addEventListener("mouseleave", reset);
-    trigger.addEventListener("focusin", startPlaying);
-    trigger.addEventListener("focusout", reset);
-    return () => {
-      trigger.removeEventListener("mouseenter", startPlaying);
-      trigger.removeEventListener("mouseleave", reset);
-      trigger.removeEventListener("focusin", startPlaying);
-      trigger.removeEventListener("focusout", reset);
-    };
-  }, [reset, startPlaying]);
-
   return (
-    <span
-      ref={rootRef}
-      aria-hidden="true"
-      className={styles.composerHandoffIcon}
-      data-playing={isPlaying ? "true" : "false"}
-      onFocus={startPlaying}
-      onMouseEnter={startPlaying}
-      onMouseLeave={reset}
-      onBlur={reset}
-    >
+    <span aria-hidden="true" className={styles.composerHandoffIcon}>
       <span
         className={styles.composerHandoffStaticIcon}
         style={{
@@ -966,13 +877,6 @@ function AgentComposerHandoffIcon(): JSX.Element {
           maskRepeat: "no-repeat",
           maskSize: "contain"
         }}
-      />
-      <dotlottie-wc
-        autoplay
-        className={styles.composerHandoffAnimatedIcon}
-        data-active={isPlaying ? "true" : "false"}
-        loop
-        src={HANDOFF_DOTLOTTIE_SRC}
       />
     </span>
   );

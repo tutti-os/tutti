@@ -495,7 +495,7 @@ describe("AgentGUINodeView layout persistence", () => {
       providerTargetId: claudeTarget.targetId
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
-    expect(actions.selectProvider).not.toHaveBeenCalled();
+    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
   it("keeps unavailable provider rail targets disabled and non-selectable", () => {
@@ -543,7 +543,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(actions.selectConversationFilterTarget).not.toHaveBeenCalled();
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
-    expect(actions.selectProvider).not.toHaveBeenCalled();
+    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
   it("orders provider rail tiles as Codex, Claude Code, Tutti, Hermes, OpenClaw without visible provider labels", () => {
@@ -650,7 +650,7 @@ describe("AgentGUINodeView layout persistence", () => {
       providerTargetId: codexTarget.targetId
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
-    expect(actions.selectProvider).not.toHaveBeenCalled();
+    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
   it("highlights All from the conversation filter without constraining target", () => {
@@ -912,7 +912,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     fireEvent.click(tuttiOption);
 
-    expect(actions.selectProvider).not.toHaveBeenCalled();
+    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
   it("selects the All tile for daemon local Codex targets", () => {
@@ -1037,7 +1037,7 @@ describe("AgentGUINodeView layout persistence", () => {
       providerTargetId: "shared-agent:gemini-1"
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
-    expect(actions.selectProvider).not.toHaveBeenCalled();
+    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
   it("passes provider switching options into the multi-provider composer", () => {
@@ -3731,7 +3731,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     interruptCurrentTurn: vi.fn(),
     updateDraftContent: vi.fn(),
     updateComposerSettings: vi.fn(),
-    selectProvider: vi.fn(),
+    selectHomeComposerAgentTarget: vi.fn(),
     sendQueuedPromptNext: vi.fn(),
     removeQueuedPrompt: vi.fn(),
     editQueuedPrompt: vi.fn(),

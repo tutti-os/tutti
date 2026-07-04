@@ -18,7 +18,6 @@ export const agentGUIDefaultTargetProviders = [
   "claude-code",
   "nexight",
   "hermes",
-  "gemini",
   "openclaw"
 ] as const satisfies readonly AgentGUIProvider[];
 

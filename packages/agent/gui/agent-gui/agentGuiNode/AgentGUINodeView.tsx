@@ -600,7 +600,7 @@ interface AgentGUINodeViewProps {
       planMode?: boolean;
       permissionMode?: string;
     }) => void;
-    selectProvider: (input: {
+    selectHomeComposerAgentTarget: (input: {
       provider: AgentGUIProvider;
       providerTargetId?: string | null;
     }) => void;
@@ -2505,7 +2505,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         !canSwitchComposerProvider || viewModel.activeConversationId !== null,
       onProviderSelect:
         canSwitchComposerProvider && viewModel.activeConversationId === null
-          ? actions.selectProvider
+          ? actions.selectHomeComposerAgentTarget
           : undefined,
       disabled: composerDisabled,
       disabledReason: composerDisabledReason,
@@ -2582,7 +2582,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [
       canQueueWhileBusy,
       backgroundAgentStatusText,
-      actions.selectProvider,
+      actions.selectHomeComposerAgentTarget,
       capabilityMenuState,
       canSwitchComposerProvider,
       composerDisabled,
@@ -3057,7 +3057,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               onProviderSelect={
                 canSwitchComposerProvider &&
                 viewModel.activeConversationId === null
-                  ? actions.selectProvider
+                  ? actions.selectHomeComposerAgentTarget
                   : undefined
               }
               providerTargets={composerProviderTargets}
@@ -3277,7 +3277,7 @@ interface AgentGUIEmptyHeroPaneProps {
   onAuthLogin?: (provider?: string | null) => void;
   onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
   onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
-  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectProvider"];
+  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
   providerTargets: readonly AgentGUIProviderTarget[];
   selectedProviderTarget: AgentGUIProviderTarget | null;
   chromeLabels: ChromeLabels;
@@ -3634,7 +3634,7 @@ function EmptyHeroTitle({
   providerSelectLabel: string;
   providerTargets?: readonly AgentGUIProviderTarget[];
   selectedProviderTarget?: AgentGUIProviderTarget | null;
-  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectProvider"];
+  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
 }): React.JSX.Element {
   const providerStart = providerLabel ? label.indexOf(providerLabel) : -1;
 
@@ -4597,7 +4597,7 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
     railProviderTargets,
     selectedProviderTargetIsPlaceholder
   ]);
-  const selectProviderTile = useCallback(
+  const selectAgentTargetTile = useCallback(
     (target: AgentGUINodeViewModel["providerTargets"][number]) => {
       onSelectConversationFilterTarget({
         provider: target.provider,
@@ -4669,7 +4669,7 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
             data-provider-tile="true"
             data-selected={providerSelected ? "true" : "false"}
             disabled={previewMode || target.disabled === true}
-            onClick={() => selectProviderTile(target)}
+            onClick={() => selectAgentTargetTile(target)}
           >
             <span className={styles.providerRailAvatar}>
               <AgentGUIProviderIconVisual

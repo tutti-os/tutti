@@ -26,7 +26,6 @@ describe("agent gui provider targets", () => {
       "local:claude-code",
       "local:nexight",
       "local:hermes",
-      "local:gemini",
       "local:openclaw"
     ]);
     expect(createLocalAgentGUIProviderTarget("nexight")).toMatchObject({
@@ -172,7 +171,6 @@ describe("agent gui provider targets", () => {
       { disabled: false, provider: "claude-code" },
       { disabled: true, provider: "nexight" },
       { disabled: true, provider: "hermes" },
-      { disabled: false, provider: "gemini" },
       { disabled: true, provider: "openclaw" }
     ]);
   });

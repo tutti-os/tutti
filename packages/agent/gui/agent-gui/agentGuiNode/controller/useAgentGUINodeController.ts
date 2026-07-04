@@ -10663,7 +10663,7 @@ export function useAgentGUINodeController({
     },
     []
   );
-  const selectProvider = useCallback(
+  const selectHomeComposerAgentTarget = useCallback(
     (input: {
       provider: AgentGUIProvider;
       providerTargetId?: string | null;
@@ -10772,30 +10772,32 @@ export function useAgentGUINodeController({
         });
         return;
       }
-      // Keep the home composer chip in sync with the selected tab; an active
-      // conversation keeps owning the chip (it shows the session's target).
-      if (activeConversationIdRef.current === null) {
-        setHomeComposerTargetOverride(nextTarget);
-      }
       const agentTargetId = nextTarget.agentTargetId?.trim() ?? "";
       const nextFilter = agentTargetId
         ? { kind: "agentTarget" as const, agentTargetId }
         : { kind: "all" as const };
       setConversationFilter(nextFilter);
-      selectProvider(input);
+      // Keep the home composer chip in sync with the selected tab. Active
+      // conversations keep owning their target and must not be unactivated by a
+      // rail filter click.
+      if (activeConversationIdRef.current === null) {
+        selectHomeComposerAgentTarget(input);
+      }
     },
     [
       agentActivityRuntime,
       defaultProviderTargetId,
       normalizedProviderTargets,
-      selectProvider,
+      selectHomeComposerAgentTarget,
       shouldUseStaticProviderTargets,
       workspaceId
     ]
   );
   const stableCreateConversation =
     useStableControllerEventCallback(createConversation);
-  const stableSelectProvider = useStableControllerEventCallback(selectProvider);
+  const stableSelectHomeComposerAgentTarget = useStableControllerEventCallback(
+    selectHomeComposerAgentTarget
+  );
   const stableSelectConversationFilterTarget = useStableControllerEventCallback(
     selectConversationFilterTarget
   );
@@ -10876,7 +10878,7 @@ export function useAgentGUINodeController({
     () => ({
       updateConversationFilter: stableUpdateConversationFilter,
       selectConversationFilterTarget: stableSelectConversationFilterTarget,
-      selectProvider: stableSelectProvider,
+      selectHomeComposerAgentTarget: stableSelectHomeComposerAgentTarget,
       createConversation: stableCreateConversation,
       selectConversation: stableSelectConversation,
       submitPrompt: stableSubmitPrompt,
@@ -10927,7 +10929,7 @@ export function useAgentGUINodeController({
       stableRetryOpenclawGateway,
       stableSelectConversation,
       stableSelectConversationFilterTarget,
-      stableSelectProvider,
+      stableSelectHomeComposerAgentTarget,
       stableSendQueuedPromptNext,
       stableSubmitGuidancePrompt,
       stableShowPromptImagesUnsupported,

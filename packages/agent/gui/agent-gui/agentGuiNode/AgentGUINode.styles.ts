@@ -11,7 +11,6 @@ const styles = {
   composerFooterRight: "agent-gui-node__composer-footer-right",
   composerHero: "agent-gui-node__composer-hero",
   composerFloatingPrompt: "agent-gui-node__composer-floating-prompt",
-  composerHandoffAnimatedIcon: "agent-gui-node__composer-handoff-icon-animated",
   composerHandoffIcon: "agent-gui-node__composer-handoff-icon",
   composerHandoffMenuContent: "agent-gui-node__composer-handoff-menu-content",
   composerHandoffStaticIcon: "agent-gui-node__composer-handoff-icon-static",

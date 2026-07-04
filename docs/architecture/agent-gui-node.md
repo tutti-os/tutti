@@ -155,15 +155,16 @@ launch/session provider is Codex or Claude Code.
 AgentGuiNode may expose provider target selection in multiple UI-local entry
 points, including the conversation rail target grid and the provider select next
 to the composer add/reference control.
-These controls are launch/default selection surfaces only: they must flow
-through the controller's provider-selection action, resolve an
-`AgentGUIProviderTarget`, return the node to the home composer when switching
-providers, and preserve the real provider identity used by runtime create/send
-commands. Once a session is active, the composer provider select is display-only
-and must not switch the running session. Do not encode provider switching only
-as a conversation-list filter; filters can scope the visible Codex/Claude
-session list, while provider selection changes which provider a new empty
-composer will launch.
+The composer provider select is a launch/default selection surface: it must
+flow through the controller's home-composer agent-target selection action,
+resolve an `AgentGUIProviderTarget`, return the node to the home composer when
+switching targets, and preserve the real provider identity used by runtime
+create/send commands. Once a session is active, the composer provider select is
+display-only and must not switch the running session. The conversation rail
+target grid is a list filter first: clicking Codex or Claude Code while a
+session is active may scope the visible rail list, but must not unactivate the
+session or rewrite the session-owned composer target. Only empty-home rail
+target clicks may also sync the home composer launch target.
 In an active session, the composer footer may replace the display-only provider
 select with a handoff affordance. Handoff is a workbench launch, not an
 in-session provider switch: AgentGUI serializes the active session as a single
@@ -806,10 +807,10 @@ User-visible rules:
   mutate workbench node `provider`, provider target fields, composer drafts,
   desktop default provider, or composer-default preferences. All-filter clicks
   must only clear the `agentTargetId` constraint. Provider target rail clicks
-  that should also change the empty composer launch target must flow through a
-  single controller action that updates both the conversation filter and the
-  composer provider target; React view components must not dispatch separate
-  filter and provider-selection actions for one click.
+  may update the home composer launch target only when there is no active
+  conversation; active conversations keep owning their displayed target. React
+  view components must not dispatch separate filter and home-composer target
+  actions for one rail click.
   Apply them only for multi-provider conversation scopes. Single-provider
   panels should let the node provider constrain the query and collapse target
   filter actions back to All in the controller.
