@@ -119,6 +119,12 @@ Current updater behavior:
 - default policy is `prompt`
 - scheduled update check interval is three hours
 - macOS update checks are disabled for unsupported unsigned or ad-hoc bundles
+- packaged macOS builds launched from `/Volumes` must stop before the main
+  desktop services start, prompt the user to move Tutti to `/Applications`, and
+  quit if the user declines or the automatic move cannot complete
+- macOS update installs must let `quitAndInstall()` trigger the app quit, then
+  use the desktop `before-quit` gate to stop managed `tuttid`, destroy windows,
+  and allow the app process to exit before Squirrel.Mac replaces the bundle
 
 macOS auto-update metadata must keep x64, arm64, and universal zip entries in `latest-mac.yml`. The file names must include `${arch}` so `electron-updater` can distinguish `mac-x64`, `mac-arm64`, and `mac-universal` assets.
 

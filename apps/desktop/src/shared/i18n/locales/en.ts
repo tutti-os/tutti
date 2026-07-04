@@ -59,6 +59,18 @@ export const en = {
     retryAction: "Retry"
   },
   desktop: {
+    installGuard: {
+      detail:
+        "Tutti is running from the downloaded disk image. Move it to Applications before continuing so updates can install correctly.",
+      failureDetail:
+        "macOS could not move Tutti automatically. Drag {{appPath}} to Applications, then open Tutti from Applications.",
+      failureMessage: "Move Tutti manually",
+      message: "Move Tutti to Applications?",
+      moveAction: "Move to Applications and Relaunch",
+      quitAction: "Quit",
+      showInFinderAction: "Show in Finder",
+      title: "Install Tutti"
+    },
     logsExport: {
       actionHint: "You can copy the agent prompt or open the exported folder.",
       agentPrompt: {

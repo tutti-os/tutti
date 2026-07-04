@@ -272,7 +272,7 @@ test("createElectronUpdaterLogger defers no published versions errors during pre
   ]);
 });
 
-test("createAppUpdateService prepares managed tuttid stop before quitAndInstall", async () => {
+test("createAppUpdateService marks update install pending before quitAndInstall", async () => {
   const events: string[] = [];
   const listeners: {
     available?: (info: UpdateInfo) => void;
@@ -294,11 +294,11 @@ test("createAppUpdateService prepares managed tuttid stop before quitAndInstall"
   let quitAndInstallCalls = 0;
   driver.quitAndInstall = () => {
     quitAndInstallCalls += 1;
+    events.push(
+      `quit-and-install:pending:${service.isQuitAndInstallPending()}`
+    );
   };
   const service = createAppUpdateService(driver, {
-    prepareQuitAndInstall: async () => {
-      events.push("tuttid:stop");
-    },
     supportsUpdates: true
   });
 
@@ -313,7 +313,7 @@ test("createAppUpdateService prepares managed tuttid stop before quitAndInstall"
 
     await service.installUpdate();
 
-    assert.deepEqual(events, ["tuttid:stop"]);
+    assert.deepEqual(events, ["quit-and-install:pending:true"]);
     assert.equal(quitAndInstallCalls, 1);
     assert.equal(service.isQuitAndInstallPending(), true);
   } finally {
@@ -327,12 +327,6 @@ test("createAppUpdateService ignores duplicate install requests while quitAndIns
     available?: (info: UpdateInfo) => void;
     downloaded?: (info: UpdateDownloadedEvent) => void;
   } = {};
-  let releasePrepare: () => void = () => {
-    throw new Error("prepare resolver was not initialized");
-  };
-  const preparePromise = new Promise<void>((resolve) => {
-    releasePrepare = resolve;
-  });
   const driver = createFakeDriver({
     async downloadUpdate() {
       listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
@@ -350,11 +344,6 @@ test("createAppUpdateService ignores duplicate install requests while quitAndIns
     events.push("updater:quit-and-install");
   };
   const service = createAppUpdateService(driver, {
-    prepareQuitAndInstall: async () => {
-      events.push("tuttid:stop:start");
-      await preparePromise;
-      events.push("tuttid:stop:done");
-    },
     supportsUpdates: true
   });
 
@@ -371,22 +360,16 @@ test("createAppUpdateService ignores duplicate install requests while quitAndIns
     await Promise.resolve();
 
     assert.equal(service.isQuitAndInstallPending(), true);
-    assert.deepEqual(events, ["tuttid:stop:start"]);
-
-    releasePrepare();
+    assert.deepEqual(events, ["updater:quit-and-install"]);
     await Promise.all([firstInstall, secondInstall]);
 
-    assert.deepEqual(events, [
-      "tuttid:stop:start",
-      "tuttid:stop:done",
-      "updater:quit-and-install"
-    ]);
+    assert.deepEqual(events, ["updater:quit-and-install"]);
   } finally {
     service.dispose();
   }
 });
 
-test("createAppUpdateService aborts install when managed tuttid stop fails", async () => {
+test("createAppUpdateService clears pending install when quitAndInstall emits an updater error", async () => {
   const events: string[] = [];
   const listeners: {
     available?: (info: UpdateInfo) => void;
@@ -409,63 +392,6 @@ test("createAppUpdateService aborts install when managed tuttid stop fails", asy
     events.push("updater:quit-and-install");
   };
   const service = createAppUpdateService(driver, {
-    prepareQuitAndInstall: async () => {
-      events.push("tuttid:stop");
-      throw new Error("managed tuttid stop failed");
-    },
-    recoverAfterQuitAndInstallFailure: async () => {
-      events.push("tuttid:start");
-    },
-    supportsUpdates: true
-  });
-
-  try {
-    await service.configure({
-      channel: "stable",
-      policy: "prompt"
-    });
-    listeners.available?.(createUpdateInfoFixture("1.1.0"));
-    await service.downloadUpdate();
-
-    await assert.rejects(service.installUpdate(), /managed tuttid stop failed/);
-
-    assert.equal(service.isQuitAndInstallPending(), false);
-    assert.equal(service.getState().status, "error");
-    assert.deepEqual(events, ["tuttid:stop", "tuttid:start"]);
-  } finally {
-    service.dispose();
-  }
-});
-
-test("createAppUpdateService recovers managed tuttid when quitAndInstall emits an updater error", async () => {
-  const events: string[] = [];
-  const listeners: {
-    available?: (info: UpdateInfo) => void;
-    downloaded?: (info: UpdateDownloadedEvent) => void;
-  } = {};
-  const driver = createFakeDriver({
-    async downloadUpdate() {
-      listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
-    },
-    onUpdateAvailable(listener) {
-      listeners.available = listener;
-      return noop;
-    },
-    onUpdateDownloaded(listener) {
-      listeners.downloaded = listener;
-      return noop;
-    }
-  });
-  driver.quitAndInstall = () => {
-    events.push("updater:quit-and-install");
-  };
-  const service = createAppUpdateService(driver, {
-    prepareQuitAndInstall: async () => {
-      events.push("tuttid:stop");
-    },
-    recoverAfterQuitAndInstallFailure: async () => {
-      events.push("tuttid:start");
-    },
     supportsUpdates: true
   });
 
@@ -486,17 +412,13 @@ test("createAppUpdateService recovers managed tuttid when quitAndInstall emits a
 
     assert.equal(service.isQuitAndInstallPending(), false);
     assert.equal(service.getState().status, "error");
-    assert.deepEqual(events, [
-      "tuttid:stop",
-      "updater:quit-and-install",
-      "tuttid:start"
-    ]);
+    assert.deepEqual(events, ["updater:quit-and-install"]);
   } finally {
     service.dispose();
   }
 });
 
-test("createAppUpdateService recovers managed tuttid when quitAndInstall throws synchronously", async () => {
+test("createAppUpdateService clears pending install when quitAndInstall throws synchronously", async () => {
   const events: string[] = [];
   const listeners: {
     available?: (info: UpdateInfo) => void;
@@ -520,12 +442,6 @@ test("createAppUpdateService recovers managed tuttid when quitAndInstall throws 
     throw new Error("native quit failed");
   };
   const service = createAppUpdateService(driver, {
-    prepareQuitAndInstall: async () => {
-      events.push("tuttid:stop");
-    },
-    recoverAfterQuitAndInstallFailure: async () => {
-      events.push("tuttid:start");
-    },
     supportsUpdates: true
   });
 
@@ -541,11 +457,7 @@ test("createAppUpdateService recovers managed tuttid when quitAndInstall throws 
 
     assert.equal(service.isQuitAndInstallPending(), false);
     assert.equal(service.getState().status, "error");
-    assert.deepEqual(events, [
-      "tuttid:stop",
-      "updater:quit-and-install",
-      "tuttid:start"
-    ]);
+    assert.deepEqual(events, ["updater:quit-and-install"]);
   } finally {
     service.dispose();
   }

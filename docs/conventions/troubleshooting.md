@@ -154,6 +154,40 @@ Use this shape for new entries:
   [bootstrap.ts](../../apps/desktop/src/main/bootstrap.ts)
   [defaults.ts](../../apps/desktop/src/main/defaults.ts)
 
+### macOS updates fail from a mounted DMG
+
+- Symptom:
+  A packaged macOS build can check for and download an update, but clicking
+  install appears to do nothing or logs an updater error such as
+  `Cannot update while running on a read-only volume`. The desktop log shows
+  the app executable under `/Volumes/.../Tutti.app`, and the daemon may stop
+  briefly because the update install flow began before the updater rejected the
+  read-only volume.
+- Quick checks:
+  Inspect `tutti-desktop.log` for `process.execPath`, updater errors, or
+  managed daemon start lines that point under `/Volumes`. Confirm whether the
+  user launched Tutti directly from a mounted `.dmg` instead of the copy in
+  `/Applications`.
+- Root cause:
+  macOS mounts compressed DMG installers as read-only volumes. Electron's macOS
+  updater cannot replace an app bundle that is running from that volume, so the
+  failure is an install-location problem rather than a dead `tuttid` process.
+- Fix:
+  In packaged macOS builds, detect `/Volumes` startup before desktop services
+  and managed `tuttid` are created. Prompt the user to move Tutti to
+  `/Applications`, call Electron's application-folder move when accepted, and
+  quit rather than continuing from the mounted image. Development builds must
+  skip this guard so local Electron runs keep working.
+- Validation:
+  Cover the guard with tests for development mode, non-macOS platforms,
+  `/Applications`, `/Volumes`, declined installation, successful automatic
+  move, and failed automatic move. Run the desktop tests, desktop typecheck, and
+  i18n check because the guard uses Electron dialog copy.
+- References:
+  [macosApplicationInstallGuard.ts](../../apps/desktop/src/main/macosApplicationInstallGuard.ts)
+  [bootstrap.ts](../../apps/desktop/src/main/bootstrap.ts)
+  [desktop-release.md](./desktop-release.md)
+
 ### App Center list requests repeatedly log runtime preload
 
 - Symptom:
@@ -1590,30 +1624,34 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 ### macOS in-app update closes Tutti but does not install the new version
 
 - Symptom:
-  After downloading a desktop update on macOS, clicking **Install** closes Tutti.
-  Reopening the app still shows the old version.
+  After downloading a desktop update on macOS, clicking **Install** closes or
+  relaunches Tutti, but reopening the app still shows the old version. ShipIt
+  logs may contain `SQRLInstallerErrorDomain Code=-9` or
+  `App Still Running Error`.
 - Quick checks:
   Confirm the packaged build is signed (unsigned or ad-hoc builds disable in-app
-  updates). Inspect desktop logs for `desktop app before quit` immediately after
-  `application update install requested` without a relaunch.
+  updates). Inspect `~/Library/Caches/sh.tutti.desktop.ShipIt/ShipIt_stderr.log`
+  for `Aborting update attempt because there are 1 running instances of the
+target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
+  cached update under `~/Library/Caches/@tutti-osdesktop-updater/pending`.
 - Root cause:
-  `electron-updater` calls `quitAndInstall()` during Squirrel.Mac install.
-  Desktop's async `before-quit` gate called `event.preventDefault()` to stop
-  `tuttid` gracefully, which cancelled the updater's first quit and prevented
-  the install/relaunch sequence from completing.
+  Squirrel.Mac refuses to replace `/Applications/Tutti.app` while any target
+  app instance is still running. Stopping `tuttid` before `quitAndInstall()` is
+  not sufficient because the Electron main process and helper windows still need
+  to complete the app quit path.
 - Fix:
-  Stop managed `tuttid` inside `installUpdate()` before calling
-  `quitAndInstall()`, mark the update install as pending, and bypass the async
-  `before-quit` gate while that flag is set. If stopping `tuttid` fails, abort
-  the install before calling `quitAndInstall()`. If the updater reports an
-  install error after the pending flag is set, clear the flag and restart
-  managed `tuttid` so the desktop process does not stay open with its daemon
-  stopped.
+  Keep daemon shutdown in the desktop lifecycle instead of the update service.
+  `installUpdate()` should mark the install pending and call
+  `quitAndInstall()`. The `before-quit` gate should still run for pending update
+  installs: prevent the first quit, stop managed `tuttid`, destroy all windows,
+  then call `app.quit()` again so the app process exits and ShipIt can replace
+  the bundle.
 - Validation:
   Run `src/main/desktopAppLifecycle.test.ts` and
-  `src/main/update/appUpdateService.test.ts`, including mock install failure
-  recovery cases. Then install a downloaded update in a packaged macOS build;
-  the app should relaunch on the new version.
+  `src/main/update/appUpdateService.test.ts`, including updater error and
+  synchronous `quitAndInstall()` failure cases. Then install a downloaded update
+  in a packaged macOS build; the app should relaunch on the new version and
+  ShipIt should not log `App Still Running Error`.
 - References:
   [appUpdateService.ts](../../apps/desktop/src/main/update/appUpdateService.ts)
   [desktopAppLifecycle.ts](../../apps/desktop/src/main/desktopAppLifecycle.ts)

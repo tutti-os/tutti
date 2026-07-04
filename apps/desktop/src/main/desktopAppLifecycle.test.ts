@@ -159,7 +159,7 @@ test("before quit waits for managed tuttid stop before quitting the app", async 
   assert.equal(events.at(-1), "app:quit");
 });
 
-test("before quit bypasses managed tuttid stop when update install is pending", () => {
+test("before quit waits for managed tuttid stop when update install is pending", async () => {
   const events: string[] = [];
   const handlers = createDesktopAppLifecycleHandlers(
     {
@@ -183,10 +183,20 @@ test("before quit bypasses managed tuttid stop when update install is pending", 
     }
   });
 
-  assert.equal(prevented, false);
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(prevented, true);
   assert.equal(
     events.join("|"),
-    "info:desktop app before quit for update install"
+    [
+      "quit:prevented",
+      "info:desktop app before quit for update install",
+      "tuttid:stop",
+      "windows:destroy-all",
+      "app:quit"
+    ].join("|")
   );
 });
 
