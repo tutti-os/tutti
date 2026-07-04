@@ -22,6 +22,7 @@ import {
   scheduleAgentGUIConversationListProjection,
   setAgentGUIConversationListActiveConversation,
   setAgentGUIConversationListConversationsForTests,
+  upsertLocalCreatedAgentGUIConversation,
   type AgentGUIConversationListQuery
 } from "./agentGuiConversationListStore";
 import type { AgentGUIConversationSummary } from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationModel";
@@ -161,6 +162,115 @@ describe("agentGuiConversationListStore", () => {
           claudeQuery
         )?.conversations.map((item) => item.id)
       ).toEqual(["claude-local"]);
+    });
+  });
+
+  it("releases local-created conversations that do not match the query's agent target filter", async () => {
+    const codexQuery: AgentGUIConversationListQuery = {
+      conversationFilter: { kind: "agentTarget", agentTargetId: "local:codex" },
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    const snapshot: WorkspaceAgentActivitySnapshot = {
+      ...emptySnapshot(),
+      sessions: [
+        runtimeSession("codex-existing", 3_000, {
+          agentTargetId: "local:codex",
+          provider: "codex"
+        })
+      ]
+    };
+    setAgentActivityRuntimeForTests({
+      getSnapshot: () => snapshot,
+      load: async () => snapshot,
+      subscribe: () => () => {}
+    } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
+
+    ensureAgentGUIConversationListQuery(codexQuery);
+    // A codex conversation created locally (not in the snapshot yet) stays
+    // pinned; a claude conversation mistakenly pinned under the codex tab
+    // must be released on refresh instead of sticking around.
+    upsertLocalCreatedAgentGUIConversation({
+      query: codexQuery,
+      conversation: conversation("codex-created", {
+        agentTargetId: "local:codex",
+        updatedAtUnixMs: 4_000
+      })
+    });
+    upsertLocalCreatedAgentGUIConversation({
+      query: codexQuery,
+      conversation: conversation("claude-created", {
+        provider: "claude-code",
+        agentTargetId: "local:claude-code",
+        updatedAtUnixMs: 5_000
+      })
+    });
+    scheduleAgentGUIConversationListProjection(codexQuery, "projection-sync");
+
+    await waitFor(() => {
+      expect(
+        getAgentGUIConversationListQuerySnapshot(codexQuery)?.conversations.map(
+          (item) => item.id
+        )
+      ).toEqual(["codex-created", "codex-existing"]);
+    });
+  });
+
+  it("drops a mismatching retained conversation once its session reaches the snapshot", async () => {
+    const codexQuery: AgentGUIConversationListQuery = {
+      conversationFilter: { kind: "agentTarget", agentTargetId: "local:codex" },
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    let snapshot: WorkspaceAgentActivitySnapshot = {
+      ...emptySnapshot(),
+      sessions: [
+        runtimeSession("codex-existing", 3_000, {
+          agentTargetId: "local:codex",
+          provider: "codex"
+        })
+      ]
+    };
+    setAgentActivityRuntimeForTests({
+      getSnapshot: () => snapshot,
+      load: async () => snapshot,
+      subscribe: () => () => {}
+    } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
+
+    ensureAgentGUIConversationListQuery(codexQuery);
+    // A claude conversation mistakenly pinned under the codex tab…
+    upsertLocalCreatedAgentGUIConversation({
+      query: codexQuery,
+      conversation: conversation("claude-created", {
+        provider: "claude-code",
+        agentTargetId: "local:claude-code",
+        updatedAtUnixMs: 5_000
+      })
+    });
+    // …must not be resurrected via snapshot-based retention once the daemon
+    // snapshot includes its session (which releases the local pin).
+    snapshot = {
+      ...snapshot,
+      sessions: [
+        ...snapshot.sessions,
+        runtimeSession("claude-created", 5_000, {
+          agentTargetId: "local:claude-code",
+          provider: "claude-code"
+        })
+      ]
+    };
+    scheduleAgentGUIConversationListProjection(codexQuery, "projection-sync");
+
+    await waitFor(() => {
+      expect(
+        getAgentGUIConversationListQuerySnapshot(codexQuery)?.conversations.map(
+          (item) => item.id
+        )
+      ).toEqual(["codex-existing"]);
     });
   });
 

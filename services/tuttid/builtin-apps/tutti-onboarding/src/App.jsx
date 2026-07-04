@@ -3,6 +3,7 @@ import { Trans, useTranslation } from "react-i18next";
 
 import i18n from "./i18n";
 import { useAppLocale } from "./i18n/app-context";
+import { reportUserActiveOnce } from "./tutti-activity.js";
 
 const agentTabs = [
   { label: "Claude Code", image: "/assets/bind-claude.webp", altKey: "t_s1a" },
@@ -412,6 +413,10 @@ export default function App() {
   const navRef = useRef(null);
   const navSentinelRef = useRef(null);
   const isNavStuckRef = useRef(false);
+
+  useEffect(() => {
+    reportUserActiveOnce();
+  }, []);
 
   useEffect(() => {
     const app = window.tuttiExternal?.app;

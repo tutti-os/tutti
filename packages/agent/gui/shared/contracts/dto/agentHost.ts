@@ -908,6 +908,7 @@ export interface AgentHostWorkspaceAgentSession {
   id: number;
   workspaceId?: string;
   agentSessionId: string;
+  agentTargetId?: string | null;
   presenceId: number;
   userId?: string;
   provider?: AgentHostWorkspaceAgentProvider;

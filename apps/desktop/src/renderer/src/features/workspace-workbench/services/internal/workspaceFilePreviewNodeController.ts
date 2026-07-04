@@ -17,6 +17,7 @@ import {
   workspaceFilePreviewNodeFileKey,
   type WorkspaceFilePreviewTextHeaderState
 } from "../../ui/workspaceFilePreviewNodeState.ts";
+import { saveWorkspaceFilePreviewText } from "./workspaceFilePreviewTextSave.ts";
 
 export type WorkspaceFilePreviewTextSaveStatus =
   | "error"
@@ -88,25 +89,37 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
   private loadGeneration = 0;
   private objectUrl: string | null = null;
   private readonly listeners = new Set<() => void>();
+  private readonly input: {
+    appI18n: I18nRuntime<string>;
+    hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
+    i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+    initialFile: WorkspaceFileActivationTarget | null;
+    tuttidClient: Pick<
+      TuttidClient,
+      "readWorkspaceFilePreview" | "writeWorkspaceFileText"
+    >;
+    onRuntimeStateChange(state: unknown): void;
+    onSnapshotStateChange(state: unknown): void;
+    workspaceID: string;
+  };
   private runtimeStateKey: string | null = null;
   private snapshotStateKey: string | null = null;
   private state: WorkspaceFilePreviewNodeControllerState;
 
-  constructor(
-    private readonly input: {
-      appI18n: I18nRuntime<string>;
-      hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
-      i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-      initialFile: WorkspaceFileActivationTarget | null;
-      tuttidClient: Pick<
-        TuttidClient,
-        "readWorkspaceFilePreview" | "writeWorkspaceFileText"
-      >;
-      onRuntimeStateChange(state: unknown): void;
-      onSnapshotStateChange(state: unknown): void;
-      workspaceID: string;
-    }
-  ) {
+  constructor(input: {
+    appI18n: I18nRuntime<string>;
+    hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
+    i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+    initialFile: WorkspaceFileActivationTarget | null;
+    tuttidClient: Pick<
+      TuttidClient,
+      "readWorkspaceFilePreview" | "writeWorkspaceFileText"
+    >;
+    onRuntimeStateChange(state: unknown): void;
+    onSnapshotStateChange(state: unknown): void;
+    workspaceID: string;
+  }) {
+    this.input = input;
     this.state = input.initialFile
       ? { entry: input.initialFile, status: "loading" }
       : { status: "empty" };
@@ -142,9 +155,6 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     }
 
     const target = this.state.entry;
-    if (isAbsoluteFilesystemPath(target.path)) {
-      return;
-    }
     const targetKey = workspaceFilePreviewNodeFileKey(target);
     const content = this.state.draft;
 
@@ -156,13 +166,12 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     );
 
     try {
-      await this.input.tuttidClient.writeWorkspaceFileText(
-        this.input.workspaceID,
-        {
-          content,
-          path: target.path
-        }
-      );
+      await saveWorkspaceFilePreviewText({
+        content,
+        path: target.path,
+        tuttidClient: this.input.tuttidClient,
+        workspaceID: this.input.workspaceID
+      });
       this.updateState((current) =>
         current.status === "text" &&
         workspaceFilePreviewNodeFileKey(current.entry) === targetKey
