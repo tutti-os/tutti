@@ -75,6 +75,7 @@ type scriptedAppServerConnection struct {
 	turnStartRelease             chan struct{}
 	commandApproval              bool
 	userInputRequest             bool
+	compactSilent                bool          // stream turn/started+turn/completed for /compact but no contextCompaction item notifications
 	reviewInline                 bool          // stream review output as inline reasoning/command items
 	reviewInlineSummaryDelta     bool          // stream review reasoning via summaryTextDelta with empty completed summary
 	reviewHang                   bool          // respond to review/start but never complete the turn
@@ -488,14 +489,16 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"threadId": "codex-thread-1",
 				"turn":     map[string]any{"id": "turn-compact", "status": "inProgress", "items": []any{}},
 			})
-			c.notify(appServerNotifyItemStarted, map[string]any{
-				"threadId": "codex-thread-1", "turnId": "turn-compact",
-				"item": map[string]any{"type": "contextCompaction", "id": "item-compact", "status": "inProgress"},
-			})
-			c.notify(appServerNotifyItemCompleted, map[string]any{
-				"threadId": "codex-thread-1", "turnId": "turn-compact",
-				"item": map[string]any{"type": "contextCompaction", "id": "item-compact", "status": "completed"},
-			})
+			if !c.compactSilent {
+				c.notify(appServerNotifyItemStarted, map[string]any{
+					"threadId": "codex-thread-1", "turnId": "turn-compact",
+					"item": map[string]any{"type": "contextCompaction", "id": "item-compact", "status": "inProgress"},
+				})
+				c.notify(appServerNotifyItemCompleted, map[string]any{
+					"threadId": "codex-thread-1", "turnId": "turn-compact",
+					"item": map[string]any{"type": "contextCompaction", "id": "item-compact", "status": "completed"},
+				})
+			}
 			c.notify(appServerNotifyTurnCompleted, map[string]any{
 				"threadId": "codex-thread-1",
 				"turn":     map[string]any{"id": "turn-compact", "status": "completed", "items": []any{}},
@@ -2184,6 +2187,52 @@ func TestCodexAppServerAdapterSlashCompact(t *testing.T) {
 	}
 	if terminalIndex == -1 || bannerIndex == -1 || bannerIndex > terminalIndex {
 		t.Fatalf("compact banner index = %d, terminal index = %d, events = %#v", bannerIndex, terminalIndex, events)
+	}
+	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
+		t.Fatalf("compact turn completed events = %d, want 1", len(completed))
+	}
+}
+
+// Codex app-server frequently finishes thread/compact/start (turn/started →
+// turn/completed) without ever streaming a contextCompaction item/started or
+// item/completed notification. This used to leave /compact completely
+// invisible in the transcript: no "Compacting context." banner (nothing
+// rendered while it ran) and no "Context compacted." banner (nothing showed
+// it finished either), because both banners were driven exclusively by the
+// server's item notifications. The client must show the progress banner up
+// front and settle it at turn completion even when the server stays silent.
+func TestCodexAppServerAdapterSlashCompactWhenServerStaysSilent(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.compactSilent = true
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/compact",
+	}}, "", "turn-local-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	var progressCount, completedCount int
+	var progressMessageID, completedMessageID string
+	for _, event := range events {
+		switch event.Payload.Content {
+		case "Compacting context.":
+			progressCount++
+			progressMessageID = asString(event.Payload.Metadata["messageId"])
+		case "Context compacted.":
+			completedCount++
+			completedMessageID = asString(event.Payload.Metadata["messageId"])
+		}
+	}
+	if progressCount != 1 {
+		t.Fatalf("progress banners = %d, want exactly 1 (silent server must not leave /compact invisible); events = %#v", progressCount, events)
+	}
+	if completedCount != 1 {
+		t.Fatalf("completed banners = %d, want exactly 1 (silent server must still settle the banner); events = %#v", completedCount, events)
+	}
+	if progressMessageID == "" || progressMessageID != completedMessageID {
+		t.Fatalf("messageId mismatch: progress %q, completed %q", progressMessageID, completedMessageID)
 	}
 	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
 		t.Fatalf("compact turn completed events = %d, want 1", len(completed))

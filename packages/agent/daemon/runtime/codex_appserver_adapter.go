@@ -1869,11 +1869,26 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 	switch command {
 	case appServerSlashCompact:
 		a.transitionActiveTurnPhase(session.AgentSessionID, appTurn, codexAppServerTurnPhaseCompacting)
+		// Emit the "Compacting context." banner up front instead of waiting for
+		// the server's contextCompaction item/started notification: Codex
+		// app-server frequently finishes thread/compact/start without ever
+		// streaming that notification, which used to leave the whole operation
+		// invisible until (if ever) an item/completed notice arrived. Tracking
+		// the messageId now means a later item/started reuses this same row
+		// (see appServerItemEvents) instead of appending a duplicate, and an
+		// immediate RPC failure or an interrupted/failed turn always has a
+		// pending banner to settle in place.
+		startMessageID := "compaction:" + turnID
+		normalizer.TrackCompactionNotice(startMessageID, false)
+		emitEvents([]activityshared.Event{appServerCompactionNoticeEvent(session, turnID, startMessageID, false)})
 		_, err := appSession.client.ThreadCompactStart(ctx, map[string]any{
 			"threadId": appSession.threadID,
 		}, a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 		if err != nil {
-			emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
+			emitTerminal(append(
+				normalizer.settlePendingCompactionEvents(session, turnID, appServerCompactionInterruptedTitle),
+				newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err)),
+			))
 			return true, nil
 		}
 		// Block until the App Server signals turn/completed. The session-level

@@ -116,8 +116,22 @@ func (*CodexAppServerAdapter) appServerItemEvents(
 		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", notice.message, "")}
 	}
 	if itemType == "contextCompaction" {
-		messageID := "compaction:" + firstNonEmpty(asString(item["id"]), turnID)
+		// appServerSlashCompact emits the "Compacting context." banner eagerly
+		// (before this notification can even arrive) and tracks its messageId
+		// on the normalizer up front so the transcript row exists even if Codex
+		// app-server never streams item/started at all. When that's already
+		// the case, reuse the pending messageId instead of deriving a new one
+		// from the item id: otherwise item/started would append a second,
+		// unrelated banner row rather than confirming the one already shown.
+		messageID := normalizer.pendingCompactionMessageID
+		alreadyStarted := messageID != ""
+		if messageID == "" {
+			messageID = "compaction:" + firstNonEmpty(asString(item["id"]), turnID)
+		}
 		normalizer.TrackCompactionNotice(messageID, completed)
+		if !completed && alreadyStarted {
+			return nil
+		}
 		return []activityshared.Event{appServerCompactionNoticeEvent(session, turnID, messageID, completed)}
 	}
 	switch itemType {
