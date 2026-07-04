@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
@@ -12,26 +13,30 @@ import (
 )
 
 type Service struct {
-	Runtime                      RuntimeController
-	AnalyticsReporter            reporterservice.Reporter
-	AvailabilityChecker          ProviderAvailabilityChecker
-	ModelCatalog                 AgentModelCatalog
-	AgentTargetStore             AgentTargetStore
-	SessionReader                SessionReader
-	UserProjectReader            UserProjectReader
-	MessageReader                MessageReader
-	ExternalImportStore          agentactivitybiz.Repository
-	SessionDirectoryAllocator    SessionDirectoryAllocator
-	PromptAttachmentStore        PromptAttachmentStore
-	RuntimePreparer              agentsidecarservice.Preparer
-	CapabilityLister             ComposerCapabilityLister
-	ProviderAvailabilityCacheTTL time.Duration
-	CapabilityCatalogCacheTTL    time.Duration
-	LiveModelCacheTTL            time.Duration
-	skillOptionsCache            *composerSkillOptionsCache
-	providerAvailabilityCache    *providerAvailabilityCache
-	capabilityCatalogCache       *composerCapabilityCatalogCache
-	liveModelCache               *composerLiveModelCache
+	Runtime                       RuntimeController
+	AnalyticsReporter             reporterservice.Reporter
+	AvailabilityChecker           ProviderAvailabilityChecker
+	ModelCatalog                  AgentModelCatalog
+	AgentTargetStore              AgentTargetStore
+	SessionReader                 SessionReader
+	UserProjectReader             UserProjectReader
+	MessageReader                 MessageReader
+	ExternalImportStore           agentactivitybiz.Repository
+	SessionDirectoryAllocator     SessionDirectoryAllocator
+	PromptAttachmentStore         PromptAttachmentStore
+	RuntimePreparer               agentsidecarservice.Preparer
+	CapabilityLister              ComposerCapabilityLister
+	ProviderAvailabilityCacheTTL  time.Duration
+	CapabilityCatalogCacheTTL     time.Duration
+	LiveModelCacheTTL             time.Duration
+	LiveModelDiscoveryDeleteDelay time.Duration
+	skillOptionsCache             *composerSkillOptionsCache
+	providerAvailabilityCache     *providerAvailabilityCache
+	capabilityCatalogCache        *composerCapabilityCatalogCache
+	liveModelCache                *composerLiveModelCache
+	claudeStartupLock             *claudeStartupSerializer
+	liveModelDiscoveryMu          sync.Mutex
+	liveModelDiscoveryAttempted   map[string]struct{}
 }
 
 type StaleTurnResumeReconciler interface {

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
@@ -48,6 +49,12 @@ func (s *Service) ensureRuntimeSessionResult(
 	if !ok || strings.TrimSpace(persisted.Provider) == "" {
 		return ensuredRuntimeSession{}, ErrSessionNotFound
 	}
+	if isStaleHiddenLiveModelDiscoverySession(persisted) {
+		if _, err := s.Delete(ctx, workspaceID, agentSessionID); err != nil && !errors.Is(err, ErrSessionNotFound) {
+			return ensuredRuntimeSession{}, err
+		}
+		return ensuredRuntimeSession{}, ErrSessionNotFound
+	}
 	// Imported sessions used to be rejected here, which is what surfaced the
 	// "can't resume on this device, start a new conversation" dead-end. They now
 	// resume in place (same-device) or, when the provider session can't be
@@ -59,22 +66,32 @@ func (s *Service) ensureRuntimeSessionResult(
 	if err != nil {
 		return ensuredRuntimeSession{}, err
 	}
-	session, err := s.controller().Resume(ctx, RuntimeResumeInput{
-		WorkspaceID:       strings.TrimSpace(persisted.WorkspaceID),
-		AgentSessionID:    strings.TrimSpace(persisted.ID),
-		Provider:          strings.TrimSpace(persisted.Provider),
-		ProviderSessionID: strings.TrimSpace(persisted.ProviderSessionID),
-		Cwd:               strings.TrimSpace(prepared.Cwd),
-		Env:               append([]string(nil), prepared.Env...),
-		Title:             strings.TrimSpace(persisted.Title),
-		Status:            strings.TrimSpace(persisted.Status),
-		Settings:          cloneComposerSettings(persisted.Settings),
-		CreatedAtUnixMS:   persisted.CreatedAtUnixMS,
-		UpdatedAtUnixMS:   persisted.UpdatedAtUnixMS,
-		Visible:           boolPointer(visibleFromRuntimeContext(persisted.RuntimeContext, true)),
-		RuntimeContext:    clonePayload(persisted.RuntimeContext),
-		RecreateIfMissing: imported,
-	})
+	// Wait out any in-flight Claude startup so this resume never overlaps
+	// another credential-touching Claude process during OAuth refresh. Released
+	// as soon as the session has resumed.
+	releaseStartup, err := s.awaitClaudeStartupSlot(ctx, persisted.Provider)
+	if err != nil {
+		return ensuredRuntimeSession{}, err
+	}
+	session, err := func() (RuntimeSession, error) {
+		defer releaseStartup()
+		return s.controller().Resume(ctx, RuntimeResumeInput{
+			WorkspaceID:       strings.TrimSpace(persisted.WorkspaceID),
+			AgentSessionID:    strings.TrimSpace(persisted.ID),
+			Provider:          strings.TrimSpace(persisted.Provider),
+			ProviderSessionID: strings.TrimSpace(persisted.ProviderSessionID),
+			Cwd:               strings.TrimSpace(prepared.Cwd),
+			Env:               append([]string(nil), prepared.Env...),
+			Title:             strings.TrimSpace(persisted.Title),
+			Status:            strings.TrimSpace(persisted.Status),
+			Settings:          cloneComposerSettings(persisted.Settings),
+			CreatedAtUnixMS:   persisted.CreatedAtUnixMS,
+			UpdatedAtUnixMS:   persisted.UpdatedAtUnixMS,
+			Visible:           boolPointer(visibleFromRuntimeContext(persisted.RuntimeContext, true)),
+			RuntimeContext:    clonePayload(persisted.RuntimeContext),
+			RecreateIfMissing: imported,
+		})
+	}()
 	if err != nil {
 		return ensuredRuntimeSession{}, normalizeRuntimeError(err)
 	}

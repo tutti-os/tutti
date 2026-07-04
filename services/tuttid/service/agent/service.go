@@ -33,6 +33,7 @@ func NewService(runtime RuntimeController) *Service {
 		providerAvailabilityCache: newProviderAvailabilityCache(),
 		capabilityCatalogCache:    newComposerCapabilityCatalogCache(),
 		liveModelCache:            newComposerLiveModelCache(),
+		claudeStartupLock:         newClaudeStartupSerializer(),
 	}
 }
 
@@ -123,31 +124,41 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	}
 	logAgentSubmitTrace("service.create.runtime_start_requested", workspaceID, input.AgentSessionID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
-	session, err := s.controller().Start(ctx, RuntimeStartInput{
-		WorkspaceID:      workspaceID,
-		AgentSessionID:   strings.TrimSpace(input.AgentSessionID),
-		AgentTargetID:    input.AgentTargetID,
-		Provider:         provider,
-		Cwd:              prepared.Cwd,
-		Env:              prepared.Env,
-		Title:            value(input.Title),
-		PermissionModeID: value(input.PermissionModeID),
-		Model:            clampComposerModelForProvider(provider, value(input.Model)),
-		PlanMode:         clampComposerPlanModeForProvider(provider, valueBool(input.PlanMode)),
-		ReasoningEffort: normalizeReasoningEffortForProvider(
-			provider,
-			value(input.ReasoningEffort),
-		),
-		BrowserUse:        input.BrowserUse,
-		ComputerUse:       input.ComputerUse,
-		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
-		Speed: normalizeSpeedForProvider(
-			provider,
-			value(input.Speed),
-		),
-		ConversationDetailMode: input.ConversationDetailMode,
-		Visible:                input.Visible,
-	})
+	// Wait out any in-flight Claude startup so this session never overlaps
+	// another credential-touching Claude process during OAuth refresh. Released
+	// as soon as this session has started.
+	releaseStartup, err := s.awaitClaudeStartupSlot(ctx, provider)
+	if err != nil {
+		return Session{}, cleanupPrepared(err)
+	}
+	session, err := func() (RuntimeSession, error) {
+		defer releaseStartup()
+		return s.controller().Start(ctx, RuntimeStartInput{
+			WorkspaceID:      workspaceID,
+			AgentSessionID:   strings.TrimSpace(input.AgentSessionID),
+			AgentTargetID:    input.AgentTargetID,
+			Provider:         provider,
+			Cwd:              prepared.Cwd,
+			Env:              prepared.Env,
+			Title:            value(input.Title),
+			PermissionModeID: value(input.PermissionModeID),
+			Model:            clampComposerModelForProvider(provider, value(input.Model)),
+			PlanMode:         clampComposerPlanModeForProvider(provider, valueBool(input.PlanMode)),
+			ReasoningEffort: normalizeReasoningEffortForProvider(
+				provider,
+				value(input.ReasoningEffort),
+			),
+			BrowserUse:        input.BrowserUse,
+			ComputerUse:       input.ComputerUse,
+			ProviderTargetRef: clonePayload(input.ProviderTargetRef),
+			Speed: normalizeSpeedForProvider(
+				provider,
+				value(input.Speed),
+			),
+			ConversationDetailMode: input.ConversationDetailMode,
+			Visible:                input.Visible,
+		})
+	}()
 	if err != nil {
 		normalizedErr := normalizeRuntimeError(err)
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "runtime_started", provider, nodeStartedAt, normalizedErr)
@@ -424,6 +435,12 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 	}
 	if s.SessionReader != nil {
 		if persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID); ok {
+			if isStaleHiddenLiveModelDiscoverySession(persisted) {
+				if _, err := s.Delete(ctx, workspaceID, agentSessionID); err != nil && !errors.Is(err, ErrSessionNotFound) {
+					return Session{}, err
+				}
+				return Session{}, ErrSessionNotFound
+			}
 			return sessionFromPersisted(
 				persisted,
 				persistedSessionCanResume(s.controller(), persisted),

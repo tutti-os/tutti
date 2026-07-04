@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,7 +42,6 @@ func (s *Service) ListPage(ctx context.Context, workspaceID string, input ListSe
 }
 
 func (s *Service) listFilteredSortedSessions(ctx context.Context, workspaceID string, input ListSessionsInput) ([]Session, error) {
-	_ = ctx
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return nil, ErrInvalidArgument
@@ -50,6 +50,15 @@ func (s *Service) listFilteredSortedSessions(ctx context.Context, workspaceID st
 	if s.SessionReader != nil {
 		if persisted, ok := s.SessionReader.ListSessions(workspaceID); ok {
 			for _, session := range persisted {
+				sessionID := strings.TrimSpace(session.ID)
+				if isStaleHiddenLiveModelDiscoverySession(session) {
+					if _, ok := s.controller().Session(workspaceID, sessionID); !ok {
+						if _, err := s.Delete(ctx, workspaceID, sessionID); err != nil && !errors.Is(err, ErrSessionNotFound) {
+							return nil, err
+						}
+					}
+					continue
+				}
 				sessionByID[strings.TrimSpace(session.ID)] = sessionFromPersisted(
 					session,
 					persistedSessionCanResume(s.controller(), session),

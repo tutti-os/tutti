@@ -73,15 +73,7 @@ func (s *Service) availableComposerModelsForValidation(
 	case agentprovider.ClaudeCode:
 		models, ok := s.getLiveComposerModelOptions(provider, workspaceID, cwd, time.Now().UTC())
 		if !ok {
-			discovered, err := s.discoverLiveComposerModels(ctx, workspaceID, cwd, ComposerSettings{
-				PermissionModeID: defaultPermissionModeIDForProvider(provider),
-				ReasoningEffort:  composerDefaultReasoningEffort(provider),
-				Speed:            composerDefaultSpeed(provider),
-			})
-			if err != nil {
-				return nil, false, err
-			}
-			models = discovered
+			return nil, false, nil
 		}
 		return composerConfigOptionModelValues(models), true, nil
 	case agentprovider.Codex, agentprovider.Gemini:

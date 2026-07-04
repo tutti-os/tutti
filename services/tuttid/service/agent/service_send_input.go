@@ -47,13 +47,24 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
 	logAgentSubmitTrace("service.send.exec_requested", workspaceID, agentSessionID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
-	result, err := s.controller().Exec(ctx, RuntimeExecInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		Content:        content,
-		DisplayPrompt:  displayPrompt,
-		Metadata:       cloneMetadata(input.Metadata),
-	})
+	// Exec may have to resume an idle-released Claude process inside the runtime
+	// controller. Hold the same startup slot used by Create/Resume while Exec
+	// performs that ensure-live step.
+	releaseStartup, err := s.awaitClaudeStartupSlot(ctx, provider)
+	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "runtime_exec", provider, nodeStartedAt, err)
+		return SendInputResult{}, err
+	}
+	result, err := func() (RuntimeExecResult, error) {
+		defer releaseStartup()
+		return s.controller().Exec(ctx, RuntimeExecInput{
+			WorkspaceID:    workspaceID,
+			AgentSessionID: agentSessionID,
+			Content:        content,
+			DisplayPrompt:  displayPrompt,
+			Metadata:       cloneMetadata(input.Metadata),
+		})
+	}()
 	if err != nil {
 		normalizedErr := normalizeRuntimeError(err)
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "runtime_exec", provider, nodeStartedAt, normalizedErr)

@@ -13,10 +13,85 @@ import (
 )
 
 const liveModelDiscoveryPollInterval = 100 * time.Millisecond
+const liveModelDiscoveryTimeout = 20 * time.Second
+const liveModelDiscoveryDeleteDelay = 10 * time.Minute
+const liveModelDiscoveryCleanupTimeout = 5 * time.Second
+
+// claudeStartupSerializer serializes credential-touching Claude startups so that
+// Tutti never runs two `claude` processes that both refresh the shared OAuth
+// token at the same time.
+//
+// Claude OAuth refresh rotates the refresh token. If two Claude startups
+// overlap and both read the same stale token, the later writer can leave the
+// shared credential store unusable. This is a channel-based mutex so acquisition
+// honors context cancel.
+type claudeStartupSerializer struct {
+	sem chan struct{}
+}
+
+func newClaudeStartupSerializer() *claudeStartupSerializer {
+	return &claudeStartupSerializer{sem: make(chan struct{}, 1)}
+}
+
+func (s *claudeStartupSerializer) acquire(ctx context.Context) error {
+	select {
+	case s.sem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *claudeStartupSerializer) release() {
+	select {
+	case <-s.sem:
+	default:
+	}
+}
+
+func (s *Service) claudeStartup() *claudeStartupSerializer {
+	if s.claudeStartupLock == nil {
+		s.claudeStartupLock = newClaudeStartupSerializer()
+	}
+	return s.claudeStartupLock
+}
+
+// awaitClaudeStartupSlot blocks until no other credential-touching Claude
+// startup is running, then returns a release function the caller must invoke
+// once its own session startup has completed. Non-Claude providers do not
+// participate and get a no-op release.
+func (s *Service) awaitClaudeStartupSlot(ctx context.Context, provider string) (func(), error) {
+	if agentprovider.Normalize(provider) != agentprovider.ClaudeCode {
+		return func() {}, nil
+	}
+	if err := s.claudeStartup().acquire(ctx); err != nil {
+		return nil, err
+	}
+	return s.claudeStartup().release, nil
+}
+
+// liveClaudeModelOptionsFromRunningSession returns the model list already
+// advertised by a live Claude session in the workspace, if any. It lets model
+// discovery reuse an in-flight conversation instead of spawning a second,
+// credential-sharing process next to it.
+func (s *Service) liveClaudeModelOptionsFromRunningSession(workspaceID string) ([]ComposerConfigOptionValue, bool) {
+	hasClaudeSession := false
+	for _, session := range s.controller().Sessions(workspaceID) {
+		if agentprovider.Normalize(session.Provider) != agentprovider.ClaudeCode {
+			continue
+		}
+		hasClaudeSession = true
+		if options := extractModelOptionsFromRuntimeContext(session.RuntimeContext); len(options) > 0 {
+			return options, true
+		}
+	}
+	return nil, hasClaudeSession
+}
 
 var liveComposerModelDiscoveryGroup singleflight.Group
 
 var errLiveModelDiscoverySessionFailed = errors.New("live model discovery session failed")
+var errLiveModelDiscoveryAlreadyAttempted = errors.New("live model discovery already attempted")
 
 func (s *Service) discoverLiveComposerModels(
 	ctx context.Context,
@@ -34,6 +109,9 @@ func (s *Service) discoverLiveComposerModels(
 		now := time.Now().UTC()
 		if cached, ok := s.getLiveComposerModelOptions(provider, workspaceID, cwd, now); ok && len(cached) > 0 {
 			return cached, nil
+		}
+		if !s.markLiveModelDiscoveryAttempted(cacheKey) {
+			return nil, errLiveModelDiscoveryAlreadyAttempted
 		}
 		discovered, discoverErr := s.discoverLiveComposerModelsUncached(ctx, workspaceID, cwd, settings)
 		if discoverErr != nil {
@@ -54,6 +132,23 @@ func (s *Service) discoverLiveComposerModels(
 	}
 }
 
+func (s *Service) markLiveModelDiscoveryAttempted(cacheKey string) bool {
+	cacheKey = strings.TrimSpace(cacheKey)
+	if cacheKey == "" {
+		return false
+	}
+	s.liveModelDiscoveryMu.Lock()
+	defer s.liveModelDiscoveryMu.Unlock()
+	if s.liveModelDiscoveryAttempted == nil {
+		s.liveModelDiscoveryAttempted = make(map[string]struct{})
+	}
+	if _, ok := s.liveModelDiscoveryAttempted[cacheKey]; ok {
+		return false
+	}
+	s.liveModelDiscoveryAttempted[cacheKey] = struct{}{}
+	return true
+}
+
 func (s *Service) discoverLiveComposerModelsUncached(
 	ctx context.Context,
 	workspaceID string,
@@ -61,9 +156,6 @@ func (s *Service) discoverLiveComposerModelsUncached(
 	settings ComposerSettings,
 ) ([]ComposerConfigOptionValue, error) {
 	provider := agentprovider.ClaudeCode
-	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
-		return nil, err
-	}
 	resolvedCwd := strings.TrimSpace(cwd)
 	if resolvedCwd != "" {
 		resolved, err := s.resolveCwd(ctx, &resolvedCwd)
@@ -72,6 +164,22 @@ func (s *Service) discoverLiveComposerModelsUncached(
 		}
 		resolvedCwd = resolved
 	}
+	if reused, hasClaudeSession := s.liveClaudeModelOptionsFromRunningSession(workspaceID); hasClaudeSession {
+		if len(reused) > 0 {
+			return reused, nil
+		}
+		return nil, errLiveModelDiscoveryAlreadyAttempted
+	}
+	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
+		return nil, err
+	}
+	spawnCtx, cancelSpawn := context.WithTimeout(ctx, liveModelDiscoveryTimeout)
+	defer cancelSpawn()
+	releaseStartup, err := s.awaitClaudeStartupSlot(spawnCtx, provider)
+	if err != nil {
+		return nil, err
+	}
+	var session RuntimeSession
 	visible := false
 	startInput := CreateSessionInput{
 		AgentSessionID:   uuid.NewString(),
@@ -85,36 +193,84 @@ func (s *Service) discoverLiveComposerModelsUncached(
 		Speed:            stringPointer(strings.TrimSpace(settings.Speed)),
 		Visible:          &visible,
 	}
-	prepared, err := s.prepareRuntime(ctx, workspaceID, resolvedCwd, startInput)
-	if err != nil {
-		return nil, err
-	}
-	session, err := s.controller().Start(ctx, RuntimeStartInput{
-		WorkspaceID:      workspaceID,
-		AgentSessionID:   startInput.AgentSessionID,
-		Provider:         provider,
-		Cwd:              prepared.Cwd,
-		Env:              prepared.Env,
-		PermissionModeID: value(startInput.PermissionModeID),
-		Model:            clampComposerModelForProvider(provider, value(startInput.Model)),
-		PlanMode:         clampComposerPlanModeForProvider(provider, valueBool(startInput.PlanMode)),
-		BrowserUse:       startInput.BrowserUse,
-		ComputerUse:      startInput.ComputerUse,
-		ReasoningEffort:  normalizeReasoningEffortForProvider(provider, value(startInput.ReasoningEffort)),
-		Speed:            normalizeSpeedForProvider(provider, value(startInput.Speed)),
-		Visible:          startInput.Visible,
-	})
+	session, err = func() (RuntimeSession, error) {
+		defer releaseStartup()
+		prepared, prepareErr := s.prepareRuntime(spawnCtx, workspaceID, resolvedCwd, startInput)
+		if prepareErr != nil {
+			return RuntimeSession{}, prepareErr
+		}
+		runtimeSession, startErr := s.controller().Start(spawnCtx, RuntimeStartInput{
+			WorkspaceID:      workspaceID,
+			AgentSessionID:   startInput.AgentSessionID,
+			Provider:         provider,
+			Cwd:              prepared.Cwd,
+			Env:              prepared.Env,
+			PermissionModeID: value(startInput.PermissionModeID),
+			Model:            clampComposerModelForProvider(provider, value(startInput.Model)),
+			PlanMode:         clampComposerPlanModeForProvider(provider, valueBool(startInput.PlanMode)),
+			BrowserUse:       startInput.BrowserUse,
+			ComputerUse:      startInput.ComputerUse,
+			ReasoningEffort:  normalizeReasoningEffortForProvider(provider, value(startInput.ReasoningEffort)),
+			Speed:            normalizeSpeedForProvider(provider, value(startInput.Speed)),
+			RuntimeContext: map[string]any{
+				"hiddenLiveModelDiscovery": true,
+				"visible":                  false,
+			},
+			Visible: startInput.Visible,
+		})
+		if startErr != nil {
+			return RuntimeSession{}, normalizeRuntimeError(startErr)
+		}
+		return runtimeSession, nil
+	}()
 	if err != nil {
 		cleanupErr := s.cleanupRuntime(ctx, workspaceID, startInput.AgentSessionID)
 		if cleanupErr != nil {
-			return nil, errors.Join(normalizeRuntimeError(err), cleanupErr)
+			return nil, errors.Join(err, cleanupErr)
 		}
-		return nil, normalizeRuntimeError(err)
+		return nil, err
 	}
-	defer func() {
-		_, _ = s.Delete(context.Background(), workspaceID, session.ID)
-	}()
-	return s.pollComposerModelOptions(ctx, workspaceID, session)
+	s.scheduleLiveModelDiscoveryDelete(workspaceID, session.ID)
+	return s.pollComposerModelOptions(spawnCtx, workspaceID, session)
+}
+
+func (s *Service) scheduleLiveModelDiscoveryDelete(workspaceID string, agentSessionID string) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return
+	}
+	delay := s.liveModelDiscoveryDeleteDelay()
+	time.AfterFunc(delay, func() {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), liveModelDiscoveryCleanupTimeout)
+		defer cancelCleanup()
+		_, _ = s.Delete(cleanupCtx, workspaceID, agentSessionID)
+	})
+}
+
+func (s *Service) liveModelDiscoveryDeleteDelay() time.Duration {
+	if s.LiveModelDiscoveryDeleteDelay != 0 {
+		return s.LiveModelDiscoveryDeleteDelay
+	}
+	return liveModelDiscoveryDeleteDelay
+}
+
+func isHiddenLiveModelDiscoveryRuntimeContext(runtimeContext map[string]any) bool {
+	hidden, _ := runtimeContext["hiddenLiveModelDiscovery"].(bool)
+	return hidden
+}
+
+func isStaleHiddenLiveModelDiscoverySession(session PersistedSession) bool {
+	if isHiddenLiveModelDiscoveryRuntimeContext(session.RuntimeContext) {
+		return true
+	}
+	if agentprovider.Normalize(session.Provider) != agentprovider.ClaudeCode {
+		return false
+	}
+	if visibleFromRuntimeContext(session.RuntimeContext, true) {
+		return false
+	}
+	return strings.TrimSpace(session.Settings.Model) == "" && strings.TrimSpace(session.Cwd) == "/"
 }
 
 func (s *Service) pollComposerModelOptions(
@@ -153,6 +309,30 @@ func liveModelDiscoverySessionFailureError(session RuntimeSession) error {
 		return errLiveModelDiscoverySessionFailed
 	}
 	return fmt.Errorf("%w: %s", errLiveModelDiscoverySessionFailed, lastError)
+}
+
+func staticClaudeComposerModelOptions(selectedModel string) []ComposerConfigOptionValue {
+	options := []ComposerConfigOptionValue{
+		{ID: "default", Label: "Default", Value: "default"},
+		{ID: "opus", Label: "Opus", Value: "opus"},
+		{ID: "sonnet", Label: "Sonnet", Value: "sonnet"},
+		{ID: "haiku", Label: "Haiku", Value: "haiku"},
+	}
+	selectedModel = strings.TrimSpace(selectedModel)
+	if selectedModel == "" {
+		return options
+	}
+	for _, option := range options {
+		if strings.TrimSpace(option.Value) == selectedModel {
+			return options
+		}
+	}
+	return append(options, ComposerConfigOptionValue{
+		ID:          selectedModel,
+		Label:       selectedModel,
+		Value:       selectedModel,
+		Description: "Claude configured custom model",
+	})
 }
 
 func extractModelOptionsFromRuntimeContext(runtimeContext map[string]any) []ComposerConfigOptionValue {
@@ -249,11 +429,21 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 ) (ComposerOptions, error) {
 	provider := agentprovider.ClaudeCode
 	var liveModels []ComposerConfigOptionValue
+	modelSource := "claude-static"
 	if strings.TrimSpace(input.WorkspaceID) != "" {
 		now := time.Now().UTC()
 		cached, ok := s.getLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now)
 		if ok {
 			liveModels = cached
+			modelSource = "acp-live-discovery"
+		} else if reused, hasClaudeSession := s.liveClaudeModelOptionsFromRunningSession(input.WorkspaceID); hasClaudeSession {
+			if len(reused) > 0 {
+				liveModels = reused
+				s.setLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now, reused)
+				modelSource = "acp-live-discovery"
+			}
+			// If a real Claude session exists but has not advertised a model list
+			// yet, do not spawn a hidden discovery session next to it.
 		} else {
 			discovered, err := s.discoverLiveComposerModels(ctx, input.WorkspaceID, input.Cwd, effectiveSettings)
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -261,17 +451,25 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 			}
 			if err == nil && len(discovered) > 0 {
 				liveModels = discovered
-				s.setLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now, discovered)
+				modelSource = "acp-live-discovery"
 			}
 		}
 	}
 	if len(liveModels) > 0 {
-		return mergeLiveModelsIntoComposerOptions(options, liveModels), nil
+		return mergeComposerModelsIntoComposerOptions(options, liveModels, modelSource), nil
+	}
+	staticModels := staticClaudeComposerModelOptions(effectiveSettings.Model)
+	if len(staticModels) > 0 {
+		return mergeComposerModelsIntoComposerOptions(options, staticModels, modelSource), nil
 	}
 	return clearUnverifiedLiveComposerModel(options), nil
 }
 
 func mergeLiveModelsIntoComposerOptions(options ComposerOptions, liveModels []ComposerConfigOptionValue) ComposerOptions {
+	return mergeComposerModelsIntoComposerOptions(options, liveModels, "acp-live-discovery")
+}
+
+func mergeComposerModelsIntoComposerOptions(options ComposerOptions, liveModels []ComposerConfigOptionValue, modelSource string) ComposerOptions {
 	normalized := normalizeLiveComposerModelOptions(liveModels)
 	if len(normalized) == 0 {
 		return options
@@ -284,7 +482,7 @@ func mergeLiveModelsIntoComposerOptions(options ComposerOptions, liveModels []Co
 		DefaultValue: selected,
 		Options:      cloneComposerConfigOptionValues(normalized),
 	}
-	options.RuntimeContext = mergeLiveModelsIntoRuntimeContext(options.RuntimeContext, selected, normalized)
+	options.RuntimeContext = mergeLiveModelsIntoRuntimeContext(options.RuntimeContext, selected, normalized, modelSource)
 	return options
 }
 
@@ -370,6 +568,7 @@ func mergeLiveModelsIntoRuntimeContext(
 	runtimeContext map[string]any,
 	selectedModel string,
 	liveModels []ComposerConfigOptionValue,
+	modelSource string,
 ) map[string]any {
 	if runtimeContext == nil {
 		runtimeContext = map[string]any{}
@@ -389,7 +588,7 @@ func mergeLiveModelsIntoRuntimeContext(
 	}
 	runtimeContext["configOptions"] = configOptions
 	runtimeContext["model"] = nullableString(selectedModel)
-	runtimeContext["modelCatalogSource"] = "acp-live-discovery"
+	runtimeContext["modelCatalogSource"] = strings.TrimSpace(modelSource)
 	return runtimeContext
 }
 
