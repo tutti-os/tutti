@@ -68,6 +68,14 @@ function messageCenterItemsEqual(
     left.status === right.status &&
     left.lastAgentMessageSummary === right.lastAgentMessageSummary &&
     left.lastAgentMessageAtUnixMs === right.lastAgentMessageAtUnixMs &&
+    // A running session can gain new turn/tool-call detail (rendered by
+    // MessageCenterSessionDetail) without the top-level digest summary
+    // text changing (e.g. a new tool call with no distinct summary yet).
+    // Without this check the stability layer would keep serving the stale
+    // `detail`, so the in-progress conversation view would stop updating
+    // while a session is actively running even though newer messages have
+    // already arrived.
+    (left.timelineItemCount ?? 0) === (right.timelineItemCount ?? 0) &&
     left.needsAttentionKind === right.needsAttentionKind &&
     left.needsAttentionSummary === right.needsAttentionSummary &&
     left.sortTimeUnixMs === right.sortTimeUnixMs &&

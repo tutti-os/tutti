@@ -168,6 +168,99 @@ function openViewOptions(): void {
 }
 
 describe("WorkspaceAgentMessageCenterCard", () => {
+  it("renders canonical session detail when the message center item has transcript data", () => {
+    // Regression test: the card used to only show a truncated one-line
+    // digest even while an agent reply was fully available. This confirms
+    // the card now renders the actual turn-by-turn reply (the same
+    // projection as the full conversation window) instead of the digest
+    // fallback whenever transcript detail is present.
+    render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={createTestCardItem({
+            digest: {
+              primary: {
+                kind: "summary",
+                summary: "Digest fallback should not render",
+                occurredAtUnixMs: 2
+              }
+            },
+            detail: {
+              activity: {
+                id: "activity-session-1",
+                sessionId: "session-1",
+                userId: null,
+                userName: "User",
+                agentProvider: "codex",
+                agentName: "Codex",
+                title: "整理本地文件夹",
+                status: "completed",
+                latestActivitySummary: "I found the relevant files.",
+                changedFiles: [],
+                sortTimeUnixMs: 2
+              },
+              session: {
+                workspaceId: "workspace-1",
+                agentSessionId: "session-1",
+                provider: "codex",
+                cwd: "/workspace",
+                title: "整理本地文件夹",
+                status: "completed"
+              },
+              cwd: "/workspace",
+              workspaceRoot: "/workspace",
+              turns: [
+                {
+                  id: "turn-1",
+                  userMessage: {
+                    id: "user-1",
+                    body: "Please inspect the workspace.",
+                    turnId: "turn-1"
+                  },
+                  userMessages: [
+                    {
+                      id: "user-1",
+                      body: "Please inspect the workspace.",
+                      turnId: "turn-1"
+                    }
+                  ],
+                  agentMessages: [
+                    {
+                      id: "assistant-1",
+                      body: "I found the relevant files.",
+                      turnId: "turn-1"
+                    }
+                  ],
+                  toolCalls: [],
+                  toolCallCount: 0,
+                  hasFailedToolCall: false,
+                  agentItems: [
+                    {
+                      kind: "message",
+                      message: {
+                        id: "assistant-1",
+                        body: "I found the relevant files.",
+                        turnId: "turn-1"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            timelineItemCount: 2
+          })}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Please inspect the workspace.")).toBeTruthy();
+    expect(screen.getByText("I found the relevant files.")).toBeTruthy();
+    expect(screen.queryByText("Digest fallback should not render")).toBeNull();
+  });
+
   it("reports the provider and semantic action when submitting a notification prompt", () => {
     const onNotificationActioned = vi.fn();
     render(

@@ -6,17 +6,27 @@ import {
   type AgentActivitySession,
   type AgentActivitySnapshot
 } from "@tutti-os/agent-activity-core";
+import { projectWorkspaceAgentMessagesToTimelineItems } from "../shared/agentConversation/projection/workspaceAgentMessageProjection";
 import type { AgentConversationPromptVM } from "../shared/agentConversation/contracts/agentConversationVM";
 import { normalizeAskUserQuestions } from "../shared/agentConversation/askUserQuestions";
 import { extractAgentMcpToolTarget } from "../shared/agentMcpToolTarget";
-import type { WorkspaceAgentActivityStatus } from "../shared/workspaceAgentActivityListViewModel";
+import {
+  buildWorkspaceAgentActivityListViewModel,
+  type WorkspaceAgentActivityCard,
+  type WorkspaceAgentActivityStatus
+} from "../shared/workspaceAgentActivityListViewModel";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../shared/workspaceAgentSessionSortTime";
+import {
+  buildWorkspaceAgentSessionDetailViewModel,
+  type WorkspaceAgentSessionDetailViewModel
+} from "../shared/workspaceAgentSessionDetailViewModel";
 import {
   latestPlanTurnId,
   planImplementationPromptFromPlanTurn
 } from "../shared/agentConversation/planImplementation";
 import {
   buildWorkspaceAgentMessageCenterDigest,
+  messageSummaryText,
   resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary,
   type WorkspaceAgentMessageCenterDigest,
   type WorkspaceAgentMessageCenterDigestAgentSummary
@@ -54,6 +64,8 @@ export interface WorkspaceAgentMessageCenterItem {
   digest: WorkspaceAgentMessageCenterDigest;
   lastAgentMessageSummary: string;
   lastAgentMessageAtUnixMs: number | null;
+  detail?: WorkspaceAgentSessionDetailViewModel | null;
+  timelineItemCount?: number;
   pendingPrompt: AgentConversationPromptVM | null;
   needsAttentionKind: AgentActivityNeedsAttentionItem["kind"] | null;
   needsAttentionSummary: string | null;
@@ -105,6 +117,11 @@ export function buildWorkspaceAgentMessageCenterModel(
     selectNeedsAttentionItems(snapshot)
   );
   const displayStatuses = selectSessionDisplayStatuses(snapshot);
+  const activitiesBySessionId = new Map(
+    buildWorkspaceAgentActivityListViewModel(snapshot, {
+      sessionMessagesById: snapshot.sessionMessagesById
+    }).activities.map((activity) => [activity.sessionId, activity])
+  );
   const items = snapshot.sessions
     .filter((session) => session.visible !== false)
     .map((session) => {
@@ -142,6 +159,12 @@ export function buildWorkspaceAgentMessageCenterModel(
           messages
         }
       );
+      const detail = buildMessageCenterSessionDetail({
+        activity: activitiesBySessionId.get(session.agentSessionId) ?? null,
+        messages,
+        session,
+        workspaceRoot: options.workspaceRoot ?? null
+      });
 
       return {
         id: `message-center-${session.agentSessionId}`,
@@ -160,6 +183,8 @@ export function buildWorkspaceAgentMessageCenterModel(
         lastAgentMessageSummary:
           lastAgentMessage?.summary ?? needsAttention?.summary ?? title,
         lastAgentMessageAtUnixMs: lastAgentMessage?.occurredAtUnixMs ?? null,
+        detail: detail?.detail ?? null,
+        timelineItemCount: detail?.timelineItemCount ?? 0,
         pendingPrompt,
         needsAttentionKind: needsAttention?.kind ?? null,
         needsAttentionSummary: needsAttention?.summary ?? null,
@@ -175,6 +200,35 @@ export function buildWorkspaceAgentMessageCenterModel(
     waitingCount: items.filter(isWaitingMessageCenterItem).length,
     items: items.sort(compareMessageCenterItems),
     counts: countMessageCenterItems(items)
+  };
+}
+
+function buildMessageCenterSessionDetail({
+  activity,
+  messages,
+  session,
+  workspaceRoot
+}: {
+  activity: WorkspaceAgentActivityCard | null;
+  messages: readonly AgentActivityMessage[];
+  session: AgentActivitySession;
+  workspaceRoot: string | null;
+}): {
+  detail: WorkspaceAgentSessionDetailViewModel;
+  timelineItemCount: number;
+} | null {
+  if (!activity) {
+    return null;
+  }
+  const timelineItems = projectWorkspaceAgentMessagesToTimelineItems(messages);
+  return {
+    detail: buildWorkspaceAgentSessionDetailViewModel({
+      activity,
+      session,
+      timelineItems,
+      workspaceRoot
+    }),
+    timelineItemCount: timelineItems.length
   };
 }
 
@@ -820,13 +874,13 @@ function includesAny(value: string, needles: readonly string[]): boolean {
 
 function messageSummary(message: AgentActivityMessage): string {
   return firstNonEmptyString(
-    stringValue(message.payload.summary),
-    stringValue(message.payload.displayPrompt),
-    stringValue(message.payload.text),
-    stringValue(message.payload.content),
-    stringValue(message.payload.message),
-    stringValue(message.payload.body),
-    stringValue(message.payload.title)
+    messageSummaryText(message.payload.summary),
+    messageSummaryText(message.payload.displayPrompt),
+    messageSummaryText(message.payload.text),
+    messageSummaryText(message.payload.content),
+    messageSummaryText(message.payload.message),
+    messageSummaryText(message.payload.body),
+    messageSummaryText(message.payload.title)
   );
 }
 

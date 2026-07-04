@@ -235,7 +235,7 @@ function summaryCandidate(
   source: MessageSummarySource,
   value: unknown
 ): MessageSummaryCandidate | null {
-  const summary = normalizeSummaryText(stringValue(value));
+  const summary = normalizeSummaryText(messageSummaryText(value));
   return summary ? { source, summary } : null;
 }
 
@@ -252,7 +252,7 @@ function toolErrorSummaryCandidate(
       stringValue(error.message),
       stringValue(error.detail),
       stringValue(error.text),
-      textFromContentValue(error.content),
+      messageSummaryText(error.content),
       stringValue(error.output),
       stringValue(error.stdout),
       stringValue(error.stderr),
@@ -278,7 +278,7 @@ function toolOutputSummaryCandidate(
       stringValue(output.summary),
       stringValue(output.message),
       stringValue(output.text),
-      textFromContentValue(output.content),
+      messageSummaryText(output.content),
       stringValue(output.content),
       stringValue(output.result),
       stringValue(output.output),
@@ -469,16 +469,15 @@ function stringArrayFirstValue(value: unknown): string | null {
   );
 }
 
-function textFromContentValue(value: unknown): string | null {
+export function messageSummaryText(value: unknown): string | null {
   if (typeof value === "string") {
     return stringValue(value);
   }
   if (Array.isArray(value)) {
-    return (
-      value
-        .map(textFromContentValue)
-        .find((item): item is string => Boolean(item)) ?? null
-    );
+    const parts = value
+      .map(messageSummaryText)
+      .filter((item): item is string => Boolean(item));
+    return parts.length > 0 ? parts.join("\n") : null;
   }
   if (!value || typeof value !== "object") {
     return null;
@@ -486,7 +485,7 @@ function textFromContentValue(value: unknown): string | null {
   const record = value as Record<string, unknown>;
   return firstNonEmptyString(
     stringValue(record.text),
-    "content" in record ? textFromContentValue(record.content) : null
+    "content" in record ? messageSummaryText(record.content) : null
   );
 }
 

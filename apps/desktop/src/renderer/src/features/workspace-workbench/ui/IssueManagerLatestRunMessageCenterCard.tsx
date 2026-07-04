@@ -108,9 +108,27 @@ function IssueManagerLatestRunMessageCenterCard({
     void workspaceAgentActivityService.load(workspaceId);
   }, [workspaceAgentActivityService, workspaceId]);
 
+  // The workspace agent activity snapshot only tracks a session once the
+  // service has reconciled it (a request round-trip after the run starts).
+  // While a run is actively streaming, the issue-manager latest-run card
+  // otherwise has to fall back to a bare status digest (no real message
+  // content) even though the message summary fetch below may already have
+  // cached the actual reply. Synthesize a session entry from those cached
+  // messages so the same message-center projection (digest + full turn
+  // detail) used for a tracked session renders here too, instead of only
+  // after the run finishes and a later snapshot reconcile catches up.
+  const messageCenterSnapshot = useMemo(
+    () =>
+      issueManagerLatestRunMessageCenterSnapshot({
+        agentSessionId,
+        input,
+        snapshot
+      }),
+    [agentSessionId, input, snapshot]
+  );
   const model = useMemo(
     () =>
-      buildWorkspaceAgentMessageCenterModel(snapshot, {
+      buildWorkspaceAgentMessageCenterModel(messageCenterSnapshot, {
         promptFallbackLabels: {
           constraintHeader: i18n.t(
             "workspace.agentMessageCenter.promptConstraintHeader"
@@ -121,11 +139,11 @@ function IssueManagerLatestRunMessageCenterCard({
         },
         workspaceRoot: null
       }),
-    [i18n, snapshot]
+    [i18n, messageCenterSnapshot]
   );
   const targetSession = useMemo(
-    () => findWorkspaceAgentSession(snapshot, agentSessionId),
-    [agentSessionId, snapshot]
+    () => findWorkspaceAgentSession(messageCenterSnapshot, agentSessionId),
+    [agentSessionId, messageCenterSnapshot]
   );
   const modelItem = useMemo(
     () =>
@@ -284,6 +302,86 @@ function findWorkspaceAgentSession(
       workspaceAgentSessionMessageAliases(session).includes(target)
     ) ?? null
   );
+}
+
+function issueManagerLatestRunMessageCenterSnapshot({
+  agentSessionId,
+  input,
+  snapshot
+}: {
+  agentSessionId: string;
+  input: IssueManagerLatestRunStatusRenderInput;
+  snapshot: AgentActivitySnapshot;
+}): AgentActivitySnapshot {
+  if (
+    !agentSessionId ||
+    findWorkspaceAgentSession(snapshot, agentSessionId) ||
+    !hasCachedIssueManagerRunMessages(
+      snapshot.sessionMessagesById,
+      agentSessionId
+    )
+  ) {
+    return snapshot;
+  }
+  const latestRun = input.latestRun;
+  const timestamp = issueManagerRunTimestampToUnixMs(
+    latestRun.updatedAtUnix ??
+      latestRun.completedAtUnix ??
+      latestRun.startedAtUnix ??
+      latestRun.createdAtUnix
+  );
+  return {
+    ...snapshot,
+    sessions: [
+      ...snapshot.sessions,
+      {
+        workspaceId: snapshot.workspaceId || latestRun.workspaceId,
+        agentSessionId,
+        provider: latestRun.agentProvider?.trim() || "codex",
+        cwd: latestRun.executionDirectory?.trim() || "",
+        title: input.title || agentSessionId,
+        status: issueManagerRunStatusToAgentActivityStatus(latestRun.status),
+        userId: latestRun.requesterUserId?.trim() || undefined,
+        visible: true,
+        createdAtUnixMs: issueManagerRunTimestampToUnixMs(
+          latestRun.createdAtUnix
+        ),
+        startedAtUnixMs: issueManagerRunTimestampToUnixMs(
+          latestRun.startedAtUnix
+        ),
+        endedAtUnixMs: issueManagerRunTimestampToUnixMs(
+          latestRun.completedAtUnix
+        ),
+        updatedAtUnixMs: timestamp,
+        lastEventUnixMs: timestamp
+      }
+    ]
+  };
+}
+
+function hasCachedIssueManagerRunMessages(
+  sessionMessagesById: AgentActivitySnapshot["sessionMessagesById"],
+  agentSessionId: string
+): boolean {
+  return (sessionMessagesById[agentSessionId.trim()]?.length ?? 0) > 0;
+}
+
+function issueManagerRunStatusToAgentActivityStatus(status: string): string {
+  switch (status) {
+    case "running":
+    case "in_progress":
+      return "working";
+    case "pending_acceptance":
+      return "waiting";
+    case "completed":
+    case "failed":
+    case "canceled":
+      return status;
+    case "not_started":
+      return "queued";
+    default:
+      return "unknown";
+  }
 }
 
 function findWorkspaceAgentMessageCenterItem({

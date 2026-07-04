@@ -118,6 +118,37 @@ describe("buildWorkspaceAgentMessageCenterDigest", () => {
     });
   });
 
+  it("renders structured content arrays as message summaries", () => {
+    // While a session is actively streaming, a live assistant reply is
+    // frequently delivered as an array of structured content blocks rather
+    // than a single flat string. Picking only the first block (the old
+    // behavior) silently dropped the rest of the in-progress reply, which
+    // is what made the digest look broken specifically while running.
+    const digest = buildWorkspaceAgentMessageCenterDigest({
+      fallbackTitle: "Fallback title",
+      messages: [
+        message({
+          messageId: "assistant-1",
+          role: "assistant",
+          payload: {
+            content: [
+              { type: "text", text: "First paragraph." },
+              { type: "text", text: "Second paragraph." }
+            ]
+          },
+          occurredAtUnixMs: 10
+        })
+      ],
+      needsAttention: null,
+      pendingPrompt: null,
+      status: "working"
+    });
+
+    expect(digest.primary).toMatchObject({
+      summary: "First paragraph. Second paragraph."
+    });
+  });
+
   it("prioritizes input-required over terminal-looking message summaries", () => {
     const digest = buildWorkspaceAgentMessageCenterDigest({
       fallbackTitle: "Fallback title",

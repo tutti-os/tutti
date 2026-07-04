@@ -291,6 +291,109 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     );
   });
 
+  it("builds session detail from the same message timeline used by conversations", () => {
+    // The message-center card used to only show a single-line digest
+    // summary. This asserts it also carries the same turn-by-turn detail
+    // projection the full conversation window uses, so a live agent reply
+    // renders as a normal message instead of just a terse status line.
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "user-1",
+            role: "user",
+            kind: "text",
+            payload: { text: "Please inspect the workspace." },
+            occurredAtUnixMs: 10,
+            turnId: "turn-1"
+          }),
+          message({
+            agentSessionId: "session-1",
+            messageId: "assistant-1",
+            role: "assistant",
+            kind: "text",
+            payload: { text: "I found the relevant files." },
+            occurredAtUnixMs: 20,
+            turnId: "turn-1"
+          })
+        ],
+        sessions: [session({ agentSessionId: "session-1" })]
+      })
+    );
+
+    expect(model.items[0]?.timelineItemCount).toBe(2);
+    expect(model.items[0]?.detail?.turns[0]).toMatchObject({
+      userMessage: { body: "Please inspect the workspace." },
+      agentMessages: [{ body: "I found the relevant files." }]
+    });
+  });
+
+  it("keeps rebuilding session detail while a session is still running so a new agent reply is not stuck on stale turns", () => {
+    // Regression test for the "reply not rendered while running" bug: the
+    // message center panel memoizes items via
+    // stabilizeWorkspaceAgentMessageCenterModel to avoid re-rendering
+    // unchanged cards. If that stability check ignores `detail`/
+    // `timelineItemCount`, a session that is still `working` can appear to
+    // stop updating even though a fresh agent message has already arrived.
+    const runningSnapshot = (messages: AgentActivityMessage[]) =>
+      snapshot({
+        messages,
+        sessions: [session({ agentSessionId: "session-1", status: "working" })]
+      });
+
+    const firstModel = buildWorkspaceAgentMessageCenterModel(
+      runningSnapshot([
+        message({
+          agentSessionId: "session-1",
+          messageId: "user-1",
+          role: "user",
+          kind: "text",
+          payload: { text: "Please inspect the workspace." },
+          occurredAtUnixMs: 10,
+          turnId: "turn-1"
+        })
+      ])
+    );
+    const stableFirst = stabilizeWorkspaceAgentMessageCenterModel(
+      null,
+      firstModel
+    );
+
+    const secondModel = buildWorkspaceAgentMessageCenterModel(
+      runningSnapshot([
+        message({
+          agentSessionId: "session-1",
+          messageId: "user-1",
+          role: "user",
+          kind: "text",
+          payload: { text: "Please inspect the workspace." },
+          occurredAtUnixMs: 10,
+          turnId: "turn-1"
+        }),
+        message({
+          agentSessionId: "session-1",
+          messageId: "assistant-1",
+          role: "assistant",
+          kind: "text",
+          payload: { text: "Here is the first file I found." },
+          occurredAtUnixMs: 20,
+          turnId: "turn-1"
+        })
+      ])
+    );
+    const stableSecond = stabilizeWorkspaceAgentMessageCenterModel(
+      stableFirst,
+      secondModel
+    );
+
+    expect(stableFirst.items[0]?.timelineItemCount).toBe(1);
+    expect(stableSecond.items[0]?.timelineItemCount).toBe(2);
+    expect(stableSecond.items[0]?.detail?.turns[0]?.agentMessages).toEqual([
+      expect.objectContaining({ body: "Here is the first file I found." })
+    ]);
+  });
+
   it("prefers displayPrompt for message-center model summaries", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({
