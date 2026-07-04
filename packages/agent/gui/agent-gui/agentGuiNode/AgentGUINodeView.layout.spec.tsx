@@ -1281,7 +1281,7 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not refetch runtime rail sections when an existing conversation summary or active provider updates", async () => {
+  it("refetches runtime rail sections only for provider changes, not conversation summary updates", async () => {
     const listSessionSections = vi.fn<
       NonNullable<AgentActivityRuntime["listSessionSections"]>
     >(async (input) => ({
@@ -1354,11 +1354,6 @@ describe("AgentGUINodeView layout persistence", () => {
         labels: { ...labels },
         viewModel: {
           ...viewModel,
-          data: {
-            ...viewModel.data,
-            provider: "codex" as const
-          },
-          selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
           activeConversation: updatedConversation,
           activeConversationId: updatedConversation.id,
           conversations: [updatedConversation]
@@ -1372,6 +1367,34 @@ describe("AgentGUINodeView layout persistence", () => {
       ).toHaveTextContent("Updated title");
     });
     expect(listSessionSections).toHaveBeenCalledTimes(1);
+    expect(listSessionSections).toHaveBeenCalledWith(
+      expect.objectContaining({ agentTargetId: "local:claude-code" })
+    );
+
+    rendered.rerender(
+      buildAgentGUINodeViewElement({
+        activityRuntime,
+        labels: { ...labels },
+        viewModel: {
+          ...viewModel,
+          data: {
+            ...viewModel.data,
+            provider: "codex" as const
+          },
+          selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+          activeConversation: updatedConversation,
+          activeConversationId: updatedConversation.id,
+          conversations: [updatedConversation]
+        }
+      })
+    );
+
+    await waitFor(() => {
+      expect(listSessionSections).toHaveBeenCalledTimes(2);
+    });
+    expect(listSessionSections).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agentTargetId: "local:codex" })
+    );
   });
 
   it("passes the active agent target filter to runtime rail section requests", async () => {
