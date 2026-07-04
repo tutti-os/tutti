@@ -54,17 +54,46 @@ func projectFromExternalSession(session externalImportedSession) (ExternalImport
 }
 
 func externalSessionProjectPath(session externalImportedSession) (string, bool) {
-	cwd, ok := canonicalExistingDir(session.Cwd)
-	if !ok {
+	// session.Cwd has already been resolved by resolveExternalImportSessionCwd
+	// (see external_import_parse.go) — canonicalized when the directory still
+	// exists, or a best-effort cleaned absolute path when it no longer does (a
+	// deleted worktree/temp dir must still be countable and importable, just
+	// without git-root-based project grouping). Re-requiring existence here
+	// would silently drop those sessions from the scan a second time.
+	cwd := filepath.Clean(strings.TrimSpace(session.Cwd))
+	if cwd == "" || cwd == "." {
 		return "", false
 	}
 	if session.NoProject {
+		// Every "no project selected" session (whether it literally ran in the
+		// user's home directory, or in a provider-owned scratch workspace such
+		// as Codex's ~/Documents/Codex/<slug>) collapses onto one consistent
+		// bucket instead of surfacing its own machine-generated scratch
+		// directory name as if it were a real project. Using the raw cwd here
+		// previously surfaced synthetic slugs (e.g. "2026-04-24-gh") as bogus
+		// project labels — the source of reports that imported project folder
+		// names looked garbled and didn't match any folder the user chose.
+		if home, ok := externalImportNoProjectBucketPath(); ok {
+			return home, true
+		}
 		return cwd, true
 	}
 	if gitRoot, ok := nearestExternalImportGitRoot(cwd); ok {
 		return gitRoot, true
 	}
 	return cwd, true
+}
+
+// externalImportNoProjectBucketPath resolves the canonical path used to group
+// every no-project-selected session together, so the scan/import result
+// treats them as one consistent "no project" bucket rather than one bogus
+// per-session "project" per scratch directory.
+func externalImportNoProjectBucketPath() (string, bool) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
+	}
+	return canonicalExistingDir(home)
 }
 
 func nearestExternalImportGitRoot(cwd string) (string, bool) {

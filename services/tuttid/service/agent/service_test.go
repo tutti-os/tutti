@@ -711,6 +711,80 @@ func TestServiceImportsCodexScratchCwdAsNoProjectWithoutRegisteringIt(t *testing
 	}
 }
 
+func TestServiceScanCountsAndImportsSessionWithDeletedWorkingDirectory(t *testing.T) {
+	// Regression: a session whose recorded cwd no longer exists (a deleted
+	// git worktree, a cleaned-up temp dir) used to be silently dropped from
+	// the scan entirely — not counted in ScannedSessions, not offered for
+	// import, and not appearing in SkippedSessions either (it never got that
+	// far). That both undercounts what scan reports (eW5WPl sub-issue 1) and
+	// can make a substantial real conversation look empty/vanished (uOivri),
+	// since it never surfaces anywhere for the user to see or import.
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	deletedCwd := filepath.Join(root, "deleted-project")
+	if err := os.MkdirAll(deletedCwd, 0o755); err != nil {
+		t.Fatalf("create then delete cwd error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(deletedCwd); ok {
+		deletedCwd = canonical
+	}
+	if err := os.RemoveAll(deletedCwd); err != nil {
+		t.Fatalf("remove cwd error = %v", err)
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "deleted-cwd.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "deleted-cwd", "cwd": deletedCwd},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "deleted-cwd-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Still real content"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	scan, err := service.ScanExternalImports(ctx, ExternalImportScanInput{})
+	if err != nil {
+		t.Fatalf("ScanExternalImports error = %v", err)
+	}
+	if scan.ScannedSessions != 1 || scan.SkippedSessions != 0 {
+		t.Fatalf("scan = %#v, want the deleted-cwd session counted as scanned, not skipped", scan)
+	}
+	if len(scan.Sessions) != 1 || scan.Sessions[0].ProjectPath != deletedCwd {
+		t.Fatalf("scan sessions = %#v, want one session grouped under its original deleted cwd %q", scan.Sessions, deletedCwd)
+	}
+
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: root}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 || result.ImportedMessages != 1 {
+		t.Fatalf("import result = %#v, want the deleted-cwd session imported", result)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "deleted-cwd"))
+	if err != nil {
+		t.Fatalf("Get imported deleted-cwd session error = %v", err)
+	}
+	if session.Cwd != deletedCwd {
+		t.Fatalf("session cwd = %q, want original deleted cwd %q preserved", session.Cwd, deletedCwd)
+	}
+}
+
 func TestServiceListsImportedSessionsByExternalActivityTime(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
