@@ -921,6 +921,39 @@ describe("AgentGUINode", () => {
     expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
   });
 
+  it("shows the same fallback when an agent probe's usage fetch failed outright", () => {
+    // A genuine fetch failure (no `usage` field, a `lastError` other than
+    // "unsupported" — e.g. Claude Code credentials not yet readable right
+    // after a fresh install) must not render as an empty, silent popover.
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              lastError: { code: "auth_required", message: "not signed in" }
+            }
+          ]
+        }
+      },
+      state: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      }
+    });
+
+    const info = screen.getByTestId("agent-gui-window-agent-info");
+    fireEvent.mouseEnter(info);
+    expect(screen.getByText("额度")).toBeInTheDocument();
+    expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
+  });
+
   it("hides the rail config entry for the unified All provider filter", () => {
     mockViewModel = createViewModel({
       conversationFilter: { kind: "all" },
@@ -1022,6 +1055,54 @@ describe("AgentGUINode", () => {
     expect(onAgentProbeRefreshRequest).toHaveBeenCalledWith(
       "codex",
       "agent-gui:agent-gui-1"
+    );
+  });
+
+  it("requests a fresh agent probe when the rail config menu opens", () => {
+    const onAgentProbeRefreshRequest = vi.fn();
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    mockViewModel = createViewModel({
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: codexTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: codexTarget,
+      providerTargets: [codexTarget]
+    });
+
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "codex",
+              availability: { status: "available", detailsVisible: false },
+              usage: {
+                capturedAtUnixMs: 1,
+                quotas: [{ quotaType: "session", percentRemaining: 79 }]
+              }
+            }
+          ]
+        }
+      },
+      agentActivityRuntime: {} as AgentActivityRuntime,
+      onAgentProbeRefreshRequest
+    });
+
+    // This is the click-triggered "usage & environment check" rail menu, a
+    // second surface showing the same probe data as the hover-triggered
+    // title info tooltip above. It needs the same on-open refresh — a
+    // provider that just finished installing must not stay stuck showing a
+    // stale/empty probe fetched before install completed.
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    expect(onAgentProbeRefreshRequest).toHaveBeenCalledWith(
+      "codex",
+      "agent-gui:agent-gui-1:config"
     );
   });
 

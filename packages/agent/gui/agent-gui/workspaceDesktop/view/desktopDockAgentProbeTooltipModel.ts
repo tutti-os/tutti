@@ -303,12 +303,20 @@ function appendDockProbeUsageLines(
 
   const quotas = probe.usage?.quotas ?? [];
   if (quotas.length === 0) {
-    if (probe.usage) {
-      lines.push({
-        label: t("agentHost.workspaceAgentProbeDetailQuota"),
-        primary: t("agentHost.workspaceAgentProbeUsageUnsupported")
-      });
-    }
+    // Whether the probe came back with an empty quota list (usage isn't
+    // wired up for this provider yet) or failed outright (e.g. the OAuth
+    // usage fetch threw right after a fresh install, before credentials
+    // finished propagating — see probeClaudeCodeProvider's lastError), the
+    // user sees the same "no usage" placeholder here. Previously a genuine
+    // fetch failure (probe.usage undefined, lastError set) rendered nothing
+    // at all, so "usage isn't fetched" looked identical to "the popover is
+    // still loading" — silently, with no indication anything had gone wrong
+    // or would need a manual retry (reopening this popover already re-fetches;
+    // see handleAgentProbeInfoOpen / handleAgentConfigMenuOpen).
+    lines.push({
+      label: t("agentHost.workspaceAgentProbeDetailQuota"),
+      primary: t("agentHost.workspaceAgentProbeUsageUnsupported")
+    });
     return;
   }
 

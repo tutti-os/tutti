@@ -1576,6 +1576,28 @@ export const AgentGUINode = memo(function AgentGUINode({
     }
     onAgentProbeRefreshRequest(activeProbeProvider, `agent-gui:${nodeId}`);
   }, [activeProbeProvider, nodeId, onAgentProbeRefreshRequest, previewMode]);
+  // The rail's "usage & environment check" menu (AgentGUINodeView's
+  // agent-gui-config-menu popover) shows the same quota data as the window
+  // title's info tooltip above, but through a click rather than a hover. It
+  // needs the same on-open refresh (see handleAgentProbeInfoOpen) — otherwise
+  // a stale/empty probe fetched before a provider finished installing never
+  // gets a chance to refresh here, and the usage meters stay blank until some
+  // unrelated event happens to touch the info tooltip instead.
+  const handleAgentConfigMenuOpen = useCallback(() => {
+    if (previewMode || !onAgentProbeRefreshRequest) {
+      return;
+    }
+    onAgentProbeRefreshRequest(
+      railStatusProvider ?? activeProbeProvider,
+      `agent-gui:${nodeId}:config`
+    );
+  }, [
+    activeProbeProvider,
+    nodeId,
+    onAgentProbeRefreshRequest,
+    previewMode,
+    railStatusProvider
+  ]);
 
   return (
     <WorkspaceNodeWindow
@@ -1659,6 +1681,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             }
             railConfigProvider={railStatusProvider}
             railSlashStatusLimits={railSlashStatusLimits}
+            onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
             previewMode={previewMode}
             onLinkAction={handleLinkAction}
             onHandoffConversation={onHandoffConversation}
