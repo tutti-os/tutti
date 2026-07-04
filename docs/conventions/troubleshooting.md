@@ -47,13 +47,17 @@ Use this shape for new entries:
 
 - Symptom:
   Claude Code GUI usage shows a 200k context window for a model that should have
-  1M context, such as Claude Sonnet 5.
+  1M context, such as Claude Sonnet 5. The inverse can also happen after a model
+  switch: a 200k model such as Haiku keeps showing the prior 1M total.
 - Quick checks:
   Inspect the session runtime context for `usage.contextWindow.totalTokens`,
   then trace the Claude SDK sidecar `usage_updated` payload and daemon
   `agent_session.claude_sdk.usage_update` log. If the payload keys include
   `modelUsage` but `raw_total_tokens` is `0`, the daemon did not parse the
-  model-usage context window.
+  model-usage context window. If `previous_context_model` and
+  `current_context_model` differ but `current_total_tokens` equals
+  `previous_total_tokens`, daemon usage normalization reused a stale context
+  window across models.
 - Root cause:
   AgentGUI only renders `runtimeContext.usage`; the total comes from the daemon
   and Claude SDK sidecar. Claude SDK result messages expose model usage as a
@@ -63,11 +67,14 @@ Use this shape for new entries:
   daemon normalization falls back to 200k.
 - Fix:
   Parse `modelUsage` recursively as both arrays and maps before using fallback
-  context-window values. Do not hard-code alias-to-model mappings in Tutti.
+  context-window values. Track the model associated with a cached context
+  window, and only reuse the previous total for the same model or when the model
+  is unknown. Do not hard-code alias-to-model mappings in Tutti.
 - Validation:
   Add sidecar and daemon coverage with map-shaped `modelUsage` carrying
-  `contextWindow: 1_000_000`, then run the Claude SDK sidecar tests, daemon Go
-  tests, and sidecar typecheck.
+  `contextWindow: 1_000_000`, plus daemon coverage for Haiku -> Sonnet5 -> Haiku
+  usage updates where the last payload lacks `totalTokens`. Then run the Claude
+  SDK sidecar tests, daemon Go tests, and sidecar typecheck.
 - References:
   [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
   [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
