@@ -1,5 +1,10 @@
 import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentActivityTypes";
 import { looksLikeOpaqueToolCallIdentifier } from "./workspaceAgentToolCallIdentifiers";
+import {
+  legacyKindToToolName,
+  TOOL_ACTIVITY_KIND_TRANSLATION_KEYS,
+  type ToolActivityKind
+} from "./workspaceAgentToolCallLabels";
 
 export function resolveCanonicalToolName(
   toolName: string | null | undefined
@@ -54,8 +59,25 @@ export function resolveCanonicalToolName(
     case "agent":
       return "Agent";
     default:
-      return null;
+      // Codex/legacy tool calls (including ones reconstructed by the
+      // Codex/Claude Code history import pipeline, which does not run the
+      // live daemon's canonicalization step) report the raw snake_case
+      // provider tool name verbatim, e.g. "apply_patch" for a file edit.
+      // Recognize those exactly as the equivalent live-session ToolActivityKind
+      // so imported and live tool calls resolve to the same canonical name and
+      // render with the same specialized (e.g. diff/file-reference) content.
+      return resolveLegacySnakeCaseToolName(toolName);
   }
+}
+
+function resolveLegacySnakeCaseToolName(
+  toolName: string | null | undefined
+): string | null {
+  const trimmed = toolName?.trim() ?? "";
+  if (!trimmed || !(trimmed in TOOL_ACTIVITY_KIND_TRANSLATION_KEYS)) {
+    return null;
+  }
+  return legacyKindToToolName(trimmed as ToolActivityKind);
 }
 
 export function resolveLiveCanonicalToolName(
