@@ -108,7 +108,15 @@ function isPlainKeyEvent(event: TerminalImeKeyEvent): boolean {
 }
 
 function isCompositionCommitKey(key: string): boolean {
-  return key === "Enter" || key === "Escape" || key === " ";
+  // Digits commit candidates too (数字键选词), so treat them as commit keys;
+  // genuine digits typed after the commit key's keyup are unaffected because
+  // the keyup already closed the suppression window.
+  return (
+    key === "Enter" ||
+    key === "Escape" ||
+    key === " " ||
+    (key.length === 1 && key >= "0" && key <= "9")
+  );
 }
 
 function isModifierOnlyKey(key: string): boolean {

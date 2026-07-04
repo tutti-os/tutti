@@ -550,20 +550,23 @@ delimited by ---`, and the composer skill picker may show partial or
   slowly point at the IME guard's post-composition window, not the PTY.
 - Root cause:
   The guard suppressed every unmodified key for a fixed window after
-  `compositionend` to swallow ghost commit-key events. Only the commit key
-  itself (Enter, Escape, Space) ever replays after `compositionend`; blanket
-  suppression also swallowed genuine next keystrokes, and blocking keyCode 229
-  keydowns kept xterm's `CompositionHelper._handleAnyTextareaChanges` from
-  forwarding IME punctuation entered right after a commit.
+  `compositionend` to swallow ghost commit-key events. Only keys that can
+  commit a candidate (Enter, Escape, Space, digit selection keys) can replay
+  after `compositionend`; blanket suppression also swallowed genuine next
+  keystrokes, and blocking keyCode 229 keydowns kept xterm's
+  `CompositionHelper._handleAnyTextareaChanges` from forwarding IME
+  punctuation entered right after a commit.
 - Fix:
-  Inside the window, suppress only Enter, Escape, and Space; let all other keys
-  through so xterm's own keyCode 229 handling still runs. Ghost events replay
-  before the physical key is released, so close the window as soon as a keyup
-  arrives outside composition — any later keydown is genuine user input.
+  Inside the window, suppress only commit-capable keys (Enter, Escape, Space,
+  digits); let all other keys through so xterm's own keyCode 229 handling
+  still runs. Ghost events replay before the physical key is released, so
+  close the window as soon as a keyup arrives outside composition — any later
+  keydown is genuine user input, including genuine digits.
 - Validation:
   Unit-cover letters and `Process` keys passing through the window, keyup
-  closing the window so a repeated Enter is processed, and commit keys staying
-  suppressed. Manually commit with Space then immediately press Enter, and type
+  closing the window so a repeated Enter or digit is processed, and commit
+  keys (including digits) staying suppressed. Manually commit with Space then
+  immediately press Enter, select a candidate with a digit key, and type
   full-width punctuation right after a commit.
 - References:
   [terminalImeInputGuard.ts](../../packages/workspace/terminal/src/react/terminalImeInputGuard.ts)
