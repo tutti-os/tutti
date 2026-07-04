@@ -54,7 +54,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         agentComposerDefaultsByProvider: {},
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
-        agentDockLayout: "legacySplit",
+        agentDockLayout: "unified",
         appCatalogChannel: "production",
         browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",

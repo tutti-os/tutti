@@ -15,7 +15,6 @@ import {
   resolveAgentGuiWorkbenchContributionCopy
 } from "./contribution.ts";
 import {
-  agentGuiWorkbenchDockEntryId,
   agentGuiWorkbenchUnifiedDockEntryId,
   agentGuiWorkbenchTypeId
 } from "./launch.ts";
@@ -64,38 +63,11 @@ const testLaunchLayout = {
 };
 
 describe("agent GUI workbench contribution copy", () => {
-  it("builds legacy split dock entries for the current provider dock ids", () => {
-    const entries = buildAgentGuiDockEntries({
-      layout: "legacySplit",
-      providerAvailability: {},
-      targets: [
-        createLocalAgentGUIProviderTarget("codex"),
-        createLocalAgentGUIProviderTarget("claude-code")
-      ]
-    });
-
-    expect(entries.map((entry) => entry.id)).toEqual([
-      "agent-gui:claude-code",
-      "agent-gui",
-      "agent-gui:nexight",
-      "agent-gui:hermes",
-      "agent-gui:gemini",
-      "agent-gui:openclaw"
-    ]);
-    expect(entries.find((entry) => entry.id === "agent-gui")?.visibility).toBe(
-      "always"
-    );
-    expect(
-      entries.find((entry) => entry.id === "agent-gui:claude-code")?.visibility
-    ).toBe("always");
-  });
-
   it("builds one unified dock entry with the selected default target payload", () => {
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     const entries = buildAgentGuiDockEntries({
       defaultProvider: "codex",
       label: "Agent",
-      layout: "unified",
       providerAvailability: {
         "claude-code": true,
         codex: false
@@ -121,7 +93,6 @@ describe("agent GUI workbench contribution copy", () => {
         codex: "app://icons/codex.png"
       },
       label: "Agent",
-      layout: "unified",
       providerAvailability: {
         codex: true
       },
@@ -153,7 +124,6 @@ describe("agent GUI workbench contribution copy", () => {
     const entries = buildAgentGuiDockEntries({
       defaultProvider: "codex",
       label: "Agent",
-      layout: "unified",
       providerAvailability: {
         "claude-code": true,
         codex: false
@@ -183,7 +153,6 @@ describe("agent GUI workbench contribution copy", () => {
     const entries = buildAgentGuiDockEntries({
       defaultProvider: "codex",
       label: "Agent",
-      layout: "unified",
       providerAvailability: {
         codex: true
       },
@@ -200,7 +169,6 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("matches unified dock nodes across provider-specific and historical agent GUI identities", () => {
     const [entry] = buildAgentGuiDockEntries({
-      layout: "unified",
       providerAvailability: {},
       targets: []
     });
@@ -242,7 +210,6 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("keeps unified launch payload provider priority when opening a session", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
-      dockLayout: "unified",
       renderBody: () => null,
       workspaceId: "workspace-1"
     });
@@ -282,7 +249,6 @@ describe("agent GUI workbench contribution copy", () => {
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     const contribution = createTestAgentGuiWorkbenchContribution({
       defaultProvider: "codex",
-      dockLayout: "unified",
       providerAvailability: {},
       providerTargets: [
         createLocalAgentGUIProviderTarget("codex"),
@@ -339,7 +305,6 @@ describe("agent GUI workbench contribution copy", () => {
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     const contribution = createTestAgentGuiWorkbenchContribution({
       defaultProviderTargetId: claudeTarget.targetId,
-      dockLayout: "unified",
       providerTargets: [
         createLocalAgentGUIProviderTarget("codex"),
         claudeTarget
@@ -386,7 +351,6 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("does not seed fallback target state while provider targets are loading", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
-      dockLayout: "unified",
       providerTargets: [],
       providerTargetsLoading: true,
       renderBody: () => null,
@@ -423,7 +387,6 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("does not seed fallback target state when provider targets are explicitly empty", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
-      dockLayout: "unified",
       providerTargets: [],
       renderBody: () => null,
       workspaceId: "workspace-1"
@@ -489,11 +452,11 @@ describe("agent GUI workbench contribution copy", () => {
       workspaceId: "workspace-1"
     });
 
-    const codexDockEntry = contribution.dockEntries?.find(
-      (entry) => entry.id === agentGuiWorkbenchDockEntryId("codex")
+    const dockEntry = contribution.dockEntries?.find(
+      (entry) => entry.id === agentGuiWorkbenchUnifiedDockEntryId()
     );
 
-    expect(readDockEntryIconSrc(codexDockEntry?.icon)).toBe(
+    expect(readDockEntryIconSrc(dockEntry?.icon)).toBe(
       agentGuiDockIconUrls.codex
     );
   });
@@ -507,19 +470,11 @@ describe("agent GUI workbench contribution copy", () => {
       workspaceId: "workspace-1"
     });
 
-    const codexDockEntry = contribution.dockEntries?.find(
-      (entry) => entry.id === agentGuiWorkbenchDockEntryId("codex")
-    );
-    const geminiDockEntry = contribution.dockEntries?.find(
-      (entry) => entry.id === agentGuiWorkbenchDockEntryId("gemini")
+    const dockEntry = contribution.dockEntries?.find(
+      (entry) => entry.id === agentGuiWorkbenchUnifiedDockEntryId()
     );
 
-    expect(readDockEntryIconSrc(codexDockEntry?.icon)).toBe(
-      "app://icons/codex.png"
-    );
-    expect(readDockEntryIconSrc(geminiDockEntry?.icon)).toBe(
-      agentGuiDockIconUrls.gemini
-    );
+    expect(readDockEntryIconSrc(dockEntry?.icon)).toBe("app://icons/codex.png");
   });
 
   it("uses browser-loadable packaged icons in the workbench header", () => {
@@ -810,7 +765,7 @@ describe("agent GUI workbench contribution copy", () => {
       workspaceId: "workspace-1"
     });
     const dockEntry = contribution.dockEntries?.find(
-      (entry) => entry.id === agentGuiWorkbenchTypeId
+      (entry) => entry.id === agentGuiWorkbenchUnifiedDockEntryId()
     );
     expect(dockEntry).toBeDefined();
 
@@ -851,7 +806,7 @@ describe("agent GUI workbench contribution copy", () => {
       workspaceId: "workspace-1"
     });
     const dockEntry = contribution.dockEntries?.find(
-      (entry) => entry.id === agentGuiWorkbenchTypeId
+      (entry) => entry.id === agentGuiWorkbenchUnifiedDockEntryId()
     );
     expect(dockEntry).toBeDefined();
 
@@ -1109,7 +1064,6 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("uses the generic Agent title with the unified icon for unified header chrome", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
-      dockLayout: "unified",
       renderBody: () => null,
       unifiedDockIconUrl: "app://icons/agent-unified.png",
       workspaceId: "workspace-1"

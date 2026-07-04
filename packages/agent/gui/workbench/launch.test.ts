@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   agentGuiWorkbenchPrefillPromptActivationType,
-  agentGuiWorkbenchDockEntryIdForLayout,
   agentGuiWorkbenchDockEntryId,
   agentGuiWorkbenchDockIdentityFromIdentifier,
   agentGuiWorkbenchInstanceId,
@@ -76,20 +75,8 @@ describe("agent gui workbench launch contract", () => {
     expect(descriptor.provider).toBe("codex");
   });
 
-  it("parses the future unified dock identity separately from legacy provider dock ids", () => {
+  it("parses the unified dock identity separately from legacy provider dock ids", () => {
     expect(agentGuiWorkbenchUnifiedDockEntryId()).toBe("agent-gui:unified");
-    expect(
-      agentGuiWorkbenchDockEntryIdForLayout({
-        dockLayout: "legacySplit",
-        provider: "claude-code"
-      })
-    ).toBe("agent-gui:claude-code");
-    expect(
-      agentGuiWorkbenchDockEntryIdForLayout({
-        dockLayout: "unified",
-        provider: "claude-code"
-      })
-    ).toBe("agent-gui:unified");
     expect(
       agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:unified")
     ).toEqual({ kind: "unifiedAggregate" });

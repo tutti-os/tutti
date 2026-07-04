@@ -6,7 +6,6 @@ import {
 } from "../theme/index.ts";
 import type {
   DesktopAgentComposerDefaultsByProvider,
-  DesktopAgentDockLayout,
   DesktopAgentGuiConversationRailCollapsedByProvider,
   DesktopAgentProvider,
   DesktopFileDefaultOpenersByExtension,
@@ -386,7 +385,6 @@ export interface DesktopSelectUploadFilesInput {
 
 export interface DesktopHostPreferencesSyncPayload {
   agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
-  agentDockLayout?: DesktopAgentDockLayout;
   agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
   fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
   defaultAgentProvider?: DesktopAgentProvider;

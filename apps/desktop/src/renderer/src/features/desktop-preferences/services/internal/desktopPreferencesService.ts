@@ -8,7 +8,6 @@ import {
   desktopAgentGuiConversationRailCollapsedByProviderEqual,
   defaultDesktopAgentProvider,
   defaultDesktopAgentConversationDetailMode,
-  defaultDesktopAgentDockLayout,
   defaultDesktopAppCatalogChannel,
   defaultDesktopBrowserUseConnectionMode,
   defaultDesktopDockIconStyle,
@@ -25,7 +24,6 @@ import {
   normalizeDesktopAgentComposerDefaults,
   normalizeDesktopAgentComposerDefaultsByProvider,
   normalizeDesktopAgentConversationDetailMode,
-  normalizeDesktopAgentDockLayout,
   normalizeDesktopFileDefaultOpenersByExtension,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopWorkbenchWindowSnapping,
@@ -36,7 +34,6 @@ import {
   type DesktopAgentGuiConversationRailCollapsedByProvider,
   type DesktopAgentProvider,
   type DesktopAgentConversationDetailMode,
-  type DesktopAgentDockLayout,
   type DesktopAppCatalogChannel,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
@@ -73,7 +70,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       agentComposerDefaultsByProvider: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: defaultDesktopAgentConversationDetailMode,
-      agentDockLayout: defaultDesktopAgentDockLayout,
       appCatalogChannel: defaultDesktopAppCatalogChannel,
       browserUseConnectionMode: defaultDesktopBrowserUseConnectionMode,
       defaultAgentProvider: defaultDesktopAgentProvider,
@@ -161,37 +157,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     } finally {
       if (this.store.changingAgentConversationDetailMode === nextMode) {
         this.store.changingAgentConversationDetailMode = null;
-      }
-    }
-  }
-
-  async setAgentDockLayout(
-    layout: DesktopAgentDockLayout
-  ): Promise<DesktopAgentDockLayout> {
-    const nextLayout = normalizeDesktopAgentDockLayout(layout);
-    if (this.store.changingAgentDockLayout === nextLayout) {
-      return nextLayout;
-    }
-
-    const previousLayout = this.store.agentDockLayout;
-    this.store.changingAgentDockLayout = nextLayout;
-    this.store.agentDockLayout = nextLayout;
-    try {
-      const authoritativePreferences =
-        await this.dependencies.client.updateDesktopPreferences({
-          preferences: this.currentPreferences({
-            agentDockLayout: nextLayout
-          })
-        });
-      return normalizeDesktopAgentDockLayout(
-        authoritativePreferences.agentDockLayout
-      );
-    } catch (error) {
-      this.store.agentDockLayout = previousLayout;
-      throw error;
-    } finally {
-      if (this.store.changingAgentDockLayout === nextLayout) {
-        this.store.changingAgentDockLayout = null;
       }
     }
   }
@@ -693,7 +658,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
     agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
     agentConversationDetailMode?: DesktopAgentConversationDetailMode;
-    agentDockLayout?: DesktopAgentDockLayout;
     appCatalogChannel: DesktopAppCatalogChannel;
     browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
     defaultAgentProvider: DesktopAgentProvider;
@@ -721,9 +685,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       normalizeDesktopAgentConversationDetailMode(
         preferences.agentConversationDetailMode
       );
-    this.store.agentDockLayout = normalizeDesktopAgentDockLayout(
-      preferences.agentDockLayout
-    );
     this.store.appCatalogChannel =
       preferences.appCatalogChannel ?? defaultDesktopAppCatalogChannel;
     this.store.browserUseConnectionMode =
@@ -757,7 +718,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
       agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
       agentConversationDetailMode: DesktopAgentConversationDetailMode;
-      agentDockLayout: DesktopAgentDockLayout;
       appCatalogChannel: DesktopAppCatalogChannel;
       browserUseConnectionMode: DesktopBrowserUseConnectionMode;
       defaultAgentProvider: DesktopAgentProvider;
@@ -777,7 +737,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
     agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
     agentConversationDetailMode: DesktopAgentConversationDetailMode;
-    agentDockLayout: DesktopAgentDockLayout;
+    agentDockLayout: "unified";
     appCatalogChannel: DesktopAppCatalogChannel;
     browserUseConnectionMode: DesktopBrowserUseConnectionMode;
     defaultAgentProvider: DesktopAgentProvider;
@@ -813,9 +773,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         overrides.agentConversationDetailMode ??
           this.store.agentConversationDetailMode
       ),
-      agentDockLayout: normalizeDesktopAgentDockLayout(
-        overrides.agentDockLayout ?? this.store.agentDockLayout
-      ),
+      // The dual-dock (legacySplit) layout has been removed; the stored
+      // preference is pinned to the unified layout.
+      agentDockLayout: "unified",
       appCatalogChannel:
         overrides.appCatalogChannel ?? this.store.appCatalogChannel,
       browserUseConnectionMode:

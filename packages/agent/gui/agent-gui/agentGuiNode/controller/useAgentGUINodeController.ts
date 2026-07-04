@@ -86,7 +86,6 @@ import type {
 } from "../../../host/agentHostApi";
 import type {
   AgentComposerDraft,
-  AgentGUIConversationScope,
   AgentGUIComposerSettingOption,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
@@ -3570,7 +3569,6 @@ interface UseAgentGUINodeControllerInput {
   workspacePath: string;
   avoidGroupingEdits: boolean;
   data: AgentGUINodeData;
-  conversationScope?: AgentGUIConversationScope;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
   providerReadinessGates?: Partial<
@@ -3611,7 +3609,6 @@ export function useAgentGUINodeController({
   workspacePath,
   avoidGroupingEdits,
   data,
-  conversationScope = "single-provider",
   providerTargets,
   providerTargetsLoading = false,
   providerReadinessGates = null,
@@ -3785,16 +3782,6 @@ export function useAgentGUINodeController({
     );
   const conversationFilterRef = useRef(conversationFilter);
   conversationFilterRef.current = conversationFilter;
-  const canUseConversationTargetFilter = conversationScope === "multi-provider";
-  const queryConversationFilter = canUseConversationTargetFilter
-    ? conversationFilter
-    : null;
-  useEffect(() => {
-    if (canUseConversationTargetFilter || conversationFilter.kind === "all") {
-      return;
-    }
-    setConversationFilter({ kind: "all" });
-  }, [canUseConversationTargetFilter, conversationFilter]);
   const conversationListQuery =
     useMemo<AgentGUIConversationListQuery | null>(() => {
       const userId = currentUserId?.trim() ?? "";
@@ -3803,15 +3790,13 @@ export function useAgentGUINodeController({
         return null;
       }
       return {
-        ...(queryConversationFilter
-          ? { conversationFilter: queryConversationFilter }
-          : {}),
+        conversationFilter,
         workspaceId,
         userId,
         provider: data.provider,
         sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN
       };
-    }, [currentUserId, data.provider, queryConversationFilter, workspaceId]);
+    }, [currentUserId, data.provider, conversationFilter, workspaceId]);
   const conversationListState = useAgentGuiConversationList(
     conversationListQuery
   );
@@ -7536,7 +7521,7 @@ export function useAgentGUINodeController({
       // Starting a new conversation from a target tab should compose for that
       // tab's target, not for whatever target the node last remembered.
       const filter = conversationFilterRef.current;
-      if (canUseConversationTargetFilter && filter.kind === "agentTarget") {
+      if (filter.kind === "agentTarget") {
         const filterTarget = resolveAgentGUIProviderTarget({
           agentTargetId: filter.agentTargetId,
           defaultProviderTargetId,
@@ -7557,7 +7542,6 @@ export function useAgentGUINodeController({
     [
       activation,
       agentActivityRuntime,
-      canUseConversationTargetFilter,
       defaultProviderTargetId,
       loadDraftComposerOptions,
       normalizedProviderTargets,
@@ -10581,13 +10565,9 @@ export function useAgentGUINodeController({
 
   const updateConversationFilter = useCallback(
     (filter: AgentGUIConversationFilter) => {
-      if (!canUseConversationTargetFilter) {
-        setConversationFilter({ kind: "all" });
-        return;
-      }
       setConversationFilter(normalizeAgentGUIConversationFilter(filter));
     },
-    [canUseConversationTargetFilter]
+    []
   );
   const selectProvider = useCallback(
     (input: {
@@ -10681,10 +10661,6 @@ export function useAgentGUINodeController({
       provider: AgentGUIProvider;
       providerTargetId?: string | null;
     }) => {
-      if (!canUseConversationTargetFilter) {
-        setConversationFilter({ kind: "all" });
-        return;
-      }
       const nextTarget = resolveAgentGUIProviderTarget({
         defaultProviderTargetId,
         fallbackToLocal: shouldFallbackToLocalProviderTargets,
@@ -10716,7 +10692,6 @@ export function useAgentGUINodeController({
     },
     [
       agentActivityRuntime,
-      canUseConversationTargetFilter,
       defaultProviderTargetId,
       normalizedProviderTargets,
       shouldFallbackToLocalProviderTargets,
@@ -10880,7 +10855,6 @@ export function useAgentGUINodeController({
         selectedProviderTarget: effectiveSelectedProviderTarget,
         providerTargets: normalizedProviderTargets,
         providerTargetsLoading,
-        conversationScope,
         conversationFilter,
         conversations: visibleConversations,
         userProjects,
@@ -10948,7 +10922,6 @@ export function useAgentGUINodeController({
       canSubmit,
       canQueueWhileBusy,
       conversation,
-      conversationScope,
       conversationFilter,
       conversationDetail,
       controllerActions,

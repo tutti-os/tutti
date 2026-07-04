@@ -1325,7 +1325,6 @@ export function AgentGUINodeView({
         selectedProviderTarget: viewModel.selectedProviderTarget,
         providerTargets: viewModel.providerTargets,
         providerTargetsLoading: viewModel.providerTargetsLoading,
-        conversationScope: viewModel.conversationScope,
         conversationFilter: viewModel.conversationFilter,
         onCreateConversation: requestCreateConversation,
         onUpdateConversationFilter: actions.updateConversationFilter,
@@ -1372,7 +1371,6 @@ export function AgentGUINodeView({
         viewModel.providerTargetsLoading,
         toggleConversationPinned,
         uiLanguage,
-        viewModel.conversationScope,
         viewModel.conversationFilter,
         viewModel.activeConversationId,
         viewModel.isDeletingConversation,
@@ -2290,11 +2288,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     },
     [submitInteractivePrompt]
   );
-  const canSwitchComposerProvider =
-    viewModel.conversationScope === "multi-provider";
-  const composerProviderTargets = canSwitchComposerProvider
-    ? viewModel.providerTargets
-    : [viewModel.selectedProviderTarget];
+  const composerProviderTargets = viewModel.providerTargets;
   const bottomDockComposerProps = useMemo<AgentComposerProps>(
     () => ({
       workspaceId: viewModel.workspaceId,
@@ -2303,8 +2297,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       provider: viewModel.data.provider,
       selectedProviderTarget: viewModel.selectedProviderTarget,
       providerTargets: composerProviderTargets,
-      providerSelectReadonly:
-        !canSwitchComposerProvider || viewModel.activeConversationId !== null,
+      providerSelectReadonly: viewModel.activeConversationId !== null,
       slashStatus,
       usage: viewModel.usage,
       draftContent: viewModel.draftContent,
@@ -2345,9 +2338,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
-      onProviderSelect: canSwitchComposerProvider
-        ? actions.selectProvider
-        : undefined,
+      onProviderSelect: actions.selectProvider,
       onSubmit: submitPromptAndScrollToBottom,
       onSubmitGuidance: submitGuidancePromptAndScrollToBottom,
       onPromptImagesUnsupported: showPromptImagesUnsupported,
@@ -2367,7 +2358,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [
       canQueueWhileBusy,
       backgroundAgentStatusText,
-      canSwitchComposerProvider,
       capabilityMenuState,
       composerProviderTargets,
       composerDisabled,
@@ -3357,7 +3347,6 @@ interface AgentGUIConversationRailPaneProps {
   selectedProviderTarget: AgentGUINodeViewModel["selectedProviderTarget"];
   providerTargets: AgentGUINodeViewModel["providerTargets"];
   providerTargetsLoading: AgentGUINodeViewModel["providerTargetsLoading"];
-  conversationScope: AgentGUINodeViewModel["conversationScope"];
   conversationFilter: AgentGUINodeViewModel["conversationFilter"];
   onUpdateConversationFilter: (
     filter: AgentGUINodeViewModel["conversationFilter"]
@@ -3459,7 +3448,6 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.selectedProviderTarget === next.selectedProviderTarget &&
     current.providerTargets === next.providerTargets &&
     current.providerTargetsLoading === next.providerTargetsLoading &&
-    current.conversationScope === next.conversationScope &&
     current.conversationFilter === next.conversationFilter &&
     current.onUpdateConversationFilter === next.onUpdateConversationFilter &&
     current.onSelectConversationFilterTarget ===
@@ -4323,7 +4311,6 @@ const AgentGUIConversationRailPane = memo(
     slashStatusLimits,
     providerTargets,
     providerTargetsLoading,
-    conversationScope,
     conversationFilter,
     onUpdateConversationFilter,
     onSelectConversationFilterTarget,
@@ -4343,7 +4330,6 @@ const AgentGUIConversationRailPane = memo(
     onConfirmDeleteConversation
   }: AgentGUIConversationRailPaneProps): React.JSX.Element {
     "use memo";
-    const showProviderRail = conversationScope === "multi-provider";
     const [conversationQuery, setConversationQuery] = useState("");
     const updateConversationFilter = useStableEventCallback(
       onUpdateConversationFilter
@@ -4551,17 +4537,15 @@ const AgentGUIConversationRailPane = memo(
             <span>{labels.newConversation}</span>
           </Button>
         </div>
-        {showProviderRail ? (
-          <AgentGUIProviderRail
-            conversationFilter={conversationFilter}
-            labels={labels}
-            previewMode={previewMode}
-            providerTargets={providerTargets}
-            providerTargetsLoading={providerTargetsLoading}
-            onSelectConversationFilterTarget={selectConversationFilterTarget}
-            onUpdateConversationFilter={updateConversationFilter}
-          />
-        ) : null}
+        <AgentGUIProviderRail
+          conversationFilter={conversationFilter}
+          labels={labels}
+          previewMode={previewMode}
+          providerTargets={providerTargets}
+          providerTargetsLoading={providerTargetsLoading}
+          onSelectConversationFilterTarget={selectConversationFilterTarget}
+          onUpdateConversationFilter={updateConversationFilter}
+        />
         {openclawGateway?.status === "starting" ? (
           <div className={styles.gatewayStatus} data-state="starting">
             <StatusDot

@@ -918,22 +918,8 @@ describe("AgentGUINode", () => {
     expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
   });
 
-  it("keeps the rail config entry visible for legacy single-provider docks", () => {
-    mockViewModel = createViewModel({
-      conversationScope: "single-provider",
-      conversationFilter: { kind: "all" }
-    });
-
-    renderAgentGUINode();
-
-    expect(
-      screen.getByTitle("agentHost.agentGui.agentConfig")
-    ).toBeInTheDocument();
-  });
-
   it("hides the rail config entry for the unified All provider filter", () => {
     mockViewModel = createViewModel({
-      conversationScope: "multi-provider",
       conversationFilter: { kind: "all" },
       providerTargets: [
         createLocalAgentGUIProviderTarget("codex"),
@@ -951,7 +937,6 @@ describe("AgentGUINode", () => {
     const codexTarget = createLocalAgentGUIProviderTarget("codex");
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     mockViewModel = createViewModel({
-      conversationScope: "multi-provider",
       conversationFilter: {
         kind: "agentTarget",
         agentTargetId: claudeTarget.agentTargetId ?? ""
@@ -7110,7 +7095,6 @@ function createViewModel(
     },
     inlineNotice: null,
     ...overrides,
-    conversationScope: overrides.conversationScope ?? "single-provider",
     conversationFilter: overrides.conversationFilter ?? { kind: "all" },
     providerReadinessGate: overrides.providerReadinessGate ?? null,
     listError: overrides.listError ?? null

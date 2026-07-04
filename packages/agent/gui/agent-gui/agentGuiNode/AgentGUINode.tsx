@@ -43,7 +43,6 @@ import type {
   AgentGUIPrefillPromptRequest,
   AgentGUIRememberComposerDefaultsInput
 } from "./controller/useAgentGUINodeController";
-import type { AgentGUIConversationScope } from "./model/agentGuiNodeTypes";
 import {
   AgentGUINodeView,
   type AgentGUIViewLabels,
@@ -59,8 +58,7 @@ import {
 import { agentGUIProviderTargetRefsEqual } from "../../providerTargets";
 import {
   buildDockAgentProbeTooltipLines,
-  findWorkspaceAgentProbeForDockProvider,
-  workspaceAgentProbeRenderStateEqualsForProvider
+  findWorkspaceAgentProbeForDockProvider
 } from "../workspaceDesktop/view/desktopDockAgentProbeTooltipModel";
 import { AgentProbeInfoPopover } from "../workspaceDesktop/view/AgentProbeInfoPopover";
 import type { AgentComposerProps } from "./AgentComposer";
@@ -193,7 +191,6 @@ export interface AgentGUINodeProps {
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
   defaultProviderTargetId?: string | null;
-  conversationScope?: AgentGUIConversationScope;
   onWorkspaceFileReferencesAdded?: (input: {
     provider: AgentProvider;
     references: readonly WorkspaceFileReference[];
@@ -422,16 +419,11 @@ function normalizeSlashStatusModelName(
 }
 
 function resolveAgentGUIRailStatusProvider(input: {
-  activeProvider: AgentProvider;
   conversationFilter: ReturnType<
     typeof useAgentGUINodeController
   >["viewModel"]["conversationFilter"];
-  conversationScope: AgentGUIConversationScope;
   providerTargets: readonly AgentGUIProviderTarget[];
 }): AgentProvider | null {
-  if (input.conversationScope !== "multi-provider") {
-    return input.activeProvider as AgentProvider;
-  }
   const filter = input.conversationFilter;
   if (filter.kind !== "agentTarget") {
     return null;
@@ -572,7 +564,6 @@ function areAgentGUINodePropsEqual(
     previous.providerTargetsLoading === next.providerTargetsLoading &&
     previous.providerReadinessGates === next.providerReadinessGates &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
-    previous.conversationScope === next.conversationScope &&
     previous.onClose === next.onClose &&
     previous.onResize === next.onResize &&
     previous.onUpdateNode === next.onUpdateNode &&
@@ -583,14 +574,7 @@ function areAgentGUINodePropsEqual(
     previous.onMinimize === next.onMinimize &&
     previous.onToggleMaximize === next.onToggleMaximize &&
     previous.onShowMessage === next.onShowMessage &&
-    (previous.conversationScope === "multi-provider" ||
-    next.conversationScope === "multi-provider"
-      ? previous.workspaceAgentProbes === next.workspaceAgentProbes
-      : workspaceAgentProbeRenderStateEqualsForProvider(
-          previous.workspaceAgentProbes,
-          next.workspaceAgentProbes,
-          previous.state.provider
-        )) &&
+    previous.workspaceAgentProbes === next.workspaceAgentProbes &&
     previous.onAgentProbeDemandChange === next.onAgentProbeDemandChange &&
     previous.onAgentProbeRefreshRequest === next.onAgentProbeRefreshRequest &&
     previous.managedAgentsState === next.managedAgentsState &&
@@ -636,7 +620,6 @@ export const AgentGUINode = memo(function AgentGUINode({
   providerTargetsLoading = false,
   providerReadinessGates = null,
   defaultProviderTargetId = null,
-  conversationScope = "single-provider",
   onWorkspaceFileReferencesAdded,
   onOpenConversationWindow,
   onClose,
@@ -803,7 +786,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     workspacePath,
     avoidGroupingEdits: agentSettings.avoidGroupingEdits,
     data: state,
-    conversationScope,
     openSessionRequest,
     prefillPromptRequest,
     providerTargets,
@@ -1447,17 +1429,10 @@ export const AgentGUINode = memo(function AgentGUINode({
   const railStatusProvider = useMemo(
     () =>
       resolveAgentGUIRailStatusProvider({
-        activeProvider: activeProbeProvider,
         conversationFilter: viewModel.conversationFilter,
-        conversationScope: viewModel.conversationScope,
         providerTargets: viewModel.providerTargets
       }),
-    [
-      activeProbeProvider,
-      viewModel.conversationFilter,
-      viewModel.conversationScope,
-      viewModel.providerTargets
-    ]
+    [viewModel.conversationFilter, viewModel.providerTargets]
   );
   const activeAgentProbe = useMemo(
     () =>

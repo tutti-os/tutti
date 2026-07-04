@@ -3,7 +3,6 @@ import type {
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentGuiConversationRailCollapsedByProvider,
   DesktopAgentConversationDetailMode,
-  DesktopAgentDockLayout,
   DesktopAgentProvider,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
@@ -24,7 +23,6 @@ export function createDesktopPreferencesStore(input: {
   agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
-  agentDockLayout: DesktopAgentDockLayout;
   appCatalogChannel: DesktopAppCatalogChannel;
   browserUseConnectionMode: DesktopBrowserUseConnectionMode;
   defaultAgentProvider: DesktopAgentProvider;
@@ -43,7 +41,6 @@ export function createDesktopPreferencesStore(input: {
   return proxy({
     changingDefaultAgentProvider: null,
     changingAgentConversationDetailMode: null,
-    changingAgentDockLayout: null,
     changingAppCatalogChannel: null,
     changingBrowserUseConnectionMode: null,
     changingDockIconStyle: null,
@@ -61,7 +58,6 @@ export function createDesktopPreferencesStore(input: {
     agentGuiConversationRailCollapsedByProvider:
       input.agentGuiConversationRailCollapsedByProvider ?? {},
     agentConversationDetailMode: input.agentConversationDetailMode,
-    agentDockLayout: input.agentDockLayout,
     appCatalogChannel: input.appCatalogChannel,
     browserUseConnectionMode: input.browserUseConnectionMode,
     defaultAgentProvider: input.defaultAgentProvider,

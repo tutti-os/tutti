@@ -25,8 +25,6 @@ const agentGuiWorkbenchDockEntryPrefix = "agent-gui:";
 const agentGuiWorkbenchUnifiedDockEntryIdValue = "agent-gui:unified";
 let agentGuiWorkbenchInstanceSequence = 0;
 
-export type AgentGuiWorkbenchDockLayout = "legacySplit" | "unified";
-
 export type AgentGuiWorkbenchDockIdentity =
   | {
       kind: "legacyProvider";
@@ -46,15 +44,6 @@ export function agentGuiWorkbenchDockEntryId(
 
 export function agentGuiWorkbenchUnifiedDockEntryId(): string {
   return agentGuiWorkbenchUnifiedDockEntryIdValue;
-}
-
-export function agentGuiWorkbenchDockEntryIdForLayout(input: {
-  dockLayout: AgentGuiWorkbenchDockLayout;
-  provider: AgentGuiWorkbenchProvider;
-}): string {
-  return input.dockLayout === "unified"
-    ? agentGuiWorkbenchUnifiedDockEntryId()
-    : agentGuiWorkbenchDockEntryId(input.provider);
 }
 
 export function agentGuiWorkbenchInstanceId(

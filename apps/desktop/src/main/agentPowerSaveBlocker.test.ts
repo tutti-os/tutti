@@ -275,9 +275,6 @@ function createFakePreferences(
     getAgentConversationDetailMode() {
       return "coding";
     },
-    getAgentDockLayout() {
-      return "legacySplit";
-    },
     getAppCatalogChannel() {
       return "production";
     },

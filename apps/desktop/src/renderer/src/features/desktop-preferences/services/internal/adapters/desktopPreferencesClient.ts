@@ -235,7 +235,6 @@ function createPreferencesKey(
     normalizeDesktopAgentConversationDetailMode(
       preferences.agentConversationDetailMode
     ),
-    preferences.agentDockLayout,
     preferences.appCatalogChannel,
     preferences.browserUseConnectionMode ?? "isolated",
     preferences.defaultAgentProvider,
@@ -275,7 +274,6 @@ function preferencesEqual(
       normalizeDesktopAgentConversationDetailMode(
         right.agentConversationDetailMode
       ) &&
-    left.agentDockLayout === right.agentDockLayout &&
     (left.browserUseConnectionMode ?? "isolated") ===
       (right.browserUseConnectionMode ?? "isolated") &&
     left.appCatalogChannel === right.appCatalogChannel &&

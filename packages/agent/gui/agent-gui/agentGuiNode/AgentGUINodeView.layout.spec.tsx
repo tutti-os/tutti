@@ -157,25 +157,14 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
   });
 
-  it("only renders the provider filter for multi-provider conversation scope", () => {
+  it("always renders the provider filter rail", () => {
     const providerTargets = [
       createLocalAgentGUIProviderTarget("codex"),
       createLocalAgentGUIProviderTarget("claude-code")
     ];
-    const { container, rerender } = renderAgentGUINodeView({
+    const { container } = renderAgentGUINodeView({
       viewModel: createViewModel({ providerTargets })
     });
-
-    expect(container.querySelector('[role="tablist"]')).toBeNull();
-
-    rerender(
-      buildAgentGUINodeViewElement({
-        viewModel: createViewModel({
-          conversationScope: "multi-provider",
-          providerTargets
-        })
-      })
-    );
 
     expect(container.querySelector('[role="tablist"]')).not.toBeNull();
   });
@@ -316,7 +305,6 @@ describe("AgentGUINodeView layout persistence", () => {
       actions,
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         providerTargets: [
           createLocalAgentGUIProviderTarget("codex"),
           claudeTarget
@@ -342,7 +330,6 @@ describe("AgentGUINodeView layout persistence", () => {
       actions,
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: {
           kind: "agentTarget",
           agentTargetId: claudeTarget.agentTargetId ?? ""
@@ -367,7 +354,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: { kind: "all" },
         selectedProviderTarget: claudeTarget,
         providerTargets: [
@@ -392,7 +378,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: {
           kind: "agentTarget",
           agentTargetId: codexTarget.agentTargetId ?? ""
@@ -419,7 +404,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: { kind: "all" },
         selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
         providerTargets: [
@@ -448,7 +432,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: { kind: "all" },
         selectedProviderTarget: daemonCodexTarget,
         providerTargets: [
@@ -475,7 +458,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         providerTargets: [],
         providerTargetsLoading: true
       }
@@ -492,7 +474,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         providerTargets: [],
         providerTargetsLoading: false
       }
@@ -519,7 +500,6 @@ describe("AgentGUINodeView layout persistence", () => {
       actions,
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: { kind: "all" },
         selectedProviderTarget: sharedGeminiTarget,
         providerTargets: [
@@ -543,29 +523,6 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectProvider).not.toHaveBeenCalled();
   });
 
-  it("hides provider switching options from the single-provider composer", () => {
-    const actions = createActions();
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
-    const providerTargets = [
-      codexTarget,
-      createLocalAgentGUIProviderTarget("claude-code")
-    ];
-    renderAgentGUINodeView({
-      actions,
-      viewModel: {
-        ...createViewModel(),
-        selectedProviderTarget: codexTarget,
-        providerTargets
-      }
-    });
-
-    expect(composerMock.calls.at(-1)).toMatchObject({
-      onProviderSelect: undefined,
-      providerSelectReadonly: true,
-      providerTargets: [codexTarget]
-    });
-  });
-
   it("passes provider switching options into the multi-provider composer", () => {
     const actions = createActions();
     const providerTargets = [
@@ -576,7 +533,6 @@ describe("AgentGUINodeView layout persistence", () => {
       actions,
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         providerTargets
       }
     });
@@ -599,7 +555,6 @@ describe("AgentGUINodeView layout persistence", () => {
         ...createViewModel(),
         activeConversation: conversation,
         activeConversationId: conversation.id,
-        conversationScope: "multi-provider",
         conversations: [conversation],
         providerTargets
       }
@@ -1438,7 +1393,6 @@ describe("AgentGUINodeView layout persistence", () => {
       },
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: { kind: "agentTarget", agentTargetId },
         selectedProviderTarget: claudeTarget,
         providerTargets: [
@@ -3107,7 +3061,6 @@ function createViewModel(
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
-    conversationScope: "single-provider",
     conversationFilter: { kind: "all" },
     conversations: [],
     userProjects: [],

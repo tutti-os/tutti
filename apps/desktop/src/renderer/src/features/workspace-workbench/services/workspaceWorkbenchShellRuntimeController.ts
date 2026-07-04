@@ -9,10 +9,7 @@ import type {
 } from "@tutti-os/workbench-surface";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
-import type {
-  DesktopAgentDockLayout,
-  DesktopDockIconStyle
-} from "@shared/preferences";
+import type { DesktopDockIconStyle } from "@shared/preferences";
 import type { DesktopThemeAppearance } from "@shared/theme";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import { createWorkspaceCloseGuardDialogController } from "./internal/workspaceCloseGuardDialogController.ts";
@@ -124,7 +121,6 @@ export interface WorkspaceWorkbenchShellRuntimeController {
 
 export interface WorkspaceWorkbenchShellHostInput {
   appI18n: I18nRuntime<string>;
-  agentDockLayout: DesktopAgentDockLayout;
   appCenterRevision?: number;
   createHostInput: IWorkspaceWorkbenchHostService["createHostInput"];
   defaultAgentProvider?: string | null;
@@ -279,7 +275,6 @@ function createHostInput(input: {
 }): WorkspaceWorkbenchHostInput {
   return input.input.createHostInput({
     appI18n: input.input.appI18n,
-    agentDockLayout: input.input.agentDockLayout,
     appCenterRevision: input.input.appCenterRevision,
     confirmCloseGuard: input.closeDialog.requestConfirmation,
     defaultAgentProvider: input.input.defaultAgentProvider,

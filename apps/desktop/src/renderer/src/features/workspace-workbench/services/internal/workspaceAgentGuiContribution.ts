@@ -22,7 +22,6 @@ import type {
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
-import type { DesktopAgentDockLayout } from "@shared/preferences";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
@@ -46,14 +45,12 @@ import { requestWorkspaceFilesLaunch } from "../workspaceFilesLaunchCoordinator.
 import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaunchCoordinator.ts";
 import { requestGroupChatLaunch } from "../groupChatLaunchCoordinator.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
-import { isWorkspaceAgentGuiDefaultDockProvider } from "./workspaceAgentProviderCatalog.ts";
 
 export function createWorkspaceAgentGuiContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
   appCenterService: IWorkspaceAppCenterService;
   appI18n: I18nRuntime<string>;
   computerUseApi: Pick<DesktopComputerUseApi, "checkStatus">;
-  agentDockLayout: DesktopAgentDockLayout;
   dockPreviewCache: WorkbenchDockPreviewCache;
   dockIconUrls?: Parameters<
     typeof createAgentGuiWorkbenchContribution
@@ -191,7 +188,6 @@ export function createWorkspaceAgentGuiContribution(input: {
     },
     dockIconUrls: input.dockIconUrls,
     unifiedDockIconUrl: input.unifiedDockIconUrl,
-    dockLayout: input.agentDockLayout,
     frame: workspaceAgentGuiNodeFrame,
     defaultProvider: isAgentGuiWorkbenchProvider(input.defaultAgentProvider)
       ? input.defaultAgentProvider
@@ -240,8 +236,6 @@ export function createWorkspaceAgentGuiContribution(input: {
         workspaceAgentActivityService: input.workspaceAgentActivityService,
         workspaceId: input.workspaceId
       }),
-    resolveDockEntryVisibility: (provider: AgentGuiWorkbenchProvider) =>
-      isWorkspaceAgentGuiDefaultDockProvider(provider) ? "always" : "never",
     workspaceId: input.workspaceId
   });
 }

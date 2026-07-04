@@ -33,7 +33,6 @@ export {
 } from "./providerCatalog.ts";
 export {
   agentGuiWorkbenchDockEntryId,
-  agentGuiWorkbenchDockEntryIdForLayout,
   agentGuiWorkbenchDockIdentityFromIdentifier,
   agentGuiWorkbenchInstanceId,
   agentGuiWorkbenchProviderFromIdentifier,
