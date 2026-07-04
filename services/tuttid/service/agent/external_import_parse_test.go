@@ -203,6 +203,136 @@ func TestParseCodexJSONLSkipsAgentsAndEnvironmentPreamble(t *testing.T) {
 	}
 }
 
+func TestParseCodexJSONLHandlesCustomToolCallLifecycle(t *testing.T) {
+	// Regression for real Codex desktop transcripts where MCP/custom tools
+	// (e.g. apply_patch) are recorded as "custom_tool_call" /
+	// "custom_tool_call_output" response items rather than the built-in
+	// "function_call" / "function_call_output" pair. Before this was handled,
+	// every custom-tool-call turn was silently dropped, and sessions
+	// dominated by custom tool use (heavy apply_patch usage) could end up
+	// with no visible assistant activity at all despite substantial real
+	// content — reported as "会话显示为空(实际上有很多对话)".
+	cwd := t.TempDir()
+	session, ok, err := parseCodexJSONL(
+		filepath.Join(cwd, "rollout.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"type":      "session_meta",
+				"payload":   map[string]any{"id": "codex-custom-tool", "cwd": cwd},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type":    "message",
+					"role":    "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "Apply this patch"}},
+				},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:02Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type":    "custom_tool_call",
+					"status":  "completed",
+					"call_id": "call-patch-1",
+					"name":    "apply_patch",
+					"input":   "*** Begin Patch\n*** Add File: foo.go\n+package foo\n*** End Patch",
+				},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:03Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type":    "custom_tool_call_output",
+					"call_id": "call-patch-1",
+					"output":  `{"output":"Success. Updated the following files:\nA foo.go\n"}`,
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseCodexJSONL ok=%v err=%v", ok, err)
+	}
+	if len(session.Messages) != 3 {
+		t.Fatalf("messages = %#v, want user prompt plus custom tool call lifecycle", session.Messages)
+	}
+	call := session.Messages[1]
+	if call.Role != "assistant" || call.Kind != "tool_call" || call.Status != "completed" {
+		t.Fatalf("custom tool call message = %#v", call)
+	}
+	if call.MessageIDSeed != "toolcall:call-patch-1" {
+		t.Fatalf("custom tool call seed = %q, want call id seed", call.MessageIDSeed)
+	}
+	if call.Payload["toolName"] != "apply_patch" {
+		t.Fatalf("custom tool call payload = %#v, want apply_patch tool name", call.Payload)
+	}
+	input, _ := call.Payload["input"].(map[string]any)
+	if !strings.Contains(input["arguments"].(string), "Add File: foo.go") {
+		t.Fatalf("custom tool call input = %#v, want raw patch text preserved", input)
+	}
+	output := session.Messages[2]
+	if output.Role != "assistant" || output.Kind != "tool_call" || output.Status != "completed" {
+		t.Fatalf("custom tool call output message = %#v", output)
+	}
+	if output.MessageIDSeed != call.MessageIDSeed {
+		t.Fatalf("custom tool call output seed = %q, want %q", output.MessageIDSeed, call.MessageIDSeed)
+	}
+}
+
+func TestParseCodexJSONLRetainsSessionWhenCwdDirectoryNoLongerExists(t *testing.T) {
+	// Regression: previously any session whose recorded cwd doesn't currently
+	// exist on disk (a deleted git worktree, a cleaned-up temp dir, a renamed
+	// project) was silently dropped from scan results in full — undercounting
+	// scanned sessions/projects, and making content-rich conversations that
+	// happened to run in a since-deleted directory appear to vanish entirely.
+	root := t.TempDir()
+	deletedCwd := filepath.Join(root, "deleted-worktree")
+	if err := os.MkdirAll(deletedCwd, 0o755); err != nil {
+		t.Fatalf("create then delete cwd error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(deletedCwd); ok {
+		deletedCwd = canonical
+	}
+	if err := os.RemoveAll(deletedCwd); err != nil {
+		t.Fatalf("remove cwd error = %v", err)
+	}
+
+	sourcePath := filepath.Join(root, "rollout.jsonl")
+	session, ok, err := parseCodexJSONL(
+		sourcePath,
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"type":      "session_meta",
+				"payload":   map[string]any{"id": "codex-deleted-cwd", "cwd": deletedCwd},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type":    "message",
+					"role":    "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "Still real content"}},
+				},
+			},
+		)),
+	)
+	if err != nil {
+		t.Fatalf("parseCodexJSONL error = %v", err)
+	}
+	if !ok {
+		t.Fatal("parseCodexJSONL ok = false, want session retained despite missing cwd directory")
+	}
+	if session.Cwd != deletedCwd {
+		t.Fatalf("session.Cwd = %q, want original deleted cwd %q preserved", session.Cwd, deletedCwd)
+	}
+	if len(session.Messages) != 1 || session.Messages[0].Text != "Still real content" {
+		t.Fatalf("messages = %#v, want the real message retained", session.Messages)
+	}
+}
+
 func TestParseCodexJSONLMarksDocumentsCodexScratchCwdAsNoProject(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	cwd := filepath.Join(home, "Documents", "Codex", "2026-06-26", "ge")
@@ -241,6 +371,66 @@ func TestParseCodexJSONLMarksDocumentsCodexScratchCwdAsNoProject(t *testing.T) {
 	}
 	if !session.NoProject {
 		t.Fatalf("NoProject = false for Codex scratch cwd %q", session.Cwd)
+	}
+}
+
+func TestParseCodexJSONLMarksLegacyDateSlugScratchCwdAsNoProject(t *testing.T) {
+	// Real Codex desktop scratch directories have used at least two shapes:
+	// the newer "Documents/Codex/<date>/<slug>" (covered by the sibling test
+	// above) and an older single-segment "Documents/Codex/<date>-<slug>"
+	// layout (e.g. "Documents/Codex/2026-04-24-gh"). Both are Codex's own
+	// auto-provisioned no-project workspace, never a folder the user chose;
+	// failing to recognize the older shape let its machine-generated slug
+	// leak through as a bogus, garbled-looking "project" label — the avjjvg
+	// report ("显示的项目文件夹名称乱码,不是我本地对话时的文件夹名称").
+	home := filepath.Join(t.TempDir(), "home")
+	cwd := filepath.Join(home, "Documents", "Codex", "2026-04-24-gh")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatalf("create legacy codex scratch cwd error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(home); ok {
+		home = canonical
+	}
+	if canonical, ok := canonicalExistingDir(cwd); ok {
+		cwd = canonical
+	}
+	t.Setenv("HOME", home)
+
+	session, ok, err := parseCodexJSONL(
+		filepath.Join(cwd, "rollout.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"type":      "session_meta",
+				"payload":   map[string]any{"id": "codex-legacy-scratch", "cwd": cwd},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type":    "message",
+					"role":    "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "Legacy scratch question"}},
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseCodexJSONL ok=%v err=%v", ok, err)
+	}
+	if !session.NoProject {
+		t.Fatalf("NoProject = false for legacy Codex scratch cwd %q", session.Cwd)
+	}
+
+	projectPath, ok := externalSessionProjectPath(session)
+	if !ok {
+		t.Fatalf("externalSessionProjectPath ok = false for %#v", session)
+	}
+	if projectPath == cwd {
+		t.Fatalf("project path = %q, want the no-project bucket, not the raw scratch slug directory", projectPath)
+	}
+	if base := filepath.Base(projectPath); base == "2026-04-24-gh" {
+		t.Fatalf("project label = %q, want no leaked scratch slug", base)
 	}
 }
 
@@ -302,6 +492,57 @@ func TestParseClaudeCodeJSONLPrefersCustomTitle(t *testing.T) {
 	}
 	if session.Title != "Summarize user persona prompts" {
 		t.Fatalf("title = %q, want custom-title", session.Title)
+	}
+}
+
+func TestParseClaudeCodeJSONLSkipsIsMetaInjectedFileContent(t *testing.T) {
+	// Regression: Claude Code marks injected non-conversation content — Skill
+	// tool file dumps, Stop-hook feedback, local-command caveats, etc. — with
+	// isMeta:true. This wasn't checked, so e.g. a whole loaded skill file's
+	// contents (or CLAUDE.md-shaped instructions) could surface as if the
+	// user had typed them, which is the "会话详情会先显示...文件内容" report
+	// (imported session detail showing injected file contents up front).
+	cwd := t.TempDir()
+	session, ok, err := parseClaudeCodeJSONL(
+		filepath.Join(cwd, "claude.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"sessionId": "claude-meta",
+				"cwd":       cwd,
+				"uuid":      "claude-meta-skill",
+				"isMeta":    true,
+				"message": map[string]any{
+					"role": "user",
+					"content": []any{map[string]any{
+						"type": "text",
+						"text": "Base directory for this skill: /Users/asdf/.claude/plugins/cache/skills/brainstorming\n\n# Brainstorming Ideas\n...",
+					}},
+				},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z",
+				"sessionId": "claude-meta",
+				"cwd":       cwd,
+				"uuid":      "claude-meta-real",
+				"message": map[string]any{
+					"role":    "user",
+					"content": []any{map[string]any{"type": "text", "text": "What should I build next?"}},
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseClaudeCodeJSONL ok=%v err=%v", ok, err)
+	}
+	if len(session.Messages) != 1 {
+		t.Fatalf("messages = %#v, want only the real (non-meta) message", session.Messages)
+	}
+	if session.Messages[0].Text != "What should I build next?" {
+		t.Fatalf("message text = %q, want the real user prompt, not injected skill content", session.Messages[0].Text)
+	}
+	if session.Title != "What should I build next?" {
+		t.Fatalf("title = %q, want derived from the real user prompt", session.Title)
 	}
 }
 

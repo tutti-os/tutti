@@ -78,6 +78,16 @@ func codexMessageFromPayload(payload map[string]any, index int, timestamp int64)
 		return codexFunctionCallMessage(payload, rawID, timestamp)
 	case "function_call_output":
 		return codexFunctionCallOutputMessage(payload, rawID, timestamp)
+	case "custom_tool_call":
+		// Custom/MCP tools (e.g. apply_patch) are recorded with the same
+		// call/output pairing as built-in function calls, but the call carries
+		// its argument payload under "input" (often a raw string, not JSON)
+		// instead of "arguments", and typically already reports its own
+		// terminal status since these tools tend to execute synchronously.
+		return codexCustomToolCallMessage(payload, rawID, timestamp)
+	case "custom_tool_call_output":
+		// Same "call_id"/"output" shape as function_call_output.
+		return codexFunctionCallOutputMessage(payload, rawID, timestamp)
 	default:
 		return externalImportedMessage{}
 	}
@@ -113,6 +123,43 @@ func codexFunctionCallMessage(payload map[string]any, rawID string, timestamp in
 		OccurredAtUnixMS: timestamp,
 		StartedAtUnixMS:  timestamp,
 	}
+}
+
+func codexCustomToolCallMessage(payload map[string]any, rawID string, timestamp int64) externalImportedMessage {
+	callID := stringField(payload, "call_id")
+	name := firstNonEmptyString(stringField(payload, "name"), callID)
+	arguments := codexFunctionCallArguments(payload["input"])
+	status := normalizeExternalMessageStatus(stringField(payload, "status"))
+	toolPayload := map[string]any{
+		"source":   "external_import",
+		"provider": agentproviderbiz.Codex,
+		"status":   status,
+	}
+	if callID != "" {
+		toolPayload["callId"] = callID
+	}
+	if name != "" {
+		toolPayload["name"] = name
+		toolPayload["toolName"] = name
+	}
+	if len(arguments) > 0 {
+		toolPayload["input"] = arguments
+	}
+	message := externalImportedMessage{
+		RawID:            rawID,
+		MessageIDSeed:    codexToolMessageIDSeed(rawID, callID),
+		Role:             "assistant",
+		Kind:             "tool_call",
+		Status:           status,
+		Text:             name,
+		Payload:          toolPayload,
+		OccurredAtUnixMS: timestamp,
+		StartedAtUnixMS:  timestamp,
+	}
+	if status == "completed" {
+		message.CompletedAtUnixMS = timestamp
+	}
+	return message
 }
 
 func codexFunctionCallOutputMessage(payload map[string]any, rawID string, timestamp int64) externalImportedMessage {
@@ -186,6 +233,15 @@ func parseClaudeCodeJSONL(path string, reader io.Reader) (externalImportedSessio
 				session.SummaryTitle = title
 			}
 		}
+		// Claude Code marks injected non-conversation content (skill/plugin file
+		// dumps loaded via the Skill tool, Stop-hook feedback, local-command
+		// caveats, etc.) with isMeta:true. These are not real turns the user or
+		// assistant produced and must not surface as message content in the
+		// imported session detail (they're the source of "file contents leaking
+		// into the conversation" reports).
+		if isMeta, _ := raw["isMeta"].(bool); isMeta {
+			return
+		}
 		messageMap := mapField(raw, "message")
 		if len(messageMap) == 0 {
 			return
@@ -219,7 +275,7 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 	if strings.TrimSpace(session.ProviderSessionID) == "" {
 		session.ProviderSessionID = externalStableHash(session.Provider + "\x00" + session.SourcePath)
 	}
-	cwd, ok := canonicalExistingDir(session.Cwd)
+	cwd, ok := resolveExternalImportSessionCwd(session.Cwd)
 	if !ok {
 		return externalImportedSession{}, false, nil
 	}
@@ -270,6 +326,31 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 	return session, true, nil
 }
 
+// resolveExternalImportSessionCwd resolves a session's recorded working
+// directory to an absolute path used for project grouping. It prefers the
+// canonical (symlink-resolved) path when the directory still exists on disk,
+// but falls back to a best-effort cleaned absolute path when it doesn't —
+// e.g. a deleted git worktree, a removed temp directory, or a renamed
+// project. Previously a missing directory caused the whole session (and all
+// of its messages) to be silently dropped from scan results, which both
+// undercounts scanned sessions/projects and can make an otherwise
+// content-rich conversation appear to vanish entirely. Only a genuinely empty
+// cwd (never recorded) is rejected.
+func resolveExternalImportSessionCwd(raw string) (string, bool) {
+	if canonical, ok := canonicalExistingDir(raw); ok {
+		return canonical, true
+	}
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", false
+	}
+	abs, err := filepath.Abs(trimmed)
+	if err != nil {
+		return "", false
+	}
+	return filepath.Clean(abs), true
+}
+
 func isExternalImportNoProjectCwd(provider string, cwd string) bool {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -288,31 +369,24 @@ func isExternalImportNoProjectCwd(provider string, cwd string) bool {
 		isExternalImportCodexScratchCwd(home, cwd)
 }
 
+// isExternalImportCodexScratchCwd reports whether cwd is anywhere under the
+// Codex desktop app's auto-provisioned scratch tree (~/Documents/Codex/...).
+// Codex creates a directory there whenever a conversation starts without the
+// user picking a real local project, and the leaf directory name is a
+// machine-generated slug (e.g. a date, or a truncated/sanitized title) rather
+// than a folder the user chose. The exact shape of that slug has changed
+// across Codex versions — older releases used a single combined
+// "<date>-<slug>" segment (Documents/Codex/2026-04-24-gh), newer ones split it
+// into "<date>/<slug>" (Documents/Codex/2026-04-24/gh) — so this intentionally
+// only checks that the path is nested under Documents/Codex rather than
+// pattern-matching a specific segment shape, to stay robust across formats.
 func isExternalImportCodexScratchCwd(home string, cwd string) bool {
 	rel, err := filepath.Rel(home, cwd)
 	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
 		return false
 	}
-	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) != 4 || parts[0] != "Documents" || parts[1] != "Codex" || parts[3] == "" {
-		return false
-	}
-	return isExternalImportDateSegment(parts[2])
-}
-
-func isExternalImportDateSegment(value string) bool {
-	if len(value) != len("2006-01-02") || value[4] != '-' || value[7] != '-' {
-		return false
-	}
-	for index, char := range value {
-		if index == 4 || index == 7 {
-			continue
-		}
-		if char < '0' || char > '9' {
-			return false
-		}
-	}
-	return true
+	parts := strings.SplitN(filepath.ToSlash(rel), "/", 3)
+	return len(parts) >= 3 && parts[0] == "Documents" && parts[1] == "Codex" && parts[2] != ""
 }
 
 func externalImportedMessageHasContent(message externalImportedMessage) bool {
