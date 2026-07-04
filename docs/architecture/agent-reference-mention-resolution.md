@@ -80,6 +80,10 @@ has a dedicated `agent-target` provider for first-party Agent targets:
 - `workspace-app` must not return `agent-codex` or `agent-claude-code` pseudo
   apps. Existing historical pseudo-app mention tokens can remain display-only;
   do not create new ones.
+- ACP runtime mention routing treats `agent-target` mentions as Tutti-internal
+  references for the generic runtime-only routing reminder. The reminder may be
+  appended to the provider prompt, but it must not be persisted into renderer
+  payloads, daemon activity events, or imported session messages.
 
 ---
 
