@@ -1398,7 +1398,7 @@ func TestClaudeCodeStandardACPUpdateDoesNotProjectSyntheticInterruptTitleAsSessi
 	for _, title := range []string{
 		"[Request interrupted by user]",
 		"[Request interrupted by user for tool use]",
-		"Claude Code mention handoff routing for this user turn: - Treat `mention://...` links as internal Tutti references.",
+		tuttiMentionRoutingReminder,
 	} {
 		events := standardACPUpdateEvents(standardACPClaudeCodeConfig(), session, "turn-1", json.RawMessage(`{
 			"update": {
@@ -1410,6 +1410,24 @@ func TestClaudeCodeStandardACPUpdateDoesNotProjectSyntheticInterruptTitleAsSessi
 			if event.Payload.Title == title {
 				t.Fatalf("events = %#v, want synthetic interrupt title %q excluded from title updates", events, title)
 			}
+		}
+	}
+}
+
+func TestStandardACPUpdateDoesNotProjectInternalMentionRoutingTitle(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderGemini)
+	session.ProviderSessionID = "gemini-session-1"
+	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderGemini}, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "session_info_update",
+			"title": "`+tuttiMentionRoutingReminder+`"
+		}
+	}`), newACPTurnNormalizer())
+	for _, event := range events {
+		if event.Payload.Title == tuttiMentionRoutingReminder {
+			t.Fatalf("events = %#v, want internal mention routing title excluded from title updates", events)
 		}
 	}
 }
@@ -2347,7 +2365,7 @@ func TestClaudeCodeAdapterStartAppendsGeneralConversationDetailModeSystemPrompt(
 	}
 }
 
-func TestClaudeCodeAdapterExecAddsInternalMentionRoutingPromptOnlyForProvider(t *testing.T) {
+func TestClaudeCodeAdapterExecAddsInternalMentionRoutingPromptForMarkdownMention(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Claude Agent", "claude-session-mention-routing")
@@ -2366,18 +2384,17 @@ func TestClaudeCodeAdapterExecAddsInternalMentionRoutingPromptOnlyForProvider(t 
 
 	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
 	if len(texts) < 2 {
-		t.Fatalf("prompt texts = %#v, want internal routing plus user prompt", texts)
+		t.Fatalf("prompt texts = %#v, want user prompt plus internal routing", texts)
 	}
-	if !strings.Contains(texts[0], "Claude Code mention handoff routing for this user turn:") ||
-		!strings.Contains(texts[0], "Skill(skill=\"tutti-cli:tutti-cli\")") {
-		t.Fatalf("routing prompt = %q, want internal Claude mention routing", texts[0])
+	if texts[0] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[1] != prompt {
-		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[1], prompt)
+	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+		t.Fatalf("routing prompt = %q, want internal Claude mention routing", texts[len(texts)-1])
 	}
 	userContent := firstUserMessageContent(t, events)
 	if !strings.Contains(userContent, prompt) ||
-		strings.Contains(userContent, "Claude Code mention handoff routing") {
+		strings.Contains(userContent, "system-reminder") {
 		t.Fatalf("user activity event = %#v, want original user prompt only", events)
 	}
 }
@@ -2400,17 +2417,67 @@ func TestClaudeCodeAdapterExecRoutesWorkspaceReferenceMention(t *testing.T) {
 
 	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
 	if len(texts) < 2 {
-		t.Fatalf("prompt texts = %#v, want internal routing plus user prompt", texts)
+		t.Fatalf("prompt texts = %#v, want user prompt plus internal routing", texts)
 	}
-	if !strings.Contains(texts[0], "Skill(skill=\"tutti-cli:reference\")") {
-		t.Fatalf("routing prompt = %q, want reference skill routing", texts[0])
+	if texts[0] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[1] != prompt {
-		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[1], prompt)
+	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+		t.Fatalf("routing prompt = %q, want reference skill routing", texts[len(texts)-1])
 	}
 }
 
-func TestStandardACPAdapterExecDoesNotPrependClaudeMentionRoutingForGemini(t *testing.T) {
+func TestClaudeCodeAdapterExecRoutesEscapedMarkdownMentionLabel(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-escaped-label-routing")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.PermissionModeID = "default"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	prompt := "请读取 [@设计\\]稿](mention://workspace-reference/app-1?groupId=group-1%29x&source=app&workspaceId=workspace-1)"
+
+	if _, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-escaped-reference", func([]activityshared.Event) {}, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
+	if len(texts) < 2 {
+		t.Fatalf("prompt texts = %#v, want user prompt plus internal routing", texts)
+	}
+	if texts[0] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
+	}
+	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+		t.Fatalf("routing prompt = %q, want reference skill routing", texts[len(texts)-1])
+	}
+}
+
+func TestClaudeCodeAdapterExecDoesNotRouteBareMentionURI(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-bare-mention-routing")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.PermissionModeID = "default"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	prompt := "请读取 mention://workspace-reference/app-1?source=app&workspaceId=workspace-1&groupId=group-1"
+
+	if _, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-bare-reference", func([]activityshared.Event) {}, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
+	if text != prompt {
+		t.Fatalf("prompt text = %q, want unmodified prompt %q", text, prompt)
+	}
+}
+
+func TestStandardACPAdapterExecAddsInternalMentionRoutingPromptForGemini(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Gemini CLI", "gemini-session-mention-routing")
@@ -2426,9 +2493,15 @@ func TestStandardACPAdapterExecDoesNotPrependClaudeMentionRoutingForGemini(t *te
 		t.Fatalf("Exec: %v", err)
 	}
 
-	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
-	if text != prompt {
-		t.Fatalf("prompt text = %q, want unmodified prompt %q", text, prompt)
+	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
+	if len(texts) < 2 {
+		t.Fatalf("prompt texts = %#v, want user prompt plus internal routing", texts)
+	}
+	if texts[0] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
+	}
+	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+		t.Fatalf("routing prompt = %q, want internal mention routing", texts[len(texts)-1])
 	}
 }
 

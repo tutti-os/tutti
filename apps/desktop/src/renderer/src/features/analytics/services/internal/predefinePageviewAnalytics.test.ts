@@ -3,20 +3,17 @@ import test from "node:test";
 import type { ReporterEventInput } from "../reporterService.interface.ts";
 import {
   startPredefinePageviewAnalytics,
-  type PredefinePageviewAnalyticsRuntime,
-  type PredefinePageviewAnalyticsStorage
+  type PredefinePageviewAnalyticsRuntime
 } from "./predefinePageviewAnalytics.ts";
 
 test("predefine pageview analytics reports when the app opens", () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const runtime = createRuntimeHarness();
-  const storage = createStorageHarness();
 
   startPredefinePageviewAnalytics({
     reporterService: createReporterService(reporterCalls),
     reporterNow: () => runtime.now(),
-    runtime,
-    storage
+    runtime
   });
 
   assert.deepEqual(reporterCalls, [
@@ -29,21 +26,24 @@ test("predefine pageview analytics reports when the app opens", () => {
   ]);
 });
 
-test("predefine pageview analytics reports app opens even after a focus report that day", () => {
+test("predefine pageview analytics reports app opens before focus", () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const runtime = createRuntimeHarness();
-  const storage = createStorageHarness({
-    focusedDay: "2026-06-09"
-  });
 
   startPredefinePageviewAnalytics({
     reporterService: createReporterService(reporterCalls),
     reporterNow: () => runtime.now(),
-    runtime,
-    storage
+    runtime
   });
+  runtime.emitFocus();
 
   assert.deepEqual(reporterCalls, [
+    [
+      {
+        clientTS: runtime.now(),
+        name: "app.pageview"
+      }
+    ],
     [
       {
         clientTS: runtime.now(),
@@ -53,36 +53,32 @@ test("predefine pageview analytics reports app opens even after a focus report t
   ]);
 });
 
-test("predefine pageview analytics reports explicit focus once per local day", () => {
+test("predefine pageview analytics reports every explicit focus", () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const runtime = createRuntimeHarness();
-  const storage = createStorageHarness();
 
   startPredefinePageviewAnalytics({
     reporterService: createReporterService(reporterCalls),
     reporterNow: () => runtime.now(),
-    runtime,
-    storage
+    runtime
   });
   runtime.emitFocus();
   runtime.emitFocus();
 
   assert.deepEqual(
     reporterCalls.map((call) => call[0]?.name),
-    ["app.pageview", "app.pageview"]
+    ["app.pageview", "app.pageview", "app.pageview"]
   );
 });
 
-test("predefine pageview analytics reports explicit focus again on a new local day", () => {
+test("predefine pageview analytics reports focus after time changes", () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const runtime = createRuntimeHarness();
-  const storage = createStorageHarness();
 
   startPredefinePageviewAnalytics({
     reporterService: createReporterService(reporterCalls),
     reporterNow: () => runtime.now(),
-    runtime,
-    storage
+    runtime
   });
   runtime.emitFocus();
   runtime.advanceTo(new Date(2026, 5, 10, 10, 0, 0).getTime());
@@ -129,16 +125,4 @@ function createRuntimeHarness(input: { now?: number } = {}) {
     }
   };
   return runtime;
-}
-
-function createStorageHarness(input: { focusedDay?: string } = {}) {
-  let focusedDay = input.focusedDay ?? null;
-  return {
-    getFocusedDay() {
-      return focusedDay;
-    },
-    setFocusedDay(dayKey) {
-      focusedDay = dayKey;
-    }
-  } satisfies PredefinePageviewAnalyticsStorage;
 }

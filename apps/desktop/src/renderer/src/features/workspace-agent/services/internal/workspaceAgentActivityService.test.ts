@@ -17,7 +17,11 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
   const readySession = workspaceAgentSession({ status: "ready" });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      listWorkspaceAgentSessions: async () => ({ sessions: [readySession] }),
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [readySession],
+        workspaceId: "ws-1"
+      }),
       sendWorkspaceAgentSessionInput: async () => ({ session: readySession })
     } as unknown as TuttidClient,
     runtimeApi: {
@@ -189,7 +193,7 @@ test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions an
       },
       listWorkspaceAgentSessions: async () => {
         listCalls += 1;
-        return { sessions: [], workspaceId: "ws-1" };
+        return { hasMore: false, sessions: [], workspaceId: "ws-1" };
       }
     } as unknown as TuttidClient,
     runtimeApi: {
@@ -253,6 +257,105 @@ test("WorkspaceAgentActivityService.listAgentGeneratedFiles delegates to tuttid 
   ]);
   assert.deepEqual(result.entries, [
     { label: "report.md", path: "/workspace/report.md" }
+  ]);
+});
+
+test("WorkspaceAgentActivityService.listSessionSectionPage forwards abort signal to tuttid", async () => {
+  const abortController = new AbortController();
+  const listCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessionSectionPage: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSectionPage"]
+        >[1],
+        options: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSectionPage"]
+        >[2]
+      ) => {
+        listCalls.push({ options, request, workspaceId });
+        return {
+          section: {
+            hasMore: false,
+            kind: "project",
+            sectionKey: "project:/workspace",
+            sessions: []
+          },
+          workspaceId
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  await service.listSessionSectionPage({
+    workspaceId: "ws-1",
+    agentTargetId: "claude-target",
+    cursor: "10|session-1",
+    limit: 5,
+    sectionKey: "project:/workspace",
+    signal: abortController.signal
+  });
+
+  assert.deepEqual(listCalls, [
+    {
+      workspaceId: "ws-1",
+      request: {
+        agentTargetId: "claude-target",
+        cursor: "10|session-1",
+        limit: 5,
+        sectionKey: "project:/workspace"
+      },
+      options: { signal: abortController.signal }
+    }
+  ]);
+});
+
+test("WorkspaceAgentActivityService.listSessionSections forwards agent target filter to tuttid", async () => {
+  const abortController = new AbortController();
+  const listCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessionSections: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSections"]
+        >[1],
+        options: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSections"]
+        >[2]
+      ) => {
+        listCalls.push({ options, request, workspaceId });
+        return {
+          sections: [],
+          workspaceId
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  await service.listSessionSections({
+    workspaceId: "ws-1",
+    agentTargetId: "claude-target",
+    limitPerSection: 5,
+    signal: abortController.signal
+  });
+
+  assert.deepEqual(listCalls, [
+    {
+      workspaceId: "ws-1",
+      request: {
+        agentTargetId: "claude-target",
+        limitPerSection: 5
+      },
+      options: { signal: abortController.signal }
+    }
   ]);
 });
 

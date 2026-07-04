@@ -13,6 +13,7 @@ import (
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	builtinapps "github.com/tutti-os/tutti/services/tuttid/builtin-apps"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -247,6 +248,9 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	if sessions.createInput.Cwd == nil || *sessions.createInput.Cwd != job.DraftDir {
 		t.Fatalf("CreateSession cwd = %v, want %q", sessions.createInput.Cwd, job.DraftDir)
 	}
+	if sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("CreateSession agentTargetId = %q, want %q", sessions.createInput.AgentTargetID, agenttargetbiz.IDLocalCodex)
+	}
 	if job.ReasoningEffort != "high" {
 		t.Fatalf("job reasoningEffort = %q, want high", job.ReasoningEffort)
 	}
@@ -448,6 +452,73 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	}
 	if secondJob.DraftDir == job.DraftDir {
 		t.Fatalf("second draft dir reused first draft dir %q", job.DraftDir)
+	}
+}
+
+func TestAppFactoryServiceCreateLaunchesSessionsWithAgentTargetID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		provider     string
+		wantTargetID string
+		wantProvider string
+	}{
+		{
+			name:         "codex",
+			provider:     "codex",
+			wantTargetID: agenttargetbiz.IDLocalCodex,
+			wantProvider: "codex",
+		},
+		{
+			name:         "claude code",
+			provider:     "claude-code",
+			wantTargetID: agenttargetbiz.IDLocalClaudeCode,
+			wantProvider: "claude-code",
+		},
+		{
+			name:         "default provider",
+			provider:     "",
+			wantTargetID: agenttargetbiz.IDLocalCodex,
+			wantProvider: "codex",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sessions := &factoryAgentSessionServiceStub{}
+			service := AppFactoryService{
+				Store:               newAppFactoryStoreStub(),
+				AgentSessionService: sessions,
+				StateDir:            t.TempDir(),
+				WorkspaceRootResolver: workspaceRootResolverStub{root: workspacefiles.WorkspaceRoot{
+					LogicalRoot:  "/workspace",
+					PhysicalRoot: "/Users/example",
+				}},
+				WorkspaceStore: &catalogStoreStub{
+					getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"},
+				},
+			}
+
+			job, err := service.Create(context.Background(), "ws-1", CreateAppFactoryJobInput{
+				DisplayName: "Target App",
+				Prompt:      "Create an app.",
+				Provider:    tt.provider,
+			})
+			if err != nil {
+				t.Fatalf("Create() error = %v", err)
+			}
+			if job.Status != workspacebiz.AppFactoryJobStatusGenerating {
+				t.Fatalf("status = %q, want generating", job.Status)
+			}
+			if sessions.createInput.AgentTargetID != tt.wantTargetID {
+				t.Fatalf("CreateSession agentTargetId = %q, want %q", sessions.createInput.AgentTargetID, tt.wantTargetID)
+			}
+			if sessions.createInput.Provider != tt.wantProvider {
+				t.Fatalf("CreateSession provider = %q, want %q", sessions.createInput.Provider, tt.wantProvider)
+			}
+		})
 	}
 }
 

@@ -498,10 +498,33 @@ export function createDesktopTuttidClient(
     async listWorkspaceTerminals(workspaceID) {
       return (await resolveClient()).listWorkspaceTerminals(workspaceID);
     },
-    async listWorkspaceAgentSessions(workspaceID, request) {
+    async listWorkspaceAgentSessions(workspaceID, request, requestOptions) {
       return (await resolveClient()).listWorkspaceAgentSessions(
         workspaceID,
-        request
+        request,
+        requestOptions
+      );
+    },
+    async listWorkspaceAgentSessionSections(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      return (await resolveClient()).listWorkspaceAgentSessionSections(
+        workspaceID,
+        request,
+        requestOptions
+      );
+    },
+    async listWorkspaceAgentSessionSectionPage(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      return (await resolveClient()).listWorkspaceAgentSessionSectionPage(
+        workspaceID,
+        request,
+        requestOptions
       );
     },
     async scanWorkspaceExternalAgentSessionImports(workspaceID, request) {

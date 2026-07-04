@@ -59,6 +59,18 @@ export const en = {
     retryAction: "Retry"
   },
   desktop: {
+    installGuard: {
+      detail:
+        "Tutti is running from the downloaded disk image. Move it to Applications before continuing so updates can install correctly.",
+      failureDetail:
+        "macOS could not move Tutti automatically. Drag {{appPath}} to Applications, then open Tutti from Applications.",
+      failureMessage: "Move Tutti manually",
+      message: "Move Tutti to Applications?",
+      moveAction: "Move to Applications and Relaunch",
+      quitAction: "Quit",
+      showInFinderAction: "Show in Finder",
+      title: "Install Tutti"
+    },
     logsExport: {
       actionHint: "You can copy the agent prompt or open the exported folder.",
       agentPrompt: {
@@ -763,6 +775,13 @@ export const en = {
         openLogsDirectory: "Open logs folder",
         addFileDefaultOpener: "Add",
         removeFileDefaultOpener: "Remove .{{extension}}",
+        releaseChannelDescription:
+          "Choose stable release updates, or opt in to preview builds for internal verification.",
+        releaseChannelLabel: "Release channel",
+        releaseChannelOptions: {
+          rc: "Preview",
+          stable: "Stable"
+        },
         showAppDeveloperSourcesDescription:
           "Show each app's authors and GitHub source inside App Center cards.",
         showAppDeveloperSourcesLabel: "Show app authors and source",

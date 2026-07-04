@@ -83,6 +83,7 @@ import {
   desktopFileDefaultOpeners,
   desktopMinimizeAnimations,
   desktopSleepPreventionModes,
+  desktopUpdateChannels,
   desktopWorkbenchWindowSnappingShortcutPresets,
   normalizeDesktopFileExtension,
   type DesktopAppCatalogChannel,
@@ -94,6 +95,7 @@ import {
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
+  type DesktopUpdateChannel,
   type DesktopWorkbenchWindowSnapping,
   type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "../../../../../shared/preferences/index.ts";
@@ -465,6 +467,9 @@ export function WorkspaceSettingsPanel({
                 changingAppCatalogChannel={
                   desktopPreferencesState.changingAppCatalogChannel
                 }
+                changingUpdateChannel={
+                  desktopPreferencesState.changingUpdateChannel
+                }
                 developerLogs={settingsState.developerLogs}
                 developerPanelVisible={settingsState.developerPanelVisible}
                 fileDefaultOpenersByExtension={
@@ -474,6 +479,7 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.showAppDeveloperSources
                 }
                 tuttiAgentSwitchEnabled={settingsState.tuttiAgentSwitchEnabled}
+                updateChannel={desktopPreferencesState.updateChannel}
                 onAppCatalogChannelChange={(channel) => {
                   void settingsService.changeAppCatalogChannel(channel);
                 }}
@@ -502,6 +508,9 @@ export function WorkspaceSettingsPanel({
                 }}
                 onTuttiAgentSwitchEnabledChange={(enabled) => {
                   settingsService.setTuttiAgentSwitchEnabled(enabled);
+                }}
+                onUpdateChannelChange={(channel) => {
+                  void settingsService.changeUpdateChannel(channel);
                 }}
                 onShowAppDeveloperSourcesChange={(show) => {
                   void settingsService.changeShowAppDeveloperSources(show);
@@ -1518,11 +1527,13 @@ function WorkspaceDeveloperSettingsSection({
   appCatalogChannel,
   changingAgentDockLayout,
   changingAppCatalogChannel,
+  changingUpdateChannel,
   developerLogs,
   developerPanelVisible,
   fileDefaultOpenersByExtension,
   showAppDeveloperSources,
   tuttiAgentSwitchEnabled,
+  updateChannel,
   onAnalyticsDebugEnabledChange,
   onAgentDockLayoutChange,
   onAppCatalogChannelChange,
@@ -1532,7 +1543,8 @@ function WorkspaceDeveloperSettingsSection({
   onExportLogs,
   onFileDefaultOpenersChange,
   onShowAppDeveloperSourcesChange,
-  onTuttiAgentSwitchEnabledChange
+  onTuttiAgentSwitchEnabledChange,
+  onUpdateChannelChange
 }: {
   analyticsDebugAvailable: boolean;
   analyticsDebugEnabled: boolean;
@@ -1540,11 +1552,13 @@ function WorkspaceDeveloperSettingsSection({
   appCatalogChannel: DesktopAppCatalogChannel;
   changingAgentDockLayout: DesktopAgentDockLayout | null;
   changingAppCatalogChannel: DesktopAppCatalogChannel | null;
+  changingUpdateChannel: DesktopUpdateChannel | null;
   developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   developerPanelVisible: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   showAppDeveloperSources: boolean;
   tuttiAgentSwitchEnabled: boolean;
+  updateChannel: DesktopUpdateChannel;
   onAnalyticsDebugEnabledChange: (enabled: boolean) => void;
   onAgentDockLayoutChange: (layout: DesktopAgentDockLayout) => void;
   onAppCatalogChannelChange: (channel: DesktopAppCatalogChannel) => void;
@@ -1557,6 +1571,7 @@ function WorkspaceDeveloperSettingsSection({
   ) => void;
   onShowAppDeveloperSourcesChange: (show: boolean) => void;
   onTuttiAgentSwitchEnabledChange: (enabled: boolean) => void;
+  onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
 }) {
   const { t } = useTranslation();
   const logs = developerLogs.logs;
@@ -1595,6 +1610,12 @@ function WorkspaceDeveloperSettingsSection({
         appCatalogChannel={appCatalogChannel}
         changingAppCatalogChannel={changingAppCatalogChannel}
         onAppCatalogChannelChange={onAppCatalogChannelChange}
+      />
+
+      <ReleaseChannelControl
+        changingUpdateChannel={changingUpdateChannel}
+        updateChannel={updateChannel}
+        onUpdateChannelChange={onUpdateChannelChange}
       />
 
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
@@ -1930,6 +1951,69 @@ function workspaceSettingsAppCatalogChannelOptionLabelKey(
       return "workspace.settings.apps.appCatalogChannelOptions.production";
     case "staging":
       return "workspace.settings.apps.appCatalogChannelOptions.staging";
+  }
+}
+
+function ReleaseChannelControl({
+  changingUpdateChannel,
+  updateChannel,
+  onUpdateChannelChange
+}: {
+  changingUpdateChannel: DesktopUpdateChannel | null;
+  updateChannel: DesktopUpdateChannel;
+  onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
+}) {
+  const { t } = useTranslation();
+  const effectiveUpdateChannel = changingUpdateChannel ?? updateChannel;
+
+  return (
+    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+      <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+          {t("workspace.settings.developer.releaseChannelLabel")}
+        </strong>
+        <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+          {t("workspace.settings.developer.releaseChannelDescription")}
+        </p>
+      </div>
+      <div
+        aria-label={t("workspace.settings.developer.releaseChannelLabel")}
+        className="grid h-8 shrink-0 grid-cols-2 overflow-hidden rounded-[6px] bg-[var(--transparency-block)] p-0.5"
+        role="group"
+      >
+        {desktopUpdateChannels.map((channel) => {
+          const selected = effectiveUpdateChannel === channel;
+          return (
+            <button
+              key={channel}
+              aria-pressed={selected}
+              className={cn(
+                "min-w-[92px] rounded-[5px] border-0 px-3 text-[13px] font-semibold leading-none outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-focus)]",
+                selected
+                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-sm"
+                  : "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )}
+              disabled={changingUpdateChannel !== null}
+              type="button"
+              onClick={() => onUpdateChannelChange(channel)}
+            >
+              {t(workspaceSettingsUpdateChannelOptionLabelKey(channel))}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function workspaceSettingsUpdateChannelOptionLabelKey(
+  channel: DesktopUpdateChannel
+): DesktopI18nKey {
+  switch (channel) {
+    case "stable":
+      return "workspace.settings.developer.releaseChannelOptions.stable";
+    case "rc":
+      return "workspace.settings.developer.releaseChannelOptions.rc";
   }
 }
 

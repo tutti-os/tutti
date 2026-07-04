@@ -13,9 +13,6 @@ func filterSessions(
 	}
 	filtered := make([]Session, 0, len(sessions))
 	for _, session := range sessions {
-		if input.VisibleOnly && !session.Visible {
-			continue
-		}
 		if !matchesSessionSearch(session, input.SearchQuery) {
 			continue
 		}

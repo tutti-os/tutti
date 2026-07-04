@@ -23,6 +23,7 @@ export interface DesktopHostServices {
 }
 
 export interface CreateDesktopHostServicesOptions {
+  appVersion?: string;
   browserNodeGuestPreloadPath?: string;
   enableDevelopmentReloadShortcut?: boolean;
   fallbackLocale: DesktopLocale;
@@ -40,6 +41,7 @@ export async function createDesktopHostServices(
   options: CreateDesktopHostServicesOptions
 ): Promise<DesktopHostServices> {
   const preferences = await createDesktopHostPreferencesState({
+    appVersion: options.appVersion,
     fallbackLocale: options.fallbackLocale,
     logger: options.logger,
     tuttidClient: options.tuttidClient

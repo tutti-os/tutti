@@ -353,7 +353,6 @@ test("desktop rich text @ service assembles agent session providers by capabilit
   const listCalls: Array<{
     limit?: number;
     searchQuery?: string;
-    visibleOnly?: boolean;
     workspaceId: string;
   }> = [];
   const service = new DesktopRichTextAtService({
@@ -363,16 +362,15 @@ test("desktop rich text @ service assembles agent session providers by capabilit
         request?: {
           limit?: number;
           searchQuery?: string;
-          visibleOnly?: boolean;
         }
       ) {
         listCalls.push({
           limit: request?.limit,
           searchQuery: request?.searchQuery,
-          visibleOnly: request?.visibleOnly,
           workspaceId
         });
         return {
+          hasMore: false,
           workspaceId,
           sessions: [
             {
@@ -412,7 +410,6 @@ test("desktop rich text @ service assembles agent session providers by capabilit
     {
       limit: 5,
       searchQuery: "mentions",
-      visibleOnly: true,
       workspaceId: "workspace-1"
     }
   ]);
@@ -1122,6 +1119,7 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
       },
       async listWorkspaceAgentSessions(workspaceId: string) {
         return {
+          hasMore: false,
           workspaceId,
           sessions: [
             {
@@ -1279,6 +1277,7 @@ test("desktop rich text @ service enriches cached agent session providers", asyn
     tuttidClient: {
       async listWorkspaceAgentSessions(workspaceId: string) {
         return {
+          hasMore: false,
           workspaceId,
           sessions: [
             {

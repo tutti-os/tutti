@@ -115,6 +115,76 @@ test("terminal IME guard does not suppress delayed input after composition", () 
   assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: "a" })), true);
 });
 
+test("terminal IME guard lets genuine input through right after composition", () => {
+  let preventDefaultCalls = 0;
+  const guard = createTerminalImeInputGuard({});
+
+  guard.handleCompositionStart();
+  guard.handleCompositionEnd();
+
+  assert.equal(
+    guard.shouldProcessKeyEvent(
+      keyEvent({
+        key: "a",
+        preventDefault: () => {
+          preventDefaultCalls += 1;
+        }
+      })
+    ),
+    true
+  );
+  assert.equal(preventDefaultCalls, 0);
+});
+
+test("terminal IME guard passes IME process keys through after composition", () => {
+  const guard = createTerminalImeInputGuard({});
+
+  guard.handleCompositionStart();
+  guard.handleCompositionEnd();
+
+  assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: "Process" })), true);
+});
+
+test("terminal IME guard suppresses candidate-selection digits after composition", () => {
+  const guard = createTerminalImeInputGuard({});
+
+  guard.handleCompositionStart();
+  guard.handleCompositionEnd();
+
+  assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: "2" })), false);
+  assert.equal(
+    guard.shouldProcessKeyEvent(keyEvent({ key: "2", type: "keyup" })),
+    true
+  );
+  assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: "2" })), true);
+});
+
+test("terminal IME guard closes the suppression window on keyup", () => {
+  const guard = createTerminalImeInputGuard({});
+
+  guard.handleCompositionStart();
+  guard.handleCompositionEnd();
+
+  assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: "Enter" })), false);
+  assert.equal(
+    guard.shouldProcessKeyEvent(keyEvent({ key: "Enter", type: "keyup" })),
+    true
+  );
+  assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: "Enter" })), true);
+});
+
+test("terminal IME guard keeps composition suppression across keyups", () => {
+  const guard = createTerminalImeInputGuard({});
+
+  guard.handleCompositionStart();
+
+  assert.equal(
+    guard.shouldProcessKeyEvent(keyEvent({ key: "n", type: "keyup" })),
+    true
+  );
+  assert.equal(guard.shouldProcessKeyEvent(keyEvent({ key: "n" })), false);
+});
+
 test("terminal IME guard consumes post-composition state for shortcuts", () => {
   const guard = createTerminalImeInputGuard({});
 

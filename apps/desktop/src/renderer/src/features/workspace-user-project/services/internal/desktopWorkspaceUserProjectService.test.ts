@@ -520,7 +520,8 @@ function createProject(
     label: path.split("/").filter(Boolean).at(-1) ?? "Project",
     path,
     updatedAtUnixMs: 1,
-    ...overrides
+    ...overrides,
+    sectionKey: overrides.sectionKey ?? `project:${path}`
   };
 }
 

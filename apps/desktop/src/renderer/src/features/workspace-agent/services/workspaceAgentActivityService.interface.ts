@@ -47,6 +47,36 @@ export interface WorkspaceAgentActivityListGeneratedFilesInput {
   workspaceId: string;
 }
 
+export interface WorkspaceAgentActivityListSessionsPageInput {
+  limit?: number;
+  searchQuery?: string;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface WorkspaceAgentActivitySessionPageResult {
+  hasMore: boolean;
+  nextCursor?: string;
+  sessions: AgentActivitySession[];
+  workspaceId: string;
+}
+
+export type WorkspaceAgentActivityListSessionSectionsInput = Parameters<
+  NonNullable<AgentActivityRuntime["listSessionSections"]>
+>[0];
+
+export type WorkspaceAgentActivitySessionSectionsResult = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["listSessionSections"]>>
+>;
+
+export type WorkspaceAgentActivityListSessionSectionPageInput = Parameters<
+  NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+>[0];
+
+export type WorkspaceAgentActivitySessionSectionResult = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["listSessionSectionPage"]>>
+>;
+
 export interface WorkspaceAgentActivityEnsureSessionSynchronizedInput {
   afterVersion?: number;
   agentSessionId: string;
@@ -106,6 +136,15 @@ export interface IWorkspaceAgentActivityService {
   listAgentGeneratedFiles(
     input: WorkspaceAgentActivityListGeneratedFilesInput
   ): Promise<WorkspaceAgentGeneratedFileListResponse>;
+  listSessionsPage(
+    input: WorkspaceAgentActivityListSessionsPageInput
+  ): Promise<WorkspaceAgentActivitySessionPageResult>;
+  listSessionSections(
+    input: WorkspaceAgentActivityListSessionSectionsInput
+  ): Promise<WorkspaceAgentActivitySessionSectionsResult>;
+  listSessionSectionPage(
+    input: WorkspaceAgentActivityListSessionSectionPageInput
+  ): Promise<WorkspaceAgentActivitySessionSectionResult>;
   scanExternalSessionImports(
     workspaceId: string,
     request?: ExternalAgentImportScanRequest

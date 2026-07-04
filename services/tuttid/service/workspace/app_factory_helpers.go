@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
@@ -14,6 +16,17 @@ func normalizeFactoryProvider(provider string) string {
 		return defaultFactoryProvider
 	}
 	return provider
+}
+
+func factoryAgentTargetID(provider string) string {
+	switch normalizeFactoryProvider(provider) {
+	case agentproviderbiz.Codex:
+		return agenttargetbiz.IDLocalCodex
+	case agentproviderbiz.ClaudeCode:
+		return agenttargetbiz.IDLocalClaudeCode
+	default:
+		return ""
+	}
 }
 
 func appFactoryActionKey(action string, workspaceID string, jobID string) string {

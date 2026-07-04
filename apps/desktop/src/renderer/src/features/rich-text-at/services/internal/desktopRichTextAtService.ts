@@ -1066,8 +1066,7 @@ function createAgentSessionAtContributor(
               input.workspaceId,
               {
                 limit: searchInput.maxResults,
-                searchQuery: searchInput.keyword.trim(),
-                visibleOnly: true
+                searchQuery: searchInput.keyword.trim()
               }
             );
             if (searchInput.abortSignal?.aborted) {

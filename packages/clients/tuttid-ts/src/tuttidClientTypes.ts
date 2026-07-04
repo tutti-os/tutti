@@ -98,6 +98,8 @@ import type {
   WorkspaceAgentGeneratedFileListResponse,
   WorkspaceAgentSessionGitBranchesResponse,
   WorkspaceGitPatchSupportResponse,
+  WorkspaceAgentSessionSectionPageResponse,
+  WorkspaceAgentSessionSectionsResponse,
   WorkspaceAgentSessionMessagesResponse,
   WorkspaceAgentSessionListResponse,
   WorkspaceFileDirectoryResponse,
@@ -480,9 +482,27 @@ export interface TuttidClient {
     request?: {
       limit?: number;
       searchQuery?: string;
-      visibleOnly?: boolean;
-    }
+    },
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionListResponse>;
+  listWorkspaceAgentSessionSections(
+    workspaceID: string,
+    request?: {
+      agentTargetId?: string;
+      limitPerSection?: number;
+    },
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentSessionSectionsResponse>;
+  listWorkspaceAgentSessionSectionPage(
+    workspaceID: string,
+    request: {
+      sectionKey: string;
+      agentTargetId?: string;
+      cursor?: string;
+      limit?: number;
+    },
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentSessionSectionPageResponse>;
   listWorkspaceAgentGeneratedFiles(
     workspaceID: string,
     request?: {

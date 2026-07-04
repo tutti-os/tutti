@@ -1150,6 +1150,24 @@ func (e WorkspaceAgentSessionCancelResultReason) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentSessionSectionKind.
+const (
+	Conversations WorkspaceAgentSessionSectionKind = "conversations"
+	Project       WorkspaceAgentSessionSectionKind = "project"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionSectionKind enum.
+func (e WorkspaceAgentSessionSectionKind) Valid() bool {
+	switch e {
+	case Conversations:
+		return true
+	case Project:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionStatus.
 const (
 	WorkspaceAgentSessionStatusCanceled  WorkspaceAgentSessionStatus = "canceled"
@@ -3199,6 +3217,7 @@ type UserProject struct {
 	Label            string `json:"label"`
 	LastUsedAtUnixMs *int64 `json:"lastUsedAtUnixMs,omitempty"`
 	Path             string `json:"path"`
+	SectionKey       string `json:"sectionKey"`
 	UpdatedAtUnixMs  int64  `json:"updatedAtUnixMs"`
 }
 
@@ -3384,6 +3403,33 @@ type WorkspaceAgentSessionMessagesResponse struct {
 // WorkspaceAgentSessionResponse defines model for WorkspaceAgentSessionResponse.
 type WorkspaceAgentSessionResponse struct {
 	Session WorkspaceAgentSession `json:"session"`
+}
+
+// WorkspaceAgentSessionSection defines model for WorkspaceAgentSessionSection.
+type WorkspaceAgentSessionSection struct {
+	HasMore bool                             `json:"hasMore"`
+	Kind    WorkspaceAgentSessionSectionKind `json:"kind"`
+
+	// NextCursor Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+	NextCursor  *string                 `json:"nextCursor,omitempty"`
+	SectionKey  string                  `json:"sectionKey"`
+	Sessions    []WorkspaceAgentSession `json:"sessions"`
+	UserProject *UserProject            `json:"userProject,omitempty"`
+}
+
+// WorkspaceAgentSessionSectionKind defines model for WorkspaceAgentSessionSectionKind.
+type WorkspaceAgentSessionSectionKind string
+
+// WorkspaceAgentSessionSectionPageResponse defines model for WorkspaceAgentSessionSectionPageResponse.
+type WorkspaceAgentSessionSectionPageResponse struct {
+	Section     WorkspaceAgentSessionSection `json:"section"`
+	WorkspaceId string                       `json:"workspaceId"`
+}
+
+// WorkspaceAgentSessionSectionsResponse defines model for WorkspaceAgentSessionSectionsResponse.
+type WorkspaceAgentSessionSectionsResponse struct {
+	Sections    []WorkspaceAgentSessionSection `json:"sections"`
+	WorkspaceId string                         `json:"workspaceId"`
 }
 
 // WorkspaceAgentSessionStatus defines model for WorkspaceAgentSessionStatus.
@@ -3999,11 +4045,30 @@ type ListWorkspaceAgentGeneratedFilesParams struct {
 	Limit      *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListWorkspaceAgentSessionSectionsParams defines parameters for ListWorkspaceAgentSessionSections.
+type ListWorkspaceAgentSessionSectionsParams struct {
+	LimitPerSection *int `form:"limitPerSection,omitempty" json:"limitPerSection,omitempty"`
+
+	// AgentTargetId Optional agent target filter applied before section pagination and hasMore calculation.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
+// ListWorkspaceAgentSessionSectionPageParams defines parameters for ListWorkspaceAgentSessionSectionPage.
+type ListWorkspaceAgentSessionSectionPageParams struct {
+	SectionKey string `form:"sectionKey" json:"sectionKey"`
+
+	// Cursor Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// AgentTargetId Optional agent target filter applied before section pagination and hasMore calculation.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
 // ListWorkspaceAgentSessionsParams defines parameters for ListWorkspaceAgentSessions.
 type ListWorkspaceAgentSessionsParams struct {
 	SearchQuery *string `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
 	Limit       *int    `form:"limit,omitempty" json:"limit,omitempty"`
-	VisibleOnly *bool   `form:"visibleOnly,omitempty" json:"visibleOnly,omitempty"`
 }
 
 // ListWorkspaceAgentSessionMessagesParams defines parameters for ListWorkspaceAgentSessionMessages.

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"time"
 
@@ -35,60 +34,6 @@ func NewService(runtime RuntimeController) *Service {
 		capabilityCatalogCache:    newComposerCapabilityCatalogCache(),
 		liveModelCache:            newComposerLiveModelCache(),
 	}
-}
-
-func (s *Service) List(ctx context.Context, workspaceID string) ([]Session, error) {
-	return s.ListFiltered(ctx, workspaceID, ListSessionsInput{})
-}
-
-func (s *Service) ListFiltered(ctx context.Context, workspaceID string, input ListSessionsInput) ([]Session, error) {
-	_ = ctx
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return nil, ErrInvalidArgument
-	}
-	sessionByID := make(map[string]Session)
-	if s.SessionReader != nil {
-		if persisted, ok := s.SessionReader.ListSessions(workspaceID); ok {
-			for _, session := range persisted {
-				sessionByID[strings.TrimSpace(session.ID)] = sessionFromPersisted(
-					session,
-					persistedSessionCanResume(s.controller(), session),
-				)
-			}
-		}
-	}
-	sessions := s.controller().Sessions(workspaceID)
-	for _, session := range sessions {
-		service := serviceSession(
-			session,
-			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
-		)
-		if s.SessionReader != nil {
-			if persisted, ok := s.SessionReader.GetSession(workspaceID, session.ID); ok {
-				service = mergePersistedSessionState(service, persisted)
-			}
-		}
-		sessionByID[strings.TrimSpace(session.ID)] = service
-	}
-	result := make([]Session, 0, len(sessionByID))
-	for _, session := range sessionByID {
-		result = append(result, cloneSession(session))
-	}
-
-	result = filterSessions(result, input)
-	sort.SliceStable(result, func(left, right int) bool {
-		leftUpdatedAtUnixMS := sessionUpdatedAtUnixMS(result[left])
-		rightUpdatedAtUnixMS := sessionUpdatedAtUnixMS(result[right])
-		if leftUpdatedAtUnixMS == rightUpdatedAtUnixMS {
-			return strings.TrimSpace(result[left].ID) < strings.TrimSpace(result[right].ID)
-		}
-		return leftUpdatedAtUnixMS > rightUpdatedAtUnixMS
-	})
-	if input.Limit > 0 && len(result) > input.Limit {
-		result = result[:input.Limit]
-	}
-	return result, nil
 }
 
 func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSessionInput) (Session, error) {

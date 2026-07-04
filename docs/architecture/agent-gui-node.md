@@ -437,6 +437,31 @@ enter `AgentActivityRuntime`; large workspaces can accumulate hundreds or
 thousands of historical agent sessions, and pushing all of them through the
 runtime snapshot forces AgentGuiNode to repeatedly project and reconcile data
 the user is unlikely to inspect in the rail.
+AgentGUI rail sections are loaded from the daemon section contract, not inferred
+from conversation `cwd` values. The runtime exposes `listSessionSections` for
+section first pages and `listSessionSectionPage` for Show more; both are backed
+by `GET /v1/workspaces/{workspaceID}/agent-session-sections` and
+`GET /v1/workspaces/{workspaceID}/agent-session-sections/page`. Project
+sections come from current `userProjects` and use the stable
+`project:/canonical/path` `sectionKey`; the Chats section uses
+`conversations`. The daemon pages sessions by `rail_section_key`, so AgentGUI
+must render returned section props and use backend `hasMore`/`nextCursor`
+rather than cwd grouping, root filters, excluded project paths, or local
+Show more heuristics. Removing a project removes that rail section from the
+section list; re-adding the same path reveals historical sessions with the same
+section key.
+When the provider rail is scoped to a specific agent target, AgentGUI must pass
+that `agentTargetId` to both section endpoints. The daemon applies that filter
+before `LIMIT` and `hasMore` calculation; frontend filtering after an unscoped
+page is not equivalent and can leave sections with fewer visible rows but a
+stale Show more affordance.
+AgentGUI must not refetch section first pages merely because a user activates a
+conversation, the active detail provider changes, or an existing conversation
+summary receives detail/status/time updates. Those updates should refresh
+already-rendered row props locally while preserving backend section membership.
+First-page section refetches are reserved for workspace, rail filter, user
+project, or session membership changes; Show more continues to use the section
+page endpoint.
 Conversation-list read-state metadata is notification-style UI state. Historical
 imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just

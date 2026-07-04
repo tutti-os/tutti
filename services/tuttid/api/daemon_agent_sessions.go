@@ -17,6 +17,8 @@ import (
 type AgentSessionService interface {
 	List(context.Context, string) ([]agentservice.Session, error)
 	ListFiltered(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
+	ListSessionSections(context.Context, string, agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error)
+	ListSessionSectionPage(context.Context, string, agentservice.ListSessionSectionPageInput) (agentservice.SessionSection, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	ListGeneratedFiles(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
@@ -38,45 +40,6 @@ type AgentSessionService interface {
 	UpdateVisible(context.Context, string, string, bool) (agentservice.Session, error)
 	UpdateSettings(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
 	SubmitInteractive(context.Context, string, string, string, agentservice.SubmitInteractiveInput) (agentservice.Session, error)
-}
-
-const listWorkspaceAgentSessionsLimitMax = 100
-
-func agentSessionServiceUnavailableError() tuttigenerated.ServiceUnavailableErrorJSONResponse {
-	return serviceUnavailableError(
-		apierrors.WorkspaceAgentSessionServiceUnavailable(
-			apierrors.WithDeveloperMessage("workspace agent session service is unavailable"),
-		),
-	)
-}
-
-func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tuttigenerated.ListWorkspaceAgentSessionsRequestObject) (tuttigenerated.ListWorkspaceAgentSessionsResponseObject, error) {
-	if api.AgentSessionService == nil {
-		return tuttigenerated.ListWorkspaceAgentSessions503JSONResponse{
-			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
-		}, nil
-	}
-	input := agentservice.ListSessionsInput{}
-	if request.Params.SearchQuery != nil {
-		input.SearchQuery = strings.TrimSpace(*request.Params.SearchQuery)
-	}
-	if request.Params.Limit != nil {
-		if *request.Params.Limit <= 0 || *request.Params.Limit > listWorkspaceAgentSessionsLimitMax {
-			return writeListWorkspaceAgentSessionsError(agentservice.ErrInvalidArgument), nil
-		}
-		input.Limit = int(*request.Params.Limit)
-	}
-	if request.Params.VisibleOnly != nil {
-		input.VisibleOnly = *request.Params.VisibleOnly
-	}
-	sessions, err := api.AgentSessionService.ListFiltered(ctx, string(request.WorkspaceID), input)
-	if err != nil {
-		return writeListWorkspaceAgentSessionsError(err), nil
-	}
-	return tuttigenerated.ListWorkspaceAgentSessions200JSONResponse{
-		Sessions:    generatedAgentSessions(sessions),
-		WorkspaceId: string(request.WorkspaceID),
-	}, nil
 }
 
 func (api DaemonAPI) ClearWorkspaceAgentSessions(ctx context.Context, request tuttigenerated.ClearWorkspaceAgentSessionsRequestObject) (tuttigenerated.ClearWorkspaceAgentSessionsResponseObject, error) {
@@ -486,6 +449,33 @@ func generatedAgentSessions(sessions []agentservice.Session) []tuttigenerated.Wo
 		result = append(result, generatedAgentSession(session))
 	}
 	return result
+}
+
+func generatedAgentSessionSections(sections []agentservice.SessionSection) []tuttigenerated.WorkspaceAgentSessionSection {
+	result := make([]tuttigenerated.WorkspaceAgentSessionSection, 0, len(sections))
+	for _, section := range sections {
+		result = append(result, generatedAgentSessionSection(section))
+	}
+	return result
+}
+
+func generatedAgentSessionSection(section agentservice.SessionSection) tuttigenerated.WorkspaceAgentSessionSection {
+	var userProject *tuttigenerated.UserProject
+	if section.UserProject != nil {
+		value := generatedUserProject(*section.UserProject)
+		userProject = &value
+	}
+	response := tuttigenerated.WorkspaceAgentSessionSection{
+		HasMore:     section.HasMore,
+		Kind:        tuttigenerated.WorkspaceAgentSessionSectionKind(section.Kind),
+		SectionKey:  section.SectionKey,
+		Sessions:    generatedAgentSessions(section.Sessions),
+		UserProject: userProject,
+	}
+	if strings.TrimSpace(section.NextCursor) != "" {
+		response.NextCursor = &section.NextCursor
+	}
+	return response
 }
 
 func composerSettingsFromGenerated(settings tuttigenerated.AgentSessionComposerSettings) agentservice.ComposerSettings {

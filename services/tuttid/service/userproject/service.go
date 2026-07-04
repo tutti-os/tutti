@@ -111,6 +111,7 @@ func (s Service) Use(ctx context.Context, input UseInput) (userprojectbiz.Projec
 		ID:               projectID(projectPath),
 		Path:             projectPath,
 		Label:            userprojectbiz.LabelFromPath(projectPath),
+		SectionKey:       userprojectbiz.SectionKeyFromPath(projectPath),
 		LastUsedAtUnixMS: input.LastUsedAtUnixMS,
 	})
 }

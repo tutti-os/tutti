@@ -14,6 +14,7 @@ import (
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
@@ -3441,7 +3442,7 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 		Cwd:             "/workspace/hidden",
 		Status:          "completed",
 		Visible:         false,
-		Title:           "Mention hidden",
+		Title:           "Hidden",
 		CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
 		UpdatedAtUnixMS: hiddenUpdatedAt.UnixMilli(),
 	}
@@ -3472,7 +3473,6 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 	list, err := service.ListFiltered(context.Background(), "ws-1", ListSessionsInput{
 		SearchQuery: "mention",
 		Limit:       1,
-		VisibleOnly: true,
 	})
 	if err != nil {
 		t.Fatalf("ListFiltered returned error: %v", err)
@@ -3483,6 +3483,112 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 	if list[0].ID != "session-newer" {
 		t.Fatalf("list[0].ID = %q, want session-newer", list[0].ID)
 	}
+}
+
+func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testing.T) {
+	reader := &fakeSectionReader{
+		pages: map[string]agentactivitybiz.SessionSectionPage{
+			"project:/workspace/project": {
+				SectionKey: "project:/workspace/project",
+				Sessions: []agentactivitybiz.Session{{
+					ID:              "project-session",
+					WorkspaceID:     "ws-1",
+					Provider:        "codex",
+					Cwd:             "/workspace/project",
+					Status:          "completed",
+					CreatedAtUnixMS: 1000,
+					UpdatedAtUnixMS: 5000,
+				}},
+				HasMore:    true,
+				NextCursor: "5000|project-session",
+			},
+			"conversations": {
+				SectionKey: "conversations",
+				Sessions: []agentactivitybiz.Session{{
+					ID:              "chat-session",
+					WorkspaceID:     "ws-1",
+					Provider:        "codex",
+					Cwd:             "/scratch/session",
+					Status:          "completed",
+					CreatedAtUnixMS: 1000,
+					UpdatedAtUnixMS: 4000,
+				}},
+			},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
+		ID:    "project-1",
+		Path:  "/workspace/project",
+		Label: "Project",
+	}}}
+
+	page, err := service.ListSessionSections(context.Background(), "ws-1", ListSessionSectionsInput{
+		LimitPerSection: 5,
+		AgentTargetID:   "claude-target",
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSections returned error: %v", err)
+	}
+	if len(page.Sections) != 2 {
+		t.Fatalf("sections = %d, want 2", len(page.Sections))
+	}
+	if page.Sections[0].Kind != "project" || page.Sections[0].SectionKey != "project:/workspace/project" {
+		t.Fatalf("project section = %#v", page.Sections[0])
+	}
+	if got, want := sessionIDs(page.Sections[0].Sessions), []string{"project-session"}; !slices.Equal(got, want) {
+		t.Fatalf("project sessions = %#v, want %#v", got, want)
+	}
+	if !page.Sections[0].HasMore || page.Sections[0].NextCursor != "5000|project-session" {
+		t.Fatalf("project page state = hasMore %v cursor %q", page.Sections[0].HasMore, page.Sections[0].NextCursor)
+	}
+	if page.Sections[1].Kind != "conversations" || page.Sections[1].SectionKey != "conversations" {
+		t.Fatalf("conversations section = %#v", page.Sections[1])
+	}
+	if reader.lastInput.AgentTargetID != "claude-target" {
+		t.Fatalf("reader agentTargetID = %q, want claude-target", reader.lastInput.AgentTargetID)
+	}
+}
+
+func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
+	reader := &fakeSectionReader{}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
+		ID:         "project-1",
+		Path:       "/workspace/project",
+		Label:      "Project",
+		SectionKey: "project:/workspace/project",
+	}}}
+
+	section, err := service.ListSessionSectionPage(context.Background(), "ws-1", ListSessionSectionPageInput{
+		SectionKey:    "project:/workspace/project",
+		Cursor:        "4000|middle",
+		Limit:         2,
+		AgentTargetID: "claude-target",
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSectionPage returned error: %v", err)
+	}
+	if section.Kind != "project" || section.SectionKey != "project:/workspace/project" {
+		t.Fatalf("section = %#v", section)
+	}
+	if reader.lastInput.SectionKey != "project:/workspace/project" ||
+		reader.lastInput.CursorUpdatedAtMS != 4000 ||
+		reader.lastInput.CursorSessionID != "middle" ||
+		reader.lastInput.Limit != 2 ||
+		reader.lastInput.AgentTargetID != "claude-target" {
+		t.Fatalf("reader input = %#v", reader.lastInput)
+	}
+}
+
+func sessionIDs(sessions []Session) []string {
+	ids := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		ids = append(ids, session.ID)
+	}
+	return ids
 }
 
 func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
@@ -4750,6 +4856,40 @@ type fakeSessionReader struct {
 	sessions   map[string]PersistedSession
 }
 
+type fakeSectionReader struct {
+	fakeSessionReader
+	lastInput agentactivitybiz.ListSessionSectionInput
+	pages     map[string]agentactivitybiz.SessionSectionPage
+}
+
+func (f *fakeSectionReader) ListSessionSection(_ context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool) {
+	f.lastInput = input
+	if f.pages == nil {
+		return agentactivitybiz.SessionSectionPage{
+			WorkspaceID: input.WorkspaceID,
+			SectionKey:  input.SectionKey,
+		}, true
+	}
+	page, ok := f.pages[input.SectionKey]
+	if !ok {
+		return agentactivitybiz.SessionSectionPage{
+			WorkspaceID: input.WorkspaceID,
+			SectionKey:  input.SectionKey,
+		}, true
+	}
+	page.WorkspaceID = input.WorkspaceID
+	page.SectionKey = input.SectionKey
+	return page, true
+}
+
+type fakeUserProjectReader struct {
+	projects []userprojectbiz.Project
+}
+
+func (f fakeUserProjectReader) List(context.Context) ([]userprojectbiz.Project, error) {
+	return f.projects, nil
+}
+
 func (f fakeMessageReader) ListSessionMessages(
 	input agentactivitybiz.ListSessionMessagesInput,
 ) (SessionMessagesPage, bool) {
@@ -5032,6 +5172,10 @@ func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (
 
 func (*activityProjectionRepoStub) ListSessions(context.Context, string) ([]agentactivitybiz.Session, bool, error) {
 	return nil, false, nil
+}
+
+func (*activityProjectionRepoStub) ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
+	return agentactivitybiz.SessionSectionPage{}, false, nil
 }
 
 func (*activityProjectionRepoStub) ListSessionMessages(context.Context, agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {

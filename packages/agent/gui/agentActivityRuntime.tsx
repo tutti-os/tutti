@@ -49,6 +49,60 @@ export interface AgentActivityRuntimeListGeneratedFilesInput {
   workspaceId: string;
 }
 
+export interface AgentActivityRuntimeListSessionsPageInput {
+  limit?: number;
+  searchQuery?: string;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeSessionPageResult {
+  hasMore: boolean;
+  nextCursor?: string;
+  sessions: AgentActivitySession[];
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeListSessionSectionsInput {
+  agentTargetId?: string | null;
+  limitPerSection?: number;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeListSessionSectionPageInput {
+  agentTargetId?: string | null;
+  cursor?: string;
+  limit?: number;
+  sectionKey: string;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeUserProject {
+  createdAtUnixMs: number;
+  id: string;
+  label: string;
+  lastUsedAtUnixMs?: number;
+  path: string;
+  sectionKey: string;
+  updatedAtUnixMs: number;
+}
+
+export interface AgentActivityRuntimeSessionSection {
+  kind: "conversations" | "project";
+  sectionKey: string;
+  userProject?: AgentActivityRuntimeUserProject;
+  sessions: AgentActivitySession[];
+  hasMore: boolean;
+  nextCursor?: string;
+}
+
+export interface AgentActivityRuntimeSessionSectionsResult {
+  sections: AgentActivityRuntimeSessionSection[];
+  workspaceId: string;
+}
+
 export interface AgentActivityRuntimeGeneratedFile {
   label: string;
   path: string;
@@ -247,6 +301,15 @@ export interface AgentActivityRuntime {
   listAgentGeneratedFiles?(
     input: AgentActivityRuntimeListGeneratedFilesInput
   ): Promise<AgentActivityRuntimeGeneratedFileList>;
+  listSessionsPage?(
+    input: AgentActivityRuntimeListSessionsPageInput
+  ): Promise<AgentActivityRuntimeSessionPageResult>;
+  listSessionSections?(
+    input: AgentActivityRuntimeListSessionSectionsInput
+  ): Promise<AgentActivityRuntimeSessionSectionsResult>;
+  listSessionSectionPage?(
+    input: AgentActivityRuntimeListSessionSectionPageInput
+  ): Promise<AgentActivityRuntimeSessionSection>;
   load(
     workspaceId: string,
     signal?: AbortSignal

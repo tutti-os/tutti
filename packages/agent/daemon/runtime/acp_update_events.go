@@ -380,6 +380,9 @@ func acpSystemNoticeEvent(session Session, turnID string, update map[string]any,
 	copyStringPayload(payload, notice, "title")
 	copyStringPayload(payload, notice, "detail")
 	copyStringPayload(payload, notice, "code")
+	// A caller-provided messageId lets related notices (e.g. compaction
+	// started/completed) share one transcript row instead of stacking.
+	copyStringPayload(payload, notice, "messageId")
 	copyBoolPayload(payload, notice, "retryable")
 	if extra := clonePayloadValue(notice["extra"]); extra != nil {
 		payload["extra"] = extra

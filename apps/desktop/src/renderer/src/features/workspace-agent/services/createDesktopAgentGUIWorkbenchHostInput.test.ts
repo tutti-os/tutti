@@ -2096,6 +2096,20 @@ function createWorkspaceAgentActivityService(
     async listAgentGeneratedFiles() {
       return { entries: [], workspaceId };
     },
+    async listSessionsPage(input) {
+      return { hasMore: false, sessions: [], workspaceId: input.workspaceId };
+    },
+    async listSessionSections(input) {
+      return { sections: [], workspaceId: input.workspaceId };
+    },
+    async listSessionSectionPage(input) {
+      return {
+        kind: "conversations",
+        sectionKey: input.sectionKey,
+        sessions: [],
+        hasMore: false
+      };
+    },
     async scanExternalSessionImports() {
       throw new Error("not implemented");
     },

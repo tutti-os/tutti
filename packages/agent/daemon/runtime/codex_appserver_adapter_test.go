@@ -2129,8 +2129,12 @@ func TestCodexAppServerAdapterSlashCompact(t *testing.T) {
 	// session-level handler — not as a locally-emitted terminal message.
 	var gotCompactedBanner bool
 	bannerIndex := -1
+	progressIndex := -1
 	terminalIndex := -1
 	for index, event := range events {
+		if event.Payload.Content == "Compacting context." && progressIndex == -1 {
+			progressIndex = index
+		}
 		if event.Payload.Content == "Context compacted." {
 			gotCompactedBanner = true
 			bannerIndex = index
@@ -2141,6 +2145,9 @@ func TestCodexAppServerAdapterSlashCompact(t *testing.T) {
 	}
 	if !gotCompactedBanner {
 		t.Fatalf("expected 'Context compacted.' banner in compact events; got %#v", events)
+	}
+	if progressIndex == -1 || progressIndex > bannerIndex {
+		t.Fatalf("compacting progress banner index = %d, completed banner index = %d, events = %#v", progressIndex, bannerIndex, events)
 	}
 	if terminalIndex == -1 || bannerIndex == -1 || bannerIndex > terminalIndex {
 		t.Fatalf("compact banner index = %d, terminal index = %d, events = %#v", bannerIndex, terminalIndex, events)
@@ -2630,6 +2637,76 @@ func TestCodexAppServerAdapterReviewBannersEmitOnce(t *testing.T) {
 	}
 	if got := countNotice("contextCompaction", "Context compacted."); got != 1 {
 		t.Fatalf("context compaction banners = %d, want exactly 1", got)
+	}
+	if got := countNotice("contextCompaction", "Compacting context."); got != 1 {
+		t.Fatalf("context compaction progress banners = %d, want exactly 1", got)
+	}
+}
+
+// The in-progress banner and the completed banner must share one messageId so
+// the completed notice replaces the progress notice in place instead of
+// leaving a stale "Compacting context." row in the transcript.
+func TestCodexAppServerAdapterCompactionBannersShareMessageID(t *testing.T) {
+	t.Parallel()
+
+	adapter := &CodexAppServerAdapter{}
+	session := Session{Provider: "codex", AgentSessionID: "agent-compact", RoomID: "room-compact"}
+	normalizer := newACPTurnNormalizer()
+	item := map[string]any{"type": "contextCompaction", "id": "item-compact-1"}
+
+	started := adapter.appServerItemEvents(session, "turn-1", item, false, normalizer)
+	completed := adapter.appServerItemEvents(session, "turn-1", item, true, normalizer)
+	if len(started) != 1 || len(completed) != 1 {
+		t.Fatalf("compaction events = %d started, %d completed, want 1 each", len(started), len(completed))
+	}
+	if got := started[0].Payload.Content; got != "Compacting context." {
+		t.Fatalf("started banner = %q, want %q", got, "Compacting context.")
+	}
+	if got := completed[0].Payload.Content; got != "Context compacted." {
+		t.Fatalf("completed banner = %q, want %q", got, "Context compacted.")
+	}
+	startedID := asString(started[0].Payload.Metadata["messageId"])
+	completedID := asString(completed[0].Payload.Metadata["messageId"])
+	if startedID == "" || startedID != completedID {
+		t.Fatalf("messageId mismatch: started %q, completed %q", startedID, completedID)
+	}
+}
+
+// A turn that dies mid-compaction must settle the in-progress banner in place;
+// otherwise the transcript keeps a live "Compacting context." row ticking
+// forever after the failure.
+func TestCodexAppServerAdapterCompactionBannerSettlesOnInterrupt(t *testing.T) {
+	t.Parallel()
+
+	adapter := &CodexAppServerAdapter{}
+	session := Session{Provider: "codex", AgentSessionID: "agent-compact", RoomID: "room-compact"}
+	normalizer := newACPTurnNormalizer()
+	item := map[string]any{"type": "contextCompaction", "id": "item-compact-1"}
+
+	started := adapter.appServerItemEvents(session, "turn-1", item, false, normalizer)
+	if len(started) != 1 {
+		t.Fatalf("compaction started events = %d, want 1", len(started))
+	}
+	terminal := normalizer.FinishInterrupted(session, "turn-1", "interrupted")
+	var settled *activityshared.Event
+	for index := range terminal {
+		if terminal[index].Payload.Content == "Context compaction interrupted." {
+			settled = &terminal[index]
+		}
+	}
+	if settled == nil {
+		t.Fatalf("expected interrupted compaction banner in terminal events; got %#v", terminal)
+	}
+	if got, want := asString(settled.Payload.Metadata["messageId"]), asString(started[0].Payload.Metadata["messageId"]); got != want || got == "" {
+		t.Fatalf("interrupted banner messageId = %q, want %q", got, want)
+	}
+	// Once settled, later terminal calls must not emit the banner again.
+	if again := normalizer.FinishFailed(session, "turn-1"); len(again) != 0 {
+		for _, event := range again {
+			if event.Payload.Content == "Context compaction interrupted." {
+				t.Fatalf("compaction banner settled twice: %#v", again)
+			}
+		}
 	}
 }
 

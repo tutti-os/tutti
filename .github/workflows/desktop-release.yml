@@ -15,13 +15,14 @@ on:
         default: patch_rc_release
         options:
           - unsigned_dry_run
+          - patch_beta_release
           - patch_rc_release
           - patch_release
           - minor_release
           - major_release
           - explicit_version_release
       version:
-        description: Release semver for explicit_version_release, such as 0.1.0 or 0.1.0-rc.0
+        description: Release semver for explicit_version_release, such as 0.1.0, 0.1.0-rc.0, or 0.1.0-beta.0
         required: false
         type: string
       target_commitish:
@@ -52,6 +53,7 @@ jobs:
       release_tag: ${{ steps.release.outputs.release_tag }}
       release_target: ${{ steps.target.outputs.release_target }}
       release_version: ${{ steps.release.outputs.release_version }}
+      release_channel: ${{ steps.release.outputs.release_channel }}
       notify_feishu: ${{ steps.notify.outputs.notify_feishu }}
 
     steps:
@@ -96,6 +98,9 @@ jobs:
               ;;
             patch_release)
               strategy=patch
+              ;;
+            patch_beta_release)
+              strategy=patch_beta
               ;;
             minor_release)
               strategy=minor
@@ -158,10 +163,12 @@ jobs:
           release_prerelease="$(node -e "process.stdout.write(String(JSON.parse(process.argv[1]).prerelease))" "${release_json}")"
           release_tag="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).tag)" "${release_json}")"
           release_version="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).version)" "${release_json}")"
+          release_channel="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).channel)" "${release_json}")"
           echo "release_make_latest=${release_make_latest}" >> "$GITHUB_OUTPUT"
           echo "release_prerelease=${release_prerelease}" >> "$GITHUB_OUTPUT"
           echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
           echo "release_version=${release_version}" >> "$GITHUB_OUTPUT"
+          echo "release_channel=${release_channel}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve Feishu notification
         id: notify
@@ -176,6 +183,7 @@ jobs:
       TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
       TUTTI_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
       TUTTI_DESKTOP_DRY_RUN: ${{ needs.resolve.outputs.release_dry_run }}
+      TUTTI_DESKTOP_RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
 
     steps:
       - name: Checkout
@@ -294,6 +302,15 @@ jobs:
             pnpm --filter @tutti-os/desktop build:mac:signed
           fi
 
+      - name: Materialize prerelease updater metadata
+        if: ${{ needs.resolve.outputs.release_channel != 'stable' }}
+        run: |
+          if [[ ! -f apps/desktop/dist/latest-mac.yml ]]; then
+            echo "latest-mac.yml is required before creating ${TUTTI_DESKTOP_RELEASE_CHANNEL}-mac.yml." >&2
+            exit 1
+          fi
+          cp apps/desktop/dist/latest-mac.yml "apps/desktop/dist/${TUTTI_DESKTOP_RELEASE_CHANNEL}-mac.yml"
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -411,15 +428,45 @@ jobs:
             --recursive \
             --cache-control "public, max-age=31536000, immutable"
 
-      - name: Build desktop release latest metadata
-        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' }}
+      - name: Generate desktop release summary
         env:
+          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+          RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+          RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+        run: |
+          node apps/desktop/scripts/generate-release-summary.mjs \
+            --output release-summary.json
+
+      - name: Upload desktop release summary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-desktop-release-summary
+          path: release-summary.json
+
+      - name: Update release notes with summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${TUTTI_DESKTOP_RELEASE_TAG}" --json body --jq .body > release-body.md
+          node apps/desktop/scripts/upsert-release-summary.mjs \
+            release-body.md \
+            release-summary.json \
+            updated-release-body.md
+          gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --notes-file updated-release-body.md
+
+      - name: Build desktop release latest metadata
+        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' && needs.resolve.outputs.release_make_latest == 'true' }}
+        env:
+          RELEASE_CHANNEL: stable
+          RELEASE_GIT_SHA: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
           RELEASE_ASSET_BASE_URL: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL }}
+          RELEASE_SOURCE_REF: ${{ github.ref_name }}
           RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
         run: node apps/desktop/scripts/build-release-latest.mjs release-assets release-latest.json
 
       - name: Upload desktop release latest metadata to AWS S3
-        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' }}
+        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' && needs.resolve.outputs.release_make_latest == 'true' }}
         run: |
           prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}"
           if [ -n "${prefix}" ]; then
@@ -428,6 +475,69 @@ jobs:
             s3_root="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}"
           fi
           aws s3 cp release-latest.json "${s3_root}/latest.json" \
+            --content-type "application/json" \
+            --cache-control "public, max-age=60"
+
+      - name: Build desktop prerelease channel latest metadata
+        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' && needs.resolve.outputs.release_channel != 'stable' }}
+        env:
+          RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+          RELEASE_GIT_SHA: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+          RELEASE_ASSET_BASE_URL: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL }}
+          RELEASE_SOURCE_REF: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+        run: node apps/desktop/scripts/build-release-latest.mjs release-assets release-channel-latest.json
+
+      - name: Upload desktop prerelease channel latest metadata to AWS S3
+        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' && needs.resolve.outputs.release_channel != 'stable' }}
+        env:
+          RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+        run: |
+          prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}"
+          if [ -n "${prefix}" ]; then
+            s3_root="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${prefix}"
+          else
+            s3_root="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}"
+          fi
+
+          if [[ "${RELEASE_CHANNEL}" == "rc" ]]; then
+            aws s3 cp release-channel-latest.json "${s3_root}/channels/preview/latest.json" \
+              --content-type "application/json" \
+              --cache-control "public, max-age=60"
+            aws s3 cp release-channel-latest.json "${s3_root}/channels/rc/latest.json" \
+              --content-type "application/json" \
+              --cache-control "public, max-age=60"
+          elif [[ "${RELEASE_CHANNEL}" == "beta" ]]; then
+            aws s3 cp release-channel-latest.json "${s3_root}/channels/beta/latest.json" \
+              --content-type "application/json" \
+              --cache-control "public, max-age=60"
+          else
+            echo "Unsupported prerelease channel: ${RELEASE_CHANNEL}" >&2
+            exit 1
+          fi
+
+      - name: Update desktop release changelog metadata
+        if: ${{ env.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL != '' && needs.resolve.outputs.release_make_latest == 'true' }}
+        run: |
+          prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}"
+          if [ -n "${prefix}" ]; then
+            s3_root="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${prefix}"
+          else
+            s3_root="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}"
+          fi
+          if ! aws s3 cp "${s3_root}/changelog.json" existing-changelog.json 2> changelog-download.err; then
+            if grep -Eq "(404|NoSuchKey|Not Found)" changelog-download.err; then
+              echo '{"schemaVersion":"tutti.desktop.changelog.v1","entries":[]}' > existing-changelog.json
+            else
+              cat changelog-download.err >&2
+              exit 1
+            fi
+          fi
+          node apps/desktop/scripts/upsert-release-changelog.mjs \
+            existing-changelog.json \
+            release-summary.json \
+            changelog.json
+          aws s3 cp changelog.json "${s3_root}/changelog.json" \
             --content-type "application/json" \
             --cache-control "public, max-age=60"
 
@@ -495,10 +605,18 @@ jobs:
           merge-multiple: true
           path: release-assets
 
+      - name: Download release summary
+        if: env.FEISHU_WEBHOOK_URL != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: tutti-desktop-release-summary
+          path: release-summary
+
       - name: Send release card
         if: env.FEISHU_WEBHOOK_URL != ''
         env:
           RELEASE_ASSET_DIRECTORY: release-assets
+          RELEASE_SUMMARY_PATH: release-summary/release-summary.json
         run: node apps/desktop/scripts/send-release-feishu-card.mjs
 
       - name: Skip Feishu card

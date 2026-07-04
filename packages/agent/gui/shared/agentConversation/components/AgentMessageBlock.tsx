@@ -43,6 +43,8 @@ import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentat
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
 const CONTEXT_COMPACTION_NOTICE_TITLE = "Context compacted.";
+const CONTEXT_COMPACTION_IN_PROGRESS_TITLE = "Compacting context.";
+const CONTEXT_COMPACTION_INTERRUPTED_TITLE = "Context compaction interrupted.";
 const TRANSPORT_RETRY_PROGRESS_PATTERN =
   /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
 const SYSTEM_NOTICE_WARNING_CLASS_NAME =
@@ -500,22 +502,25 @@ function AgentSystemNoticeMessage({
       </div>
     );
   }
+  if (isContextCompactionProgressNotice(message, title)) {
+    return (
+      <ContextCompactionProgressDivider
+        startedAtUnixMs={message.occurredAtUnixMs}
+      />
+    );
+  }
   if (isContextCompactionNotice(message, title)) {
     return (
-      <div
-        role="status"
-        className="box-border flex w-full min-w-0 items-center gap-3 py-2 text-[12px] leading-4 text-[var(--text-secondary)]"
-      >
-        <span
-          aria-hidden="true"
-          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
-        />
-        <span className="shrink-0 whitespace-nowrap">{title}</span>
-        <span
-          aria-hidden="true"
-          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
-        />
-      </div>
+      <ContextCompactionDivider
+        text={translate("agentHost.agentGui.contextCompactionCompleted")}
+      />
+    );
+  }
+  if (isContextCompactionInterruptedNotice(message, title)) {
+    return (
+      <ContextCompactionDivider
+        text={translate("agentHost.agentGui.contextCompactionInterrupted")}
+      />
     );
   }
   const isStatusNotice = systemNoticeIsStatus(message);
@@ -604,6 +609,90 @@ function isContextCompactionNotice(
     (notice.detail?.trim() ?? "") === "" &&
     title.trim() === CONTEXT_COMPACTION_NOTICE_TITLE
   );
+}
+
+function isContextCompactionProgressNotice(
+  message: AgentMessageContentVM,
+  title: string
+): boolean {
+  const notice = message.systemNotice;
+  return (
+    notice?.noticeKind === "system_notice" &&
+    (notice.detail?.trim() ?? "") === "" &&
+    title.trim() === CONTEXT_COMPACTION_IN_PROGRESS_TITLE
+  );
+}
+
+function isContextCompactionInterruptedNotice(
+  message: AgentMessageContentVM,
+  title: string
+): boolean {
+  const notice = message.systemNotice;
+  return (
+    notice?.noticeKind === "system_notice" &&
+    (notice.detail?.trim() ?? "") === "" &&
+    title.trim() === CONTEXT_COMPACTION_INTERRUPTED_TITLE
+  );
+}
+
+function ContextCompactionDivider({ text }: { text: string }): JSX.Element {
+  "use memo";
+  return (
+    <div
+      role="status"
+      className="box-border flex w-full min-w-0 items-center gap-3 py-2 text-[12px] leading-4 text-[var(--text-secondary)]"
+    >
+      <span
+        aria-hidden="true"
+        className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+      />
+      <span className="shrink-0 whitespace-nowrap">{text}</span>
+      <span
+        aria-hidden="true"
+        className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+      />
+    </div>
+  );
+}
+
+// Live compaction banner: the daemon replaces this notice in place with the
+// "Context compacted." notice once the provider finishes, so the timer only
+// runs while compaction is actually in flight.
+function ContextCompactionProgressDivider({
+  startedAtUnixMs
+}: {
+  startedAtUnixMs: number | null;
+}): JSX.Element {
+  "use memo";
+  const elapsedSeconds = useElapsedSeconds(startedAtUnixMs);
+  const label = translate("agentHost.agentGui.contextCompactionInProgress");
+  const text =
+    elapsedSeconds === null
+      ? label
+      : `${label} · ${formatElapsedSeconds(elapsedSeconds)}`;
+  return <ContextCompactionDivider text={text} />;
+}
+
+function useElapsedSeconds(startUnixMs: number | null): number | null {
+  const [nowUnixMs, setNowUnixMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (startUnixMs === null) {
+      return;
+    }
+    const timer = setInterval(() => setNowUnixMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [startUnixMs]);
+  if (startUnixMs === null) {
+    return null;
+  }
+  return Math.max(0, Math.floor((nowUnixMs - startUnixMs) / 1000));
+}
+
+function formatElapsedSeconds(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
 // Codex plan-mode proposals render as a framed card (mirrors the codex TUI

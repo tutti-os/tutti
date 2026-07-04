@@ -422,6 +422,29 @@ func (p *ActivityProjection) ListSessions(workspaceID string) ([]PersistedSessio
 	return out, true
 }
 
+func (p *ActivityProjection) ListSessionSection(
+	ctx context.Context,
+	input agentactivitybiz.ListSessionSectionInput,
+) (agentactivitybiz.SessionSectionPage, bool) {
+	if p == nil || p.repo == nil {
+		return agentactivitybiz.SessionSectionPage{}, false
+	}
+	page, ok, err := p.repo.ListSessionSection(ctx, input)
+	if err != nil {
+		slog.Warn("list workspace agent session section failed",
+			"event", "workspace.agent_session.section.list_failed",
+			"workspace_id", input.WorkspaceID,
+			"section_key", input.SectionKey,
+			"error", err,
+		)
+		return agentactivitybiz.SessionSectionPage{}, false
+	}
+	if !ok {
+		return agentactivitybiz.SessionSectionPage{}, false
+	}
+	return page, true
+}
+
 func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	if p == nil || p.repo == nil {
 		return false, nil

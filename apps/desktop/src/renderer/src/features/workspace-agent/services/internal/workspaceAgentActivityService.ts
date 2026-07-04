@@ -161,6 +161,92 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     );
   }
 
+  async listSessionsPage(
+    input: Parameters<IWorkspaceAgentActivityService["listSessionsPage"]>[0]
+  ): ReturnType<IWorkspaceAgentActivityService["listSessionsPage"]> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.listWorkspaceAgentSessions(
+        workspaceId,
+        {
+          limit: input.limit,
+          searchQuery: input.searchQuery?.trim() || undefined
+        },
+        {
+          signal: input.signal
+        }
+      );
+    return {
+      hasMore: false,
+      nextCursor: undefined,
+      sessions: response.sessions.map((session) =>
+        agentActivitySessionFromTuttidSession(workspaceId, session)
+      ),
+      workspaceId: response.workspaceId
+    };
+  }
+
+  async listSessionSections(
+    input: Parameters<IWorkspaceAgentActivityService["listSessionSections"]>[0]
+  ): ReturnType<IWorkspaceAgentActivityService["listSessionSections"]> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.listWorkspaceAgentSessionSections(
+        workspaceId,
+        {
+          agentTargetId: input.agentTargetId?.trim() || undefined,
+          limitPerSection: input.limitPerSection
+        },
+        {
+          signal: input.signal
+        }
+      );
+    return {
+      sections: response.sections.map((section) => ({
+        hasMore: section.hasMore,
+        kind: section.kind,
+        nextCursor: section.nextCursor,
+        sectionKey: section.sectionKey,
+        sessions: section.sessions.map((session) =>
+          agentActivitySessionFromTuttidSession(workspaceId, session)
+        ),
+        userProject: section.userProject
+      })),
+      workspaceId: response.workspaceId
+    };
+  }
+
+  async listSessionSectionPage(
+    input: Parameters<
+      IWorkspaceAgentActivityService["listSessionSectionPage"]
+    >[0]
+  ): ReturnType<IWorkspaceAgentActivityService["listSessionSectionPage"]> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.listWorkspaceAgentSessionSectionPage(
+        workspaceId,
+        {
+          agentTargetId: input.agentTargetId?.trim() || undefined,
+          cursor: input.cursor?.trim() || undefined,
+          limit: input.limit,
+          sectionKey: input.sectionKey
+        },
+        {
+          signal: input.signal
+        }
+      );
+    return {
+      hasMore: response.section.hasMore,
+      kind: response.section.kind,
+      nextCursor: response.section.nextCursor,
+      sectionKey: response.section.sectionKey,
+      sessions: response.section.sessions.map((session) =>
+        agentActivitySessionFromTuttidSession(workspaceId, session)
+      ),
+      userProject: response.section.userProject
+    };
+  }
+
   async scanExternalSessionImports(
     workspaceId: string,
     request?: Parameters<

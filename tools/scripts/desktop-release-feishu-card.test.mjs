@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildCardPayload,
+  buildSummaryElements,
   resolveMirroredAssetUrl,
   resolveReleaseAssetBaseUrl,
   resolveIntroText,
@@ -31,6 +32,11 @@ test("release Feishu card marks rc tags as prereleases", () => {
     "Release candidate prerelease"
   );
   assert.match(resolveIntroText("v1.12.19-rc.0"), /GitHub RC Pre-release/);
+});
+
+test("release Feishu card marks beta tags as prereleases", () => {
+  assert.equal(resolveReleaseKind("v1.12.19-beta.0"), "Beta prerelease");
+  assert.match(resolveIntroText("v1.12.19-beta.0"), /GitHub Beta Pre-release/);
 });
 
 test("release Feishu card includes tsh-aligned release context fields", () => {
@@ -64,6 +70,41 @@ test("release Feishu card includes tsh-aligned release context fields", () => {
     "打开 Release 页面",
     "查看流水线"
   ]);
+});
+
+test("release Feishu card includes Chinese release summary when available", () => {
+  const payload = buildCardPayload({
+    actor: "jomeswang",
+    branch: "main",
+    macUrl: "https://example.com/tutti.dmg",
+    releaseUrl: "https://github.com/tutti-os/tutti/releases/tag/v1.12.20",
+    runUrl: "https://github.com/tutti-os/tutti/actions/runs/1",
+    summary: {
+      zh: {
+        headline: "本次版本聚焦桌面端发布链路稳定性。",
+        sections: [
+          {
+            title: "发布与下载",
+            items: ["稳定包下载入口只指向正式 release。"]
+          }
+        ],
+        qaFocus: ["验证 macOS 首次安装和自动更新。"]
+      }
+    },
+    tag: "v1.12.20",
+    target: "4039186abcdef0"
+  });
+  const summaryElement = payload.card.elements.find((element) =>
+    element.text?.content?.includes("本次更新")
+  );
+
+  assert.ok(summaryElement);
+  assert.match(summaryElement.text.content, /稳定包下载入口只指向正式 release/);
+  assert.match(summaryElement.text.content, /QA 重点/);
+});
+
+test("release Feishu card skips summary elements when summary is missing", () => {
+  assert.deepEqual(buildSummaryElements(null), []);
 });
 
 test("release Feishu card can prefer mirrored asset links over GitHub asset URLs", () => {

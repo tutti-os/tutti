@@ -1650,11 +1650,6 @@ paths:
             type: integer
             minimum: 1
             maximum: 100
-        - name: visibleOnly
-          in: query
-          required: false
-          schema:
-            type: boolean
       responses:
         "200":
           description: Workspace agent sessions
@@ -1716,6 +1711,103 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceAgentSessionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-sections:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceAgentSessionSections
+      tags:
+        - agent-session
+      summary: List agent session rail sections for one workspace
+      parameters:
+        - name: limitPerSection
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before section pagination and hasMore calculation.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Workspace agent session sections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionSectionsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-sections/page:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceAgentSessionSectionPage
+      tags:
+        - agent-session
+      summary: List one agent session rail section page for one workspace
+      parameters:
+        - name: sectionKey
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: cursor
+          in: query
+          required: false
+          description: Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+          schema:
+            type: string
+            minLength: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before section pagination and hasMore calculation.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Workspace agent session section page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionSectionPageResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -6354,6 +6446,63 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceAgentSession"
+    WorkspaceAgentSessionSectionKind:
+      type: string
+      enum:
+        - conversations
+        - project
+    WorkspaceAgentSessionSection:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - sectionKey
+        - sessions
+        - hasMore
+      properties:
+        kind:
+          $ref: "#/components/schemas/WorkspaceAgentSessionSectionKind"
+        sectionKey:
+          type: string
+          minLength: 1
+        userProject:
+          $ref: "#/components/schemas/UserProject"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentSession"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          description: Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+          minLength: 1
+    WorkspaceAgentSessionSectionsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - sections
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentSessionSection"
+    WorkspaceAgentSessionSectionPageResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - section
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        section:
+          $ref: "#/components/schemas/WorkspaceAgentSessionSection"
     ExternalAgentImportScanRequest:
       type: object
       additionalProperties: false
@@ -6848,6 +6997,7 @@ components:
         - id
         - path
         - label
+        - sectionKey
         - createdAtUnixMs
         - updatedAtUnixMs
       properties:
@@ -6858,6 +7008,9 @@ components:
           type: string
           minLength: 1
         label:
+          type: string
+          minLength: 1
+        sectionKey:
           type: string
           minLength: 1
         createdAtUnixMs:

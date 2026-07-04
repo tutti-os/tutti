@@ -209,6 +209,12 @@ import type {
   ListWorkspaceAgentSessionMessagesErrors,
   ListWorkspaceAgentSessionMessagesResponses,
   ListWorkspaceAgentSessionsData,
+  ListWorkspaceAgentSessionSectionPageData,
+  ListWorkspaceAgentSessionSectionPageErrors,
+  ListWorkspaceAgentSessionSectionPageResponses,
+  ListWorkspaceAgentSessionSectionsData,
+  ListWorkspaceAgentSessionSectionsErrors,
+  ListWorkspaceAgentSessionSectionsResponses,
   ListWorkspaceAgentSessionsErrors,
   ListWorkspaceAgentSessionsResponses,
   ListWorkspaceAppFactoryJobsData,
@@ -1519,6 +1525,42 @@ export const createWorkspaceAgentSession = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * List agent session rail sections for one workspace
+ */
+export const listWorkspaceAgentSessionSections = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceAgentSessionSectionsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceAgentSessionSectionsResponses,
+    ListWorkspaceAgentSessionSectionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections",
+    ...options
+  });
+
+/**
+ * List one agent session rail section page for one workspace
+ */
+export const listWorkspaceAgentSessionSectionPage = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceAgentSessionSectionPageData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceAgentSessionSectionPageResponses,
+    ListWorkspaceAgentSessionSectionPageErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections/page",
+    ...options
   });
 
 /**

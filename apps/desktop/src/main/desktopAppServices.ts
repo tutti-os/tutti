@@ -25,6 +25,7 @@ export interface DesktopAppServices
 }
 
 export interface CreateDesktopAppServicesOptions {
+  appVersion?: string;
   enableDevelopmentReloadShortcut?: boolean;
   fallbackLocale: DesktopLocale;
   browserNodeGuestPreloadPath?: string;
@@ -52,10 +53,7 @@ export async function createDesktopAppServices(
   factories?: Partial<DesktopAppServiceFactories>
 ): Promise<DesktopAppServices> {
   const daemonRuntime = await resolveDaemonRuntime(factories);
-  const updateService = await resolveUpdateService(factories, {
-    prepareQuitAndInstall: () => daemonRuntime.tuttid.stop(),
-    recoverAfterQuitAndInstallFailure: () => daemonRuntime.tuttid.start()
-  });
+  const updateService = await resolveUpdateService(factories);
 
   try {
     await daemonRuntime.tuttid.start();
@@ -99,6 +97,7 @@ export async function createDesktopAppServices(
   const hostServices = await resolveHostServices(factories, {
     browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
     enableDevelopmentReloadShortcut: options.enableDevelopmentReloadShortcut,
+    appVersion: options.appVersion,
     fallbackLocale: options.fallbackLocale,
     logger: options.logger,
     tuttidClient: daemonRuntime.tuttidClient,
@@ -140,11 +139,7 @@ async function resolveHostServices(
 }
 
 async function resolveUpdateService(
-  factories?: Partial<DesktopAppServiceFactories>,
-  options: {
-    prepareQuitAndInstall?: () => Promise<void>;
-    recoverAfterQuitAndInstallFailure?: () => Promise<void>;
-  } = {}
+  factories?: Partial<DesktopAppServiceFactories>
 ): Promise<AppUpdateService> {
   if (factories?.createUpdateService) {
     return factories.createUpdateService();
@@ -152,10 +147,7 @@ async function resolveUpdateService(
 
   const { createAppUpdateService } =
     await import("./update/appUpdateService.ts");
-  return createAppUpdateService(undefined, {
-    prepareQuitAndInstall: options.prepareQuitAndInstall,
-    recoverAfterQuitAndInstallFailure: options.recoverAfterQuitAndInstallFailure
-  });
+  return createAppUpdateService();
 }
 
 async function resolveCliShim(

@@ -63,17 +63,36 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 	return reduction.Events, nil
 }
 
-// appServerNoticeItems maps review/compaction thread items to a one-line
-// system-notice banner. emitOnCompleted selects which lifecycle event carries
-// the banner: enteredReviewMode rides item/started (it always fires), while
-// exitedReviewMode and contextCompaction ride the authoritative item/completed.
+// appServerNoticeItems maps review thread items to a one-line system-notice
+// banner. emitOnCompleted selects which lifecycle event carries the banner:
+// enteredReviewMode rides item/started (it always fires), while
+// exitedReviewMode rides the authoritative item/completed.
 var appServerNoticeItems = map[string]struct {
 	message         string
 	emitOnCompleted bool
 }{
 	"enteredReviewMode": {message: "Code review started.", emitOnCompleted: false},
 	"exitedReviewMode":  {message: "Code review finished.", emitOnCompleted: true},
-	"contextCompaction": {message: "Context compacted.", emitOnCompleted: true},
+}
+
+const (
+	appServerCompactingContextTitle     = "Compacting context."
+	appServerContextCompactedTitle      = "Context compacted."
+	appServerCompactionInterruptedTitle = "Context compaction interrupted."
+)
+
+// appServerCompactionNoticeEvent emits the compaction banner for both item
+// lifecycle events. Both banners share one messageId keyed to the thread item
+// so the "Context compacted." notice replaces the in-progress "Compacting
+// context." notice in place instead of appending a second transcript row.
+func appServerCompactionNoticeEvent(session Session, turnID string, messageID string, completed bool) activityshared.Event {
+	title := appServerCompactingContextTitle
+	if completed {
+		title = appServerContextCompactedTitle
+	}
+	return appServerSystemNoticeEvent(session, turnID, "system_notice", title, "", map[string]any{
+		"messageId": messageID,
+	})
 }
 
 func (*CodexAppServerAdapter) appServerItemEvents(
@@ -88,12 +107,18 @@ func (*CodexAppServerAdapter) appServerItemEvents(
 	}
 	itemType := asString(item["type"])
 	// Review/compaction items stream both item/started and item/completed.
-	// Gate each banner to a single lifecycle event so the GUI shows it once.
+	// Gate each review banner to a single lifecycle event so the GUI shows it
+	// once; compaction emits on both so the GUI can show live progress.
 	if notice, ok := appServerNoticeItems[itemType]; ok {
 		if notice.emitOnCompleted != completed {
 			return nil
 		}
 		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", notice.message, "")}
+	}
+	if itemType == "contextCompaction" {
+		messageID := "compaction:" + firstNonEmpty(asString(item["id"]), turnID)
+		normalizer.TrackCompactionNotice(messageID, completed)
+		return []activityshared.Event{appServerCompactionNoticeEvent(session, turnID, messageID, completed)}
 	}
 	switch itemType {
 	case "agentMessage":
@@ -1004,9 +1029,13 @@ func appServerSystemNoticeEvent(session Session, turnID string, noticeKind strin
 	if title != "" {
 		update["title"] = title
 	}
-	if title == "Context compacted." {
+	if title == appServerContextCompactedTitle {
 		update["noticeCommand"] = "compact"
 		update["noticeCommandStatus"] = "completed"
+	}
+	if title == appServerCompactingContextTitle {
+		update["noticeCommand"] = "compact"
+		update["noticeCommandStatus"] = "inProgress"
 	}
 	if detail != "" {
 		update["detail"] = detail

@@ -152,12 +152,7 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	}
 
 	analyticsConfig := tuttitypes.ResolveAnalyticsConfig()
-	var debugPublisher reporterservice.DebugPublisher
-	if analyticsConfig.Debug {
-		debugPublisher = analyticsDebugEventPublisher{
-			service: api.EventStreamService,
-		}
-	}
+	debugPublisher := resolveAnalyticsDebugPublisher(analyticsConfig, api.EventStreamService)
 	analyticsReporter, err := reporterservice.New(reporterservice.Config{
 		Analytics:      analyticsConfig,
 		DebugPublisher: debugPublisher,
@@ -172,6 +167,15 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.appCenterService = appCenterService
 	w.agentRuntime = agentRuntime
 	return nil
+}
+
+func resolveAnalyticsDebugPublisher(analyticsConfig tuttitypes.AnalyticsConfig, service analyticsDebugEventStream) reporterservice.DebugPublisher {
+	if analyticsConfig.Disabled || service == nil {
+		return nil
+	}
+	return analyticsDebugEventPublisher{
+		service: service,
+	}
 }
 
 func attachAnalyticsReporter(api *tuttiapi.DaemonAPI, analyticsReporter reporterservice.Reporter) {
@@ -272,6 +276,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		return tuttiapi.DaemonAPI{}, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentSidecarPreparer := agentsidecarservice.NewDefaultPreparer(tuttitypes.DefaultStateDir())
+	userProjectService := userprojectservice.Service{
+		Store: userProjectStore,
+	}
 	agentSessionService := agentservice.NewService(
 		newAgentRuntimeAdapter(agentRuntime.Controller()),
 	)
@@ -279,6 +286,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.ModelCatalog = agentservice.NewAgentModelCatalog()
 	agentSessionService.AgentTargetStore = agentTargetStore
 	agentSessionService.SessionReader = agentActivityProjection
+	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
 	agentSessionService.SessionDirectoryAllocator = agentservice.LocalSessionDirectoryAllocator{
@@ -389,10 +397,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	terminalService := &workspaceservice.TerminalService{}
 
 	return tuttiapi.DaemonAPI{
-		AccountService: accountservice.NewService(""),
-		UserProjectService: userprojectservice.Service{
-			Store: userProjectStore,
-		},
+		AccountService:            accountservice.NewService(""),
+		UserProjectService:        userProjectService,
 		AgentTargetService:        agentTargets,
 		PreferencesService:        preferences,
 		ManagedCredentialsService: managedCredentials,

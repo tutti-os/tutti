@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -98,6 +99,7 @@ const claudeSystemPromptFileEnv = "TUTTI_CLAUDE_SYSTEM_PROMPT_FILE"
 const claudePluginDirEnv = "TUTTI_CLAUDE_PLUGIN_DIR"
 const claudeSDKMessageMethod = "_claude/sdkMessage"
 const claudePlanModeInstructions = "You are in plan mode. Inspect files and gather context as needed, but do not edit files, run mutation commands, or make external changes. Produce a concrete implementation plan first. If the user gives feedback, refine the plan. Only after the user approves leaving plan mode may you implement changes."
+const tuttiMentionRoutingReminder = "<system-reminder>mention:// links are Tutti internal references; use the exact visible tutti-cli skill first to route them.</system-reminder>"
 
 const (
 	sessionSpeedStandard = "standard"
@@ -115,6 +117,8 @@ var claudeCodeACPModelAliases = map[string]bool{
 	"sonnet[1m]": true,
 	"opusplan":   true,
 }
+
+var markdownMentionURIRegex = regexp.MustCompile(`\[(?:\\.|[^\]\\\r\n])*\]\((mention://[A-Za-z0-9][A-Za-z0-9._~-]*(?:[/?#][^\s)]*)?)\)`)
 
 const (
 	acpCloseCallTimeout  = 750 * time.Millisecond
@@ -1014,10 +1018,10 @@ func (a *standardACPAdapter) Exec(
 	session.ProviderSessionID = acpSession.providerSessionID
 	a.rememberSessionTurn(session.AgentSessionID, turnID)
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
-	mentionRoutingApplied, mentionRoutingSkills := claudeCodeMentionRoutingSkills(a.config.provider, visibleText)
+	mentionRoutingApplied, mentionRoutingSkills := tuttiMentionRoutingSkills(visibleText)
 	acpPromptContent := promptContentForACP(content)
 	if mentionRoutingApplied {
-		acpPromptContent = prependClaudeCodeMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
+		acpPromptContent = appendTuttiMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
 	}
 	normalizer := newACPTurnNormalizer()
 	var events []activityshared.Event
@@ -1054,12 +1058,12 @@ func (a *standardACPAdapter) Exec(
 		"turn_id", turnID,
 		"prompt_length", len(visibleText),
 		"mention_uri_count", len(extractMentionURIs(visibleText)),
-		"claude_mention_routing_applied", mentionRoutingApplied,
-		"claude_mention_routing_skills", mentionRoutingSkills,
+		"mention_routing_applied", mentionRoutingApplied,
+		"mention_routing_skills", mentionRoutingSkills,
 	)
 	if mentionRoutingApplied {
-		slog.Info("agent session ACP claude mention routing applied",
-			"event", "agent_session.acp.claude_mention_routing.applied",
+		slog.Info("agent session ACP mention routing applied",
+			"event", "agent_session.acp.mention_routing.applied",
 			"provider", a.config.provider,
 			"adapter", a.config.adapterName,
 			"room_id", session.RoomID,
@@ -1230,10 +1234,7 @@ func claudeGoalSlashPromptUpdate(prompt string) (map[string]any, string, bool) {
 	}
 }
 
-func claudeCodeMentionRoutingSkills(provider string, visibleText string) (bool, []string) {
-	if strings.TrimSpace(provider) != ProviderClaudeCode {
-		return false, nil
-	}
+func tuttiMentionRoutingSkills(visibleText string) (bool, []string) {
 	var skills []string
 	seenSkills := map[string]struct{}{}
 	for _, mention := range extractMentionURIs(visibleText) {
@@ -1265,36 +1266,19 @@ func skillForMentionURI(uri string) string {
 }
 
 func extractMentionURIs(text string) []string {
-	const marker = "mention://"
 	var mentions []string
 	seen := map[string]struct{}{}
-	for offset := 0; offset < len(text); {
-		index := strings.Index(text[offset:], marker)
-		if index < 0 {
-			break
+	for _, match := range markdownMentionURIRegex.FindAllStringSubmatch(text, -1) {
+		if len(match) < 2 {
+			continue
 		}
-		start := offset + index
-		end := start
-		for end < len(text) && !mentionURITerminator(text[end]) {
-			end++
-		}
-		mention := strings.TrimSpace(text[start:end])
+		mention := strings.TrimSpace(match[1])
 		if _, ok := seen[mention]; mention != "" && !ok {
 			mentions = append(mentions, mention)
 			seen[mention] = struct{}{}
 		}
-		offset = end
 	}
 	return mentions
-}
-
-func mentionURITerminator(char byte) bool {
-	switch char {
-	case ' ', '\t', '\n', '\r', ')', ']', '>', '"', '\'':
-		return true
-	default:
-		return false
-	}
 }
 
 func (a *standardACPAdapter) Cancel(ctx context.Context, session Session, _ string) ([]activityshared.Event, error) {
@@ -3713,10 +3697,13 @@ func isTerminalACPToolStatus(status string) bool {
 }
 
 func shouldIgnoreStandardACPTitle(config standardACPConfig, currentTitle string, title string) bool {
+	if isInternalMentionRoutingTitle(title) {
+		return true
+	}
 	if strings.TrimSpace(config.provider) != ProviderClaudeCode {
 		return false
 	}
-	if isClaudeACPInterruptMarker(title) || isClaudeCodeMentionHandoffTitle(title) {
+	if isClaudeACPInterruptMarker(title) {
 		return true
 	}
 	return !isStandardACPPlaceholderTitle(config, currentTitle)
@@ -3733,62 +3720,31 @@ func isStandardACPPlaceholderTitle(config standardACPConfig, title string) bool 
 	return false
 }
 
-func isClaudeCodeMentionHandoffTitle(title string) bool {
-	return strings.HasPrefix(strings.TrimSpace(title), "Claude Code mention handoff routing for this user turn:")
+func isInternalMentionRoutingTitle(title string) bool {
+	return strings.HasPrefix(strings.TrimSpace(title), tuttiMentionRoutingReminder)
 }
 
-func prependClaudeCodeMentionRoutingPrompt(content []map[string]any, skills []string) []map[string]any {
-	routingPrompt := strings.TrimSpace(claudeCodeMentionRoutingPrompt(skills))
+func appendTuttiMentionRoutingPrompt(content []map[string]any, skills []string) []map[string]any {
+	routingPrompt := strings.TrimSpace(tuttiMentionRoutingPrompt(skills))
 	if routingPrompt == "" {
 		return content
 	}
 	out := make([]map[string]any, 0, len(content)+1)
+	out = append(out, content...)
 	out = append(out, map[string]any{
 		"type": "text",
 		"text": routingPrompt,
 	})
-	out = append(out, content...)
 	return out
 }
 
-func claudeCodeMentionRoutingPrompt(skills []string) string {
-	unique := make([]string, 0, len(skills))
-	seen := map[string]bool{}
+func tuttiMentionRoutingPrompt(skills []string) string {
 	for _, skill := range skills {
-		skill = strings.TrimSpace(skill)
-		if skill == "" || seen[skill] {
-			continue
-		}
-		seen[skill] = true
-		unique = append(unique, skill)
-	}
-	if len(unique) == 0 {
-		return ""
-	}
-	lines := []string{
-		"Claude Code mention handoff routing for this user turn:",
-		"- This block is internal Tutti routing metadata. Do not quote, summarize, or display it to the user.",
-		"- Before Bash, WebFetch, browser, MCP lookup, file search, raw CLI commands, or provider-native substitute tools, call the Claude Code Skill tool for the exact visible injected Tutti skill that matches the mention kind.",
-		"- Skill names may be namespaced. Prefer the exact visible `tutti-cli:<skill>` name when present; use the plain `<skill>` name only if that exact name is visible. Do not pass arguments to Skill.",
-	}
-	for _, skill := range unique {
-		switch skill {
-		case "workspace-app":
-			lines = append(lines,
-				"- For `mention://workspace-app/...`, first call `Skill(skill=\"tutti-cli:workspace-app\")` when that name is visible, otherwise `Skill(skill=\"workspace-app\")` only if visible.",
-				"- The workspace app id inside the mention is not a skill name. Do not call an app-id-derived Skill name.",
-			)
-		case "issue-manager":
-			lines = append(lines, "- For `mention://workspace-issue/...`, first call `Skill(skill=\"tutti-cli:issue-manager\")` when that name is visible, otherwise `Skill(skill=\"issue-manager\")` only if visible.")
-		case "reference":
-			lines = append(lines, "- For `mention://workspace-reference/...`, first call `Skill(skill=\"tutti-cli:reference\")` when that name is visible, otherwise `Skill(skill=\"reference\")` only if visible.")
-		case "tutti-cli":
-			lines = append(lines, "- For `mention://agent-session/...`, first call `Skill(skill=\"tutti-cli:tutti-cli\")` when that name is visible, otherwise `Skill(skill=\"tutti-cli\")` only if visible.")
-		default:
-			lines = append(lines, "- First call the exact visible Skill for `"+skill+"`.")
+		if strings.TrimSpace(skill) != "" {
+			return tuttiMentionRoutingReminder
 		}
 	}
-	return strings.Join(lines, "\n")
+	return ""
 }
 
 func isClaudeACPInterruptMarker(text string) bool {

@@ -68,7 +68,7 @@ test("desktop release workflow publishes rc tags as prereleases and keeps stable
   assert.match(workflow, /default:\s*patch_rc_release/);
   assert.match(
     workflow,
-    /release_mode:[\s\S]*?options:\s*\n\s*-\s*unsigned_dry_run\n\s*-\s*patch_rc_release\n\s*-\s*patch_release\n\s*-\s*minor_release\n\s*-\s*major_release\n\s*-\s*explicit_version_release/
+    /release_mode:[\s\S]*?options:\s*\n\s*-\s*unsigned_dry_run\n\s*-\s*patch_beta_release\n\s*-\s*patch_rc_release\n\s*-\s*patch_release\n\s*-\s*minor_release\n\s*-\s*major_release\n\s*-\s*explicit_version_release/
   );
   assert.match(
     workflow,
@@ -78,6 +78,8 @@ test("desktop release workflow publishes rc tags as prereleases and keeps stable
     workflow,
     /make_latest:\s+\${{\s*needs\.resolve\.outputs\.release_make_latest\s*==\s*'true'\s*}}/
   );
+  assert.match(workflow, /release_channel:\s+\${{\s*steps\.release\.outputs\.release_channel\s*}}/);
+  assert.match(workflow, /patch_beta_release\)\s*\n\s*strategy=patch_beta/);
 });
 
 test("desktop release workflow schedules a daily Beijing 4:16am rc release", async () => {
@@ -201,6 +203,70 @@ test("desktop release workflow can mirror release assets to S3 and upsert direct
   );
 });
 
+test("desktop release workflow only publishes root latest metadata for stable releases", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const latestBuildStep = workflow.match(
+    /- name: Build desktop release latest metadata[\s\S]*?run: node apps\/desktop\/scripts\/build-release-latest\.mjs[^\n]*/
+  )?.[0];
+  const latestUploadStep = workflow.match(
+    /- name: Upload desktop release latest metadata to AWS S3[\s\S]*?aws s3 cp release-latest\.json "\$\{s3_root\}\/latest\.json"/
+  )?.[0];
+
+  assert.ok(latestBuildStep, "latest metadata build step should exist");
+  assert.ok(latestUploadStep, "latest metadata upload step should exist");
+  assert.match(
+    latestBuildStep,
+    /needs\.resolve\.outputs\.release_make_latest\s*==\s*'true'/
+  );
+  assert.match(
+    latestUploadStep,
+    /needs\.resolve\.outputs\.release_make_latest\s*==\s*'true'/
+  );
+  assert.match(workflow, /Build desktop prerelease channel latest metadata/);
+  assert.match(
+    workflow,
+    /needs\.resolve\.outputs\.release_channel\s*!=\s*'stable'/
+  );
+  assert.match(
+    workflow,
+    /channels\/preview\/latest\.json[\s\S]*channels\/rc\/latest\.json/
+  );
+  assert.match(workflow, /channels\/beta\/latest\.json/);
+});
+
+test("desktop release workflow generates summaries and stable changelog metadata", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /Generate desktop release summary/);
+  assert.match(
+    workflow,
+    /apps\/desktop\/scripts\/generate-release-summary\.mjs/
+  );
+  assert.match(workflow, /secrets\.AGNES_API_KEY/);
+  assert.match(workflow, /Upload desktop release summary artifact/);
+  assert.match(workflow, /Update release notes with summary/);
+  assert.match(
+    workflow,
+    /apps\/desktop\/scripts\/upsert-release-summary\.mjs/
+  );
+  assert.match(workflow, /Update desktop release changelog metadata/);
+  assert.match(
+    workflow,
+    /apps\/desktop\/scripts\/upsert-release-changelog\.mjs/
+  );
+  assert.match(
+    workflow,
+    /grep -Eq "\(404\|NoSuchKey\|Not Found\)" changelog-download\.err/
+  );
+  assert.match(
+    workflow,
+    /"schemaVersion":"tutti\.desktop\.changelog\.v1"/
+  );
+  assert.match(workflow, /"\$\{s3_root\}\/changelog\.json"/);
+  assert.match(workflow, /Download release summary/);
+  assert.match(workflow, /RELEASE_SUMMARY_PATH:\s+release-summary\/release-summary\.json/);
+});
+
 test("desktop release workflow keeps GitHub release draft until assets are ready", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const publishJobMatch = workflow.match(
@@ -318,6 +384,22 @@ test("desktop package declares the workspace package manager for electron-builde
   const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
 
   assert.equal(packageJson.packageManager, "pnpm@10.11.0");
+});
+
+test("desktop package generates updater metadata for every release channel", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.equal(packageJson.build?.generateUpdatesFilesForAllChannels, true);
+  assert.match(workflow, /Materialize prerelease updater metadata/);
+  assert.match(
+    workflow,
+    /needs\.resolve\.outputs\.release_channel\s*!=\s*'stable'/
+  );
+  assert.match(
+    workflow,
+    /cp apps\/desktop\/dist\/latest-mac\.yml "apps\/desktop\/dist\/\$\{TUTTI_DESKTOP_RELEASE_CHANNEL\}-mac\.yml"/
+  );
 });
 
 test("desktop package uses a distinct product identity from tsh desktop", async () => {

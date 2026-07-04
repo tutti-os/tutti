@@ -261,19 +261,32 @@ test("workspace settings computer-use continues into the wizard after install", 
 });
 
 test("workspace settings general panel does not expose update preferences", () => {
+  const generalSectionStart = source.indexOf(
+    "function WorkspaceGeneralSettingsSection"
+  );
+  const appearanceSectionStart = source.indexOf(
+    "function WorkspaceAppearanceSettingsSection"
+  );
+  const generalSection = source.slice(generalSectionStart, appearanceSectionStart);
+
+  assert.ok(generalSectionStart >= 0);
+  assert.ok(appearanceSectionStart > generalSectionStart);
   assert.doesNotMatch(source, /WorkspaceUpdateSettingsSection/);
-  assert.doesNotMatch(source, /workspace\.settings\.general\.updateTitle/);
   assert.doesNotMatch(
-    source,
+    generalSection,
+    /workspace\.settings\.general\.updateTitle/
+  );
+  assert.doesNotMatch(
+    generalSection,
     /workspace\.settings\.general\.updatePolicyLabel/
   );
   assert.doesNotMatch(
-    source,
+    generalSection,
     /workspace\.settings\.general\.updateChannelLabel/
   );
-  assert.doesNotMatch(source, /onUpdatePolicyChange/);
-  assert.doesNotMatch(source, /onUpdateChannelChange/);
-  assert.doesNotMatch(source, /app_update\.settings_rendered/);
+  assert.doesNotMatch(generalSection, /onUpdatePolicyChange/);
+  assert.doesNotMatch(generalSection, /onUpdateChannelChange/);
+  assert.doesNotMatch(generalSection, /app_update\.settings_rendered/);
 });
 
 test("workspace settings about card keeps version pill compact", () => {
@@ -393,6 +406,31 @@ test("workspace settings app source control lives in developer settings", () => 
     source.slice(developerSectionStart, controlStart),
     /<AppCatalogChannelControl/
   );
+});
+
+test("workspace settings release channel control lives in developer settings", () => {
+  const developerSectionStart = source.indexOf(
+    "function WorkspaceDeveloperSettingsSection"
+  );
+  const controlStart = source.indexOf("function ReleaseChannelControl");
+  const agentSectionStart = source.indexOf(
+    "function WorkspaceAgentSettingsSection"
+  );
+  const generalSectionStart = source.indexOf(
+    "function WorkspaceGeneralSettingsSection"
+  );
+  const generalSection = source.slice(generalSectionStart, source.length);
+  const developerSection = source.slice(developerSectionStart, controlStart);
+
+  assert.ok(generalSectionStart >= 0);
+  assert.ok(developerSectionStart >= 0);
+  assert.ok(controlStart > developerSectionStart);
+  assert.ok(agentSectionStart > controlStart);
+  assert.doesNotMatch(
+    generalSection,
+    /releaseChannelLabel/
+  );
+  assert.match(developerSection, /<ReleaseChannelControl/);
 });
 
 test("workspace settings agent dock layout lives in developer settings", () => {

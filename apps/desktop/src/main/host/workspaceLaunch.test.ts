@@ -409,6 +409,12 @@ function createTransportClient(
     async listWorkspaceAgentSessions(workspaceID) {
       return { sessions: [], workspaceId: workspaceID };
     },
+    async listWorkspaceAgentSessionSections(workspaceID) {
+      return { sections: [], workspaceId: workspaceID };
+    },
+    async listWorkspaceAgentSessionSectionPage() {
+      throw new Error("not used");
+    },
     async scanWorkspaceExternalAgentSessionImports() {
       throw new Error("not used");
     },

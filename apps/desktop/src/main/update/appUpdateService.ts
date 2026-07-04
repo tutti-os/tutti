@@ -77,8 +77,6 @@ export interface AppUpdateService {
 
 interface AppUpdateServiceOptions {
   prefixedReleaseResolver?: PrefixedDesktopReleaseResolver | null;
-  prepareQuitAndInstall?: () => Promise<void>;
-  recoverAfterQuitAndInstallFailure?: () => Promise<void>;
   supportsUpdates?: boolean;
   unsupportedMessage?: string;
 }
@@ -476,9 +474,6 @@ export function createAppUpdateService(
   let activeDownloadPromise: Promise<void> | null = null;
   let preserveAvailableStateDuringCheck = false;
   let quitAndInstallPending = false;
-  const prepareQuitAndInstall = options.prepareQuitAndInstall;
-  const recoverAfterQuitAndInstallFailure =
-    options.recoverAfterQuitAndInstallFailure;
   const stateChangedListeners = new Set<
     (state: AppUpdateState, previousState: AppUpdateState) => void
   >();
@@ -528,31 +523,6 @@ export function createAppUpdateService(
       releaseDate: state.releaseDate,
       releaseName: state.releaseName
     });
-  };
-
-  const recoverAfterFailedQuitAndInstall = async (
-    error: unknown
-  ): Promise<void> => {
-    if (!quitAndInstallPending) {
-      return;
-    }
-
-    quitAndInstallPending = false;
-    if (!recoverAfterQuitAndInstallFailure) {
-      return;
-    }
-
-    try {
-      await recoverAfterQuitAndInstallFailure();
-    } catch (recoverError) {
-      getDesktopLogger().error(
-        "failed to recover managed tuttid after update install failure",
-        {
-          error: formatErrorDetail(recoverError),
-          install_error: formatErrorDetail(error)
-        }
-      );
-    }
   };
 
   const resetConfiguredState = (
@@ -672,7 +642,7 @@ export function createAppUpdateService(
       }
 
       applyUpdaterError(error);
-      void recoverAfterFailedQuitAndInstall(error);
+      quitAndInstallPending = false;
     })
   ];
 
@@ -815,31 +785,13 @@ export function createAppUpdateService(
         policy: state.policy
       });
 
-      if (prepareQuitAndInstall) {
-        try {
-          await prepareQuitAndInstall();
-        } catch (error) {
-          const normalizedError =
-            error instanceof Error ? error : new Error(String(error));
-          getDesktopLogger().error(
-            "failed to stop managed tuttid before update install",
-            {
-              error: formatErrorDetail(error)
-            }
-          );
-          applyUpdaterError(normalizedError);
-          await recoverAfterFailedQuitAndInstall(error);
-          throw error;
-        }
-      }
-
       try {
         resolvedDriver.quitAndInstall();
       } catch (error) {
+        quitAndInstallPending = false;
         applyUpdaterError(
           error instanceof Error ? error : new Error(String(error))
         );
-        await recoverAfterFailedQuitAndInstall(error);
         throw error;
       }
     },
