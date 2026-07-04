@@ -3508,8 +3508,16 @@ export function AgentComposer({
                   totalTokens={usage.totalTokens}
                   tooltipsEnabled={!previewMode}
                   compactSupported={compactSupported ?? false}
+                  // Only guard against compacting mid-turn: isSendingTurn is
+                  // the narrow "a turn is actively executing right now"
+                  // signal. showStopButton alone (e.g. pending approval or
+                  // interrupting, with isSendingTurn false) must keep this
+                  // enabled -- that broader gate was the bug fixed by
+                  // 0e736412 and should not be reintroduced.
                   compactDisabled={
-                    !hasCompactableContext || composerControlsHardDisabled
+                    !hasCompactableContext ||
+                    composerControlsHardDisabled ||
+                    isSendingTurn
                   }
                   onCompact={() => onSubmit(textPromptContent("/compact"))}
                   labels={{
