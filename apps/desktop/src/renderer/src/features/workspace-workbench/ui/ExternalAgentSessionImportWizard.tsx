@@ -29,6 +29,10 @@ import { useService } from "@tutti-os/infra/di";
 import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import { useTranslation } from "@renderer/i18n";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
+import {
+  isExternalImportWizardBusy,
+  shouldAllowExternalImportDialogOpenChange
+} from "./externalAgentSessionImportWizardModel";
 
 const externalImportProviderOptions: WorkspaceAgentProvider[] = [
   "codex",
@@ -249,17 +253,38 @@ export function ExternalAgentSessionImportWizard({
   // request is in flight so the only way out is the explicit Cancel/Back
   // control (disabled while importing) or letting it finish.
   const blockDismissWhileBusy = (event: { preventDefault: () => void }) => {
-    if (loading || importing) {
+    if (isExternalImportWizardBusy({ importing, loading })) {
       event.preventDefault();
     }
   };
 
+  // Radix's built-in "X" close button (rendered by DialogContent via
+  // showCloseButton) dismisses through DialogPrimitive.Close, a third path
+  // that never fires onEscapeKeyDown/onInteractOutside above. Guard it here
+  // at the source by wrapping the onOpenChange handed to <Dialog>, using the
+  // same busy condition (see externalAgentSessionImportWizardModel.ts) so
+  // all three dismiss paths agree. The explicit Cancel/Back/Done buttons
+  // below call the raw onOpenChange prop directly and are unaffected;
+  // Cancel/Back are already disabled while busy.
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (
+      shouldAllowExternalImportDialogOpenChange({
+        importing,
+        loading,
+        nextOpen
+      })
+    ) {
+      onOpenChange(nextOpen);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className="flex max-h-[min(640px,calc(100vh-32px))] flex-col gap-0 overflow-hidden bg-[var(--background-fronted)] p-0 sm:max-w-[640px]"
         onEscapeKeyDown={blockDismissWhileBusy}
         onInteractOutside={blockDismissWhileBusy}
+        showCloseButton={!isExternalImportWizardBusy({ importing, loading })}
       >
         <DialogHeader className="shrink-0 border-b border-[var(--border-1)] px-5 py-4">
           <DialogTitle>
