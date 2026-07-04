@@ -23,14 +23,27 @@ test("launchpad dock icon adapts to wallpaper tone", () => {
   );
 });
 
-test("launchpad top bar remains draggable without stealing controls", () => {
-  assert.match(
+test("launchpad blank areas stay dismissible instead of trapping clicks in a drag region", () => {
+  // Electron drag regions swallow pointerdown at the OS level before it
+  // reaches the document, so any area marked `drag` breaks click-to-dismiss
+  // (see WorkspaceChrome's header fix for the same class of bug). The
+  // launchpad overlay only exists while it is open, so none of its
+  // sub-regions should claim the drag region.
+  assert.doesNotMatch(
     css,
     /\.workspace-launchpad-overlay__content\s*{[^}]*-webkit-app-region:\s*drag;/s
   );
   assert.match(
     css,
+    /\.workspace-launchpad-overlay__content\s*{[^}]*-webkit-app-region:\s*no-drag;/s
+  );
+  assert.doesNotMatch(
+    css,
     /\.workspace-launchpad-overlay__topbar\s*{[^}]*-webkit-app-region:\s*drag;/s
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-overlay__topbar\s*{[^}]*-webkit-app-region:\s*no-drag;/s
   );
   assert.match(
     css,
