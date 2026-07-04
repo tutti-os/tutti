@@ -477,6 +477,80 @@ func TestServiceImportExternalSessionsOmitsProjectsWithoutValidSessions(t *testi
 	}
 }
 
+// TestServiceImportExternalSessionsOmitsProjectWhenOnlySessionFailsToImport
+// covers the case where a project's only session is a real, valid import
+// candidate but the store write itself fails (a transient error, a write
+// timeout, etc.). Previously ImportExternalSessions recorded the project path
+// as "valid" before attempting the import, so a failed write still surfaced
+// the project in ProjectPaths — and since registerExternalImportUserProjects
+// registers every path ProjectPaths contains, that produced a folder card
+// with no chats under it. The project must only be reported once at least one
+// of its sessions actually lands in the store without error.
+func TestServiceImportExternalSessionsOmitsProjectWhenOnlySessionFailsToImport(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	project := filepath.Join(root, "project-a")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("create project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-a.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "codex-a", "cwd": project},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "codex-a-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "A prompt"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = failingReportSessionMessagesStore{Repository: store}
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: project}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if len(result.ProjectPaths) != 0 || result.ImportedProjects != 0 {
+		t.Fatalf("import result = %#v, want no registered project paths when the only session fails to import", result)
+	}
+	if result.ImportedSessions != 0 || result.ImportedMessages != 0 {
+		t.Fatalf("import result = %#v, want nothing counted as imported", result)
+	}
+	if len(result.Errors) == 0 {
+		t.Fatalf("import result = %#v, want the store failure recorded as an import error", result)
+	}
+}
+
+// failingReportSessionMessagesStore wraps a real agentactivitybiz.Repository
+// but forces ReportSessionMessages to fail, simulating a transient store
+// error (write timeout, disk full, etc.) after the session shell itself may
+// already have been created by ReportSessionState.
+type failingReportSessionMessagesStore struct {
+	agentactivitybiz.Repository
+}
+
+func (failingReportSessionMessagesStore) ReportSessionMessages(context.Context, agentactivitybiz.SessionMessageReport) (agentactivitybiz.MessageReportResult, error) {
+	return agentactivitybiz.MessageReportResult{}, errors.New("simulated store failure")
+}
+
 func TestServiceExternalImportValidProjectPaths(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
