@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import type { PutDesktopPreferencesRequest } from "@tutti-os/client-tuttid-ts";
 import { createDesktopHostPreferencesState } from "./desktopHostPreferences.ts";
@@ -382,7 +383,7 @@ test("createDesktopHostPreferencesState preserves initialized rc channel on rc p
   assert.equal(state.getUpdateChannel(), "rc");
 });
 
-test("createDesktopHostPreferencesState preserves rc after the stable default migration ran", async () => {
+test("createDesktopHostPreferencesState migrates rc even after the old stable default migration ran", async () => {
   const migrationStateRootDir = await mkdtemp(
     join(tmpdir(), "tutti-update-channel-migration-")
   );
@@ -392,6 +393,65 @@ test("createDesktopHostPreferencesState preserves rc after the stable default mi
       migrationStateRootDir,
       "migrations",
       "desktop-update-channel-default-stable-v1"
+    ),
+    "applied",
+    "utf8"
+  );
+  const putRequests: PutDesktopPreferencesRequest[] = [];
+  const state = await createDesktopHostPreferencesState({
+    fallbackLocale: "zh-CN",
+    logger: createLogger(),
+    migrationStateRootDir,
+    tuttidClient: {
+      async getDesktopPreferences() {
+        return {
+          initialized: true,
+          preferences: {
+            agentComposerDefaultsByProvider: {},
+            agentGuiConversationRailCollapsedByProvider: {},
+            agentConversationDetailMode: "coding",
+            agentDockLayout: "legacySplit",
+            appCatalogChannel: "production",
+            defaultAgentProvider: "codex",
+
+            dockIconStyle: "default",
+            dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+            locale: "zh-CN",
+            minimizeAnimation: "scale",
+            sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
+            themeSource: "dark",
+            updateChannel: "rc",
+            updatePolicy: "prompt"
+          }
+        };
+      },
+      async putDesktopPreferences(request) {
+        putRequests.push(request);
+        return {
+          initialized: true,
+          preferences: request.preferences
+        };
+      }
+    }
+  });
+
+  assert.equal(state.getUpdateChannel(), "stable");
+  assert.equal(putRequests.length, 1);
+  assert.equal(putRequests[0]?.preferences.updateChannel, "stable");
+});
+
+test("createDesktopHostPreferencesState preserves explicitly selected rc on stable packages", async () => {
+  const migrationStateRootDir = await mkdtemp(
+    join(tmpdir(), "tutti-update-channel-migration-")
+  );
+  await mkdir(join(migrationStateRootDir, "migrations"), { recursive: true });
+  await writeFile(
+    join(
+      migrationStateRootDir,
+      "migrations",
+      "desktop-update-channel-explicit-preview-opt-in-v1"
     ),
     "applied",
     "utf8"
@@ -435,6 +495,61 @@ test("createDesktopHostPreferencesState preserves rc after the stable default mi
 
   assert.equal(putCalls, 0);
   assert.equal(state.getUpdateChannel(), "rc");
+});
+
+test("createDesktopHostPreferencesState records explicit preview opt-in after sync", async () => {
+  const migrationStateRootDir = await mkdtemp(
+    join(tmpdir(), "tutti-update-channel-migration-")
+  );
+  const state = await createDesktopHostPreferencesState({
+    fallbackLocale: "en",
+    logger: createLogger(),
+    migrationStateRootDir,
+    tuttidClient: {
+      async getDesktopPreferences() {
+        return {
+          initialized: true,
+          preferences: {
+            agentComposerDefaultsByProvider: {},
+            agentGuiConversationRailCollapsedByProvider: {},
+            agentConversationDetailMode: "coding",
+            agentDockLayout: "legacySplit",
+            appCatalogChannel: "production",
+            browserUseConnectionMode: "isolated",
+            defaultAgentProvider: "codex",
+
+            dockIconStyle: "default",
+            dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+            locale: "en",
+            minimizeAnimation: "scale",
+            sleepPreventionMode: "never",
+            showAppDeveloperSources: false,
+            themeSource: "system",
+            updateChannel: "stable",
+            updatePolicy: "prompt"
+          }
+        };
+      },
+      async putDesktopPreferences() {
+        throw new Error("putDesktopPreferences should not be called");
+      }
+    }
+  });
+
+  state.sync({ updateChannel: "rc" });
+
+  assert.equal(state.getUpdateChannel(), "rc");
+  assert.match(
+    await readFileEventually(
+      join(
+        migrationStateRootDir,
+        "migrations",
+        "desktop-update-channel-explicit-preview-opt-in-v1"
+      )
+    ),
+    /^\d{4}-\d{2}-\d{2}T/
+  );
 });
 
 test("createDesktopHostPreferencesState notifies subscribers after sync changes", async () => {
@@ -503,4 +618,17 @@ function createLogger(): DesktopLogger {
     error() {},
     async close() {}
   };
+}
+
+async function readFileEventually(path: string): Promise<string> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      return await readFile(path, "utf8");
+    } catch (error) {
+      lastError = error;
+      await sleep(10);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }

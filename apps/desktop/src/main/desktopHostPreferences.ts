@@ -55,6 +55,8 @@ import { resolveDesktopDefaultsFromEnv } from "./defaults.ts";
 
 const updateChannelDefaultMigrationID =
   "desktop-update-channel-default-stable-v1";
+const updateChannelExplicitPreviewOptInID =
+  "desktop-update-channel-explicit-preview-opt-in-v1";
 
 export interface DesktopHostPreferencesState {
   getAgentComposerDefaultsByProvider(): DesktopAgentComposerDefaultsByProvider;
@@ -312,6 +314,9 @@ export async function createDesktopHostPreferencesState(
         themeSource = input.themeSource;
       }
       if (input.updateChannel) {
+        if (previousUpdateChannel !== "rc" && input.updateChannel === "rc") {
+          void writeUpdateChannelExplicitPreviewOptInMarker(options);
+        }
         updateChannel = input.updateChannel;
       }
       if (input.updatePolicy) {
@@ -447,10 +452,7 @@ async function migrateInitializedDesktopPreferences(
   const normalizedAgentDockLayout = normalizeDesktopAgentDockLayout(
     preferences.agentDockLayout
   );
-  if (
-    preferences.updateChannel !== "rc" ||
-    defaultUpdateChannel !== "stable"
-  ) {
+  if (preferences.updateChannel !== "rc" || defaultUpdateChannel !== "stable") {
     if (
       preferences.minimizeAnimation === normalizedMinimizeAnimation &&
       preferences.agentConversationDetailMode ===
@@ -467,8 +469,9 @@ async function migrateInitializedDesktopPreferences(
     };
   }
 
-  const markerPath = resolveUpdateChannelDefaultMigrationMarkerPath(options);
-  if (await hasMigrationMarker(markerPath)) {
+  const explicitPreviewOptInMarkerPath =
+    resolveUpdateChannelExplicitPreviewOptInMarkerPath(options);
+  if (await hasMigrationMarker(explicitPreviewOptInMarkerPath)) {
     if (
       preferences.minimizeAnimation === normalizedMinimizeAnimation &&
       preferences.agentConversationDetailMode ===
@@ -486,6 +489,7 @@ async function migrateInitializedDesktopPreferences(
   }
 
   try {
+    const markerPath = resolveUpdateChannelDefaultMigrationMarkerPath(options);
     const response = await options.tuttidClient.putDesktopPreferences({
       preferences: {
         ...preferences,
@@ -521,6 +525,23 @@ function resolveDefaultDesktopUpdateChannel(
   return defaultDesktopUpdateChannel;
 }
 
+async function writeUpdateChannelExplicitPreviewOptInMarker(
+  options: CreateDesktopHostPreferencesOptions
+): Promise<void> {
+  try {
+    await writeMigrationMarker(
+      resolveUpdateChannelExplicitPreviewOptInMarkerPath(options)
+    );
+  } catch (error) {
+    options.logger.warn(
+      "failed to record explicit desktop preview update channel opt-in",
+      {
+        error: error instanceof Error ? error.message : String(error)
+      }
+    );
+  }
+}
+
 function resolveUpdateChannelDefaultMigrationMarkerPath(
   options: CreateDesktopHostPreferencesOptions
 ): string {
@@ -528,6 +549,15 @@ function resolveUpdateChannelDefaultMigrationMarkerPath(
     options.migrationStateRootDir ??
     resolveDesktopDefaultsFromEnv().state.rootDir;
   return join(stateRootDir, "migrations", updateChannelDefaultMigrationID);
+}
+
+function resolveUpdateChannelExplicitPreviewOptInMarkerPath(
+  options: CreateDesktopHostPreferencesOptions
+): string {
+  const stateRootDir =
+    options.migrationStateRootDir ??
+    resolveDesktopDefaultsFromEnv().state.rootDir;
+  return join(stateRootDir, "migrations", updateChannelExplicitPreviewOptInID);
 }
 
 async function hasMigrationMarker(markerPath: string): Promise<boolean> {

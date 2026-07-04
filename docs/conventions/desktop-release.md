@@ -142,7 +142,7 @@ Channel meanings:
 - `rc`: maps to electron-updater `channel="rc"` with `allowPrerelease=true`
 - `beta`: reserved for beta prerelease artifacts such as `v1.12.19-beta.0`; expose it in developer settings only if the team decides beta users should auto-update between beta builds
 
-When no desktop preference has been stored yet, the initial update channel follows the package version: plain stable versions use `stable`, `-rc.N` versions use `rc`, and `-beta.N` versions still use `stable` until beta auto-update is explicitly exposed. Existing stored `rc` defaults from older stable builds are migrated back to `stable` once. After that migration, users who explicitly select `rc` in developer settings keep that preference.
+When no desktop preference has been stored yet, the initial update channel follows the package version: plain stable versions use `stable`, `-rc.N` versions use `rc`, and `-beta.N` versions still use `stable` until beta auto-update is explicitly exposed. Stable builds migrate legacy stored `rc` defaults from older builds back to `stable` unless the user has explicitly selected the preview channel in developer settings. Selecting preview from developer settings records that opt-in so later stable builds can preserve it.
 
 Prerelease auto-update depends on both release shape and update metadata:
 
