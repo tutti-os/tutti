@@ -27,6 +27,7 @@ import {
 } from "./desktopTheme";
 import { registerIpcHandlers } from "./ipc/register";
 import { flushDesktopLogger, setupDesktopLogger } from "./logging";
+import { ensureMacosApplicationInstalled } from "./macosApplicationInstallGuard.ts";
 import { ensureSingleInstance } from "./singleInstance";
 import {
   completeDesktopLoginCallbackUrl,
@@ -155,14 +156,26 @@ export async function bootstrapDesktopApp(): Promise<void> {
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
 
   await app.whenReady();
+  const systemLocale = getSystemDesktopLocale();
+  const canContinueStartup = await ensureMacosApplicationInstalled({
+    appPath: process.execPath,
+    isPackaged: app.isPackaged,
+    locale: systemLocale,
+    logger
+  });
+  if (!canContinueStartup) {
+    return;
+  }
+
   const workspaceFileIconCache = createWorkspaceFileIconCacheStore({
     directory: join(app.getPath("userData"), "workspace-file-icons")
   });
   registerTuttiAssetProtocol();
   registerWorkspaceFileIconProtocol(workspaceFileIconCache);
   const desktopAppServices = await createDesktopAppServices({
+    appVersion: app.getVersion(),
     enableDevelopmentReloadShortcut: Boolean(rendererUrl) && !app.isPackaged,
-    fallbackLocale: getSystemDesktopLocale(),
+    fallbackLocale: systemLocale,
     browserNodeGuestPreloadPath,
     isPackaged: app.isPackaged,
     logger,

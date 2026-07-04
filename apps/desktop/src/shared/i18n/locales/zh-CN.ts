@@ -59,6 +59,18 @@ export const zhCN = {
     retryAction: "重试"
   },
   desktop: {
+    installGuard: {
+      detail:
+        "Tutti 正在从下载的磁盘镜像中运行。请先移动到 Applications，再继续使用，这样后续更新才能正常安装。",
+      failureDetail:
+        "macOS 无法自动移动 Tutti。请将 {{appPath}} 拖到 Applications，然后从 Applications 打开 Tutti。",
+      failureMessage: "请手动移动 Tutti",
+      message: "要将 Tutti 移动到 Applications 吗？",
+      moveAction: "移动到 Applications 并重新打开",
+      quitAction: "退出",
+      showInFinderAction: "在 Finder 中显示",
+      title: "安装 Tutti"
+    },
     logsExport: {
       actionHint: "你可以复制 Agent 调试指令，或打开导出文件所在目录。",
       agentPrompt: {
@@ -729,6 +741,13 @@ export const zhCN = {
         openLogsDirectory: "打开日志目录",
         addFileDefaultOpener: "添加",
         removeFileDefaultOpener: "移除 .{{extension}}",
+        releaseChannelDescription:
+          "选择稳定版更新；需要提前验收时可切到预览版。",
+        releaseChannelLabel: "发布渠道",
+        releaseChannelOptions: {
+          rc: "预览版",
+          stable: "稳定版"
+        },
         showAppDeveloperSourcesDescription:
           "在应用中心卡片中展示应用作者和 GitHub 来源。",
         showAppDeveloperSourcesLabel: "展示应用作者与来源",

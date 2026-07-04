@@ -26,6 +26,69 @@ function releaseVersionFromTag(tag) {
   return tag.replace(/^tutti-desktop-v/, "").replace(/^v/, "");
 }
 
+function parseReleaseVersion(value) {
+  const match =
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((rc|beta)\.(0|[1-9]\d*)))?$/.exec(
+      value
+    );
+  if (!match) {
+    return null;
+  }
+
+  return {
+    channel: match[5] ?? "stable",
+    prerelease: match[4] ?? null,
+    version: `${match[1]}.${match[2]}.${match[3]}${match[4] ? `-${match[4]}` : ""}`
+  };
+}
+
+function resolveReleaseChannel(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized || "stable";
+}
+
+function validateReleaseChannel({ channel, parsedVersion, releaseTag }) {
+  if (channel === "stable") {
+    if (
+      parsedVersion.channel === "stable" &&
+      parsedVersion.prerelease === null
+    ) {
+      return false;
+    }
+    throw new Error(
+      `stable latest metadata can only be built for stable releases: ${releaseTag}`
+    );
+  }
+
+  if (channel === "rc") {
+    if (parsedVersion.channel === "rc") {
+      return true;
+    }
+    throw new Error(
+      `rc latest metadata can only be built for rc releases: ${releaseTag}`
+    );
+  }
+
+  if (channel === "beta") {
+    if (parsedVersion.channel === "beta") {
+      return true;
+    }
+    throw new Error(
+      `beta latest metadata can only be built for beta releases: ${releaseTag}`
+    );
+  }
+
+  throw new Error(`Unsupported release channel: ${channel}`);
+}
+
+function isMacosUniversalDmg(asset) {
+  return (
+    asset.platform === "macos" &&
+    asset.arch === "universal" &&
+    asset.format === "dmg"
+  );
+}
+
 function normalizePlatform(value) {
   const normalized = value.toLowerCase();
   if (
@@ -81,10 +144,26 @@ async function buildDesktopReleaseLatest(options) {
     requireNonEmpty(options.assetDirPath, "assetDirPath")
   );
   const releaseTag = requireNonEmpty(options.releaseTag, "releaseTag");
+  const channel = resolveReleaseChannel(options.channel);
   const releaseVersion = releaseVersionFromTag(releaseTag);
+  const parsedVersion = parseReleaseVersion(releaseVersion);
+  if (!parsedVersion) {
+    throw new Error(`releaseTag must contain a semver version: ${releaseTag}`);
+  }
+  const prerelease = validateReleaseChannel({
+    channel,
+    parsedVersion,
+    releaseTag
+  });
   const baseUrl = normalizeBaseUrl(
     requireNonEmpty(options.releaseAssetBaseUrl, "releaseAssetBaseUrl")
   );
+  const gitSha = String(options.gitSha ?? "").trim();
+  const sourceRef = String(options.sourceRef ?? "").trim();
+  const releasedAt =
+    options.releasedAt instanceof Date
+      ? options.releasedAt.toISOString()
+      : String(options.releasedAt ?? new Date().toISOString()).trim();
 
   const entries = await readdir(assetDirPath, { withFileTypes: true });
   const assetNames = entries
@@ -104,11 +183,21 @@ async function buildDesktopReleaseLatest(options) {
     });
   }
 
+  const macosUniversalDmg = assets.find(isMacosUniversalDmg)?.url ?? null;
+
   return {
     schemaVersion,
     tag: releaseTag,
     version: releaseVersion,
+    channel,
+    prerelease,
+    releasedAt,
+    gitSha: gitSha || null,
+    sourceRef: sourceRef || null,
     baseUrl,
+    preferredDownloads: {
+      macosUniversalDmg
+    },
     assets
   };
 }
@@ -117,8 +206,12 @@ async function main() {
   const [assetDirPath, outputPath] = process.argv.slice(2);
   const latest = await buildDesktopReleaseLatest({
     assetDirPath,
+    channel: process.env.RELEASE_CHANNEL,
+    gitSha: process.env.RELEASE_GIT_SHA,
     releaseAssetBaseUrl: process.env.RELEASE_ASSET_BASE_URL,
-    releaseTag: process.env.RELEASE_TAG
+    releaseTag: process.env.RELEASE_TAG,
+    releasedAt: process.env.RELEASED_AT,
+    sourceRef: process.env.RELEASE_SOURCE_REF
   });
 
   await writeFile(
@@ -142,6 +235,8 @@ export {
   buildDesktopReleaseLatest,
   classifyDesktopReleaseAsset,
   normalizeBaseUrl,
+  parseReleaseVersion,
   releaseVersionFromTag,
+  resolveReleaseChannel,
   schemaVersion
 };

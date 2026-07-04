@@ -42,10 +42,10 @@ function readGitTags() {
 function printUsage() {
   process.stderr.write(
     [
-      "Usage: node scripts/resolve-release-tag.mjs --strategy <patch|minor|major|patch_rc|minor_rc|major_rc|explicit_version|explicit_tag> [options]",
+      "Usage: node scripts/resolve-release-tag.mjs --strategy <patch|minor|major|patch_rc|minor_rc|major_rc|patch_beta|minor_beta|major_beta|explicit_version|explicit_tag> [options]",
       "",
       "Options:",
-      "  --version <x.y.z[-rc.n]>  Release version when using explicit_version",
+      "  --version <x.y.z[-rc.n|-beta.n]>  Release version when using explicit_version",
       "  --tag <tag>        Full release tag when using explicit_tag",
       "  --json             Emit JSON metadata instead of only the tag",
       ""

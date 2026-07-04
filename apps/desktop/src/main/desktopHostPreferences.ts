@@ -53,7 +53,8 @@ import type { DesktopLocale } from "../shared/i18n/index.ts";
 import type { DesktopLogger } from "./logging.ts";
 import { resolveDesktopDefaultsFromEnv } from "./defaults.ts";
 
-const updateChannelDefaultMigrationID = "desktop-update-channel-default-rc-v1";
+const updateChannelDefaultMigrationID =
+  "desktop-update-channel-default-stable-v1";
 
 export interface DesktopHostPreferencesState {
   getAgentComposerDefaultsByProvider(): DesktopAgentComposerDefaultsByProvider;
@@ -96,6 +97,7 @@ export interface DesktopHostPreferencesState {
 }
 
 export interface CreateDesktopHostPreferencesOptions {
+  appVersion?: string;
   fallbackLocale: DesktopLocale;
   logger: DesktopLogger;
   migrationStateRootDir?: string;
@@ -365,12 +367,14 @@ export async function createDesktopHostPreferencesState(
 async function resolveInitialDesktopPreferences(
   options: CreateDesktopHostPreferencesOptions
 ): Promise<PutDesktopPreferencesRequest["preferences"]> {
+  const defaultUpdateChannel = resolveDefaultDesktopUpdateChannel(options);
   try {
     const response = await options.tuttidClient.getDesktopPreferences();
     if (response.initialized) {
       return migrateInitializedDesktopPreferences(
         options,
-        response.preferences
+        response.preferences,
+        defaultUpdateChannel
       );
     }
 
@@ -394,7 +398,7 @@ async function resolveInitialDesktopPreferences(
           showAppDeveloperSources: defaultDesktopShowAppDeveloperSources,
           sleepPreventionMode: defaultDesktopSleepPreventionMode,
           themeSource: defaultDesktopThemeSource,
-          updateChannel: defaultDesktopUpdateChannel,
+          updateChannel: defaultUpdateChannel,
           updatePolicy: defaultDesktopUpdatePolicy
         }
       })
@@ -420,7 +424,7 @@ async function resolveInitialDesktopPreferences(
       showAppDeveloperSources: defaultDesktopShowAppDeveloperSources,
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       themeSource: defaultDesktopThemeSource,
-      updateChannel: defaultDesktopUpdateChannel,
+      updateChannel: defaultUpdateChannel,
       updatePolicy: defaultDesktopUpdatePolicy
     };
   }
@@ -428,7 +432,8 @@ async function resolveInitialDesktopPreferences(
 
 async function migrateInitializedDesktopPreferences(
   options: CreateDesktopHostPreferencesOptions,
-  preferences: PutDesktopPreferencesRequest["preferences"]
+  preferences: PutDesktopPreferencesRequest["preferences"],
+  defaultUpdateChannel: DesktopUpdateChannel
 ): Promise<PutDesktopPreferencesRequest["preferences"]> {
   const normalizedMinimizeAnimation = isDesktopMinimizeAnimation(
     preferences.minimizeAnimation
@@ -443,8 +448,8 @@ async function migrateInitializedDesktopPreferences(
     preferences.agentDockLayout
   );
   if (
-    preferences.updateChannel !== "stable" ||
-    defaultDesktopUpdateChannel !== "rc"
+    preferences.updateChannel !== "rc" ||
+    defaultUpdateChannel !== "stable"
   ) {
     if (
       preferences.minimizeAnimation === normalizedMinimizeAnimation &&
@@ -487,7 +492,7 @@ async function migrateInitializedDesktopPreferences(
         agentConversationDetailMode: normalizedAgentConversationDetailMode,
         agentDockLayout: normalizedAgentDockLayout,
         minimizeAnimation: normalizedMinimizeAnimation,
-        updateChannel: defaultDesktopUpdateChannel
+        updateChannel: defaultUpdateChannel
       }
     });
     await writeMigrationMarker(markerPath);
@@ -503,6 +508,17 @@ async function migrateInitializedDesktopPreferences(
       minimizeAnimation: normalizedMinimizeAnimation
     };
   }
+}
+
+function resolveDefaultDesktopUpdateChannel(
+  options: CreateDesktopHostPreferencesOptions
+): DesktopUpdateChannel {
+  const version = options.appVersion?.trim().replace(/^v/iu, "") ?? "";
+  if (/^\d+\.\d+\.\d+-rc\.\d+$/u.test(version)) {
+    return "rc";
+  }
+
+  return defaultDesktopUpdateChannel;
 }
 
 function resolveUpdateChannelDefaultMigrationMarkerPath(
